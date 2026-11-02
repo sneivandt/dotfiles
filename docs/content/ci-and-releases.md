@@ -132,9 +132,8 @@ downloads the artifact from that exact CI run and deploys it to GitHub Pages.
 PRs and fork runs cannot publish. A completed build that no longer matches
 `main` is skipped rather than rolling the site backward.
 
-The repository's Pages source must be **GitHub Actions**. See
-[Published documentation](contributing.md#published-documentation) for the
-one-time setting, domain configuration, and local preview.
+See [Documentation site](documentation-site.md) for Pages settings, domain
+configuration, local preview, and publishing troubleshooting.
 
 ## Release selection
 

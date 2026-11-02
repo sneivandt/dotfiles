@@ -2,6 +2,11 @@
   gap: 0.625rem;
 }
 
+.sidebar-pane {
+  scrollbar-width: auto;
+  scrollbar-color: var(--sl-color-gray-3) var(--sl-color-bg-sidebar);
+}
+
 .page-title-anchor {
   display: block;
   scroll-margin-top: 6rem;

@@ -87,9 +87,9 @@ you. Compiler-dependent checks reject the wrong Rust version.
 
 Missing tools usually produce `SKIP`. `--strict`, `-Strict`, or
 `DOTFILES_CHECK_STRICT=1` makes skips fail. An installed tool's nonzero exit is
-a failure, including exit code `2`. On Linux, missing `pwsh` skips its stage,
-but present `pwsh` without PSScriptAnalyzer fails; the Windows entrypoint skips
-a missing analyzer module.
+a failure, including exit code `2`. See
+[Analyzer prerequisites](#analyzer-prerequisites) for required tools and the
+PowerShell entrypoint difference.
 
 Two stages are opt-in: `msrv` attempts to install and compile with the minimum
 Rust version from `Cargo.toml`; Linux `qml` runs Qt Quick Test. `--all` on Linux
@@ -145,15 +145,9 @@ the homepage, top-level topic navigation, search, theme persistence, warning
 callouts, and every Mermaid diagram at desktop and mobile sizes. Diagram labels must stay at least
 14 CSS pixels. Mobile emulation is not a native phone/browser test.
 
-After changing the Markdown processing pipeline, run
-`npm exec -- astro sync --force` from `docs/` before rebuilding. This clears
-cached content so unchanged guides receive the updated transforms too.
-
-Use `npm run dev` from `docs/` for editing. Use `npm run build` followed by
-`npm run preview` when inspecting production search and rendering. The browser
-suite starts and stops its own loopback preview on port 4322; keep that port free.
-It uses Astro's programmatic server so a separate preview can stay open for review.
-Neither preview publishes the site or applies machine configuration.
+The browser suite starts and stops its own loopback preview on port 4322;
+keep that port free. For manual preview and changes to the content pipeline,
+see [Documentation site](documentation-site.md).
 
 ## Before pushing
 
@@ -250,8 +244,7 @@ cargo run --locked --profile ci -- check --root .. --profile desktop \
   --only config-diagnostics,symlink-sources,config-files
 ```
 
-These source-build examples keep `--root ..` so a custom Cargo output directory
-cannot make the CLI select a different checkout.
+These commands explicitly select this checkout with `--root ..`.
 
 This is the local `config` stage. It fails on configuration diagnostics, checks
 configured symlink/permission sources including retained inactive definitions,
@@ -266,14 +259,28 @@ cargo run --locked --profile ci -- check --root .. --profile desktop --verbose
 ```
 
 That adds APM `pack --dry-run --verbose`, ShellCheck, and PSScriptAnalyzer where
-applicable. Missing tools mean unmet work, normally shown as a local skip;
-`--fail-on-skip` or a present `CI` environment variable makes unmet skips fail.
-Present PowerShell without its analyzer module fails outright. Discovery and
-file-read failures are not treated as empty input.
+applicable. Discovery and file-read failures are not treated as empty input.
 
 Add `--overlay /path/to/private-dotfiles` to validate combined configuration.
 Keep its diagnostics private until sanitized: a public-only check cannot prove
 an overlay has no conflicts.
+
+### Analyzer prerequisites
+
+| Check | Required tools |
+|---|---|
+| Local APM package validation | `apm` |
+| ShellCheck | `shellcheck` and POSIX `sh` |
+| PSScriptAnalyzer | PowerShell 7 (`pwsh`) and the PSScriptAnalyzer module |
+
+Missing tools produce an unmet skip in CLI checks. `--fail-on-skip` or a present
+`CI` variable makes those skips fail. Windows PowerShell does not substitute
+for `pwsh` in the analyzer.
+
+If `pwsh` is available but PSScriptAnalyzer is absent or broken, CLI checks,
+the Linux local checker, and the commit hook fail. The Windows local
+`Check.ps1` entrypoint instead skips a missing module; `-Strict` makes that
+skip fail too. Install the prerequisites for the checks you intend to run.
 
 ## Dry-run testing
 

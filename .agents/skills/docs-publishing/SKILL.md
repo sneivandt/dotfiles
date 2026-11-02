@@ -12,7 +12,7 @@ description: >
 
 Start with [site configuration](../../../docs/astro.config.mjs),
 [domain declaration](../../../docs/public/CNAME), and the
-[publishing guide](../../../docs/content/contributing.md#published-documentation).
+[site maintenance guide](../../../docs/content/documentation-site.md).
 CI builds Astro from `docs/`; Pages deploys that verified artifact after the
 aggregate succeeds for a push to `main`. Binary release selection is separate.
 The root README directs readers to the published guides; keep its URLs and
@@ -36,6 +36,9 @@ heading anchors aligned with the site's output.
   Packages, AI agents, or Editors; repository-wide implementation and validation
   under Development.
   Link instead of duplicating.
+- Document stable reader tasks and meaningful behavior, not a narrative of each
+  fix or individual test assertion. Put implementation details in their owning
+  maintenance reference; keep safety warnings beside the actions they affect.
 - Keep Application settings focused on shared preferences and finding sources;
   detailed Arch desktop and editor behavior belongs in its owning guide. Keep
   each topic's maintenance guide beside its everyday guide. Use top-level

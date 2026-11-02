@@ -52,9 +52,9 @@ Clippy uses the `ci` profile, all targets, a locked dependency graph, and warnin
 as errors. The hook checks the compiler against the staged
 `cli/rust-toolchain.toml`; it does not install or switch toolchains.
 
-If `pwsh` is absent, PowerShell analysis is skipped. If `pwsh` exists but its
-PSScriptAnalyzer module is absent or broken, the check fails. **A skipped check
-is not coverage.**
+PowerShell analysis uses the shared
+[analyzer prerequisites](testing.md#analyzer-prerequisites).
+**A skipped check is not coverage.**
 
 ## Scan scope
 

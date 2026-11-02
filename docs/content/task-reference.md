@@ -75,24 +75,11 @@ This is a **selection graph, not a change plan**. Use `--skip repository` to
 exclude repository work from a listing; `list` does not accept
 `--no-repo-update`.
 
-### Conditional waits
-
-VS Code, Agent packages and systemd may run before their package predecessors
-when a once-per-phase assessment proves that:
-
-1. The consumer's required inputs are ready.
-2. On a pacman platform, every configured package is installed and Paru is
-   healthy, so no configured install or helper rebuild will invalidate them.
-
-Missing inputs, unknown/failed probes or other package managers retain the
-waits. Systemd uses this shortcut only for already-converged units and still
-waits for symlinks/permissions. Agent packages retains its blocking symlink
-prerequisite. Execution rechecks inputs; blocking edges are never waived.
-The declared listing and `--with-deps` expansion remain unchanged.
-
 Independent ready tasks may run concurrently, with console rows in completion
 order. `--no-parallel` disables parallel execution. Tasks may finish current,
 not applicable or unmet rather than changed; failure is not a rollback.
+See [Architecture](architecture.md#requirements) for runtime readiness
+assessment and conditional scheduling.
 
 ## Installation tasks
 
@@ -127,9 +114,6 @@ and `symlinks` also belong to [remove](#remove-tasks).
 | `systemd` | [Systemd units](#systemd-units): supported platform and configured units, outside CI |
 | `vscode-extensions` | [VS Code extensions](#vs-code-extensions): configured extensions |
 
-`custom-package-versions` is explicitly update-only metadata: it advances
-recipe release pins. That is not an ordering tier or a remove capability.
-
 ### Host capability and wrapper tasks
 
 #### Windows Developer Mode
@@ -160,10 +144,7 @@ Requires the launcher. Adds `~/.local/bin` through a managed export in
 `~/.profile` on Linux, or the user PATH on Windows. Open a new shell to use
 the persisted change.
 
-Linux comments or example text do not satisfy the managed export check.
-Windows preserves registry value type and expandable tokens, and fails without
-rewriting unsupported types, malformed UTF-16 or embedded NULs. Remove leaves
-the PATH addition in place.
+Existing PATH entries are preserved. Remove leaves the PATH addition in place.
 
 ### Repository and source tasks
 
@@ -317,8 +298,7 @@ Your currently running terminal shell is not replaced.
 
 Enables/starts enabled declarations and disables/stops disabled ones. It waits
 for regular/AUR packages, symlinks and permissions using ordering-only edges,
-then inspects actual unit state. The [conditional waits](#conditional-waits)
-can avoid unnecessary package waits; this task never installs packages itself.
+then inspects actual unit state. This task never installs packages itself.
 
 It needs systemctl, is excluded in CI, and inside WSL requires systemd already
 running or degraded. System units can require sudo. Without a user manager,
@@ -436,10 +416,9 @@ staged privately on Unix and receive source permissions before publication.
 All commands load configuration before filtering. `--only` cannot bypass a
 malformed [required file](configuration-reference.md#files).
 
-Missing `apm`, `shellcheck`, `sh` or `pwsh` causes a visible unmet skip;
-`--fail-on-skip` or CI makes these unsuccessful. If `pwsh` exists but the
-PSScriptAnalyzer module does not, the analyzer fails. Local plugin checks
-do not validate every remote package or private overlay script.
+Missing optional tools cause visible unmet skips; `--fail-on-skip` or CI makes
+these unsuccessful. Local plugin checks do not validate every remote package
+or private overlay script.
 
 Use [CLI validation](testing.md#cli-validation) for commands, then select
 additional integration/configuration-drift coverage as appropriate.

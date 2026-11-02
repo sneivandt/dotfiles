@@ -42,27 +42,9 @@ With no existing profile selection, choose `desktop` for a workstation or
 Use `.\dotfiles.ps1 list` afterward to discover tasks.
 
 Review the selected profile, planned links, registry values, and packages.
-The preview still writes a log and takes the run lock. It can check for a newer
-CLI release, but does not replace the binary or write release caches.
-Wrapper bootstrap happens **before** dry-run takes effect. See
-[Dry-run scope](commands-and-usage.md#dry-run-scope).
-
-<details>
-<summary>Skip a CLI release check for one invocation</summary>
-
-This optional override leaves the environment as it was:
-
-```powershell
-$previousSkipSelfUpdate = $env:DOTFILES_SKIP_SELF_UPDATE
-try {
-    $env:DOTFILES_SKIP_SELF_UPDATE = '1'
-    .\bin\dotfiles.exe update --dry-run
-} finally {
-    $env:DOTFILES_SKIP_SELF_UPDATE = $previousSkipSelfUpdate
-}
-```
-
-</details>
+**A preview is not a sandbox:** wrapper bootstrap runs first, and previews can
+write logs or selection metadata and execute overlay inspection scripts.
+See [Dry-run scope](commands-and-usage.md#dry-run-scope) for the full boundary.
 
 After backing up affected files and reviewing the plan, **apply**:
 
@@ -76,14 +58,8 @@ it does not disable CLI self-update or all network activity.
 Open a new terminal after installation. The examples below use the wrapper so
 they also work before the launcher is installed.
 
-For a source build that only discovers tasks:
-
-```powershell
-.\dotfiles.ps1 --build list --profile desktop
-```
-
-The wrapper runs Cargo's reported artifact, including custom output locations.
-A source build need not create `bin\dotfiles.exe`.
+For a fork without release binaries, follow the
+[setup choices](getting-started.md#1-choose-a-permanent-checkout).
 
 ### Download and update failures
 
@@ -218,17 +194,13 @@ The Windows symlinks install the managed profile for PowerShell and Windows
 PowerShell. Edit the tracked
 [`Microsoft.PowerShell_profile.ps1`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/powershell/Microsoft.PowerShell_profile.ps1),
 not an installed copy.
-New sessions load the changes; CLI completion has its own `completions` task.
+The profile provides a path and Git-aware prompt, command history, and
+history-based suggestions when the installed PSReadLine supports them.
+`dot` is shorthand for `dotfiles`, and `code` selects VS Code Insiders when
+available.
 
-The profile adds existing `~/.local/bin` and Cargo's `bin` directory before
-detecting optional command integrations. Cargo uses `CARGO_HOME` when set,
-otherwise `~/.cargo`. See [Application settings](application-settings.md) for shell
-behavior and customization.
-
-Repository validation is separate from wrapper compatibility: the analyzer
-requires **`pwsh` and PSScriptAnalyzer**. Missing `pwsh` is a skipped check;
-present `pwsh` with a missing module is a failed check. See
-[CLI validation](testing.md#cli-validation).
+Open a new session after editing the profile. Dotfiles command completion is
+installed separately by the [completions task](commands-and-usage.md#shell-completions).
 
 ## Windows Terminal
 
@@ -270,10 +242,6 @@ Preview with the original profile/overlay while the sources still exist:
 ```
 
 If the saved selection changed, pass the original `--profile` and `--overlay`
-explicitly. Applying removal copies managed home-link content into real files and removes
-hooks/launchers that still match their managed state. Modified hooks/launchers
-are preserved; active overlay scripts may perform their own removal actions.
-
-It does **not** uninstall winget packages, disable Developer Mode, restore
-registry or PATH values, or remove editor/agent deployments.
-[Remove is limited cleanup, not rollback](commands-and-usage.md#remove).
+explicitly. **Remove is not rollback:** Windows packages, Developer Mode,
+registry values, and PATH changes remain. Review the
+[removal behavior and limits](commands-and-usage.md#remove) before applying.

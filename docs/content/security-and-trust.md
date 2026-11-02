@@ -135,10 +135,8 @@ successful stderr. Successful stdout normally contributes a byte count, but
 callers can request full output. Domain messages and overlay output can contain
 private data too.
 
-For developers, `CommandSpec::redact_arguments()` hides arguments;
-`OutputLog::Omit` excludes captured streams from command diagnostics and
-checked-command errors. Neither sanitizes values logged separately by a caller.
-There is no universal secret scrubber.
+There is no universal secret scrubber. Contributors changing logged output
+should follow the [logging and redaction contracts](architecture.md#error-handling-and-observability).
 
 New Unix log directories use owner-only `0700` permissions; new logs and lock
 sidecars use `0600`, further restricted by the umask. Existing permissions are
@@ -148,17 +146,6 @@ Inspect logs locally and share only the smallest sanitized excerpt. If a real
 secret reaches a commit or shared log, **revoke or rotate it first**. Deleting
 the latest copy does not remove history, downloaded artifacts, or other copies.
 Coordinate any history cleanup separately.
-
-## Archive extraction
-
-The Zsh [`extract`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/functions/extract) helper delegates to
-the appropriate archive tool. For RPM files it uses `bsdtar`, supplied by
-`libarchive` on Arch or `libarchive-tools` on Debian/Ubuntu.
-
-Keep the extractor's normal path protections enabled; do not add `-P` to
-`bsdtar`. Extract untrusted archives into a fresh directory and review their
-contents before running anything. Path protections do not prevent every
-overwrite inside the destination or make extracted code trustworthy.
 
 ## Dependency and CI controls
 

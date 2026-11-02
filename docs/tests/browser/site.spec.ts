@@ -104,7 +104,7 @@ test('the homepage introduces the repository and links to setup, with grouped na
   const development = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Development', { exact: true }) });
   await expect(development.getByRole('link')).toHaveText([
-    'Contributing', 'Architecture', 'Testing', 'Git hooks', 'CI and releases',
+    'Contributing', 'Architecture', 'Testing', 'Documentation site', 'Git hooks', 'CI and releases',
   ]);
   for (const [label, href] of [
     ['Agent deployment internals', '/agent-deployment-internals.html'],
@@ -146,6 +146,7 @@ test('advanced guides remain visible within top-level topic navigation', async (
   for (const [guide, title] of [
     ['agent-deployment-internals', 'Agent deployment internals'],
     ['arch-package-recipes', 'Arch package recipes'],
+    ['documentation-site', 'Documentation site'],
   ]) {
     await page.goto(`/${guide}.html`);
     if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
@@ -154,6 +155,62 @@ test('advanced guides remain visible within top-level topic navigation', async (
     await expect(current).toBeVisible();
   }
 });
+
+test('contributors can follow the site maintenance guide to publishing help', async ({ page }) => {
+  await page.goto('/contributing.html');
+  const link = page.locator('.sl-markdown-content')
+    .getByRole('link', { name: 'Documentation site', exact: true });
+  await expect(link).toHaveAttribute('href', 'documentation-site.html');
+  await link.click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Documentation site');
+  await expect(page.getByRole('heading', { name: 'Diagnose publishing and indexing', exact: true })).toBeVisible();
+  await assertNoPageOverflow(page);
+});
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`overflowing navigation has a readable scrollbar in ${theme} mode`, async ({ page, isMobile }) => {
+    await page.addInitScript((choice) => localStorage.setItem('starlight-theme', choice), theme);
+    await page.setViewportSize({ width: isMobile ? 375 : 1440, height: 600 });
+    await page.goto('/');
+    if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
+    const sidebar = page.locator('#starlight__sidebar');
+    await expect(sidebar).toBeVisible();
+    const appearance = await sidebar.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const colors = style.scrollbarColor.match(/rgb\([^)]+\)/g);
+      if (!colors || colors.length !== 2) throw new Error('Navigation must define scrollbar thumb and track colors');
+      const luminance = (color: string) => {
+        const channels = color.match(/\d+/g);
+        if (!channels || channels.length !== 3) throw new Error(`Unexpected scrollbar color: ${color}`);
+        const [r, g, b] = channels.map((channel) => {
+          const value = Number(channel) / 255;
+          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const thumb = luminance(colors[0]);
+      const track = luminance(colors[1]);
+      return {
+        width: style.scrollbarWidth,
+        gutter: style.scrollbarGutter,
+        contrast: (Math.max(thumb, track) + 0.05) / (Math.min(thumb, track) + 0.05),
+        contentHeight: element.scrollHeight,
+        visibleHeight: element.clientHeight,
+      };
+    });
+    expect(appearance.width).toBe('auto');
+    expect(appearance.gutter).toBe('stable');
+    expect(appearance.contrast).toBeGreaterThanOrEqual(3);
+    expect(appearance.contentHeight).toBeGreaterThan(appearance.visibleHeight);
+    await sidebar.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    expect(await sidebar.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    const lastGuide = sidebar.getByRole('link', { name: 'CI and releases', exact: true });
+    await expect(lastGuide).toBeInViewport();
+    await lastGuide.click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('CI and releases');
+    await assertNoPageOverflow(page);
+  });
+}
 
 for (const [guide, titles] of [
   ['arch-package-recipes', ['Review recipes before preparing packages']],

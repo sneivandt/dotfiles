@@ -72,6 +72,31 @@ affected artifacts.
 Install optional analyzers only for the checks you need. The
 [local stages](testing.md#fast-local-sequence) explain their requirements.
 
+### Source builds
+
+To use the checkout through a wrapper instead of downloading a release, pass
+`--build`. These commands build and print the version without applying
+configuration:
+
+```sh
+./dotfiles.sh --build --version
+```
+
+```powershell
+.\dotfiles.ps1 --build --version
+```
+
+Run them from the repository root with the prerequisites above installed.
+Builds may download dependencies and write build artifacts. The wrapper uses
+the `dev-opt` profile and executes Cargo's reported artifact, honoring custom
+target/output directories; it need not create `bin/dotfiles` or
+`bin\dotfiles.exe`.
+
+`--build` applies to one invocation. Keep it in later wrapper commands, or use
+`dotfiles --build` after installing the launcher. Without it, the wrapper
+returns to its download/cached-binary route. For normal Rust development,
+prefer the direct Cargo commands above.
+
 ## Contribution workflow
 
 ### 1. Check the starting point
@@ -191,26 +216,26 @@ context. Prefer verified defaults over routine root/profile overrides and
 diagnostic flags. Keep necessary task filters and preview flags. Use a small
 Mermaid diagram only when it makes a relationship easier to grasp.
 
-The standalone [introduction](index.md) gives readers a short path to
-[Getting started](getting-started.md), everyday use, and customization.
-The sidebar moves from Start here, Use dotfiles, and Customize to **Platforms,
-Packages, AI agents, and Editors**, then Development. These are top-level
-sections, with every guide one level deep. Keep each topic's everyday and
-maintenance guides together; split a page only when it serves distinct reader
-tasks, not just because it is long. Reserve Development for repository-wide
-contribution and implementation topics.
-
 Give each explanation one home: commands and logs in
 [Commands and usage](commands-and-usage.md), the update story in
 [Update lifecycle](update-lifecycle.md), formats and private additions under
 Customize, and detailed workflows in Platforms, Packages, AI agents, or Editors.
-Link instead of repeating the same instructions. Split pages when their readers
-or tasks genuinely differ; update incoming references when moving content.
-For example, [Agent configuration](agent-configuration.md) covers adding
-content, while [Agent deployment internals](agent-deployment-internals.md)
-covers maintaining the deployment implementation. Everyday
-[Package management](package-management.md) is separate from
-[Arch package recipes](arch-package-recipes.md).
+Keep maintenance guidance beside the topic it supports; reserve Development
+for repository-wide work. Link instead of repeating instructions, and split
+pages only when their readers or tasks genuinely differ.
+
+Describe stable workflows and meaningful user-visible behavior, not the
+mechanics of each recent fix. Detailed algorithms and regression assertions
+belong beside their implementation or in a maintenance reference. Keep
+necessary safety warnings beside the actions they affect.
+
+For a new guide, match its front-matter `title`, Markdown H1, and sidebar label.
+Use the lowercase, hyphenated title for the filename: `getting-started.md`
+publishes at `/getting-started.html`. Add a description and register it in
+[`docs/astro.config.mjs`](https://github.com/sneivandt/dotfiles/blob/main/docs/astro.config.mjs).
+The separate `index.md` introduction is served at `/` and stays out of the
+sidebar. When renaming a page or heading, update incoming references rather
+than adding compatibility routes or heading aliases.
 
 Link a tracked file at the point where readers need to inspect or edit it,
 usually its first actionable mention or an owning-source table. Use code
@@ -220,98 +245,14 @@ exists. In guides, tracked source links use full GitHub URLs; links to other
 guides stay relative with `.md` extensions.
 
 Keep the root README a landing page with the shared icon and one prominent
-website link. Run the documentation check after changing
-links, headings, filenames, or selectors. It catches link and catalog drift,
-not incorrect prose: verify behavioral claims against code and tests.
+website link; keep the setup walkthrough in Getting started. Use the
+[documentation checks](testing.md#documentation-site) after editing guides.
+They catch link, catalog, and rendering drift, not incorrect prose: verify
+behavioral claims against code and tests.
 
 Never use private overlays, credentials, or unsanitized logs as public examples.
 
-### Published documentation
-
-The repository [Docs publishing skill](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-publishing/SKILL.md)
-covers readable guide prose, examples, navigation, and site publishing for agents.
-
-The documentation home is [dotfiles.stuartneivandt.com](https://dotfiles.stuartneivandt.com/).
-The site uses Astro and Starlight with Flexoki theme styling, with locked
-dependencies in `docs/package-lock.json`.
-Markdown guides live in `docs/content/`; site configuration, components, and
-static assets are separate. The same guides remain readable in the repository.
-The custom content loader and Starlight's `markdown.processedDirs` both point
-at `content/` so native warning callouts and heading links render in these guides.
-
-Use the same wording for each guide's front-matter `title`, Markdown H1, and
-sidebar label. Its filename and URL use the lowercase, hyphenated title:
-`getting-started.md` publishes at `/getting-started.html`. The exception is
-`index.md`, which builds `index.html` and is served at `/`; its page heading is
-separate from the Dotfiles site title linked in the header and it does not
-appear in the sidebar. Add a `description` and place new guides in the
-appropriate sidebar group in `docs/astro.config.mjs`.
-All groups use Starlight's default expanded navigation on desktop and mobile.
-Readers can collapse groups themselves. New visits default to dark mode; the
-native theme control retains an explicit Light or System choice.
-
-The site root is a short introduction, separate from Getting started. The
-header title links back to it on desktop and mobile. Renamed pages do not get
-compatibility routes or old-heading aliases: update their incoming references.
-The Markdown transform avoids a duplicate displayed H1, retains the current
-title's Markdown fragment, and converts relative `.md` links to published URLs.
-Use full GitHub URLs for source files outside the guides.
-
-Use Starlight's built-in callouts, navigation, search, and theme controls before
-adding custom components. Mermaid is bundled locally and follows the reader's
-theme. Give each diagram an `accTitle` and `accDescr`, use short labels, and
-prefer compact top-to-bottom layouts. Diagrams keep their native text size;
-the container scrolls if a figure cannot fit. Do not scale labels into illegibility.
-
-From the repository root, with the Node version selected by `docs/.node-version`:
-
-```sh
-cd docs
-npm ci
-npx playwright install chromium
-npm run dev
-```
-
-The dev server prints its local URL. For the production rendering and search
-index, build first, then preview:
-
-```sh
-npm run build
-npm run preview
-```
-
-The same commands work from PowerShell. Inspect desktop and narrow-screen
-navigation, search, light/dark/system themes, diagrams, and source links.
-The automated [documentation checks](testing.md#documentation-site) cover these
-contracts without changing the host's managed configuration.
-
-GitHub Pages must use **GitHub Actions** as its publishing source, not
-**Deploy from a branch**. For the initial migration, change this in the
-repository's **Settings > Pages > Build and deployment** before publishing.
-This is a repository setting; editing site files does not switch it automatically.
-Keep the custom domain and HTTPS enforcement enabled. The canonical site URL
-is derived from `docs/public/CNAME`, which is also copied into the build.
-`docs/public/robots.txt` points crawlers to the sitemap; its domain must also
-change in a fork. The sitemap lists the same `.html` URLs used as page
-canonicals. Guides allow indexing, while the 404 page opts out. Forks must
-configure their own domain or Pages URL.
-
-CI builds and checks the site, including Chromium desktop/mobile regressions.
-After the aggregate succeeds for a same-repository push to `main`, the
-**Publish documentation** workflow deploys the artifact from that exact CI run.
-It does not rebuild or execute repository code with deployment credentials,
-and it skips builds superseded on `main`.
-
-Before pushing, run the [local docs stage](testing.md#fast-local-sequence).
-For a link-only check from the repository root:
-
-```sh
-python3 -B .github/workflows/scripts/linux/check-doc-links.py .
-```
-
-After an authorized push, follow both CI and **Publish documentation** for the
-exact commit. Verify the deployed pages, custom domain, HTTPS, and HTTP-to-HTTPS
-redirect separately; a successful upload does not prove the public site works.
-If a search console reports a `noindex` directive, check the deployed page's
-robots metadata and response headers before requesting a fresh crawl. Allowing
-crawlers in `robots.txt` does not override a `noindex` directive.
+Use [Documentation site](documentation-site.md) for local preview, site
+implementation, domain setup, and publishing troubleshooting. The repository
+[Docs publishing skill](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-publishing/SKILL.md)
+provides the corresponding workflow for agents.

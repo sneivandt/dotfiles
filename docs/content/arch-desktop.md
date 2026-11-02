@@ -71,8 +71,6 @@ tray items, and controls alongside them. Use the bar as follows:
 
 Only one bar popup opens at a time across monitors. The bar reserves space for
 tiled windows, sits below floating windows and hides on fullscreen workspaces.
-Mako margins align notifications with the tiled frame without adding the bar
-offset twice.
 
 ### Tray applications
 
@@ -81,19 +79,16 @@ the regular tray, visible only while the applications expose tray items.
 Other applications retain their own icons. Context menus, middle-click and
 scrolling remain available.
 
-Copilot's left click goes through
-[`launch-github.sh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/scripts/launch-github.sh) to invoke
-the app's **Open GitHub Copilot** action; ordinary tray activation does not
-restore that window. ChatGPT uses normal activation. Copilot launcher failures
-appear in its tooltip and log. The brand SVGs carry Font Awesome Free/CC BY 4.0
-attribution in [`icons/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/quickshell/icons).
+Left-click either icon to open its application. Copilot launcher failures
+appear in its tooltip and log.
 
-### Network and market refreshes
+### Network
 
 NetworkManager handles connections; enterprise Wi-Fi setup stays in the
-connection editor. Saved Wi-Fi profile details are cached for up to 60 seconds.
-Live adapter, connection and signal state are still polled. Connection actions
-and profile inventory changes invalidate that cache.
+connection editor. Use the Network menu for saved connections and ordinary
+Wi-Fi setup, or right-click the bar control to open the editor.
+
+### Markets
 
 The Markets menu refreshes on startup and every five minutes, with a manual
 refresh control in the menu. Each symbol keeps its last successful quote and
@@ -115,6 +110,14 @@ Hyprlock behind the shared wrapper. This needs Hypridle/compositor support.
 The delay is bounded by logind's `InhibitDelayMaxSec`: a failed locker does
 **not** guarantee suspend will be prevented. Resume turns displays on but
 does not unlock the session.
+
+### Hyprlock display-reconnect workaround
+
+The managed Hyprlock configuration uses a solid background and disables
+animations to avoid a display-reconnect crash observed in Hyprlock 0.9.5.
+Before changing those settings, check the upstream issue recorded in
+[`hyprlock.conf`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprlock.conf)
+and verify that your installed version fixes it.
 
 ## Where to customize
 
@@ -148,9 +151,6 @@ dotfiles again.
 For deliberate manual reloads, Hyprland uses `hyprctl reload config-only`
 and `hyprctl configerrors`; mako uses `makoctl reload`. Fuzzel reads its
 configuration on launch. Existing GTK applications may need reopening.
-
-Keep Hyprlock's simple background and disabled animations while its
-[documented DPMS workaround](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprlock.conf) is needed.
 
 ## Session and services
 

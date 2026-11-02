@@ -120,8 +120,16 @@ Keep `pkgrel` in the PKGBUILD and bump it when a packaging-only change should
 produce a newer Arch package. Release discovery manages `pkgver`, not `pkgrel`.
 
 Preserve the application's required runtime files, completions, and licenses
-when changing packaging. The current recipes' application-specific behavior is
-documented in [Packaging details](package-management.md#packaging-details).
+when changing packaging.
+
+### Packaging details
+
+The Copilot App recipe extracts the official Debian package. PowerShell
+includes its .NET runtime, and Codex keeps the full upstream bundle, including
+helper/runtime files. CLI recipes also install completions and licenses.
+Preserve lifecycle hooks when changing these recipes; PowerShell's
+`/etc/shells` integration is described under
+[package system effects](package-management.md#package-replacements-and-system-effects).
 
 ## Version discovery
 

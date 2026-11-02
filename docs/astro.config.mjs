@@ -93,7 +93,7 @@ export default defineConfig({
         },
         {
           label: 'Development',
-          items: ['contributing', 'architecture', 'testing', 'git-hooks', 'ci-and-releases'],
+          items: ['contributing', 'architecture', 'testing', 'documentation-site', 'git-hooks', 'ci-and-releases'],
         },
       ],
     }),

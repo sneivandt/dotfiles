@@ -23,7 +23,7 @@ If the launcher is uncertain, substitute an **existing** `./bin/dotfiles` or
 | Problem | Go to |
 |---|---|
 | No usable CLI | [Bootstrap](#the-wrapper-cannot-find-or-download-the-binary), [source build](#cargo-build-fails) |
-| Old version or a stalled upgrade | [Self-update](#the-binary-never-self-updates), [hidden credential popup](#update-waits-with-a-hidden-wsl-popup) |
+| Old version or a stalled upgrade | [Self-update](#the-binary-never-self-updates), [legacy updater recovery](#legacy-updater-recovery) |
 | Selection or parsing error | [Profile](#no-profile-can-be-selected), [configuration](#configuration-does-not-parse), [overlay](#an-overlay-appears-to-be-ignored) |
 | Missing/skipped work | [Task selection](#a-task-does-not-run), [elevation](#a-task-was-skipped-because-elevation-was-unavailable) |
 | Concurrent or failed repository run | [Run lock](#another-run-holds-the-repository-lock), [Git synchronization](#repository-update-fails) |
@@ -103,49 +103,36 @@ are not silently retried anonymously.
 
 Anonymous requests share a lower GitHub quota with other users of the same
 public IP. Respect a reported retry deadline instead of repeatedly retrying.
-Normal saved authentication can be set up with `gh auth login --hostname github.com`;
-Linux keyring-only credentials need the special handling below.
+Normal saved authentication can be set up with `gh auth login --hostname github.com`.
+For Linux keyring-only credentials, follow the
+[automatic verification authentication guidance](security-and-trust.md#build-provenance-verification).
 
-If a very old binary cannot recognize current `vYYYY.MM.DD-N` releases, preserve
-that one executable and bootstrap again with its checkout's wrapper. Never
-bypass download verification to force an upgrade.
+### Legacy updater recovery
 
-### Update waits with a hidden WSL popup
+These recovery steps apply to an installed binary that rejects the current
+`vYYYY.MM.DD-N` release names or blocks on a desktop-keyring dialog during
+automatic verification. They are not normal setup steps: the current updater
+supports those release names and disables interactive keyring access.
 
-“Updating to …” includes `gh attestation verify`, not just downloading. Older
-versions can block on a hidden Linux keyring credential dialog.
+For an unrecognized release name, preserve the affected executable and bootstrap
+again with the checkout's wrapper. Confirm that no run is using it before
+moving it. Never bypass verification to force an upgrade.
 
-Current automatic release checks and verification disable terminal prompts
-and Linux desktop-keyring access in their own `gh` processes. Ordinary `gh`
-commands and system keyring settings are unchanged. Environment tokens and
-non-keyring saved credentials still work.
-
-If verification needs authentication, provide `GH_TOKEN` or `GITHUB_TOKEN`
-through your normal credential handling; do not paste tokens into logs.
-For an older binary, `DOTFILES_SKIP_SELF_UPDATE=1` avoids its updater without
-accepting an unverified download. **It does not disable the rest of update.**
-A source build is another route to the fix.
+For a hidden credential dialog, including under WSL, provide authentication
+through the [supported credential sources](security-and-trust.md#build-provenance-verification).
+A [source build](contributing.md#source-builds) avoids the installed updater.
+To temporarily disable a release check instead, use the
+[lifecycle control](update-lifecycle.md#control-what-advances);
+it does **not** disable the rest of update.
 
 ## Cargo build fails
 
 Use the [build prerequisites](contributing.md) and read the first compiler or
 linker error, not just the wrapper's final status.
 
-To build and print a version without applying configuration:
-
-```bash
-./dotfiles.sh --build --version
-```
-
-On Windows:
-
-```powershell
-.\dotfiles.ps1 --build --version
-```
-
-Builds write artifacts and may download dependencies. The wrapper executes
-Cargo's actual `dev-opt` artifact, including custom target/output paths.
-Do not copy an arbitrary old executable into `bin/` to hide a build failure.
+Use the [source-build command](contributing.md#source-builds) to build and print
+a version without applying configuration. Do not copy an arbitrary old
+executable into `bin/` to hide a build failure.
 
 ## No profile can be selected
 
@@ -336,9 +323,9 @@ manager. Do not repair this through partial library upgrades.
 
 A missing `libalpm.so.*` usually means the helper needs rebuilding against the
 current system libraries. Dotfiles checks the installed package and canonical
-executable, rebuilds a broken helper, and validates it again. Under
-`install-arch`, these probes run inside the target chroot; repairing only the
-live ISO does not repair the installed system.
+executable, rebuilds a broken helper, and validates it again. When provisioning
+Arch in a chroot, inspect the target system; repairing only the live ISO does
+not repair the installed system.
 
 ## Agent package update does not run or fails
 
@@ -361,17 +348,10 @@ copies. See [Agent configuration](agent-configuration.md).
 
 ## Optional analyzers are not running
 
-| Tool state | Check result |
-|---|---|
-| No `shellcheck` | ShellCheck skipped |
-| No `apm` | Local APM pack validation skipped |
-| No `pwsh` | PSScriptAnalyzer skipped, even if Windows PowerShell exists |
-| `pwsh` exists, module absent | PSScriptAnalyzer failed |
-
-Strict runs (`--fail-on-skip` or CI) fail on these skips. Install the
-prerequisites for the checks you intend to run, reopen the shell if PATH changed,
-and retry. Filtering a check out is not evidence it passed.
-See [CLI validation](testing.md#cli-validation).
+Read the named missing tool or module in the check result, then use the
+[analyzer prerequisites](testing.md#analyzer-prerequisites) to resolve it.
+Reopen the shell if PATH changed and retry. Strict runs (`--fail-on-skip` or CI)
+fail on unmet skips; filtering a check out is not evidence it passed.
 
 ## A symlink cannot be created on Windows
 
@@ -406,7 +386,7 @@ enables user units offline rather than starting them. Log in normally to test
 runtime behavior. In WSL, systemd must be running or degraded for unit
 configuration to proceed.
 
-For first-login extension work deferred by `install-arch`, inspect:
+For extension installation deferred during Arch chroot provisioning, inspect:
 
 ```bash
 journalctl --user -u dotfiles-first-login.service -n 50 --no-pager

@@ -206,7 +206,7 @@ dotfiles check
 
 The `config-diagnostics` task fails on configuration diagnostics, including
 warnings. Missing optional tools are visible skips; `--fail-on-skip` and CI
-make them fatal. If `pwsh` exists but PSScriptAnalyzer does not, that check fails.
+make them fatal.
 
 See [Testing](testing.md#cli-validation) for scoped checks and prerequisites.
 Task filtering cannot bypass malformed configuration loaded at startup.
@@ -300,22 +300,11 @@ binary directly to avoid bootstrap.
 The publisher comes from the checkout's GitHub `origin` remote unless
 `DOTFILES_RELEASE_REPO=owner/repo` explicitly selects another publisher.
 Unsupported/missing remotes fail instead of falling back to this project's
-releases. Forks without release assets can build locally:
-
-```bash
-./dotfiles.sh --build list --profile base
-```
-
-On Windows, use `.\dotfiles.ps1 --build list --profile desktop`.
-This requires the [source-build prerequisites](contributing.md), may download
-Cargo dependencies, and writes build artifacts. The wrapper uses `dev-opt`
-and executes Cargo's reported artifact, including custom target directories;
-it does not need to copy it into `bin/`.
-
-`--build` applies to that invocation only. Keep it in later wrapper commands,
-or use `dotfiles --build` after installing the launcher. Without it, the wrapper
-returns to its download/cached-binary route. For a fork using another publisher's
-binary, follow the [setup choice](getting-started.md#1-choose-a-permanent-checkout).
+releases. Forks without release assets need a deliberate publisher choice or
+a [source build](contributing.md#source-builds). The
+[setup guide](getting-started.md#1-choose-a-permanent-checkout) explains both
+routes. `--build` selects source compilation for that invocation only;
+without it the wrapper uses its download/cached-binary route.
 
 Release binaries retain their publishing repository for self-update.
 Changing `origin` or the bootstrap override does not redirect an existing

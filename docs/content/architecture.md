@@ -72,10 +72,9 @@ and guard direct environment/platform access.
 checkout and binary, handle `--build`, bootstrap when needed, and forward the
 remaining arguments. Rust owns profile selection and command behavior.
 
-Builds use Cargo's reported executable path rather than assuming a target
-directory. Downloads receive the checks described in
-[Release downloads](security-and-trust.md#release-downloads). Finding a binary does not
-prove it includes local Rust edits.
+See [Source builds](contributing.md#source-builds) for wrapper build behavior and
+[Release downloads](security-and-trust.md#release-downloads) for download
+verification.
 
 ## Application layer
 
@@ -242,6 +241,13 @@ Only the edge assessment survives into dispatch. Execution checks requirements
 again after dependencies finish; it does not reuse startup evidence.
 Requirements do not change selection or discover additional tasks.
 
+VS Code, agent packages, and systemd use this mechanism for package waits.
+On pacman platforms, provider stability requires all configured packages to be
+installed and Paru to be healthy. Other package managers and failed/unknown
+probes retain the waits. Systemd also requires already-converged units and
+still waits for symlinks and permissions; agent packages retains its blocking
+symlink prerequisite. The declared graph and `--with-deps` expansion do not change.
+
 ## Resources
 
 A [`Resource`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/resource/contract.rs) represents one
@@ -335,10 +341,12 @@ finish record means unfinished, not necessarily crashed. Retention targets
 50 process logs but preserves live leased logs. `dotfiles log` reads history
 without creating another run and supports legacy text logs.
 
-Argument redaction and captured-output policy are separate. By default failed
+Argument redaction and captured-output policy are separate.
+`CommandSpec::redact_arguments()` hides command arguments. By default failed
 streams and successful stderr are retained, while successful stdout is
 summarized by size. `OutputLog::Omit` excludes streams from logs and checked
-errors; it is opt-in, not automatic secret scrubbing.
+errors. Neither protects values logged separately by a caller; these controls
+are opt-in, not automatic secret scrubbing.
 See [Secrets](security-and-trust.md#secrets).
 
 ## Extending the system

@@ -105,6 +105,8 @@ If a corrupt installation must be replaced, close Neovim, locate the exact
 affected directory under the actual data path, and move it aside for recovery
 before retrying.
 
+## Maintenance
+
 ### Updating the bootstrap pin
 
 Choose and review a lazy.nvim revision, then update the commit in
@@ -122,12 +124,9 @@ From the repository root, run:
 python3 -B -m unittest discover -s symlinks/vim/tests -p 'test_*.py'
 ```
 
-These checks use isolated homes beneath the working directory. Filetype tests
-source the shared `vimrc` and verify that Go's whitespace display and snippets'
-fold level remain local when changing buffers, filetypes, or windows. A Neovim
-startup test loads `init.vim` and `nvimrc` with plugin loading stubbed, checking
-mappings and terminal window transitions without downloading plugins. The
-bootstrap pin is also checked against the tracked lockfile.
+These checks use isolated homes and stub plugin loading to cover shared
+configuration, startup, and mappings without downloading plugins. They also
+check that the bootstrap pin matches the tracked lockfile.
 
 CI restores plugins with `:Lazy! restore`, verifies installed commits against
 the tracked lockfile, and rejects lockfile changes during application tests.

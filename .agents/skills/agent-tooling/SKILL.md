@@ -8,7 +8,7 @@ description: >
 
 # Agent Tooling
 
-Start with [Agent tooling](../../../docs/content/ai-agent-configuration.md) for deployment
+Start with [Agent deployment internals](../../../docs/content/agent-deployment-internals.md) for deployment
 ownership, fragment merging, target compatibility, and adapter behavior.
 
 ## Choose the owner
@@ -42,7 +42,7 @@ repository work must remain possible without it.
   separate prune, fingerprints, or outdated-output parsing.
 - Before removing either compatibility adapter, inspect current upstream code
   and prove the replacement against the
-  [deployment contracts](../../../docs/content/ai-agent-configuration.md#deployment-targets)
+  [deployment contracts](../../../docs/content/agent-deployment-internals.md#validating-implementation-changes)
   in isolated fixtures on the relevant platforms. A version bump is insufficient.
 - Native APM owns syntax/schema validation; dotfiles owns cross-file local
   source relationships. Extend

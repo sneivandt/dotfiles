@@ -12,7 +12,13 @@ push. Use [Architecture](architecture.md) for design details and
 
 ## Development setup
 
-You need Git and the repository's pinned Rust toolchain. From the checkout:
+You need Git, rustup-managed Cargo/Rust, and native build tools for the CLI's
+C dependencies. On Arch, provide `base-devel`, `pkgconf`, and `openssl`.
+For Windows's default MSVC toolchain, install the C++ build tools and Windows
+SDK requested by the Rust installer.
+
+Rustup selects the repository's pinned toolchain when you enter `cli/`.
+From the checkout:
 
 ```sh
 cd cli
@@ -197,6 +203,18 @@ Give each explanation one home: commands and logs in
 Customize, and detailed platform/editor/package workflows in Subsystem guides.
 Link instead of repeating the same instructions. Split pages when their readers
 or tasks genuinely differ; update incoming references when moving content.
+For example, [AI agent configuration](ai-agent-configuration.md) covers adding
+content, while [Agent deployment internals](agent-deployment-internals.md)
+covers maintaining the deployment implementation. Everyday
+[Package management](package-management.md) is separate from
+[Local package recipes](local-package-recipes.md).
+
+Link a tracked file at the point where readers need to inspect or edit it,
+usually its first actionable mention or an owning-source table. Use code
+styling without a link for installed/generated paths, example placeholders,
+and repeated filenames. Do not link a hypothetical file as if it already
+exists. In guides, tracked source links use full GitHub URLs; links to other
+guides stay relative with `.md` extensions.
 
 Keep the root README a landing page with the shared icon and one prominent
 website link. Run the documentation check after changing

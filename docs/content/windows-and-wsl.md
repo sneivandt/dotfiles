@@ -215,7 +215,9 @@ not the executable; use the desired checkout's wrapper when both matter.
 ## PowerShell configuration
 
 The Windows symlinks install the managed profile for PowerShell and Windows
-PowerShell. Edit its tracked source under `symlinks/`, not an installed copy.
+PowerShell. Edit the tracked
+[`Microsoft.PowerShell_profile.ps1`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/powershell/Microsoft.PowerShell_profile.ps1),
+not an installed copy.
 New sessions load the changes; CLI completion has its own `completions` task.
 
 The profile adds existing `~/.local/bin` and Cargo's `bin` directory before

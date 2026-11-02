@@ -1,18 +1,61 @@
 ---
 title: Application settings
-description: Find the right place for application preferences and customize shared shell behavior, completion, Git shortcuts, and downloads.
+description: Find the source for a common application change, understand when edits take effect, and customize shared shell preferences.
 ---
 
 # Application settings
 
-Application preferences live in tracked files under `symlinks/`. Edit those
-sources, not installed copies or generated files: a home-directory link may
-make this checkout live configuration, so some changes take effect immediately.
+Application preferences live in tracked files under
+[`symlinks/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/).
+Edit those sources, not installed copies or generated files. A home-directory
+link may make this checkout live configuration, so some changes take effect
+immediately.
 
-Use [Configuration reference](configuration-reference.md#symlinks) to change
-**which files are installed**, and [Private overlays](private-overlays.md) for
-machine-specific alternatives. This page covers shared shell preferences;
-desktop and editor workflows have their own [subsystem guides](#desktop-and-editors).
+Installing an application and configuring it are separate changes.
+[Package management](package-management.md) chooses applications;
+[symlink declarations](configuration-reference.md#symlinks) choose which
+settings files reach your home. The files themselves control application
+behavior. This guide helps you find the right source, then covers preferences
+shared by the shells.
+
+## Find a common change
+
+| I want to change... | Start here |
+|---|---|
+| Git identity, defaults, or aliases | [`config/git/config`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config), [`config/git/aliases`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/aliases), and [Git settings](configuration-reference.md#git-settings) |
+| Bash/Zsh environment or shared commands | [Shared shell sources](#shell-application-configuration) below |
+| Bash or Zsh prompt | [`config/bash/prompt.bash`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/bash/prompt.bash) or [`config/zsh/prompt.zsh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/prompt.zsh) |
+| PowerShell behavior | [PowerShell configuration](windows-and-wsl.md#powershell-configuration) |
+| Terminal colors, fonts, or keys | [Alacritty settings](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/alacritty/alacritty.toml) or [Windows Terminal settings](https://github.com/sneivandt/dotfiles/blob/main/symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json) |
+| tmux behavior | [`config/tmux/tmux.conf`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/tmux/tmux.conf) |
+| Desktop shortcuts, monitors, bar, or appearance | [Arch desktop](arch-desktop.md#where-to-customize) |
+| Editor settings, keybindings, or plugins | [Visual Studio Code](visual-studio-code.md) or [Vim and Neovim](vim-and-neovim.md) |
+| Agent preferences, skills, or integrations | [AI agent configuration](ai-agent-configuration.md) |
+| SSH client defaults | [`ssh/config`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/ssh/config) |
+
+Source paths in this table are beneath `symlinks/`. Linked source files open
+the public repository on GitHub; edit the corresponding file in your own
+checkout. Paths such as `~/.config/git/config` describe installed locations,
+not a second source to maintain.
+
+## Make the change
+
+For a preference in an already-linked file, edit the source and use the
+application's normal reload or restart behavior. You do not need to recreate
+the link. Some settings UIs, including VS Code's, can write back through the
+link; review `git diff` afterward.
+
+For a new file or destination, update
+[`conf/symlinks.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml),
+then preview the link task before applying. **Back up existing targets:** installing a managed
+link can replace a file without making a backup. The
+[first-run example](getting-started.md#2-review-the-configuration) shows the
+declaration-to-source-to-home relationship.
+
+Use a [private overlay](private-overlays.md) for machine-specific alternatives.
+An overlay can replace a linked source, but does not merge arbitrary application
+file contents. Keep credentials and private identity details out of public
+sources.
 
 ## Shell application configuration
 
@@ -76,16 +119,3 @@ downloads. Request these behaviors explicitly when needed:
 
 Extension adjustment can prevent timestamping from recognizing a file
 previously downloaded from the same URL.
-
-## Desktop and editors
-
-- [Arch desktop](arch-desktop.md): session services, appearance, the bar and
-  menus, shortcuts, locking, and reloads.
-- [Windows and WSL](windows-and-wsl.md): Windows integration, PowerShell,
-  permissions, and the boundary between Windows and Linux homes.
-- [Visual Studio Code](visual-studio-code.md): shared settings, extension
-  installation, Insiders selection, and remote environments.
-- [Vim and Neovim](vim-and-neovim.md): shared editing behavior, plugin
-  bootstrap, parsers, and deliberate dependency updates.
-- [AI agent configuration](ai-agent-configuration.md): harness preferences,
-  reusable plugins, configuration fragments, and deployments.

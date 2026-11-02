@@ -5,9 +5,11 @@ description: Declare packages, symlinks, services, and settings in TOML, with ca
 
 # Configuration reference
 
-To change what dotfiles manages, edit the declaration in `conf/`. To change
-an application's settings, edit its source under `symlinks/`. Administrator-file
-fragments live under `system/`.
+To change what dotfiles manages, edit its declaration in the
+[files listed below](#files). To change an application's settings, edit its
+source under [`symlinks/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/).
+Administrator-file fragments live under
+[`system/`](https://github.com/sneivandt/dotfiles/tree/main/system/).
 
 **Edit sources, not generated output.** Installed files may be live links into
 this checkout, so source edits can affect applications immediately, before
@@ -335,8 +337,9 @@ running or degraded; changing `wsl.conf` cannot start it in the current session.
 Without a user manager, the task prepares per-user enablement links for the
 next login rather than starting services. It searches the user's unit directory
 first, then `/etc`, `/run`, `/usr/local/lib`, `/usr/lib` and `/lib` systemd user
-directories. Managed links keep their installed home paths, so later symlink
-materialization does not strand them in the removed checkout.
+directories. Enablement links point to the installed home paths. They continue
+to work if you later replace managed home links with local copies during
+removal.
 
 Offline disable removes matching existing `.wants`/`.requires` links even if
 the unit file disappeared or its install directives changed. Offline enablement
@@ -407,8 +410,10 @@ extends valid base configuration; it cannot hide conflicting declarations.
 
 ## Agent package configuration
 
-Agent packages use YAML fragments under `symlinks/apm/config/`, selected by
-`conf/symlinks.toml`. They are separate from `agent-settings.toml` preferences.
+Agent packages use YAML fragments under
+[`symlinks/apm/config/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/config/),
+selected by `conf/symlinks.toml`. They are separate from
+`agent-settings.toml` preferences.
 Use [AI agent configuration](ai-agent-configuration.md) for package sources, deployment targets,
 generated files and cleanup.
 
@@ -418,10 +423,10 @@ Deleting a record generally means **stop managing it**, not **undo it**.
 Packages, Git/registry/harness values, services and merged system files remain.
 
 For links or overlay scripts, keep the declaration active while running the
-intended [remove task](task-reference.md#remove-tasks), then delete it. Symlink removal
-materializes matching links as local content rather than restoring a backup.
-It also creates a copy for an absent configured target and preserves existing
-non-link files/directories.
+intended [remove task](task-reference.md#remove-tasks), then delete it. Symlink
+removal replaces matching managed links with local copies of their current
+source contents rather than restoring a backup. It also creates a copy for an
+absent configured target and preserves existing non-link files/directories.
 
 APM has its own stale-deployment cleanup and
 [last-fragment caveat](ai-agent-configuration.md#removing-packages-and-targets).
@@ -455,7 +460,7 @@ all category combinations work. See [Choosing coverage](testing.md#choosing-cove
 
 The formats above select and install application sources; they do not describe
 every application's own settings syntax. Start with
-[Application settings](application-settings.md) for shared shell preferences,
+[Application settings](application-settings.md) to find common settings sources,
 [Arch desktop](arch-desktop.md) for the graphical session, and the
 [VS Code](visual-studio-code.md) or [Vim and Neovim](vim-and-neovim.md) guides
 for editor behavior and plugins.

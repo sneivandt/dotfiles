@@ -352,8 +352,10 @@ the generated manifest is already current; it describes, but does not run,
 the follow-up install. When a new manifest is needed, preview reports the
 write/delegated work rather than planning against stale input.
 
-See [AI agent configuration](ai-agent-configuration.md) for target integrations, generated-state
-ownership, authentication and cleanup. This task is broader than copying skills.
+See [AI agent configuration](ai-agent-configuration.md) for sources, targets,
+authentication, and cleanup. [Agent deployment internals](agent-deployment-internals.md)
+covers implementation ownership and compatibility adapters. This task is broader
+than copying skills.
 
 ### Local PKGBUILD packages
 
@@ -367,8 +369,9 @@ install targets and counted as failures when missing. Descriptor names
 establish local ownership: failure must not silently fall back to the AUR.
 
 `CleanAfter` cleans the cache, not this checkout. See
-[Package management](package-management.md#local-arch-packages) for the current recipes, version
-discovery, snapshot ownership and adding packages.
+[Package management](package-management.md#local-arch-packages) for the current
+packages and [Local package recipes](local-package-recipes.md) for version
+discovery, snapshot ownership, and adding recipes.
 
 ## Dynamic overlay tasks
 

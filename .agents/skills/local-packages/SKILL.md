@@ -9,7 +9,7 @@ description: >
 
 # Local Packages
 
-Read [Package management](../../../docs/content/package-management.md#local-arch-packages) for the lifecycle,
+Read [Local package recipes](../../../docs/content/local-package-recipes.md) for the lifecycle,
 descriptor format, cache ownership, Paru paths, and adding recipes.
 
 ## Find the owner
@@ -52,7 +52,7 @@ descriptor format, cache ownership, Paru paths, and adding recipes.
 ## Verify the changed contract
 
 Use [Testing](../../../docs/content/testing.md), the
-[CI coverage](../../../docs/content/package-management.md#ci-and-validation), and focused
+[CI coverage](../../../docs/content/local-package-recipes.md#ci-and-validation), and focused
 [regressions](../../../cli/src/domains/packages/local_builds/tests.rs).
 Recipe-only changes must select offline Linux checks and PKGBUILD ShellCheck
 without releasing the CLI solely because a recipe changed; use `ci-cd-patterns`

@@ -67,7 +67,8 @@ and external tool output before sharing logs.
 | Binary cannot execute | OS/architecture, Linux executable permission, and local file-access policy |
 
 Forks do not silently fall back to this project's binaries. A fork without
-releases needs a deliberate publisher override or a source build.
+releases needs a deliberate publisher override or a source build; the
+[setup guide](getting-started.md#1-choose-a-permanent-checkout) shows both choices.
 
 Bootstrap warns and continues if `gh` is absent. If `gh` is present,
 verification failure blocks it; self-update also refuses unverifiable updates.
@@ -309,7 +310,7 @@ authorization reason.
 `--only packages` does not include AUR entries. `--only aur-packages` assumes
 its omitted prerequisites are satisfied unless you add `--with-deps`.
 Local recipe or pin failures belong in
-[Package management](package-management.md#logs-and-troubleshooting).
+[Local package recipes](local-package-recipes.md#logs-and-troubleshooting).
 
 **Applying missing Arch packages runs `pacman -Syu --needed --noconfirm` and can
 upgrade the whole system.** Do not use apply as a harmless diagnostic.
@@ -353,9 +354,10 @@ If the generated manifest needs changing, preview reports that write and the
 delegated update instead of planning against stale input. With a current
 manifest it delegates to `apm update -g --dry-run`.
 
-Apply advances eligible refs and then reconciles local content/deployments even
-when no refs advanced. Edit tracked fragments/plugins, not generated manifests
-or installed plugin copies. See [AI agent configuration](ai-agent-configuration.md).
+Apply updates dependencies when their declared version rules allow it, then
+installs local content and repairs deployments even when no version changed.
+Edit tracked fragments/plugins, not generated manifests or installed plugin
+copies. See [AI agent configuration](ai-agent-configuration.md).
 
 ## Optional analyzers are not running
 
@@ -411,7 +413,7 @@ journalctl --user -u dotfiles-first-login.service -n 50 --no-pager
 ```
 
 Do not restart the whole desktop as the first diagnostic.
-See [Application settings](application-settings.md) for session/service context.
+See [Arch desktop](arch-desktop.md#session-and-services) for session/service context.
 
 ## GNOME Keyring does not unlock at login
 
@@ -460,6 +462,6 @@ removes matching managed hooks/launchers, and runs active overlay removal
 scripts. It does not restore a machine snapshot or uninstall everything that
 update can configure.
 
-Use the original profile and overlay. Keep the checkout until materialization
+Use the original profile and overlay. Keep the checkout until copying
 succeeds, and remember that copies contain the current source rather than your
 pre-install files. See [Remove](commands-and-usage.md#remove) for what remains.

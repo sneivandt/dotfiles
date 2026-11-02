@@ -58,8 +58,10 @@ Back up existing configuration before applying: managed symlinks can replace
 existing files without a backup or confirmation prompt.
 
 From the checkout, preview the selected profile with the commands below. The
-wrapper scripts download and verify the CLI when needed. Pass `--build` to
-build from source.
+wrapper scripts download and verify the CLI when needed. For a fork without
+release binaries, follow the [setup choice](https://dotfiles.stuartneivandt.com/getting-started.html#1-choose-a-permanent-checkout):
+explicitly select a release publisher or use `--build` with the source-build
+prerequisites installed.
 
 On Linux:
 

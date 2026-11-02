@@ -186,9 +186,9 @@ changed, pass the original `--profile` and `--overlay` explicitly.
 | Active overlay scripts | Their removal actions run when their checks find managed state |
 
 **Remove is not rollback.** The copies contain current configured content,
-not your pre-install files. Missing home targets can also be materialized;
-existing non-link targets and replaced links are preserved. Keep the checkout
-until materialization succeeds.
+not your pre-install files. A missing home target can also receive a copy;
+existing non-link targets and links that no longer point to the managed source
+are preserved. Keep the checkout until copying succeeds.
 
 Packages, registry settings, PATH, services, system files, permissions, login
 shell, Git/agent settings, completions, editor extensions, and agent deployments
@@ -312,6 +312,11 @@ Cargo dependencies, and writes build artifacts. The wrapper uses `dev-opt`
 and executes Cargo's reported artifact, including custom target directories;
 it does not need to copy it into `bin/`.
 
+`--build` applies to that invocation only. Keep it in later wrapper commands,
+or use `dotfiles --build` after installing the launcher. Without it, the wrapper
+returns to its download/cached-binary route. For a fork using another publisher's
+binary, follow the [setup choice](getting-started.md#1-choose-a-permanent-checkout).
+
 Release binaries retain their publishing repository for self-update.
 Changing `origin` or the bootstrap override does not redirect an existing
 binary's updates. Normal development builds do not self-update.
@@ -333,7 +338,7 @@ For managed shell behavior beyond the CLI, see [Application settings](applicatio
 
 | Command | Purpose |
 |---|---|
-| `update` (default) | Apply desired state and advance eligible dependencies |
+| `update` (default) | Apply configured state and update dependencies when their version rules allow it |
 | `remove` | Detach a limited set of integrations, not restore machine defaults |
 | `check` | Validate configuration and repository files |
 | `list` | Discover selectors or inspect a dependency graph |

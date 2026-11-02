@@ -80,7 +80,7 @@ export default defineConfig({
         },
         {
           label: 'Development',
-          items: ['contributing', 'architecture', 'testing', 'git-hooks', 'ci-and-releases'],
+          items: ['contributing', 'architecture', 'agent-deployment-internals', 'local-package-recipes', 'testing', 'git-hooks', 'ci-and-releases'],
         },
       ],
     }),

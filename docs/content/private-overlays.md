@@ -5,7 +5,7 @@ description: Keep private or machine-specific configuration separate, select an 
 
 # Private overlays
 
-An overlay adds private or machine-specific desired state without putting it
+An overlay adds private or machine-specific configuration without putting it
 in the main dotfiles repository. Use a separate private repository or directory
 with the same configuration layout. The main checkout remains the shared base.
 
@@ -133,7 +133,7 @@ declare these tasks.
 [[linux.scripts]]
 name = "Configure private workstation"
 path = "scripts/configure-workstation.sh"
-description = "Converge private workstation settings"
+description = "Apply workstation settings that are not already in place"
 ```
 
 `name` and `path` are required; `description` is optional. Names must be nonempty
@@ -153,8 +153,8 @@ Implement every protocol mode:
 | Invocation | Required behavior |
 |---|---|
 | `--check` | Inspect only. Exit 0 when configured, 1 when work is needed, or another nonzero value on failure. |
-| No flag | Apply idempotently; fail with a nonzero exit. |
-| `--dryrun` | Describe needed application without mutation. Note the spelling. |
+| No flag | Apply needed changes; repeated runs must leave already-correct state alone. Fail with a nonzero exit on errors. |
+| `--dryrun` | Describe needed changes without applying them. Note the spelling. |
 | `--remove` | Conservatively remove the script's managed state. |
 
 Update checks first and applies or previews only when the check returns 1.

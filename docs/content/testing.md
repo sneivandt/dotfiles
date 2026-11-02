@@ -24,7 +24,7 @@ Commands below start at the repository root unless they explicitly enter `cli/`.
 | Wrappers or hooks | [Isolated wrapper/hook fixtures](#wrapper-and-hook-tests) | Integration behavior changed: use a disposable environment |
 | Desktop or application content | [Desktop shell](#desktop-shell) / [Application configuration](#application-configuration) | Rendering, focus, or session behavior needs native testing |
 | CI selection or workflows | Local `ci` stage and the changed job's command | Dependencies or triggers changed: include classification fixtures |
-| Local Arch recipes | [Local-package validation](package-management.md#ci-and-validation) | A real package build/install is needed: use disposable Arch |
+| Local Arch recipes | [Local-package validation](local-package-recipes.md#ci-and-validation) | A real package build/install is needed: use disposable Arch |
 
 For Rust changes, also run formatting and host Clippy. Add Windows-target
 Clippy for platform-sensitive code, and the full Rust suite for shared

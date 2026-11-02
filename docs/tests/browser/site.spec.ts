@@ -55,6 +55,20 @@ test('the homepage introduces the repository and links to setup, with grouped na
   const sidebar = page.locator('#starlight__sidebar');
   const homeLink = page.getByRole('banner').getByRole('link', { name: 'Dotfiles', exact: true });
   await expect(homeLink).toHaveAttribute('href', '/index.html');
+  const brandSpacing = await homeLink.evaluate((element) => {
+    const image = element.querySelector('img');
+    const text = element.querySelector('span');
+    if (!image || !text) throw new Error('The home link must contain its icon and title');
+    const icon = image.getBoundingClientRect();
+    const title = text.getBoundingClientRect();
+    return {
+      gap: title.left - icon.right,
+      verticalOffset: Math.abs((icon.top + icon.bottom) / 2 - (title.top + title.bottom) / 2),
+    };
+  });
+  expect(brandSpacing.gap).toBeGreaterThanOrEqual(8);
+  expect(brandSpacing.gap).toBeLessThanOrEqual(12);
+  expect(brandSpacing.verticalOffset).toBeLessThanOrEqual(1);
   await expect(sidebar.getByRole('link', { name: 'Dotfiles', exact: true })).toHaveCount(0);
   const startHeading = sidebar.getByText('Start here', { exact: true });
   await expect(startHeading).toBeVisible();
@@ -80,6 +94,15 @@ test('the homepage introduces the repository and links to setup, with grouped na
     .filter({ has: page.getByText('Customize', { exact: true }) });
   await expect(customize.getByRole('link', { name: 'Private overlays', exact: true }))
     .toHaveAttribute('href', '/private-overlays.html');
+  const development = page.locator('#starlight__sidebar details')
+    .filter({ has: page.getByText('Development', { exact: true }) });
+  for (const [label, href] of [
+    ['Agent deployment internals', '/agent-deployment-internals.html'],
+    ['Local package recipes', '/local-package-recipes.html'],
+  ]) {
+    await expect(development.getByRole('link', { name: label, exact: true }))
+      .toHaveAttribute('href', href);
+  }
   await page.locator('#starlight__sidebar a[href="/getting-started.html"]').click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
   await homeLink.click();
@@ -153,7 +176,7 @@ test('light, dark, and system themes work and retain the reader’s choice', asy
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
-for (const guide of ['profiles-and-categories', 'update-lifecycle', 'arch-desktop', 'architecture', 'ai-agent-configuration', 'package-management', 'ci-and-releases']) {
+for (const guide of ['profiles-and-categories', 'update-lifecycle', 'arch-desktop', 'architecture', 'ai-agent-configuration', 'local-package-recipes', 'ci-and-releases']) {
   for (const theme of ['light', 'dark'] as const) {
     test(`${guide} has readable, accessible diagrams in ${theme} mode`, async ({ page }) => {
       test.setTimeout(60_000);

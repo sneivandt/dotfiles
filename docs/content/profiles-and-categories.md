@@ -58,6 +58,35 @@ flowchart TB
     categories --> sections["Matching TOML sections"]
 ```
 
+## Section matching
+
+The active categories select TOML sections. A hyphen in a section name means
+**AND**: every category in the name must be active. This excerpt from
+[`conf/packages.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml)
+shows two matching sections:
+
+```toml title="conf/packages.toml" {4-5}
+[arch]
+packages = ["git"]
+
+[arch-desktop]
+packages = ["quickshell"]
+```
+
+Choose the `desktop` role on Arch Linux and the active categories are `base`,
+`desktop`, `linux`, and `arch`. Both sections match, so both package lists
+contribute. Choose `base` on the same machine and only `[arch]` matches this
+example.
+
+`[arch-desktop]` and `[desktop-arch]` mean the same thing. All matching sections
+contribute; the most specific one is not a replacement for the rest. When
+editing the file, extend its existing sections rather than duplicating them.
+
+Not every table is a category. For example, registry tables are named settings
+groups and are not filtered by role. See
+[Category sections](configuration-reference.md#category-sections) for the
+file-specific rules and overlay merging.
+
 Categories choose configuration; they do not add support for missing tools.
 For example, a desktop profile on Ubuntu does not provide an apt package
 adapter. The Linux package task looks for pacman.
@@ -98,27 +127,6 @@ any present `CI` variable. Help, version, and log viewing need no profile.
 A selected value must be valid. `DOTFILES_PROFILE=unknown` does not fall back
 to a saved `base`, and `" base "` is not trimmed. Invalid text encoding is
 also an error. An explicit valid `--profile` overrides the bad environment value.
-
-## Section matching
-
-For category-based TOML sections, hyphens mean **AND**:
-
-```toml title="conf/packages.toml" {4-5}
-[base]
-packages = ["git"]
-
-[arch-desktop]
-packages = ["quickshell"]
-```
-
-An Arch desktop selects both sections. An Arch base machine selects only
-`[base]`. `[arch-desktop]` and `[desktop-arch]` mean the same thing. All matching
-sections contribute; the most specific one is not a replacement for the rest.
-
-Not every table is a category. For example, registry tables are named settings
-groups and are not filtered by role. See
-[Category sections](configuration-reference.md#category-sections) for the file-specific
-rules and overlay merging.
 
 ## Changing profiles or categories
 

@@ -95,7 +95,7 @@ Some update tasks also advance dependencies:
 |---|---|
 | Native and AUR packages | Install missing selected packages; see the upgrade distinctions in [Package management](package-management.md#install-and-upgrade) |
 | Local Arch recipes | Discover upstream releases and prepare reviewed build snapshots; Paru upgrades already-installed packages |
-| Agent packages | Advance eligible dependency refs and reconcile deployments; see [AI agent configuration](ai-agent-configuration.md) |
+| Agent packages | Update dependencies when their declared version rules allow it, then apply package content; see [AI agent configuration](ai-agent-configuration.md) |
 | VS Code extensions | Install missing IDs, not pin or upgrade every existing extension |
 | Neovim plugins | Managed by lazy.nvim in the editor, not by the dotfiles task graph |
 

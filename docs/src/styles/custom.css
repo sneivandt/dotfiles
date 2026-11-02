@@ -1,3 +1,7 @@
+.site-title {
+  gap: 0.625rem;
+}
+
 .page-title-anchor {
   display: block;
   scroll-margin-top: 6rem;

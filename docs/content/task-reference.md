@@ -354,7 +354,7 @@ the generated manifest is already current; it describes, but does not run,
 the follow-up install. When a new manifest is needed, preview reports the
 write/delegated work rather than planning against stale input.
 
-See [AI agent configuration](ai-agent-configuration.md) for sources, targets,
+See [Agent configuration](agent-configuration.md) for sources, targets,
 authentication, and cleanup. [Agent deployment internals](agent-deployment-internals.md)
 covers implementation ownership and compatibility adapters. This task is broader
 than copying skills.

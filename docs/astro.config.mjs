@@ -85,7 +85,7 @@ export default defineConfig({
         },
         {
           label: 'AI agents',
-          items: ['ai-agent-configuration', 'agent-deployment-internals'],
+          items: ['agent-configuration', 'agent-deployment-internals'],
         },
         {
           label: 'Editors',

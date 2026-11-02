@@ -84,7 +84,7 @@ test('the homepage introduces the repository and links to setup, with grouped na
   for (const [label, titles] of [
     ['Platforms', ['Arch desktop', 'Windows and WSL']],
     ['Packages', ['Package management', 'Arch package recipes']],
-    ['AI agents', ['AI agent configuration', 'Agent deployment internals']],
+    ['AI agents', ['Agent configuration', 'Agent deployment internals']],
     ['Editors', ['Visual Studio Code', 'Vim and Neovim']],
   ] as const) {
     const group = groups.filter({ has: page.getByText(label, { exact: true }) });
@@ -128,7 +128,7 @@ test('the homepage introduces the repository and links to setup, with grouped na
 
 test('everyday guides link maintainers to their advanced guides', async ({ page }) => {
   for (const [guide, title, target] of [
-    ['ai-agent-configuration', 'Agent deployment internals', 'agent-deployment-internals'],
+    ['agent-configuration', 'Agent deployment internals', 'agent-deployment-internals'],
     ['package-management', 'Arch package recipes', 'arch-package-recipes'],
   ]) {
     await page.goto(`/${guide}.html`);
@@ -161,7 +161,7 @@ for (const theme of ['light', 'dark'] as const) {
     for (const [guide, titles] of [
       ['arch-package-recipes', ['Review recipes before preparing packages']],
       ['package-management', ['Installing a missing package can upgrade the system']],
-      ['ai-agent-configuration', ['Packages can do more than provide text', 'Disabling a managed workflow in the App is temporary']],
+      ['agent-configuration', ['Packages can do more than provide text', 'Disabling a managed workflow in the App is temporary']],
       ['getting-started', ['Back up existing configuration first', 'A preview is not a sandbox']],
       ['profiles-and-categories', ['Profiles are roles, not safety levels']],
       ['private-overlays', ['Review overlay scripts before previewing']],
@@ -226,7 +226,7 @@ test('search opens the relevant section of the published guide', async ({ page }
 });
 
 test('renamed pages do not create compatibility routes', async ({ request }) => {
-  for (const path of ['/USAGE.html', '/LOCAL-PACKAGES.html', '/TESTING-RECIPES.html', '/local-package-recipes.html']) {
+  for (const path of ['/USAGE.html', '/LOCAL-PACKAGES.html', '/TESTING-RECIPES.html', '/local-package-recipes.html', '/ai-agent-configuration.html']) {
     expect((await request.get(path)).status()).toBe(404);
   }
 });
@@ -256,7 +256,7 @@ test('light, dark, and system themes work and retain the reader’s choice', asy
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
-for (const guide of ['profiles-and-categories', 'update-lifecycle', 'arch-desktop', 'architecture', 'ai-agent-configuration', 'arch-package-recipes', 'ci-and-releases']) {
+for (const guide of ['profiles-and-categories', 'update-lifecycle', 'arch-desktop', 'architecture', 'agent-configuration', 'arch-package-recipes', 'ci-and-releases']) {
   for (const theme of ['light', 'dark'] as const) {
     test(`${guide} has readable, accessible diagrams in ${theme} mode`, async ({ page }) => {
       test.setTimeout(60_000);

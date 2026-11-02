@@ -102,4 +102,4 @@ home, symlink destination, and workspace overrides. The shared file is not a
 promise that every extension supports every target environment.
 
 Agent integrations have additional configuration beyond extensions; see
-[AI agent configuration](ai-agent-configuration.md).
+[Agent configuration](agent-configuration.md).

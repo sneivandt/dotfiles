@@ -103,7 +103,7 @@ installed from the AUR instead.
 
 Agent deployment is independent of how APM was installed. An unrelated package
 failure does not prevent use of an available APM; see
-[AI agent configuration](ai-agent-configuration.md).
+[Agent configuration](agent-configuration.md).
 
 ## Files and ownership
 

@@ -30,7 +30,7 @@ shared by the shells.
 | tmux behavior | [`config/tmux/tmux.conf`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/tmux/tmux.conf) |
 | Desktop shortcuts, monitors, bar, or appearance | [Arch desktop](arch-desktop.md#where-to-customize) |
 | Editor settings, keybindings, or plugins | [Visual Studio Code](visual-studio-code.md) or [Vim and Neovim](vim-and-neovim.md) |
-| Agent preferences, skills, or integrations | [AI agent configuration](ai-agent-configuration.md) |
+| Agent preferences, skills, or integrations | [Agent configuration](agent-configuration.md) |
 | SSH client defaults | [`ssh/config`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/ssh/config) |
 
 Source paths in this table are beneath `symlinks/`. Linked source files open

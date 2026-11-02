@@ -1,9 +1,9 @@
 ---
-title: AI agent configuration
+title: Agent configuration
 description: Set agent preferences, add reusable skills and packages, and choose where agent content is deployed.
 ---
 
-# AI agent configuration
+# Agent configuration
 
 Dotfiles manages agent preferences separately from reusable agent content:
 

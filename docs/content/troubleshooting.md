@@ -357,7 +357,7 @@ manifest it delegates to `apm update -g --dry-run`.
 Apply updates dependencies when their declared version rules allow it, then
 installs local content and repairs deployments even when no version changed.
 Edit tracked fragments/plugins, not generated manifests or installed plugin
-copies. See [AI agent configuration](ai-agent-configuration.md).
+copies. See [Agent configuration](agent-configuration.md).
 
 ## Optional analyzers are not running
 

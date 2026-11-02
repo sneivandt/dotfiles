@@ -206,7 +206,7 @@ Give each explanation one home: commands and logs in
 Customize, and detailed workflows in Platforms, Packages, AI agents, or Editors.
 Link instead of repeating the same instructions. Split pages when their readers
 or tasks genuinely differ; update incoming references when moving content.
-For example, [AI agent configuration](ai-agent-configuration.md) covers adding
+For example, [Agent configuration](agent-configuration.md) covers adding
 content, while [Agent deployment internals](agent-deployment-internals.md)
 covers maintaining the deployment implementation. Everyday
 [Package management](package-management.md) is separate from

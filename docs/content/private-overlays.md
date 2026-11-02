@@ -107,7 +107,7 @@ both repositories' declarations and checks within-source conflicts before
 replacement.
 
 APM YAML fragments have their own
-[configuration-fragment rules](ai-agent-configuration.md#configuration-fragments).
+[configuration-fragment rules](agent-configuration.md#configuration-fragments).
 Their filename ordering is separate from TOML overlay precedence.
 
 ### Conflicting desired state

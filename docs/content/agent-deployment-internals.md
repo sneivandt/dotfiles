@@ -7,7 +7,7 @@ description: Maintain APM fragment merging, deployment ownership, Copilot App wo
 
 This guide is for contributors changing the agent deployment implementation.
 To add a skill, package, or preference, start with
-[AI agent configuration](ai-agent-configuration.md). That guide owns the
+[Agent configuration](agent-configuration.md). That guide owns the
 user-facing setup, target selection, and removal instructions.
 
 The implementation lives under
@@ -129,7 +129,7 @@ Implementation and regression tests live in
 
 ### Cowork copy and cleanup
 
-The [Cowork destination rules](ai-agent-configuration.md#cowork-skills)
+The [Cowork destination rules](agent-configuration.md#cowork-skills)
 determine whether this integration participates. Dotfiles enables the
 experimental feature but does **not** invoke native `copilot-cowork`
 deployment. It copies resolved skills from `~/.agents/skills` file-by-file,

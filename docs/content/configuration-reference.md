@@ -166,7 +166,7 @@ symlinks = [
 ```
 
 That example requires entries under `symlinks/skills/`. For this repository's
-agent content, prefer its existing [APM deployment](ai-agent-configuration.md) rather
+agent content, prefer its existing [APM deployment](agent-configuration.md) rather
 than introducing another deployment route.
 
 ## Packages
@@ -250,7 +250,7 @@ parent/child keys are checked too.
 An overlay replaces an exact, case-sensitive key for the same harness. Other
 keys remain managed. Removing a declaration leaves the stored preference in
 place. Skills, plugins, hooks and MCP configuration belong to
-[AI agent configuration](ai-agent-configuration.md), not this file.
+[Agent configuration](agent-configuration.md), not this file.
 
 ## File permissions
 
@@ -414,7 +414,7 @@ Agent packages use YAML fragments under
 [`symlinks/apm/config/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/config/),
 selected by `conf/symlinks.toml`. They are separate from
 `agent-settings.toml` preferences.
-Use [AI agent configuration](ai-agent-configuration.md) for package sources, deployment targets,
+Use [Agent configuration](agent-configuration.md) for package sources, deployment targets,
 generated files and cleanup.
 
 ## Removing configuration
@@ -429,7 +429,7 @@ source contents rather than restoring a backup. It also creates a copy for an
 absent configured target and preserves existing non-link files/directories.
 
 APM has its own stale-deployment cleanup and
-[last-fragment caveat](ai-agent-configuration.md#removing-packages-and-targets).
+[last-fragment caveat](agent-configuration.md#removing-packages-and-targets).
 
 ## Loading and reload behavior
 

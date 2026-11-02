@@ -11,7 +11,7 @@ are not rolled back when a later task fails.
 
 1. Use the exact `dotfiles log --id … -v` command printed after the failure.
 2. Check its profile, platform, overlay, and requested tasks.
-3. Find the first failed or unmet task—not just dependents marked blocked.
+3. Find the first failed or unmet task, not just dependents marked blocked.
 4. Fix that cause, preview a focused rerun, then apply it when ready.
 
 Examples assume you are in the intended checkout with `dotfiles` on PATH.
@@ -81,8 +81,8 @@ If one stale binary must be moved aside, first confirm no run is using it.
 
 Check these before replacing anything:
 
-- Only update/remove trigger CLI self-update—not help, version, list, log,
-  or check.
+- Only update/remove trigger CLI self-update; help, version, list, log,
+  and check do not.
 - The binary must be an eligible release build, have an embedded publisher,
   and run from the selected checkout's `bin/`.
 - `DOTFILES_SKIP_SELF_UPDATE=1` disables the check.
@@ -461,5 +461,5 @@ scripts. It does not restore a machine snapshot or uninstall everything that
 update can configure.
 
 Use the original profile and overlay. Keep the checkout until materialization
-succeeds, and remember that copies contain the current source—not your
+succeeds, and remember that copies contain the current source rather than your
 pre-install files. See [Remove](commands-and-usage.md#remove) for what remains.

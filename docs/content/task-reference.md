@@ -32,7 +32,7 @@ For command syntax and preview side effects, see [Usage](commands-and-usage.md#s
 
 ## Scheduling model
 
-Tasks run when their dependencies allow—not in catalog order.
+Tasks run when their dependencies allow, not in catalog order.
 
 | Dependency | Meaning when both tasks are selected |
 |---|---|
@@ -103,27 +103,27 @@ and `symlinks` also belong to [remove](#remove-tasks).
 
 | Selector | Console label and availability |
 |---|---|
-| `agent-packages` | [Agent packages](#agent-packages) — active APM fragments |
-| `agent-settings` | [Agent settings](#agent-settings) — configured harness settings |
-| `aur-packages` | [AUR packages](#aur-packages) — Arch/AUR support and AUR entries |
-| `completions` | [Shell completions](#shell-completions) — supported shell registration |
-| `developer-mode` | [Windows Developer Mode](#windows-developer-mode) — Windows |
-| `file-permissions` | [File permissions](#file-permissions) — supported Unix modes and configured paths |
-| `git` | [Global Git settings](#global-git-settings) — configured values or Windows autocrlf cleanup |
-| `git-hooks` | [Git hooks](#git-hooks) — repository hook sources |
-| `launcher` | [Dotfiles launcher](#dotfiles-launcher) — Linux or Windows |
-| `local-package-repository` | [Local package repository](#local-pkgbuild-packages) — Arch/AUR support |
-| `local-package-versions` | [Local package updates](#local-pkgbuild-packages) — Arch/AUR support and local recipes |
-| `login-shell` | [Login shell](#login-shell) — Linux, outside CI |
-| `packages` | [System packages](#system-packages) — configured non-AUR packages |
-| `paru` | [Paru package manager](#paru-package-manager) — pacman platform |
-| `path` | [Shell PATH](#shell-path) — Linux or Windows |
-| `registry` | [User registry settings](#user-registry-settings) — configured Windows values |
-| `repository` | [Dotfiles repository](#dotfiles-repository) — eligible checkout |
-| `symlinks` | [Home symlinks](#home-symlinks) — configured links |
-| `system-files` | [System configuration files](#system-configuration-files) — Linux fragments, outside CI |
-| `systemd` | [Systemd units](#systemd-units) — supported platform and configured units, outside CI |
-| `vscode-extensions` | [VS Code extensions](#vs-code-extensions) — configured extensions |
+| `agent-packages` | [Agent packages](#agent-packages): active APM fragments |
+| `agent-settings` | [Agent settings](#agent-settings): configured harness settings |
+| `aur-packages` | [AUR packages](#aur-packages): Arch/AUR support and AUR entries |
+| `completions` | [Shell completions](#shell-completions): supported shell registration |
+| `developer-mode` | [Windows Developer Mode](#windows-developer-mode): Windows |
+| `file-permissions` | [File permissions](#file-permissions): supported Unix modes and configured paths |
+| `git` | [Global Git settings](#global-git-settings): configured values or Windows autocrlf cleanup |
+| `git-hooks` | [Git hooks](#git-hooks): repository hook sources |
+| `launcher` | [Dotfiles launcher](#dotfiles-launcher): Linux or Windows |
+| `local-package-repository` | [Local package repository](#local-pkgbuild-packages): Arch/AUR support |
+| `local-package-versions` | [Local package updates](#local-pkgbuild-packages): Arch/AUR support and local recipes |
+| `login-shell` | [Login shell](#login-shell): Linux, outside CI |
+| `packages` | [System packages](#system-packages): configured non-AUR packages |
+| `paru` | [Paru package manager](#paru-package-manager): pacman platform |
+| `path` | [Shell PATH](#shell-path): Linux or Windows |
+| `registry` | [User registry settings](#user-registry-settings): configured Windows values |
+| `repository` | [Dotfiles repository](#dotfiles-repository): eligible checkout |
+| `symlinks` | [Home symlinks](#home-symlinks): configured links |
+| `system-files` | [System configuration files](#system-configuration-files): Linux fragments, outside CI |
+| `systemd` | [Systemd units](#systemd-units): supported platform and configured units, outside CI |
+| `vscode-extensions` | [VS Code extensions](#vs-code-extensions): configured extensions |
 
 `local-package-versions` is explicitly update-only metadata: it advances local
 recipe release pins. That is not an ordering tier or a remove capability.
@@ -321,7 +321,7 @@ can avoid unnecessary package waits; this task never installs packages itself.
 It needs systemctl, is excluded in CI, and inside WSL requires systemd already
 running or degraded. System units can require sudo. Without a user manager,
 including Arch chroot provisioning, it creates per-user enablement links for
-the next real login—not running services inside the chroot.
+the next real login instead of running services inside the chroot.
 See [Unit configuration](configuration-reference.md#systemd-units).
 
 #### User registry settings

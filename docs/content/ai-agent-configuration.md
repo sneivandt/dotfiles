@@ -12,7 +12,7 @@ Copilot/Codex settings; **Agent packages** (`agent-packages`) deploys content th
 a third, separate concern: they guide work on this checkout without deployment.
 
 **Review packages before applying them.** Agent packages can contain executable
-hooks, MCP servers, and scheduled workflows—not just text. When the Copilot App
+hooks, MCP servers, and scheduled workflows, not just text. When the Copilot App
 is detected, dotfiles enables its managed workflows in **autopilot** mode.
 
 ## Responsibilities

@@ -93,7 +93,7 @@ dotfiles update --profile base --non-interactive --fail-on-skip
 
 This **applies** configuration. Add `--dry-run` to preview instead.
 Non-terminal stdin and JSON Lines output also disable prompts. Any present
-`CI` variable—even `CI=false`—disables prompts and enables strict skip handling.
+`CI` variable (even `CI=false`) disables prompts and enables strict skip handling.
 Tasks that are genuinely inapplicable are not failures.
 
 Only one update, remove, or check can run against a repository at a time.

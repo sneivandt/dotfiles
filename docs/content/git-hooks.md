@@ -201,7 +201,7 @@ and the destination remote's default branch. It prefers that remote's cached
 HEAD, then tries a read-only, noninteractive `ls-remote --symref` lookup.
 If discovery fails, the named protections still apply.
 
-Add exact branch names—not globs—with:
+Add exact branch names, not globs, with:
 
 ```bash
 git config --add dotfiles.protectedBranch release/stable

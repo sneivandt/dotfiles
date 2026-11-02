@@ -192,7 +192,7 @@ between a declared graph and its runtime assessment.
 ### Parallelism and shared state
 
 Ready tasks run in scoped threads; resource batches can use Rayon.
-`ctx.parallel()` gates both. `.sequential()` only serializes one batch—it does
+`ctx.parallel()` gates both. `.sequential()` only serializes one batch; it does
 not prevent another task from touching the same document.
 
 Use [`AccessClaim`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/access.rs) for that exclusion. Equal

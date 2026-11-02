@@ -151,7 +151,7 @@ to apply changes.
 - Declined consent or unavailable prompting leaves affected work skipped.
   Blocking dependents cannot run, but independent tasks continue.
 - `--fail-on-skip` or CI makes that unmet work fail the command.
-- A child that fails, or cannot start, is a failure—not declined consent.
+- A child that fails, or cannot start, is a failure, not declined consent.
 
 **Winget installers are separate:** they can show their own UAC prompts even
 though dotfiles did not elevate the package task.

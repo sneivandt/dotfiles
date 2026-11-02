@@ -209,7 +209,7 @@ These settings affect **global** Git configuration. Avoid contradicting the
 shared files under [`symlinks/config/git/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git).
 
 On Windows, the task also removes global `core.autocrlf` when no active
-declaration manages it—even if `settings` is empty. Declare that key explicitly
+declaration manages it, even if `settings` is empty. Declare that key explicitly
 if you want the task to manage a value instead. This cleanup is separate from
 the repository-local Git values used to remember profiles and overlays.
 

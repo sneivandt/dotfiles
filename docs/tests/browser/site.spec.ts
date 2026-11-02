@@ -192,7 +192,7 @@ test('lookup and prerequisite information precedes advanced details', async ({ p
 test('guide links use ordinary labels without boxed code', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('/');
-  const routes = await page.locator('#starlight__sidebar a[href]').evaluateAll(
+  const routes = await page.locator('#starlight__sidebar details a[href]').evaluateAll(
     (links) => links.map((link) => link.getAttribute('href')!),
   );
   expect(routes).toHaveLength(26);

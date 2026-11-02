@@ -10,9 +10,10 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-9ece6a?style=flat-square"></a>
 </p>
 
-> [!TIP]
-> **[Explore the documentation](https://dotfiles.stuartneivandt.com/)** for a guided
-> first setup, everyday commands, and ways to make the configuration your own.
+<p align="center">
+  <strong><a href="https://dotfiles.stuartneivandt.com/">Read the documentation</a></strong><br>
+  Setup instructions, everyday commands, and customization guides.
+</p>
 
 Keep shell, editor, desktop, and system settings together in a repository.
 The CLI checks what is already in place, previews the selected work, and

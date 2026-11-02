@@ -195,8 +195,9 @@ The standalone [introduction](index.md) gives readers a short path to
 [Getting started](getting-started.md), everyday use, and customization.
 The sidebar moves from setup to everyday use, customization,
 subsystem guides, and development. Keep each subsystem's everyday and maintenance
-guides adjacent, and keep related platforms and editors together. Reserve
-Development for repository-wide contribution and implementation topics.
+guides together: AI agents and Packages each have a subgroup under Subsystem
+guides. Keep related platforms and editors adjacent. Reserve Development for
+repository-wide contribution and implementation topics.
 
 Give each explanation one home: commands and logs in
 [Commands and usage](commands-and-usage.md), the update story in
@@ -242,9 +243,9 @@ sidebar label. Its filename and URL use the lowercase, hyphenated title:
 separate from the Dotfiles site title linked in the header and it does not
 appear in the sidebar. Add a `description` and place new guides in the
 appropriate sidebar group in `docs/astro.config.mjs`.
-Subsystem guides and Development start collapsed; the other groups start
-expanded. New visits default to dark mode; the native theme control retains
-an explicit Light or System choice.
+All groups use Starlight's default expanded navigation on desktop and mobile.
+Readers can collapse groups themselves. New visits default to dark mode; the
+native theme control retains an explicit Light or System choice.
 
 The site root is a short introduction, separate from Getting started. The
 header title links back to it on desktop and mobile. Renamed pages do not get

@@ -72,16 +72,9 @@ test('the homepage introduces the repository and links to setup, with grouped na
   await expect(sidebar.getByRole('link', { name: 'Dotfiles', exact: true })).toHaveCount(0);
   const startHeading = sidebar.getByText('Start here', { exact: true });
   await expect(startHeading).toBeVisible();
-  for (const group of ['Start here', 'Use dotfiles', 'Customize']) {
+  for (const group of ['Start here', 'Use dotfiles', 'Customize', 'Subsystem guides', 'Development']) {
     const section = page.locator('#starlight__sidebar details')
       .filter({ has: page.getByText(group, { exact: true }) });
-    await expect(section).toHaveAttribute('open', '');
-  }
-  for (const group of ['Subsystem guides', 'Development']) {
-    const section = page.locator('#starlight__sidebar details')
-      .filter({ has: page.getByText(group, { exact: true }) });
-    await expect(section).not.toHaveAttribute('open');
-    await section.locator('summary').click();
     await expect(section).toHaveAttribute('open', '');
   }
   const subsystems = page.locator('#starlight__sidebar details')
@@ -91,6 +84,16 @@ test('the homepage introduces the repository and links to setup, with grouped na
     'Package management', 'Local package recipes', 'Arch desktop',
     'Windows and WSL', 'Visual Studio Code', 'Vim and Neovim',
   ]);
+  const nestedGroups = subsystems.locator(':scope > ul > li > details');
+  await expect(nestedGroups.locator(':scope > summary')).toHaveText(['AI agents', 'Packages']);
+  for (const [label, titles] of [
+    ['AI agents', ['AI agent configuration', 'Agent deployment internals']],
+    ['Packages', ['Package management', 'Local package recipes']],
+  ] as const) {
+    const group = nestedGroups.filter({ has: page.getByText(label, { exact: true }) });
+    await expect(group).toHaveAttribute('open', '');
+    await expect(group.getByRole('link')).toHaveText([...titles]);
+  }
   const start = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Start here', { exact: true }) });
   await expect(start.getByRole('link')).toHaveText(['Getting started', 'Profiles and categories']);
@@ -140,6 +143,19 @@ test('subsystem guides link maintainers to their advanced guides', async ({ page
     await link.click();
     await expect(page).toHaveURL(`/${target}.html`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
+  }
+});
+
+test('advanced guides remain visible within nested navigation', async ({ page, isMobile }) => {
+  for (const [guide, title] of [
+    ['agent-deployment-internals', 'Agent deployment internals'],
+    ['local-package-recipes', 'Local package recipes'],
+  ]) {
+    await page.goto(`/${guide}.html`);
+    if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
+    const current = page.locator('#starlight__sidebar [aria-current="page"]');
+    await expect(current).toHaveText(title);
+    await expect(current).toBeVisible();
   }
 });
 

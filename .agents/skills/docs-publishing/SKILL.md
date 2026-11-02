@@ -37,8 +37,9 @@ heading anchors aligned with the site's output.
   Link instead of duplicating.
 - Keep Application settings focused on shared preferences and finding sources;
   detailed Arch desktop and editor behavior belongs in its owning guide. Keep
-  each subsystem's maintenance guide beside its everyday guide. Keep related
-  platforms and editors adjacent, and order groups from setup to development.
+  each subsystem's maintenance guide beside its everyday guide, with AI agents
+  and Packages as subgroups under Subsystem guides. Keep related platforms and
+  editors adjacent, and order groups from setup to development.
 - For guides, match page title, sidebar text, filename, and URL. Update incoming
   references after moves; do not add old-name redirects or compatibility heading
   aliases. The root landing page is its own page at `/`, not a redirect to
@@ -68,8 +69,8 @@ heading anchors aligned with the site's output.
   text size and contained scrolling; do not shrink diagrams to fit mobile.
 - Default new visits to dark mode while retaining explicit Light and System
   choices. Reuse Starlight's theme provider and picker, with theme credit text
-  disabled. Keep Subsystem guides and Development collapsed by default and the
-  other sidebar groups expanded.
+  disabled. Use Starlight's default expanded sidebar groups on desktop and
+  mobile; preserve its native reader toggles and saved desktop choices.
 - The canonical site URL comes from `docs/public/CNAME`. Pages must use
   **GitHub Actions**, not branch/Jekyll publishing. Forks need their own domain
   configuration. CNAME does not configure DNS or enforce HTTPS.

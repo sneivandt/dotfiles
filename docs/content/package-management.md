@@ -133,7 +133,7 @@ installed. Paru alone uses the last prepared recipe snapshot; it does not
 discover a newer release or read your latest source edits.
 
 You do not need to edit a recipe just to select one of these packages.
-Maintaining or adding one belongs in [Local package recipes](local-package-recipes.md).
-That guide covers release descriptors, version/checksum pins, snapshot safety,
-Paru configuration, and validation. Preparation failures have their own
+
+**For maintainers:** See [Local package recipes](local-package-recipes.md) for
+adding or changing a recipe. Preparation failures have their own
 [troubleshooting table](local-package-recipes.md#logs-and-troubleshooting).

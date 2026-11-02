@@ -45,8 +45,8 @@ the public sources. Private content belongs in a [private overlay](private-overl
 Never edit the generated combined configuration, `~/.apm/apm.yml`, lock data,
 or deployed harness copies as a substitute for changing their sources.
 
-Changing the deployment implementation rather than content? Use
-[Agent deployment internals](agent-deployment-internals.md).
+**For maintainers:** See [Agent deployment internals](agent-deployment-internals.md)
+for changes to the deployment implementation rather than agent content.
 
 ## Harness settings
 

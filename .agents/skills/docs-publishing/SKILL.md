@@ -32,12 +32,13 @@ heading anchors aligned with the site's output.
   Explain side effects where they matter, without repeating every caveat everywhere.
 - Give each explanation one home. Commands and logs belong in Commands and usage;
   the end-to-end update story in Update lifecycle; formats and private additions
-  under Customize; platform/editor/package workflows in Subsystem guides;
-  implementation and validation under Development. Link instead of duplicating.
+  under Customize; subsystem workflows and their maintenance guides in Subsystem
+  guides; repository-wide implementation and validation under Development.
+  Link instead of duplicating.
 - Keep Application settings focused on shared preferences and finding sources;
-  detailed Arch desktop and editor behavior belongs in its owning guide. Put
-  advanced recipe maintenance after everyday package use. Keep related platforms
-  and editors adjacent in the sidebar, and order groups from setup to development.
+  detailed Arch desktop and editor behavior belongs in its owning guide. Keep
+  each subsystem's maintenance guide beside its everyday guide. Keep related
+  platforms and editors adjacent, and order groups from setup to development.
 - For guides, match page title, sidebar text, filename, and URL. Update incoming
   references after moves; do not add old-name redirects or compatibility heading
   aliases. The root landing page is its own page at `/`, not a redirect to
@@ -55,8 +56,8 @@ heading anchors aligned with the site's output.
 - Guides belong in `docs/content/`, separate from the site implementation.
   Match the front-matter title, Markdown H1, and sidebar label. Filenames and
   URLs use the lowercase, hyphenated title: `getting-started.md` publishes at
-  `/getting-started.html`. Keep a description and place guides in the explicit,
-  expanded sidebar groups. Keep the site root at `/` as a separate landing page
+  `/getting-started.html`. Keep a description and place guides in explicit
+  sidebar groups. Keep the site root at `/` as a separate landing page
   with a prominent path to the Getting started guide.
 - Keep guide links relative with `.md` extensions. The
   [Markdown transform](../../../docs/src/remark-docs.mjs) rewrites published
@@ -66,8 +67,9 @@ heading anchors aligned with the site's output.
   theme. Use short labels, compact layouts, and `accTitle`/`accDescr`. Keep native
   text size and contained scrolling; do not shrink diagrams to fit mobile.
 - Default new visits to dark mode while retaining explicit Light and System
-  choices. Reuse Starlight's theme provider and picker; keep groups expanded and
-  theme credit text disabled.
+  choices. Reuse Starlight's theme provider and picker, with theme credit text
+  disabled. Keep Subsystem guides and Development collapsed by default and the
+  other sidebar groups expanded.
 - The canonical site URL comes from `docs/public/CNAME`. Pages must use
   **GitHub Actions**, not branch/Jekyll publishing. Forks need their own domain
   configuration. CNAME does not configure DNS or enforce HTTPS.

@@ -76,11 +76,13 @@ export default defineConfig({
         },
         {
           label: 'Subsystem guides',
-          items: ['ai-agent-configuration', 'package-management', 'arch-desktop', 'windows-and-wsl', 'visual-studio-code', 'vim-and-neovim'],
+          collapsed: true,
+          items: ['ai-agent-configuration', 'agent-deployment-internals', 'package-management', 'local-package-recipes', 'arch-desktop', 'windows-and-wsl', 'visual-studio-code', 'vim-and-neovim'],
         },
         {
           label: 'Development',
-          items: ['contributing', 'architecture', 'agent-deployment-internals', 'local-package-recipes', 'testing', 'git-hooks', 'ci-and-releases'],
+          collapsed: true,
+          items: ['contributing', 'architecture', 'testing', 'git-hooks', 'ci-and-releases'],
         },
       ],
     }),

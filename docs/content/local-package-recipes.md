@@ -20,11 +20,12 @@ disposable build **snapshot** for Paru.
 The source recipe, prepared snapshot, and installed application are separate.
 Changing or preparing a recipe does not by itself upgrade an installed package.
 
-:::caution[Review recipes before preparing them]
-Applying recipe preparation executes `makepkg --printsrcinfo`, which runs
-PKGBUILD code. Separate input copies are not a sandbox. Paru's local `Path`
-repositories also skip its normal recipe review step, so review the tracked
-sources before using them.
+:::caution[PKGBUILD files are executable code]
+Dotfiles runs `makepkg --printsrcinfo` to generate package metadata. This
+executes shell code from the `PKGBUILD`, even though it does not build or install
+the package. Review new or changed PKGBUILDs before running preparation without
+`--dry-run`. Temporary copies do not isolate that code from your system, and
+Paru skips its usual review step for local `Path` repositories.
 :::
 
 ## Adding a recipe

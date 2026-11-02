@@ -72,15 +72,23 @@ test('the homepage introduces the repository and links to setup, with grouped na
   await expect(sidebar.getByRole('link', { name: 'Dotfiles', exact: true })).toHaveCount(0);
   const startHeading = sidebar.getByText('Start here', { exact: true });
   await expect(startHeading).toBeVisible();
-  for (const group of ['Start here', 'Use dotfiles', 'Customize', 'Subsystem guides', 'Development']) {
+  for (const group of ['Start here', 'Use dotfiles', 'Customize']) {
     const section = page.locator('#starlight__sidebar details')
       .filter({ has: page.getByText(group, { exact: true }) });
+    await expect(section).toHaveAttribute('open', '');
+  }
+  for (const group of ['Subsystem guides', 'Development']) {
+    const section = page.locator('#starlight__sidebar details')
+      .filter({ has: page.getByText(group, { exact: true }) });
+    await expect(section).not.toHaveAttribute('open');
+    await section.locator('summary').click();
     await expect(section).toHaveAttribute('open', '');
   }
   const subsystems = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Subsystem guides', { exact: true }) });
   await expect(subsystems.getByRole('link')).toHaveText([
-    'AI agent configuration', 'Package management', 'Arch desktop',
+    'AI agent configuration', 'Agent deployment internals',
+    'Package management', 'Local package recipes', 'Arch desktop',
     'Windows and WSL', 'Visual Studio Code', 'Vim and Neovim',
   ]);
   const start = page.locator('#starlight__sidebar details')
@@ -96,11 +104,14 @@ test('the homepage introduces the repository and links to setup, with grouped na
     .toHaveAttribute('href', '/private-overlays.html');
   const development = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Development', { exact: true }) });
+  await expect(development.getByRole('link')).toHaveText([
+    'Contributing', 'Architecture', 'Testing', 'Git hooks', 'CI and releases',
+  ]);
   for (const [label, href] of [
     ['Agent deployment internals', '/agent-deployment-internals.html'],
     ['Local package recipes', '/local-package-recipes.html'],
   ]) {
-    await expect(development.getByRole('link', { name: label, exact: true }))
+    await expect(subsystems.getByRole('link', { name: label, exact: true }))
       .toHaveAttribute('href', href);
   }
   await page.locator('#starlight__sidebar a[href="/getting-started.html"]').click();
@@ -114,6 +125,22 @@ test('the homepage introduces the repository and links to setup, with grouped na
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Commands and usage');
   await expect(page.getByText('On this page', { exact: true }).filter({ visible: true })).toBeVisible();
   await assertNoPageOverflow(page);
+});
+
+test('subsystem guides link maintainers to their advanced guides', async ({ page }) => {
+  for (const [guide, title, target] of [
+    ['ai-agent-configuration', 'Agent deployment internals', 'agent-deployment-internals'],
+    ['package-management', 'Local package recipes', 'local-package-recipes'],
+  ]) {
+    await page.goto(`/${guide}.html`);
+    const link = page.locator('.sl-markdown-content p')
+      .filter({ hasText: 'For maintainers:' })
+      .getByRole('link', { name: title, exact: true });
+    await expect(link).toHaveAttribute('href', `${target}.html`);
+    await link.click();
+    await expect(page).toHaveURL(`/${target}.html`);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
+  }
 });
 
 test('task catalog labels jump to details without horizontal overflow', async ({ page, isMobile }) => {

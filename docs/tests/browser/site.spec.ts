@@ -155,17 +155,17 @@ test('advanced guides remain visible within top-level topic navigation', async (
   }
 });
 
-for (const theme of ['light', 'dark'] as const) {
-  test(`safety warnings render as distinct accessible callouts in ${theme} mode`, async ({ page }) => {
-    await page.addInitScript((choice) => localStorage.setItem('starlight-theme', choice), theme);
-    for (const [guide, titles] of [
-      ['arch-package-recipes', ['Review recipes before preparing packages']],
-      ['package-management', ['Installing a missing package can upgrade the system']],
-      ['agent-configuration', ['Packages can do more than provide text', 'Disabling a managed workflow in the App is temporary']],
-      ['getting-started', ['Back up existing configuration first', 'A preview is not a sandbox']],
-      ['profiles-and-categories', ['Profiles are roles, not safety levels']],
-      ['private-overlays', ['Review overlay scripts before previewing']],
-    ] as const) {
+for (const [guide, titles] of [
+  ['arch-package-recipes', ['Review recipes before preparing packages']],
+  ['package-management', ['Installing a missing package can upgrade the system']],
+  ['agent-configuration', ['Packages can do more than provide text', 'Disabling a managed workflow in the App is temporary']],
+  ['getting-started', ['Back up existing configuration first', 'A preview is not a sandbox']],
+  ['profiles-and-categories', ['Profiles are roles, not safety levels']],
+  ['private-overlays', ['Review overlay scripts before previewing']],
+] as const) {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`${guide} renders accessible safety callouts in ${theme} mode`, async ({ page }) => {
+      await page.addInitScript((choice) => localStorage.setItem('starlight-theme', choice), theme);
       await page.goto(`/${guide}.html`);
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       await expect(page.locator('aside.starlight-aside--caution')).toHaveCount(titles.length);
@@ -192,8 +192,8 @@ for (const theme of ['light', 'dark'] as const) {
         expect(Number(appearance.titleWeight)).toBeGreaterThanOrEqual(500);
       }
       await assertNoPageOverflow(page);
-    }
-  });
+    });
+  }
 }
 
 test('task catalog labels jump to details without horizontal overflow', async ({ page, isMobile }) => {

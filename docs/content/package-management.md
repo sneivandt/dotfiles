@@ -139,3 +139,17 @@ You do not need to edit a recipe just to select one of these packages.
 **For maintainers:** See [Arch package recipes](arch-package-recipes.md) for
 adding or changing a recipe. Preparation failures have their own
 [troubleshooting table](arch-package-recipes.md#logs-and-troubleshooting).
+
+### Packaging details
+
+The Arch category selects APM, PowerShell, Copilot CLI, and Codex. The desktop
+Arch category additionally selects the Copilot App. These recipes use distinct
+`*-dotfiles` names and declare replacements/conflicts with their former
+packages. Review Paru's replacement prompt on first install.
+
+- The Copilot App recipe extracts the official Debian package.
+- PowerShell includes its .NET runtime. Its lifecycle script adds
+  `/usr/bin/pwsh` to `/etc/shells` on install/upgrade and removes that entry
+  on uninstall.
+- Codex keeps the full upstream bundle, including helper/runtime files.
+- CLI recipes also install completions and licenses.

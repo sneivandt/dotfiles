@@ -30,11 +30,10 @@ for local `Path` repositories.
 
 ## Adding a recipe
 
-Use the tracked
-[APM's `PKGBUILD`](https://github.com/sneivandt/dotfiles/blob/main/packages/apm/PKGBUILD)
-and its
-[`release.json`](https://github.com/sneivandt/dotfiles/blob/main/packages/apm/release.json)
-as a concrete starting point.
+Each recipe needs a `PKGBUILD` defining how to package the application and a
+`release.json` describing its upstream releases. Use an
+[existing recipe](https://github.com/sneivandt/dotfiles/tree/main/packages/)
+as a reference; the same format applies to every application.
 
 1. Create `packages/<recipe>/PKGBUILD` and `release.json`. Give the custom package
    a distinct name where necessary to avoid an AUR recipe taking its place.
@@ -69,9 +68,10 @@ upgrading:
 paru -Sl --pkgbuilds
 ```
 
-An explicit first installation, such as `paru -S apm-dotfiles`, works once
-preparation succeeds. Running Paru alone uses the **last prepared snapshot**;
-it does not discover a newer GitHub release or read your latest source edits.
+Once preparation succeeds, use the
+[package installation and upgrade workflow](package-management.md#arch-linux).
+Running Paru alone uses the **last prepared snapshot**; it does not discover a
+newer GitHub release or read your latest source edits.
 
 On a fresh checkout, preview can describe snapshot work before pins exist.
 Applying `custom-package-repository` needs pins, so refresh versions first.
@@ -93,17 +93,12 @@ flowchart TB
 | `custom-package-versions` | Refreshes successful recipes' version/checksum pins | Download archives, execute recipes, or install packages |
 | `custom-package-repository` | Validates recipe metadata, prepares snapshots, and writes available repositories into Paru config | Install or upgrade packages |
 | `aur-packages` | Installs missing selected packages whose inputs are ready | Upgrade every already-installed package |
-| `agent-packages` | Deploys agent dependencies using `apm` on PATH | Upgrade the APM executable |
 
 Preparation waits for version discovery, but can use retained pins after an
 upstream failure. Installation requires healthy Paru and ready inputs. A missing
 custom package whose inputs are unavailable is counted as a failure and omitted
 from install requests; unrelated AUR packages can continue. It is **not** silently
 installed from the AUR instead.
-
-Agent deployment is independent of how APM was installed. An unrelated package
-failure does not prevent use of an available APM; see
-[Agent configuration](agent-configuration.md).
 
 ## Files and ownership
 
@@ -124,32 +119,23 @@ create a remote, or publish anything.
 Keep `pkgrel` in the PKGBUILD and bump it when a packaging-only change should
 produce a newer Arch package. Release discovery manages `pkgver`, not `pkgrel`.
 
-### Package-specific notes
-
-- The Arch category selects APM, PowerShell, Copilot CLI, and Codex. The desktop
-  Arch category additionally selects the Copilot App.
-- Recipes use distinct `*-dotfiles` names and declare replacements/conflicts
-  with their former packages. Review Paru's replacement prompt on first install.
-- The Copilot App recipe extracts the official Debian package.
-- PowerShell includes its .NET runtime. Its lifecycle script adds
-  `/usr/bin/pwsh` to `/etc/shells` on install/upgrade and removes that entry
-  on uninstall.
-- Codex keeps the full upstream bundle, including helper/runtime files.
-  CLI recipes also install completions and licenses; preserve those when
-  changing packaging.
+Preserve the application's required runtime files, completions, and licenses
+when changing packaging. The current recipes' application-specific behavior is
+documented in [Packaging details](package-management.md#packaging-details).
 
 ## Version discovery
 
 A descriptor names a stable GitHub release source and one asset per architecture.
-For example, the APM descriptor is:
+This illustrative descriptor is for a hypothetical `example-tool` recipe;
+replace its repository and asset names with the application's real release data:
 
-```json title="packages/apm/release.json" {5-6}
+```json title="Example release.json" {5-6}
 {
-  "package_base": "apm-dotfiles",
-  "repository": "microsoft/apm",
+  "package_base": "example-tool-dotfiles",
+  "repository": "example/tool",
   "assets": {
-    "aarch64": "apm-linux-arm64.tar.gz",
-    "x86_64": "apm-linux-x86_64.tar.gz"
+    "aarch64": "tool-linux-arm64.tar.gz",
+    "x86_64": "tool-linux-x86_64.tar.gz"
   }
 }
 ```
@@ -175,10 +161,10 @@ version command. Only after all assets validate can that recipe's pins change.
 The PKGBUILD sources `./version.sh`; makepkg later verifies the downloads
 against those generated checksum arrays.
 
-Without `tag_prefix`, a leading `v` is stripped. Codex instead declares
-`"tag_prefix": "rust-v"`; an unexpected prefix fails. Asset names can contain
-`{version}`, substituted with the validated version after prefix removal.
-PowerShell uses this for versioned archive names.
+Without `tag_prefix`, a leading `v` is stripped. Set an explicit prefix, such as
+`"tag_prefix": "rust-v"`, when upstream uses a different convention; an unexpected
+prefix fails. Asset names can contain `{version}`, substituted with the
+validated version after prefix removal.
 
 Tracked license/notice files are not release metadata. Review and refresh them
 separately when upstream terms change.
@@ -226,8 +212,8 @@ An illustrative generated section looks like:
 [options]
 CloneDir = /home/you/.cache/paru/clone
 
-[dotfiles-apm-dotfiles]
-Path = /home/you/.cache/paru/clone/apm-dotfiles
+[dotfiles-example-tool-dotfiles]
+Path = /home/you/.cache/paru/clone/example-tool-dotfiles
 GenerateSrcinfo
 ```
 

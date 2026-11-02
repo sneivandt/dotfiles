@@ -33,7 +33,7 @@ without a backup.
 Open PowerShell in the checkout and preview an update:
 
 ```powershell
-.\dotfiles.ps1 update --dry-run
+.\dotfiles.ps1 update --no-repo-update --dry-run
 ```
 
 This downloads/verifies the CLI if needed and previews configuration changes.
@@ -46,15 +46,17 @@ Review the selected profile, planned links, registry values, and packages.
 write logs or selection metadata and execute overlay inspection scripts.
 See [Dry-run scope](commands-and-usage.md#dry-run-scope) for the full boundary.
 
-After backing up affected files and reviewing the plan, **apply**:
+For this first setup, `--no-repo-update` keeps the checkout fixed while you
+review it. After backing up affected files and reviewing the plan, **apply**
+with repository synchronization still disabled:
 
 ```powershell
-.\dotfiles.ps1 update
+.\dotfiles.ps1 update --no-repo-update
 ```
 
-Normal updates can update the CLI and synchronize the repository first.
-Use `--no-repo-update` only when you want to keep repository content fixed;
-it does not disable CLI self-update or all network activity.
+For later maintenance, ordinary `.\dotfiles.ps1 update` can update the CLI and
+synchronize the repository first. `--no-repo-update` does not disable CLI
+self-update or all network activity.
 Open a new terminal after installation. The examples below use the wrapper so
 they also work before the launcher is installed.
 

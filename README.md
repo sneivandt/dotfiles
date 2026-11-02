@@ -58,44 +58,15 @@ repository into a permanent location, review the configuration, and apply it.
 Back up existing configuration before applying: managed symlinks can replace
 existing files without a backup or confirmation prompt.
 
-From the checkout, preview the selected profile with the commands below. The
-wrapper scripts download and verify the CLI when needed. For a fork without
-release binaries, follow the [setup choice](https://dotfiles.stuartneivandt.com/getting-started.html#1-choose-a-permanent-checkout):
-explicitly select a release publisher or use `--build` with the source-build
-prerequisites installed.
-
-On Linux:
+From the checkout, preview the configuration you reviewed:
 
 ```sh
-./dotfiles.sh update --dry-run
+./dotfiles.sh update --no-repo-update --dry-run
 ```
 
-On Windows:
-
-```powershell
-.\dotfiles.ps1 update --dry-run
-```
-
-A first run prompts for a profile if none is selected and remembers the choice.
-A preview can still bootstrap the CLI, write logs or selection metadata, and
-execute overlay check/preview scripts.
-
-After installation, `dotfiles` is available directly in a new shell. Running
-`dotfiles` without a command defaults to `update`.
-
-| Command | What it does |
-|---|---|
-| `dotfiles update` | Syncs the repository and applies configured packages, settings, and integrations |
-| `dotfiles remove` | Performs partial cleanup of managed configuration, not a full uninstall |
-| `dotfiles list` | Lists task selectors and command dependency graphs |
-| `dotfiles check` | Checks configuration and runs available script analyzers |
-| `dotfiles log` | Shows saved run logs |
-
-Use `--dry-run` to preview changes, `--only <selector>` to select tasks, and
-`--no-repo-update` to run against the current checkout without syncing it.
-
-For more detail, see [Usage](https://dotfiles.stuartneivandt.com/commands-and-usage.html), [Profiles](https://dotfiles.stuartneivandt.com/profiles-and-categories.html),
-[Configuration](https://dotfiles.stuartneivandt.com/configuration-reference.html), and [Troubleshooting](https://dotfiles.stuartneivandt.com/troubleshooting.html).
+The [setup guide](https://dotfiles.stuartneivandt.com/getting-started.html) covers Windows,
+forks, and preview side effects. After installation, use
+[Commands and usage](https://dotfiles.stuartneivandt.com/commands-and-usage.html) for everyday work.
 
 ## Development
 

@@ -310,6 +310,42 @@ fragments, the task does not run. It leaves the generated manifest, lockfile,
 and deployments alone. Keep a valid fragment while applying the intended empty
 dependency set.
 
+For example, to remove all declared packages while retaining the base deployment
+targets, replace the contents of a still-selected source fragment with:
+
+```yaml
+targets:
+  - agent-skills
+  - copilot
+
+dependencies:
+  apm: []
+```
+
+Remove dependencies from every other contributing fragment too, including
+`mcp`, `lsp`, and `devDependencies` entries if present. An empty list does not
+clear entries contributed by another fragment. Check selected sources and
+unmanaged files under `~/.apm/config/`; keep the retained fragment's symlink
+declaration active.
+
+Preview the cleanup against your current checkout:
+
+```sh
+dotfiles update --no-repo-update --only agent-packages --dry-run
+```
+
+If the manifest needs changing, the preview describes the write and delegated
+commands rather than enumerating APM's removals. After reviewing the source
+changes and destinations, apply:
+
+```sh
+dotfiles update --no-repo-update --only agent-packages
+```
+
+This changes deployed content. Check the run log and affected targets before
+removing the retained fragment or its declaration; the cleanup limits above
+still apply.
+
 ## Overlays
 
 A [private overlay](private-overlays.md) uses the same fragment/plugin layout. Keep its links in compatible

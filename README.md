@@ -34,7 +34,7 @@ Desired state lives in [conf/](conf/), with application settings under
 | Editors | Vim/Neovim and VS Code settings, keybindings, and extensions |
 | Terminal | Alacritty and Windows Terminal |
 | Git | Global settings, aliases, and repository hooks |
-| Packages | Arch and AUR packages through pacman/paru, local PKGBUILD recipes, and Windows packages through winget |
+| Packages | Arch and AUR packages through pacman/paru, custom Arch packages from dotfiles-managed recipes, and Windows packages through winget |
 | Arch desktop | Hyprland, Quickshell bar and menus, mako notifications, fuzzel launcher, locking, wallpaper, and GTK/font settings |
 | Services | systemd user and system services, sockets, and timers |
 | System configuration | Managed settings under `/etc`, including pacman, PAM, and WSL configuration |

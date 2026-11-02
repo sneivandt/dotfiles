@@ -68,7 +68,7 @@ The `paru` task prepares a working AUR helper, including repairing a detected
 broken helper after library changes. AUR installation runs without an extra
 sudo wrapper around Paru.
 
-Some declarations use [local recipes](#local-arch-packages) instead of the AUR.
+Some declarations use [dotfiles-managed recipes](#custom-arch-packages) instead of the AUR.
 Review those tracked recipes before applying: preparation runs recipe code,
 and Paru skips its normal recipe review for these local repositories.
 
@@ -80,7 +80,7 @@ dotfiles update
 paru -Syu
 ```
 
-The second command upgrades repository and AUR/local packages, not only the
+The second command upgrades repository, AUR, and custom packages, not only the
 ones declared in this checkout. Review its transaction.
 
 ### Windows
@@ -113,11 +113,13 @@ a deliberate uninstall. Otherwise a later dotfiles update can install the
 package again. Review dependent packages and any linked application settings
 separately.
 
-## Local Arch packages
+## Custom Arch packages
 
-Dotfiles maintains a small set of PKGBUILDs, Arch package recipes for official
-release binaries. A normal update discovers available versions, prepares
-copies of the reviewed recipes for Paru, and installs missing selected packages.
+Custom Arch packages use recipes maintained in this repository to package
+upstream binary releases. These **PKGBUILDs** are dotfiles-managed recipes,
+rather than recipes fetched from the AUR. A normal update discovers available
+versions, prepares copies of the reviewed recipes for Paru, and installs missing
+selected packages.
 
 | Package | Recipe | Upstream |
 |---|---|---|
@@ -134,6 +136,6 @@ discover a newer release or read your latest source edits.
 
 You do not need to edit a recipe just to select one of these packages.
 
-**For maintainers:** See [Local package recipes](local-package-recipes.md) for
+**For maintainers:** See [Arch package recipes](arch-package-recipes.md) for
 adding or changing a recipe. Preparation failures have their own
-[troubleshooting table](local-package-recipes.md#logs-and-troubleshooting).
+[troubleshooting table](arch-package-recipes.md#logs-and-troubleshooting).

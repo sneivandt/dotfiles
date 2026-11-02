@@ -1464,7 +1464,7 @@ fn package_elevation_requires_missing_packages_on_a_supported_platform() {
 }
 
 #[test]
-fn unavailable_local_package_preserves_failure_counts_and_diagnostics() {
+fn unavailable_custom_package_preserves_failure_counts_and_diagnostics() {
     use crate::infra::logging::MsgKind;
     use crate::test_helpers::CapturingOutput;
 
@@ -1532,10 +1532,11 @@ fn unavailable_local_package_preserves_failure_counts_and_diagnostics() {
             assert_eq!(stats.already_ok_count(), 1);
             assert!(
                 output.messages_of(MsgKind::Warn).iter().any(|message| {
-                    message.contains("local package local-tool unavailable; refusing AUR fallback:")
-                        && message.contains("local release pins missing")
+                    message
+                        .contains("custom package local-tool unavailable; refusing AUR fallback:")
+                        && message.contains("custom package release pins missing")
                 }),
-                "unavailable local packages need an actionable diagnostic"
+                "unavailable custom packages need an actionable diagnostic"
             );
         }
         assert!(

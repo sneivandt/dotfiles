@@ -390,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_apm_reason_recommends_local_package_on_arch_wsl() {
+    fn missing_apm_reason_recommends_custom_package_on_arch_wsl() {
         let dir = tempfile::tempdir().expect("create temp dir");
         let ctx = make_context_with_home(
             dir.path(),

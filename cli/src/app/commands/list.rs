@@ -105,7 +105,7 @@ fn potentially_applicable(selector: &str, config: &Config, platform: Platform) -
             platform.supports_aur() && config.packages.iter().any(|package| package.is_aur)
         }
         "paru" => platform.uses_pacman(),
-        "local-package-repository" | "local-package-versions" => platform.supports_aur(),
+        "custom-package-repository" | "custom-package-versions" => platform.supports_aur(),
         "system-files" => platform.is_linux() && !config.system_files.is_empty(),
         "systemd" => platform.supports_systemd() && !config.units.is_empty(),
         "login-shell" => platform.is_linux(),
@@ -464,7 +464,7 @@ mod tests {
                 potentially_applicable("paru", &config, platform),
                 platform.uses_pacman()
             );
-            for selector in ["local-package-repository", "local-package-versions"] {
+            for selector in ["custom-package-repository", "custom-package-versions"] {
                 assert_eq!(
                     potentially_applicable(selector, &config, platform),
                     platform.supports_aur(),

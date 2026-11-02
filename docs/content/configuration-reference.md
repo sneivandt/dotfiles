@@ -188,7 +188,7 @@ provider-specific, not portable aliases. Use Arch names in Arch categories
 and winget IDs in Windows categories.
 
 Regular Arch entries use pacman. `aur = true` sends an entry through Paru;
-that includes configured [local recipes](package-management.md#local-arch-packages), not just remote
+that includes configured [dotfiles-managed recipes](package-management.md#custom-arch-packages), not just remote
 AUR recipes. The host's package-manager repositories and policies, including
 `IgnorePkg`, remain in effect.
 

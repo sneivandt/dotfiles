@@ -103,6 +103,35 @@ fn list_hides_empty_configuration_and_all_restores_the_catalog() {
 }
 
 #[test]
+fn list_displays_custom_packages_with_canonical_selectors_and_labels() {
+    let repo = common::IntegrationTestContext::new();
+    let home = tempfile::tempdir().unwrap();
+    let output = common::cli_command(repo.root_path(), home.path(), None, "list", "")
+        .args(["--all", "--format", "json"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let rows: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+    for (selector, label) in [
+        ("custom-package-versions", "Custom package versions"),
+        ("custom-package-repository", "Custom package repository"),
+    ] {
+        let row = rows.iter().find(|row| row["selector"] == selector).unwrap();
+        assert_eq!(row["task"], label);
+    }
+    assert!(!rows.iter().any(|row| {
+        row["selector"]
+            .as_str()
+            .unwrap()
+            .starts_with("local-package-")
+    }));
+}
+
+#[test]
 fn list_keeps_configured_work_and_validates_sources_outside_the_profile() {
     let repo = common::IntegrationTestContext::new();
     let home = tempfile::tempdir().unwrap();
@@ -192,11 +221,31 @@ fn renamed_tasks_accept_legacy_selectors_and_labels_in_both_filter_flags() {
     let home = tempfile::tempdir().unwrap();
     for (graph, canonical, legacy) in [
         ("update", "agent-packages", "APM"),
-        ("update", "local-package-repository", "paru-config"),
-        ("update", "local-package-repository", "Paru configuration"),
+        ("update", "custom-package-repository", "paru-config"),
+        ("update", "custom-package-repository", "Paru configuration"),
+        (
+            "update",
+            "custom-package-repository",
+            "local-package-repository",
+        ),
+        (
+            "update",
+            "custom-package-repository",
+            "Local package repository",
+        ),
         ("update", "login-shell", "shell"),
         ("update", "login-shell", "Default shell"),
-        ("update", "local-package-versions", "Local package versions"),
+        (
+            "update",
+            "custom-package-versions",
+            "local-package-versions",
+        ),
+        (
+            "update",
+            "custom-package-versions",
+            "Local package versions",
+        ),
+        ("update", "custom-package-versions", "Local package updates"),
         ("update", "git", "Git settings"),
         ("update", "registry", "Windows registry"),
         ("update", "system-files", "System files"),

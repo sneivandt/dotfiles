@@ -180,7 +180,7 @@ impl Task for InstallAurPackages {
     fn ordering_dependencies(&self) -> &[crate::engine::TaskId] {
         const DEPS: &[crate::engine::TaskId] =
             &[crate::engine::TaskId::Type(std::any::TypeId::of::<
-                super::local_builds::ConfigureParu,
+                super::arch_recipes::ConfigureParu,
             >())];
         DEPS
     }

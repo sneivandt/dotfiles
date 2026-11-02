@@ -20,7 +20,7 @@ impl PackageInstallPlan {
     pub(super) fn report_unavailable(&self, ctx: &Context) {
         for (name, reason) in &self.unavailable {
             ctx.log().warn(format!(
-                "local package {name} unavailable; refusing AUR fallback: {reason}"
+                "custom package {name} unavailable; refusing AUR fallback: {reason}"
             ));
         }
     }
@@ -110,8 +110,8 @@ pub(super) fn build_install_plan(
     });
 
     let installed = get_installed_packages(manager, ctx.executor())?;
-    let unavailable_local = if manager == PackageManager::Paru {
-        super::super::local_builds::unavailable_packages(ctx)?
+    let unavailable_custom = if manager == PackageManager::Paru {
+        super::super::arch_recipes::unavailable_packages(ctx)?
     } else {
         std::collections::BTreeMap::new()
     };
@@ -129,7 +129,7 @@ pub(super) fn build_install_plan(
         ) {
             ctx.debug_fmt(|| format!("ok {}", resource.description()));
             already_ok = already_ok.saturating_add(1);
-        } else if let Some(reason) = unavailable_local.get(&pkg.name) {
+        } else if let Some(reason) = unavailable_custom.get(&pkg.name) {
             unavailable.push((pkg.name.clone(), reason.clone()));
         } else {
             missing.push(resource);

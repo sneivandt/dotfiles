@@ -218,7 +218,7 @@ An applying update:
    changes.
 
 On Arch, `apm-dotfiles` supplies the executable through the
-[local package recipe](package-management.md#local-arch-packages). **Updating agent dependencies is not
+[dotfiles-managed Arch package recipe](package-management.md#custom-arch-packages). **Updating agent dependencies is not
 upgrading the APM executable.**
 
 ### What a preview can show

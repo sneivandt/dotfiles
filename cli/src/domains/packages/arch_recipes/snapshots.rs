@@ -6,6 +6,7 @@ use crate::infra::{exec::CommandSpec, fs::TempGuard};
 use anyhow::{Context as _, Result, ensure};
 use std::path::{Path, PathBuf};
 
+// Keep the ownership protocol stable so existing snapshots remain reusable.
 const MARKER: &str = "dotfiles local PKGBUILD snapshot v1\n";
 const ATTRIBUTES: &str = "* -text\n";
 
@@ -75,14 +76,14 @@ impl Snapshot {
         source: &Path,
         preview: bool,
     ) -> Result<Self> {
-        ensure!(safe_component(package_base), "invalid local package base");
+        ensure!(safe_component(package_base), "invalid custom package base");
         let path = build_root.join(package_base);
         let recipe =
-            std::fs::read_to_string(source.join("PKGBUILD")).context("reading local PKGBUILD")?;
+            std::fs::read_to_string(source.join("PKGBUILD")).context("reading Arch PKGBUILD")?;
         let pins = read_optional(&source.join("version.sh"))?;
         ensure!(
             preview || pins.is_some(),
-            "local release pins missing; run local-package-versions first"
+            "custom package release pins missing; run custom-package-versions first"
         );
         let pending_pins = pins.is_none();
         let mut files = vec![("PKGBUILD", recipe)];
@@ -114,7 +115,7 @@ impl Snapshot {
                         error.code(),
                         git2::ErrorCode::UnbornBranch | git2::ErrorCode::NotFound
                     ) => {}
-                Err(error) => return Err(error).context("reading local build snapshot HEAD"),
+                Err(error) => return Err(error).context("reading custom package snapshot HEAD"),
             }
         }
         Ok(snapshot)
@@ -123,14 +124,14 @@ impl Snapshot {
     fn open_owned(&self) -> Result<Option<git2::Repository>> {
         let Some(metadata) = crate::infra::fs::symlink_metadata_optional(
             &self.path,
-            "inspect local build snapshot",
+            "inspect custom package snapshot",
         )?
         else {
             return Ok(None);
         };
         ensure!(
             metadata.is_dir() && !metadata.is_symlink(),
-            "local build snapshot is not a real directory: {}",
+            "custom package snapshot is not a real directory: {}",
             self.path.display()
         );
         let git_dir = self.path.join(".git");
@@ -142,14 +143,14 @@ impl Snapshot {
         })?;
         ensure!(
             git_metadata.is_dir() && !git_metadata.is_symlink(),
-            "local build snapshot must have its own Git directory"
+            "custom package snapshot must have its own Git directory"
         );
         ensure!(
             read_optional(&git_dir.join("dotfiles-local-build"))?.as_deref() == Some(MARKER),
             "refusing to overwrite unmanaged build repository {}",
             self.path.display()
         );
-        let repo = git2::Repository::open(&self.path).context("opening local build snapshot")?;
+        let repo = git2::Repository::open(&self.path).context("opening custom package snapshot")?;
         ensure!(
             repo.path().canonicalize()? == git_dir.canonicalize()?
                 && repo.commondir().canonicalize()? == git_dir.canonicalize()?
@@ -160,7 +161,7 @@ impl Snapshot {
                     .as_deref()
                     == Some(self.path.canonicalize()?.as_path())
                 && !repo.is_worktree(),
-            "local build snapshot points outside its directory"
+            "custom package snapshot points outside its directory"
         );
         Ok(Some(repo))
     }
@@ -188,7 +189,7 @@ impl Snapshot {
             {
                 None
             }
-            Err(error) => return Err(error).context("reading local build snapshot HEAD"),
+            Err(error) => return Err(error).context("reading custom package snapshot HEAD"),
         };
         if tree
             .as_ref()
@@ -199,7 +200,7 @@ impl Snapshot {
         for (name, content) in self.inputs(srcinfo) {
             let metadata = crate::infra::fs::symlink_metadata_optional(
                 &self.path.join(name),
-                "inspect local build snapshot input",
+                "inspect custom package snapshot input",
             )?;
             if metadata.is_none_or(|metadata| !metadata.is_file()) {
                 return Ok(true);
@@ -240,8 +241,8 @@ impl Snapshot {
         let repo = if let Some(repo) = self.open_owned()? {
             repo
         } else {
-            let repo =
-                git2::Repository::init(&self.path).context("initializing local build snapshot")?;
+            let repo = git2::Repository::init(&self.path)
+                .context("initializing custom package snapshot")?;
             crate::infra::fs::write_atomic(&repo.path().join("dotfiles-local-build"), MARKER)?;
             repo
         };
@@ -259,7 +260,7 @@ impl Snapshot {
             {
                 None
             }
-            Err(error) => return Err(error).context("reading local build snapshot parent"),
+            Err(error) => return Err(error).context("reading custom package snapshot parent"),
         };
         for (name, content) in self.inputs(srcinfo) {
             crate::infra::fs::write_atomic(&self.path.join(name), content)?;
@@ -280,7 +281,7 @@ impl Snapshot {
                 Some("HEAD"),
                 &signature,
                 &signature,
-                "Refresh local package build inputs",
+                "Refresh custom package build inputs",
                 &tree,
                 &parent.iter().collect::<Vec<_>>(),
             )?;

@@ -54,8 +54,10 @@ Selection is explicit:
 
 Listings and completions use canonical selectors. For compatibility, `apm`,
 `paru-config`, `shell` and `config-warnings` still select `agent-packages`,
-`local-package-repository`, `login-shell` and `config-diagnostics`, respectively.
+`custom-package-repository`, `login-shell` and `config-diagnostics`, respectively.
 Previous full console labels remain accepted by `--only` and `--skip` too.
+The former `local-package-versions` and `local-package-repository` selectors
+also remain aliases for `custom-package-versions` and `custom-package-repository`.
 
 Inspect expansion before applying:
 
@@ -107,13 +109,13 @@ and `symlinks` also belong to [remove](#remove-tasks).
 | `agent-settings` | [Agent settings](#agent-settings): configured harness settings |
 | `aur-packages` | [AUR packages](#aur-packages): Arch/AUR support and AUR entries |
 | `completions` | [Shell completions](#shell-completions): supported shell registration |
+| `custom-package-repository` | [Custom package repository](#custom-arch-packages): Arch/AUR support |
+| `custom-package-versions` | [Custom package versions](#custom-arch-packages): Arch/AUR support and dotfiles-managed recipes |
 | `developer-mode` | [Windows Developer Mode](#windows-developer-mode): Windows |
 | `file-permissions` | [File permissions](#file-permissions): supported Unix modes and configured paths |
 | `git` | [Global Git settings](#global-git-settings): configured values or Windows autocrlf cleanup |
 | `git-hooks` | [Git hooks](#git-hooks): repository hook sources |
 | `launcher` | [Dotfiles launcher](#dotfiles-launcher): Linux or Windows |
-| `local-package-repository` | [Local package repository](#local-pkgbuild-packages): Arch/AUR support |
-| `local-package-versions` | [Local package updates](#local-pkgbuild-packages): Arch/AUR support and local recipes |
 | `login-shell` | [Login shell](#login-shell): Linux, outside CI |
 | `packages` | [System packages](#system-packages): configured non-AUR packages |
 | `paru` | [Paru package manager](#paru-package-manager): pacman platform |
@@ -125,7 +127,7 @@ and `symlinks` also belong to [remove](#remove-tasks).
 | `systemd` | [Systemd units](#systemd-units): supported platform and configured units, outside CI |
 | `vscode-extensions` | [VS Code extensions](#vs-code-extensions): configured extensions |
 
-`local-package-versions` is explicitly update-only metadata: it advances local
+`custom-package-versions` is explicitly update-only metadata: it advances
 recipe release pins. That is not an ordering tier or a remove capability.
 
 ### Host capability and wrapper tasks
@@ -273,7 +275,7 @@ the validated `/usr/bin/paru`, not an arbitrary PATH copy.
 #### AUR packages
 
 Installs missing `aur = true` entries after successful Paru bootstrap. It also
-waits for local package repository preparation without making recipe failures block every
+waits for custom package repository preparation without making recipe failures block every
 unrelated AUR package.
 
 Preview queries pacman's installed-package database without requiring the
@@ -357,20 +359,20 @@ authentication, and cleanup. [Agent deployment internals](agent-deployment-inter
 covers implementation ownership and compatibility adapters. This task is broader
 than copying skills.
 
-### Local PKGBUILD packages
+### Custom Arch packages
 
-`local-package-versions` discovers stable release pins. `local-package-repository` prepares
+`custom-package-versions` discovers stable release pins. `custom-package-repository` prepares
 disposable Git snapshots and configures Paru to use them. They are ordered
 without making a recipe failure block unrelated AUR work.
 
 Refresh failures still count as failures, although existing pins can produce
-a usable snapshot. Unavailable local packages are excluded from direct
+a usable snapshot. Unavailable custom packages are excluded from direct
 install targets and counted as failures when missing. Descriptor names
-establish local ownership: failure must not silently fall back to the AUR.
+establish dotfiles ownership: failure must not silently fall back to the AUR.
 
 `CleanAfter` cleans the cache, not this checkout. See
-[Package management](package-management.md#local-arch-packages) for the current
-packages and [Local package recipes](local-package-recipes.md) for version
+[Package management](package-management.md#custom-arch-packages) for the current
+packages and [Arch package recipes](arch-package-recipes.md) for version
 discovery, snapshot ownership, and adding recipes.
 
 ## Dynamic overlay tasks

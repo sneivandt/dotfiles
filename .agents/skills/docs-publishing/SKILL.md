@@ -32,14 +32,16 @@ heading anchors aligned with the site's output.
   Explain side effects where they matter, without repeating every caveat everywhere.
 - Give each explanation one home. Commands and logs belong in Commands and usage;
   the end-to-end update story in Update lifecycle; formats and private additions
-  under Customize; subsystem workflows and their maintenance guides in Subsystem
-  guides; repository-wide implementation and validation under Development.
+  under Customize; topic workflows and maintenance guides under Platforms,
+  Packages, AI agents, or Editors; repository-wide implementation and validation
+  under Development.
   Link instead of duplicating.
 - Keep Application settings focused on shared preferences and finding sources;
   detailed Arch desktop and editor behavior belongs in its owning guide. Keep
-  each subsystem's maintenance guide beside its everyday guide, with AI agents
-  and Packages as subgroups under Subsystem guides. Keep related platforms and
-  editors adjacent, and order groups from setup to development.
+  each topic's maintenance guide beside its everyday guide. Use top-level
+  Platforms, Packages, AI agents, and Editors sections in that order between
+  Customize and Development, with every guide one level deep. Split pages by
+  distinct reader tasks, not length alone.
 - For guides, match page title, sidebar text, filename, and URL. Update incoming
   references after moves; do not add old-name redirects or compatibility heading
   aliases. The root landing page is its own page at `/`, not a redirect to
@@ -60,6 +62,9 @@ heading anchors aligned with the site's output.
   `/getting-started.html`. Keep a description and place guides in explicit
   sidebar groups. Keep the site root at `/` as a separate landing page
   with a prominent path to the Getting started guide.
+- Keep the custom content loader and Starlight's `markdown.processedDirs`
+  aligned on `content/`; otherwise native callouts and heading links are skipped.
+  Verify callout structure and visible styling in the rendered site.
 - Keep guide links relative with `.md` extensions. The
   [Markdown transform](../../../docs/src/remark-docs.mjs) rewrites published
   destinations and preserves each Markdown title's anchor without a

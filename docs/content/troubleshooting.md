@@ -309,8 +309,8 @@ authorization reason.
 
 `--only packages` does not include AUR entries. `--only aur-packages` assumes
 its omitted prerequisites are satisfied unless you add `--with-deps`.
-Local recipe or pin failures belong in
-[Local package recipes](local-package-recipes.md#logs-and-troubleshooting).
+Arch package recipe or pin failures belong in
+[Arch package recipes](arch-package-recipes.md#logs-and-troubleshooting).
 
 **Applying missing Arch packages runs `pacman -Syu --needed --noconfirm` and can
 upgrade the whole system.** Do not use apply as a harmless diagnostic.

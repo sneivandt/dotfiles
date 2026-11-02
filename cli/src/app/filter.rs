@@ -163,7 +163,12 @@ pub fn task_matches_filter(task: &dyn Task, filter: &str) -> bool {
 fn legacy_task_filters(selector: &str) -> &'static [&'static str] {
     match selector {
         "agent-packages" => &["apm"],
-        "local-package-repository" => &["paru-config", "paru-configuration"],
+        "custom-package-repository" => &[
+            "paru-config",
+            "paru-configuration",
+            "local-package-repository",
+        ],
+        "custom-package-versions" => &["local-package-versions", "local-package-updates"],
         "login-shell" => &["shell", "default-shell"],
         "config-diagnostics" => &["config-warnings", "validate-config-warnings"],
         "git" => &["git-settings"],

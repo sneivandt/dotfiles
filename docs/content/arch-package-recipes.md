@@ -1,18 +1,18 @@
 ---
-title: Local package recipes
-description: Add and maintain local Arch PKGBUILDs, release descriptors, generated version pins, and disposable Paru build snapshots.
+title: Arch package recipes
+description: Maintain dotfiles-managed Arch PKGBUILDs, release descriptors, generated version pins, and disposable Paru build snapshots.
 ---
 
-# Local package recipes
+# Arch package recipes
 
 This guide is for maintaining the Arch package recipes under
 [`packages/`](https://github.com/sneivandt/dotfiles/tree/main/packages/).
 For choosing, installing, upgrading, or removing applications, use
 [Package management](package-management.md), which also lists the
-[current local packages](package-management.md#local-arch-packages).
+[current custom Arch packages](package-management.md#custom-arch-packages).
 
 A **PKGBUILD** is a shell recipe that tells Arch's `makepkg` how to produce a
-package. Each local recipe has a **release descriptor**, `release.json`,
+package. Each dotfiles-managed recipe has a **release descriptor**, `release.json`,
 that tells dotfiles where to find the upstream binary release. Dotfiles
 generates version/checksum **pins**, then copies the recipe and pins into a
 disposable build **snapshot** for Paru.
@@ -20,12 +20,12 @@ disposable build **snapshot** for Paru.
 The source recipe, prepared snapshot, and installed application are separate.
 Changing or preparing a recipe does not by itself upgrade an installed package.
 
-:::caution[PKGBUILD files are executable code]
-Dotfiles runs `makepkg --printsrcinfo` to generate package metadata. This
-executes shell code from the `PKGBUILD`, even though it does not build or install
-the package. Review new or changed PKGBUILDs before running preparation without
-`--dry-run`. Temporary copies do not isolate that code from your system, and
-Paru skips its usual review step for local `Path` repositories.
+:::caution[Review recipes before preparing packages]
+**PKGBUILDs execute shell code**, even when dotfiles only generates metadata
+with `makepkg --printsrcinfo` and does not build or install a package.
+Review new or changed recipes before running preparation without `--dry-run`.
+Temporary copies are **not a sandbox**, and Paru skips its usual recipe review
+for local `Path` repositories.
 :::
 
 ## Adding a recipe
@@ -36,7 +36,7 @@ and its
 [`release.json`](https://github.com/sneivandt/dotfiles/blob/main/packages/apm/release.json)
 as a concrete starting point.
 
-1. Create `packages/<recipe>/PKGBUILD` and `release.json`. Give the local package
+1. Create `packages/<recipe>/PKGBUILD` and `release.json`. Give the custom package
    a distinct name where necessary to avoid an AUR recipe taking its place.
 2. Make `package_base`, optional `packages`, and `assets` agree with makepkg's
    actual package base, package names, and architectures.
@@ -54,10 +54,10 @@ as a concrete starting point.
 
 ## Prepare recipes
 
-To inspect only local recipe preparation for your configured checkout and profile:
+To inspect only Arch package recipe preparation for your configured checkout and profile:
 
 ```bash
-dotfiles update --only local-package-versions,local-package-repository --dry-run
+dotfiles update --only custom-package-versions,custom-package-repository --dry-run
 ```
 
 After reviewing the recipes and plan, remove `--dry-run` to prepare them.
@@ -74,13 +74,13 @@ preparation succeeds. Running Paru alone uses the **last prepared snapshot**;
 it does not discover a newer GitHub release or read your latest source edits.
 
 On a fresh checkout, preview can describe snapshot work before pins exist.
-Applying `local-package-repository` needs pins, so refresh versions first.
+Applying `custom-package-repository` needs pins, so refresh versions first.
 
 ## Preparation lifecycle
 
 ```mermaid
 flowchart TB
-    accTitle: Preparing and installing a local Arch package
+    accTitle: Preparing and installing a custom Arch package
     accDescr: GitHub release metadata updates version.sh pins. The pins and reviewed PKGBUILD form a snapshot that Paru can build and install.
     Release["GitHub release"] --> Pins["version.sh"]
     Recipe["PKGBUILD"] --> Snapshot["Build snapshot"]
@@ -90,14 +90,14 @@ flowchart TB
 
 | Task | Changes | Does not do |
 |---|---|---|
-| `local-package-versions` | Refreshes successful recipes' version/checksum pins | Download archives, execute recipes, or install packages |
-| `local-package-repository` | Validates recipe metadata, prepares snapshots, and writes available repositories into Paru config | Install or upgrade packages |
+| `custom-package-versions` | Refreshes successful recipes' version/checksum pins | Download archives, execute recipes, or install packages |
+| `custom-package-repository` | Validates recipe metadata, prepares snapshots, and writes available repositories into Paru config | Install or upgrade packages |
 | `aur-packages` | Installs missing selected packages whose inputs are ready | Upgrade every already-installed package |
 | `agent-packages` | Deploys agent dependencies using `apm` on PATH | Upgrade the APM executable |
 
 Preparation waits for version discovery, but can use retained pins after an
 upstream failure. Installation requires healthy Paru and ready inputs. A missing
-local package whose inputs are unavailable is counted as a failure and omitted
+custom package whose inputs are unavailable is counted as a failure and omitted
 from install requests; unrelated AUR packages can continue. It is **not** silently
 installed from the AUR instead.
 
@@ -207,7 +207,7 @@ pins, snapshots, or Paru config. It also does not execute PKGBUILDs.
 
 ## How Paru sees the recipes
 
-The `local-package-repository` task combines the tracked base options with generated local
+The `custom-package-repository` task combines the tracked base options with generated local
 repository sections. It writes a regular file, replacing a former config
 symlink atomically without overwriting that symlink's source.
 
@@ -286,27 +286,27 @@ Snapshot safety is intentionally conservative:
 A recipe that fails metadata validation is omitted from generated Paru
 repositories and keeps its previous cached inputs. Other recipes can proceed.
 The installer verifies current validated inputs **and** the published repository
-section before requesting a missing local package. Invalid ownership descriptors
+section before requesting a missing custom package. Invalid ownership descriptors
 fail closed rather than allowing an AUR fallback.
 
 ## Logs and troubleshooting
 
 | Symptom or output | Meaning / next step |
 |---|---|
-| `Local package updates: write .../version.sh` | Available version/checksum pins changed; nothing was installed |
-| `Local package repository: refresh local package snapshot ...` | Cached build inputs or metadata changed |
-| `Local package repository: write .../paru.conf` | Available repository paths/options changed |
+| `Custom package versions: write .../version.sh` | Available version/checksum pins changed; nothing was installed |
+| `Custom package repository: refresh custom package snapshot ...` | Cached build inputs or metadata changed |
+| `Custom package repository: write .../paru.conf` | Available repository paths/options changed |
 | Paru reports no upgrade after refresh | Inspect snapshot `version.sh` and `.SRCINFO`; rerun preparation and check `paru -Sl --pkgbuilds` |
 | Missing release asset/digest or rate limit | Fix the descriptor or retry after the reported cooldown; old pins survive |
 | Pins missing | Apply version discovery before snapshot preparation |
 | Unmanaged cache directory | Inspect and preserve it before moving it; dotfiles will not claim an unrelated repository |
 | `git reset --hard HEAD: No such file or directory` | Check `CloneDir`, repository `Path`, `package_base`, and environment/command-line overrides agree |
-| Local install excluded | Inspect descriptor ownership, metadata validation, and the published repository section; do not force an AUR fallback |
+| Custom package install excluded | Inspect descriptor ownership, metadata validation, and the published repository section; do not force an AUR fallback |
 
 Implementation and focused regressions live in
-[`local_builds.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/local_builds.rs),
-[`snapshots.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/local_builds/snapshots.rs), and
-[`tests.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/local_builds/tests.rs).
+[`arch_recipes.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes.rs),
+[`snapshots.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes/snapshots.rs), and
+[`tests.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes/tests.rs).
 
 ## CI and validation
 

@@ -19,8 +19,8 @@ use crate::domains::files::symlinks::{InstallSymlinks, UninstallSymlinks};
 use crate::domains::git::git_config::ConfigureGit;
 use crate::domains::git::hooks::{InstallGitHooks, UninstallGitHooks};
 use crate::domains::overlay::scripts::ReportOverlayScriptSnapshot;
+use crate::domains::packages::arch_recipes::{ConfigureParu, UpdateCustomPackageVersions};
 use crate::domains::packages::install::{InstallAurPackages, InstallPackages, InstallParu};
-use crate::domains::packages::local_builds::{ConfigureParu, UpdateLocalPackageVersions};
 use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::domains::shell::completions::GenerateCompletions;
 use crate::domains::shell::login_shell::ConfigureShell;
@@ -115,7 +115,7 @@ pub(crate) fn update_tasks_for_run(
         Box::new(InstallParu),
         Box::new(InstallAurPackages::new(store.packages.clone())),
         Box::new(ConfigureParu),
-        Box::new(UpdateLocalPackageVersions),
+        Box::new(UpdateCustomPackageVersions),
         with_ordering_deps(
             InstallSymlinks::new(store.symlinks.clone()),
             &[id::<EnableDeveloperMode>()],
@@ -255,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn local_package_tasks_precede_aur_without_coupling_apm_to_installation() {
+    fn custom_package_tasks_precede_aur_without_coupling_apm_to_installation() {
         let tasks = all_update_tasks(&test_params());
         let find = |selector: &str| tasks.iter().find(|t| t.selector() == selector).unwrap();
         assert!(
@@ -264,13 +264,13 @@ mod tests {
                 .contains(&id::<ConfigureParu>())
         );
         assert!(
-            find("local-package-repository")
+            find("custom-package-repository")
                 .ordering_dependencies()
-                .contains(&id::<UpdateLocalPackageVersions>())
+                .contains(&id::<UpdateCustomPackageVersions>())
         );
-        assert!(find("local-package-versions").update_only());
+        assert!(find("custom-package-versions").update_only());
         assert!(
-            find("local-package-versions")
+            find("custom-package-versions")
                 .ordering_dependencies()
                 .contains(&id::<InstallPackages>()),
             "release discovery must wait for packages that supply curl"
@@ -278,7 +278,7 @@ mod tests {
         assert!(
             !find("agent-packages")
                 .dependencies()
-                .contains(&id::<UpdateLocalPackageVersions>())
+                .contains(&id::<UpdateCustomPackageVersions>())
         );
         assert!(
             !find("agent-packages")

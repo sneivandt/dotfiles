@@ -134,7 +134,7 @@ want a narrower operation:
 | Keep checkout contents fixed | `--no-repo-update` | Does not disable the CLI release check |
 | Run specific configuration work | `--only <selectors>` | Filters tasks, not startup; prerequisites require `--with-deps` |
 | Leave agent deployments alone | `--skip agent-packages` | Does not stop other tasks or update the APM executable |
-| Keep local recipe version pins | `--skip local-package-versions` | Existing pins can still be used by recipe preparation |
+| Keep custom package version pins | `--skip custom-package-versions` | Existing pins can still be used by recipe preparation |
 
 See [Task selection](commands-and-usage.md#select-tasks) for filter combinations.
 There is no blanket “offline” switch. Dry-run still writes logs and may save

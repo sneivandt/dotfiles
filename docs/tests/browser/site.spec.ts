@@ -72,26 +72,22 @@ test('the homepage introduces the repository and links to setup, with grouped na
   await expect(sidebar.getByRole('link', { name: 'Dotfiles', exact: true })).toHaveCount(0);
   const startHeading = sidebar.getByText('Start here', { exact: true });
   await expect(startHeading).toBeVisible();
-  for (const group of ['Start here', 'Use dotfiles', 'Customize', 'Subsystem guides', 'Development']) {
-    const section = page.locator('#starlight__sidebar details')
-      .filter({ has: page.getByText(group, { exact: true }) });
+  const groups = sidebar.locator('details');
+  await expect(groups.locator(':scope > summary')).toHaveText([
+    'Start here', 'Use dotfiles', 'Customize',
+    'Platforms', 'Packages', 'AI agents', 'Editors', 'Development',
+  ]);
+  await expect(groups.locator('details')).toHaveCount(0);
+  for (const section of await groups.all()) {
     await expect(section).toHaveAttribute('open', '');
   }
-  const subsystems = page.locator('#starlight__sidebar details')
-    .filter({ has: page.getByText('Subsystem guides', { exact: true }) });
-  await expect(subsystems.getByRole('link')).toHaveText([
-    'AI agent configuration', 'Agent deployment internals',
-    'Package management', 'Local package recipes', 'Arch desktop',
-    'Windows and WSL', 'Visual Studio Code', 'Vim and Neovim',
-  ]);
-  const nestedGroups = subsystems.locator(':scope > ul > li > details');
-  await expect(nestedGroups.locator(':scope > summary')).toHaveText(['AI agents', 'Packages']);
   for (const [label, titles] of [
+    ['Platforms', ['Arch desktop', 'Windows and WSL']],
+    ['Packages', ['Package management', 'Arch package recipes']],
     ['AI agents', ['AI agent configuration', 'Agent deployment internals']],
-    ['Packages', ['Package management', 'Local package recipes']],
+    ['Editors', ['Visual Studio Code', 'Vim and Neovim']],
   ] as const) {
-    const group = nestedGroups.filter({ has: page.getByText(label, { exact: true }) });
-    await expect(group).toHaveAttribute('open', '');
+    const group = groups.filter({ has: page.getByText(label, { exact: true }) });
     await expect(group.getByRole('link')).toHaveText([...titles]);
   }
   const start = page.locator('#starlight__sidebar details')
@@ -112,9 +108,9 @@ test('the homepage introduces the repository and links to setup, with grouped na
   ]);
   for (const [label, href] of [
     ['Agent deployment internals', '/agent-deployment-internals.html'],
-    ['Local package recipes', '/local-package-recipes.html'],
+    ['Arch package recipes', '/arch-package-recipes.html'],
   ]) {
-    await expect(subsystems.getByRole('link', { name: label, exact: true }))
+    await expect(sidebar.getByRole('link', { name: label, exact: true }))
       .toHaveAttribute('href', href);
   }
   await page.locator('#starlight__sidebar a[href="/getting-started.html"]').click();
@@ -130,10 +126,10 @@ test('the homepage introduces the repository and links to setup, with grouped na
   await assertNoPageOverflow(page);
 });
 
-test('subsystem guides link maintainers to their advanced guides', async ({ page }) => {
+test('everyday guides link maintainers to their advanced guides', async ({ page }) => {
   for (const [guide, title, target] of [
     ['ai-agent-configuration', 'Agent deployment internals', 'agent-deployment-internals'],
-    ['package-management', 'Local package recipes', 'local-package-recipes'],
+    ['package-management', 'Arch package recipes', 'arch-package-recipes'],
   ]) {
     await page.goto(`/${guide}.html`);
     const link = page.locator('.sl-markdown-content p')
@@ -146,10 +142,10 @@ test('subsystem guides link maintainers to their advanced guides', async ({ page
   }
 });
 
-test('advanced guides remain visible within nested navigation', async ({ page, isMobile }) => {
+test('advanced guides remain visible within top-level topic navigation', async ({ page, isMobile }) => {
   for (const [guide, title] of [
     ['agent-deployment-internals', 'Agent deployment internals'],
-    ['local-package-recipes', 'Local package recipes'],
+    ['arch-package-recipes', 'Arch package recipes'],
   ]) {
     await page.goto(`/${guide}.html`);
     if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
@@ -158,6 +154,47 @@ test('advanced guides remain visible within nested navigation', async ({ page, i
     await expect(current).toBeVisible();
   }
 });
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`safety warnings render as distinct accessible callouts in ${theme} mode`, async ({ page }) => {
+    await page.addInitScript((choice) => localStorage.setItem('starlight-theme', choice), theme);
+    for (const [guide, titles] of [
+      ['arch-package-recipes', ['Review recipes before preparing packages']],
+      ['package-management', ['Installing a missing package can upgrade the system']],
+      ['ai-agent-configuration', ['Packages can do more than provide text', 'Disabling a managed workflow in the App is temporary']],
+      ['getting-started', ['Back up existing configuration first', 'A preview is not a sandbox']],
+      ['profiles-and-categories', ['Profiles are roles, not safety levels']],
+      ['private-overlays', ['Review overlay scripts before previewing']],
+    ] as const) {
+      await page.goto(`/${guide}.html`);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await expect(page.locator('aside.starlight-aside--caution')).toHaveCount(titles.length);
+      for (const title of titles) {
+        const warning = page.getByRole('complementary', { name: title, exact: true });
+        await expect(warning).toBeVisible();
+        await expect(warning.locator('.starlight-aside__title')).toHaveText(title);
+        await expect(warning.locator('.starlight-aside__icon')).toBeVisible();
+        await expect(warning.locator('.starlight-aside__content')).not.toBeEmpty();
+        const appearance = await warning.evaluate((element) => {
+          const style = getComputedStyle(element);
+          const heading = element.querySelector('.starlight-aside__title');
+          if (!heading) throw new Error('The warning must have a title');
+          return {
+            background: style.backgroundColor,
+            pageBackground: getComputedStyle(document.body).backgroundColor,
+            padding: parseFloat(style.paddingInlineStart),
+            titleWeight: getComputedStyle(heading).fontWeight,
+          };
+        });
+        expect(appearance.background).not.toBe('rgba(0, 0, 0, 0)');
+        expect(appearance.background).not.toBe(appearance.pageBackground);
+        expect(appearance.padding).toBeGreaterThanOrEqual(16);
+        expect(Number(appearance.titleWeight)).toBeGreaterThanOrEqual(500);
+      }
+      await assertNoPageOverflow(page);
+    }
+  });
+}
 
 test('task catalog labels jump to details without horizontal overflow', async ({ page, isMobile }) => {
   if (isMobile) await page.setViewportSize({ width: 375, height: 667 });
@@ -189,7 +226,7 @@ test('search opens the relevant section of the published guide', async ({ page }
 });
 
 test('renamed pages do not create compatibility routes', async ({ request }) => {
-  for (const path of ['/USAGE.html', '/LOCAL-PACKAGES.html', '/TESTING-RECIPES.html']) {
+  for (const path of ['/USAGE.html', '/LOCAL-PACKAGES.html', '/TESTING-RECIPES.html', '/local-package-recipes.html']) {
     expect((await request.get(path)).status()).toBe(404);
   }
 });
@@ -219,7 +256,7 @@ test('light, dark, and system themes work and retain the reader’s choice', asy
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
-for (const guide of ['profiles-and-categories', 'update-lifecycle', 'arch-desktop', 'architecture', 'ai-agent-configuration', 'local-package-recipes', 'ci-and-releases']) {
+for (const guide of ['profiles-and-categories', 'update-lifecycle', 'arch-desktop', 'architecture', 'ai-agent-configuration', 'arch-package-recipes', 'ci-and-releases']) {
   for (const theme of ['light', 'dark'] as const) {
     test(`${guide} has readable, accessible diagrams in ${theme} mode`, async ({ page }) => {
       test.setTimeout(60_000);

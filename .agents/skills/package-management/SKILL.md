@@ -3,8 +3,8 @@ name: package-management
 description: >
   Use for conf/packages.toml or package providers/resources under
   cli/src/domains/packages/, including pacman, AUR helpers, and winget. Not for
-  generic subprocess or task orchestration changes, or local PKGBUILD recipe
-  and snapshot work (use local-packages).
+  generic subprocess or task orchestration changes, or dotfiles-managed PKGBUILD recipe
+  and snapshot work (use arch-package-recipes).
 ---
 
 # Package Management
@@ -21,8 +21,8 @@ human workflow and provider/upgrade distinctions.
 - The install task/operation owns applicability and batching.
 
 Add a provider rather than branching manager-specific commands through tasks.
-For locally maintained recipes, release pins, Paru Path repositories, and cache
-cleanup, use [local-packages](../local-packages/SKILL.md).
+For dotfiles-managed recipes, release pins, Paru Path repositories, and cache
+cleanup, use [arch-package-recipes](../arch-package-recipes/SKILL.md).
 
 ## Convergence
 

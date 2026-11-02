@@ -193,23 +193,24 @@ Mermaid diagram only when it makes a relationship easier to grasp.
 
 The standalone [introduction](index.md) gives readers a short path to
 [Getting started](getting-started.md), everyday use, and customization.
-The sidebar moves from setup to everyday use, customization,
-subsystem guides, and development. Keep each subsystem's everyday and maintenance
-guides together: AI agents and Packages each have a subgroup under Subsystem
-guides. Keep related platforms and editors adjacent. Reserve Development for
-repository-wide contribution and implementation topics.
+The sidebar moves from Start here, Use dotfiles, and Customize to **Platforms,
+Packages, AI agents, and Editors**, then Development. These are top-level
+sections, with every guide one level deep. Keep each topic's everyday and
+maintenance guides together; split a page only when it serves distinct reader
+tasks, not just because it is long. Reserve Development for repository-wide
+contribution and implementation topics.
 
 Give each explanation one home: commands and logs in
 [Commands and usage](commands-and-usage.md), the update story in
 [Update lifecycle](update-lifecycle.md), formats and private additions under
-Customize, and detailed platform/editor/package workflows in Subsystem guides.
+Customize, and detailed workflows in Platforms, Packages, AI agents, or Editors.
 Link instead of repeating the same instructions. Split pages when their readers
 or tasks genuinely differ; update incoming references when moving content.
 For example, [AI agent configuration](ai-agent-configuration.md) covers adding
 content, while [Agent deployment internals](agent-deployment-internals.md)
 covers maintaining the deployment implementation. Everyday
 [Package management](package-management.md) is separate from
-[Local package recipes](local-package-recipes.md).
+[Arch package recipes](arch-package-recipes.md).
 
 Link a tracked file at the point where readers need to inspect or edit it,
 usually its first actionable mention or an owning-source table. Use code
@@ -235,6 +236,8 @@ The site uses Astro and Starlight with Flexoki theme styling, with locked
 dependencies in `docs/package-lock.json`.
 Markdown guides live in `docs/content/`; site configuration, components, and
 static assets are separate. The same guides remain readable in the repository.
+The custom content loader and Starlight's `markdown.processedDirs` both point
+at `content/` so native warning callouts and heading links render in these guides.
 
 Use the same wording for each guide's front-matter `title`, Markdown H1, and
 sidebar label. Its filename and URL use the lowercase, hyphenated title:

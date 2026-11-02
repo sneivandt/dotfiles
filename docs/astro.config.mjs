@@ -46,6 +46,7 @@ export default defineConfig({
       description: 'Set up, customize, and maintain an Arch Linux or Windows machine with declarative configuration and a Rust CLI.',
       favicon: '/favicon.svg',
       logo: { src: './public/favicon.svg' },
+      markdown: { processedDirs: ['content'] },
       credits: false,
       disable404Route: true,
       components: { ThemeProvider: './src/components/ThemeProvider.astro' },
@@ -75,18 +76,20 @@ export default defineConfig({
           items: ['configuration-reference', 'private-overlays', 'application-settings'],
         },
         {
-          label: 'Subsystem guides',
-          items: [
-            {
-              label: 'AI agents',
-              items: ['ai-agent-configuration', 'agent-deployment-internals'],
-            },
-            {
-              label: 'Packages',
-              items: ['package-management', 'local-package-recipes'],
-            },
-            'arch-desktop', 'windows-and-wsl', 'visual-studio-code', 'vim-and-neovim',
-          ],
+          label: 'Platforms',
+          items: ['arch-desktop', 'windows-and-wsl'],
+        },
+        {
+          label: 'Packages',
+          items: ['package-management', 'arch-package-recipes'],
+        },
+        {
+          label: 'AI agents',
+          items: ['ai-agent-configuration', 'agent-deployment-internals'],
+        },
+        {
+          label: 'Editors',
+          items: ['visual-studio-code', 'vim-and-neovim'],
         },
         {
           label: 'Development',

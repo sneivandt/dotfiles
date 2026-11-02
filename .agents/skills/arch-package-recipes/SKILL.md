@@ -1,15 +1,15 @@
 ---
-name: local-packages
+name: arch-package-recipes
 description: >
-  Use for packages/*/PKGBUILD and release.json, local-package-versions,
-  local-package-repository, disposable PKGBUILD snapshots, or Paru local repository cleanup.
+  Use for packages/*/PKGBUILD and release.json, custom-package-versions,
+  custom-package-repository, disposable PKGBUILD snapshots, or Paru local repository cleanup.
   Not for ordinary conf/packages.toml entries or package providers alone, or
   APM agent dependency/deployment manifests.
 ---
 
-# Local Packages
+# Arch Package Recipes
 
-Read [Local package recipes](../../../docs/content/local-package-recipes.md) for the lifecycle,
+Read [Arch package recipes](../../../docs/content/arch-package-recipes.md) for the lifecycle,
 descriptor format, cache ownership, Paru paths, and adding recipes.
 
 ## Find the owner
@@ -18,8 +18,8 @@ descriptor format, cache ownership, Paru paths, and adding recipes.
 |---|---|
 | names, dependencies, URLs, packaging | `packages/<recipe>/PKGBUILD` |
 | release source, architecture assets, ownership | `packages/<recipe>/release.json` |
-| discovery, pins, generated Paru config | [local_builds.rs](../../../cli/src/domains/packages/local_builds.rs) |
-| cached snapshots and cleanup safety | [snapshots.rs](../../../cli/src/domains/packages/local_builds/snapshots.rs) |
+| discovery, pins, generated Paru config | [arch_recipes.rs](../../../cli/src/domains/packages/arch_recipes.rs) |
+| cached snapshots and cleanup safety | [snapshots.rs](../../../cli/src/domains/packages/arch_recipes/snapshots.rs) |
 | shared Paru options | `symlinks/config/paru/paru.conf.base` |
 | automatic installation selection | `conf/packages.toml`; use `package-management` for providers |
 
@@ -42,7 +42,7 @@ descriptor format, cache ownership, Paru paths, and adding recipes.
   links. Commit supported inputs and validated `.SRCINFO` so Paru cleanup retains
   them. Extend the documented format before adding patches or other inputs.
 - Preserve ordering-only preparation edges and the blocking Paru-health edge.
-  Retained pins can remain useful after discovery failure. Omit unavailable local
+  Retained pins can remain useful after discovery failure. Omit unavailable custom
   recipes from publication/installation, count failures, and never fall back to
   the AUR. Verify current inputs and published sections before direct install.
 - Keep bounded validation workers conditional on `ctx.parallel()`, ordered
@@ -52,8 +52,8 @@ descriptor format, cache ownership, Paru paths, and adding recipes.
 ## Verify the changed contract
 
 Use [Testing](../../../docs/content/testing.md), the
-[CI coverage](../../../docs/content/local-package-recipes.md#ci-and-validation), and focused
-[regressions](../../../cli/src/domains/packages/local_builds/tests.rs).
+[CI coverage](../../../docs/content/arch-package-recipes.md#ci-and-validation), and focused
+[regressions](../../../cli/src/domains/packages/arch_recipes/tests.rs).
 Recipe-only changes must select offline Linux checks and PKGBUILD ShellCheck
 without releasing the CLI solely because a recipe changed; use `ci-cd-patterns`
 for routing changes.

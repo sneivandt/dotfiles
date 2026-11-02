@@ -24,7 +24,7 @@ Commands below start at the repository root unless they explicitly enter `cli/`.
 | Wrappers or hooks | [Isolated wrapper/hook fixtures](#wrapper-and-hook-tests) | Integration behavior changed: use a disposable environment |
 | Desktop or application content | [Desktop shell](#desktop-shell) / [Application configuration](#application-configuration) | Rendering, focus, or session behavior needs native testing |
 | CI selection or workflows | Local `ci` stage and the changed job's command | Dependencies or triggers changed: include classification fixtures |
-| Local Arch recipes | [Local-package validation](local-package-recipes.md#ci-and-validation) | A real package build/install is needed: use disposable Arch |
+| Arch package recipes | [Recipe validation](arch-package-recipes.md#ci-and-validation) | A real package build/install is needed: use disposable Arch |
 
 For Rust changes, also run formatting and host Clippy. Add Windows-target
 Clippy for platform-sensitive code, and the full Rust suite for shared
@@ -141,9 +141,13 @@ DIR="$PWD" sh .github/workflows/scripts/linux/test-docs.sh docs_links docs_site
 The site check runs Astro diagnostics, Markdown-transform fixtures, the static
 build, matching page titles/navigation/filenames, published URL/anchor/asset,
 canonical sitemap, and robots/indexability checks. Browser regressions exercise
-the homepage, grouped navigation, search, theme persistence, and every
-Mermaid diagram at desktop and mobile sizes. Diagram labels must stay at least
+the homepage, top-level topic navigation, search, theme persistence, warning
+callouts, and every Mermaid diagram at desktop and mobile sizes. Diagram labels must stay at least
 14 CSS pixels. Mobile emulation is not a native phone/browser test.
+
+After changing the Markdown processing pipeline, run
+`npm exec -- astro sync --force` from `docs/` before rebuilding. This clears
+cached content so unchanged guides receive the updated transforms too.
 
 Use `npm run dev` from `docs/` for editing. Use `npm run build` followed by
 `npm run preview` when inspecting production search and rendering. The browser

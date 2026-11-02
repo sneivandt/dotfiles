@@ -22,8 +22,9 @@ Companions are needed only when the request changes their contract.
 | Change Git repository synchronization before task restart | `engine-orchestration` | Inspect repository domain; no binary self-update skill |
 | Change failed-command stream retention | `error-handling-patterns` | Add logging-patterns only when rendering/persistence changes |
 | Change a task row's ANSI style | `logging-patterns` | No generic error-handling skill |
-| Add a local PKGBUILD snapshot input | `local-packages` | Extend documented format and cleanup fixtures |
-| Change APM fragment target deployment | `agent-tooling` | No local-packages skill unless the APM executable recipe changes |
+| Add a dotfiles-managed PKGBUILD snapshot input | `arch-package-recipes` | Extend documented format and cleanup fixtures |
+| Add an ordinary conf/packages.toml entry | `package-management` | No arch-package-recipes skill unless packaging changes |
+| Change APM fragment target deployment | `agent-tooling` | No arch-package-recipes skill unless the APM executable recipe changes |
 | Change an optional overlay section's generic TOML loader | `toml-configuration` | Add overlay-scripts only for resolution or execution changes |
 | Choose Windows coverage after a Rust path-handling change | `cross-platform-verification` | windows-specific-patterns owns implementation choices |
 | Enable dark mode and fix Mermaid on the published docs site | `docs-publishing` | No desktop-shell skill |

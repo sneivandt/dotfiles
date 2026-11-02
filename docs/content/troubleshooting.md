@@ -43,14 +43,12 @@ dotfiles log --task symlinks --verbose
 The second command examines the **newest** run. For an older failure, add its
 actual `--id` from history; IDs stay stable when new runs are added.
 
-Read captured command diagnostics, not just a short task summary or an
-“update available” notice. Failed-command output and nonempty stderr normally
-appear without verbose; `--verbose` adds checks and other diagnostics.
-Successful stdout is usually not retained, so `--raw` cannot recover it.
+Read the failed command's diagnostics, not just the task summary or an
+“update available” notice. If the run only reports a restart or elevation,
+follow its link to the child process's log.
 
-Restarted/elevated children have their own linked logs. If the parent only
-reports a restart or delegation, inspect the child. `unfinished` means no finish
-record exists; that can also describe a process still running.
+The [Logs reference](commands-and-usage.md#logs) explains verbose/raw output,
+missing output, and unfinished runs.
 
 If logging failed, check free space and permissions at the
 [log location](commands-and-usage.md#log-locations). Sanitize private paths, configuration,
@@ -69,7 +67,7 @@ and external tool output before sharing logs.
 
 Forks do not silently fall back to this project's binaries. A fork without
 releases needs a deliberate publisher override or a source build; the
-[setup guide](getting-started.md#1-choose-a-permanent-checkout) shows both choices.
+[fork instructions](commands-and-usage.md#using-a-fork) show both choices.
 
 Bootstrap warns and continues if `gh` is absent. If `gh` is present,
 verification failure blocks it; self-update also refuses unverifiable updates.
@@ -145,6 +143,8 @@ git config --local --get dotfiles.profile
 Use exactly `base` or `desktop`. Priority is CLI, nonempty `DOTFILES_PROFILE`,
 saved Git setting, then interactive prompt. A bad environment value does not
 fall back to the saved setting; surrounding whitespace is not trimmed.
+An environment value with invalid text encoding also fails. Pass a valid
+`--profile` to override a bad environment value for one run.
 
 `list` never prompts for a profile. Update/remove/check also need an existing
 selection in unattended or JSON Lines mode, with non-terminal stdin, or with
@@ -181,8 +181,9 @@ Then check:
 1. The selected path is the overlay **root**, not its `conf/` directory.
 2. A higher-priority flag or environment value is not overriding the saved path.
 3. Its sections match the active categories.
-4. Overrides match the resource's identity, not just a table name or position.
-   Inactive overlay entries do not replace active public entries.
+4. The override names the same package, destination, or setting as the base
+   entry, following the [merge rules](private-overlays.md#merge-rules).
+   Its category must also be active.
 5. Script declarations live in overlay `conf/scripts.toml`, with script paths
    relative to that overlay root.
 

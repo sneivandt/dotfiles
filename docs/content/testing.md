@@ -265,7 +265,7 @@ cargo run --locked --profile ci -- check --root .. --profile desktop \
 These commands explicitly select this checkout with `--root ..`.
 
 This is the local `config` stage. It fails on configuration diagnostics, checks
-configured symlink/permission sources including retained inactive definitions,
+symlink and permission sources, including entries in inactive categories,
 and verifies required TOML files. Structural conflicts can fail during loading,
 before a check task runs.
 

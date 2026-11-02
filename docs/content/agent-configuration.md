@@ -144,9 +144,9 @@ dotfiles update --only agent-packages --dry-run
 ```
 
 The checks verify source/link configuration and run
-`apm pack --dry-run --verbose` in local plugin directories. Missing APM is an
-unmet prerequisite, not a passing check. Private plugins need validation in
-their own source context too.
+`apm pack --dry-run --verbose` in local plugin directories. If APM is missing,
+the APM check is skipped. Private plugins need validation in their own
+source context too.
 
 A scoped agent run does not install prerequisites. If you added plugin links,
 apply the symlink task first; for a first setup, use the normal
@@ -279,21 +279,18 @@ The destination is the first available value in this order:
 3. On Windows, `ONEDRIVECOMMERCIAL`, then `ONEDRIVE`, with
    `Documents/Cowork/skills` appended.
 
-An explicit path works on Linux too. A malformed/unreadable persisted config or
-a non-string path is an error, not permission to fall back elsewhere. Missing,
-null, or blank persisted paths allow fallback; an environment override bypasses
-that lower-priority config.
+Set `APM_COPILOT_COWORK_SKILLS_DIR` to choose a destination explicitly,
+including on Linux. Dotfiles copies selected skills from `~/.agents/skills`
+while preserving the destination directories and their Windows permissions.
+If a package restricts its targets, include `copilot-cowork` to send its skills
+here.
 
-Dotfiles copies selected content from `~/.agents/skills`, preserving the
-Cowork/OneDrive directories and their Windows permissions. Packages with a
-target restriction contribute only if it includes `copilot-cowork`.
-
-For a removed or excluded skill, cleanup removes **only its `SKILL.md`**, and
-only when `.dotfiles-apm-skills.json` at the destination records ownership.
-Directories, other files, and unrelated skills remain. Do not delete that
-inventory to fix a deployment problem; it is how cleanup identifies managed
-content. The [copy and cleanup internals](agent-deployment-internals.md#cowork-copy-and-cleanup)
-explain the file/link safety rules.
+Cleanup removes **only `SKILL.md` for skills recorded as managed**; directories,
+other files, and unrelated skills remain. Keep the destination's
+`.dotfiles-apm-skills.json` inventory: deleting it prevents dotfiles from
+identifying content it may safely remove. For path-resolution failures or
+copy conflicts, see the
+[copy and cleanup internals](agent-deployment-internals.md#cowork-copy-and-cleanup).
 
 ## Removing packages and targets
 

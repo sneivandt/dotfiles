@@ -306,9 +306,9 @@ The publisher comes from the checkout's GitHub `origin` remote unless
 Unsupported/missing remotes fail instead of falling back to this project's
 releases. Forks without release assets need a deliberate publisher choice or
 a [source build](contributing.md#source-builds). The
-[setup guide](getting-started.md#1-choose-a-permanent-checkout) explains both
-routes. `--build` selects source compilation for that invocation only;
-without it the wrapper uses its download/cached-binary route.
+[fork instructions below](#using-a-fork) explain both routes. `--build` selects
+source compilation for that invocation only. Without it, the wrapper uses its
+download/cached-binary route.
 
 Release binaries retain their publishing repository for self-update.
 Changing `origin` or the bootstrap override does not redirect an existing
@@ -317,6 +317,36 @@ binary's updates. Normal development builds do not self-update.
 After the `launcher` and `path` tasks succeed, open a new shell. The installed
 launcher in `~/.local/bin` delegates back to this checkout; it is not a
 standalone installation. Keep the checkout at a stable path.
+
+### Using a fork
+
+**A new fork does not have release binaries.** Choose one of these routes
+before running its wrapper:
+
+- **Use this project's released CLI with your fork's configuration.** If you
+  trust this project's releases, explicitly select that publisher in your
+  current terminal:
+
+  ```sh
+  export DOTFILES_RELEASE_REPO=sneivandt/dotfiles
+  ```
+
+  In PowerShell:
+
+  ```powershell
+  $env:DOTFILES_RELEASE_REPO = 'sneivandt/dotfiles'
+  ```
+
+  This chooses the binary, not the configuration repository. The downloaded
+  binary also uses that publisher for self-updates. If your fork publishes
+  compatible releases, you can use its default publisher instead.
+
+- **Build the CLI from your fork.** Install the
+  [source-build prerequisites](contributing.md#development-setup), then add
+  `--build` after the wrapper name in each command you run. For example,
+  `./dotfiles.sh --build --version` or
+  `.\dotfiles.ps1 --build --version` builds and prints the version without
+  applying configuration. Build mode is not remembered between runs.
 
 ## Shell completions
 

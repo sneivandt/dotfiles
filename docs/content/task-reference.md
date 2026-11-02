@@ -223,8 +223,8 @@ using `sudo install`; dry-run does not write those destinations.
 #### System packages
 
 Installs missing non-AUR declarations using pacman on Linux or winget on
-Windows. There is no apt/dnf adapter. Missing package-manager tools are unmet
-prerequisites; failed inventory queries are errors, not empty inventories.
+Windows. There is no apt/dnf adapter. A missing package manager leaves the
+task skipped; a failed installed-package query fails the task.
 A failed batch transaction rechecks state to retain partial progress without
 turning the transaction into success.
 
@@ -232,12 +232,11 @@ turning the transaction into success.
 upgrade the wider system. If all declared packages are already present, this
 task does not run an upgrade solely because the command is `update`.
 
-Windows tries winget with `--scope user`, then retries without scope only for
-“no applicable installer.” The task does not broker elevation, but an installer
-may request UAC. Administrator-required, declined or policy-blocked installs
-are recorded as **failed package items**; other installs can continue, but the
-command fails even without `--fail-on-skip`. These are not harmless missing-tool
-skips. See [Windows packages](windows-and-wsl.md#packages).
+Windows installs missing IDs through winget. Installer failures fail the task,
+even if other packages succeed; installers can request their own UAC consent.
+See [Windows package behavior](package-management.md#windows) for user-scope
+fallback and failure handling, and [Windows elevation](windows-and-wsl.md#elevation)
+before an elevated retry.
 
 #### Paru package manager
 

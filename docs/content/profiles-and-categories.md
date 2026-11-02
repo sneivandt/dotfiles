@@ -119,14 +119,11 @@ specific role for one invocation.
 
 ### When there is no prompt
 
-`list` requires a flag, environment value, or saved choice. It never prompts
-for or saves a profile. Update, remove, and check also require an existing
-selection with non-terminal stdin, `--non-interactive`, JSON Lines output, or
-any present `CI` variable. Help, version, and log viewing need no profile.
-
-A selected value must be valid. `DOTFILES_PROFILE=unknown` does not fall back
-to a saved `base`, and `" base "` is not trimmed. Invalid text encoding is
-also an error. An explicit valid `--profile` overrides the bad environment value.
+`list` and unattended commands need a profile supplied by a flag, environment
+variable, or saved setting. Help, version, and log viewing need none.
+For automation, see
+[Unattended runs](commands-and-usage.md#unattended-runs); for an unexpected
+selection error, see [Profile troubleshooting](troubleshooting.md#no-profile-can-be-selected).
 
 ## Changing profiles or categories
 

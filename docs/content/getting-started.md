@@ -44,42 +44,11 @@ cd dotfiles
 Keep this directory: installed links and the launcher point back into it.
 Moving or deleting the checkout can break applications.
 
-The wrapper scripts, `dotfiles.sh` and `dotfiles.ps1`, obtain the CLI before
-running your command. By default they download and verify a release from the
-checkout's GitHub `origin`.
-
-If you cloned this repository directly, you need no publisher override or
-Rust installation. Continue to [review the configuration](#2-review-the-configuration).
-
-#### If you use a fork
-
-**A new fork does not have release binaries.** Choose one of these routes
-before running its wrapper:
-
-- **Use this project's released CLI with your fork's configuration.** If you
-  trust this project's releases, explicitly select that publisher in your
-  current terminal:
-
-  ```sh
-  export DOTFILES_RELEASE_REPO=sneivandt/dotfiles
-  ```
-
-  In PowerShell:
-
-  ```powershell
-  $env:DOTFILES_RELEASE_REPO = 'sneivandt/dotfiles'
-  ```
-
-  This chooses the binary, not the configuration repository. The downloaded
-  binary also uses that publisher for self-updates. If your fork publishes
-  compatible releases, you can use its default publisher instead.
-
-- **Build the CLI from your fork.** Install the
-  [source-build prerequisites](contributing.md#development-setup), then add
-  `--build` after the wrapper name in **every command below**. For example,
-  `./dotfiles.sh --build --version` or
-  `.\dotfiles.ps1 --build --version` builds and prints the version without
-  applying configuration. Build mode is not remembered between runs.
+The wrapper scripts, `dotfiles.sh` and `dotfiles.ps1`, download and verify the
+CLI when needed. Using this repository directly requires no Rust installation.
+**A new fork has no release binaries:** choose a
+[binary publisher or source build](commands-and-usage.md#using-a-fork) before
+running its wrapper.
 
 ### 2. Review the configuration
 

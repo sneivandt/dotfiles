@@ -32,7 +32,7 @@ without a backup.
 
 Use [Getting started](getting-started.md) to clone and review the configuration.
 If you use a fork without releases, choose its
-[binary publisher or source-build route](getting-started.md#1-choose-a-permanent-checkout)
+[binary publisher or source-build route](commands-and-usage.md#using-a-fork)
 before running the wrapper.
 
 Open PowerShell in the checkout and preview an update:

@@ -130,7 +130,17 @@ Implementation and regression tests live in
 ### Cowork copy and cleanup
 
 The [Cowork destination rules](agent-configuration.md#cowork-skills)
-determine whether this integration participates. Dotfiles enables the
+determine whether this integration participates. A nonempty
+`APM_COPILOT_COWORK_SKILLS_DIR` overrides persisted configuration, including on
+Linux. Otherwise dotfiles reads `copilot_cowork_skills_dir` from
+`~/.apm/config.json`. A missing, null, or blank path allows Windows OneDrive
+detection to continue. Unreadable or malformed configuration and non-string
+paths fail rather than redirecting deployment to a fallback directory. The
+environment override bypasses that lower-priority configuration.
+See [`targets.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/targets.rs)
+for resolution and invalid-input regressions.
+
+Dotfiles enables the
 experimental feature but does **not** invoke native `copilot-cowork`
 deployment. It copies resolved skills from `~/.agents/skills` file-by-file,
 preserving Cowork/OneDrive directories and their Windows access-control lists.

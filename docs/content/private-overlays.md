@@ -90,8 +90,9 @@ an ordinary `.git` directory does not need that confirmation.
 
 ## Merge rules
 
-An active overlay entry replaces a main entry with the same **resource
-identity**, not the same section name or array position:
+An active overlay entry replaces a main entry when both manage the same
+package, destination, or setting. The table lists what must match for each kind
+of entry; matching section names or array positions do not cause replacement:
 
 | Configuration | Replacement identity |
 |---|---|

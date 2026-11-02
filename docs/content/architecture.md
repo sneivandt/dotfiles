@@ -341,10 +341,10 @@ adds current tasks and decisions. Internal and non-applicable tasks stay out
 of normal rows/totals, and finished rows retain completion order.
 
 Run logs are schema-versioned, with one physical line per event. Restarted and
-elevated processes have separate run IDs linked to their parent. A missing
-finish record means unfinished, not necessarily crashed. Retention targets
-50 process logs but preserves live leased logs. `dotfiles log` reads history
-without creating another run and supports legacy text logs.
+elevated processes have separate run IDs linked to their parent. Keep log-reader
+compatibility with legacy text logs. See the
+[Logs reference](commands-and-usage.md#logs) for viewing, retention, and
+interpretation of unfinished runs.
 
 Argument redaction and captured-output policy are separate.
 `CommandSpec::redact_arguments()` hides command arguments. By default failed

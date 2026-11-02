@@ -51,10 +51,7 @@ WSL. The `desktop` profile adds GUI apps and desktop services. Both profiles
 are available on Linux and Windows; Linux package management and the Linux
 desktop setup target Arch.
 
-## Usage
+## Reference
 
-See [Getting started](https://dotfiles.stuartneivandt.com/getting-started.html) for setup and usage.
-
-## Development
-
-See [Contributing](https://dotfiles.stuartneivandt.com/contributing.html) for building, testing, and changing the CLI.
+- [Getting started](https://dotfiles.stuartneivandt.com/getting-started.html) — setup and usage.
+- [Contributing](https://dotfiles.stuartneivandt.com/contributing.html) — building, testing, and changing the CLI.

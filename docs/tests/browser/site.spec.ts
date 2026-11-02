@@ -12,14 +12,15 @@ test('the homepage introduces the repository and links to setup, with grouped na
   await page.goto('/');
   await expect(page).toHaveURL('/');
   await expect(page).toHaveTitle('Dotfiles by Stuart Neivandt');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Introduction');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/');
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/');
-  await expect(page.locator('.sl-markdown-content').getByRole('link', { name: 'Stuart Neivandt', exact: true }))
-    .toHaveAttribute('href', 'https://github.com/sneivandt');
-  await expect(page.locator('.sl-markdown-content p').filter({
-    has: page.getByRole('link', { name: 'Stuart Neivandt', exact: true }),
-  })).toContainText('I started this as a dotfiles repo');
+  const introduction = page.locator('.sl-markdown-content p').first();
+  await expect(introduction).toContainText(/^Hi, I/);
+  await expect(introduction).toContainText('I started this as a simple dotfiles repo back in 2014');
+  await expect(introduction).toContainText('coding agents can help build and maintain software');
+  await expect(introduction.getByRole('link', { name: 'Stuart Neivandt', exact: true }))
+    .toHaveAttribute('href', 'https://stuartneivandt.com/');
   const structuredData = page.locator('head script[type="application/ld+json"]');
   await expect(structuredData).toHaveCount(1);
   expect(JSON.parse(await structuredData.textContent() ?? '')).toMatchObject({
@@ -27,7 +28,7 @@ test('the homepage introduces the repository and links to setup, with grouped na
     '@type': 'WebSite',
     name: 'Dotfiles',
     url: 'https://dotfiles.stuartneivandt.com/',
-    creator: { '@type': 'Person', name: 'Stuart Neivandt', url: 'https://github.com/sneivandt' },
+    creator: { '@type': 'Person', name: 'Stuart Neivandt', url: 'https://stuartneivandt.com/' },
   });
   await expect(page.locator('.hero')).toHaveCount(0);
   await expect(page.getByText('On this page', { exact: true })).toHaveCount(0);
@@ -83,7 +84,7 @@ test('the homepage introduces the repository and links to setup, with grouped na
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
   await homeLink.click();
   await expect(page).toHaveURL('/index.html');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Introduction');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
   await expect(page.getByText('On this page', { exact: true })).toHaveCount(0);
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.locator('#starlight__sidebar a[href="/commands-and-usage.html"]').click();

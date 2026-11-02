@@ -1,5 +1,5 @@
 ---
-title: Introduction
+title: About this project
 description: Stuart Neivandt's dotfiles and Rust configuration engine for Arch Linux and Windows, with notes on agentic engineering.
 head:
   - tag: title
@@ -25,30 +25,28 @@ head:
         "creator": {
           "@type": "Person",
           "name": "Stuart Neivandt",
-          "url": "https://github.com/sneivandt"
+          "url": "https://stuartneivandt.com/"
         }
       }
 tableOfContents: false
 ---
 
-# Introduction
+# About this project
 
-This repository keeps my Arch Linux and Windows shell, editor, desktop, and
-system settings together. [Getting started](getting-started.md) walks through
-reviewing the configuration and previewing changes before applying them.
+Hi, I'm [Stuart Neivandt](https://stuartneivandt.com/). I started this as a
+simple dotfiles repo back in 2014. Over time, it's grown into a configuration
+engine for my Arch Linux and Windows machines, and a place to experiment with
+how coding agents can help build and maintain software, even when that means
+building more than I strictly need.
 
-This is my personal setup, **not a general-purpose installer**. Read the
-configuration and preview the changes before using it on your machine.
+This is my own setup, **not a general-purpose tool**. If you want to try it,
+start with [Getting started](getting-started.md) to review the configuration
+and preview changes before applying anything to your machine.
 
-Its Rust CLI checks what is already in place and applies the selected work.
-Profiles let the configuration adapt to different machines, from core settings
-to packages, applications, and services. Linux package management and the
-graphical setup target Arch Linux.
-
-I'm [Stuart Neivandt](https://github.com/sneivandt), and I started this as a
-dotfiles repo before coding agents were part of my workflow. It's grown into
-a configuration engine that does more than I strictly need, but gives me room
-to explore how agents can help build and maintain software.
+The Rust CLI checks what's already in place and applies the work selected for
+each machine. Profiles let me share core settings while choosing packages,
+applications, and services for different machines. Linux package management
+and graphical setup target Arch Linux.
 
 Already using it? [Commands and usage](commands-and-usage.md) covers everyday
 tasks, and [Configuration reference](configuration-reference.md) shows how to

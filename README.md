@@ -53,20 +53,7 @@ desktop setup target Arch.
 
 ## Usage
 
-Start with [Getting started](https://dotfiles.stuartneivandt.com/getting-started.html) to clone the
-repository into a permanent location, review the configuration, and apply it.
-Back up existing configuration before applying: managed symlinks can replace
-existing files without a backup or confirmation prompt.
-
-From the checkout, preview the configuration you reviewed:
-
-```sh
-./dotfiles.sh update --no-repo-update --dry-run
-```
-
-The [setup guide](https://dotfiles.stuartneivandt.com/getting-started.html) covers Windows,
-forks, and preview side effects. After installation, use
-[Commands and usage](https://dotfiles.stuartneivandt.com/commands-and-usage.html) for everyday work.
+See [Getting started](https://dotfiles.stuartneivandt.com/getting-started.html) for setup and usage.
 
 ## Development
 

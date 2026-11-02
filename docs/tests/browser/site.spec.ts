@@ -66,8 +66,8 @@ test('the homepage introduces the repository and links to setup, with grouped na
   const subsystems = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Subsystem guides', { exact: true }) });
   await expect(subsystems.getByRole('link')).toHaveText([
-    'Package management', 'Arch desktop', 'Windows and WSL',
-    'Visual Studio Code', 'Vim and Neovim', 'AI agent configuration',
+    'AI agent configuration', 'Package management', 'Arch desktop',
+    'Windows and WSL', 'Visual Studio Code', 'Vim and Neovim',
   ]);
   const start = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Start here', { exact: true }) });

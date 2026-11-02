@@ -76,7 +76,7 @@ export default defineConfig({
         },
         {
           label: 'Subsystem guides',
-          items: ['package-management', 'arch-desktop', 'windows-and-wsl', 'visual-studio-code', 'vim-and-neovim', 'ai-agent-configuration'],
+          items: ['ai-agent-configuration', 'package-management', 'arch-desktop', 'windows-and-wsl', 'visual-studio-code', 'vim-and-neovim'],
         },
         {
           label: 'Development',

@@ -43,6 +43,11 @@ The wrapper scripts, `dotfiles.sh` and `dotfiles.ps1`, obtain the CLI before
 running your command. By default they download and verify a release from the
 checkout's GitHub `origin`.
 
+If you cloned this repository directly, you need no publisher override or
+Rust installation. Continue to [review the configuration](#2-review-the-configuration).
+
+#### If you use a fork
+
 **A new fork does not have release binaries.** Choose one of these routes
 before running its wrapper:
 
@@ -70,9 +75,6 @@ before running its wrapper:
   `./dotfiles.sh --build --version` or
   `.\dotfiles.ps1 --build --version` builds and prints the version without
   applying configuration. Build mode is not remembered between runs.
-
-If you cloned this repository directly, the default download route needs no
-publisher override or Rust installation.
 
 ### 2. Review the configuration
 

@@ -12,6 +12,42 @@ plugins; Neovim adds plugins through lazy.nvim.
 Because the installed paths point into the checkout, editing configuration or
 updating the Neovim lockfile can modify tracked repository files.
 
+## Everyday shortcuts
+
+The leader key is comma: `,w` means press comma, then `w`. These shortcuts
+use Normal mode unless another mode is named.
+
+| Shortcut | Action | Editor |
+|---|---|---|
+| Ctrl-P | Find a file by name | Neovim |
+| `,/` | Search file contents with ripgrep | Neovim |
+| `,b` | Choose an open buffer | Neovim |
+| Ctrl-E | Toggle the file tree | Neovim |
+| `,t` | Open a terminal | Neovim |
+| `,w` | Toggle line wrapping | Vim and Neovim |
+| `,k` | Toggle English spell checking | Vim and Neovim |
+| Space | Clear search highlighting | Vim and Neovim |
+| `,v` | Open the editor's configuration entry point | Vim and Neovim |
+
+File and content search use the Neovim plugins installed on
+[first launch](#first-launch); content search also needs `rg` on PATH.
+
+Several familiar Vim keys are remapped in both editors:
+
+| Key | Behavior in this setup |
+|---|---|
+| `j` / `k` | Move by displayed lines, including wrapped lines |
+| `H` / `L` | Move to the first / last nonblank character of the line |
+| `J` / `K` | Move to the bottom / top line of the window, instead of joining lines / opening keyword help |
+| `;` | Open the `:` command line |
+| `/` / `?` | Search forward / backward with Vim's “very magic” regex syntax, where most punctuation has a special meaning |
+
+See the shared mappings in
+[`vimrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/vimrc)
+and Neovim additions in
+[`nvimrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/nvimrc)
+for the full set.
+
 ## Configuration entry points
 
 | File | Responsibility |

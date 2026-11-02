@@ -223,8 +223,8 @@ upgrading the APM executable.**
 
 ### What a preview can show
 
-An update is not a reinstall limited to previously locked versions. Its dry-run
-also requires APM on PATH:
+A dry run requires APM on PATH. What it can show depends on whether the
+generated manifest matches your source fragments:
 
 | Generated manifest | Preview behavior |
 |---|---|

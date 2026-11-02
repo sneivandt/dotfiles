@@ -300,8 +300,8 @@ Use DWORD values in the unsigned 32-bit range. Other TOML types are serialized
 as strings; explicit strings are clearer. DWORD `14` and `"0x0E"` represent
 the same desired value; DWORD `14` and string `"14"` do not.
 
-The file is structurally decoded on non-Windows systems too, but its entries
-are not applied there. Existing undeclared values are preserved.
+Fields and value types are checked on non-Windows systems too, but the settings
+are only applied on Windows. Existing undeclared values are preserved.
 
 ## systemd units
 
@@ -335,16 +335,16 @@ System-scope changes can require sudo. Inside WSL, systemd must already be
 running or degraded; changing `wsl.conf` cannot start it in the current session.
 
 Without a user manager, the task prepares per-user enablement links for the
-next login rather than starting services. It searches the user's unit directory
-first, then `/etc`, `/run`, `/usr/local/lib`, `/usr/lib` and `/lib` systemd user
-directories. Enablement links point to the installed home paths. They continue
-to work if you later replace managed home links with local copies during
-removal.
+next login rather than starting services. Disabling a unit removes its matching
+enablement links even if the unit file is gone. Enablement links still work
+after managed home links are replaced with local copies during removal.
 
-Offline disable removes matching existing `.wants`/`.requires` links even if
-the unit file disappeared or its install directives changed. Offline enablement
-honors `WantedBy=`/`RequiredBy=` resets and systemd-style continued assignments.
-See [Systemd units](task-reference.md#systemd-units) for task applicability.
+See [Systemd units](task-reference.md#systemd-units) for when the task can run.
+Contributors changing offline unit lookup or enablement parsing should start
+with the
+[`systemd_unit.rs` implementation](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/systemd_unit.rs)
+and its
+[regression tests](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/tests/systemd_unit.rs).
 
 ## System files
 
@@ -373,17 +373,17 @@ Duplicate active destinations within a repository are errors.
 |---|---|
 | `toml` | Keys, recursively merging tables |
 | `ini` | Assigned keys and bare flags within sections, including Pacman options |
-| `pam` | Matching module rules, placed after the final rule in each facility stack |
+| `pam` | Module rules, placed at the end of their existing authentication, account, password, or session stack |
 
 Unrelated content is preserved. TOML and INI fragments are validated even when
 the destination is absent. INI cannot assign different values to the same key
 within one section; identical repeated assignments are allowed.
 
-PAM needs an existing service file and facility stack. Rule ownership uses the
-facility and actual module field, not a module name appearing in arguments or
-an included-stack name. Facility matching ignores case and the optional leading
-`-`; the fragment's spelling is retained. Blank lines and full-line comments in
-PAM fragments are not inserted.
+PAM needs an existing service file and a stack of the same type as each fragment
+rule. A rule for the same module in that stack is replaced; other rules remain.
+Blank lines and full-line comments in PAM fragments are not inserted. The
+[PAM merge implementation and tests](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/system_file.rs)
+cover detailed rule matching and placement.
 
 **These are privileged changes, not a reversible patch.** An overlay replaces
 the whole entry for a matching destination, including source and strategy.
@@ -442,9 +442,9 @@ task. See the [restart boundary](architecture.md#repository-updates-are-a-restar
 ### Unknown keys are errors
 
 Unknown fields fail loading rather than being ignored: `symlink` instead of
-`symlinks`, or `targett` instead of `target`, is an error. Inactive categories
-are structurally decoded too, so `[windows]` does not hide a typo on Linux.
-String-or-table fields reject a third entry type rather than coercing it.
+`symlinks`, or `targett` instead of `target`, is an error. Fields and value types
+are checked in inactive categories too, so `[windows]` does not hide a typo on
+Linux. Fields accepting strings or tables reject other entry types.
 
 ## Validation
 

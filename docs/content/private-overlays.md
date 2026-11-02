@@ -101,10 +101,10 @@ Unmatched main entries remain, followed by overlay entries. Missing or empty
 overlay files contribute nothing; they do not erase the base. Inactive overlay
 categories cannot override active main entries.
 
-Replacement retains the **entire overlay entry** and its source origin. It
-does not merge the contents of two symlink source files. Validation retains
-both repositories' declarations and checks within-source conflicts before
-replacement.
+Replacement uses the **entire overlay entry**, with source paths still relative
+to the overlay. It does not merge the contents of two symlink source files.
+Each repository's declarations are checked for conflicts before replacements
+are applied.
 
 APM YAML fragments have their own
 [configuration-fragment rules](agent-configuration.md#configuration-fragments).

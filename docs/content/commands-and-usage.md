@@ -66,12 +66,12 @@ dotfiles update --only symlinks,git-hooks --dry-run
 - Selectors match exactly after case, punctuation, and whitespace normalization.
   Full task labels also work; arbitrary substrings do not.
 - Unknown selectors and a filter selecting no tasks are errors.
-- `--only packages` means **all active native packages**, not a single package
-  and not the AUR package list.
+- `--only packages` means **all selected pacman or winget packages**, not a
+  single package and not the AUR package list.
 
 **Dependencies are not automatically included by `--only`.** An omitted
 blocking prerequisite produces a warning and is assumed satisfied. Use
-`--with-deps` to include both blocking prerequisites and ordering predecessors:
+`--with-deps` to include prerequisites and other tasks the selection must wait for:
 
 ```bash
 dotfiles list --graph update --only systemd --with-deps

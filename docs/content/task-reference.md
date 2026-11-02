@@ -324,20 +324,16 @@ converge in a real user session.
 
 #### Agent packages
 
-Builds user-scope desired state from active main/overlay APM fragments.
-Symlink success is blocking; package/AUR work is ordering-only. Conditional
-readiness can waive the package waits, never the symlink prerequisite.
-
-Update runs `apm update -g --yes`, then `apm install -g` to reconcile local
-content and deployment drift. Preview uses `apm update -g --dry-run` only when
-the generated manifest is already current; it describes, but does not run,
-the follow-up install. When a new manifest is needed, preview reports the
-write/delegated work rather than planning against stale input.
+Updates agent dependencies within their declared version rules and deploys
+content for the current user from selected main/overlay APM fragments. It
+requires successful symlink work and normally waits for package/AUR tasks.
+Readiness checks can allow it to proceed before those package tasks finish.
 
 See [Agent configuration](agent-configuration.md) for sources, targets,
-authentication, and cleanup. [Agent deployment internals](agent-deployment-internals.md)
-covers implementation ownership and compatibility adapters. This task is broader
-than copying skills.
+authentication, and cleanup, including
+[what a preview can show](agent-configuration.md#what-a-preview-can-show).
+[Agent deployment internals](agent-deployment-internals.md) owns the command
+sequence and compatibility adapters.
 
 ### Custom Arch packages
 

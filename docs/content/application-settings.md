@@ -65,15 +65,43 @@ An overlay can replace a linked source, but does not merge arbitrary application
 file contents. Keep credentials and private identity details out of public
 sources.
 
+### Back up and restore a file
+
+Before the first apply, preserve any existing file at a destination you plan
+to manage. For the Git configuration on Linux, run this only if that file
+exists and is readable:
+
+```sh
+backup_dir=$(mktemp -d "$HOME/dotfiles-backup.XXXXXX")
+cp -pL "$HOME/.config/git/config" "$backup_dir/config"
+printf 'Backup: %s\n' "$backup_dir/config"
+```
+
+Open the backup and confirm its contents before applying. `cp -L` saves the
+file's contents even if the existing destination is a symlink. For a symlink,
+also record its target with `readlink`; the backup above preserves content,
+not the original link. Back up other selected files separately, including any
+Git configuration included by this file. On Windows, copy the resolved file's
+contents to a separate backup directory and record any original link target.
+
+To restore, first stop selecting the managed link in your declarations. Move
+the current destination itself aside, then copy the backup into its place as
+a real file. Copying directly over a managed symlink could overwrite the
+checkout's source. If you want the original symlink back instead, recreate its
+recorded target only after confirming that target still exists. Check
+`git config --show-origin --get user.name` to see which file Git now reads.
+
 ## Git
 
 Git identity and defaults live in
 [config/git/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config);
 command shortcuts live in
 [config/git/aliases](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/aliases).
-Review the supplied identity before using it. These shared settings affect Git
-beyond this repository; keep private identity details in a
-[private overlay](private-overlays.md).
+Review the supplied identity before using it. The shared configuration also
+rewrites GitHub HTTPS push URLs to SSH, so pushes need your own SSH
+authentication. These settings affect Git beyond this repository; use the
+[overlay file example](private-overlays.md#replace-an-application-file) for a
+private identity or different defaults.
 
 To have dotfiles apply individual global Git settings, declare them in
 [conf/git-config.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml).
@@ -256,8 +284,7 @@ plugin's locked revision. Do not delete the entire plugin tree as a general
 repair. If necessary, close the editor and move aside only the affected directory
 under the actual data path before retrying.
 
-Bootstrap-pin changes must update the matching lockfile entry without advancing
-unrelated plugins. Verify first launch with an absent manager in isolated data
-paths. [Application configuration tests](testing.md#application-configuration)
-cover plugin-free regressions and CI restoration of locked plugins; avoid testing
-through the live installed profile.
+Contributors changing bootstrap pins or plugin loading should use
+[Editor configuration](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/editor-configuration/SKILL.md)
+and the isolated [application configuration tests](testing.md#application-configuration).
+Do not verify first-launch behavior through the live installed profile.

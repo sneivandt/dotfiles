@@ -39,6 +39,42 @@ discarding other settings. Symlink sources belong under the overlay's
 `symlinks/`; system-file fragments belong under its `system/`. Their paths stay
 relative to the repository that declared them, not the main checkout.
 
+### Replace an application file
+
+For a private Git identity, replace the linked Git configuration rather than
+editing the public source. From the main checkout, these POSIX shell commands
+create a new sibling overlay; use a different directory if it already exists:
+
+```sh
+mkdir ../dotfiles-private
+mkdir -p ../dotfiles-private/conf ../dotfiles-private/symlinks/config/git
+cp symlinks/config/git/config ../dotfiles-private/symlinks/config/git/config
+```
+
+Edit the copied file's `[user]` name and email, and review `[github]` and the
+other defaults. Create `../dotfiles-private/conf/symlinks.toml` containing:
+
+```toml title="dotfiles-private/conf/symlinks.toml"
+[base]
+symlinks = ["config/git/config"]
+```
+
+The same home destination makes this entry replace the base link. The source
+now comes from the overlay; its contents are not merged with the original.
+On Windows, create the same directory layout and copy the source with PowerShell
+or Explorer.
+
+With a saved profile and installed launcher, preview from the main checkout:
+
+```sh
+dotfiles update --no-repo-update --overlay ../dotfiles-private --only symlinks --dry-run
+```
+
+Look for `~/.config/git/config` pointing into `dotfiles-private`, and review all
+other selected links too. Back up existing targets before removing `--dry-run`.
+After applying, run `git config --show-origin --get user.name` to verify the
+selected identity. Keep this overlay available for future runs.
+
 ## Select and preview
 
 From your main checkout, inspect an overlay in the sibling directory

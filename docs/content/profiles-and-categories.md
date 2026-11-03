@@ -146,9 +146,27 @@ Neither command changes the saved profile. The preview still has the
 It stops selecting desktop-only entries. Their packages, services, links, and
 settings remain. Removing a declaration has the same limitation.
 
-If you need cleanup, plan it while the original profile and sources are still
-available. `remove` uses the current selection and supports only the limited
-[remove tasks](task-reference.md#remove-tasks); it is not a general migration command.
+For a desktop-to-base transition, plan cleanup before changing the saved role:
+
+1. With the desktop selection still active, set unwanted services to
+   `enabled = false` and preview the systemd task. Apply the reviewed changes
+   before deleting their declarations. Save work before stopping services
+   that support your current session.
+2. Decide which desktop links to keep. If detaching them, preview
+   `dotfiles remove --profile desktop --only symlinks --dry-run`. This covers
+   **all desktop-selected links, including base links**, replacing them with
+   current source copies. Review before applying, keep sources available until
+   it succeeds, then apply the base symlinks task to restore the shared links.
+3. Remove unwanted package declarations and deliberately uninstall packages
+   with the native package manager. Review dependency removals. Registry,
+   system-file, and other persistent settings need separate manual decisions.
+4. Save the new default from the intended checkout with
+   `git config --local dotfiles.profile base`. Check for a higher-priority
+   `DOTFILES_PROFILE`, then preview `dotfiles update --profile base --dry-run`.
+
+Keep the original overlay selected during cleanup. Dotfiles has no automatic
+profile migration or desktop-only uninstall; [remove tasks](task-reference.md#remove-tasks)
+cover only specific integrations.
 
 ### Distinguish profiles from task filters
 

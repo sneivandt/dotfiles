@@ -377,14 +377,10 @@ For example, AUR installation requires a working Paru bootstrap. Systemd only
 waits for package and symlink work: an unrelated failure there must not prevent
 it inspecting units that are available.
 
-Selection is explicit:
-
-- `--only` matches exact normalized selectors or full labels; it does not
-  automatically add prerequisites.
-- Filtering out a blocking prerequisite warns and assumes it is satisfied.
-- On update, `--with-deps` recursively includes both kinds of predecessor.
-- `--skip` can remove those predecessors again.
-- Unknown selectors and explicitly empty selections are errors.
+Use [Task selection](commands-and-usage.md#select-tasks) for filtering and
+dependency expansion. The [discovery reference](cli-reference.md#task-discovery-output)
+defines graph markers and plain/JSON output. A graph describes selection,
+not the changes a run will make.
 
 Listings and completions use canonical selectors. For compatibility, `apm`,
 `paru-config`, `shell` and `config-warnings` still select `agent-packages`,
@@ -393,34 +389,12 @@ Previous full console labels remain accepted by `--only` and `--skip` too.
 The former `local-package-versions` and `local-package-repository` selectors
 also remain aliases for `custom-package-versions` and `custom-package-repository`.
 
-Inspect expansion before applying:
-
-```bash
-dotfiles list --graph update --only systemd --with-deps
-```
-
-The default graph format uses one block per task, with predecessors first.
-Selection markers are `default`, `requested`, `dependency`, `filtered` and
-`skipped`. Internal orchestration is marked `internal`; it is not selectable
-and stays out of ordinary task rows and totals. Plain output uses tab-separated
-rows; JSON supplies structured edges and selection fields.
-
-This is a **selection graph, not a change plan**. Use `--skip repository` to
-exclude repository work from a listing; `list` does not accept
-`--no-repo-update`.
-
 Independent ready tasks may run concurrently, with console rows in completion
 order. `--no-parallel` disables parallel execution. Tasks may finish current,
 not applicable or unmet rather than changed; failure is not a rollback.
 See [Architecture](architecture.md#requirements) for runtime readiness
 assessment and conditional scheduling.
 
-
-The default table output groups selectors alphabetically within update, remove,
-and check.
-Plain/JSON listings contain each selector once with its command membership.
-Graphs retain all nodes, including filtered and internal nodes, and cannot be
-combined with `--all`.
 
 ## Filtering examples
 

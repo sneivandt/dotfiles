@@ -27,6 +27,7 @@ If the launcher is uncertain, substitute an existing `./bin/dotfiles` or
 | No usable CLI | [Bootstrap](#the-wrapper-cannot-find-or-download-the-binary), [source build](#cargo-build-fails) |
 | Old version or a stalled upgrade | [Self-update](#the-binary-never-self-updates) |
 | Selection or parsing error | [Profile](#no-profile-can-be-selected), [configuration](#configuration-does-not-parse), [overlay](#an-overlay-appears-to-be-ignored) |
+| A failed update changed some settings | [Partial-update recovery](#recover-from-a-partial-update) |
 | Missing/skipped work | [Task selection](#a-task-does-not-run), [elevation](#a-task-was-skipped-because-elevation-was-unavailable) |
 | Concurrent or failed repository run | [Run lock](#another-run-holds-the-repository-lock), [Git synchronization](#repository-update-fails) |
 | Packages or tooling | [Packages](#packages-do-not-install), [Paru](#paru-bootstrap-reports-an-incomplete-rustcargo-prerequisite), [agent packages](#agent-package-update-does-not-run-or-fails), [analyzers](#optional-analyzers-are-not-running) |
@@ -54,6 +55,32 @@ missing output, and unfinished runs.
 If logging failed, check free space and permissions at the
 [log location](cli-reference.md#log-locations). Sanitize private paths, configuration,
 and external tool output before sharing logs.
+
+## Recover from a partial update
+
+Completed changes remain when another task fails. Read the failed run using
+the exact log command printed at the end of that run; it includes a stable ID.
+Fix the reported cause before retrying.
+
+For example, if the systemd task failed because a selected user unit file was
+missing, restore its tracked source and check its symlink declaration. On an
+already configured machine, inspect a retry with prerequisites included:
+
+```sh
+dotfiles list --graph update --only systemd --with-deps --skip repository
+dotfiles update --no-repo-update --only systemd --with-deps --dry-run
+```
+
+The graph may include package installation and other setup work. Review the
+whole selection, then remove `--dry-run` to retry. Use `--only systemd` without
+`--with-deps` only when its prerequisites are already satisfied. Keep the same
+profile and overlay as the failed run.
+
+The retry inspects current state and leaves already-correct items alone; it
+does not replay or undo the earlier run. Review its summary and logs again.
+If earlier unrelated tasks also failed, address those separately or preview a
+full update after resolving their causes. Avoid deleting managed trees or
+running remove as a general failure repair.
 
 ## The wrapper cannot find or download the binary
 

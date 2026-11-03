@@ -15,6 +15,20 @@ This guide covers the running desktop, not installing Arch itself. Begin with
 the `arch` category automatically. [Package management](package-management.md)
 explains installation and upgrades.
 
+## Start the desktop
+
+After applying the desktop configuration, save your work and log in as your
+normal user through Zsh on `tty1`. The managed login profile starts Hyprland
+through UWSM when no graphical session is active. A terminal opened inside an
+existing desktop does not start another session. Installing the configuration
+does not replace your current session immediately.
+
+If login leaves you at a shell, check that Zsh is your login shell, the managed
+`~/.zprofile` link is present, and `uwsm` is available. Follow
+[Session and services](#session-and-services) for startup sources and
+[desktop diagnosis](#diagnose-a-desktop-problem) for service logs. Do not add a
+second set of autostart commands to work around a failed service.
+
 ## Everyday shortcuts
 
 `Super` is the Windows/logo key. The full mapping is in
@@ -39,8 +53,9 @@ explains installation and upgrades.
 Screenshots are saved under `~/screenshots` and copied to the clipboard when
 available. Cancelling area selection saves nothing. Move images you want to
 keep elsewhere: the desktop's
-[cleanup timer](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service) deletes old files
-from this directory.
+[cleanup timer](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service)
+runs daily and deletes files and links after 31 complete days since their last
+modification (`find -mtime +30`), along with old empty directories.
 
 ## Hyprland media keys
 

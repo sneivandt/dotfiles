@@ -168,7 +168,13 @@ tasks whose platform or configuration clearly rules them out; `--all` includes
 them. A visible task is a possibility, not proof that its tools are installed
 or that anything needs changing.
 
-Graph output shows every node, including internal tasks, with selection labels:
+Table output sorts selectors alphabetically within each command group.
+Plain/JSON listings contain each selector once, with its command membership.
+Graphs cannot be combined with `--all`; use `--skip repository` to exclude
+repository work in a graph because `list` does not accept `--no-repo-update`.
+
+The human graph uses one block per task, with predecessors first. It shows
+every node, including internal tasks, with selection labels:
 `default`, `requested`, `dependency`, `filtered`, or `skipped`.
 `requires <-` means the predecessor must succeed; `after <-` means wait for it
 without inheriting its failure. Filters annotate the graph rather than hiding

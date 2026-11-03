@@ -18,6 +18,18 @@ Review the configuration before applying changes.
 Already installed? See [Commands and usage](commands-and-usage.md) or
 [Troubleshooting](troubleshooting.md).
 
+## Supported environments
+
+| Environment | What dotfiles manages |
+|---|---|
+| Arch Linux | Shared configuration and pacman/Paru packages; the desktop profile adds Hyprland and desktop services |
+| Other Linux distributions | Shared configuration and applicable Linux settings; install required applications with your distribution's package manager |
+| Windows | Windows configuration and winget packages; no Hyprland desktop |
+| WSL | The Linux distribution and its WSL integration; configure the Windows host separately |
+
+Published binaries support Linux x86-64/AArch64 and Windows x86-64. See
+[Windows and WSL](windows-and-wsl.md) for that platform's requirements.
+
 ## Set up your machine
 
 Keep the checkout at a permanent path, review its configuration, and preview
@@ -26,7 +38,6 @@ the changes before applying them.
 ### 1. Choose a permanent checkout
 
 You need Git and a POSIX shell on Linux, or Git and PowerShell on Windows.
-Published binaries support Linux x86-64/AArch64 and Windows x86-64.
 On Linux, downloading the CLI also needs `curl` or `wget`. Install GitHub CLI
 (`gh`) to verify where release binaries were built. The first download warns
 and continues without it, but later CLI self-updates require it. See
@@ -84,11 +95,19 @@ Nonempty directories cause a failure rather than being recursively removed.
 Review any overlay scripts too: they are executable code.
 :::
 
-Review the selected services as well as files. Linux profiles include
-[automatic cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service) of old content
-under `~/tmp`; Arch desktops also clean old screenshots. Installing
-[Git hooks](contributing.md#installation-and-removal) can replace existing hooks
-at managed names, so preserve any custom hooks first.
+Before the first apply, check these defaults in particular:
+
+| Area | What to review |
+|---|---|
+| Git | The supplied identity and GitHub HTTPS-to-SSH push rewriting in [Git settings](application-settings.md#git); SSH pushes need your own authentication |
+| Cleanup | Daily services delete files and links under [~/tmp](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service) after 8 complete days since modification, or [~/screenshots](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service) after 31 days on Arch desktops. Old empty directories are deleted too |
+| System settings | Both roles can select privileged changes. Inspect [system files](configuration-reference.md#system-files), [services](configuration-reference.md#systemd-units), and Windows [registry settings](windows-and-wsl.md#registry-settings) |
+| Agent content | Selected packages can install executable integrations; detected Copilot App workflows are enabled in autopilot mode. Review [deployment targets](agent-configuration.md#deployment-targets) |
+| Git hooks | Installation can replace hooks at managed names. Preserve custom hooks before [installing them](contributing.md#installation-and-removal) |
+
+Use the [Git backup example](application-settings.md#back-up-and-restore-a-file)
+for an existing configuration file. Keep backups outside managed destinations
+and cleanup directories.
 
 ### 3. Preview the selected work
 
@@ -155,9 +174,35 @@ Read the [Windows guide](windows-and-wsl.md) before accepting elevation prompts.
 Applications may reload changed files immediately. Read the final summary:
 a successful exit with skipped work is not necessarily a complete installation.
 
-Once `launcher` and `path` have completed, open a new shell and run `dotfiles`
-directly. Source-build users must still pass `--build`, for example
-`dotfiles --build update --dry-run`.
+### 5. Verify the installation
+
+Open a new shell after the launcher and PATH tasks complete. Source-build
+users should add `--build` to launcher commands below. On Linux:
+
+```sh
+command -v dotfiles
+readlink "$HOME/.config/git/config"
+dotfiles list
+```
+
+On Windows:
+
+```powershell
+Get-Command dotfiles -All
+Get-Item "$HOME/.config/git/config" | Select-Object FullName, LinkType, Target
+dotfiles list
+```
+
+The launcher should resolve under your home's `.local/bin`, the Git link should
+point into the intended checkout or overlay. The listing should contain tasks
+appropriate for your saved role and platform; confirm the selected profile and
+platform in the apply run's header. If you intentionally excluded a task or link,
+verify the integrations you did select instead.
+
+Read the apply summary and account for every failure or skipped task. Use
+[partial-failure recovery](troubleshooting.md#recover-from-a-partial-update)
+for unfinished work. `dotfiles check` validates configuration and source files;
+it does not prove that packages, links, or running services were installed.
 
 For later maintenance, ordinary `dotfiles update` also synchronizes the
 repository and can install newer agent dependencies. Review and commit your

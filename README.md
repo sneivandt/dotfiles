@@ -5,7 +5,6 @@
 </p>
 
 <p align="center">
-  <a href="https://dotfiles.stuartneivandt.com/getting-started.html"><img alt="Documentation: get started" src="https://img.shields.io/badge/docs-get_started-2f81f7?style=flat-square"></a>
   <a href="https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/sneivandt/dotfiles/ci.yml?branch=main&style=flat-square&label=CI"></a>
   <a href="https://github.com/sneivandt/dotfiles/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/sneivandt/dotfiles?style=flat-square&label=release"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-9ece6a?style=flat-square"></a>

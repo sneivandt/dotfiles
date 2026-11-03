@@ -123,19 +123,11 @@ enabled; GitHub can disable schedules in inactive repositories.
 
 ## Documentation publishing
 
-The documentation job checks source links, builds Starlight, checks the output
-routes and assets, and exercises navigation, search, themes, and diagrams in
-Chromium. It is part of `ci-success`, including on docs-only changes.
-
-For a push to `main`, it uploads the verified static site. After the aggregate
-succeeds, [Publish documentation](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/pages.yml)
-downloads the artifact from that exact CI run and deploys it to GitHub Pages.
-Pull-request runs and runs from a different repository cannot publish.
-A completed build that no longer matches `main` is skipped rather than rolling
-the site backward.
-
-See [Documentation site](documentation-site.md) for Pages settings, domain
-configuration, local preview, and publishing troubleshooting.
+The documentation job participates in `ci-success`, including on docs-only
+changes. After successful push CI on `main`, the Pages workflow deploys that
+run's verified artifact. Site-specific checks, publication rules, and
+troubleshooting live in
+[docs/README.md](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#configure-publishing).
 
 ## Release selection
 

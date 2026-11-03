@@ -1,6 +1,6 @@
 ---
 title: Git hooks
-description: Understand staged checks, sensitive-pattern scanning, Git templates, and how to diagnose a rejected commit.
+description: Understand staged checks, sensitive-pattern scanning, and how to diagnose a rejected commit.
 ---
 
 # Git hooks
@@ -15,7 +15,7 @@ from this checkout. Git invokes the pre-commit check only after
 [hook installation](#installation-and-removal).
 
 Personal aliases, push protection, and automatic branch cleanup belong to
-[Git configuration](git-configuration.md). Those templates are a separate
+[Application settings](application-settings.md#git). Those templates are a separate
 integration that can affect other repositories.
 
 ## Before committing

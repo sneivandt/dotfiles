@@ -12,7 +12,7 @@ description: >
 
 Write for the person doing the work, not to sound like a documentation generator.
 Use [Contributing](../../../docs/content/contributing.md#documentation) for topic
-ownership and [Testing](../../../docs/content/testing.md#documentation-site) for
+ownership and the [site README](../../../docs/README.md#checks) for
 checks. Load [docs-publishing](../docs-publishing/SKILL.md) when changing page
 organization, routes, navigation, rendering, or publication.
 

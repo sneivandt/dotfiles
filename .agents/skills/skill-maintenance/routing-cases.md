@@ -28,6 +28,7 @@ Companions are needed only when the request changes their contract.
 | Change an optional overlay section's generic TOML loader | `toml-configuration` | Add overlay-scripts only for resolution or execution changes |
 | Choose Windows coverage after a Rust path-handling change | `cross-platform-verification` | windows-specific-patterns owns implementation choices |
 | Enable dark mode and fix Mermaid on the published docs site | `docs-publishing` | No desktop-shell skill |
+| Move site-maintenance instructions into docs/README.md | `docs-publishing` | Add docs-writing for prose; keep the README outside published routes |
 | Audit the guides for accuracy, readability, and excessive detail | `docs-writing` | Verify claims against sources; add docs-publishing only for site or organization changes |
 | Simplify examples in Commands and usage | `docs-writing` | Verify defaults in the owning code; no engine changes just for prose |
 | Make each guide understandable when shared directly | `docs-writing` | Supply task-local context; add docs-publishing only for page or navigation changes |

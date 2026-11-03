@@ -230,7 +230,7 @@ Give each explanation one home: everyday commands and basic log reading in
 [Commands and usage](commands-and-usage.md), exhaustive syntax and output
 contracts in [CLI reference](cli-reference.md), and the update story in
 [Update lifecycle](update-lifecycle.md). Customize owns application sources,
-declaration formats, private additions, and [personal Git configuration](git-configuration.md).
+declaration formats, private additions, and [personal Git settings](application-settings.md#git).
 Repository commit checks belong in [Git hooks](git-hooks.md).
 Detailed workflows stay in Platforms and packages or AI tools and editors.
 Keep maintenance guidance beside the topic it supports; reserve Development
@@ -275,8 +275,9 @@ behavioral claims against code and tests.
 
 Never use private overlays, credentials, or unsanitized logs as public examples.
 
-Use [Documentation site](documentation-site.md) for local preview, site
-implementation, domain setup, and publishing troubleshooting. Agents use
+Site implementation, preview, and publishing instructions live in
+[docs/README.md](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md),
+not the published guide collection. Agents use
 [Docs writing](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-writing/SKILL.md)
 for prose quality and
 [Docs publishing](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-publishing/SKILL.md)

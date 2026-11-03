@@ -12,7 +12,7 @@ description: >
 
 Start with [site configuration](../../../docs/astro.config.mjs),
 [domain declaration](../../../docs/public/CNAME), and the
-[site maintenance guide](../../../docs/content/documentation-site.md).
+[site README](../../../docs/README.md).
 CI builds Astro from `docs/`; Pages deploys that verified artifact after the
 aggregate succeeds for a push to `main`. Binary release selection is separate.
 The root README directs readers to the published guides; keep its URLs and
@@ -32,7 +32,7 @@ examples, and the amount of detail.
 - Keep everyday workflows before exhaustive reference, and source-finding
   guidance before configuration schemas. Commands and usage owns routine
   operations; CLI reference owns exact syntax and output contracts. Personal
-  Git configuration belongs under Customize, separate from contributor hooks.
+  Git settings belong in Application settings, separate from contributor hooks.
   Keep meaningful topic groups rather than adding a generic Reference group.
 - Keep Application settings focused on shared preferences and finding sources;
   detailed Arch desktop and editor behavior belongs in its owning guide. Keep
@@ -47,8 +47,11 @@ examples, and the amount of detail.
   aliases. The root landing page is its own page at `/`, not a redirect to
   Getting started or a guide subject to the filename/title rule; its heading
   differs from the Dotfiles site title linked in the header.
-- Keep the README brief with the shared site icon and one prominent root website
+- Keep the root README brief with the shared site icon and one prominent website
   link. Do not turn it into a second documentation directory.
+- Keep site implementation, preview, checks, and publishing instructions in
+  `docs/README.md`, outside the published guide collection. Published contributor
+  guides may link to it instead of repeating site-maintenance procedures.
 
 ## Maintain the site
 
@@ -86,8 +89,8 @@ examples, and the amount of detail.
   must match the pages' canonical URLs, including `.html` for guides, and
   `robots.txt` should point to the sitemap. Check the built output for all three.
 
-Use the [site checks](../../../docs/content/testing.md#documentation-site) and
-preview procedure in the publishing guide. Inspect navigation on desktop/mobile,
+Use the [site checks](../../../docs/README.md#checks) and
+preview procedure in that README. Inspect navigation on desktop/mobile,
 search, all theme choices, Mermaid SVG output, and links to source files.
 The static check verifies matching titles, names, navigation, anchors, and assets;
 browser tests also enforce readable diagram labels and theme preferences.

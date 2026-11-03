@@ -37,7 +37,8 @@ description: >
   repository invariants, and mandatory report templates.
 - Link to concrete source and tests rather than copying APIs, version inventories,
   or full implementations. Resolve relative links from the skill's directory.
-- Keep commands and CI coverage in [Testing](../../../docs/content/testing.md);
+- Keep commands and CI coverage in [Testing](../../../docs/content/testing.md),
+  with site-only commands in [docs/README.md](../../../docs/README.md#checks);
   architectural explanations and human workflow follow the
   [guidance ownership boundaries](../../../docs/content/contributing.md#documentation).
 - Separate read-only inspection from mutation. Examples and referenced scripts

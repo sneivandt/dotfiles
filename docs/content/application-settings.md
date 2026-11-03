@@ -1,6 +1,6 @@
 ---
 title: Application settings
-description: Find the source for a common application change, understand when edits take effect, and customize shared shell preferences.
+description: Find the source for a common application change, understand when edits take effect, and customize Git and shared shell preferences.
 ---
 
 # Application settings
@@ -15,14 +15,14 @@ Installing an application and configuring it are separate changes.
 [Package management](package-management.md) chooses applications;
 [symlink declarations](configuration-reference.md#symlinks) choose which
 settings files reach your home. The files themselves control application
-behavior. This guide helps you find the right source, then covers preferences
-shared by the shells.
+behavior. This guide helps you find the right source, then covers Git and
+preferences shared by the shells.
 
 ## Find a common change
 
 | I want to change... | Start here |
 |---|---|
-| Git identity, defaults, aliases, or templates | [Git configuration](git-configuration.md) |
+| Git identity, defaults, aliases, or templates | [Git settings](#git) below |
 | Bash/Zsh environment or shared commands | [Shared shell sources](#shell-application-configuration) below |
 | User command directories on PATH | [config/shell/path.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/path.sh) for Bash/Zsh, or the [PowerShell profile](windows-and-wsl.md#powershell-configuration) |
 | Bash or Zsh prompt | [config/bash/prompt.bash](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/bash/prompt.bash) or [config/zsh/prompt.zsh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/prompt.zsh) |
@@ -58,6 +58,58 @@ Use a [private overlay](private-overlays.md) for machine-specific alternatives.
 An overlay can replace a linked source, but does not merge arbitrary application
 file contents. Keep credentials and private identity details out of public
 sources.
+
+## Git
+
+Git identity and defaults live in
+[config/git/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config);
+command shortcuts live in
+[config/git/aliases](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/aliases).
+Review the supplied identity before using it. These shared settings affect Git
+beyond this repository; keep private identity details in a
+[private overlay](private-overlays.md).
+
+Desired global key/value overrides belong in
+[conf/git-config.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml).
+The [Git settings format](configuration-reference.md#git-settings) explains
+platform selection and Windows autocrlf cleanup. Avoid contradicting the linked
+files with a second declaration.
+
+| Shortcut | Purpose |
+|---|---|
+| `git st` | Show concise status and branch information |
+| `git dis` | Review staged changes |
+| `git lo` | Show a compact commit graph |
+| `git gr <pattern>` | Search tracked content |
+
+Run `git alias` to list all aliases. If a setting does not take effect, use
+`git config --show-origin --get <key>` in the affected repository, replacing
+`<key>` with the setting name. Included files and repository settings can
+override the shared configuration.
+
+### Git templates
+
+The shared configuration selects
+[Git templates](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git/templates/)
+through `init.templateDir`. Git copies their hook entrypoints when initializing
+or cloning a repository; the helpers resolve from the managed directory at
+runtime. These are separate from this repository's [contributor hooks](git-hooks.md).
+Existing repositories need new entrypoints installed explicitly without
+overwriting repository-specific hooks.
+
+**The templates can automatically delete local branches.** After a merge or
+rebase, [branch cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/templates/hooks.local/clean-merged-branches)
+deletes eligible branches merged into `origin/HEAD` using `git branch -d`.
+It preserves the current and default branches, `main`, `master`, `dev`,
+`develop`, and branches used by any worktree. It never deletes remote branches,
+does nothing without `origin/HEAD`, and does not run after an amend.
+
+The [push-protection hook](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/templates/hooks.local/pre-push)
+blocks updates to `main`, `master`, `develop`, and the destination remote's
+default branch. Add exact names through repository-local
+`dotfiles.protectedBranch` values. GitHub remotes whose URL owner matches
+`github.user` or its fallback `github.username` are exempt; that is a local
+configured-name check, not a GitHub permission check.
 
 ## Shell application configuration
 

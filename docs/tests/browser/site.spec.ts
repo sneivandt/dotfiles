@@ -103,14 +103,14 @@ test('the homepage introduces the repository and links to setup, with grouped na
   const customize = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Customize', { exact: true }) });
   await expect(customize.getByRole('link')).toHaveText([
-    'Application settings', 'Configuration reference', 'Private overlays', 'Git configuration',
+    'Application settings', 'Configuration reference', 'Private overlays',
   ]);
   await expect(customize.getByRole('link', { name: 'Private overlays', exact: true }))
     .toHaveAttribute('href', '/private-overlays.html');
   const development = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Development', { exact: true }) });
   await expect(development.getByRole('link')).toHaveText([
-    'Contributing', 'Testing', 'Git hooks', 'Architecture', 'Documentation site', 'CI and releases',
+    'Contributing', 'Testing', 'Git hooks', 'Architecture', 'CI and releases',
   ]);
   for (const [label, href] of [
     ['Agent deployment internals', '/agent-deployment-internals.html'],
@@ -148,7 +148,7 @@ test('everyday guides link maintainers to their advanced guides', async ({ page 
   }
 });
 
-test('split guides retain task-local context and link to their reference', async ({ page }) => {
+test('guides link to the owning command and application references', async ({ page }) => {
   await page.goto('/commands-and-usage.html');
   await expect(page.locator('main #command-options')).toHaveCount(0);
   const reference = page.locator('main').getByRole('link', { name: 'CLI reference', exact: true });
@@ -161,11 +161,13 @@ test('split guides retain task-local context and link to their reference', async
 
   await page.goto('/git-hooks.html');
   await expect(page.locator('main #merged-branch-cleanup')).toHaveCount(0);
-  await page.locator('main').getByRole('link', { name: 'Git configuration', exact: true }).click();
-  await expect(page).toHaveURL('/git-configuration.html');
-  await expect(page.locator('#shortcuts')).toBeAttached();
-  await expect(page.locator('#merged-branch-cleanup')).toBeAttached();
-  await expect(page.locator('#push-protection')).toBeAttached();
+  await page.locator('main').getByRole('link', { name: 'Application settings', exact: true }).click();
+  await expect(page).toHaveURL('/application-settings.html#git');
+  await expect(page.locator('#git')).toBeVisible();
+  await expect(page.locator('#git-templates')).toBeAttached();
+  await expect(page.getByRole('cell', { name: 'git st', exact: true })).toBeAttached();
+  await expect(page.getByText('The templates can automatically delete local branches.', { exact: true }))
+    .toBeAttached();
   await assertNoPageOverflow(page);
 });
 
@@ -193,7 +195,7 @@ test('guide links use ordinary labels without boxed code', async ({ page }) => {
   const routes = await page.locator('#starlight__sidebar details a[href]').evaluateAll(
     (links) => links.map((link) => link.getAttribute('href')!),
   );
-  expect(routes).toHaveLength(26);
+  expect(routes).toHaveLength(24);
   for (const route of ['/', ...routes]) {
     await page.goto(route);
     await expect(page.locator('.sl-markdown-content a code')).toHaveCount(0);
@@ -207,7 +209,6 @@ test('advanced guides remain visible within top-level topic navigation', async (
   for (const [guide, title] of [
     ['agent-deployment-internals', 'Agent deployment internals'],
     ['arch-package-recipes', 'Arch package recipes'],
-    ['documentation-site', 'Documentation site'],
   ]) {
     await page.goto(`/${guide}.html`);
     if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
@@ -217,14 +218,12 @@ test('advanced guides remain visible within top-level topic navigation', async (
   }
 });
 
-test('contributors can follow the site maintenance guide to publishing help', async ({ page }) => {
+test('site maintenance links point to the repository README, not a published guide', async ({ page }) => {
   await page.goto('/contributing.html');
   const link = page.locator('.sl-markdown-content')
-    .getByRole('link', { name: 'Documentation site', exact: true });
-  await expect(link).toHaveAttribute('href', 'documentation-site.html');
-  await link.click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Documentation site');
-  await expect(page.getByRole('heading', { name: 'Diagnose publishing and indexing', exact: true })).toBeVisible();
+    .getByRole('link', { name: 'docs/README.md', exact: true });
+  await expect(link).toHaveAttribute('href', 'https://github.com/sneivandt/dotfiles/blob/main/docs/README.md');
+  await expect(page.locator('#starlight__sidebar a[href="/documentation-site.html"]')).toHaveCount(0);
   await assertNoPageOverflow(page);
 });
 
@@ -343,8 +342,12 @@ test('search opens the relevant section of the published guide', async ({ page }
   await expect(page.locator('#symlinks')).toBeVisible();
 });
 
-test('renamed pages do not create compatibility routes', async ({ request }) => {
-  for (const path of ['/USAGE.html', '/LOCAL-PACKAGES.html', '/TESTING-RECIPES.html', '/local-package-recipes.html', '/ai-agent-configuration.html']) {
+test('removed guides and repository-only docs do not publish routes', async ({ request }) => {
+  for (const path of [
+    '/USAGE.html', '/LOCAL-PACKAGES.html', '/TESTING-RECIPES.html',
+    '/local-package-recipes.html', '/ai-agent-configuration.html',
+    '/git-configuration.html', '/documentation-site.html', '/README.html', '/README.md',
+  ]) {
     expect((await request.get(path)).status()).toBe(404);
   }
 });

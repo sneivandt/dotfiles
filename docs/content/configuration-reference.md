@@ -235,7 +235,7 @@ if you want the task to manage a value instead. This cleanup is separate from
 the repository-local Git values used to remember profiles and overlays.
 
 For Git aliases such as `git gr` and `git contributors`, see
-[Git configuration](git-configuration.md#shortcuts).
+[Application settings](application-settings.md#git).
 
 ## Agent harness settings
 

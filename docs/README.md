@@ -1,20 +1,16 @@
----
-title: Documentation site
-description: Preview and maintain the Astro and Starlight site, configure its domain, and diagnose publishing or indexing problems.
----
-
 # Documentation site
 
-This guide is for maintaining the website at
+This README is for maintaining the website at
 [dotfiles.stuartneivandt.com](https://dotfiles.stuartneivandt.com/).
+It stays in the repository, outside the published guide collection.
 For writing or reorganizing guide content, start with
-[Contributing](contributing.md#documentation). Automated checks and their
-prerequisites live in [Testing](testing.md#documentation-site).
+[Contributing](content/contributing.md#documentation). Repository-wide coverage
+selection lives in [Testing](content/testing.md); site-only checks are below.
 
 ## Preview locally
 
 Use the Node version in
-[docs/.node-version](https://github.com/sneivandt/dotfiles/blob/main/docs/.node-version).
+[.node-version](.node-version).
 From the repository root:
 
 ```sh
@@ -35,21 +31,67 @@ The commands also work from PowerShell. Neither preview publishes the site or
 applies machine configuration. Inspect desktop and narrow-screen navigation,
 search, theme choices, diagrams, and source links before publishing.
 
+## Checks
+
+After installing the locked dependencies above, run this from `docs/` to
+install the browser runtime:
+
+```sh
+npx playwright install chromium
+```
+
+On a minimal Linux machine, Playwright may report missing system libraries.
+Its `install --with-deps chromium` command can install those libraries, but that
+is a host package change: use an authorized environment or a disposable runner.
+CI uses that option on its disposable Ubuntu runner.
+
+For site-only changes on Linux, run from the repository root:
+
+```sh
+DIR="$PWD" sh .github/workflows/scripts/linux/test-docs.sh docs_links docs_site
+```
+
+On Windows, the same source-link and site checks can run directly from the
+repository root in PowerShell. Run them in order and stop if a command fails:
+
+```powershell
+python -B .github\workflows\scripts\linux\check-doc-links.py .
+npm --prefix docs run check
+npm --prefix docs test
+npm --prefix docs run build
+python -B .github\workflows\scripts\linux\check-doc-site.py .
+npm --prefix docs run test:browser
+```
+
+This Windows sequence does not replace the full `docs` stage's skill metadata
+and Rust selector checks.
+
+The site check runs Astro diagnostics, Markdown-transform fixtures, and a
+production build. It checks matching titles, navigation labels, and filenames,
+then verifies published links, anchors, assets, canonicals, the sitemap, and
+indexing metadata. Browser regressions exercise the homepage, topic navigation,
+search, theme persistence, warning callouts, and every Mermaid diagram at
+desktop and mobile sizes. Diagram labels must stay at least 14 CSS pixels.
+Mobile emulation is not a native phone/browser test.
+
+The browser suite starts and stops its own loopback preview on port 4322;
+keep that port free.
+
 ## Find the owning source
 
 The site uses Astro and Starlight with Flexoki styling. Dependencies are pinned
-in [docs/package.json](https://github.com/sneivandt/dotfiles/blob/main/docs/package.json)
+in [package.json](package.json)
 and its lockfile.
 
 | Change | Source |
 |---|---|
-| Guide prose | [docs/content/](https://github.com/sneivandt/dotfiles/tree/main/docs/content/) |
-| Navigation, integrations, and site defaults | [astro.config.mjs](https://github.com/sneivandt/dotfiles/blob/main/docs/astro.config.mjs) |
-| Content loading | [src/content.config.ts](https://github.com/sneivandt/dotfiles/blob/main/docs/src/content.config.ts) |
-| Markdown links and title anchors | [src/remark-docs.mjs](https://github.com/sneivandt/dotfiles/blob/main/docs/src/remark-docs.mjs) |
-| Theme initialization | [src/components/ThemeProvider.astro](https://github.com/sneivandt/dotfiles/blob/main/docs/src/components/ThemeProvider.astro) |
-| Layout and styling | [src/styles/custom.css](https://github.com/sneivandt/dotfiles/blob/main/docs/src/styles/custom.css) |
-| Domain and static assets | [public/](https://github.com/sneivandt/dotfiles/tree/main/docs/public/) |
+| Guide prose | [content/](content/) |
+| Navigation, integrations, and site defaults | [astro.config.mjs](astro.config.mjs) |
+| Content loading | [src/content.config.ts](src/content.config.ts) |
+| Markdown links and title anchors | [src/remark-docs.mjs](src/remark-docs.mjs) |
+| Theme initialization | [src/components/ThemeProvider.astro](src/components/ThemeProvider.astro) |
+| Layout and styling | [src/styles/custom.css](src/styles/custom.css) |
+| Domain and static assets | [public/](public/) |
 
 Keep the content loader and Starlight's `markdown.processedDirs` aligned on
 `content/`; otherwise native callouts and heading links are not processed.
@@ -76,7 +118,7 @@ control retains explicit Light and System choices.
 
 Keep source and topic links visually distinct from literal syntax: ordinary
 link labels should not also be boxed as inline code. Use
-[Docs writing](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-writing/SKILL.md#choose-links-code-and-emphasis)
+[Docs writing](../.agents/skills/docs-writing/SKILL.md#choose-links-code-and-emphasis)
 for link, code, and bold-emphasis choices; do not compensate for excessive
 markup by hiding code styling in the theme.
 
@@ -92,7 +134,7 @@ the publishing source, not **Deploy from a branch**. This is a repository
 setting; editing site files does not change it.
 
 Astro derives its site URL from
-[public/CNAME](https://github.com/sneivandt/dotfiles/blob/main/docs/public/CNAME),
+[public/CNAME](public/CNAME),
 which is also copied into the build. Keep the custom domain and HTTPS
 enforcement configured in Pages. CNAME does not configure DNS or enable HTTPS.
 
@@ -100,12 +142,12 @@ When changing the domain, update these together:
 
 - `public/CNAME`, which contains the hostname, not a full URL.
 - The homepage's explicit canonical, social, and structured-data URLs in
-  [content/index.md](https://github.com/sneivandt/dotfiles/blob/main/docs/content/index.md).
+  [content/index.md](content/index.md).
 - The sitemap URL in
-  [public/robots.txt](https://github.com/sneivandt/dotfiles/blob/main/docs/public/robots.txt)
+  [public/robots.txt](public/robots.txt)
   and the published-site links in the root README.
 - Domain-specific expectations in the
-  [browser tests](https://github.com/sneivandt/dotfiles/blob/main/docs/tests/browser/site.spec.ts).
+  [browser tests](tests/browser/site.spec.ts).
 
 The current site assumes a domain root. Publishing a fork under a Pages project
 path such as `/dotfiles/` needs an Astro base-path configuration and a review of
@@ -117,10 +159,15 @@ from another repository.
 The sitemap must match page canonicals: `/` for the introduction and `.html`
 URLs for guides. Guides allow indexing; the 404 page does not.
 
-Before pushing, use the [committed-patch checker](testing.md#before-pushing).
+The documentation job participates in `ci-success`, including on docs-only
+changes. It uploads the verified static site for a push to `main`.
+The [publishing workflow](../.github/workflows/pages.yml) downloads that exact
+CI run's artifact after the aggregate succeeds, rather than rebuilding it.
+A completed build that no longer matches `main` is skipped rather than rolling
+the site backward.
+
+Before pushing, use the [committed-patch checker](content/testing.md#before-pushing).
 After pushing, follow CI and **Publish documentation** for the exact commit.
-The [publishing workflow](ci-and-releases.md#documentation-publishing) deploys
-the verified CI artifact rather than rebuilding it.
 
 ## Diagnose publishing and indexing
 

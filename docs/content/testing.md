@@ -156,52 +156,11 @@ local stages above; they are not a sequence to run in full.
 
 ### Documentation site
 
-Install the locked dependencies and browser runtime once:
-
-```sh
-cd docs
-npm ci
-npx playwright install chromium
-```
-
-On a minimal Linux machine, Playwright may report missing system libraries.
-Its `install --with-deps chromium` command can install those libraries, but that
-is a host package change: use an authorized environment or a disposable runner.
-CI uses that option on its disposable Ubuntu runner.
-
-For site-only changes on Linux, run from the repository root:
-
-```sh
-DIR="$PWD" sh .github/workflows/scripts/linux/test-docs.sh docs_links docs_site
-```
-
-On Windows, the same source-link and site checks can run directly from the
-repository root in PowerShell. Run them in order and stop if a command fails:
-
-```powershell
-python -B .github\workflows\scripts\linux\check-doc-links.py .
-npm --prefix docs run check
-npm --prefix docs test
-npm --prefix docs run build
-python -B .github\workflows\scripts\linux\check-doc-site.py .
-npm --prefix docs run test:browser
-```
-
-This Windows sequence does not replace the full `docs` stage's skill metadata
-and Rust selector checks.
-
-The site check runs Astro diagnostics, Markdown-transform fixtures, and a
-production build. It checks matching titles, navigation labels, and filenames,
-then verifies published links, anchors, assets, canonicals, the sitemap, and
-indexing metadata. Browser regressions exercise
-the homepage, top-level topic navigation, search, theme persistence, warning
-callouts, and every Mermaid diagram at desktop and mobile sizes. Diagram labels
-must stay at least 14 CSS pixels. Mobile emulation is not a native phone/browser
-test.
-
-The browser suite starts and stops its own loopback preview on port 4322;
-keep that port free. For manual preview and changes to the content pipeline,
-see [Documentation site](documentation-site.md).
+Site-only commands, dependency and browser prerequisites, and manual preview
+instructions live in
+[docs/README.md](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#checks).
+Use the full `docs` stage for its additional skill metadata and Rust selector
+checks, and the [committed-patch checker](#before-pushing) before pushing.
 
 ### CLI validation
 

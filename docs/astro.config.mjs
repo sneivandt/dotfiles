@@ -73,7 +73,7 @@ export default defineConfig({
         },
         {
           label: 'Customize',
-          items: ['application-settings', 'configuration-reference', 'private-overlays', 'git-configuration'],
+          items: ['application-settings', 'configuration-reference', 'private-overlays'],
         },
         {
           label: 'Platforms and packages',
@@ -85,7 +85,7 @@ export default defineConfig({
         },
         {
           label: 'Development',
-          items: ['contributing', 'testing', 'git-hooks', 'architecture', 'documentation-site', 'ci-and-releases'],
+          items: ['contributing', 'testing', 'git-hooks', 'architecture', 'ci-and-releases'],
         },
       ],
     }),

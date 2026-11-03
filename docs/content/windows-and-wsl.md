@@ -77,7 +77,7 @@ Check the [bootstrap troubleshooting guide](troubleshooting.md#the-wrapper-canno
 
 Windows can prevent replacement of an executable that is still in use. If
 self-update fails, read the error before retrying or moving files. The
-[update lifecycle](update-lifecycle.md#2-check-the-cli-release) explains
+[self-update reference](cli-reference.md#cli-self-update) explains
 verification, the post-update version check, and recovery if that check fails.
 
 ## Developer Mode and symlinks

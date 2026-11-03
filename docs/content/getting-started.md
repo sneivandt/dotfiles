@@ -104,7 +104,7 @@ Review any overlay scripts too: they are executable code.
 Review the selected services as well as files. Linux profiles include
 [automatic cleanup](application-settings.md#automatic-cleanup) of old content
 under `~/tmp`; Arch desktops also clean old screenshots. Installing
-[Git hooks](git-hooks.md#installation-and-removal) can replace existing hooks
+[Git hooks](contributing.md#installation-and-removal) can replace existing hooks
 at managed names, so preserve any custom hooks first.
 
 ### 3. Preview the selected work
@@ -180,7 +180,7 @@ For later maintenance, ordinary `dotfiles update` also synchronizes the
 repository and can install newer agent dependencies. Review and commit your
 configuration edits before using repository sync, or keep `--no-repo-update`
 while working locally.
-[Update lifecycle](update-lifecycle.md) explains these separate steps and
+[Update lifecycle](commands-and-usage.md#update-lifecycle) explains these separate steps and
 their controls. With no command, `dotfiles` defaults to `update`.
 `remove` is partial cleanup, **not rollback or a full uninstall**.
 

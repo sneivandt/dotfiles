@@ -75,15 +75,14 @@ test('the homepage introduces the repository and links to setup, with grouped na
   const groups = sidebar.locator('details');
   await expect(groups.locator(':scope > summary')).toHaveText([
     'Start here', 'Use dotfiles', 'Customize',
-    'Platforms and packages', 'AI tools and editors', 'Development',
+    'Platforms and packages', 'Development',
   ]);
   await expect(groups.locator('details')).toHaveCount(0);
   for (const section of await groups.all()) {
     await expect(section).toHaveAttribute('open', '');
   }
   for (const [label, titles] of [
-    ['Platforms and packages', ['Arch desktop', 'Windows and WSL', 'Package management', 'Arch package recipes']],
-    ['AI tools and editors', ['Agent configuration', 'Agent deployment internals', 'Visual Studio Code', 'Vim and Neovim']],
+    ['Platforms and packages', ['Arch desktop', 'Windows and WSL', 'Package management']],
   ] as const) {
     const group = groups.filter({ has: page.getByText(label, { exact: true }) });
     await expect(group.getByRole('link')).toHaveText([...titles]);
@@ -96,29 +95,20 @@ test('the homepage introduces the repository and links to setup, with grouped na
   const usage = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Use dotfiles', { exact: true }) });
   await expect(usage.getByRole('link')).toHaveText([
-    'Commands and usage', 'Update lifecycle', 'Troubleshooting', 'CLI reference', 'Task reference',
+    'Commands and usage', 'Troubleshooting', 'CLI reference', 'Task reference',
   ]);
-  await expect(usage.getByRole('link', { name: 'Update lifecycle', exact: true }))
-    .toHaveAttribute('href', '/update-lifecycle.html');
   const customize = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Customize', { exact: true }) });
   await expect(customize.getByRole('link')).toHaveText([
-    'Application settings', 'Configuration reference', 'Private overlays',
+    'Application settings', 'Agent configuration', 'Configuration reference', 'Private overlays',
   ]);
   await expect(customize.getByRole('link', { name: 'Private overlays', exact: true }))
     .toHaveAttribute('href', '/private-overlays.html');
   const development = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Development', { exact: true }) });
   await expect(development.getByRole('link')).toHaveText([
-    'Contributing', 'Testing', 'Git hooks', 'Architecture', 'CI and releases',
+    'Contributing', 'Testing', 'Architecture', 'CI and releases',
   ]);
-  for (const [label, href] of [
-    ['Agent deployment internals', '/agent-deployment-internals.html'],
-    ['Arch package recipes', '/arch-package-recipes.html'],
-  ]) {
-    await expect(sidebar.getByRole('link', { name: label, exact: true }))
-      .toHaveAttribute('href', href);
-  }
   await page.locator('#starlight__sidebar a[href="/getting-started.html"]').click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
   await homeLink.click();
@@ -132,19 +122,22 @@ test('the homepage introduces the repository and links to setup, with grouped na
   await assertNoPageOverflow(page);
 });
 
-test('everyday guides link maintainers to their advanced guides', async ({ page }) => {
-  for (const [guide, title, target] of [
-    ['agent-configuration', 'Agent deployment internals', 'agent-deployment-internals'],
-    ['package-management', 'Arch package recipes', 'arch-package-recipes'],
+test('consolidated topics link to their sections after everyday guidance', async ({ page }) => {
+  for (const [guide, anchor, title] of [
+    ['agent-configuration', 'deployment-maintenance', 'Deployment maintenance'],
+    ['package-management', 'arch-package-recipes', 'Arch package recipes'],
+    ['application-settings', 'visual-studio-code', 'Visual Studio Code'],
+    ['application-settings', 'vim-and-neovim', 'Vim and Neovim'],
+    ['commands-and-usage', 'update-lifecycle', 'Update lifecycle'],
+    ['contributing', 'git-hooks', 'Git hooks'],
   ]) {
     await page.goto(`/${guide}.html`);
-    const link = page.locator('.sl-markdown-content p')
-      .filter({ hasText: 'For maintainers:' })
-      .getByRole('link', { name: title, exact: true });
-    await expect(link).toHaveAttribute('href', `${target}.html`);
+    const link = page.locator('.sl-markdown-content').getByRole('link', { name: title, exact: true }).first();
+    await expect(link).toHaveAttribute('href', `#${anchor}`);
     await link.click();
-    await expect(page).toHaveURL(`/${target}.html`);
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
+    await expect(page).toHaveURL(`/${guide}.html#${anchor}`);
+    await expect(page.locator(`#${anchor}`)).toBeVisible();
+    await assertNoPageOverflow(page);
   }
 });
 
@@ -159,10 +152,10 @@ test('guides link to the owning command and application references', async ({ pa
   await expect(page.locator('#log-locations')).toBeAttached();
   await expect(page.locator('#execution-output-for-scripts')).toBeAttached();
 
-  await page.goto('/git-hooks.html');
+  await page.goto('/contributing.html#git-hooks');
   await expect(page.locator('main #merged-branch-cleanup')).toHaveCount(0);
-  await page.locator('main').getByRole('link', { name: 'Application settings', exact: true }).click();
-  await expect(page).toHaveURL('/application-settings.html#git');
+  await page.locator('main').getByRole('link', { name: 'personal Git templates', exact: true }).click();
+  await expect(page).toHaveURL('/application-settings.html#git-templates');
   await expect(page.locator('#git')).toBeVisible();
   await expect(page.locator('#git-templates')).toBeAttached();
   await expect(page.getByRole('cell', { name: 'git st', exact: true })).toBeAttached();
@@ -177,6 +170,10 @@ test('lookup and prerequisite information precedes advanced details', async ({ p
     ['contributing', '2-find-the-owning-files', 'development-setup'],
     ['testing', 'before-pushing', 'specialized-checks'],
     ['agent-configuration', 'deployment-targets', 'validate-preview-and-apply'],
+    ['agent-configuration', 'authentication-and-failure-diagnosis', 'deployment-maintenance'],
+    ['package-management', 'install-and-upgrade', 'arch-package-recipes'],
+    ['contributing', 'contribution-workflow', 'git-hooks'],
+    ['commands-and-usage', 'select-tasks', 'update-lifecycle'],
   ]) {
     await page.goto(`/${guide}.html`);
     const order = await page.evaluate(({ earlier, later }) => {
@@ -195,7 +192,7 @@ test('guide links use ordinary labels without boxed code', async ({ page }) => {
   const routes = await page.locator('#starlight__sidebar details a[href]').evaluateAll(
     (links) => links.map((link) => link.getAttribute('href')!),
   );
-  expect(routes).toHaveLength(24);
+  expect(routes).toHaveLength(18);
   for (const route of ['/', ...routes]) {
     await page.goto(route);
     await expect(page.locator('.sl-markdown-content a code')).toHaveCount(0);
@@ -203,19 +200,6 @@ test('guide links use ordinary labels without boxed code', async ({ page }) => {
   await page.goto('/cli-reference.html');
   await expect(page.locator('main :not(pre) > code').first()).toBeVisible();
   await expect(page.locator('main pre').first()).toBeVisible();
-});
-
-test('advanced guides remain visible within top-level topic navigation', async ({ page, isMobile }) => {
-  for (const [guide, title] of [
-    ['agent-deployment-internals', 'Agent deployment internals'],
-    ['arch-package-recipes', 'Arch package recipes'],
-  ]) {
-    await page.goto(`/${guide}.html`);
-    if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
-    const current = page.locator('#starlight__sidebar [aria-current="page"]');
-    await expect(current).toHaveText(title);
-    await expect(current).toBeVisible();
-  }
 });
 
 test('site maintenance links point to the repository README, not a published guide', async ({ page }) => {
@@ -273,8 +257,7 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 for (const [guide, titles] of [
-  ['arch-package-recipes', ['Review recipes before preparing packages']],
-  ['package-management', ['Installing a missing package can upgrade the system']],
+  ['package-management', ['Installing a missing package can upgrade the system', 'Review recipes before preparing packages']],
   ['agent-configuration', ['Packages can do more than provide text', 'Disabling a managed workflow in the App is temporary']],
   ['getting-started', ['Back up existing configuration first', 'A preview is not a sandbox']],
   ['profiles-and-categories', ['Profiles are roles, not safety levels']],
@@ -347,6 +330,8 @@ test('removed guides and repository-only docs do not publish routes', async ({ r
     '/USAGE.html', '/LOCAL-PACKAGES.html', '/TESTING-RECIPES.html',
     '/local-package-recipes.html', '/ai-agent-configuration.html',
     '/git-configuration.html', '/documentation-site.html', '/README.html', '/README.md',
+    '/update-lifecycle.html', '/visual-studio-code.html', '/vim-and-neovim.html',
+    '/git-hooks.html', '/agent-deployment-internals.html', '/arch-package-recipes.html',
   ]) {
     expect((await request.get(path)).status()).toBe(404);
   }
@@ -377,7 +362,7 @@ test('light, dark, and system themes work and retain the reader’s choice', asy
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
-for (const guide of ['profiles-and-categories', 'update-lifecycle', 'arch-desktop', 'architecture', 'agent-configuration', 'arch-package-recipes', 'ci-and-releases']) {
+for (const guide of ['profiles-and-categories', 'commands-and-usage', 'arch-desktop', 'architecture', 'agent-configuration', 'package-management', 'ci-and-releases']) {
   for (const theme of ['light', 'dark'] as const) {
     test(`${guide} has readable, accessible diagrams in ${theme} mode`, async ({ page }) => {
       test.setTimeout(60_000);

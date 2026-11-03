@@ -118,7 +118,7 @@ itself nor removed.
 
 An existing hook with a managed name can be overwritten. Dotfiles neither
 combines it with the new hook nor backs it up, so save custom hooks first.
-[Hooks](git-hooks.md) explains what the installed hooks do.
+[Hooks](contributing.md#git-hooks) explains what the installed hooks do.
 
 #### Shell completions
 
@@ -277,8 +277,8 @@ Readiness checks can allow it to proceed before those package tasks finish.
 See [Agent configuration](agent-configuration.md) for sources, targets,
 authentication, and cleanup, including
 [what a preview can show](agent-configuration.md#what-a-preview-can-show).
-[Agent deployment internals](agent-deployment-internals.md) owns the command
-sequence and compatibility adapters.
+Its [deployment maintenance section](agent-configuration.md#deployment-maintenance)
+explains the command sequence and compatibility adapters.
 
 ### Custom Arch packages
 
@@ -293,7 +293,7 @@ establish dotfiles ownership: failure must not silently fall back to the AUR.
 
 `CleanAfter` cleans the cache, not this checkout. See
 [Package management](package-management.md#custom-arch-packages) for the current
-packages and [Arch package recipes](arch-package-recipes.md) for version
+packages and [Arch package recipes](package-management.md#arch-package-recipes) for version
 discovery, snapshot ownership, and adding recipes.
 
 ## Dynamic overlay tasks

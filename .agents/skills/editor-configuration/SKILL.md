@@ -8,8 +8,9 @@ description: >
 
 # Editor Configuration
 
-Read [Vim and Neovim](../../../docs/content/vim-and-neovim.md) for entry points,
-bootstrap, parser installation, plugin maintenance, and troubleshooting.
+Read [Vim and Neovim](../../../docs/content/application-settings.md#vim-and-neovim) for entry points,
+bootstrap, parser installation, plugin maintenance, and troubleshooting in
+Application settings.
 
 ## Choose the layer
 

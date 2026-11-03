@@ -44,8 +44,7 @@ the public sources. Private content belongs in a [private overlay](private-overl
 Never edit the generated combined configuration, `~/.apm/apm.yml`, lock data,
 or deployed harness copies as a substitute for changing their sources.
 
-For maintainers: See [Agent deployment internals](agent-deployment-internals.md)
-for changes to the deployment implementation rather than agent content.
+For implementation changes, see [Deployment maintenance](#deployment-maintenance).
 
 ## Harness settings
 
@@ -208,16 +207,24 @@ This differs from the
 
 ### Merge rules to keep in mind
 
-Each nonempty fragment must contain a YAML mapping. When combining fragments:
+Each nonempty fragment must contain a YAML mapping. An empty list does not clear
+entries from another fragment. Merge behavior is:
 
-- Dependencies and target lists combine, with duplicate entries included once.
-  An empty list does not clear entries from another fragment.
-- For named MCP servers, the first declaration wins. Keep each server in one
-  fragment rather than trying to override it later.
-- Other settings merge by key; later scalar values replace earlier ones.
+| Input | Result |
+|---|---|
+| `name`, `version` | Always generated as `dotfiles`, `1.0.0` |
+| `dependencies`, `devDependencies` | Groups append in filename order |
+| Named MCP entries within a dependency group | First entry for a name wins |
+| Other dependency entries, including unnamed MCP entries | Identical serialized entries deduplicate; first wins |
+| Other mappings | Merge recursively |
+| Other sequences, including `targets` | Append unique values |
+| Other scalar values or differing value types | Later value replaces earlier value |
 
-See the [full merge contract](agent-deployment-internals.md#fragment-merge-contract)
-when debugging a conflicting configuration.
+The distinction between named MCP entries and other dependencies matters:
+an MCP server name is its merge identity, while other entries deduplicate by
+serialized content. This differs from the [TOML overlay merge](private-overlays.md#merge-rules).
+Exact examples and regressions live in
+[fragments.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/fragments.rs).
 
 ## Update behavior
 
@@ -247,8 +254,7 @@ generated manifest matches your source fragments:
 Neither path deploys content, writes the generated manifest, or changes the
 Copilot App or Cowork integrations. APM's preview may contact upstream services.
 The general [dry-run limits](commands-and-usage.md#dry-run-scope) still apply;
-implementation details belong in
-[Preview boundary](agent-deployment-internals.md#preview-boundary).
+the maintenance boundaries below apply to both preview paths.
 
 ## Detected integrations
 
@@ -291,9 +297,8 @@ here.
 For a skill it previously deployed, cleanup removes **only its `SKILL.md` file**.
 Directories, other files, and unrelated skills remain. Keep the destination's
 `.dotfiles-apm-skills.json` record of deployed skills so dotfiles can identify
-which files it may remove. For path-resolution failures or
-copy conflicts, see the
-[copy and cleanup internals](agent-deployment-internals.md#cowork-copy-and-cleanup).
+which files it may remove. For path-resolution failures or copy conflicts, see
+[Deployment maintenance](#deployment-maintenance).
 
 ## Removing packages and targets
 
@@ -373,3 +378,50 @@ failures fail the task. Keep tokens out of fragments and diagnostic excerpts.
 A failed run can already have changed the manifest or some targets. There is
 no automatic rollback. Correct the reported cause and rerun; deleting lockfiles,
 whole deployment trees, or App data is not a safe first response.
+
+## Deployment maintenance
+
+The implementation lives under
+[cli/src/domains/ai/apm/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/ai/apm/).
+Native APM owns dependency resolution, local-source verification, and stale
+deployment cleanup. Dotfiles owns fragment merging and the detected integrations.
+
+The task atomically writes the generated manifest when needed, rejecting a symlink
+at that destination. It runs `apm update -g --yes`, then `apm install -g`, before
+the target adapters. Preserve the install pass even when refs are unchanged:
+local plugin edits or missing deployments can still need applying. Do not add
+separate prune commands, success fingerprints, or `apm outdated` decisions.
+Preview must not install, repair targets, clean legacy locks, or write Cowork
+inventories. Preserve authentication classification and attempt workflow-policy
+restoration even after an earlier deployment phase fails.
+
+| Owner | Maintenance boundary |
+|---|---|
+| [Fragment merging](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/fragments.rs) | Use effective source filenames and the merge rules above, including unmanaged home fragments |
+| [Copilot workflow repair](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/ai/apm/autopilot/) | Install with `apm install -g --target copilot-app --only apm`; repair only exact lockfile-owned workflow IDs, preserving foreign workflows |
+| [Cowork path selection](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/targets.rs) | A nonempty environment override wins; malformed persisted configuration fails rather than silently falling back |
+| [Cowork copying](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/cowork.rs) | Copy files without native Cowork deployment; preserve directory ACLs and foreign files, reject linked destination directories, and clean only inventory-owned `SKILL.md` files |
+
+Workflow repair restores local prompt cron metadata and next-run schedules,
+including daylight-saving offsets. Missing or invalid live sources warn rather
+than inventing a schedule; remote dependencies retain native scheduling. Keep
+duplicate cleanup limited to owned IDs and matching legacy definitions.
+
+Cowork copying respects package target filters. Legacy `cowork://` lock entries
+must be removed before native deployment to prevent native directory cleanup,
+retaining explicit legacy skill ownership in the inventory. Preserve matching
+links, avoid writing through changed destination links, and reject directory-to-file
+replacements. Keep Windows case-only rename coverage.
+
+### Validating implementation changes
+
+Use isolated homes, synthetic App databases, controlled executors, and the
+[Testing guide](testing.md#choosing-coverage). Never deploy to the live home to
+test an implementation change. Dotfiles validates local source relationships;
+native `apm pack --dry-run --verbose` owns package shape validation. Packing
+does not prove deployment compatibility.
+
+Before replacing an adapter, prove target filtering, ACL-safe updates, owned
+stale cleanup, workflow-policy restoration, and preservation of foreign workflows
+on the relevant platforms. Include failures after partial deployment. A new APM
+version alone is not evidence that either compatibility adapter can be removed.

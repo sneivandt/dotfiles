@@ -74,19 +74,15 @@ for graph markers and structured formats.
 Update is the default: running the launcher without a command applies an update.
 Tasks check what is installed or configured and leave it alone when it already
 matches the configuration.
-The [Update lifecycle](update-lifecycle.md) explains the CLI release check,
-repository synchronization, restarts, dependency updates, and partial results.
+See [Update lifecycle](#update-lifecycle) for startup and repository synchronization.
+For a targeted change, preview the selection first:
 
-To work on symlinks, first preview that selection:
-
-```bash
+```sh
 dotfiles update --only symlinks --dry-run
 ```
 
-After reviewing it, remove `--dry-run` to apply. Startup can still check for a
-CLI update: filters select tasks, not startup behavior. Use the
-[lifecycle controls](update-lifecycle.md#control-what-advances) when you need to
-keep a binary, checkout, or dependency set fixed.
+Remove `--dry-run` after review. Filters select tasks, not the CLI release check.
+
 
 ### Select tasks
 
@@ -247,5 +243,68 @@ For managed shell behavior beyond the CLI, see [Application settings](applicatio
 
 Neither graceful cancellation nor force quit rolls back completed changes.
 Force quit can leave external installers running; inspect them before retrying.
+
+## Update lifecycle
+
+A normal update has three stages before reporting its result:
+
+1. The wrapper obtains a usable CLI. It can download a verified release before
+   the CLI processes any command, including help or dry-run. See
+   [Wrapper bootstrap](cli-reference.md#wrapper-bootstrap).
+2. An eligible release binary checks for a newer CLI, verifies and installs it,
+   then restarts. This check precedes task selection for `update` and `remove`;
+   development builds and read-only commands do not self-update. A release-lookup
+   failure leaves the existing binary usable. See
+   [Release downloads](security-and-trust.md#release-downloads) for verification.
+3. The `repository` task fetches and fast-forwards the checkout and an active
+   Git overlay to their configured upstreams, then selected tasks apply state.
+   Both repositories must pass readiness checks first. Tracked changes, detached
+   HEAD, missing upstreams, divergence, and remote failures are reported rather
+   than repaired. Dotfiles does not switch branches, stash, reset, or rebase.
+
+```mermaid
+flowchart TB
+    accTitle: How repository changes affect an update
+    accDescr: Repository synchronization restarts the binary when the checkout changes so selected tasks use the new configuration.
+    Sync["Repository sync"] --> Changed{"Checkout changed?"}
+    Changed -- No --> Tasks["Run selected tasks"]
+    Changed -- Yes --> Reload["Restart and reload configuration"]
+    Reload --> Tasks
+    Tasks --> Result["Summary and logs"]
+```
+
+Repository changes trigger a restart to reload declarations and task definitions;
+the parent keeps the run lock. Changes to already-linked application sources can
+take effect immediately, even before a task rewrites a link.
+
+A preview can query remote refs but does not fetch or inspect commits it has not
+downloaded. It is not a saved execution plan: applying inspects the machine again.
+Use `--no-repo-update` for both preview and apply when reviewing a fixed checkout.
+That does not freeze the CLI or external dependencies.
+
+Package installation and application upgrades are separate. See
+[Package management](package-management.md#install-and-upgrade) for pacman,
+Paru, and winget behavior. Agent updates follow their declared version rules;
+VS Code installs missing extension IDs, while Neovim plugins are managed in
+the editor. See [Agent configuration](agent-configuration.md) and
+[Application settings](application-settings.md#visual-studio-code).
+
+Earlier changes survive a later failure. Read the summary and linked child logs
+after a restart or elevation; [Logs](#logs) explains how to follow a run.
+
+### Control what advances
+
+Ordinary updates need no extra switches. Use these to narrow a run deliberately:
+
+| Intent | Control | Limit |
+|---|---|---|
+| Keep the CLI version | `DOTFILES_SKIP_SELF_UPDATE=1` | Does not disable wrapper bootstrap or other network access |
+| Keep checkout contents fixed | `--no-repo-update` | Does not disable the CLI release check |
+| Run selected configuration work | `--only <selectors>` | Filters tasks, not startup; use `--with-deps` for prerequisites |
+| Leave agent deployments alone | `--skip agent-packages` | Preferences and the APM executable are separate |
+| Keep custom package version pins | `--skip custom-package-versions` | Recipe preparation can still use existing pins |
+
+There is no blanket offline switch. See [Dry-run scope](#dry-run-scope) for
+the writes, inspection, and script execution a preview can still perform.
 
 For exhaustive options and exit codes, use the [CLI reference](cli-reference.md).

@@ -39,7 +39,7 @@ configuration. A clean working tree does not make a live installation safe.
 | Task membership or cross-domain dependencies | [app/catalog.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs) |
 | How one kind of state is applied | Its module under [domains/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/) |
 | Process, filesystem, or output mechanics | [infra/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra/) |
-| Hooks or automation | [Hooks](git-hooks.md) and [CI and releases](ci-and-releases.md) |
+| Hooks or automation | [Hooks](#git-hooks) and [CI and releases](ci-and-releases.md) |
 
 Read the closest existing implementation before adding a new abstraction.
 Repository [skills](https://github.com/sneivandt/dotfiles/tree/main/.agents/skills/) contain focused contributor procedures;
@@ -67,7 +67,7 @@ not a universal undo operation.
 Start with [Choosing coverage](testing.md#choosing-coverage). Before committing,
 review the diff for unintended behavior, private data, generated files, and
 stale examples. Stage explicit paths or hunks and inspect `git diff --cached`.
-The [commit hooks](git-hooks.md) inspect the index, which may differ from your
+The [commit hooks](#git-hooks) inspect the index, which may differ from your
 working files.
 
 After committing, run the [pre-push checker](testing.md#before-pushing).
@@ -212,6 +212,71 @@ not change process-global state or invoke real package managers or elevation.
 Cross-target compilation is not a Windows runtime test. See
 [Platform coverage parity](testing.md#platform-coverage-parity).
 
+## Git hooks
+
+The scripts in [hooks/](https://github.com/sneivandt/dotfiles/tree/main/hooks/)
+check staged changes before committing. These contributor checks are separate
+from the shared [personal Git templates](application-settings.md#git-templates)
+and do not replace pre-push validation or CI.
+
+Review `git diff --cached`, then commit normally. To check the index without
+creating a commit, run from this checkout:
+
+```sh
+sh hooks/pre-commit
+```
+
+The hook scans added staged text for sensitive patterns, then selects checks:
+
+| Staged change | Default check |
+|---|---|
+| Rust source, Cargo inputs, or compiler pin | Whole-crate formatting and host Clippy using the staged toolchain pin |
+| Present PowerShell files | PSScriptAnalyzer on staged files |
+| Only TOML data, shell, or workflow files | Sensitive scan; additional guards require full mode |
+
+Checks do not stage fixes or stash your work. A fixed working copy still fails
+if the index contains the error. Review and stage only the intended fix before
+retrying. Missing tools are skips, not coverage. For optional full guards and
+scanner maintenance, see [Staged hook checks](testing.md#staged-hook-checks).
+
+### Installation and removal
+
+Inspect the hook destination before installing:
+
+```sh
+git config --show-origin --get core.hooksPath
+git rev-parse --git-common-dir
+dotfiles update --only git-hooks --dry-run
+```
+
+No output and status 1 from the first command means no override is configured.
+Dotfiles honors `core.hooksPath`, resolving relative values from the repository
+root; otherwise it uses the common Git directory's `hooks/`, including worktrees.
+A global/shared destination can affect other repositories.
+
+**Installation can replace a differing hook.** Preserve custom hooks first,
+then remove `--dry-run` only when you intend to install. Extensionless entrypoints
+are copied, while `.sh` helpers and pattern files run from the checkout. Reinstall
+after changing the copied `pre-commit`; helper edits take effect immediately.
+
+To remove managed hooks, preview `dotfiles remove --only git-hooks --dry-run`,
+then apply only after review. Removal preserves modified or mismatched hooks.
+Install and removal leave a destination that aliases the source intact and do
+not reset `core.hooksPath`. Missing hooks sources or Git metadata makes the task
+inapplicable.
+
+### Diagnosing a rejected commit
+
+Compare `git diff` and `git diff --cached` first. For formatting, run `cargo fmt`
+in `cli/`, review, and restage the intended changes. A hook-only build failure can
+mean the staged snapshot lacks a source or dependency present in your working copy.
+If no hook runs, check its actual destination, filename, and Unix executable bit.
+
+Inspect sensitive findings locally. Remove and rotate real credentials; never
+share raw findings or unsanitized logs. Narrow scanner exceptions need synthetic
+regression coverage. `git commit --no-verify` skips the whole hook and is reserved
+for reviewed recovery from a broken check, never known sensitive content.
+
 ## Documentation
 
 Write for the person doing the work. Put common tasks before edge cases, explain
@@ -228,14 +293,16 @@ to find, not to emphasize every sentence.
 
 Give each explanation one home: everyday commands and basic log reading in
 [Commands and usage](commands-and-usage.md), exhaustive syntax and output
-contracts in [CLI reference](cli-reference.md), and the update story in
-[Update lifecycle](update-lifecycle.md). Customize owns application sources,
-declaration formats, private additions, and [personal Git settings](application-settings.md#git).
-Repository commit checks belong in [Git hooks](git-hooks.md).
-Detailed workflows stay in Platforms and packages or AI tools and editors.
-Keep maintenance guidance beside the topic it supports; reserve Development
-for repository-wide work. Link instead of repeating instructions, and split
-pages only when their readers or tasks genuinely differ.
+contracts in [CLI reference](cli-reference.md). The update story belongs in
+[Commands and usage](commands-and-usage.md#update-lifecycle). Customize owns
+application sources, declaration formats, private additions, and
+[personal Git settings](application-settings.md#git).
+Repository commit checks belong in [Git hooks](#git-hooks), with guard and
+scanner details in [Testing](testing.md#staged-hook-checks). Editor preferences
+belong in Application settings; agent setup and deployment maintenance belong
+in Agent configuration. Package management owns installation and recipe
+maintenance. Reserve Development for repository-wide work. Link instead of
+repeating instructions, and split pages only when their readers or tasks differ.
 
 Describe stable workflows and meaningful user-visible behavior, not the
 mechanics of each recent fix. Detailed algorithms and regression assertions

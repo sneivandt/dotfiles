@@ -35,8 +35,9 @@ examples, and the amount of detail.
   Git settings belong in Application settings, separate from contributor hooks.
   Keep meaningful topic groups rather than adding a generic Reference group.
 - Keep Application settings focused on shared preferences and finding sources;
-  detailed Arch desktop and editor behavior belongs in its owning guide. Keep
-  each topic's maintenance guide beside its everyday guide, with every guide
+  Arch desktop behavior belongs in its own guide. Keep editor setup and source
+  references in Application settings, agent preferences and deployment maintenance
+  in Agent configuration, and recipe maintenance in Package management. Keep guides
   one level deep. Group related topics when separate headings fragment the
   navigation; a distinct page or maintenance guide does not require its own
   top-level section. Use the site configuration for current labels and order,

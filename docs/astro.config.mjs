@@ -69,23 +69,19 @@ export default defineConfig({
         },
         {
           label: 'Use dotfiles',
-          items: ['commands-and-usage', 'update-lifecycle', 'troubleshooting', 'cli-reference', 'task-reference'],
+          items: ['commands-and-usage', 'troubleshooting', 'cli-reference', 'task-reference'],
         },
         {
           label: 'Customize',
-          items: ['application-settings', 'configuration-reference', 'private-overlays'],
+          items: ['application-settings', 'agent-configuration', 'configuration-reference', 'private-overlays'],
         },
         {
           label: 'Platforms and packages',
-          items: ['arch-desktop', 'windows-and-wsl', 'package-management', 'arch-package-recipes'],
-        },
-        {
-          label: 'AI tools and editors',
-          items: ['agent-configuration', 'agent-deployment-internals', 'visual-studio-code', 'vim-and-neovim'],
+          items: ['arch-desktop', 'windows-and-wsl', 'package-management'],
         },
         {
           label: 'Development',
-          items: ['contributing', 'testing', 'git-hooks', 'architecture', 'ci-and-releases'],
+          items: ['contributing', 'testing', 'architecture', 'ci-and-releases'],
         },
       ],
     }),

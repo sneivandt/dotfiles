@@ -139,6 +139,21 @@ before running its wrapper:
   `.\dotfiles.ps1 --build --version` builds and prints the version without
   applying configuration. Build mode is not remembered between runs.
 
+## CLI self-update
+
+Release self-update runs only for a binary in the selected checkout's `bin/`
+directory with an embedded release publisher. Changing Git `origin` does not
+redirect that existing binary to a different publisher. Development builds do
+not self-update.
+
+After checksum and provenance verification, the replacement must pass a
+`--version` smoke test. A failed smoke test attempts to restore the previous
+binary and reports rollback failures. Failed verification rejects the download.
+Release lookups may reuse fresh results for ten minutes; a dry run can report
+an available version but does not install it or write release caches.
+See [Release downloads](security-and-trust.md#release-downloads) for attestation
+requirements and bypass controls.
+
 ## Task discovery output
 
 ```bash

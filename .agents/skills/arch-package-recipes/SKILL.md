@@ -9,7 +9,7 @@ description: >
 
 # Arch Package Recipes
 
-Read [Arch package recipes](../../../docs/content/arch-package-recipes.md) for the lifecycle,
+Read [Arch package recipes](../../../docs/content/package-management.md#arch-package-recipes) for the lifecycle,
 descriptor format, cache ownership, Paru paths, and adding recipes.
 
 ## Find the owner
@@ -52,7 +52,7 @@ descriptor format, cache ownership, Paru paths, and adding recipes.
 ## Verify the changed contract
 
 Use [Testing](../../../docs/content/testing.md), the
-[CI coverage](../../../docs/content/arch-package-recipes.md#ci-and-validation), and focused
+[CI coverage](../../../docs/content/package-management.md#ci-and-validation), and focused
 [regressions](../../../cli/src/domains/packages/arch_recipes/tests.rs).
 Recipe-only changes must select offline Linux checks and PKGBUILD ShellCheck
 without releasing the CLI solely because a recipe changed; use `ci-cd-patterns`

@@ -1,6 +1,6 @@
 ---
 title: Application settings
-description: Find the source for a common application change, understand when edits take effect, and customize Git and shared shell preferences.
+description: Find the source for a common application change, understand when edits take effect, and customize Git, shells, and editors.
 ---
 
 # Application settings
@@ -15,8 +15,8 @@ Installing an application and configuring it are separate changes.
 [Package management](package-management.md) chooses applications;
 [symlink declarations](configuration-reference.md#symlinks) choose which
 settings files reach your home. The files themselves control application
-behavior. This guide helps you find the right source, then covers Git and
-preferences shared by the shells.
+behavior. This guide helps you find the right source, then covers Git, shells, editors,
+and automatic file cleanup.
 
 ## Find a common change
 
@@ -30,7 +30,7 @@ preferences shared by the shells.
 | Terminal colors, fonts, or keys | [Alacritty settings](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/alacritty/alacritty.toml) or [Windows Terminal settings](https://github.com/sneivandt/dotfiles/blob/main/symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json) |
 | tmux behavior | [config/tmux/tmux.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/tmux/tmux.conf) |
 | Desktop shortcuts, monitors, bar, or appearance | [Arch desktop](arch-desktop.md#where-to-customize) |
-| Editor settings, keybindings, or plugins | [Visual Studio Code](visual-studio-code.md) or [Vim and Neovim](vim-and-neovim.md) |
+| Editor settings, keybindings, or plugins | [Visual Studio Code](#visual-studio-code) or [Vim and Neovim](#vim-and-neovim) |
 | Agent preferences, skills, or integrations | [Agent configuration](agent-configuration.md) |
 | SSH client defaults | [ssh/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/ssh/config) |
 | Automatic deletion of old temporary files or screenshots | [Automatic cleanup](#automatic-cleanup) below |
@@ -100,7 +100,7 @@ The shared configuration selects
 [Git templates](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git/templates/)
 through `init.templateDir`. Git copies their hook entrypoints when initializing
 or cloning a repository; the helpers resolve from the managed directory at
-runtime. These are separate from this repository's [contributor hooks](git-hooks.md).
+runtime. These are separate from this repository's [contributor hooks](contributing.md#git-hooks).
 Existing repositories need new entrypoints installed explicitly without
 overwriting repository-specific hooks.
 
@@ -172,6 +172,110 @@ RPM extraction uses `bsdtar`, supplied by `libarchive` on Arch.
 Keep the extractor's normal path protections when customizing the helper.
 Extract untrusted archives into a fresh directory and review the contents
 before running anything; see [Security and trust](security-and-trust.md).
+
+## Visual Studio Code
+
+The desktop profile installs VS Code Insiders on Arch and Windows. Shared
+settings also link into stable VS Code when present. Edit
+[settings.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Code/User/settings.json)
+and [keybindings.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Code/User/keybindings.json).
+The settings choose Tokyo Night, Source Code Pro, word wrapping, save on focus
+change, and Zsh on Linux or PowerShell on Windows. Application updates are manual;
+extension updates are separate. Review the checkout diff after using the settings
+UI, which can write through managed links.
+
+| Environment | Managed location beneath the home directory |
+|---|---|
+| Linux desktop | `.config/Code/User/` and `.config/Code - Insiders/User/` |
+| Windows desktop | `AppData/Roaming/Code/User/` and `AppData/Roaming/Code - Insiders/User/` |
+| Desktop profile, remote server | `.vscode-server/data/Machine/settings.json` and `.vscode-server-insiders/data/Machine/settings.json` |
+
+Remote server locations receive settings only. Run dotfiles in the home that
+owns them; configuring Windows does not configure WSL or another host. Workspace
+settings can override user settings. The `base` profile does not select these links.
+
+### Extensions
+
+Edit [conf/vscode-extensions.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml)
+using Marketplace IDs in the appropriate profile category. See
+[Extension declarations](configuration-reference.md#vs-code-extensions) for syntax,
+or use an overlay for personal additions. On a configured machine, preview with:
+
+```sh
+dotfiles update --only vscode-extensions --dry-run
+```
+
+Remove `--dry-run` after review. Use a normal update for a first installation so
+the application and prerequisites are included. Installation prefers
+`code-insiders`, otherwise `code` (their `.cmd` launchers on Windows). It installs
+missing IDs, comparing names without case sensitivity. An unreadable installed
+list fails the task; no available CLI means a skip.
+
+The list is neither a version lockfile nor an uninstall list. Existing extensions
+remain, including after removing declarations or running `dotfiles remove`.
+Use the editor's Extensions view for updates and deliberate removal.
+
+On Arch, the managed Insiders launcher and URL handler use GNOME libsecret.
+See [GNOME Keyring troubleshooting](troubleshooting.md#gnome-keyring-does-not-unlock-at-login)
+for credential failures. Chroot setup defers extension installation until a
+graphical login; `dotfiles-first-login.service` retries until it succeeds.
+
+For failures, start with `dotfiles log --task vscode-extensions --verbose`.
+Check the selected CLI, profile, home, link destinations, and workspace overrides
+before reinstalling anything. Agent integrations have separate
+[configuration](agent-configuration.md).
+
+## Vim and Neovim
+
+On Linux, `symlinks/vim/` links to both `~/.vim` and `~/.config/nvim`, including
+for the base profile. Vim uses the shared configuration without third-party
+plugins; Neovim adds lazy.nvim plugins. Edits and plugin lockfile updates can
+therefore modify tracked files in this checkout.
+
+| Source | Change here |
+|---|---|
+| [vimrc](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/vimrc) | Shared behavior and mappings |
+| [init.vim](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/init.vim) | Neovim entry point |
+| [nvimrc](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/nvimrc) | Neovim mappings and terminal behavior |
+| [lazy-bootstrap.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/lua/lazy-bootstrap.lua) | Plugin declarations, configuration, and bootstrap pin |
+| [lazy-lock.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/lazy-lock.json) | Recorded plugin revisions |
+
+The leader key is comma. Shared shortcuts include `,w` for wrapping, `,k` for
+spell checking, and `,v` for configuration. Neovim adds Ctrl-P for file search,
+`,/` for content search with ripgrep, Ctrl-E for the tree, `,b` for buffers,
+and `,t` for a terminal. See the source mappings for the full set, including
+remapped navigation and search keys. In a terminal, Escape leaves input mode;
+Alt+Escape also returns to the previous window.
+
+### First launch and plugins
+
+Starting Neovim can clone the pinned lazy.nvim manager and install missing
+plugins. It needs Git and network access and is **not a read-only check**.
+Use `:echo stdpath('data')` to locate its data directory; the manager lives
+under `lazy/lazy.nvim` there. Existing installations are not reset on startup.
+
+Run `:TSInstallConfigured` separately for missing configured Tree-sitter parsers.
+Wait for the asynchronous installation, then reopen the file. Normal startup
+does not download parsers; the plugin's `:TSUpdate` build hook updates installed
+parsers during plugin updates.
+
+Use `:Lazy` to inspect plugin state and errors. `:Lazy update` updates revisions;
+`:Lazy sync` also installs missing plugins and cleans unused ones. These commands
+change installed content and may change the tracked lockfile, so review the diff.
+Keep plugin-only behavior on the Neovim path so plain Vim still loads on its own.
+Neovim 0.11+ uses fuzzy insert completion; 0.12+ adds proximity ranking and `,u`
+for the built-in undo tree.
+
+For errors, inspect `:messages`, `:Lazy`, the failing Git command, and the affected
+plugin's locked revision. Do not delete the entire plugin tree as a general
+repair. If necessary, close the editor and move aside only the affected directory
+under the actual data path before retrying.
+
+Bootstrap-pin changes must update the matching lockfile entry without advancing
+unrelated plugins. Verify first launch with an absent manager in isolated data
+paths. [Application configuration tests](testing.md#application-configuration)
+cover plugin-free regressions and CI restoration of locked plugins; avoid testing
+through the live installed profile.
 
 ## Automatic cleanup
 

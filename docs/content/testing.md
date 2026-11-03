@@ -25,7 +25,7 @@ a `cd` command. Return to the root before following a separate example.
 | Wrappers or hooks | [Isolated wrapper/hook fixtures](#wrapper-and-hook-tests) | Integration behavior changed: use a disposable environment |
 | Desktop or application content | [Desktop shell](#desktop-shell) / [Application configuration](#application-configuration) | Rendering, focus, or session behavior needs native testing |
 | CI selection or workflows | Local `ci` stage and the changed job's command | Dependencies or triggers changed: include classification fixtures |
-| Arch package recipes | [Recipe validation](arch-package-recipes.md#ci-and-validation) | A real package build/install is needed: use disposable Arch |
+| Arch package recipes | [Recipe validation](package-management.md#ci-and-validation) | A real package build/install is needed: use disposable Arch |
 
 For Rust changes, also run formatting and host Clippy. Add Windows-target
 Clippy for platform-sensitive code, and the full Rust suite for shared
@@ -164,6 +164,60 @@ instructions live in
 Use the full `docs` stage for its additional skill metadata and Rust selector
 checks, and the [committed-patch checker](#before-pushing) before pushing.
 
+### Staged hook checks
+
+From the repository root, enable extra guards with:
+
+```sh
+DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
+```
+
+`true` and `yes` also enable full mode. Set the same variable for `git commit`
+to run it during a commit. Guards are selected by staged paths, not run wholesale:
+
+| Trigger | Additional coverage |
+|---|---|
+| Rust/build inputs | Windows GNU-target Clippy when available, then full Rust tests |
+| `conf/*.toml` or `symlinks/` | Typed configuration and `config_drift` |
+| Cargo inputs or deny policy | Wildcard dependency guard and available cargo-deny checks |
+| Shell or hook paths | Available ShellCheck on affected inputs |
+| POSIX wrapper or its tests | Linux wrapper tests |
+| Release workflow | Staged publishing invariants, including provenance and permissions |
+
+Deletions and both sides of renames select guards. Rust and CI guards inspect an
+isolated snapshot of the index, ignoring unstaged deletions and untracked files;
+release guards read the staged workflow directly. Builds reuse the Cargo cache.
+The verifier, pattern files, and analyzer helpers themselves come from the
+working tree, so review their changes separately. The staged compiler pin is
+checked, not installed or switched automatically.
+
+`sh hooks/check-ci-guards.sh` runs targeted guards directly. Without full mode
+it omits config drift, cargo-deny, and wrapper tests. Neither invocation replaces
+the [committed-patch checker](#before-pushing).
+
+#### Sensitive-pattern scanning
+
+[check-sensitive.sh](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-sensitive.sh)
+scans added lines from `HEAD` to the index (an empty tree for an initial commit).
+Edited renames do not rescan every unchanged line. Case-insensitive extended
+regular expressions match the line text; diagnostics redact matched content.
+Invalid detection or allowlist patterns fail even with an empty diff.
+
+Change [sensitive-patterns.ini](https://github.com/sneivandt/dotfiles/blob/main/hooks/sensitive-patterns.ini)
+for detection and [sensitive-allowlist.ini](https://github.com/sneivandt/dotfiles/blob/main/hooks/sensitive-allowlist.ini)
+for exceptions. Exceptions redact only the matching safe span before scanning
+the remaining line. Use synthetic fixtures proving both the intended exception
+and detection of a secret elsewhere on the same line. Existing exceptions cover
+Action pins, checksums, `test.local` fixtures, and GitHub SSH syntax;
+`example.com` addresses are not generally exempt.
+
+The scanner does not cover unchanged history, binary data, or every encoded or
+unknown credential format. Follow [Secrets](security-and-trust.md#secrets).
+Keep hook scripts POSIX `sh` compatible and test partially staged input,
+renames/deletions, unusual filenames, and empty diffs. Run integration tests only
+in the disposable checkout specified under [Wrapper and hook tests](#wrapper-and-hook-tests).
+The suite creates commits; never run it against this checkout.
+
 ### CLI validation
 
 To check this checkout using the current source, without wrapper bootstrap:
@@ -251,7 +305,7 @@ DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
 
 The Rust and CI guards export the index and reuse caches without stashing or
 overwriting working files. Full mode remains staged-change-aware; it is not
-committed-range validation. See [Git hooks](git-hooks.md).
+committed-range validation. See [contributor hooks](contributing.md#git-hooks).
 
 #### Full commit-hook suite
 

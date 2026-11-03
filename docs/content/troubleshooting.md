@@ -122,7 +122,7 @@ For a hidden credential dialog, including under WSL, provide authentication
 through the [supported credential sources](security-and-trust.md#build-provenance-verification).
 A [source build](contributing.md#source-builds) avoids the installed updater.
 To temporarily disable a release check instead, use the
-[lifecycle control](update-lifecycle.md#control-what-advances);
+[lifecycle control](commands-and-usage.md#control-what-advances);
 it does **not** disable the rest of update.
 
 ## Cargo build fails
@@ -303,7 +303,7 @@ authorization reason.
 `--only packages` does not include AUR entries. `--only aur-packages` assumes
 its omitted prerequisites are satisfied unless you add `--with-deps`.
 Arch package recipe or pin failures belong in
-[Arch package recipes](arch-package-recipes.md#logs-and-troubleshooting).
+[Arch package recipes](package-management.md#logs-and-troubleshooting).
 
 **Installing missing Arch packages can upgrade the whole system.** It runs
 `pacman -Syu --needed --noconfirm`; do not use apply as a harmless diagnostic.

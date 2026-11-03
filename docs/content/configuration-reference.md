@@ -486,5 +486,5 @@ The formats above select and install application sources; they do not describe
 every application's own settings syntax. Start with
 [Application settings](application-settings.md) to find common settings sources,
 [Arch desktop](arch-desktop.md) for the graphical session, and the
-[VS Code](visual-studio-code.md) or [Vim and Neovim](vim-and-neovim.md) guides
+[VS Code](application-settings.md#visual-studio-code) or [Vim and Neovim](application-settings.md#vim-and-neovim) sections
 for editor behavior and plugins.

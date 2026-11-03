@@ -124,7 +124,7 @@ external command to those directories. See
 Keep credentials, private keys, tokens, connection strings, and private
 machine/overlay values out of tracked files, examples, fixtures, and uploads.
 
-The [pre-commit scanner](git-hooks.md#scan-scope) checks added staged text using
+The [pre-commit scanner](testing.md#sensitive-pattern-scanning) checks added staged text using
 versioned patterns and redacts matches. It is local and bypassable; it does not
 scan every historical, binary, or encoded value. A clean scan is useful, but not
 proof that a patch contains no secrets.

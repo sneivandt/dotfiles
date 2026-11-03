@@ -58,7 +58,8 @@ The `agent-settings` task edits only declared keys in these documents:
 Unmanaged keys survive. Invalid existing documents are reported, not replaced.
 Removing a declaration stops managing the key; it does **not** delete the stored
 value. Conflicting declarations for the same harness/key fail before writes.
-This task does not run APM. Preview preference changes separately:
+This task does not run APM. With dotfiles installed and a profile selected,
+edit `conf/agent-settings.toml` and preview preference changes separately:
 
 ```sh
 dotfiles update --only agent-settings --dry-run
@@ -130,7 +131,8 @@ To add another package:
    Use forward slashes in local dependency paths on both platforms.
 3. If adding a fragment, declare its link in `conf/symlinks.toml`. Keep its
    category selection compatible with the local plugins it requires.
-4. Review the destinations below, then [validate and preview](#validate-preview-and-apply).
+4. Review the destinations below, then follow
+   [Validate, preview, and apply](#validate-preview-and-apply).
 
 Keep self-defined MCP servers as direct dependencies unless you intentionally
 trust another package to declare them for you. Dependency-level `targets`
@@ -200,11 +202,10 @@ dotfiles update --only agent-packages
 ```
 
 This is a real deployment, not a way to test a skill edit in isolation.
-It can run package code and enable scheduled workflows. To change only
-preferences in `conf/agent-settings.toml`, preview and apply `agent-settings`
-instead. On Arch, the APM executable comes from the
-[apm-dotfiles package](package-management.md#custom-arch-packages); upgrading that
-application is separate from deploying agent content.
+It can run package code and enable scheduled workflows. For preference changes,
+follow [Harness settings](#harness-settings). On Arch, the APM executable comes
+from the [apm-dotfiles package](package-management.md#custom-arch-packages);
+upgrading that application is separate from deploying agent content.
 
 ## Configuration fragments
 

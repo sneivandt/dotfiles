@@ -57,31 +57,14 @@ The CLI adds categories for your operating system and selects matching
 declarations. [Profiles and categories](profiles-and-categories.md) walks through
 that selection.
 
-There are two parts to an application configuration: a declaration says
-which file to install, and a source file contains the application's
-settings. For example, this is part of the real
-[conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml):
-
-```toml title="conf/symlinks.toml"
-[base]
-symlinks = [
-  "config/git/config",
-]
-```
-
-This is an excerpt, not a replacement for the existing `[base]` section.
-Both profiles include `base`, so both select this entry:
-
-| Part | In this example |
-|---|---|
-| Declaration | `"config/git/config"` in `conf/symlinks.toml` |
-| Source to review or edit | [symlinks/config/git/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config) |
-| Destination in your home | `~/.config/git/config` |
-| What applying does | Creates a link from the home destination to the source in this checkout |
-
-Open that source and review its Git identity, defaults, and included files.
-To change a Git preference, edit the source; to stop selecting this link,
-change the declaration. Other files under
+For example, both profiles select `"config/git/config"` in
+[conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml).
+This links `~/.config/git/config` to the tracked
+[symlinks/config/git/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config).
+Review its Git identity, defaults, and included files. Edit the source to change
+a preference, or the declaration to stop selecting the link. See
+[Configuration reference](configuration-reference.md#symlinks) for the full example.
+Other files under
 [conf/](https://github.com/sneivandt/dotfiles/tree/main/conf/) declare packages,
 services, and settings rather than links.
 

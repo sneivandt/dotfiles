@@ -25,7 +25,7 @@ If the launcher is uncertain, substitute an existing `./bin/dotfiles` or
 | Problem | Go to |
 |---|---|
 | No usable CLI | [Bootstrap](#the-wrapper-cannot-find-or-download-the-binary), [source build](#cargo-build-fails) |
-| Old version or a stalled upgrade | [Self-update](#the-binary-never-self-updates), [legacy updater recovery](#legacy-updater-recovery) |
+| Old version or a stalled upgrade | [Self-update](#the-binary-never-self-updates) |
 | Selection or parsing error | [Profile](#no-profile-can-be-selected), [configuration](#configuration-does-not-parse), [overlay](#an-overlay-appears-to-be-ignored) |
 | Missing/skipped work | [Task selection](#a-task-does-not-run), [elevation](#a-task-was-skipped-because-elevation-was-unavailable) |
 | Concurrent or failed repository run | [Run lock](#another-run-holds-the-repository-lock), [Git synchronization](#repository-update-fails) |
@@ -107,7 +107,8 @@ Normal saved authentication can be set up with `gh auth login --hostname github.
 For Linux keyring-only credentials, follow the
 [automatic verification authentication guidance](security-and-trust.md#build-provenance-verification).
 
-### Legacy updater recovery
+<details>
+<summary>Legacy updater recovery</summary>
 
 These recovery steps apply to an installed binary that rejects the current
 `vYYYY.MM.DD-N` release names or blocks on a desktop-keyring dialog during
@@ -124,6 +125,8 @@ A [source build](contributing.md#source-builds) avoids the installed updater.
 To temporarily disable a release check instead, use the
 [lifecycle control](commands-and-usage.md#control-what-advances);
 it does **not** disable the rest of update.
+
+</details>
 
 ## Cargo build fails
 

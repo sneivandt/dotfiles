@@ -46,29 +46,14 @@ Open PowerShell in the checkout and preview an update:
 .\dotfiles.ps1 update --no-repo-update --dry-run
 ```
 
-This downloads and verifies the CLI if needed, then previews configuration changes.
-With no existing profile selection, choose `desktop` for a workstation or
-`base` for a shell-focused role when prompted. The choice is saved.
-Use `.\dotfiles.ps1 list` afterward to discover tasks.
-
-Review the selected profile, planned links, registry values, and packages.
-**A preview is not a sandbox:** wrapper bootstrap runs first, and previews can
-write logs or selection metadata and execute overlay inspection scripts.
-See [Dry-run scope](commands-and-usage.md#dry-run-scope) for the full boundary.
-
-For this first setup, `--no-repo-update` keeps the checkout fixed while you
-review it. After backing up affected files and reviewing the plan, **apply**
-with repository synchronization still disabled:
-
-```powershell
-.\dotfiles.ps1 update --no-repo-update
-```
-
-For later maintenance, ordinary `.\dotfiles.ps1 update` can update the CLI and
-synchronize the repository first. `--no-repo-update` does not disable CLI
-self-update or all network activity.
-Open a new terminal after installation. The examples below use the wrapper so
-they also work before the launcher is installed.
+The wrapper downloads and verifies the CLI if needed. Follow
+[Preview the selected work](getting-started.md#3-preview-the-selected-work)
+for profile selection and the preview's limits, then
+[Apply what you reviewed](getting-started.md#4-apply-what-you-reviewed)
+for the Windows apply command and first launcher check.
+Review Windows-specific symlink and elevation behavior below before applying.
+The remaining examples use the wrapper so they also work before the launcher
+is installed.
 
 ### Download and update failures
 

@@ -115,6 +115,25 @@ expressions: write the relative path, not `~/…`.
 
 ## Symlinks
 
+Each declaration selects a source file and a destination. For example, both
+profiles select this entry from
+[conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml):
+
+```toml title="conf/symlinks.toml"
+[base]
+symlinks = ["config/git/config"]
+```
+
+| Part | In this example |
+|---|---|
+| Declaration | `"config/git/config"` in `conf/symlinks.toml` |
+| Source to review or edit | [symlinks/config/git/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config) |
+| Destination in your home | `~/.config/git/config` |
+| What applying does | Creates a link from the home destination to the source in this checkout |
+
+To change a Git preference, edit the source. To stop selecting this link, change
+the declaration; that does not remove an already-installed link.
+
 A string names a source and derives a dot-prefixed home target:
 
 ```toml

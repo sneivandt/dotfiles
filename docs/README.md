@@ -103,17 +103,17 @@ from `docs/` before rebuilding so unchanged guides receive the new transforms.
 
 ## Navigation and appearance
 
-Keep guides one level deep in the sidebar, with everyday and maintenance
-guides beside each other. Group related topics under recognizable headings
-rather than giving every topic its own small section. Page boundaries follow
+Keep guides one level deep in the sidebar. Put maintenance sections after
+everyday guidance in their owning guide. Group related topics under recognizable
+headings rather than giving every topic its own small section. Page boundaries follow
 reader tasks; they do not need to match navigation groups.
 
 The site title links to the separate introduction at `/`; Getting started
 owns the setup walkthrough.
 
-Navigation groups start expanded on desktop and mobile, with native reader
-toggles preserved. Overflowing navigation uses a full-width, contrasting
-scrollbar in both themes. New visits default to dark mode, while the theme
+Keep the compact spacing between the header icon and title. Use the template's
+navigation and scrollbar appearance without custom overrides. Navigation groups start expanded on desktop and mobile, with
+native reader toggles preserved. New visits default to dark mode, while the theme
 control retains explicit Light and System choices.
 
 Keep source and topic links visually distinct from literal syntax: ordinary

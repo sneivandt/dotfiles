@@ -77,7 +77,9 @@ examples, and the amount of detail.
 - Default new visits to dark mode while retaining explicit Light and System
   choices. Reuse Starlight's theme provider and picker, with theme credit text
   disabled. Use Starlight's default expanded sidebar groups on desktop and
-  mobile; preserve its native reader toggles and saved desktop choices.
+  mobile; preserve its native reader toggles and saved desktop choices. Use the
+  template's navigation scrollbar appearance without overrides; retain compact
+  header icon/title spacing.
 - Astro derives its site URL from `docs/public/CNAME`. Keep the homepage's
   explicit canonical/social/structured-data URLs, `public/robots.txt`, README
   links, and domain-specific browser assertions aligned when changing domains.

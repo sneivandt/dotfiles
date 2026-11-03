@@ -170,8 +170,10 @@ test('lookup and prerequisite information precedes advanced details', async ({ p
     ['contributing', '2-find-the-owning-files', 'development-setup'],
     ['testing', 'before-pushing', 'specialized-checks'],
     ['agent-configuration', 'deployment-targets', 'validate-preview-and-apply'],
+    ['agent-configuration', 'what-a-preview-can-show', 'configuration-fragments'],
     ['agent-configuration', 'authentication-and-failure-diagnosis', 'deployment-maintenance'],
     ['package-management', 'install-and-upgrade', 'arch-package-recipes'],
+    ['package-management', 'logs-and-troubleshooting', 'custom-arch-packages'],
     ['contributing', 'contribution-workflow', 'git-hooks'],
     ['commands-and-usage', 'select-tasks', 'update-lifecycle'],
   ]) {

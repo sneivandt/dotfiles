@@ -15,8 +15,8 @@ Installing an application and configuring it are separate changes.
 [Package management](package-management.md) chooses applications;
 [symlink declarations](configuration-reference.md#symlinks) choose which
 settings files reach your home. The files themselves control application
-behavior. This guide helps you find the right source, then covers Git, shells, editors,
-and automatic file cleanup.
+behavior. This guide helps you find the right source, then covers Git, shells,
+and editors.
 
 ## Find a common change
 
@@ -33,7 +33,6 @@ and automatic file cleanup.
 | Editor settings, keybindings, or plugins | [Visual Studio Code](#visual-studio-code) or [Vim and Neovim](#vim-and-neovim) |
 | Agent preferences, skills, or integrations | [Agent configuration](agent-configuration.md) |
 | SSH client defaults | [ssh/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/ssh/config) |
-| Automatic deletion of old temporary files or screenshots | [Automatic cleanup](#automatic-cleanup) below |
 
 Source paths in this table are beneath `symlinks/`. Linked source files open
 the public repository on GitHub; edit the corresponding file in your own
@@ -276,37 +275,3 @@ unrelated plugins. Verify first launch with an absent manager in isolated data
 paths. [Application configuration tests](testing.md#application-configuration)
 cover plugin-free regressions and CI restoration of locked plugins; avoid testing
 through the live installed profile.
-
-## Automatic cleanup
-
-The `systemd` task enables user timers that **delete old content automatically**.
-Review them before using these directories for anything you intend to keep:
-
-| Selected environment | Directory | File and symlink retention rule |
-|---|---|---|
-| Linux, either profile | `~/tmp` | `find -mtime +7`: at least 8 full days since modification |
-| Arch desktop | `~/screenshots` | `find -mtime +30`: at least 31 full days since modification |
-
-The timers run daily, with up to ten minutes of randomized delay. They catch
-up after a missed run, so cleanup can happen soon after login or when user
-services start. The services skip absent directories, stay on the same filesystem,
-do not follow symlinks, and remove old empty subdirectories too. Deletion does
-not use the desktop trash or make a backup.
-
-Retention commands live in
-[clean-home-tmp.service](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service)
-and
-[clean-screenshots.service](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service);
-their adjacent `.timer` files control scheduling. Inspect the active timers
-without running cleanup:
-
-```sh
-systemctl --user list-timers --all --no-pager
-```
-
-To disable cleanup persistently through dotfiles, change the relevant unit in
-`conf/systemd-units.toml` to an explicit
-`{ name = "clean-home-tmp.timer", scope = "user", enabled = false }` entry
-(or use `clean-screenshots.timer`). Review and apply the `systemd` task.
-Simply deleting the declaration or running `dotfiles remove` does not stop a
-timer that was already enabled.

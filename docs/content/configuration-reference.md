@@ -354,7 +354,7 @@ User unit files usually arrive through symlinks; packages may provide others.
 System-scope changes can require sudo. Inside WSL, systemd must already be
 running or degraded; changing `wsl.conf` cannot start it in the current session.
 
-Some selected units perform [automatic cleanup](application-settings.md#automatic-cleanup).
+Some selected units perform [automatic cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service).
 To stop managing a service and also stop it running, first apply an explicit
 `enabled = false` declaration. Deleting its entry alone does not disable it.
 

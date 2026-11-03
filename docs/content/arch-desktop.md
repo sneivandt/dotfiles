@@ -39,7 +39,7 @@ explains installation and upgrades.
 Screenshots are saved under `~/screenshots` and copied to the clipboard when
 available. Cancelling area selection saves nothing. Move images you want to
 keep elsewhere: the desktop's
-[cleanup timer](application-settings.md#automatic-cleanup) deletes old files
+[cleanup timer](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service) deletes old files
 from this directory.
 
 ## Hyprland media keys

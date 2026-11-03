@@ -102,7 +102,7 @@ Review any overlay scripts too: they are executable code.
 :::
 
 Review the selected services as well as files. Linux profiles include
-[automatic cleanup](application-settings.md#automatic-cleanup) of old content
+[automatic cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service) of old content
 under `~/tmp`; Arch desktops also clean old screenshots. Installing
 [Git hooks](contributing.md#installation-and-removal) can replace existing hooks
 at managed names, so preserve any custom hooks first.

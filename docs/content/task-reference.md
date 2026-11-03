@@ -297,12 +297,12 @@ These instances are discovered at startup and rediscovered after a repository
 restart, not added during task execution.
 An internal reporting task records their count but does not execute scripts.
 
-| Script invocation | Behavior |
+| Mode | Invocation and behavior |
 |---|---|
-| `--check` | Exit 0 when configured; exit 1 when work is needed |
-| No flag | Apply when the update check returns 1 |
-| `--dryrun` | Describe the changes needed without applying them |
-| `--remove` | Remove when the removal check returns 0 |
+| Inspect | `--check`: exit 0 when configured; exit 1 when work is needed |
+| Apply | No flag: apply when the update check returns 1 |
+| Preview | `--dryrun`: describe needed changes without applying them |
+| Remove | `--remove`: remove when the removal check returns 0 |
 
 A missing/unreadable script or another check failure fails the task. A remove
 dry run inspects state and reports removal, invoking neither `--remove` nor

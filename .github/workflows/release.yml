@@ -251,6 +251,8 @@ jobs:
           body: |
             Automated release.
             Commit: ${{ needs.version.outputs.sha }}
+
+            [Documentation](https://dotfiles.stuartneivandt.com/) · [Getting started](https://dotfiles.stuartneivandt.com/getting-started.html)
           files: |
             dotfiles-linux-x86_64
             dotfiles-linux-aarch64

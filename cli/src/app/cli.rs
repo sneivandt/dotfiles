@@ -19,7 +19,9 @@ Examples:
   dotfiles update --dry-run
   dotfiles update --only symlinks
   dotfiles check
-  dotfiles list",
+  dotfiles list
+
+Documentation: https://dotfiles.stuartneivandt.com/",
     help_template = "\
 {about-with-newline}
 {usage-heading} {usage}

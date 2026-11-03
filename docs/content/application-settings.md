@@ -177,6 +177,12 @@ entries and removes duplicates of those entries. It honors `CARGO_HOME`,
 [PATH task](task-reference.md#shell-path), which makes the dotfiles launcher
 available persistently.
 
+The Zsh `extract <file>` helper selects an extractor from the archive suffix.
+Optional formats need their own tools, including `unrar` for RAR and `7z` for
+7-Zip archives; the base package list does not install those tools. If the
+selected tool is missing, the helper names it and leaves the archive unchanged.
+Install the required tool with your package manager before retrying.
+
 ### Completion
 
 Zsh uses normal completion on the first Tab. Repeat Tab to try approximate

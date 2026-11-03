@@ -17,17 +17,25 @@ fi
 local archive="$1"
 [[ "$archive" == /* ]] || archive="./$archive"
 
+local -a extractor
 case "$archive" in
-  *.tar.bz2|*.tbz2|*.tar.gz|*.tgz|*.tar.xz|*.txz|*.tar.Z|*.tar|*.tar.zst|*.tzst) tar xf "$archive" ;;
-  *.bz2)            bunzip2 "$archive" ;;
-  *.gz)             gunzip  "$archive" ;;
-  *.rar)            unrar x "$archive" ;;
-  *.zip)            unzip   "$archive" ;;
-  *.7z)             7z x    "$archive" ;;
-  *.Z)              uncompress "$archive" ;;
-  *.xz)             unxz    "$archive" ;;
-  *.zst)            unzstd --rm "$archive" ;;
-  *.deb)            ar x    "$archive" ;;
-  *.rpm)            bsdtar -xf "$archive" ;;
+  *.tar.bz2|*.tbz2|*.tar.gz|*.tgz|*.tar.xz|*.txz|*.tar.Z|*.tar|*.tar.zst|*.tzst) extractor=(tar xf) ;;
+  *.bz2)            extractor=(bunzip2) ;;
+  *.gz)             extractor=(gunzip) ;;
+  *.rar)            extractor=(unrar x) ;;
+  *.zip)            extractor=(unzip) ;;
+  *.7z)             extractor=(7z x) ;;
+  *.Z)              extractor=(uncompress) ;;
+  *.xz)             extractor=(unxz) ;;
+  *.zst)            extractor=(unzstd --rm) ;;
+  *.deb)            extractor=(ar x) ;;
+  *.rpm)            extractor=(bsdtar -xf) ;;
   *)                echo "'$1' cannot be extracted via extract()" 1>&2; return 1 ;;
 esac
+
+if ! command -v "${extractor[1]}" >/dev/null 2>&1; then
+  printf 'extract: %s is required to extract %s\n' "${extractor[1]}" "$1" >&2
+  return 127
+fi
+
+"${extractor[@]}" "$archive"

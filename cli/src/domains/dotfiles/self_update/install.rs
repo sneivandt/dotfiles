@@ -2,7 +2,7 @@
 //! post-install smoke test and end-to-end download orchestration.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result, bail};
 
@@ -21,27 +21,42 @@ fn remove_stale_backup(path: &Path) -> Result<()> {
     }
 }
 
-fn install_staged_binary(path: &Path, staged: &Path) -> Result<()> {
+fn backup_current_binary(path: &Path) -> Result<Option<PathBuf>> {
     let dir = path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("binary path has no parent directory"))?;
-    let backup = if path.exists() {
+    if path.exists() {
         let old = dir.join(old_binary_name());
         remove_stale_backup(&old)?;
+        // Unix can atomically replace the installed entry. Keep that entry
+        // reachable while retaining its inode for smoke-test rollback.
+        #[cfg(unix)]
+        fs::hard_link(path, &old).context("backing up current binary")?;
+        #[cfg(not(unix))]
         fs::rename(path, &old).context("backing up current binary")?;
-        Some(old)
+        Ok(Some(old))
     } else {
-        None
-    };
+        Ok(None)
+    }
+}
+
+fn install_staged_binary(path: &Path, staged: &Path) -> Result<()> {
+    let backup = backup_current_binary(path)?;
 
     if let Err(install_error) = fs::rename(staged, path) {
-        if let Some(old) = backup
-            && let Err(restore_error) = fs::rename(&old, path)
-        {
-            return Err(anyhow::anyhow!(
-                "moving new binary into place failed ({install_error}); \
-                 restoring previous binary also failed ({restore_error})"
-            ));
+        if let Some(old) = backup {
+            // On Unix the original entry is still in place. Renaming its hard
+            // link over it would be a no-op and leave the backup behind.
+            #[cfg(unix)]
+            let recovery = fs::remove_file(&old);
+            #[cfg(not(unix))]
+            let recovery = fs::rename(&old, path);
+            if let Err(recovery_error) = recovery {
+                return Err(anyhow::anyhow!(
+                    "moving new binary into place failed ({install_error}); \
+                     recovering previous binary also failed ({recovery_error})"
+                ));
+            }
         }
         return Err(install_error).context("moving new binary into place");
     }
@@ -50,10 +65,10 @@ fn install_staged_binary(path: &Path, staged: &Path) -> Result<()> {
 
 /// Replace the binary at `path` with a verified staging file.
 ///
-/// The current binary is renamed to [`old_binary_name`] first rather than
-/// deleted, so the caller can restore it when the post-install smoke test
-/// fails.  Windows blocks *deleting* a running executable but still allows
-/// *renaming* it, which is what makes the same in-place update work there.
+/// Retain the current binary at [`old_binary_name`] for smoke-test rollback.
+/// Unix uses a hard link so the installed path stays available until the
+/// staged binary atomically replaces it. Windows renames the old executable
+/// first because a running executable cannot be replaced directly there.
 pub(super) fn replace_binary(path: &Path, staged: &Path) -> Result<()> {
     #[cfg(unix)]
     {
@@ -286,6 +301,8 @@ mod tests {
         let bin = dir.path().join("dotfiles");
         let missing_staged = dir.path().join("missing-staged-binary");
         fs::write(&bin, b"old").unwrap();
+        #[cfg(unix)]
+        let original = fs::metadata(&bin).unwrap();
 
         let error = install_staged_binary(&bin, &missing_staged).unwrap_err();
 
@@ -295,6 +312,100 @@ mod tests {
         );
         assert_eq!(fs::read(&bin).unwrap(), b"old");
         assert!(!dir.path().join(old_binary_name()).exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt as _;
+            assert_eq!(fs::metadata(&bin).unwrap().ino(), original.ino());
+        }
+    }
+
+    #[test]
+    fn backup_failure_preserves_installed_and_staged_binaries() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("dotfiles");
+        let staged = dir.path().join("staged");
+        fs::write(&bin, b"old").unwrap();
+        fs::write(&staged, b"new").unwrap();
+        let occupied_backup = dir.path().join(old_binary_name());
+        fs::create_dir(&occupied_backup).unwrap();
+        fs::write(occupied_backup.join("unrelated"), b"keep").unwrap();
+
+        let error = install_staged_binary(&bin, &staged).unwrap_err();
+
+        assert!(error.to_string().contains("removing stale backup"));
+        assert_eq!(fs::read(&bin).unwrap(), b"old");
+        assert_eq!(fs::read(&staged).unwrap(), b"new");
+        assert_eq!(
+            fs::read(occupied_backup.join("unrelated")).unwrap(),
+            b"keep"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn interrupted_unix_install_keeps_a_runnable_binary_and_can_retry() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+        for phase in ["backup", "replace"] {
+            let dir = tempfile::tempdir().unwrap();
+            let bin = dir.path().join("dotfiles");
+            let staged = dir.path().join("staged");
+            let old = b"#!/bin/sh\n# old\nexit 0\n";
+            let new = b"#!/bin/sh\n# new\nexit 0\n";
+            fs::write(&bin, old).unwrap();
+            fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+            fs::write(&staged, new).unwrap();
+            let original_inode = fs::metadata(&bin).unwrap().ino();
+
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "domains::dotfiles::self_update::install::tests::interrupted_install_child",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env("DOTFILES_TEST_UPDATE_ROOT", dir.path())
+                .env("DOTFILES_TEST_UPDATE_PHASE", phase)
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(86), "{output:?}");
+            let backup = dir.path().join(old_binary_name());
+            assert_eq!(fs::read(&backup).unwrap(), old);
+            assert_eq!(fs::metadata(&backup).unwrap().ino(), original_inode);
+            assert_eq!(
+                fs::read(&bin).unwrap(),
+                if phase == "backup" { old } else { new }
+            );
+            smoke_test_binary(&bin).unwrap();
+
+            // A fresh attempt must replace any interrupted attempt's backup
+            // and retain the executable that was installed when retry began.
+            let before_retry = fs::read(&bin).unwrap();
+            fs::write(&staged, new).unwrap();
+            super::replace_binary(&bin, &staged).unwrap();
+            assert_eq!(fs::read(&bin).unwrap(), new);
+            assert_eq!(fs::read(&backup).unwrap(), before_retry);
+            assert!(!staged.exists());
+            smoke_test_binary(&bin).unwrap();
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "subprocess fixture launched by the interrupted self-update test"]
+    fn interrupted_install_child() {
+        let root = PathBuf::from(std::env::var_os("DOTFILES_TEST_UPDATE_ROOT").unwrap());
+        let bin = root.join("dotfiles");
+        match std::env::var("DOTFILES_TEST_UPDATE_PHASE")
+            .unwrap()
+            .as_str()
+        {
+            "backup" => assert!(backup_current_binary(&bin).unwrap().is_some()),
+            "replace" => super::replace_binary(&bin, &root.join("staged")).unwrap(),
+            phase => panic!("unexpected interrupted update phase: {phase}"),
+        }
+        // Exit without unwinding, so no caller rollback or guard cleanup runs.
+        std::process::exit(86);
     }
 
     #[test]
@@ -358,9 +469,9 @@ mod tests {
     fn download_and_install_writes_verified_binary() {
         #[derive(Debug)]
         struct RecordingGh {
-            directory: std::path::PathBuf,
+            directory: PathBuf,
             bytes: Vec<u8>,
-            path: std::sync::Mutex<Option<std::path::PathBuf>>,
+            path: std::sync::Mutex<Option<PathBuf>>,
         }
         impl GhCli for RecordingGh {
             fn available(&self) -> bool {

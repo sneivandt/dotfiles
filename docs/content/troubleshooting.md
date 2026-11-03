@@ -110,6 +110,15 @@ Check these before replacing anything:
 Changing `origin` or `DOTFILES_RELEASE_REPO` does not change an existing
 binary's embedded self-update publisher.
 
+On Linux, self-update keeps the installed executable available until the
+verified replacement is renamed into place. It retains the previous executable
+as `bin/.dotfiles.old` for rollback if the new binary fails its startup test.
+An interrupted replacement can leave either version installed; check
+`bin/dotfiles --version` before retrying. Windows moves the old executable to
+`bin/.dotfiles-old.exe` before installing the replacement, so an interruption
+between those steps can leave `bin/dotfiles.exe` absent. If that happens, confirm
+no update is running and rename the backup back to `bin/dotfiles.exe`.
+
 For authentication, release discovery prefers nonempty `GH_TOKEN`, then
 `GITHUB_TOKEN`, then an unattended saved GitHub CLI login. An expired explicit
 token can override a working login; correct or unset it. Denied credentials

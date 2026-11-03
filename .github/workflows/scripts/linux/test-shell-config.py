@@ -1169,6 +1169,40 @@ class ShellConfigTests(unittest.TestCase):
         self.run_extract(archive)
         self.assertEqual((self.home / "nested/file with spaces").read_bytes(), b"fixture\n")
 
+    def test_extract_missing_tool_names_the_requirement_and_preserves_archive(self):
+        tools = self.fixture / "empty tools"
+        tools.mkdir()
+        (tools / "zsh").symlink_to(shutil.which("zsh"))
+        self.env["PATH"] = str(tools)
+        for suffix, tool in (
+            (".tar.gz", "tar"), (".bz2", "bunzip2"), (".gz", "gunzip"),
+            (".rar", "unrar"), (".zip", "unzip"), (".7z", "7z"),
+            (".Z", "uncompress"), (".xz", "unxz"), (".zst", "unzstd"),
+            (".deb", "ar"), (".rpm", "bsdtar"),
+        ):
+            with self.subTest(suffix=suffix):
+                archive = self.write(self.home / ("-archive with spaces" + suffix), "keep\n")
+                result = self.run_extract(archive.name, expected=127)
+                self.assertEqual(result.stderr,
+                                 f"extract: {tool} is required to extract {archive.name}\n")
+                self.assertEqual(archive.read_bytes(), b"keep\n")
+                self.assertEqual(list(self.home.iterdir()), [archive])
+                archive.unlink()
+
+    def test_extract_optional_tools_receive_literal_arguments_and_propagate_failure(self):
+        tools = self.fixture / "tools"
+        for suffix, tool in ((".rar", "unrar"), (".7z", "7z")):
+            with self.subTest(suffix=suffix):
+                self.write(tools / tool,
+                           '#!/bin/sh\nprintf "%s\\n" "$@" > "$HOME/arguments"\nexit 23\n',
+                           executable=True)
+                self.env["PATH"] = str(tools) + ":/usr/bin:/bin"
+                archive = self.write(self.home / ("-archive $(false)" + suffix), "keep\n")
+                self.run_extract(archive.name, expected=23)
+                self.assertEqual((self.home / "arguments").read_text(),
+                                 f"x\n./{archive.name}\n")
+                self.assertEqual(archive.read_bytes(), b"keep\n")
+
     def test_extract_option_like_relative_archive_name(self):
         archive = self.home / "-sample with spaces.gz"
         archive.write_bytes(gzip.compress(b"fixture\n"))

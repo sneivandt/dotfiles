@@ -42,7 +42,7 @@ repository work must remain possible without it.
   separate prune, fingerprints, or outdated-output parsing.
 - Before removing either compatibility adapter, inspect current upstream code
   and prove the replacement against the
-  [deployment contracts](../../../docs/content/agent-configuration.md#validating-implementation-changes)
+  [deployment contracts](../../../docs/content/architecture.md#agent-deployment-implementation)
   in isolated fixtures on the relevant platforms. A version bump is insufficient.
 - Native APM owns syntax/schema validation; dotfiles owns cross-file local
   source relationships. Extend

@@ -11,6 +11,11 @@ selection lives in [Testing](content/testing.md); site-only checks are below.
 
 Use the Node version in
 [.node-version](.node-version).
+Use native tools for the checkout's operating system: Windows Node/npm for a
+Windows checkout, Linux tools for a Linux checkout. Do not share `node_modules`
+between them or run routine Windows site checks through WSL's `/mnt/c` mount.
+Restore the locked dependencies with native `npm ci` after switching platforms.
+
 From the repository root:
 
 ```sh
@@ -45,33 +50,43 @@ Its `install --with-deps chromium` command can install those libraries, but that
 is a host package change: use an authorized environment or a disposable runner.
 CI uses that option on its disposable Ubuntu runner.
 
-For site-only changes on Linux, run from the repository root:
-
-```sh
-DIR="$PWD" sh .github/workflows/scripts/linux/test-docs.sh docs_links docs_site
-```
-
-On Windows, the same source-link and site checks can run directly from the
-repository root in PowerShell. Run them in order and stop if a command fails:
+Run the native documentation checker from the repository root:
 
 ```powershell
-python -B .github\workflows\scripts\linux\check-doc-links.py .
-npm --prefix docs run check
-npm --prefix docs test
-npm --prefix docs run build
-python -B .github\workflows\scripts\linux\check-doc-site.py .
-npm --prefix docs run test:browser
+python docs/check.py
 ```
 
-This Windows sequence does not replace the full `docs` stage's skill metadata
-and Rust selector checks.
+Use `python3` instead of `python` on systems that require it. The checker runs
+skill metadata and its fixtures, source links, Astro diagnostics, Markdown and
+checker fixtures, a production build, published links, and browser regressions.
+It stops at the first failure. It does not install dependencies, run the Rust
+compiler, or apply machine configuration.
 
-The site check runs Astro diagnostics, Markdown-transform fixtures, and a
-production build. It checks matching titles, navigation labels, and filenames,
-then verifies published links, anchors, assets, canonicals, the sitemap, and
-indexing metadata. Browser regressions exercise the homepage, topic navigation,
+Before pushing a **docs-and-skills-only patch**, commit it, refresh the comparison
+base with `git fetch origin`, then run:
+
+```powershell
+python docs/check.py --committed
+```
+
+This compares `origin/main..HEAD`, rejects non-documentation changes, and checks
+the committed code in a temporary native checkout. It restores locked npm
+dependencies there and runs the committed checker, ignoring staged, unstaged,
+and untracked work. Use `--base <ref>` with `--committed` for another comparison.
+This is the pre-push path for documentation and skills, not a replacement for
+the broader [implementation checker](content/testing.md#implementation-and-mixed-patches).
+
+The Rust task-selector fixture and workflow checks remain in CI. The Linux
+`docs` stage also runs the selector fixture locally; it is not required just to
+validate a documentation patch on Windows.
+
+The site checks matching titles, navigation labels, filenames, published links,
+anchors, assets, canonicals, the sitemap, and indexing metadata.
+Browser regressions exercise the homepage, topic navigation,
 search, theme persistence, warning callouts, and every Mermaid diagram at
-desktop and mobile sizes. Diagram labels must stay at least 14 CSS pixels.
+desktop and mobile sizes. They also check that task details appear in the page
+contents and that tables fit a narrow screen without shrinking their text.
+Diagram labels must stay at least 14 CSS pixels.
 Mobile emulation is not a native phone/browser test.
 
 The browser suite starts and stops its own loopback preview on port 4322;

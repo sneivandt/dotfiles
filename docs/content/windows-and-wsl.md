@@ -58,7 +58,7 @@ is installed.
 ### Download and update failures
 
 Do not disable checksum or provenance verification to make a download work.
-Check the [bootstrap troubleshooting guide](troubleshooting.md#the-wrapper-cannot-find-or-download-the-binary).
+Check the [bootstrap troubleshooting guide](troubleshooting.md#wrapper-download-fails).
 
 Windows can prevent replacement of an executable that is still in use. If
 self-update fails, read the error before retrying or moving files. The
@@ -212,13 +212,14 @@ Run the **Linux wrapper inside the distribution** to manage its Linux home
 and `/etc` settings. Running the Windows executable does not manage
 `/etc/wsl.conf`.
 
-| Where dotfiles runs | Managed file | Current settings |
-|---|---|---|
-| Windows | `%USERPROFILE%\.wslconfig`, linked from [symlinks/wslconfig](https://github.com/sneivandt/dotfiles/blob/main/symlinks/wslconfig) | NAT networking for WSL 2 |
-| Inside each Linux distribution | `/etc/wsl.conf`, merged from [system/wsl.conf](https://github.com/sneivandt/dotfiles/blob/main/system/wsl.conf) | Enable systemd and disable automatic Windows PATH injection |
+On Windows, the linked
+[.wslconfig](https://github.com/sneivandt/dotfiles/blob/main/symlinks/wslconfig)
+in your home selects NAT networking for WSL 2. It controls WSL 2 globally.
 
-The Windows file controls WSL 2 globally; the Linux file configures that
-distribution. The Linux `system-files` task preserves unrelated INI settings
+Inside each distribution, the
+[/etc/wsl.conf fragment](https://github.com/sneivandt/dotfiles/blob/main/system/wsl.conf)
+enables systemd and disables automatic Windows PATH injection.
+The Linux `system-files` task preserves unrelated INI settings
 and can need sudo. Disabling PATH injection means Windows commands are not
 automatically discoverable by name inside Linux; use their full paths or add
 only the directories you need.
@@ -245,4 +246,4 @@ Preview with the original profile/overlay while the sources still exist:
 If the saved selection changed, pass the original `--profile` and `--overlay`
 explicitly. **Remove is not rollback:** Windows packages, Developer Mode,
 registry values, and PATH changes remain. Review the
-[removal behavior and limits](commands-and-usage.md#remove) before applying.
+[removal behavior and limits](commands-and-usage.md#remove-integrations) before applying.

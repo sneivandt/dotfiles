@@ -100,7 +100,7 @@ test('the homepage introduces the repository and links to setup, with grouped na
   const customize = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Customize', { exact: true }) });
   await expect(customize.getByRole('link')).toHaveText([
-    'Application settings', 'Agent configuration', 'Configuration reference', 'Private overlays',
+    'Application settings', 'Configuration reference', 'Private overlays', 'Agent configuration',
   ]);
   await expect(customize.getByRole('link', { name: 'Private overlays', exact: true }))
     .toHaveAttribute('href', '/private-overlays.html');
@@ -171,7 +171,7 @@ test('lookup and prerequisite information precedes advanced details', async ({ p
     ['testing', 'before-pushing', 'specialized-checks'],
     ['agent-configuration', 'deployment-targets', 'validate-preview-and-apply'],
     ['agent-configuration', 'what-a-preview-can-show', 'configuration-fragments'],
-    ['agent-configuration', 'authentication-and-failure-diagnosis', 'deployment-maintenance'],
+    ['agent-configuration', 'troubleshoot-deployment', 'deployment-maintenance'],
     ['package-management', 'install-and-upgrade', 'arch-package-recipes'],
     ['package-management', 'logs-and-troubleshooting', 'custom-arch-packages'],
     ['contributing', 'contribution-workflow', 'git-hooks'],
@@ -292,6 +292,61 @@ test('task catalog labels jump to details without horizontal overflow', async ({
   await detail.click();
   await expect(page).toHaveURL(/task-reference\.html#agent-packages$/);
   await expect(page.locator('#agent-packages')).toBeVisible();
+});
+
+test('the page contents expose task details and group troubleshooting symptoms', async ({ page, isMobile }) => {
+  await page.goto('/task-reference.html');
+  const taskLinks = await page.locator('main table').first().locator('a').evaluateAll(
+    (links) => [...new Set(links.map((link) => link.getAttribute('href')!))],
+  );
+  expect(taskLinks.length).toBeGreaterThan(15);
+  for (const href of taskLinks) {
+    await expect(page.locator(`starlight-toc a[href="${href}"]`)).toHaveCount(1);
+    await expect(page.locator(`main h3${href}`)).toHaveCount(1);
+  }
+  if (!isMobile) {
+    await page.locator('starlight-toc a[href="#home-symlinks"]').click();
+    await expect(page).toHaveURL(/#home-symlinks$/);
+    await expect(page.locator('#home-symlinks')).toBeInViewport();
+  }
+
+  await page.goto('/troubleshooting.html');
+  await expect(page.locator('main h2')).toHaveText([
+    'Read the failed run', 'Recover from a partial update',
+    'Startup and configuration', 'Tasks and repository updates',
+    'Packages and tools', 'Platform settings', 'Removal leaves settings behind',
+  ]);
+  for (const anchor of ['wrapper-download-fails', 'elevation-is-unavailable', 'windows-symlink-fails']) {
+    await expect(page.locator(`starlight-toc a[href="#${anchor}"]`)).toHaveCount(1);
+  }
+});
+
+test('reference tables remain readable at narrow widths', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto('/');
+  const routes = await page.locator('#starlight__sidebar details a[href]').evaluateAll(
+    (links) => links.map((link) => link.getAttribute('href')!),
+  );
+  for (const route of routes) {
+    await page.goto(route);
+    await assertNoPageOverflow(page);
+    for (const table of await page.locator('main table').all()) {
+      const dimensions = await table.evaluate((element) => ({
+        content: element.scrollWidth,
+        visible: element.clientWidth,
+        cells: [...element.querySelectorAll('th, td')].map((cell) => ({
+          width: cell.getBoundingClientRect().width,
+          fontSize: parseFloat(getComputedStyle(cell).fontSize),
+        })),
+      }));
+      expect(dimensions.content, route).toBeLessThanOrEqual(dimensions.visible + 1);
+      for (const cell of dimensions.cells) {
+        expect(cell.width, route).toBeGreaterThanOrEqual(48);
+        expect(cell.fontSize, route).toBeGreaterThanOrEqual(14);
+      }
+    }
+  }
 });
 
 test('search opens the relevant section of the published guide', async ({ page }) => {

@@ -46,7 +46,7 @@ or deployed harness copies as a substitute for changing their sources.
 
 For implementation changes, see [Deployment maintenance](#deployment-maintenance).
 
-## Harness settings
+## Agent preferences
 
 The `agent-settings` task edits only declared keys in these documents:
 
@@ -71,7 +71,7 @@ See [Agent harness settings](configuration-reference.md#agent-harness-settings) 
 schema. Use the source file for current preferences, including declared
 Codex desktop settings; do not assume all settings apply to every agent surface.
 
-## Adding an agent package
+## Add a skill or package
 
 First choose the audience: repository-only guidance belongs in `.agents/skills/`,
 reusable public content in a local plugin, and private content in an overlay.
@@ -145,15 +145,21 @@ Keep the base fragment's explicit targets. Without them, APM can discover
 application directories you did not intend to manage. The primary dotfiles
 deployment uses the targets in the generated manifest.
 
-| Surface | Selection | Deployment |
-|---|---|---|
-| Shared agent skills | Base target `agent-skills` | Native APM; `~/.agents/skills` |
-| Copilot MCP configuration | Base target `copilot` | Native APM; `~/.copilot/mcp-config.json` |
-| Copilot App workflows | Host has `~/.copilot/data.db` | APM installs workflows; dotfiles enables them in autopilot |
-| Cowork skills | A Cowork path is configured or detected | Dotfiles copies selected shared skills |
+| Manifest target | Destination |
+|---|---|
+| `agent-skills` | Shared skills in `~/.agents/skills` |
+| `copilot` | MCP configuration in `~/.copilot/mcp-config.json` |
 
-The last two are **host-detected additions**, not ordinary entries in the base
-target list. Removing a target from that list does not disable these integrations.
+Two integrations are added when detected on the host:
+
+- If `~/.copilot/data.db` exists, APM installs Copilot App workflows and dotfiles
+  enables them in autopilot.
+- If a Cowork path is configured or detected, dotfiles copies selected shared
+  skills there.
+
+These are not ordinary entries in the base target list. Removing a manifest
+target does not disable them. See [Detected integrations](#detected-integrations)
+for their selection and cleanup rules.
 
 ## Validate, preview, and apply
 
@@ -203,7 +209,7 @@ dotfiles update --only agent-packages
 
 This is a real deployment, not a way to test a skill edit in isolation.
 It can run package code and enable scheduled workflows. For preference changes,
-follow [Harness settings](#harness-settings). On Arch, the APM executable comes
+follow [Agent preferences](#agent-preferences). On Arch, the APM executable comes
 from the [apm-dotfiles package](package-management.md#custom-arch-packages);
 upgrading that application is separate from deploying agent content.
 
@@ -233,7 +239,7 @@ Fragments merge in filename order. A private fragment has no special priority:
 This differs from the
 [TOML overlay merge](private-overlays.md#merge-rules).
 
-### Merge rules to keep in mind
+### Fragment merge rules
 
 Each nonempty fragment must contain a YAML mapping. An empty list does not clear
 entries from another fragment. Merge behavior is:
@@ -328,13 +334,13 @@ too, including `mcp`, `lsp`, and `devDependencies` groups. Lists combine, so an
 empty list cannot clear another fragment's entries. Keep the retained fragment's
 symlink declaration active.
 
-Preview with `dotfiles update --no-repo-update --only agent-packages --dry-run`,
+Preview with `dotfiles update --only agent-packages --dry-run`,
 then remove `--dry-run` after reviewing the source changes and destinations.
 When the manifest needs changing, preview describes delegated commands rather
 than enumerating removals. Check the run log and affected targets before deleting
 the retained fragment. See [preview behavior](#what-a-preview-can-show).
 
-## Authentication and failure diagnosis
+## Troubleshoot deployment
 
 | Symptom | Next step |
 |---|---|
@@ -363,8 +369,6 @@ deployment cleanup. Dotfiles owns fragment merging and the detected integrations
 See [Agent deployment implementation](architecture.md#agent-deployment-implementation)
 for contributor contracts and source ownership. For a package or preference
 edit, use the [validation and preview steps](#validate-preview-and-apply) above.
-
-### Validating implementation changes
 
 Use isolated homes, synthetic App databases, controlled executors, and the
 [Testing guide](testing.md#choosing-coverage). Never deploy to the live home to

@@ -33,28 +33,58 @@ Options may appear before or after an explicit command. With no command, they
 apply to `update`. Use `dotfiles <command> --help` for full syntax, and
 `dotfiles --version` or `-V` for the version.
 
-| Option | Commands | Purpose |
-|---|---|---|
-| `-p`, `--profile`; `--root`; `--overlay` | update, remove, check, list | Select role and configuration sources |
-| `-n`, `--dry-run` | update, remove | Preview planned changes |
-| `--only`; `--skip` | update, remove, check; list with `--graph` | Include/exclude selectors |
-| `--with-deps` | update; list with an update graph | Include the selected tasks' dependencies |
-| `--no-repo-update` | update | Use current checkout content |
-| `-v`, `--verbose` | update, remove, check, log | Show diagnostics |
-| `-q`, `--quiet` | update, remove, check | Keep only warnings and incomplete outcomes |
-| `--format human\|jsonl` | update, remove, check | Choose execution output |
-| `--no-parallel` | update, remove, check | Run selected work sequentially |
-| `--non-interactive` | update, remove, check | Disable prompts |
-| `--fail-on-skip` | update, remove, check | Fail if applicable tasks cannot complete |
-| `--no-symbols` | update, remove, check | Use text status labels |
-| `--format table\|plain\|json` | list; log with `--list` | Choose discovery/history output |
-| `--graph update\|remove\|check` | list | Inspect a command graph |
-| `--all` | list without `--graph` | Include clearly inapplicable tasks |
-| `--skip-attestation` | update, remove | Bypass self-update provenance, never checksums |
+### Configuration selection
 
-`--skip-attestation` does not affect bootstrap; `DOTFILES_SKIP_ATTESTATION=1`
-affects both layers. Neither is a routine workaround for verification errors.
+These options apply to update, remove, check, and list:
+
+| Option | Purpose |
+|---|---|
+| `-p`, `--profile <name>` | Choose `base` or `desktop` for this run |
+| `--root <path>` | Read configuration from a specific checkout |
+| `--overlay <path>` | Include private or machine-specific configuration |
+
+### Task selection and previews
+
+| Option | Where it applies |
+|---|---|
+| `--only <selectors>` | Include tasks in update, remove, check, or a list graph |
+| `--skip <selectors>` | Exclude tasks in those commands; takes precedence over `--only` |
+| `--with-deps` | Include dependencies for update or an update graph |
+| `-n`, `--dry-run` | Preview update or remove |
+| `--no-repo-update` | Omit repository synchronization from update |
+
+Selectors can be comma-separated or supplied with repeated flags.
 Selecting `repository` with both `--only` and `--no-repo-update` is an error.
+
+### Execution and output
+
+These options apply to update, remove, and check:
+
+| Option | Purpose |
+|---|---|
+| `-v`, `--verbose` | Include current tasks, decisions, and timings; also available in log viewing |
+| `-q`, `--quiet` | Keep warnings and incomplete outcomes |
+| `--format human\|jsonl` | Choose human-readable or JSON Lines output |
+| `--no-parallel` | Run selected work sequentially |
+| `--non-interactive` | Disable prompts |
+| `--fail-on-skip` | Fail if applicable tasks cannot complete |
+| `--no-symbols` | Use text status labels |
+
+Update and remove also accept `--skip-attestation` to bypass CLI self-update
+provenance checks, never checksums. It does not affect wrapper bootstrap;
+`DOTFILES_SKIP_ATTESTATION=1` affects both layers. Neither is a routine workaround
+for verification errors.
+
+### Discovery and history
+
+| Option | Where it applies |
+|---|---|
+| `--format table\|plain\|json` | Task listing, graphs, or `log --list` |
+| `--graph update\|remove\|check` | Inspect a command graph with list |
+| `--all` | Include inapplicable tasks in list; cannot combine with `--graph` |
+
+See [Task discovery output](#task-discovery-output) for graph markers and
+[Logs](#logs) for run selection and filtering.
 
 ## Repository and overlay paths
 
@@ -76,13 +106,14 @@ for setup, path precedence, linked-worktree confirmation, merging, and scripts.
 The repository wrappers obtain the CLI and forward its arguments:
 
 ```bash
-./dotfiles.sh list --profile base
+./dotfiles.sh --version
 ```
 
 ```powershell
-.\dotfiles.ps1 list --profile desktop
+.\dotfiles.ps1 --version
 ```
 
+These commands print the CLI version without needing a profile selection.
 If a usable cached binary is absent, the wrapper downloads a release into
 `bin/` and verifies its SHA-256 checksum. It also verifies build provenance
 when GitHub CLI is available. A missing GitHub CLI produces a warning; failed
@@ -114,30 +145,32 @@ standalone installation. Keep the checkout at a stable path.
 **A new fork does not have release binaries.** Choose one of these routes
 before running its wrapper:
 
-- **Use this project's released CLI with your fork's configuration.** If you
-  trust this project's releases, explicitly select that publisher in your
-  current terminal:
+To use this project's released CLI with your fork's configuration, select
+its publisher in your current terminal, provided you trust these releases.
+On Linux:
 
-  ```sh
-  export DOTFILES_RELEASE_REPO=sneivandt/dotfiles
-  ```
+```sh
+export DOTFILES_RELEASE_REPO=sneivandt/dotfiles
+```
 
-  In PowerShell:
+In PowerShell:
 
-  ```powershell
-  $env:DOTFILES_RELEASE_REPO = 'sneivandt/dotfiles'
-  ```
+```powershell
+$env:DOTFILES_RELEASE_REPO = 'sneivandt/dotfiles'
+```
 
-  This chooses the binary, not the configuration repository. The downloaded
-  binary also uses that publisher for self-updates. If your fork publishes
-  compatible releases, you can use its default publisher instead.
+This chooses the binary, not the configuration repository. The downloaded
+binary also uses that publisher for self-updates. The environment setting
+lasts only for this terminal; set it in your shell configuration if future
+bootstrap downloads should use the same publisher. If your fork publishes
+compatible releases, you can use its default publisher instead.
 
-- **Build the CLI from your fork.** Install the
-  [source-build prerequisites](contributing.md#development-setup), then add
-  `--build` after the wrapper name in each command you run. For example,
-  `./dotfiles.sh --build --version` or
-  `.\dotfiles.ps1 --build --version` builds and prints the version without
-  applying configuration. Build mode is not remembered between runs.
+To build the CLI from your fork, install the
+[source-build prerequisites](contributing.md#development-setup), then add
+`--build` after the wrapper name in each command. For example,
+`./dotfiles.sh --build --version` or `.\dotfiles.ps1 --build --version`
+builds and prints the version without applying configuration.
+Build mode is not remembered between runs.
 
 ## CLI self-update
 
@@ -225,13 +258,13 @@ logs does not start another logged run.
 ### Log locations
 
 `DOTFILES_LOG_DIR` overrides the location, including with a relative path.
-Otherwise:
+Otherwise, the defaults are:
 
-| Platform | Preferred location | Home-directory fallback |
-|---|---|---|
-| Linux | `$XDG_STATE_HOME/dotfiles/logs` | `~/.local/state/dotfiles/logs` |
-| Windows | `%LOCALAPPDATA%\dotfiles\logs` | `%USERPROFILE%\AppData\Local\dotfiles\logs` |
+- Linux: `~/.local/state/dotfiles/logs`
+- Windows: `%USERPROFILE%\AppData\Local\dotfiles\logs`
 
+An absolute `XDG_STATE_HOME` on Linux or `LOCALAPPDATA` on Windows replaces
+the state-directory base shown above; logs go in its `dotfiles/logs` subdirectory.
 Empty or relative standard state/home variables are ignored. The final
 fallback is `./dotfiles/logs`. An unreadable directory is an error, not empty
 history. **Review logs for private paths, configuration, and tool output before

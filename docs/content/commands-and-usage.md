@@ -67,9 +67,7 @@ selection, not what will change. See [Task reference](task-reference.md) for
 each task and [Task discovery output](cli-reference.md#task-discovery-output)
 for graph markers and structured formats.
 
-## Apply configuration
-
-### Update
+## Update
 
 Update is the default: running the launcher without a command applies an update.
 Tasks check what is installed or configured and leave it alone when it already
@@ -82,7 +80,6 @@ dotfiles update --only symlinks --dry-run
 ```
 
 Remove `--dry-run` after review. Filters select tasks, not the CLI release check.
-
 
 ### Select tasks
 
@@ -160,7 +157,7 @@ tasks, not the number of action lines. Failed, interrupted, blocked, and
 skipped work appears before successful counts. **Exit 0 with skipped work is
 not necessarily a complete installation.** Use `--fail-on-skip` when it must be.
 
-## Check
+## Check configuration
 
 The check command validates configuration, checks source files, and runs
 available code analyzers. It does not install or repair configuration and has
@@ -198,7 +195,7 @@ Review logs for private paths, configuration, and tool output before sharing
 them. The [log reference](cli-reference.md#logs) covers older runs, filters,
 raw output, retention, and storage locations.
 
-## Remove
+## Remove integrations
 
 Preview with the original profile and overlay while their sources still exist:
 
@@ -295,13 +292,13 @@ after a restart or elevation; [Logs](#logs) explains how to follow a run.
 
 Ordinary updates need no extra switches. Use these to narrow a run deliberately:
 
-| Intent | Control | Limit |
-|---|---|---|
-| Keep the CLI version | `DOTFILES_SKIP_SELF_UPDATE=1` | Does not disable wrapper bootstrap or other network access |
-| Keep checkout contents fixed | `--no-repo-update` | Does not disable the CLI release check |
-| Run selected configuration work | `--only <selectors>` | Filters tasks, not startup; use `--with-deps` for prerequisites |
-| Leave agent deployments alone | `--skip agent-packages` | Preferences and the APM executable are separate |
-| Keep custom package version pins | `--skip custom-package-versions` | Recipe preparation can still use existing pins |
+| Control | Effect and limit |
+|---|---|
+| `DOTFILES_SKIP_SELF_UPDATE=1` | Keep the CLI version; wrapper bootstrap can still download a missing binary |
+| `--no-repo-update` | Keep checkout contents fixed; the CLI release check still runs |
+| `--only <selectors>` | Select tasks, not startup checks; add `--with-deps` for prerequisites |
+| `--skip agent-packages` | Leave agent deployments alone; preferences and the APM executable are separate |
+| `--skip custom-package-versions` | Keep custom package pins; recipe preparation can still use them |
 
 There is no blanket offline switch. See [Dry-run scope](#dry-run-scope) for
 the writes, inspection, and script execution a preview can still perform.

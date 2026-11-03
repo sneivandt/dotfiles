@@ -20,22 +20,7 @@ Examples assume you are in the intended checkout with dotfiles on PATH.
 If the launcher is uncertain, substitute an existing `./bin/dotfiles` or
 `.\bin\dotfiles.exe`. A wrapper may download/build even before showing help.
 
-## Find the symptom
-
-| Problem | Go to |
-|---|---|
-| No usable CLI | [Bootstrap](#the-wrapper-cannot-find-or-download-the-binary), [source build](#cargo-build-fails) |
-| Old version or a stalled upgrade | [Self-update](#the-binary-never-self-updates) |
-| Selection or parsing error | [Profile](#no-profile-can-be-selected), [configuration](#configuration-does-not-parse), [overlay](#an-overlay-appears-to-be-ignored) |
-| A failed update changed some settings | [Partial-update recovery](#recover-from-a-partial-update) |
-| Missing/skipped work | [Task selection](#a-task-does-not-run), [elevation](#a-task-was-skipped-because-elevation-was-unavailable) |
-| Concurrent or failed repository run | [Run lock](#another-run-holds-the-repository-lock), [Git synchronization](#repository-update-fails) |
-| Packages or tooling | [Packages](#packages-do-not-install), [Paru](#paru-bootstrap-reports-an-incomplete-rustcargo-prerequisite), [agent packages](#agent-package-update-does-not-run-or-fails), [analyzers](#optional-analyzers-are-not-running) |
-| Windows links | [Symlinks](#a-symlink-cannot-be-created-on-windows) |
-| Settings not active | [systemd](#systemd-changes-are-not-visible), [keyring](#gnome-keyring-does-not-unlock-at-login), [WSL](#wsl-settings-did-not-change) |
-| Removal left settings behind | [Remove is not rollback](#remove-did-not-restore-machine-defaults) |
-
-## Reading logs and partial results
+## Read the failed run
 
 ```bash
 dotfiles log --list
@@ -82,11 +67,13 @@ If earlier unrelated tasks also failed, address those separately or preview a
 full update after resolving their causes. Avoid deleting managed trees or
 running remove as a general failure repair.
 
-## The wrapper cannot find or download the binary
+## Startup and configuration
+
+### Wrapper download fails
 
 | Error | Check |
 |---|---|
-| Cannot resolve a release repository | The checkout's GitHub `origin`, or an explicit `DOTFILES_RELEASE_REPO=owner/repo` |
+| Cannot resolve a release repository | The checkout's GitHub `origin` or configured release publisher |
 | Latest release/download unavailable | DNS, proxy, HTTPS access, rate limits, and whether that publisher has releases |
 | Unsupported architecture | Published assets support Linux x86-64/AArch64 and Windows x86-64 |
 | Missing checksum or checksum mismatch | The matching release asset/checksum file; do not execute the failed download |
@@ -105,7 +92,7 @@ See [Build provenance verification](security-and-trust.md#build-provenance-verif
 Wrappers clean failed downloads. Do not delete the checkout or all of `bin/`.
 If one stale binary must be moved aside, first confirm no run is using it.
 
-## The binary never self-updates
+### CLI does not self-update
 
 Check these before replacing anything:
 
@@ -130,7 +117,7 @@ are not silently retried anonymously.
 
 Anonymous requests share a lower GitHub quota with other users of the same
 public IP. Respect a reported retry deadline instead of repeatedly retrying.
-Normal saved authentication can be set up with `gh auth login --hostname github.com`.
+Normal saved authentication can be set up with `gh auth login`.
 For Linux keyring-only credentials, follow the
 [automatic verification authentication guidance](security-and-trust.md#build-provenance-verification).
 
@@ -155,7 +142,7 @@ it does **not** disable the rest of update.
 
 </details>
 
-## Cargo build fails
+### Cargo build fails
 
 Use the [build prerequisites](contributing.md) and read the first compiler or
 linker error, not just the wrapper's final status.
@@ -164,7 +151,7 @@ Use the [source-build command](contributing.md#source-builds) to build and print
 a version without applying configuration. Do not copy an arbitrary old
 executable into `bin/` to hide a build failure.
 
-## No profile can be selected
+### No profile selected
 
 ```bash
 dotfiles list --profile base
@@ -184,7 +171,7 @@ selection in unattended or JSON Lines mode, with non-terminal stdin, or with
 any present `CI` variable. An explicit profile overrides the saved choice
 without updating it. See [Profile selection](profiles-and-categories.md#resolution-priority).
 
-## Configuration does not parse
+### Configuration does not parse
 
 Start with the filename and complete diagnostic. Common causes are a missing
 required file, malformed TOML, wrong value type, unsupported key/category,
@@ -199,7 +186,7 @@ finding and [CLI validation](testing.md#cli-validation) to recheck it.
 `check` does not repair files, and `config-diagnostics` fails on warning-severity
 diagnostics too.
 
-## An overlay appears to be ignored
+### Overlay is ignored
 
 For a sibling overlay called `dotfiles-private`, inspect it from the main
 checkout:
@@ -224,7 +211,9 @@ Missing optional files add nothing, so a wrong path can look like an empty
 overlay. See [Private overlays](private-overlays.md#selection-and-persistence)
 for selection, persistence, and linked-worktree requirements.
 
-## A task does not run
+## Tasks and repository updates
+
+### Task is missing or skipped
 
 Inspect selection before executing more work:
 
@@ -253,7 +242,7 @@ dotfiles update --only systemd --dry-run --verbose
 Add `--with-deps` only after reviewing its graph: it can bring in package
 installation, AUR setup, links, and permissions. It is not a narrower retry.
 
-## Another run holds the repository lock
+### Repository is locked
 
 Update, remove, and check share a lock, including previews. Linked worktrees
 use the same common Git directory. The error identifies the lock and, when
@@ -266,7 +255,7 @@ the lock; leftover owner text alone does not keep it locked.
 For a stuck run, follow the [interrupt procedure](commands-and-usage.md#interrupting-a-run).
 After force quit, check for surviving child installers before retrying.
 
-## Repository update fails
+### Repository update fails
 
 Inspect the affected main or overlay checkout:
 
@@ -295,7 +284,7 @@ It does not discard changes or suppress other network activity.
 “Repository synced · restarting to load configuration” is normal: the child
 reloads configuration while the parent retains the lock.
 
-## A task was skipped because elevation was unavailable
+### Elevation is unavailable
 
 | Reason | Meaning |
 |---|---|
@@ -316,7 +305,9 @@ create passwordless sudo rules just to clear a failure.
 [Winget installer refusals](windows-and-wsl.md#packages) are different: they count as
 failed package items, not only strict-mode skips.
 
-## Packages do not install
+## Packages and tools
+
+### Packages do not install
 
 Identify the task: `packages`, `paru`, or `aur-packages`. Native Linux packages
 need pacman; there is no apt/dnf provider. Windows uses winget. AUR packages
@@ -339,7 +330,7 @@ Arch package recipe or pin failures belong in
 `pacman -Syu --needed --noconfirm`; do not use apply as a harmless diagnostic.
 For Windows scope, UAC, and policy failures, see [Windows packages](windows-and-wsl.md#packages).
 
-## Paru bootstrap reports an incomplete Rust/Cargo prerequisite
+### Paru cannot build or start
 
 These read-only probes separate a missing package, broken executable, and
 incomplete build toolchain:
@@ -363,7 +354,7 @@ executable, rebuilds a broken helper, and validates it again. When provisioning
 Arch in a chroot, inspect the target system; repairing only the live ISO does
 not repair the installed system.
 
-## Agent package update does not run or fails
+### Agent deployment fails
 
 ```bash
 dotfiles update --only agent-packages --dry-run --verbose
@@ -383,14 +374,16 @@ installs local content and repairs deployments even when no version changed.
 Edit tracked fragments/plugins, not generated manifests or installed plugin
 copies. See [Agent configuration](agent-configuration.md).
 
-## Optional analyzers are not running
+### Analyzers are skipped
 
 Read the named missing tool or module in the check result, then use the
 [analyzer prerequisites](testing.md#analyzer-prerequisites) to resolve it.
 Reopen the shell if PATH changed and retry. Strict runs (`--fail-on-skip` or CI)
 fail on unmet skips; filtering a check out is not evidence it passed.
 
-## A symlink cannot be created on Windows
+## Platform settings
+
+### Windows symlink fails
 
 Check permission, target conflicts, and source checkout separately:
 
@@ -404,17 +397,19 @@ Check permission, target conflicts, and source checkout separately:
 See [Developer Mode and symlinks](windows-and-wsl.md#developer-mode-and-symlinks) for
 inspection commands and a preview including Developer Mode.
 
-## systemd changes are not visible
+### Service changes are not visible
 
 First check whether the configured unit is user or system scope.
-Bare unit names default to user scope. Substitute the actual unit name:
+Bare unit names default to user scope. For example, inspect Quickshell with:
 
 ```bash
-systemctl --user status example.service --no-pager
-journalctl --user -u example.service -n 50 --no-pager
+systemctl --user status quickshell.service
+journalctl --user -u quickshell.service -b
 ```
 
-For a system unit, omit `--user`. Check that packages, linked unit files, and
+Use the affected unit's name; for a system unit, omit `--user`.
+The journal command shows this boot's entries. Press `q` to leave the pager.
+Check that packages, linked unit files, and
 executable scripts exist. Ordering after those tasks does not mean every
 unrelated failure in them blocks the service task.
 
@@ -426,13 +421,13 @@ configuration to proceed.
 For extension installation deferred during Arch chroot provisioning, inspect:
 
 ```bash
-journalctl --user -u dotfiles-first-login.service -n 50 --no-pager
+journalctl --user -u dotfiles-first-login.service -b
 ```
 
 Do not restart the whole desktop as the first diagnostic.
 See [Arch desktop](arch-desktop.md#session-and-services) for session/service context.
 
-## GNOME Keyring does not unlock at login
+### GNOME Keyring stays locked
 
 The PAM fragments are selected for Arch + desktop. Preview them with:
 
@@ -457,7 +452,7 @@ busctl --user get-property \
 password, change it through the keyring's normal password management.
 Passwordless autologin supplies no password for PAM to unlock it.
 
-## WSL settings did not change
+### WSL settings are unchanged
 
 Run the Linux CLI **inside the distribution**. Confirm `system-files` applied
 the WSL-selected settings; a dry run does not change `/etc/wsl.conf`.
@@ -472,7 +467,7 @@ This terminates **all running distributions and their processes**, not just
 the current one. Reopen the intended distribution afterward.
 See [WSL setup](windows-and-wsl.md#wsl).
 
-## Remove did not restore machine defaults
+## Removal leaves settings behind
 
 This is expected. Remove copies selected home-link content into real files,
 removes matching managed hooks/launchers, and runs active overlay removal
@@ -481,4 +476,4 @@ update can configure.
 
 Use the original profile and overlay. Keep the checkout until copying
 succeeds, and remember that copies contain the current source rather than your
-pre-install files. See [Remove](commands-and-usage.md#remove) for what remains.
+pre-install files. See [Remove integrations](commands-and-usage.md#remove-integrations) for what remains.

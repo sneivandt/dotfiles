@@ -57,11 +57,15 @@ can an agent find the current API, avoid side effects, and choose useful coverag
 This is a routing review, not proof of a model's runtime behavior.
 
 Review frontmatter, paths, and contradictions with neighboring skills, then use
-the documentation check in [Testing](../../../docs/content/testing.md#choosing-coverage).
+the [native documentation check](../../../docs/README.md#checks). Run it with
+Windows tools for a Windows checkout, not through WSL on the mounted Windows
+filesystem. Use its committed-snapshot mode before pushing docs/skills-only
+changes; mixed implementation changes need the broader checks in
+[Testing](../../../docs/content/testing.md#choosing-coverage).
 Its link check covers tracked and unignored new Markdown, including unstaged
 moves; generated and ignored files are excluded.
 
-The docs stage also runs [metadata validation](scripts/check-skills.py) and its
+The native checker and Linux docs stage run [metadata validation](scripts/check-skills.py) and its
 [regression fixtures](scripts/test-check-skills.py). Repository frontmatter uses
 only a plain lowercase hyphenated `name` and a two-space-indented YAML block
 `description` (`>` or `|`, optionally with chomping). The validator rejects

@@ -51,7 +51,7 @@ start with [shell configuration](https://github.com/sneivandt/dotfiles/blob/main
 [Self-update](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/self-update/SKILL.md) covers binary replacement;
 [Rust patterns](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/rust-patterns/SKILL.md) routes unfamiliar CLI work.
 
-### 3. Change the behavior and its proof
+### 3. Make and test the change
 
 Keep desired-state edits declarative. For a behavior change, include the
 configuration, implementation, wiring, regression test, and relevant docs.
@@ -91,7 +91,6 @@ From the checkout:
 
 ```sh
 cd cli
-cargo build --locked --profile ci
 cargo run --locked --profile ci -- --help
 ```
 
@@ -107,7 +106,6 @@ components or targets.
 ```sh
 cd cli
 rustup show active-toolchain
-cargo --version
 rustc --version
 ```
 
@@ -282,6 +280,12 @@ for reviewed recovery from a broken check, never known sensitive content.
 Write for the reader's task. Use direct language, short examples with verified
 commands, and safety information beside the action it affects. Keep private
 content, credentials, and unsanitized logs out of examples.
+
+Keep only flags needed for the example's purpose. Use headings that name the
+reader's task or the setting they need to find, and inspect the generated
+"On this page" navigation. Prefer two-column tables when cells need explanation;
+keep wider tables for short comparisons. Highlight code lines only when the
+surrounding text explains why they matter.
 
 Give each explanation one home. Everyday commands belong in
 [Commands and usage](commands-and-usage.md); exact syntax belongs in

@@ -73,7 +73,7 @@ export default defineConfig({
         },
         {
           label: 'Customize',
-          items: ['application-settings', 'agent-configuration', 'configuration-reference', 'private-overlays'],
+          items: ['application-settings', 'configuration-reference', 'private-overlays', 'agent-configuration'],
         },
         {
           label: 'Platforms and packages',

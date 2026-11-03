@@ -62,17 +62,22 @@ gh attestation verify bin/dotfiles --repo sneivandt/dotfiles
 Use `bin/dotfiles.exe` for Windows. For a fork's release, use that fork's
 repository rather than the upstream name.
 
-| Condition | Wrapper bootstrap | CLI self-update |
-|---|---|---|
-| `gh` is present and verification succeeds | Accept after checksum verification | Accept after checksum verification |
-| `gh` is absent | Warn; accept with checksum verification only | Reject the update |
-| Verification or authentication fails | Reject the download | Reject the update and preserve the installed binary |
-| `DOTFILES_SKIP_ATTESTATION=1` | Skip provenance, but still check the checksum | Same |
-| CLI `--skip-attestation` | Forwarded to Rust; does not bypass wrapper verification | Skip provenance for this invocation |
+Both download paths verify the checksum. When `gh` is available, failed
+attestation or authentication rejects the download; self-update preserves the
+installed binary.
 
-The missing-`gh` bootstrap exception allows first use before the tool is
-installed. It is weaker verification, not a successful attestation check.
-Do not enable a bypass just to silence an unexplained failure.
+The difference is what happens when `gh` is missing:
+
+| Download path | Without GitHub CLI |
+|---|---|
+| Wrapper bootstrap | Warns and accepts checksum verification alone, allowing first setup |
+| CLI self-update | Rejects the update |
+
+The bootstrap exception is weaker verification, not a successful attestation
+check. `DOTFILES_SKIP_ATTESTATION=1` explicitly skips provenance in both paths;
+the CLI's `--skip-attestation` flag affects only self-update, not bootstrap.
+Neither bypasses checksums. Do not enable a bypass to silence an unexplained
+failure.
 
 Automatic GitHub CLI calls disable prompts and Linux desktop-keyring access to
 avoid hidden authentication dialogs, including under WSL. If credentials exist

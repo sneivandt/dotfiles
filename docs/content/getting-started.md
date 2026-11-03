@@ -97,13 +97,23 @@ Review any overlay scripts too: they are executable code.
 
 Before the first apply, check these defaults in particular:
 
-| Area | What to review |
-|---|---|
-| Git | The supplied identity and GitHub HTTPS-to-SSH push rewriting in [Git settings](application-settings.md#git); SSH pushes need your own authentication |
-| Cleanup | Daily services delete files and links under [~/tmp](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service) after 8 complete days since modification, or [~/screenshots](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service) after 31 days on Arch desktops. Old empty directories are deleted too |
-| System settings | Both roles can select privileged changes. Inspect [system files](configuration-reference.md#system-files), [services](configuration-reference.md#systemd-units), and Windows [registry settings](windows-and-wsl.md#registry-settings) |
-| Agent content | Selected packages can install executable integrations; detected Copilot App workflows are enabled in autopilot mode. Review [deployment targets](agent-configuration.md#deployment-targets) |
-| Git hooks | Installation can replace hooks at managed names. Preserve custom hooks before [installing them](contributing.md#installation-and-removal) |
+- **Git identity:** review the supplied name, email, and
+  [HTTPS-to-SSH push rewriting](application-settings.md#git).
+  SSH pushes need your own authentication.
+- **Automatic cleanup:** both Linux profiles select daily
+  [~/tmp cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service)
+  after 8 complete days since modification. Arch desktops also select
+  [~/screenshots cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service)
+  after 31 days. These services delete old files, links, and empty directories.
+- **System settings:** both roles can select privileged changes. Inspect
+  [system files](configuration-reference.md#system-files),
+  [services](configuration-reference.md#systemd-units), and Windows
+  [registry settings](windows-and-wsl.md#registry-settings).
+- **Agent content:** packages can install executable integrations, and managed
+  Copilot App workflows are enabled in autopilot mode. Review
+  [deployment targets](agent-configuration.md#deployment-targets).
+- **Git hooks:** preserve custom hooks at managed names before
+  [installing replacements](contributing.md#installation-and-removal).
 
 Use the [Git backup example](application-settings.md#back-up-and-restore-a-file)
 for an existing configuration file. Keep backups outside managed destinations
@@ -193,8 +203,8 @@ Get-Item "$HOME/.config/git/config" | Select-Object FullName, LinkType, Target
 dotfiles list
 ```
 
-The launcher should resolve under your home's `.local/bin`, the Git link should
-point into the intended checkout or overlay. The listing should contain tasks
+The launcher should resolve under your home's `.local/bin`, and the Git link
+should point into the intended checkout or overlay. The listing should contain tasks
 appropriate for your saved role and platform; confirm the selected profile and
 platform in the apply run's header. If you intentionally excluded a task or link,
 verify the integrations you did select instead.
@@ -214,9 +224,11 @@ their controls. With no command, `dotfiles` defaults to `update`.
 
 ## Find the right guide
 
-For day-to-day work, start with [Commands and usage](commands-and-usage.md). To make this
-setup your own, read [Configuration reference](configuration-reference.md) and
-[Application settings](application-settings.md). If something goes wrong,
+For day-to-day work, start with [Commands and usage](commands-and-usage.md).
+To make this setup your own, find the application in
+[Application settings](application-settings.md), then use
+[Configuration reference](configuration-reference.md) for declaration syntax.
+If something goes wrong,
 [Troubleshooting](troubleshooting.md) starts with the symptom.
 
 Changing the CLI itself? [Contributing](contributing.md) explains where to

@@ -44,13 +44,6 @@ Desired state lives in [conf/](conf/), with application settings under
 | Windows | Current-user registry values and Developer Mode |
 | WSL | Windows-side WSL networking settings and Linux-side integration |
 
-The selected configuration depends on the profile and platform.
-
-The base profile covers shell tools and core configuration for servers and
-WSL. The desktop profile adds GUI apps and desktop services. Both profiles
-are available on Linux and Windows; Linux package management and the Linux
-desktop setup target Arch.
-
 ## Reference
 
 - [Getting started](https://dotfiles.stuartneivandt.com/getting-started.html): setup and usage.

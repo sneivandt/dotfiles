@@ -15,22 +15,28 @@ a `cd` command. Return to the root before following a separate example.
 
 ## Choosing coverage
 
-| Change | Start with | Broaden coverage when... |
-|---|---|---|
-| Documentation or skills | Local `docs` stage | Headings, paths, or selectors changed: check incoming references too; site changes also need a visual review |
-| TOML, categories, or source layout | `config_drift` and local `config` stage | Loading, merging, or profile behavior changed |
-| Task selection or dependencies | Affected command suite and `task_execution` | Shared catalog or scheduler behavior changed |
-| A concrete resource | Domain unit tests and affected `lifecycle_contracts` / `e2e_apply` cases | Shared planning, adapters, or failure accounting changed |
-| Process execution | `cargo test --locked --profile ci infra::exec::` from `cli/` | Timeout, cancellation, or native process behavior changed: test Windows too |
-| Wrappers or hooks | [Isolated wrapper/hook fixtures](#wrapper-and-hook-tests) | Integration behavior changed: use a disposable environment |
-| Desktop or application content | [Desktop shell](#desktop-shell) / [Application configuration](#application-configuration) | Rendering, focus, or session behavior needs native testing |
-| CI selection or workflows | Local `ci` stage and the changed job's command | Dependencies or triggers changed: include classification fixtures |
-| Arch package recipes | [Recipe validation](package-management.md#ci-and-validation) | A real package build/install is needed: use disposable Arch |
+| Change | Start with |
+|---|---|
+| Documentation or skills | [Native docs checker](#documentation-site) and a rendered-page review |
+| TOML, categories, or source layout | `config_drift` and local `config` stage |
+| Task selection or dependencies | Affected command suite and `task_execution` |
+| A concrete resource | Domain unit tests and affected lifecycle/end-to-end cases |
+| Process execution | `cargo test --locked --profile ci infra::exec::` from `cli/` |
+| Wrappers or hooks | [Isolated wrapper/hook fixtures](#wrapper-and-hook-tests) |
+| Desktop or application content | [Desktop shell](#desktop-shell) or [Application configuration](#application-configuration) |
+| CI selection or workflows | Local `ci` stage and the changed job's command |
+| Arch package recipes | [Recipe validation](package-management.md#ci-and-validation) |
 
-For Rust changes, also run formatting and host Clippy. Add Windows-target
-Clippy for platform-sensitive code, and the full Rust suite for shared
+Broaden coverage when a shared loader, scheduler, adapter, or failure policy
+changes. Rust changes also need formatting and host Clippy; add Windows-target
+Clippy for platform-sensitive code and the full Rust suite for shared
 configuration, catalog, or engine changes. Use the
 [pinned toolchain](contributing.md#selecting-the-pinned-toolchain).
+
+Heading and path changes need incoming-link checks. Native process behavior
+needs testing on each affected OS. Desktop rendering and session behavior need
+native checks, while package builds and host-mutating integration belong in
+disposable environments.
 
 ### Isolation and side effects
 
@@ -56,7 +62,6 @@ Linux:
 
 ```sh
 sh .github/workflows/scripts/linux/check.sh --list
-sh .github/workflows/scripts/linux/check.sh --strict docs
 sh .github/workflows/scripts/linux/check.sh --strict fmt clippy test config
 ```
 
@@ -66,6 +71,9 @@ Windows:
 pwsh -File .github\workflows\scripts\windows\Check.ps1 -List
 pwsh -File .github\workflows\scripts\windows\Check.ps1 -Strict fmt clippy test config
 ```
+
+The examples select Rust and configuration checks. For documentation changes,
+use the [native docs checker](#documentation-site) on the checkout's OS.
 
 With no stage names, the scripts run their default stages:
 
@@ -97,7 +105,7 @@ Rust version from `Cargo.toml`; Linux `qml` runs Qt Quick Test. `--all` on Linux
 includes both, while Windows `-All` adds `msrv`. These options can require
 downloads or additional tools; they do not run mutation tests or host integration.
 
-The docs stage needs Python, Cargo, the Node version in `docs/.node-version`,
+The Linux docs stage needs Python, Cargo, the Node version in `docs/.node-version`,
 and the [site dependencies and Chromium runtime](#documentation-site).
 Its selector check runs a Rust fixture.
 It also validates repository skill metadata and runs the validator's synthetic
@@ -120,7 +128,31 @@ need to be staged to check their links.
 
 ## Before pushing
 
-Commit the intended patch, then run the manual Linux pre-push checker
+Commit the intended patch, refresh its comparison base, and check the committed
+snapshot rather than relying on working-tree or commit-hook results.
+
+### Documentation and skills
+
+For a docs-and-skills-only patch, use the native checker from the repository root:
+
+```powershell
+python docs/check.py --committed
+```
+
+Use `python3` where required. This validates `origin/main..HEAD` in a temporary
+native checkout and rejects other kinds of changes. It restores locked npm
+dependencies and checks links, skill metadata, the site build, and browser
+behavior using the committed files. Staged or unstaged fixes cannot satisfy it.
+See [site prerequisites and checks](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#checks).
+
+On Windows, use Windows Python, Node/npm, and Playwright. Do not route these
+checks through WSL or reuse Linux `node_modules` in Windows. Rust task-selector
+and workflow checks remain CI coverage; native phone behavior is not proved
+by browser emulation. Check the exact commit's CI and deployment after pushing.
+
+### Implementation and mixed patches
+
+For other patches, run the manual Linux pre-push checker
 (Python 3.11 or newer):
 
 ```sh
@@ -158,11 +190,12 @@ local stages above; they are not a sequence to run in full.
 
 ### Documentation site
 
-Site-only commands, dependency and browser prerequisites, and manual preview
+Native documentation commands, dependency and browser prerequisites, and manual preview
 instructions live in
 [docs/README.md](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#checks).
-Use the full `docs` stage for its additional skill metadata and Rust selector
-checks, and the [committed-patch checker](#before-pushing) before pushing.
+The native checker includes skill metadata and its regression fixtures without
+requiring Cargo. The Linux `docs` stage adds the Rust task-selector fixture.
+Use the appropriate [committed-patch checker](#before-pushing) before pushing.
 
 ### Staged hook checks
 
@@ -291,21 +324,6 @@ Test-CargoArtifactPath
 
 Full wrapper suites can build/copy binaries or use `BINARY_PATH`. Read their
 setup before running all cases.
-
-#### Checking your real index
-
-These inspect staged content and do not create commits:
-
-```sh
-sh hooks/check-sensitive.sh
-sh hooks/check-rust.sh
-sh hooks/check-ci-guards.sh
-DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
-```
-
-The Rust and CI guards export the index and reuse caches without stashing or
-overwriting working files. Full mode remains staged-change-aware; it is not
-committed-range validation. See [contributor hooks](contributing.md#git-hooks).
 
 #### Full commit-hook suite
 
@@ -451,25 +469,18 @@ cases where platform contracts differ.
 
 ### Dry-run testing
 
-Preview the smallest affected selection with the current build:
+Run the affected task with dry-run enabled in an isolated fixture, then compare
+its files and recorded commands with their starting state. Use
+`common::cli_command` for subprocess tests so the fixture, not your real home,
+receives any logs or saved selection metadata.
 
-```sh
-cd cli
-cargo run --locked --profile ci -- update --root .. --profile desktop \
-  --only symlinks --dry-run --verbose
-```
+Assert that preview reports the expected plan without changing managed state
+or issuing apply commands. Cover removal previews separately where supported.
+A "dry run" message alone does not test non-mutation.
 
-For removal, use `remove` instead of `update`.
-Substitute `agent-packages` or another selector as appropriate.
-
-A preview must not apply normal managed-state changes, but it can inspect the
-host and write logs or selection metadata. Overlay scripts execute their own
-check/preview code. Only preview trusted configuration.
-
-Assert that a preview leaves managed files and state unchanged and does not
-issue commands that apply changes. A "dry run" message alone does not test
-this behavior. See
-[Private overlays](security-and-trust.md#private-overlays).
+Overlay scripts execute their own check/preview code, so fake scripts should
+record which protocol modes were invoked. Do not use a live overlay as a test
+fixture. See [Private overlays](security-and-trust.md#private-overlays).
 
 ### Focused mutation testing
 

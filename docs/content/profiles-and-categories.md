@@ -16,10 +16,10 @@ your checkout's `./dotfiles.sh` on Linux or `.\dotfiles.ps1` on Windows;
 
 ## Built-in role profiles
 
-| Profile | Includes | Best fit |
-|---|---|---|
-| `base` | Core shell configuration and tools | Servers, shell-focused machines, minimal WSL setups |
-| `desktop` | Everything in `base`, plus desktop configuration and tools | Workstations |
+| Profile | Use it for |
+|---|---|
+| `base` | Core shell tools and configuration, without the desktop additions |
+| `desktop` | A workstation: everything in base, plus desktop applications and configuration |
 
 For example:
 
@@ -70,7 +70,7 @@ The active categories select TOML sections. A hyphen in a section name means
 [conf/packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml)
 shows two matching sections:
 
-```toml title="conf/packages.toml" {4-5}
+```toml title="conf/packages.toml (excerpt)"
 [arch]
 packages = ["git"]
 
@@ -128,7 +128,7 @@ specific role for one invocation.
 variable, or saved setting. Help, version, and log viewing need none.
 For automation, see
 [Unattended runs](commands-and-usage.md#unattended-runs); for an unexpected
-selection error, see [Profile troubleshooting](troubleshooting.md#no-profile-can-be-selected).
+selection error, see [Profile troubleshooting](troubleshooting.md#no-profile-selected).
 
 ## Changing profiles or categories
 
@@ -176,7 +176,7 @@ tasks do not run. The filter does not change which configuration sections match.
 
 If expected work is missing, check the categories, task filters, and required
 tools. Tasks with nothing to change are hidden unless you
-use `--verbose`. See [A task does not run](troubleshooting.md#a-task-does-not-run).
+use `--verbose`. See [Task is missing or skipped](troubleshooting.md#task-is-missing-or-skipped).
 
 ### Extend the built-in model
 

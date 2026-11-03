@@ -85,18 +85,24 @@ when full Rust coverage was not selected.
 
 Coverage below is conditional on the relevant job being selected.
 
-| Boundary | Linux | Windows | Still not proved |
-|---|---|---|---|
-| Rust build, Clippy, tests | Native | Native | Every architecture/runtime environment |
-| `base` / `desktop` preview and config check | Yes | Yes | External installs deliberately omitted by those jobs |
-| Update/remove round-trip | Yes | Yes | Every pre-existing user configuration |
-| Wrappers | POSIX | PowerShell | Every network/authentication environment |
-| Application integration | Git, zsh, Vim, Neovim | Git | Full Windows package and VS Code installation |
-| Managed Python/PowerShell fixtures | Yes | Yes | A real compositor, network, or lock session |
-| Quickshell QML | Offscreen with mocks | No | Native rendering and focus |
-| Full commit-hook suite | Yes | No native job | Git-for-Windows hook runtime |
-| Coverage reports | Informational | Informational | Correctness merely from a coverage percentage |
-| Mutation testing | Changed-code shards | No | Native Windows mutation behavior |
+| Check | Linux | Windows |
+|---|---|---|
+| Rust build, Clippy, tests | Native | Native |
+| Profile previews and config checks | Both roles | Both roles |
+| Update/remove round-trip | Yes | Yes |
+| Wrappers | POSIX | PowerShell |
+| Application integration | Git, Zsh, Vim, Neovim | Git |
+| Managed script fixtures | Yes | Yes |
+| Quickshell QML | Offscreen | No |
+| Full commit-hook suite | Yes | No |
+| Coverage reports | Yes | Yes |
+| Mutation testing | Changed code | No |
+
+These jobs do not cover every architecture, existing user configuration, or
+network/authentication setup. Mocked script and QML tests do not prove live
+desktop rendering, focus, networking, or locking. There is no native
+Git-for-Windows full hook suite. Coverage reports are informational; a
+coverage percentage does not establish correctness.
 
 Profile previews skip VS Code, and profile `check` runs omit external APM and
 script analyzers. Windows application integration skips APM, packages, and VS

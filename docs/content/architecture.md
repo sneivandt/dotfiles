@@ -32,11 +32,11 @@ flowchart TB
 
 Three boundaries explain most of the design:
 
-| Boundary | Question it answers | Example |
-|---|---|---|
-| Task | Should this work run, and what must precede it? | Home symlinks |
-| Resource | Is this independently managed item correct? | One home-directory link |
-| Operation | What plan will converge this workflow as a whole? | Synchronizing a repository |
+| Boundary | Responsibility |
+|---|---|
+| Task | Decide whether work can run and what must precede it, such as the Home symlinks task |
+| Resource | Inspect and update one independent item, such as a home-directory link |
+| Operation | Plan and run a complete workflow, such as repository synchronization |
 
 A Requirement checks an input without creating it. An AccessClaim
 prevents concurrent work from touching the same shared state. Neither is a
@@ -262,12 +262,12 @@ lookup when one query can inspect many items.
 `Correct` needs no change. `Missing` and `Incorrect` are handled according to
 the processing mode:
 
-| Mode | Missing state | Incorrect state | Apply error |
-|---|---|---|---|
-| `Strict` | Create | Repair | Stop batch |
-| `Lenient` | Create | Repair | Count failure and continue |
-| `InstallMissing` | Create | Leave alone | Count failure and continue |
-| `FixExisting` | Leave absent | Repair | Stop batch |
+| Mode | Behavior |
+|---|---|
+| `Strict` | Create missing items and repair incorrect ones. Stop on an apply error. |
+| `Lenient` | Create and repair. Count apply failures and continue. |
+| `InstallMissing` | Create missing items; leave existing items alone. Count apply failures and continue. |
+| `FixExisting` | Repair existing items; leave missing items absent. Stop on an apply error. |
 
 Unknown state is **not** missing state. Failed discovery must never trigger
 blind creation; invalid or unknown state leaves unmet work. Discovery and
@@ -371,7 +371,7 @@ Do not introduce a task just to split a function. Follow
 [Change checklists](contributing.md#change-checklists) and choose focused
 coverage from [Testing](testing.md).
 
-### Agent deployment implementation
+## Agent deployment implementation
 
 The [agent configuration guide](agent-configuration.md) owns source selection,
 fragment merge rules, deployment destinations, and user workflows. Native APM
@@ -389,7 +389,7 @@ restoration even after an earlier deployment phase fails.
 
 | Owner | Maintenance boundary |
 |---|---|
-| [Fragment merging](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/fragments.rs) | Use effective source filenames and the [fragment merge rules](agent-configuration.md#merge-rules-to-keep-in-mind), including unmanaged home fragments |
+| [Fragment merging](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/fragments.rs) | Use effective source filenames and the [fragment merge rules](agent-configuration.md#fragment-merge-rules), including unmanaged home fragments |
 | [Copilot workflow repair](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/ai/apm/autopilot/) | Install with `apm install -g --target copilot-app --only apm`; repair only exact lockfile-owned workflow IDs, preserving foreign workflows |
 | [Cowork path selection](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/targets.rs) | A nonempty environment override wins; malformed persisted configuration fails rather than silently falling back |
 | [Cowork copying](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/cowork.rs) | Copy files without native Cowork deployment; preserve directory ACLs and foreign files, reject linked destination directories, and clean only inventory-owned `SKILL.md` files |

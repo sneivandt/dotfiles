@@ -23,12 +23,12 @@ roles, while `[arch-desktop]` and `[windows-desktop]` add desktop applications.
 Category names select environments, not package managers on other distributions.
 See [Profiles and categories](profiles-and-categories.md) for selection rules.
 
-| Source | Declaration | Installer |
-|---|---|---|
-| Arch repositories | Package name | pacman |
-| AUR (Arch User Repository) | Package name with `aur = true` | Paru |
-| Dotfiles-managed Arch recipe | Its custom package name with `aur = true` | Paru's prepared local repository |
-| Windows | Exact winget ID | winget |
+| Package source | Declaration |
+|---|---|
+| Arch repositories, through pacman | Package name |
+| AUR (Arch User Repository), through Paru | Package name with `aur = true` |
+| Dotfiles-managed Arch recipe, through Paru | Custom package name with `aur = true` |
+| Windows, through winget | Exact winget ID |
 
 For example, these entries select a native Arch tool, an AUR application, and
 the Windows Git package:
@@ -67,18 +67,18 @@ Check the selected profile, package names, and planned actions before removing
 `aur-packages` handles Arch entries marked `aur = true`. If querying the installed
 package list fails, the task fails rather than assuming everything is missing.
 
-On an already configured machine, task filters can narrow the work. Inspect
-dependency expansion before applying a scoped run:
+On an already configured machine, preview just the native package task:
 
 ```sh
-dotfiles list --graph update --only packages --with-deps
-dotfiles update --only packages --with-deps --dry-run
+dotfiles update --only packages --dry-run
 ```
 
 `--only packages` selects all native packages for the active categories, not a
 single package and not the AUR list. Use `aur-packages` for that list on Arch.
-Dependency expansion can add setup or repository work; it is not a promise of
-a package-only transaction. See [Task selection](commands-and-usage.md#select-tasks).
+Scoped runs assume prerequisites are installed. If you need to include them,
+inspect the dependency graph before adding `--with-deps`; it can bring in
+helper setup and recipe preparation. See
+[Task selection](commands-and-usage.md#select-tasks).
 
 ### Arch Linux
 
@@ -161,8 +161,8 @@ are not rolled back when a later package fails.
 |---|---|
 | An expected package is absent from the plan | Active profile/categories, spelling, overlay declarations, and task filters |
 | Installed-package discovery fails | The pacman or winget error; do not treat it as an empty installed list |
-| Pacman work is skipped for privileges | The reported elevation prerequisite; see [skipped elevation](troubleshooting.md#a-task-was-skipped-because-elevation-was-unavailable) |
-| Paru cannot start or build | Helper health and [Rust/Cargo prerequisites](troubleshooting.md#paru-bootstrap-reports-an-incomplete-rustcargo-prerequisite) |
+| Pacman work is skipped for privileges | The reported elevation prerequisite; see [skipped elevation](troubleshooting.md#elevation-is-unavailable) |
+| Paru cannot start or build | Helper health and [Rust/Cargo prerequisites](troubleshooting.md#paru-cannot-build-or-start) |
 | Winget installation fails | Exact ID, installer scope, cancellation, or policy restrictions |
 | A custom package has no newer version | Refresh recipes first, then inspect `version.sh`, `.SRCINFO`, and `paru -Sl --pkgbuilds` |
 | Recipe preparation fails | The `custom-package-versions` or `custom-package-repository` log; old pins survive a failed refresh |

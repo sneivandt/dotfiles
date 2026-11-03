@@ -56,6 +56,11 @@ examples, and the amount of detail.
 
 ## Maintain the site
 
+- Run documentation checks with the checkout's native toolchain. For a Windows
+  checkout, use Windows Python, Node/npm, and Playwright, not WSL against
+  `/mnt/c`. Restore dependencies for that OS; do not share `node_modules`
+  between Windows and Linux. Resolve missing tools or registry failures without
+  bypassing TLS or moving the whole site check to another OS.
 - Keep dependencies pinned in `docs/package.json` and its lockfile. Use supported
   Starlight configuration and components before adding custom JavaScript.
 - Guides belong in `docs/content/`, separate from the site implementation.
@@ -92,8 +97,11 @@ examples, and the amount of detail.
   must match the pages' canonical URLs, including `.html` for guides, and
   `robots.txt` should point to the sitemap. Check the built output for all three.
 
-Use the [site checks](../../../docs/README.md#checks) and
-preview procedure in that README. Inspect navigation on desktop/mobile,
+Use the [native docs checker](../../../docs/README.md#checks), including its
+committed-snapshot mode for docs-and-skills-only patches, and the preview
+procedure in that README. Keep the Rust catalog fixture and workflow checks
+explicit as remaining CI coverage; the Linux aggregate is not required for
+this native documentation path. Inspect navigation on desktop/mobile,
 search, all theme choices, Mermaid SVG output, and links to source files.
 The static check verifies matching titles, names, navigation, anchors, and assets;
 browser tests also enforce readable diagram labels and theme preferences.

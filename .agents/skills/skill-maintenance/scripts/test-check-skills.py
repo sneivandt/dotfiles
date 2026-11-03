@@ -57,7 +57,7 @@ class MetadataTests(unittest.TestCase):
             self.assertTrue(any("does not match directory" in error for error in errors), errors)
             self.assertTrue(any("duplicate skill name" in error for error in errors), errors)
             skill("broken-skill", "not frontmatter")
-            self.assertTrue(any("broken-skill/SKILL.md" in error for error in check(root)))
+            self.assertTrue(any(str(Path("broken-skill") / "SKILL.md") in error for error in check(root)))
 
     def test_missing_inventory_fails(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -67,7 +67,7 @@ or Explorer.
 With a saved profile and installed launcher, preview from the main checkout:
 
 ```sh
-dotfiles update --no-repo-update --overlay ../dotfiles-private --only symlinks --dry-run
+dotfiles update --overlay ../dotfiles-private --only symlinks --dry-run
 ```
 
 Look for `~/.config/git/config` pointing into `dotfiles-private`, and review all
@@ -173,7 +173,7 @@ Use scripts only for work that declarative configuration cannot express.
 Only an overlay's `conf/scripts.toml` is loaded; the main repository cannot
 declare these tasks.
 
-```toml title="dotfiles-private/conf/scripts.toml" {3}
+```toml title="dotfiles-private/conf/scripts.toml (example)"
 [[linux.scripts]]
 name = "Configure private workstation"
 path = "scripts/configure-workstation.sh"
@@ -229,4 +229,4 @@ and sources available while running any intended
 merged system files generally remain; remove is not a universal rollback.
 
 For selection problems, see
-[An overlay appears to be ignored](troubleshooting.md#an-overlay-appears-to-be-ignored).
+[Overlay is ignored](troubleshooting.md#overlay-is-ignored).

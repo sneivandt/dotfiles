@@ -37,7 +37,7 @@ your intended checkout and a saved profile:
 
 ```sh
 dotfiles check --only config-diagnostics,symlink-sources,config-files
-dotfiles update --no-repo-update --only symlinks --dry-run
+dotfiles update --only symlinks --dry-run
 ```
 
 Resolve failed or skipped checks before applying. The preview should show the
@@ -55,17 +55,17 @@ loader or configuration model should also use [Testing](testing.md#cli-validatio
 Every main file listed here is required, even on platforms where its task does
 not apply. A required file may be empty.
 
-| File | Entry field | Purpose |
-|---|---|---|
-| [symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml) | `symlinks` | Link repository content into home |
-| [packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml) | `packages` | Install Arch or Windows packages |
-| [git-config.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml) | `settings` | Set global Git values |
-| [agent-settings.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml) | `settings` | Set selected Copilot/Codex preferences |
-| [chmod.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml) | `permissions` | Apply Unix file/directory modes |
-| [registry.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/registry.toml) | `path` and `values` | Set Windows current-user values |
-| [systemd-units.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml) | `units` | Enable/start or disable/stop units |
-| [system-files.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml) | `files` | Merge fragments into files below `/etc` |
-| [vscode-extensions.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml) | `extensions` | Install editor extensions |
+| File | Purpose |
+|---|---|
+| [symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml) | Link repository content into home |
+| [packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml) | Install Arch or Windows packages |
+| [git-config.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml) | Set global Git values |
+| [agent-settings.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml) | Set Copilot/Codex preferences |
+| [chmod.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml) | Apply Unix file/directory modes |
+| [registry.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/registry.toml) | Set Windows current-user values |
+| [systemd-units.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml) | Enable/start or disable/stop units |
+| [system-files.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml) | Merge fragments into files below `/etc` |
+| [vscode-extensions.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml) | Install editor extensions |
 
 Private overlays may also provide
 [conf/scripts.toml](private-overlays.md#overlay-scripts). The main repository's
@@ -75,14 +75,12 @@ Private overlays may also provide
 
 Except for registry records, configuration is grouped by category:
 
-```toml title="conf/symlinks.toml" {9-10}
+```toml title="conf/symlinks.toml (excerpt)"
 [base]
 symlinks = ["config/git/config"]
 
 [windows]
-symlinks = [
-  { source = "config/powershell/Microsoft.PowerShell_profile.ps1", target = "Documents/PowerShell/Microsoft.PowerShell_profile.ps1" },
-]
+symlinks = ["wslconfig"]
 
 [arch-desktop]
 symlinks = ["config/hypr/hyprland.lua"]
@@ -92,8 +90,6 @@ The available tags are `base`, `desktop`, `linux`, `windows`, `arch` and `wsl`.
 A hyphen means **AND**: `[arch-desktop]` needs both categories.
 Unknown or misspelled tags are errors, not new custom categories.
 
-### Profiles
-
 `base` is always active. Selecting the desktop profile adds `desktop`;
 the CLI supplies platform categories. Profiles describe a machine's role, not
 its operating system. See [Profiles](profiles-and-categories.md) for selection precedence,
@@ -101,17 +97,20 @@ persistence and platform combinations.
 
 ## Path conventions
 
-| Entry | Source/base | Destination |
-|---|---|---|
-| Symlink `"config/git/config"` | `<repo>/symlinks/config/git/config` | `~/.config/git/config` |
-| Symlink with `target = "Documents/file"` | `<repo>/symlinks/<source>` | `~/Documents/file`, exactly as written |
-| Permission `path = "ssh/config"` | Home | `~/.ssh/config`, with the leading dot added |
-| System file `source = "pacman.conf"` | `<repo>/system/pacman.conf` | `/etc/pacman.conf`, unless `target` is supplied |
-| Script `path = "scripts/setup.sh"` | Overlay root | `<overlay>/scripts/setup.sh` |
+Symlink sources are relative to the declaring repository's `symlinks/`
+directory; system-file sources are relative to its `system/` directory.
+An overlay entry uses the overlay's directories, not the main checkout's.
+Script paths are relative to the overlay root.
 
-Here `<repo>` means the repository that **declared the entry**, including an
-overlay. Use `/` in portable paths. Home-relative paths are not shell
-expressions: write the relative path, not `~/…`.
+| Entry | Resolved location |
+|---|---|
+| Symlink `"config/git/config"` | `~/.config/git/config`, with a leading dot added |
+| Explicit symlink `target = "Documents/file"` | `~/Documents/file`, with no dot added |
+| Permission `path = "ssh/config"` | `~/.ssh/config` |
+| System file `source = "pacman.conf"` | `/etc/pacman.conf`, unless `target` is supplied |
+
+Use `/` in portable paths. Home-relative paths are not shell expressions:
+write the relative path, not a `~/` prefix.
 
 ## Symlinks
 
@@ -144,12 +143,7 @@ symlinks = ["config/git/config", "ssh/config"]
 The table form requires both `source` and `target`. It is useful for Windows
 locations or for sharing one source across several destinations:
 
-```toml title="conf/symlinks.toml" {9}
-[windows]
-symlinks = [
-  { source = "config/nuget/nuget.config", target = "AppData/Roaming/NuGet/nuget.config" },
-]
-
+```toml title="conf/symlinks.toml (excerpt)"
 [linux]
 symlinks = [
   "vim",
@@ -208,7 +202,7 @@ than introducing another deployment route.
 
 ## Packages
 
-```toml title="conf/packages.toml" {5}
+```toml title="conf/packages.toml (excerpt)"
 [arch]
 packages = [
   "git",
@@ -318,7 +312,7 @@ Permission changes through managed links can affect the source checkout.
 Registry sections are labels, **not categories**. Every record applies on
 Windows regardless of profile:
 
-```toml title="conf/registry.toml" {2}
+```toml title="conf/registry.toml (excerpt)"
 [explorer]
 path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer'
 
@@ -344,7 +338,7 @@ are only applied on Windows. Existing undeclared values are preserved.
 
 ## systemd units
 
-```toml title="conf/systemd-units.toml" {7}
+```toml title="conf/systemd-units.toml (excerpt)"
 [linux]
 units = ["clean-home-tmp.timer"]
 

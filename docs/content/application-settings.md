@@ -20,10 +20,10 @@ and editors.
 
 ## Find a common change
 
-| I want to change... | Start here |
+| Change | Start here |
 |---|---|
 | Git identity, defaults, aliases, or templates | [Git settings](#git) below |
-| Bash/Zsh environment or shared commands | [Shared shell sources](#shell-application-configuration) below |
+| Bash/Zsh environment or shared commands | [Shell configuration](#shell-configuration) below |
 | User command directories on PATH | [config/shell/path.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/path.sh) for Bash/Zsh, or the [PowerShell profile](windows-and-wsl.md#powershell-configuration) |
 | Bash or Zsh prompt | [config/bash/prompt.bash](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/bash/prompt.bash) or [config/zsh/prompt.zsh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/prompt.zsh) |
 | PowerShell behavior | [PowerShell configuration](windows-and-wsl.md#powershell-configuration) |
@@ -145,7 +145,7 @@ default branch. Add exact names through repository-local
 `github.user` or its fallback `github.username` are exempt; that is a local
 configured-name check, not a GitHub permission check.
 
-## Shell application configuration
+## Shell configuration
 
 | Setting | Source |
 |---|---|
@@ -188,8 +188,9 @@ hand-edited selector list.
 
 ## Visual Studio Code
 
-The desktop profile installs VS Code Insiders on Arch and Windows. Shared
-settings also link into stable VS Code when present. Edit
+The desktop profile installs VS Code Insiders on Arch and Windows. It links
+shared settings into both stable and Insiders locations, even if only one
+edition is installed. Edit
 [settings.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Code/User/settings.json)
 and [keybindings.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Code/User/keybindings.json).
 The settings choose Tokyo Night, Source Code Pro, word wrapping, save on focus
@@ -197,11 +198,12 @@ change, and Zsh on Linux or PowerShell on Windows. Application updates are manua
 extension updates are separate. Review the checkout diff after using the settings
 UI, which can write through managed links.
 
-| Environment | Managed location beneath the home directory |
-|---|---|
-| Linux desktop | `.config/Code/User/` and `.config/Code - Insiders/User/` |
-| Windows desktop | `AppData/Roaming/Code/User/` and `AppData/Roaming/Code - Insiders/User/` |
-| Desktop profile, remote server | `.vscode-server/data/Machine/settings.json` and `.vscode-server-insiders/data/Machine/settings.json` |
+The desktop profile links these locations beneath the home directory:
+
+- Linux: `.config/Code/User/` and `.config/Code - Insiders/User/`
+- Windows: `AppData/Roaming/Code/User/` and `AppData/Roaming/Code - Insiders/User/`
+- Remote servers: `.vscode-server/data/Machine/settings.json` and
+  `.vscode-server-insiders/data/Machine/settings.json`
 
 Remote server locations receive settings only. Run dotfiles in the home that
 owns them; configuring Windows does not configure WSL or another host. Workspace
@@ -229,7 +231,7 @@ remain, including after removing declarations or running `dotfiles remove`.
 Use the editor's Extensions view for updates and deliberate removal.
 
 On Arch, the managed Insiders launcher and URL handler use GNOME libsecret.
-See [GNOME Keyring troubleshooting](troubleshooting.md#gnome-keyring-does-not-unlock-at-login)
+See [GNOME Keyring troubleshooting](troubleshooting.md#gnome-keyring-stays-locked)
 for credential failures. Chroot setup defers extension installation until a
 graphical login; `dotfiles-first-login.service` retries until it succeeds.
 

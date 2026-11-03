@@ -57,7 +57,7 @@ keep elsewhere: the desktop's
 runs daily and deletes files and links after 31 complete days since their last
 modification (`find -mtime +30`), along with old empty directories.
 
-## Hyprland media keys
+### Media keys
 
 Bindings use standard `XF86` symbols, not physical F-key positions. Keyboard
 Fn mode determines which symbols are sent. Fallback shortcuts are:
@@ -96,6 +96,8 @@ tray items, and controls alongside them. Use the bar as follows:
 
 Only one bar popup opens at a time across monitors. The bar reserves space for
 tiled windows, sits below floating windows and hides on fullscreen workspaces.
+NetworkManager handles connections; configure enterprise Wi-Fi in the
+connection editor rather than the bar menu.
 
 ### Tray applications
 
@@ -106,12 +108,6 @@ scrolling remain available.
 
 Left-click either icon to open its application. Copilot launcher failures
 appear in its tooltip and log.
-
-### Network
-
-NetworkManager handles connections; enterprise Wi-Fi setup stays in the
-connection editor. Use the Network menu for saved connections and ordinary
-Wi-Fi setup, or right-click the bar control to open the editor.
 
 ### Markets
 
@@ -132,8 +128,6 @@ Before sleep, Hypridle requests a lock and waits for the compositor to confirm
 it. That wait has a system-imposed time limit: **if locking fails, the machine
 may still suspend**. Resume turns displays on but does not unlock the session.
 The linked configuration records the settings needed for this behavior.
-
-### Hyprlock display-reconnect workaround
 
 Hyprlock uses a solid background without animations to avoid a known crash
 when displays reconnect. Before enabling either feature, check the issue and
@@ -223,7 +217,7 @@ Substitute the affected service for Quickshell. These inspect the running
 session; reloading, locking, suspending, and changing connectivity are separate
 actions. Review journal output before sharing it.
 
-Use [Troubleshooting](troubleshooting.md#systemd-changes-are-not-visible) for
+Use [Troubleshooting](troubleshooting.md#service-changes-are-not-visible) for
 inactive units and keyring issues. Contributors can check helpers and UI logic
 with the isolated [desktop shell tests](testing.md#desktop-shell)
 without restarting the desktop.

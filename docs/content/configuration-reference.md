@@ -102,12 +102,13 @@ directory; system-file sources are relative to its `system/` directory.
 An overlay entry uses the overlay's directories, not the main checkout's.
 Script paths are relative to the overlay root.
 
-| Entry | Resolved location |
-|---|---|
-| Symlink `"config/git/config"` | `~/.config/git/config`, with a leading dot added |
-| Explicit symlink `target = "Documents/file"` | `~/Documents/file`, with no dot added |
-| Permission `path = "ssh/config"` | `~/.ssh/config` |
-| System file `source = "pacman.conf"` | `/etc/pacman.conf`, unless `target` is supplied |
+- A symlink source `"config/git/config"` becomes `~/.config/git/config`,
+  with a leading dot added.
+- An explicit symlink `target = "Documents/file"` becomes `~/Documents/file`,
+  without adding a dot.
+- A permission `path = "ssh/config"` refers to `~/.ssh/config`.
+- A system-file `source = "pacman.conf"` defaults to `/etc/pacman.conf`;
+  `target` can override it.
 
 Use `/` in portable paths. Home-relative paths are not shell expressions:
 write the relative path, not a `~/` prefix.

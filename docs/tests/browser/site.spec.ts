@@ -321,33 +321,38 @@ test('the page contents expose task details and group troubleshooting symptoms',
   }
 });
 
-test('reference tables remain readable at narrow widths', async ({ page }) => {
-  test.setTimeout(60_000);
-  await page.setViewportSize({ width: 375, height: 667 });
-  await page.goto('/');
-  const routes = await page.locator('#starlight__sidebar details a[href]').evaluateAll(
-    (links) => links.map((link) => link.getAttribute('href')!),
-  );
-  for (const route of routes) {
-    await page.goto(route);
-    await assertNoPageOverflow(page);
-    for (const table of await page.locator('main table').all()) {
-      const dimensions = await table.evaluate((element) => ({
-        content: element.scrollWidth,
-        visible: element.clientWidth,
-        cells: [...element.querySelectorAll('th, td')].map((cell) => ({
-          width: cell.getBoundingClientRect().width,
-          fontSize: parseFloat(getComputedStyle(cell).fontSize),
-        })),
-      }));
-      expect(dimensions.content, route).toBeLessThanOrEqual(dimensions.visible + 1);
-      for (const cell of dimensions.cells) {
-        expect(cell.width, route).toBeGreaterThanOrEqual(48);
-        expect(cell.fontSize, route).toBeGreaterThanOrEqual(14);
+for (const font of ['system', 'fallback']) {
+  test(`reference tables remain readable at narrow widths with ${font} fonts`, async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto('/');
+    const routes = await page.locator('#starlight__sidebar details a[href]').evaluateAll(
+      (links) => links.map((link) => link.getAttribute('href')!),
+    );
+    for (const route of routes) {
+      await page.goto(route);
+      if (font === 'fallback') {
+        await page.addStyleTag({ content: ':root { --sl-font: Arial; --sl-font-mono: "Courier New"; }' });
+      }
+      await assertNoPageOverflow(page);
+      for (const table of await page.locator('main table').all()) {
+        const dimensions = await table.evaluate((element) => ({
+          content: element.scrollWidth,
+          visible: element.clientWidth,
+          cells: [...element.querySelectorAll('th, td')].map((cell) => ({
+            width: cell.getBoundingClientRect().width,
+            fontSize: parseFloat(getComputedStyle(cell).fontSize),
+          })),
+        }));
+        expect(dimensions.content, route).toBeLessThanOrEqual(dimensions.visible + 1);
+        for (const cell of dimensions.cells) {
+          expect(cell.width, route).toBeGreaterThanOrEqual(48);
+          expect(cell.fontSize, route).toBeGreaterThanOrEqual(14);
+        }
       }
     }
-  }
-});
+  });
+}
 
 test('search opens the relevant section of the published guide', async ({ page }) => {
   await page.goto('/');

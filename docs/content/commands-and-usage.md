@@ -142,6 +142,9 @@ remain available while a run is active.
 
 Check the header's profile, platform, overlay, and dry-run indicator first.
 Tasks print as they finish, so output order is not configuration order.
+While tasks run in an interactive terminal, a muted cyan spinner precedes
+the remaining task count at normal brightness, followed by dim active task names.
+Long lists show a dim overflow count such as `+2`.
 
 | Status | Meaning |
 |---|---|

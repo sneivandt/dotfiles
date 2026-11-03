@@ -122,8 +122,8 @@ fn active_display_line(
     format!(
         "{} {}{}{}",
         style.paint(TextStyle::MutedCyan, spinner),
-        style.paint(TextStyle::Dim, &count),
-        names,
+        count,
+        style.paint(TextStyle::Dim, &names),
         style.paint(TextStyle::Dim, &suffix)
     )
 }
@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn footer_styles_only_spinner_count_and_overflow() {
+    fn footer_emphasizes_count_and_dims_names_and_overflow() {
         let active = ["Packages", "Symlinks", "Fonts", "Git"].map(String::from);
         assert_eq!(
             super::active_display_line(
@@ -305,7 +305,7 @@ mod tests {
                 80,
                 StyleChoice::colored()
             ),
-            "\x1b[2;36m⠋\x1b[0m \x1b[2m4 tasks left · \x1b[0mPackages, Symlinks, Fonts\x1b[2m +1\x1b[0m"
+            "\x1b[2;36m⠋\x1b[0m 4 tasks left · \x1b[2mPackages, Symlinks, Fonts\x1b[0m\x1b[2m +1\x1b[0m"
         );
     }
 

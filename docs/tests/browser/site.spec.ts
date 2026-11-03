@@ -75,17 +75,15 @@ test('the homepage introduces the repository and links to setup, with grouped na
   const groups = sidebar.locator('details');
   await expect(groups.locator(':scope > summary')).toHaveText([
     'Start here', 'Use dotfiles', 'Customize',
-    'Platforms', 'Packages', 'AI agents', 'Editors', 'Development',
+    'Platforms and packages', 'AI tools and editors', 'Development',
   ]);
   await expect(groups.locator('details')).toHaveCount(0);
   for (const section of await groups.all()) {
     await expect(section).toHaveAttribute('open', '');
   }
   for (const [label, titles] of [
-    ['Platforms', ['Arch desktop', 'Windows and WSL']],
-    ['Packages', ['Package management', 'Arch package recipes']],
-    ['AI agents', ['Agent configuration', 'Agent deployment internals']],
-    ['Editors', ['Visual Studio Code', 'Vim and Neovim']],
+    ['Platforms and packages', ['Arch desktop', 'Windows and WSL', 'Package management', 'Arch package recipes']],
+    ['AI tools and editors', ['Agent configuration', 'Agent deployment internals', 'Visual Studio Code', 'Vim and Neovim']],
   ] as const) {
     const group = groups.filter({ has: page.getByText(label, { exact: true }) });
     await expect(group.getByRole('link')).toHaveText([...titles]);

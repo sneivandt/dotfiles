@@ -62,8 +62,12 @@ from `docs/` before rebuilding so unchanged guides receive the new transforms.
 ## Navigation and appearance
 
 Keep guides one level deep in the sidebar, with everyday and maintenance
-guides grouped by topic. The site title links to the separate introduction at
-`/`; Getting started owns the setup walkthrough.
+guides beside each other. Group related topics under recognizable headings
+rather than giving every topic its own small section. Page boundaries follow
+reader tasks; they do not need to match navigation groups.
+
+The site title links to the separate introduction at `/`; Getting started
+owns the setup walkthrough.
 
 Navigation groups start expanded on desktop and mobile, with native reader
 toggles preserved. Overflowing navigation uses a full-width, contrasting

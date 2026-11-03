@@ -232,7 +232,7 @@ contracts in [CLI reference](cli-reference.md), and the update story in
 [Update lifecycle](update-lifecycle.md). Customize owns application sources,
 declaration formats, private additions, and [personal Git configuration](git-configuration.md).
 Repository commit checks belong in [Git hooks](git-hooks.md).
-Detailed workflows stay in Platforms, Packages, AI agents, or Editors.
+Detailed workflows stay in Platforms and packages or AI tools and editors.
 Keep maintenance guidance beside the topic it supports; reserve Development
 for repository-wide work. Link instead of repeating instructions, and split
 pages only when their readers or tasks genuinely differ.

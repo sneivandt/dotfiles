@@ -36,10 +36,12 @@ examples, and the amount of detail.
   Keep meaningful topic groups rather than adding a generic Reference group.
 - Keep Application settings focused on shared preferences and finding sources;
   detailed Arch desktop and editor behavior belongs in its owning guide. Keep
-  each topic's maintenance guide beside its everyday guide. Use top-level
-  Platforms, Packages, AI agents, and Editors sections in that order between
-  Customize and Development, with every guide one level deep. Split pages by
-  distinct reader tasks, not length alone.
+  each topic's maintenance guide beside its everyday guide, with every guide
+  one level deep. Group related topics when separate headings fragment the
+  navigation; a distinct page or maintenance guide does not require its own
+  top-level section. Use the site configuration for current labels and order,
+  not a fixed taxonomy in guidance. Split pages by distinct reader tasks,
+  not length alone.
 - For guides, match page title, sidebar text, filename, and URL. Update incoming
   references after moves; do not add old-name redirects or compatibility heading
   aliases. The root landing page is its own page at `/`, not a redirect to

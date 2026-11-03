@@ -76,20 +76,12 @@ export default defineConfig({
           items: ['application-settings', 'configuration-reference', 'private-overlays', 'git-configuration'],
         },
         {
-          label: 'Platforms',
-          items: ['arch-desktop', 'windows-and-wsl'],
+          label: 'Platforms and packages',
+          items: ['arch-desktop', 'windows-and-wsl', 'package-management', 'arch-package-recipes'],
         },
         {
-          label: 'Packages',
-          items: ['package-management', 'arch-package-recipes'],
-        },
-        {
-          label: 'AI agents',
-          items: ['agent-configuration', 'agent-deployment-internals'],
-        },
-        {
-          label: 'Editors',
-          items: ['visual-studio-code', 'vim-and-neovim'],
+          label: 'AI tools and editors',
+          items: ['agent-configuration', 'agent-deployment-internals', 'visual-studio-code', 'vim-and-neovim'],
         },
         {
           label: 'Development',

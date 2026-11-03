@@ -127,7 +127,6 @@ configured-name check, not a GitHub permission check.
 | Shared commands and aliases | [config/shell/aliases.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/aliases.sh) |
 | Zsh completion | [config/zsh/completion.zsh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/completion.zsh) |
 | Zsh command helpers | [config/zsh/functions/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/zsh/functions/) |
-| Download naming and timestamping | [config/wgetrc](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/wgetrc) |
 
 ### Environment and paging
 
@@ -158,19 +157,6 @@ matches.
 Dotfiles command completion comes from the CLI's
 [Shell completions task](task-reference.md#shell-completions), not a separate
 hand-edited selector list.
-
-### Downloads and archives
-
-Wget preserves URL filenames and uses timestamping to reuse unchanged
-downloads. Change its shared defaults in `config/wgetrc`.
-
-In Zsh, the [extract helper](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/functions/extract)
-accepts `extract <file>` and chooses the tool for the archive format. That tool
-must be installed;
-RPM extraction uses `bsdtar`, supplied by `libarchive` on Arch.
-Keep the extractor's normal path protections when customizing the helper.
-Extract untrusted archives into a fresh directory and review the contents
-before running anything; see [Security and trust](security-and-trust.md).
 
 ## Visual Studio Code
 

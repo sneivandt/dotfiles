@@ -39,7 +39,7 @@ configuration. A clean working tree does not make a live installation safe.
 | Task membership or cross-domain dependencies | [app/catalog.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs) |
 | How one kind of state is applied | Its module under [domains/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/) |
 | Process, filesystem, or output mechanics | [infra/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra/) |
-| Hooks or automation | [Hooks](#git-hooks) and [CI and releases](ci-and-releases.md) |
+| Hooks or automation | [Git hooks](#git-hooks) and [CI and releases](ci-and-releases.md) |
 
 Read the closest existing implementation before adding a new abstraction.
 Repository [skills](https://github.com/sneivandt/dotfiles/tree/main/.agents/skills/) contain focused contributor procedures;
@@ -279,73 +279,26 @@ for reviewed recovery from a broken check, never known sensitive content.
 
 ## Documentation
 
-Write for the person doing the work. Put common tasks before edge cases, explain
-terms when introducing them, and keep examples short, copyable, and safe in
-context. Prefer verified defaults over routine root/profile overrides and
-diagnostic flags. Keep necessary task filters and preview flags. Use a small
-Mermaid diagram only when it makes a relationship easier to grasp.
+Write for the reader's task. Use direct language, short examples with verified
+commands, and safety information beside the action it affects. Keep private
+content, credentials, and unsanitized logs out of examples.
 
-Use direct language and ordinary punctuation. Avoid em dashes, decorative
-sentence breaks, canned openings, and repeated summaries. Prefer a period or
-comma when a sentence needs a pause. Preserve exact commands, quoted output,
-and meaningful technical symbols. Use formatting to make information easier
-to find, not to emphasize every sentence.
+Give each explanation one home. Everyday commands belong in
+[Commands and usage](commands-and-usage.md); exact syntax belongs in
+[CLI reference](cli-reference.md). Keep application, agent, and package guidance
+in their owning guides, with maintenance details after everyday workflows.
+Link to existing explanations instead of repeating them.
 
-Give each explanation one home: everyday commands and basic log reading in
-[Commands and usage](commands-and-usage.md), exhaustive syntax and output
-contracts in [CLI reference](cli-reference.md). The update story belongs in
-[Commands and usage](commands-and-usage.md#update-lifecycle). Customize owns
-application sources, declaration formats, private additions, and
-[personal Git settings](application-settings.md#git).
-Repository commit checks belong in [Git hooks](#git-hooks), with guard and
-scanner details in [Testing](testing.md#staged-hook-checks). Editor preferences
-belong in Application settings; agent setup and deployment maintenance belong
-in Agent configuration. Package management owns installation and recipe
-maintenance. Reserve Development for repository-wide work. Link instead of
-repeating instructions, and split pages only when their readers or tasks differ.
-
-Describe stable workflows and meaningful user-visible behavior, not the
-mechanics of each recent fix. Detailed algorithms and regression assertions
-belong beside their implementation or in a maintenance reference. Keep
-necessary safety warnings beside the actions they affect.
-
-Read each page as a shared link, without assuming the reader visited the
-homepage or previous guide. Establish its task, platform and setup assumptions,
-define essential terms, and explain the expected result. Keep enough local
-context to complete that task; link out for full setup and deeper reference.
-Brief definitions and safety warnings can repeat where needed, but whole
-workflows should not.
-
-For a new guide, match its front-matter `title`, Markdown H1, and sidebar label.
-Use the lowercase, hyphenated title for the filename: `getting-started.md`
-publishes at `/getting-started.html`. Add a description and register it in
+Use relative `.md` links between guides and full GitHub URLs for tracked sources
+outside the guide collection. For new pages, match the title, filename, and
+sidebar label, then register the guide in
 [docs/astro.config.mjs](https://github.com/sneivandt/dotfiles/blob/main/docs/astro.config.mjs).
-The separate `index.md` introduction is served at `/` and stays out of the
-sidebar. When renaming a page or heading, update incoming references rather
-than adding compatibility routes or heading aliases.
+Update incoming links after moving pages or headings; do not add compatibility
+routes or heading aliases.
 
-Link a tracked file at the point where readers need to inspect or edit it,
-usually its first actionable mention or an owning-source table. Use ordinary
-link text, not code-styled links. Reserve inline code for exact commands,
-flags, keys, literal values, and paths the reader needs to type or distinguish.
-Use plain prose for tool names and concepts, and bold sparingly for consequential
-warnings or a key decision, not as a substitute for a link or heading.
-Do not link a hypothetical file as if it exists. In guides, tracked source
-links use full GitHub URLs; links to other guides stay relative with `.md`
-extensions.
-
-Keep the root README a landing page with the shared icon and one prominent
-website link; keep the setup walkthrough in Getting started. Use the
-[documentation checks](testing.md#documentation-site) after editing guides.
-They catch link, catalog, and rendering drift, not incorrect prose: verify
-behavioral claims against code and tests.
-
-Never use private overlays, credentials, or unsanitized logs as public examples.
-
-Site implementation, preview, and publishing instructions live in
-[docs/README.md](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md),
-not the published guide collection. Agents use
+Run the [documentation checks](testing.md#documentation-site) and review the
+rendered result. Site preview, configuration, and publishing instructions live in
+[docs/README.md](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md).
+For detailed guidance, use
 [Docs writing](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-writing/SKILL.md)
-for prose quality and
-[Docs publishing](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-publishing/SKILL.md)
-for documentation organization and site management.
+and [Docs publishing](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-publishing/SKILL.md).

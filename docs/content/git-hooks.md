@@ -5,9 +5,9 @@ description: Understand staged checks, sensitive-pattern scanning, and how to di
 
 # Git hooks
 
-The dotfiles pre-commit hook checks what you have **staged**, before Git creates
-the commit. It catches common mistakes early; it does not replace CI, pre-push
-validation, or a review for sensitive data.
+The dotfiles pre-commit hook checks the changes staged for your next commit
+(Git's index). It catches common mistakes before Git creates the commit; it
+does not replace CI, pre-push validation, or a review for sensitive data.
 
 This guide covers checks for contributors to this repository, implemented in
 [hooks/](https://github.com/sneivandt/dotfiles/tree/main/hooks/). Run the examples
@@ -66,18 +66,14 @@ The sensitive scanner reads the diff from `HEAD` to the index, or from an empty
 tree for the first commit. It scans added lines only. An edited rename is still
 scanned without treating every unchanged line as newly added.
 
-Rust and CI guards export the **entire index** to an isolated snapshot.
-Consequently:
-
-- An unstaged fix cannot hide a staged error.
-- An unstaged deletion does not remove the staged file from checks.
-- An untracked file cannot satisfy a staged build.
-- The working tree is not overwritten or stashed.
+Rust and CI guards check an isolated snapshot of the entire index. A staged
+error still fails even if you fixed it in the working copy. Unstaged deletions
+and untracked files do not affect the snapshot, and the guards leave your
+working files in place without stashing them.
 
 Builds reuse the checkout's Cargo target cache, so checks still write build
-artifacts. Shell and PowerShell input handling preserves literal filenames,
-including spaces and non-ASCII characters; quoted Git display names are not
-passed to analyzers.
+artifacts. Analyzers receive the actual filenames, including spaces and
+non-ASCII characters.
 
 **The verifier itself comes from the working tree.** The installed entrypoint
 finds the checkout with `git rev-parse --show-toplevel` and runs its `hooks/`
@@ -103,7 +99,7 @@ do not share raw sensitive input or unsanitized logs. See
 
 ## Full guard mode
 
-Opt into broader, still path-triggered, checks:
+Enable additional checks for the kinds of files you staged:
 
 ```bash
 DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit

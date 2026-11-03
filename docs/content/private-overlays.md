@@ -9,9 +9,10 @@ An overlay adds private or machine-specific configuration without putting it
 in the main dotfiles repository. Use a separate private repository or directory
 with the same configuration layout. The main checkout remains the shared base.
 
-An overlay **extends** the base; it is not a separate profile, a generic file
-patch, or a security boundary. Never copy private content or credentials into
-public examples, fixtures, logs, or agent messages.
+An overlay adds declarations and replaces matching entries in the base
+configuration. It does not patch the contents of application files. Keep
+private content and credentials out of public examples, fixtures, logs, and
+agent messages.
 
 ## Create an overlay
 
@@ -21,9 +22,6 @@ Only include the files you need:
 dotfiles-private/
   conf/
     git-config.toml
-  symlinks/
-  system/
-  scripts/
 ```
 
 Overlay configuration files are optional. They use the same
@@ -43,8 +41,9 @@ relative to the repository that declared them, not the main checkout.
 
 ## Select and preview
 
-After [getting started](getting-started.md), inspect a sibling overlay using
-your selected profile:
+From your main checkout, inspect an overlay in the sibling directory
+`../dotfiles-private`. These commands use your saved profile; if you have not
+selected one, follow [Getting started](getting-started.md) first.
 
 ```sh
 dotfiles list --overlay ../dotfiles-private
@@ -74,8 +73,8 @@ Selection priority is:
 2. Nonempty `DOTFILES_OVERLAY`
 3. Repository-local Git setting `dotfiles.overlay`
 
-Relative paths resolve from the **invoking working directory**, not the main
-checkout. A path passed with `--overlay` to update, remove, or check is saved
+Relative paths resolve from the **directory where you run the command**. A
+path passed with `--overlay` to update, remove, or check is saved
 as an absolute path. Environment selections are not saved. Existing saved
 relative paths retain their working-directory meaning until replaced.
 Read-only listing never saves a selection. Check for a persistence warning if a
@@ -94,7 +93,7 @@ An active overlay entry replaces a main entry when both manage the same
 package, destination, or setting. The table lists what must match for each kind
 of entry; matching section names or array positions do not cause replacement:
 
-| Configuration | Replacement identity |
+| Configuration | Entries match by |
 |---|---|
 | Packages | Package name; case-insensitive on Windows |
 | Symlinks | Normalized home target after glob expansion |

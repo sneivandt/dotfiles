@@ -29,9 +29,9 @@ For command syntax and preview side effects, see [Usage](commands-and-usage.md#s
 
 ### Catalog overview
 
-These are all static public update selectors. Follow a label for its
-details. Availability describes broad eligibility, not a guarantee that
-runtime prerequisites or elevation are available. Only `git-hooks`, `launcher`
+These are the built-in update selectors. Follow a label for details. The table
+shows which configuration or platform makes each task relevant; required tools
+or privileges may still be missing. Only `git-hooks`, `launcher`
 and `symlinks` also belong to [remove](#remove-tasks).
 
 | Selector | Console label and availability |
@@ -73,7 +73,7 @@ See [Windows elevation](windows-and-wsl.md#elevation).
 
 #### Dotfiles launcher
 
-Writes a shim that delegates to this checkout's wrapper:
+Writes a small launcher script that calls this checkout's wrapper:
 
 - Linux: `~/.local/bin/dotfiles`.
 - Windows: `%USERPROFILE%\.local\bin\dotfiles.cmd`, preferring `pwsh` and
@@ -116,8 +116,9 @@ honoring `core.hooksPath` and the common hooks directory of linked worktrees.
 When the destination is already the tracked source, it is neither copied over
 itself nor removed.
 
-Existing hooks at managed names can be replaced without composition or backup.
-Save custom hooks first. [Hooks](git-hooks.md) explains what the installed hooks do.
+An existing hook with a managed name can be overwritten. Dotfiles neither
+combines it with the new hook nor backs it up, so save custom hooks first.
+[Hooks](git-hooks.md) explains what the installed hooks do.
 
 #### Shell completions
 
@@ -258,8 +259,9 @@ former values.
 
 #### VS Code extensions
 
-Finds an available editor CLI, queries installed extensions and installs
-missing ones after its package waits. A missing CLI is unmet work, not success.
+After waiting for package tasks, finds an editor CLI, reads installed
+extensions, and installs missing ones. If no CLI is available, the task is
+skipped rather than reported as successful.
 
 Arch chroot provisioning instead defers installation to
 `dotfiles-first-login.service`, which retries until configured extensions

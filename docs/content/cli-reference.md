@@ -23,7 +23,7 @@ are listed in [Task reference](task-reference.md).
 | `remove` | Detach a limited set of integrations, not restore machine defaults |
 | `check` | Validate configuration and repository files |
 | `list` | Discover selectors or inspect a dependency graph |
-| `log` | Read retained runs |
+| `log` | Read saved run logs |
 | `help [command]` | Show command-specific usage |
 | `completions <shell>` | Emit shell registration; hidden support command |
 
@@ -38,14 +38,14 @@ apply to `update`. Use `dotfiles <command> --help` for full syntax, and
 | `-p`, `--profile`; `--root`; `--overlay` | update, remove, check, list | Select role and configuration sources |
 | `-n`, `--dry-run` | update, remove | Preview planned changes |
 | `--only`; `--skip` | update, remove, check; list with `--graph` | Include/exclude selectors |
-| `--with-deps` | update; list with an update graph | Expand `--only` to predecessors |
+| `--with-deps` | update; list with an update graph | Include the selected tasks' dependencies |
 | `--no-repo-update` | update | Use current checkout content |
 | `-v`, `--verbose` | update, remove, check, log | Show diagnostics |
 | `-q`, `--quiet` | update, remove, check | Keep only warnings and incomplete outcomes |
 | `--format human\|jsonl` | update, remove, check | Choose execution output |
 | `--no-parallel` | update, remove, check | Run selected work sequentially |
 | `--non-interactive` | update, remove, check | Disable prompts |
-| `--fail-on-skip` | update, remove, check | Fail on unmet applicable work |
+| `--fail-on-skip` | update, remove, check | Fail if applicable tasks cannot complete |
 | `--no-symbols` | update, remove, check | Use text status labels |
 | `--format table\|plain\|json` | list; log with `--list` | Choose discovery/history output |
 | `--graph update\|remove\|check` | list | Inspect a command graph |
@@ -190,8 +190,9 @@ are not current execution commands.
 
 Normal viewing shows actions, outcomes, warnings, context, and failed-command
 output. Verbose adds task starts, checks, timings, and debug details.
-An unchecked nonzero command exit is not necessarily a task failure: some
-tools use exit codes to report state. Successful stdout is usually not saved;
+An external command can return a nonzero exit code without failing its task
+when that code has an expected meaning, such as "not installed."
+Successful stdout is usually not saved;
 `--raw` cannot recover output that was never retained. Oversized subprocess
 output is marked truncated and is not accepted as a complete inventory.
 
@@ -247,8 +248,8 @@ stdout output, but managed work continues.
 
 | Exit code | Meaning |
 |---|---|
-| `0` | Succeeded under the selected skip policy |
-| `1` | Configuration/runtime failure, task failure, or unmet work under strict policy |
+| `0` | No failures; skipped work is allowed unless strict skip handling is enabled |
+| `1` | Configuration/runtime failure, task failure, or incomplete applicable work with `--fail-on-skip` or CI |
 | `2` | Invalid command-line usage |
 | `130` | Interrupted; a genuine task failure takes precedence during graceful shutdown |
 

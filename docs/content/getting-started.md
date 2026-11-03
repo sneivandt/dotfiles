@@ -20,21 +20,20 @@ Already installed? See [Commands and usage](commands-and-usage.md) or
 
 ## Set up your machine
 
-The installation path is: keep a stable checkout, review its configuration,
-preview the selected work, then apply it.
+Keep the checkout at a permanent path, review its configuration, and preview
+the changes before applying them.
 
 ### 1. Choose a permanent checkout
 
 You need Git and a POSIX shell on Linux, or Git and PowerShell on Windows.
 Published binaries support Linux x86-64/AArch64 and Windows x86-64.
-Downloading the CLI on Linux also needs `curl` or `wget`. Install GitHub CLI
-(`gh`) for build-provenance verification: bootstrap warns if it is missing,
-but later CLI self-updates require it. See
-[verification requirements](security-and-trust.md#build-provenance-verification)
-and, on Windows, the [platform requirements](windows-and-wsl.md#requirements).
+On Linux, downloading the CLI also needs `curl` or `wget`. Install GitHub CLI
+(`gh`) to verify where release binaries were built. The first download warns
+and continues without it, but later CLI self-updates require it. See
+[download verification](security-and-trust.md#build-provenance-verification)
+or the [Windows requirements](windows-and-wsl.md#requirements) for details.
 
-Fork the repository if you want to maintain your own changes, then clone your
-fork into a directory you intend to keep. To use this repository directly:
+To use this repository directly, clone it into a directory you intend to keep:
 
 ```sh
 git clone https://github.com/sneivandt/dotfiles.git
@@ -45,9 +44,9 @@ Keep this directory: installed links and the launcher point back into it.
 Moving or deleting the checkout can break applications.
 
 The wrapper scripts, `dotfiles.sh` and `dotfiles.ps1`, download and verify the
-CLI when needed. Using this repository directly requires no Rust installation.
-**A new fork has no release binaries:** choose a
-[binary publisher or source build](cli-reference.md#using-a-fork) before
+CLI when needed, so you do not need Rust installed. To maintain your own public
+changes, fork the repository and clone your fork instead. A new fork has no
+release binaries; follow [Using a fork](cli-reference.md#using-a-fork) before
 running its wrapper.
 
 ### 2. Review the configuration
@@ -113,8 +112,8 @@ at managed names, so preserve any custom hooks first.
 Run the preview from your checkout in an interactive terminal. With no existing
 profile selection, the CLI asks you to choose `base` or `desktop` and remembers
 your answer. For unattended use, supply `--profile base` or `--profile desktop`.
-For this first setup, `--no-repo-update` keeps repository synchronization out
-of the run so you can work with the configuration you just reviewed.
+For this first setup, `--no-repo-update` uses the checkout you just reviewed
+without fetching repository changes.
 
 On Linux:
 
@@ -132,10 +131,10 @@ If you chose the source-build route, include `--build` after the wrapper name.
 For example: `./dotfiles.sh --build update --no-repo-update --dry-run`.
 
 :::caution[A preview is not a sandbox]
-Wrapper bootstrap can download files even for
-`list` or `--help`. CLI dry-run can inspect tools, write logs and metadata, and
-execute overlay check/preview scripts. It does not apply the normal task
-changes. Read [Dry-run scope](commands-and-usage.md#dry-run-scope) before relying on it.
+The wrapper can download the CLI before the preview starts. Dry-run writes
+logs, may save your selections, and can execute overlay check/preview scripts.
+It does not apply the planned configuration changes. See
+[Dry-run scope](commands-and-usage.md#dry-run-scope) for the full limits.
 :::
 
 Check the reported profile, platform, and overlay first. For the Git example,
@@ -152,9 +151,9 @@ preview; `--only symlinks` selects all active links, not just the Git example.
 
 ### 4. Apply what you reviewed
 
-These commands **change your machine**. Like the preview, they leave repository
-synchronization disabled and use the checkout's current content. They inspect
-state again; they do not execute a saved, frozen plan.
+These commands **change your machine** using the current checkout. They keep
+repository synchronization disabled, but inspect the machine again rather
+than execute a saved plan.
 
 On Linux:
 
@@ -178,9 +177,9 @@ directly. Source-build users must still pass `--build`, for example
 `dotfiles --build update --dry-run`.
 
 For later maintenance, ordinary `dotfiles update` also synchronizes the
-repository and updates agent dependencies when their declared version rules
-allow it. Review and commit your configuration edits before using repository
-sync, or keep `--no-repo-update` while working locally.
+repository and can install newer agent dependencies. Review and commit your
+configuration edits before using repository sync, or keep `--no-repo-update`
+while working locally.
 [Update lifecycle](update-lifecycle.md) explains these separate steps and
 their controls. With no command, `dotfiles` defaults to `update`.
 `remove` is partial cleanup, **not rollback or a full uninstall**.

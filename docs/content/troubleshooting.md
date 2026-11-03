@@ -12,7 +12,8 @@ are not rolled back when a later task fails.
 1. Copy the log-viewing command printed after the failure. It selects the run
    by its stable `--id`, not by its position in history.
 2. Check its profile, platform, overlay, and requested tasks.
-3. Find the first failed or unmet task, not just dependents marked blocked.
+3. Find the first failed or skipped task. For blocked tasks, check the
+   prerequisite named in the reason.
 4. Fix that cause, preview a focused rerun, then apply it when ready.
 
 Examples assume you are in the intended checkout with dotfiles on PATH.
@@ -140,11 +141,13 @@ dotfiles list --profile base
 git config --local --get dotfiles.profile
 ```
 
-Use exactly `base` or `desktop`. Priority is CLI, nonempty `DOTFILES_PROFILE`,
-saved Git setting, then interactive prompt. A bad environment value does not
-fall back to the saved setting; surrounding whitespace is not trimmed.
-An environment value with invalid text encoding also fails. Pass a valid
-`--profile` to override a bad environment value for one run.
+Use exactly `base` or `desktop`. A nonempty `DOTFILES_PROFILE` overrides the
+saved Git setting, so check it if the saved value looks correct. Invalid values,
+including names with surrounding spaces, cause an error instead of falling
+back to the saved profile. Pass `--profile base` or `--profile desktop` to
+override the environment for one run. See
+[selection priority](profiles-and-categories.md#resolution-priority) for the
+full order.
 
 `list` never prompts for a profile. Update/remove/check also need an existing
 selection in unattended or JSON Lines mode, with non-terminal stdin, or with
@@ -275,7 +278,8 @@ reloads configuration while the parent retains the lock.
 
 Windows delegates only selected tasks. Linux primes sudo credentials and uses
 sudo for privileged commands; neither requires elevating the whole workflow.
-Independent tasks can continue, while `--fail-on-skip` or CI fails unmet work.
+Independent tasks can continue. With `--fail-on-skip` or in CI, a task skipped
+for unavailable privileges makes the command fail.
 
 Resolve authorization for the named scope, then retry. Do not bypass policy or
 create passwordless sudo rules just to clear a failure.
@@ -335,9 +339,10 @@ not repair the installed system.
 dotfiles update --only agent-packages --dry-run --verbose
 ```
 
-Confirm that the linked fragments exist, APM is available when native planning
-needs it, and the named authentication requirement is met. Review dependency
-expansion before adding `--with-deps`.
+Confirm that the selected source fragments exist, APM is on PATH, and any
+reported authentication problem is resolved. Dotfiles reads selected sources
+even if their home links are not yet installed. Review dependency expansion
+before adding `--with-deps`.
 
 If the generated manifest needs changing, preview reports that write and the
 delegated update instead of planning against stale input. With a current

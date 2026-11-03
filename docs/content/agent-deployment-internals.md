@@ -18,7 +18,7 @@ integrations: Copilot App workflow policy and Cowork skill copying.
 
 ## Update sequence and ownership
 
-An applying `agent-packages` update:
+Without `--dry-run`, the `agent-packages` task:
 
 1. Reads the selected source fragments and any additional home fragments.
 2. Atomically updates the generated `~/.apm/apm.yml` if needed. A symlink at
@@ -44,15 +44,15 @@ and [managed_targets.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src
 
 ### Preview boundary
 
-Pin-update previews require APM on PATH. If the generated manifest already
+Agent-package previews require APM on PATH. If the generated manifest already
 matches the fragments, preview invokes `apm update -g --dry-run` and summarizes
 its plan. Otherwise it describes the manifest write and update/install
 commands rather than querying APM with stale inputs.
 
 Neither preview path runs the follow-up install, target repair, legacy lock
 cleanup, or Cowork inventory writes. Native preview may contact upstream
-services. Wrapper bootstrap, CLI bookkeeping, and external-tool effects remain
-outside this non-mutation guarantee; see
+services. This describes the deployment code's preview behavior. The wrapper,
+CLI bookkeeping, and external tools can still have other effects; see
 [Dry-run scope](commands-and-usage.md#dry-run-scope).
 
 ## Fragment merge contract
@@ -153,8 +153,8 @@ destinations or directory-to-file replacements. Extra Cowork files remain.
 
 Successful skills are recorded in `.dotfiles-apm-skills.json` at the
 destination. For a removed or excluded skill, cleanup removes only its
-`SKILL.md`, and only with inventory-proven ownership. Directories, placeholders,
-other files, and unrelated skills survive. Windows case-only renames preserve
+`SKILL.md`, and only when the inventory records it as managed. Directories,
+placeholders, other files, and unrelated skills survive. Windows case-only renames preserve
 the desired entry point.
 
 Before native deployment, legacy `cowork://` lock records are removed to prevent

@@ -138,9 +138,11 @@ CI-selected local checks with strict skip handling. **Unstaged fixes cannot
 satisfy a committed patch.** It reuses the Cargo target cache and redirects CLI
 state and logs into temporary directories.
 
-Have the pinned compiler on `PATH` and required tools, MSRV, Windows target,
-and Playwright Chromium runtime installed first; this checker does not install
-them. It restores locked npm dependencies inside the isolated checkout.
+Install the tools required by the printed plan before running the checker.
+Keep the pinned compiler on `PATH`; Rust changes can also require the minimum
+supported compiler and Windows target. The docs checks need Playwright's
+Chromium runtime. The checker does not install these tools, but it restores
+locked npm dependencies inside the isolated checkout.
 Cargo and dependency checks may still need network or cache access. It is a
 manual command, not an installed Git hook, and does not push.
 
@@ -172,9 +174,8 @@ cargo run --locked --profile ci -- check --root .. --profile desktop \
   --only config-diagnostics,symlink-sources,config-files
 ```
 
-These commands explicitly select this checkout with `--root ..`.
-
-This is the local `config` stage. It fails on configuration diagnostics, checks
+The `--root ..` argument selects this checkout. This command matches the local
+`config` stage: it fails on configuration diagnostics, checks
 symlink and permission sources, including entries in inactive categories,
 and verifies required TOML files. Structural conflicts can fail during loading,
 before a check task runs.
@@ -201,8 +202,8 @@ an overlay has no conflicts.
 | ShellCheck | `shellcheck` and POSIX `sh` |
 | PSScriptAnalyzer | PowerShell 7 (`pwsh`) and the PSScriptAnalyzer module |
 
-Missing tools produce an unmet skip in CLI checks. `--fail-on-skip` or a present
-`CI` variable makes those skips fail. Windows PowerShell does not substitute
+Missing tools cause the affected CLI check to be skipped. `--fail-on-skip` or
+a present `CI` variable makes those skips fail. Windows PowerShell does not substitute
 for `pwsh` in the analyzer.
 
 If `pwsh` is available but PSScriptAnalyzer is absent or broken, CLI checks,
@@ -275,7 +276,8 @@ do not start services or delete real user files.
 
 ### Desktop shell
 
-QML tests need Qt 6.8 or newer Quick Test and use inert Quickshell mocks:
+QML tests need Qt Quick Test from Qt 6.8 or newer. They substitute test doubles
+for Quickshell components, so they do not control the desktop:
 
 ```sh
 sh .github/workflows/scripts/linux/check.sh --strict qml
@@ -410,8 +412,9 @@ A preview must not apply normal managed-state changes, but it can inspect the
 host and write logs or selection metadata. Overlay scripts execute their own
 check/preview code. Only preview trusted configuration.
 
-Prove non-mutation using fixture assertions on files, commands, and state;
-the words "dry run" in output are not proof. See
+Assert that a preview leaves managed files and state unchanged and does not
+issue commands that apply changes. A "dry run" message alone does not test
+this behavior. See
 [Private overlays](security-and-trust.md#private-overlays).
 
 ### Focused mutation testing

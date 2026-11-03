@@ -113,21 +113,17 @@ requests locking after **10 idle minutes** and turns displays off after **15**.
 Idle inhibitors can postpone these actions. Turning off displays is not
 suspending the machine.
 
-Before sleep, Hypridle requests a session lock. `inhibit_sleep = 3` waits for
-the compositor's lock notification because automatic detection cannot see
-Hyprlock behind the shared wrapper. This needs Hypridle/compositor support.
-
-The delay is bounded by logind's `InhibitDelayMaxSec`: a failed locker does
-**not** guarantee suspend will be prevented. Resume turns displays on but
-does not unlock the session.
+Before sleep, Hypridle requests a lock and waits for the compositor to confirm
+it. That wait has a system-imposed time limit: **if locking fails, the machine
+may still suspend**. Resume turns displays on but does not unlock the session.
+The linked configuration records the settings needed for this behavior.
 
 ### Hyprlock display-reconnect workaround
 
-The managed Hyprlock configuration uses a solid background and disables
-animations to avoid a display-reconnect crash observed in Hyprlock 0.9.5.
-Before changing those settings, check the upstream issue recorded in
-[hyprlock.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprlock.conf)
-and verify that your installed version fixes it.
+Hyprlock uses a solid background without animations to avoid a known crash
+when displays reconnect. Before enabling either feature, check the issue and
+affected version recorded in
+[hyprlock.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprlock.conf).
 
 ## Where to customize
 
@@ -167,7 +163,7 @@ configuration on launch. Existing GTK applications may need reopening.
 The managed
 [zprofile](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zprofile)
 starts `hyprland-uwsm.desktop` through UWSM on `tty1` when a session may start.
-Other terminals remain ordinary shells. UWSM owns session identity;
+Other terminals remain ordinary shells. UWSM manages the session;
 application environment settings belong in
 [conf/env.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/env.lua).
 

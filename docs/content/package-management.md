@@ -5,10 +5,10 @@ description: Choose packages and understand installation, upgrades, and removal 
 
 # Package management
 
-Dotfiles installs the packages selected by your profile. It uses native
-package managers rather than maintaining a separate application store.
-Installing missing packages, upgrading existing applications, and updating
-the dotfiles CLI are different operations.
+Dotfiles uses pacman, Paru, or winget to install packages selected by your
+profile. It normally installs missing packages; use your package manager
+for full application upgrades. The Arch installation command can also upgrade
+the system, as described below. Updating the dotfiles CLI is a separate step.
 
 ## Choose packages
 
@@ -52,9 +52,10 @@ dotfiles update --dry-run
 ```
 
 Review the package actions and the platform-specific behavior below, then
-remove `--dry-run` to apply. The native `packages` task and Arch's
-`aur-packages` task query installed state and request missing packages.
-A failed inventory is an error, not an empty machine.
+remove `--dry-run` to apply. The `packages` task handles regular packages;
+Arch's `aur-packages` task handles entries marked `aur = true`. Both read the
+installed package list first. If that query fails, the task fails rather than
+assuming every package is missing.
 
 ### Arch Linux
 
@@ -98,8 +99,8 @@ prompts are disabled and agreements accepted, but an installer can still
 request UAC consent.
 
 Administrator-required, cancelled, and policy-blocked installs count as
-**failed items**. Independent packages may continue, but that does not turn the
-task into a success. An "already installed" or "no applicable upgrade" response
+**failed installations**. Other packages may still install, but the task fails
+overall. An "already installed" or "no applicable upgrade" response
 counts as current. A failed or unparseable `winget list` fails even in preview.
 
 Keep the main run unelevated. See [Windows elevation](windows-and-wsl.md#elevation)

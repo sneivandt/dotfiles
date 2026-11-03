@@ -75,21 +75,20 @@ declarations are the maintained inventory; plain Vim remains plugin-free.
 
 ## First launch
 
-When lazy.nvim is absent, starting Neovim clones it into
-`stdpath("data") .. "/lazy/lazy.nvim"` and checks out the commit specified in
-`lua/lazy-bootstrap.lua`. The usual Linux location is
-`~/.local/share/nvim/lazy/lazy.nvim`; use `:echo stdpath('data')` to find the
-actual data directory rather than assuming the default.
+When lazy.nvim is absent, starting Neovim clones it into the editor's data
+directory and checks out the commit specified in `lua/lazy-bootstrap.lua`.
+The usual Linux location is `~/.local/share/nvim/lazy/lazy.nvim`.
+Use `:echo stdpath('data')` in Neovim to find your data directory; lazy.nvim
+lives under its `lazy/lazy.nvim` subdirectory.
 
 Git and network access are required for bootstrap. Missing plugins are also
 installed automatically. Launching Neovim is therefore not a read-only
 configuration check.
 
-The bootstrap commit matches lazy.nvim's revision in `lazy-lock.json` and
-fixes which manager revision a new installation uses;
-it is not a guarantee that upstream code is safe, nor is an existing
-installation reset to that revision on every launch. Review dependency changes
-and lockfile diffs as code changes.
+The bootstrap commit matches lazy.nvim's revision in `lazy-lock.json`. It
+selects the manager version for new installations; existing installations are
+not reset on every launch. Review dependency changes and lockfile diffs as
+code changes: a recorded revision does not establish that upstream code is safe.
 
 ### Tree-sitter parsers
 

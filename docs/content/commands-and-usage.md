@@ -5,7 +5,7 @@ description: Preview and apply configuration, select tasks, interpret results, a
 
 # Commands and usage
 
-Use dotfiles to bring a machine into the state described by this checkout.
+Use dotfiles to apply the packages, files, and settings declared in this checkout.
 Start with [Getting started](getting-started.md) for a first installation, or the
 [Windows guide](windows-and-wsl.md) for PowerShell examples.
 
@@ -72,7 +72,8 @@ for graph markers and structured formats.
 ### Update
 
 Update is the default: running the launcher without a command applies an update.
-Tasks inspect current state and avoid changes that are already satisfied.
+Tasks check what is installed or configured and leave it alone when it already
+matches the configuration.
 The [Update lifecycle](update-lifecycle.md) explains the CLI release check,
 repository synchronization, restarts, dependency updates, and partial results.
 
@@ -104,8 +105,8 @@ dotfiles update --only symlinks,git-hooks --dry-run
 - `--only packages` means **all selected pacman or winget packages**, not a
   single package and not the AUR package list.
 
-**Dependencies are not included automatically.** An omitted
-blocking prerequisite produces a warning and is assumed satisfied. Use
+**Dependencies are not included automatically.** If a required task is omitted,
+dotfiles warns and proceeds as though that prerequisite had succeeded. Use
 `--with-deps` to include prerequisites and other tasks the selection must wait for:
 
 ```bash
@@ -163,9 +164,10 @@ not necessarily a complete installation.** Use `--fail-on-skip` when it must be.
 
 ## Check
 
-The check command validates configuration and sources and runs available repository
-analyzers. It does not install or repair configuration and has no `--dry-run`.
-It does write a log, acquire the run lock, and resolve/save selections.
+The check command validates configuration, checks source files, and runs
+available code analyzers. It does not install or repair configuration and has
+no `--dry-run`. It writes a log and holds the run lock. It can save a profile
+chosen at the prompt or an overlay passed with `--overlay`.
 
 ```bash
 dotfiles check
@@ -189,7 +191,8 @@ dotfiles log --list                   # history and stable run IDs
 dotfiles log --task symlinks --verbose # one task in the newest run
 ```
 
-Read the failed command's diagnostics and the first failed or unmet task.
+Read the failed command's diagnostics and the reason for each failed or
+skipped task.
 If the process restarted or delegated elevation, follow the linked child log.
 Earlier changes are not rolled back when a later task fails.
 

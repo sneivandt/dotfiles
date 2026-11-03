@@ -9,9 +9,10 @@ Dotfiles can change your account's configuration and request privileged changes.
 Its checks help prevent mistakes and reject invalid inputs, but they do not make
 an untrusted checkout, package, or overlay safe to run.
 
-The practical rule is simple: **review what you will execute and what you will
-share**. Dry-run, checksums, and a green CI result each answer a narrower
-question than "is this safe?"
+Review what you will execute and share. A preview describes planned changes,
+a checksum checks downloaded bytes, and CI tests selected behavior. None is
+a complete assessment of whether the configuration is appropriate for your
+machine.
 
 ## Trust boundaries
 
@@ -91,10 +92,10 @@ one short-lived UAC-elevated child restricted to their selectors.
 Non-interactive/CI sessions do not prompt for fresh sudo credentials or UAC
 consent.
 
-If privileges are unavailable or declined, the affected work is unmet and
-failure-blocking dependents cannot proceed. Unrelated tasks can continue.
-`--fail-on-skip` and CI's strict completion policy make unmet work fail the run.
-A skipped privileged task did not apply the change.
+If privileges are unavailable or declined, the affected tasks are skipped.
+Tasks that require them cannot proceed, but unrelated tasks can continue.
+With `--fail-on-skip` or in CI, those skips make the run fail. A skipped
+privileged task did not apply the change.
 
 This is not privilege removal: if you launch the CLI from an elevated shell,
 it keeps those privileges. System packages, system-scoped units, and files under
@@ -128,7 +129,7 @@ versioned patterns and redacts matches. It is local and bypassable; it does not
 scan every historical, binary, or encoded value. A clean scan is useful, but not
 proof that a patch contains no secrets.
 
-### Logs are a separate disclosure boundary
+### Sharing logs
 
 Treat logs as potentially sensitive even when the console message looks
 harmless. By default, command diagnostics retain failed stdout/stderr and
@@ -179,6 +180,3 @@ a public issue. Check the repository's
 [Security page](https://github.com/sneivandt/dotfiles/security) for an available
 private reporting channel before sending details. If none is advertised, ask
 how to contact the maintainer without including sensitive material.
-
-This guide does not assert that private reporting is enabled or promise a
-disclosure response process.

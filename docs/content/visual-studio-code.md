@@ -67,10 +67,10 @@ dotfiles update --only vscode-extensions --dry-run
 Remove `--dry-run` after reviewing the plan. For a first installation, use the
 normal update so the application package and its prerequisites are included.
 
-The task finds `code-insiders` before `code` (`.cmd` launchers on Windows),
-queries the installed extension IDs once, and installs missing IDs. Comparisons
-ignore case. A failed inventory is an error, not an empty installation; missing
-CLI support is reported as unmet work.
+The task uses `code-insiders` when available, otherwise `code` (their `.cmd`
+launchers on Windows). It reads the installed extension list and installs
+missing IDs, ignoring case when comparing them. If that list cannot be read,
+the task fails. If neither CLI is available, the task is skipped.
 
 **The list is not a version lockfile or an uninstall list.** Already-present
 IDs are left alone. Removing a declaration does not uninstall that extension,
@@ -86,10 +86,9 @@ problems belong in
 [GNOME Keyring troubleshooting](troubleshooting.md#gnome-keyring-does-not-unlock-at-login),
 not in extension configuration.
 
-When provisioning Arch inside a chroot, dotfiles defers extension installation:
-there is no real user session to verify Marketplace work. A durable marker
-enables `dotfiles-first-login.service` to retry the extension task in the
-graphical session. The marker is removed only after success.
+When setting up Arch inside a chroot, dotfiles waits until a graphical login
+to install extensions. The `dotfiles-first-login.service` user service retries
+the extension task until it succeeds.
 
 ## Troubleshooting
 

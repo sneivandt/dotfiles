@@ -5,10 +5,9 @@ description: Understand the Rust CLI's layers, task scheduling, resources, opera
 
 # Architecture
 
-Dotfiles describes the machine state it wants, inspects the state it has, and
-changes only what needs attention. It is not a list of installation scripts:
-the dependency graph decides when work can run, and each item or workflow owns
-its own convergence rules.
+Dotfiles compares the machine with its configuration and changes what needs
+attention. A dependency graph decides when work can run. Each resource or
+operation defines how to inspect and update the state it manages.
 
 Here, convergence means bringing observed state into agreement with the
 configuration. Running the same work again should leave already-correct state
@@ -255,8 +254,8 @@ symlink prerequisite. The declared graph and `--with-deps` expansion do not chan
 
 ## Resources
 
-A [Resource](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/resource/contract.rs) represents one
-independently convergent item. Its lifecycle is **discover → plan → preview or
+A [Resource](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/resource/contract.rs) manages one
+independent item, such as a symlink or package. Its lifecycle is **discover → plan → preview or
 apply**. Discovery is intrinsic to the resource, or uses an injected batch
 lookup when one query can inspect many items.
 

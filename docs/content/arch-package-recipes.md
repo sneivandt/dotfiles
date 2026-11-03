@@ -13,9 +13,10 @@ For choosing, installing, upgrading, or removing applications, use
 
 A PKGBUILD is a shell recipe that tells Arch's `makepkg` how to produce a
 package. Each dotfiles-managed recipe has a release descriptor, `release.json`,
-that tells dotfiles where to find the upstream binary release. Dotfiles
-generates version/checksum pins, then copies the recipe and pins into a
-disposable build snapshot for Paru.
+that tells dotfiles where to find the upstream binary release. Dotfiles saves
+the selected version and checksums in `version.sh`, then copies them with the
+recipe into a disposable build snapshot for Paru. This guide calls those saved
+values pins.
 
 The source recipe, prepared snapshot, and installed application are separate.
 Changing or preparing a recipe does not by itself upgrade an installed package.
@@ -269,13 +270,10 @@ copies of its inputs. Package base, names, and architectures must match the
 descriptor. **This executes the PKGBUILD; separate copies are not a sandbox.**
 Only reviewed recipes belong here.
 
-Successful validation is cached against the exact inputs, descriptor, and a
-versioned validation protocol.
-Ownership, working files, and committed inputs are still checked before reuse.
-Changes, damage, or a missing validation record require another validation;
-failures are not cached. Parallel mode can validate independent recipes with
-up to four workers, then publishes in recipe order while retaining task log
-context and cancellation propagation.
+Unchanged recipes can reuse successful metadata validation. Dotfiles still
+checks that it owns the snapshot and that its working and committed files
+match the inputs. Changed or damaged snapshots are checked again; failed
+validation is never cached. Independent recipes can be validated in parallel.
 
 Snapshot safety is intentionally conservative:
 

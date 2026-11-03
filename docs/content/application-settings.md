@@ -49,10 +49,17 @@ link; review `git diff` afterward.
 
 For a new file or destination, update
 [conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml),
-then preview the link task before applying. **Back up existing targets:** installing a managed
-link can replace a file without making a backup. The
-[first-run example](getting-started.md#2-review-the-configuration) shows the
-declaration-to-source-to-home relationship.
+then preview the link task:
+
+```sh
+dotfiles update --only symlinks --dry-run
+```
+
+This previews all active links, including your new entry. **Back up existing
+targets:** installing a managed link can replace a file without making a backup.
+Remove `--dry-run` only after reviewing the result. The
+[first-run example](getting-started.md#2-review-the-configuration) shows how a
+declaration connects a source file to its installed location.
 
 Use a [private overlay](private-overlays.md) for machine-specific alternatives.
 An overlay can replace a linked source, but does not merge arbitrary application
@@ -69,7 +76,7 @@ Review the supplied identity before using it. These shared settings affect Git
 beyond this repository; keep private identity details in a
 [private overlay](private-overlays.md).
 
-Desired global key/value overrides belong in
+To have dotfiles apply individual global Git settings, declare them in
 [conf/git-config.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml).
 The [Git settings format](configuration-reference.md#git-settings) explains
 platform selection and Windows autocrlf cleanup. Avoid contradicting the linked
@@ -125,11 +132,11 @@ configured-name check, not a GitHub permission check.
 
 ### Environment and paging
 
-The login profiles source shared environment settings; interactive startup
-files source shared aliases when present. Put
-behavior common to Bash and Zsh in `config/shell/`; keep shell-specific
-behavior in its own startup file. The [Windows guide](windows-and-wsl.md#powershell-configuration)
-covers PowerShell's separate profile.
+Login shells load the shared environment settings; interactive shells load
+the shared aliases. Put behavior common to Bash and Zsh in `config/shell/`,
+and shell-specific behavior in that shell's startup file. The
+[Windows guide](windows-and-wsl.md#powershell-configuration) covers PowerShell's
+separate profile.
 
 The shared profile supplies defaults for XDG directories, the editor, locale,
 terminal information, and the `less` pager. It preserves existing values for
@@ -177,8 +184,8 @@ Review them before using these directories for anything you intend to keep:
 | Arch desktop | `~/screenshots` | `find -mtime +30`: at least 31 full days since modification |
 
 The timers run daily, with up to ten minutes of randomized delay. They catch
-up after a missed run, so cleanup can happen soon after the user manager
-starts. The services skip absent directories, stay on the same filesystem,
+up after a missed run, so cleanup can happen soon after login or when user
+services start. The services skip absent directories, stay on the same filesystem,
 do not follow symlinks, and remove old empty subdirectories too. Deletion does
 not use the desktop trash or make a backup.
 

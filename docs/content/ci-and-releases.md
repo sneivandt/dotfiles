@@ -103,10 +103,10 @@ script analyzers. Windows application integration skips APM, packages, and VS
 Code. Separate jobs or local checks cover some of those concerns; do not call
 the profile matrix a full clean-machine installation test.
 
-Mutation jobs run for PR/main-push changes to Rust source under `cli/src/`,
-with eight shards covering the applicable changed-code set. Standalone test,
-lockfile-only, and CI-only changes do not select them. Linux excludes native
-Windows code and one equivalent mutation; see the
+Mutation jobs run when a pull request or push to main changes Rust source
+under `cli/src/`. The selected mutations are split across jobs. Standalone
+test, lockfile-only, and CI-only changes do not select them. Linux excludes
+native Windows code; exact filters live in the workflow. See the
 [mutation testing guide](testing.md#focused-mutation-testing).
 
 ## Scheduled dependency checks

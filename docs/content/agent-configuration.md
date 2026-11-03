@@ -28,7 +28,7 @@ When the Copilot App is detected, dotfiles enables its managed workflows in
 
 A configuration *fragment* is a YAML file containing part of the APM
 configuration. Dotfiles combines the selected fragments before deployment.
-Choose the source that owns your change:
+Choose the source for your change:
 
 | Change | Source |
 |---|---|
@@ -86,15 +86,13 @@ Explain the user-visible change first, then the reason for it.
 Separate remaining limitations from completed work.
 ```
 
-APM calls an individual skill, prompt, hook, or other content item a
-*primitive*. The existing
+The existing
 [dot-skill/apm.yml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/apm/plugins/dot-skill/apm.yml)
-uses `includes: auto`, which discovers primitives beneath `.apm/`.
-You do not need a new dependency or symlink declaration for each skill added
-to this already-selected plugin.
+uses `includes: auto` to discover skills and other content beneath `.apm/`.
+Adding a skill to this plugin needs no new dependency or symlink declaration.
 
 Validate the package and preview deployment before applying it, as described
-[below](#validate-preview-and-apply). Successful packing checks package shape;
+[below](#validate-preview-and-apply). Packing checks the package's structure;
 it does not prove the instructions are useful or compatible with every target.
 
 ### Add a package or configuration fragment
@@ -198,32 +196,32 @@ flowchart TB
     Manifest --> APM["APM deployment"]
 ```
 
-Planning reads selected source files, even before their home links exist.
-A selected source replaces the home input with the same filename, allowing
-preview of a stale or broken managed link. Other YAML files already in
-`~/.apm/config/` still participate.
+Dotfiles reads the selected source fragments directly, so previews use your
+edits even if a fragment's home link is missing or broken. Other YAML files
+already in `~/.apm/config/` also contribute unless a selected source has the
+same filename.
 
-Order is by effective filename, not by public/private origin. `private.yml`
-sorts after `base.yml`; `90-private.yml` sorts before it. This is not the
+Fragments merge in filename order. A private fragment has no special priority:
+`private.yml` sorts after `base.yml`, but `90-private.yml` sorts before it.
+This differs from the
 [TOML overlay merge](private-overlays.md#merge-rules).
 
 ### Merge rules to keep in mind
 
-Each nonempty fragment must be a YAML mapping. Dependencies are combined in
-filename order, and identical entries are included once. For named MCP servers,
-the first declaration of a name wins: repeating it is **not** an override.
-Keep one authoritative declaration for each server.
+Each nonempty fragment must contain a YAML mapping. When combining fragments:
 
-Target lists also combine. Omitting a base target from an overlay does not
-remove it. Other mappings merge recursively, lists append unique values, and
-later scalar values replace earlier ones.
+- Dependencies and target lists combine, with duplicate entries included once.
+  An empty list does not clear entries from another fragment.
+- For named MCP servers, the first declaration wins. Keep each server in one
+  fragment rather than trying to override it later.
+- Other settings merge by key; later scalar values replace earlier ones.
 
 See the [full merge contract](agent-deployment-internals.md#fragment-merge-contract)
 when debugging a conflicting configuration.
 
 ## Update behavior
 
-An applying update:
+When run without `--dry-run`, the agent packages task:
 
 1. Combines the fragments into `~/.apm/apm.yml` if its content needs changing.
 2. Updates dependencies according to their declared version rules.
@@ -232,9 +230,9 @@ An applying update:
 4. Applies the detected Copilot App and Cowork integrations below and reports
    changes.
 
-On Arch, `apm-dotfiles` supplies the executable through the
-[dotfiles-managed Arch package recipe](package-management.md#custom-arch-packages). **Updating agent dependencies is not
-upgrading the APM executable.**
+On Arch, the APM executable comes from the
+[apm-dotfiles package](package-management.md#custom-arch-packages).
+Upgrade that package separately to update APM itself.
 
 ### What a preview can show
 
@@ -246,10 +244,11 @@ generated manifest matches your source fragments:
 | Already matches the fragments | Runs `apm update -g --dry-run` and summarizes the native plan |
 | Would change | Describes the manifest write and update/install commands instead of asking APM to inspect stale inputs |
 
-Neither path installs the content or repairs the detected integrations. The
-native preview may contact upstream services. It does not write the generated
-manifest, remove legacy lock entries, or update Cowork's ownership inventory.
-The general [dry-run limits](commands-and-usage.md#dry-run-scope) still apply.
+Neither path deploys content, writes the generated manifest, or changes the
+Copilot App or Cowork integrations. APM's preview may contact upstream services.
+The general [dry-run limits](commands-and-usage.md#dry-run-scope) still apply;
+implementation details belong in
+[Preview boundary](agent-deployment-internals.md#preview-boundary).
 
 ## Detected integrations
 
@@ -289,10 +288,10 @@ while preserving the destination directories and their Windows permissions.
 If a package restricts its targets, include `copilot-cowork` to send its skills
 here.
 
-Cleanup removes **only the entry point for skills recorded as managed** (`SKILL.md`); directories,
-other files, and unrelated skills remain. Keep the destination's
-`.dotfiles-apm-skills.json` inventory: deleting it prevents dotfiles from
-identifying content it may safely remove. For path-resolution failures or
+For a skill it previously deployed, cleanup removes **only its `SKILL.md` file**.
+Directories, other files, and unrelated skills remain. Keep the destination's
+`.dotfiles-apm-skills.json` record of deployed skills so dotfiles can identify
+which files it may remove. For path-resolution failures or
 copy conflicts, see the
 [copy and cleanup internals](agent-deployment-internals.md#cowork-copy-and-cleanup).
 
@@ -303,7 +302,8 @@ task while a valid fragment remains. Native APM handles stale deployments;
 Cowork uses the narrower inventory-based cleanup described above.
 
 To remove a normal target, remove it from every contributing fragment because
-lists merge by union. Host-detected integrations are separate.
+target lists combine. The detected Copilot App and Cowork integrations are
+controlled separately.
 
 **Deleting the last fragment is not an uninstall.** With no managed or unmanaged
 fragments, the task does not run. It leaves the generated manifest, lockfile,

@@ -5,9 +5,10 @@ description: Choose a base or desktop role and understand how platform categorie
 
 # Profiles and categories
 
-Choose a profile for the machine's role. Dotfiles adds categories for
-the operating environment, then uses those categories to select configuration.
-Use task filters separately when you want to run only part of that work.
+A profile chooses the machine's role: base or desktop. Categories are labels
+such as `linux` and `arch` that select matching sections in configuration files.
+Dotfiles combines the profile's categories with those it detects for the
+operating system. Task filters let you run only part of the selected work.
 
 The examples assume an installed dotfiles launcher. Before installation, use
 your checkout's `./dotfiles.sh` on Linux or `.\dotfiles.ps1` on Windows;
@@ -91,13 +92,13 @@ groups and are not filtered by role. See
 [Category sections](configuration-reference.md#category-sections) for the
 file-specific rules and overlay merging.
 
-Categories choose configuration; they do not add support for missing tools.
-For example, a desktop profile on Ubuntu does not provide an apt package
-adapter. The Linux package task looks for pacman.
+Selecting desktop on Ubuntu can select shared application settings, but it
+does not enable package installation through apt. Linux package installation
+requires pacman; categories do not install missing package managers.
 
 ## Resolution priority
 
-Dotfiles takes the first available selection:
+Dotfiles looks for a profile in this order:
 
 1. `--profile <name>`.
 2. Nonempty `DOTFILES_PROFILE`.
@@ -151,12 +152,12 @@ available. `remove` uses the current selection and supports only the limited
 
 ### Distinguish profiles from task filters
 
-`--profile base --only symlinks` means “link the base role's active sources.”
-It does not install every base task, and `--only` does not change which
-configuration sections match.
+With `--profile base --only symlinks`, the profile chooses which link
+declarations apply and the filter runs only the symlinks task. Other base
+tasks do not run. The filter does not change which configuration sections match.
 
-If expected work is missing, check the category selection, task filters, and
-runtime capabilities separately. Already-current tasks are hidden unless you
+If expected work is missing, check the categories, task filters, and required
+tools. Tasks with nothing to change are hidden unless you
 use `--verbose`. See [A task does not run](troubleshooting.md#a-task-does-not-run).
 
 ### Extend the built-in model

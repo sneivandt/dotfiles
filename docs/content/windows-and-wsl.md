@@ -46,7 +46,7 @@ Open PowerShell in the checkout and preview an update:
 .\dotfiles.ps1 update --no-repo-update --dry-run
 ```
 
-This downloads/verifies the CLI if needed and previews configuration changes.
+This downloads and verifies the CLI if needed, then previews configuration changes.
 With no existing profile selection, choose `desktop` for a workstation or
 `base` for a shell-focused role when prompted. The choice is saved.
 Use `.\dotfiles.ps1 list` afterward to discover tasks.
@@ -75,10 +75,10 @@ they also work before the launcher is installed.
 Do not disable checksum or provenance verification to make a download work.
 Check the [bootstrap troubleshooting guide](troubleshooting.md#the-wrapper-cannot-find-or-download-the-binary).
 
-During self-update, Windows file sharing can prevent executable replacement.
-The updater verifies the download, replaces the binary, and tests `--version`;
-it attempts to restore the previous binary if that test fails. A rollback
-failure is reported explicitly. Read the failure before retrying or moving files.
+Windows can prevent replacement of an executable that is still in use. If
+self-update fails, read the error before retrying or moving files. The
+[update lifecycle](update-lifecycle.md#2-check-the-cli-release) explains
+verification, the post-update version check, and recovery if that check fails.
 
 ## Developer Mode and symlinks
 
@@ -86,7 +86,7 @@ Developer Mode lets a normal user create file symlinks. Dotfiles can enable
 it through a narrowly scoped elevated task. Directory links can instead fall
 back to junctions, and already-correct links do not need elevation.
 
-Preview the link task with its Developer Mode predecessor:
+Include the Developer Mode task when previewing link setup:
 
 ```powershell
 .\dotfiles.ps1 list --graph update --only symlinks --with-deps
@@ -135,7 +135,7 @@ to apply changes.
 
 - Declined consent or unavailable prompting leaves affected work skipped.
   Blocking dependents cannot run, but independent tasks continue.
-- `--fail-on-skip` or CI makes that unmet work fail the command.
+- With `--fail-on-skip` or in CI, those skips make the command fail.
 - A child that fails, or cannot start, is a failure, not declined consent.
 
 **Winget installers are separate:** they can show their own UAC prompts even

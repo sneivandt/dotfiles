@@ -21,8 +21,8 @@ covered in [Application settings](application-settings.md).
 1. Find the owning file below.
 2. Choose the category that should receive the change. A package, its linked
    configuration and its service should have compatible categories.
-3. Check that file's path rules. Not every home-relative path has the same
-   meaning.
+3. Check the [path conventions](#path-conventions). Some entries add a leading
+   dot to the home destination; explicit symlink targets do not.
 4. Validate the selected configuration and preview the relevant
    [task](task-reference.md), as in the example below.
 5. Back up existing targets before applying. Removing a declaration usually
@@ -52,8 +52,8 @@ loader or configuration model should also use [Testing](testing.md#cli-validatio
 
 ## Files
 
-All nine main files are required, even on platforms where their tasks do not
-apply. A required file may be empty.
+Every main file listed here is required, even on platforms where its task does
+not apply. A required file may be empty.
 
 | File | Entry field | Purpose |
 |---|---|---|
@@ -257,8 +257,9 @@ use TOML types. Choose the narrowest key that expresses the preference.
 Undeclared and harness-owned keys remain untouched.
 
 Existing documents must be valid JSON objects or TOML tables. Malformed
-documents fail rather than being replaced with empty ones. Changes are
-published atomically and retain existing symlink redirections.
+documents fail rather than being replaced with empty ones. Updates replace
+the document atomically. If the settings path is a symlink, the task updates
+the file it points to and preserves the link.
 
 Numbers must be finite, including inside arrays or tables. Overlapping keys
 must agree: `footer = { showBranch = true }` conflicts with

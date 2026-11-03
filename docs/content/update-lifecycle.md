@@ -40,8 +40,9 @@ The binary must run from the selected checkout's `bin/` directory and carry
 an embedded release publisher. Development builds do not self-update.
 Changing Git `origin` does not redirect an existing binary to another publisher.
 
-If a newer release is available, an applying run downloads it, verifies
-checksum and provenance, replaces the executable, and tests it with `--version`.
+If a newer release is available and this is not a dry run, dotfiles downloads
+it, verifies its checksum and build provenance, replaces the executable, and
+tests it with `--version`.
 It then restarts using the new code. Failed verification is an error, not
 permission to run the download. A failed smoke test attempts to restore the
 previous binary and reports any rollback failure.
@@ -79,12 +80,12 @@ flowchart TB
 ```
 
 A dry run can compare remote refs, but does not fetch, merge, or preview the
-contents of commits it has not downloaded. A later apply may therefore load
-new configuration. To review a fixed checkout, use `--no-repo-update` for both
-the preview and the applying run.
+contents of commits it has not downloaded. A later update may therefore load
+new configuration. To review a fixed checkout, use `--no-repo-update` both
+when previewing and when applying.
 
-A preview is not a saved execution plan. The applying run inspects current
-state again, and upstream releases or package inventories may have changed.
+A preview is not a saved execution plan. When applying, dotfiles inspects the
+machine again; upstream releases or installed packages may have changed.
 `--no-repo-update` keeps repository synchronization out of that run; it does
 not freeze the CLI or external dependencies.
 

@@ -490,7 +490,7 @@ jobs:
         run: >-
           cargo mutants --in-place --no-shuffle --in-diff mutants.diff
           --shard "$MUTATION_SHARD/8"
-          --exclude-re '^src/infra/run_lock/windows\.rs:'
+          --exclude 'src/infra/run_lock/windows.rs'
           --exclude-re '^src/domains/files/resources/symlink/platform\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported)\b'
           --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b'
           --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|append_user_path|user_path_contains)\b'

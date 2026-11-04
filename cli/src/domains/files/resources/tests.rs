@@ -1173,6 +1173,23 @@ mod symlink {
     }
 
     #[test]
+    fn absent_source_only_blocks_removal_when_restoring_an_absent_target() {
+        let fixture = tempfile::tempdir().unwrap();
+        let resource = SymlinkResource::new(
+            fixture.path().join("missing-source"),
+            fixture.path().join("missing-target"),
+            Arc::new(crate::infra::exec::MockExecutor::new()),
+        );
+        assert_eq!(resource.removal_state().unwrap(), ResourceState::Missing);
+        assert_eq!(resource.remove().unwrap(), ResourceChange::AlreadyCorrect);
+        assert!(!resource.target.exists());
+        assert!(matches!(
+            resource.with_restore_missing(true).removal_state().unwrap(),
+            ResourceState::Unknown { reason } if reason.contains("source does not exist")
+        ));
+    }
+
+    #[test]
     fn remove_materializes_files_and_directories_even_when_links_are_gone() {
         for directory in [false, true] {
             for missing_link in [false, true] {

@@ -106,11 +106,11 @@ impl SymlinkResource {
             return Ok((self.target.clone(), false));
         };
         let home = resolve_directory(home)?;
-        let parent = self.target.parent().context("target has no parent")?;
-        let resolved_parent = resolve_directory(parent)?;
-        let external = !resolved_parent.starts_with(home);
-        let name = self.target.file_name().context("target has no file name")?;
-        Ok((resolved_parent.join(name), external))
+        let resolved = resolve_target_entry(&self.target)?;
+        let external = !resolved
+            .parent()
+            .is_some_and(|parent| parent.starts_with(home));
+        Ok((resolved, external))
     }
 
     pub(crate) fn checked_target(&self) -> anyhow::Result<PathBuf> {
@@ -147,6 +147,13 @@ impl SymlinkResource {
             .and_then(|root| self.source.strip_prefix(root).ok())
             .map_or_else(|| display_path(&self.source), display_path)
     }
+}
+
+/// Resolve the parents of a target while preserving its final entry.
+pub(crate) fn resolve_target_entry(path: &Path) -> anyhow::Result<PathBuf> {
+    let parent = path.parent().context("target has no parent")?;
+    let name = path.file_name().context("target has no file name")?;
+    Ok(resolve_directory(parent)?.join(name))
 }
 
 // Resolve existing parents without following the final target entry. A dangling

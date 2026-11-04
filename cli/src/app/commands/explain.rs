@@ -6,7 +6,9 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 
 use crate::app::cli::ExplainOpts;
-use crate::domains::files::{config::symlinks as config, symlinks};
+use crate::domains::files::{
+    config::symlinks as config, resources::symlink::resolve_target_entry, symlinks,
+};
 use crate::engine::plan::{ApplyOperation, RemoveOperation};
 use crate::engine::{IntrinsicState as _, ProcessOpts, RemovableResource as _};
 use crate::infra::exec::{Executor, ProcessExecutor};
@@ -33,15 +35,20 @@ pub(crate) fn run(opts: &ExplainOpts) -> Result<()> {
     );
     symlinks::validate_resolved_targets(&resources)?;
     let identity = config::path_identity(&requested);
+    let resolved_identity = resolve_target_entry(&requested)
+        .map(|path| config::path_identity(&path))
+        .ok();
     let (entry, resource) = config
         .symlinks
         .iter()
         .zip(resources)
         .find(|(_, resource)| {
             config::path_identity(&resource.target) == identity
-                || resource
-                    .checked_target()
-                    .is_ok_and(|path| config::path_identity(&path) == identity)
+                || resource.checked_target().is_ok_and(|path| {
+                    resolved_identity.as_ref().is_some_and(|requested_path| {
+                        config::path_identity(&path) == *requested_path
+                    })
+                })
         })
         .with_context(|| format!("no active symlink manages {}", requested.display()))?;
 

@@ -35,7 +35,6 @@ use anyhow::Result;
 
 use crate::engine::Context;
 use crate::infra::exec::{CommandSpec, ExecResult};
-use crate::infra::logging::OutputExt as _;
 
 mod db;
 mod lockfile;
@@ -128,82 +127,85 @@ fn run_workflow_script(
 /// workflows (or is missing), there is nothing to do and the fixup returns
 /// quietly.
 ///
-/// This is strictly best-effort and never replaces the APM task's outcome. It
-/// also runs after failed convergence because APM may have already reset the
+/// This also runs after failed convergence because APM may have already reset the
 /// workflows before a later deployment failed. The most common failure is a
 /// locked database, which means the Copilot App is currently open and holding the
 /// lock; we surface that loudly so the user knows to close the App (or just
 /// toggle the workflows by hand).  The update runs through Python's stdlib
 /// `sqlite3` module so we do not need a `SQLite` binary on PATH or a Rust
 /// `SQLite` dependency.
-pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWorkflows) -> bool {
-    let Some(ids) = fixup_workflow_ids(ctx) else {
-        return false;
+pub(super) fn apply_workflow_autopilot_fixup(
+    ctx: &Context,
+    pre: &DesiredApmWorkflows,
+) -> Result<WorkflowRepair> {
+    let Some(ids) = fixup_workflow_ids(ctx)? else {
+        return Ok(WorkflowRepair::NotApplicable);
     };
-    let Some((python, db_str)) = fixup_runtime(ctx) else {
-        return false;
+    let (python, db_str) = match probe_workflow_db(ctx) {
+        WorkflowDbProbe::Ready { python, db_str } => (python, db_str),
+        WorkflowDbProbe::DbMissing { path } => {
+            return Ok(WorkflowRepair::Unmet(format!(
+                "workflow database {path} is missing; open the Copilot App to initialize it, then retry"
+            )));
+        }
+        WorkflowDbProbe::PythonMissing => {
+            return Ok(WorkflowRepair::Unmet(
+                "workflow repair requires python3 or python on PATH; install Python and retry"
+                    .into(),
+            ));
+        }
+        WorkflowDbProbe::DbStatError { path, error } => {
+            anyhow::bail!("cannot inspect workflow database {path}: {error}")
+        }
+        WorkflowDbProbe::DbPathNotUtf8 { path } => {
+            anyhow::bail!("workflow database path is not valid UTF-8: {path}")
+        }
     };
 
-    match run_workflow_script(ctx, python, &db_str, WORKFLOW_AUTOPILOT_SCRIPT, &ids) {
-        Ok(result) => {
-            let execution = interpret_fixup_result(result, pre);
-            let changed = matches!(
-                &execution,
-                FixupExecution::Completed {
-                    outcome: FixupOutcome::Set(_),
-                    ..
-                }
-            );
-            report_fixup_execution(ctx, execution);
-            changed
-        }
-        Err(e) => {
-            ctx.log()
-                .warn(format!("autopilot fixup could not run {python}: {e:#}"));
-            false
-        }
-    }
+    let result = run_workflow_script(ctx, python, &db_str, WORKFLOW_AUTOPILOT_SCRIPT, &ids)?;
+    let execution = interpret_fixup_result(result, pre);
+    let status = match &execution {
+                FixupExecution::Completed { outcome: FixupOutcome::Set(_), .. } => Ok(WorkflowRepair::Changed),
+                FixupExecution::Completed { outcome: FixupOutcome::Quiet, .. } => Ok(WorkflowRepair::Unchanged),
+                FixupExecution::Completed { outcome: FixupOutcome::NoWorkflows, .. } =>
+                    Ok(WorkflowRepair::Unmet("managed workflows have not been discovered by the Copilot App; open their project and retry".into())),
+                FixupExecution::Completed { outcome: FixupOutcome::Unparsed, .. } => Err(anyhow::anyhow!("workflow repair returned invalid output")),
+                FixupExecution::Failed(failure) => Err(anyhow::anyhow!("workflow repair failed: {failure:?}")),
+            };
+    report_fixup_execution(ctx, execution);
+    status
 }
 
+/// Completion state of the dotfiles-owned workflow policy repair.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum WorkflowRepair {
+    /// No selected target or no deployed workflows.
+    NotApplicable,
+    /// The managed workflows were already correct.
+    Unchanged,
+    /// Managed workflow state was repaired.
+    Changed,
+    /// A prerequisite prevents convergence; strict completion escalates this.
+    Unmet(String),
+}
+
+impl WorkflowRepair {
+    #[cfg(test)]
+    fn changed(&self) -> bool {
+        *self == Self::Changed
+    }
+}
 /// Read the exact workflow IDs this dotfiles-managed APM install deployed.
-fn fixup_workflow_ids(ctx: &Context) -> Option<Vec<String>> {
-    match read_deployed_workflow_ids(ctx) {
-        Some(ids) if !ids.is_empty() => Some(ids.into_iter().collect()),
+fn fixup_workflow_ids(ctx: &Context) -> Result<Option<Vec<String>>> {
+    match read_deployed_workflow_ids(ctx)? {
+        Some(ids) if !ids.is_empty() => Ok(Some(ids.into_iter().collect())),
         _ => {
             ctx.debug_fmt(|| {
                 "autopilot fixup: ~/.apm/apm.lock.yaml lists no dotfiles-managed workflows; \
                  nothing to enable"
                     .to_string()
             });
-            None
-        }
-    }
-}
-
-/// Locate the runtime required to execute the workflow database fixup.
-fn fixup_runtime(ctx: &Context) -> Option<(&'static str, String)> {
-    match probe_workflow_db(ctx) {
-        WorkflowDbProbe::Ready { python, db_str } => Some((python, db_str)),
-        WorkflowDbProbe::DbMissing { path } => {
-            ctx.debug_fmt(|| format!("skipping autopilot fixup: {path} does not exist"));
-            None
-        }
-        WorkflowDbProbe::DbStatError { path, error } => {
-            ctx.debug_fmt(|| format!("skipping autopilot fixup: cannot stat {path}: {error}"));
-            None
-        }
-        WorkflowDbProbe::DbPathNotUtf8 { path } => {
-            ctx.log().warn(format!(
-                "skipping autopilot fixup: database path {path} is not valid UTF-8"
-            ));
-            None
-        }
-        WorkflowDbProbe::PythonMissing => {
-            ctx.log().warn(
-                "skipping autopilot fixup: neither python3 nor python found in PATH; enable the \
-                 apm workflows manually from the Copilot App's Workflows tab",
-            );
-            None
+            Ok(None)
         }
     }
 }
@@ -242,12 +244,16 @@ pub(super) fn snapshot_desired_apm_workflow_ids(ctx: &Context) -> DesiredApmWork
     let ids: Vec<String> = match read_deployed_workflow_ids(ctx) {
         // No prior lockfile: nothing was managed before, so every workflow the
         // post-install fixup sets is genuinely new.
-        None => return DesiredApmWorkflows::FirstInstall,
+        Ok(None) => return DesiredApmWorkflows::FirstInstall,
         // A prior lockfile that deployed no workflows: nothing could have been
         // desired, so an empty known set makes any newly added workflow a real
         // change downstream.
-        Some(ids) if ids.is_empty() => return DesiredApmWorkflows::Known(HashSet::new()),
-        Some(ids) => ids.into_iter().collect(),
+        Ok(Some(ids)) if ids.is_empty() => return DesiredApmWorkflows::Known(HashSet::new()),
+        Ok(Some(ids)) => ids.into_iter().collect(),
+        Err(error) => {
+            ctx.debug_fmt(|| format!("apm workflow snapshot: {error:#}"));
+            return DesiredApmWorkflows::Unavailable;
+        }
     };
 
     let (python, db_str) = match probe_workflow_db(ctx) {

@@ -3,7 +3,8 @@
 use anyhow::Result;
 
 use super::autopilot::{
-    DesiredApmWorkflows, apply_workflow_autopilot_fixup, snapshot_desired_apm_workflow_ids,
+    DesiredApmWorkflows, WorkflowRepair, apply_workflow_autopilot_fixup,
+    snapshot_desired_apm_workflow_ids,
 };
 use super::commands::{
     ApmCommand, ApmCommandResult, ensure_experimental_target_enabled, run_apm_invocation,
@@ -142,13 +143,18 @@ impl ManagedTargets {
     }
 
     /// Re-apply the retained Copilot App autopilot policy.
-    #[must_use]
-    pub(super) fn finish(self, ctx: &Context, snapshot: &ManagedTargetSnapshot) -> bool {
-        self.includes(CopilotTarget::CopilotApp)
-            && snapshot
-                .copilot_app
-                .as_ref()
-                .is_some_and(|pre| apply_workflow_autopilot_fixup(ctx, pre))
+    pub(super) fn finish(
+        self,
+        ctx: &Context,
+        snapshot: &ManagedTargetSnapshot,
+    ) -> Result<WorkflowRepair> {
+        if self.includes(CopilotTarget::CopilotApp)
+            && let Some(pre) = &snapshot.copilot_app
+        {
+            apply_workflow_autopilot_fixup(ctx, pre)
+        } else {
+            Ok(WorkflowRepair::NotApplicable)
+        }
     }
 }
 

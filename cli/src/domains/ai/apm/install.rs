@@ -178,11 +178,23 @@ impl ApmInstallPlan {
         let command = self.targets.run_apm_command(ctx, self.mode.command());
         // A later target can fail after APM reset Copilot App workflows.
         // Restore retained policy before propagating any convergence failure.
-        let autopilot_changed = self.targets.finish(ctx, &target_snapshot);
+        let repair = self.targets.finish(ctx, &target_snapshot);
+        if (command.is_err()
+            || matches!(&command, Ok(result) if matches!(&result.outcome, ApmCommandResult::AuthSkipped(_))))
+            && let Err(error) = &repair
+        {
+            ctx.log()
+                .warn(format!("workflow repair also failed: {error:#}"));
+        }
         let command = command?;
         if let ApmCommandResult::AuthSkipped(reason) = command.outcome {
             return Ok(TaskResult::unmet(reason));
         }
+        let repair = repair?;
+        if let super::autopilot::WorkflowRepair::Unmet(reason) = repair {
+            return Ok(TaskResult::unmet(reason));
+        }
+        let autopilot_changed = repair == super::autopilot::WorkflowRepair::Changed;
 
         let lock_after = read_lock_snapshot(&self.lock_path)?;
         let lock_changed = lock_before != lock_after;

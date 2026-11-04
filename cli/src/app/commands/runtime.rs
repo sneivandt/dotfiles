@@ -115,7 +115,7 @@ mod tests {
                         "/fixture-repo".into(),
                         None,
                         Platform::new(Os::Linux, false),
-                        Arc::new(crate::infra::logging::Logger::new("test")),
+                        Arc::new(crate::infra::logging::Logger::test()),
                         Arc::new(crate::infra::exec::ProcessExecutor::system()),
                         Arc::clone(&runtime.env),
                         runtime.execution,

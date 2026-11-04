@@ -5,15 +5,17 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 
 use crate::domains::ai::config::agent_settings::{AgentHarness, AgentSetting, validate};
-use crate::domains::ai::resources::agent_settings::{AgentSettingResource, SettingsFormat};
+use crate::domains::ai::resources::agent_settings::{
+    AgentSettingResource, AgentSettingsDocument, SettingsFormat,
+};
 use crate::engine::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_metadata};
 
 crate::engine::config_task! {
     /// Configure agent harness settings from `agent-settings.toml`.
     ///
-    /// Each managed key is converged inside its harness's user settings document
-    /// without disturbing unmanaged keys. Document access claims serialize keys
-    /// in the same file while independent documents can overlap. Contradictory values
+    /// Managed keys in each user settings document converge in one transaction
+    /// without disturbing unmanaged keys. Resolved document access claims serialize
+    /// aliases while independent documents can overlap. Contradictory values
     /// for the same harness/key are rejected before any document is changed.
     pub struct ConfigureAgentSettings(Vec<AgentSetting>);
 }
@@ -64,7 +66,11 @@ impl Task for ConfigureAgentSettings {
             .iter()
             .map(|setting| Self::resource(setting, ctx.home()))
             .collect();
-        run_resource_task(ctx, resources, &ProcessOpts::strict("configure"))
+        run_resource_task(
+            ctx,
+            AgentSettingsDocument::group(resources)?,
+            &ProcessOpts::strict("configure"),
+        )
     }
 }
 
@@ -116,7 +122,7 @@ mod tests {
             },
         ]));
         let result = task.run(&ctx).unwrap();
-        assert_eq!(task_batch(&result).changed_count(), 4);
+        assert_eq!(task_batch(&result).changed_count(), 2);
 
         let copilot_settings =
             std::fs::read_to_string(dir.path().join(".copilot").join("settings.json")).unwrap();
@@ -135,7 +141,7 @@ mod tests {
         assert_eq!(codex["tui"]["theme"].as_str(), Some("fixture-theme"));
         let repeated = task.run(&ctx).unwrap();
         assert_eq!(task_batch(&repeated).changed_count(), 0);
-        assert_eq!(task_batch(&repeated).already_ok_count(), 4);
+        assert_eq!(task_batch(&repeated).already_ok_count(), 2);
         assert_eq!(
             std::fs::read_to_string(dir.path().join(".copilot/settings.json")).unwrap(),
             copilot_settings
@@ -241,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_setting_retains_completed_keys_and_retry_converges_remaining_work() {
+    fn failed_setting_preserves_the_entire_document_and_retry_converges() {
         for target in [AgentHarness::Copilot, AgentHarness::Codex] {
             let home = tempfile::tempdir_in(".").unwrap();
             let (_, path) = target_document(target, home.path());
@@ -280,23 +286,24 @@ mod tests {
                 "{error:#}"
             );
             let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
-            assert_eq!(report.stats().changed_count(), 1);
+            assert_eq!(report.stats().changed_count(), 0);
             assert_eq!(report.stats().failed_count(), 1);
-            assert_eq!(report.not_attempted_count(), 1);
+            assert_eq!(report.not_attempted_count(), 0);
             let contents = std::fs::read_to_string(&path).unwrap();
+            assert_eq!(contents, before);
             match target {
                 AgentHarness::Copilot => {
                     let mut document: serde_json::Value = serde_json::from_str(&contents).unwrap();
                     assert_eq!(
                         document,
-                        serde_json::json!({"model":"new","footer":false,"unmanaged":"keep"})
+                        serde_json::json!({"model":"old","footer":false,"unmanaged":"keep"})
                     );
                     document["footer"] = serde_json::json!({});
                     std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
                 }
                 AgentHarness::Codex => {
                     let mut document: toml::Table = toml::from_str(&contents).unwrap();
-                    assert_eq!(document["model"].as_str(), Some("new"));
+                    assert_eq!(document["model"].as_str(), Some("old"));
                     assert_eq!(document["footer"].as_bool(), Some(false));
                     assert_eq!(document["unmanaged"].as_str(), Some("keep"));
                     assert_eq!(document.len(), 3);
@@ -306,12 +313,12 @@ mod tests {
             }
 
             let result = task.run(&ctx).expect("retry after repairing parent value");
-            assert_eq!(task_batch(&result).changed_count(), 2);
-            assert_eq!(task_batch(&result).already_ok_count(), 1);
+            assert_eq!(task_batch(&result).changed_count(), 1);
+            assert_eq!(task_batch(&result).already_ok_count(), 0);
             let converged = std::fs::read(&path).unwrap();
             let repeated = task.run(&ctx).expect("repeat converged settings");
             assert_eq!(task_batch(&repeated).changed_count(), 0);
-            assert_eq!(task_batch(&repeated).already_ok_count(), 3);
+            assert_eq!(task_batch(&repeated).already_ok_count(), 1);
             assert_eq!(std::fs::read(&path).unwrap(), converged);
         }
     }
@@ -347,13 +354,13 @@ mod tests {
             for handle in handles {
                 assert_eq!(
                     task_batch(&handle.join().unwrap().unwrap()).changed_count(),
-                    32
+                    2
                 );
             }
         });
         for task in tasks {
             let result = task.run(&ctx).unwrap();
-            assert_eq!(task_batch(&result).already_ok_count(), 32);
+            assert_eq!(task_batch(&result).already_ok_count(), 2);
         }
     }
 
@@ -385,6 +392,35 @@ mod tests {
             ]));
             assert!(task.run(&ctx).is_err());
             assert!(!home.path().join(".copilot").exists());
+        }
+    }
+
+    #[test]
+    fn malformed_paths_reject_the_whole_batch_in_preview_and_apply() {
+        for key in ["", " ", ".a", "a.", "a..b"] {
+            for dry_run in [false, true] {
+                let home = tempfile::tempdir().unwrap();
+                let path = home.path().join(".copilot/settings.json");
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(&path, "{\"unmanaged\":true}\n").unwrap();
+                let ctx = make_linux_context(home.path().into(), None)
+                    .with_home(home.path().into())
+                    .with_dry_run(dry_run);
+                let settings = ["valid", key].map(|key| AgentSetting {
+                    target: AgentHarness::Copilot,
+                    key: key.into(),
+                    value: true.into(),
+                });
+                assert!(
+                    ConfigureAgentSettings::new(ConfigHandle::new(settings.into()))
+                        .run(&ctx)
+                        .is_err()
+                );
+                assert_eq!(
+                    std::fs::read_to_string(path).unwrap(),
+                    "{\"unmanaged\":true}\n"
+                );
+            }
         }
     }
 }

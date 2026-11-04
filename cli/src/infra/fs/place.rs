@@ -40,6 +40,21 @@ pub fn rename_into_place(staged: &Path, target: &Path) -> Result<()> {
 /// cannot be created, the staged file cannot be written, its permissions cannot
 /// be restored, or the rename fails.
 pub fn write_atomic(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
+    write_atomic_checked(path, content, || Ok(()))
+}
+
+/// Stage a replacement and verify the caller's baseline immediately before publication.
+///
+/// The check detects intervening edits but cannot lock out uncooperative writers.
+///
+/// # Errors
+///
+/// Returns staging, validation, or publication errors without replacing the target.
+pub fn write_atomic_checked(
+    path: &Path,
+    content: impl AsRef<[u8]>,
+    check: impl FnOnce() -> Result<()>,
+) -> Result<()> {
     ensure_parent_dir(path)?;
 
     #[cfg(unix)]
@@ -61,6 +76,7 @@ pub fn write_atomic(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     }
     drop(staged_file);
 
+    check()?;
     rename_into_place(guard.path(), path)?;
     guard.persist();
     Ok(())
@@ -89,6 +105,19 @@ mod tests {
         write_atomic(&target, "fresh").unwrap();
 
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "fresh");
+    }
+
+    #[test]
+    fn failed_prepublication_check_preserves_the_target_and_cleans_staging() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("document");
+        std::fs::write(&target, "external edit").unwrap();
+        let error =
+            write_atomic_checked(&target, "stale replacement", || anyhow::bail!("conflict"))
+                .unwrap_err();
+        assert_eq!(error.to_string(), "conflict");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "external edit");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     #[cfg(unix)]

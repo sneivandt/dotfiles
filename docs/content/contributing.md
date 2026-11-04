@@ -248,12 +248,15 @@ dotfiles update --only git-hooks --dry-run
 ```
 
 No output and status 1 from the first command means no override is configured.
-Dotfiles honors `core.hooksPath`, resolving relative values from the repository
-root; otherwise it uses the common Git directory's `hooks/`, including worktrees.
-A global/shared destination can affect other repositories.
+Dotfiles honors a repository-local `core.hooksPath`, resolving relative values
+from the repository root; otherwise it uses the common Git directory's `hooks/`,
+including worktrees. An inherited shared override blocks installation until you
+choose a repository-local destination.
 
-**Installation can replace a differing hook.** Preserve custom hooks first,
-then remove `--dry-run` only when you intend to install. Extensionless entrypoints
+Installation preserves foreign or locally modified hooks and reports a conflict.
+Back them up and move them aside before retrying. Matching legacy copies can be
+adopted; subsequent updates use a sibling `.dotfiles-owned` hash record to check
+ownership. Keep that record with the installed hook. Extensionless entrypoints
 are copied, while `.sh` helpers and pattern files run from the checkout. Reinstall
 after changing the copied `pre-commit`; helper edits take effect immediately.
 

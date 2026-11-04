@@ -55,7 +55,12 @@ The `agent-settings` task edits only declared keys in these documents:
 | `copilot` | `~/.copilot/settings.json` |
 | `codex` | `~/.codex/config.toml` |
 
-Unmanaged keys survive. Invalid existing documents are reported, not replaced.
+Unmanaged keys and TOML comments survive. Each document is updated as one
+transaction; an invalid key or incompatible parent value leaves that document
+unchanged. Detected concurrent edits stop publication; retry after resolving
+the conflict. This cannot exclude writes by an application that does not
+coordinate with dotfiles.
+Invalid existing documents are reported, not replaced.
 Removing a declaration stops managing the key; it does **not** delete the stored
 value. Conflicting declarations for the same harness/key fail before writes.
 This task does not run APM. With dotfiles installed and a profile selected,
@@ -275,9 +280,10 @@ workflow you disabled in the App. Change the package source or dependency
 selection for a lasting change.
 :::
 
-Workflow repair needs Python and database access. Repair warnings are reported
-separately from the native deployment result; inspect them even when APM
-itself succeeded.
+Workflow repair needs Python and database access. A failed repair fails the task
+even when APM succeeded. Missing prerequisites are reported as unmet work and
+fail strict runs (`--fail-on-skip` or CI). If deployment itself fails, dotfiles
+still attempts repair without replacing the original failure.
 
 ### Cowork skills
 
@@ -296,10 +302,13 @@ while preserving the destination directories and their Windows permissions.
 If a package restricts its targets, include `copilot-cowork` to send its skills
 here.
 
-For a skill it previously deployed, cleanup removes **only its `SKILL.md` file**.
-Directories, other files, and unrelated skills remain. Keep the destination's
-`.dotfiles-apm-skills.json` record of deployed skills so dotfiles can identify
-which files it may remove. For path-resolution failures or copy conflicts, see
+Dotfiles records deployed file hashes and removes unchanged owned files that
+disappear from the source or leave the selected skill set. Modified stale files
+are preserved and reported as conflicts; move them aside before retrying.
+Directories, unowned files, and unrelated skills remain. Keep the destination's
+`.dotfiles-apm-skills.json` and `.dotfiles-apm-files.json` ownership records.
+For older deployments without file hashes, cleanup remains limited to the
+recorded skill's `SKILL.md`. For path-resolution failures or copy conflicts, see
 [Deployment maintenance](#deployment-maintenance).
 
 ## Removing packages and targets

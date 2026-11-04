@@ -110,7 +110,7 @@ fn elevated_child_selection_does_not_expand_the_parents_dependency_closure() {
         std::path::PathBuf::from("fixture-root"),
     ));
     let tasks = crate::app::catalog::all_update_tasks(&store);
-    let log = Logger::new("test");
+    let log = Logger::test();
     let selected = crate::app::filter::apply_task_filters(
         &tasks,
         &[],
@@ -182,7 +182,7 @@ fn unavailable_developer_mode_does_not_block_unprivileged_symlink_work() {
                 allow_external_target: false,
                 origin: None,
             });
-            let log = Arc::new(Logger::new("test"));
+            let log = Arc::new(Logger::test());
             let ctx = make_windows_context(config.root.clone(), config.overlay.clone())
                 .with_home(home.clone())
                 .with_log(Arc::<Logger>::clone(&log))

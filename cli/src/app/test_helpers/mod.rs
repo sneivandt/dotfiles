@@ -122,7 +122,7 @@ pub fn make_context(
         root,
         overlay,
         platform,
-        Arc::new(Logger::new("test")),
+        Arc::new(Logger::test()),
         executor,
         PathBuf::from("/home/test"),
         crate::engine::ContextOpts {
@@ -288,7 +288,7 @@ pub fn make_windows_context(root: PathBuf, overlay: Option<PathBuf>) -> Context 
 /// inspect recorded task state.
 #[must_use]
 pub fn make_static_context(root: PathBuf, overlay: Option<PathBuf>) -> (Context, Arc<Logger>) {
-    let log = Arc::new(Logger::new("test"));
+    let log = Arc::new(Logger::test());
     let log_output: Arc<dyn crate::infra::logging::Log> = Arc::<Logger>::clone(&log);
     let ctx = make_linux_context(root, overlay).with_log(log_output);
     (ctx, log)

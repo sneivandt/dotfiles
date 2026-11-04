@@ -1,5 +1,6 @@
 //! APM lockfile scoping for dotfiles-managed Copilot App workflows.
 
+use anyhow::{Context as _, Result};
 use std::collections::BTreeSet;
 use std::io::ErrorKind;
 
@@ -15,29 +16,31 @@ pub(super) const COPILOT_APP_WORKFLOW_URI_PREFIX: &str = "copilot-app-db://workf
 /// Read the workflow ids this dotfiles install deployed from
 /// `~/.apm/apm.lock.yaml`.
 ///
-/// Returns `None` when the lockfile is absent or cannot be read (treated like a
-/// first install / nothing-to-do), and `Some(set)` -- possibly empty -- when it
-/// was parsed. Only `deployed_files` entries under the
+/// Returns `None` only when the lockfile is absent, and `Some(set)` -- possibly
+/// empty -- when it was parsed. Read errors and malformed lockfiles fail
+/// explicitly. Only `deployed_files` entries under the
 /// [`COPILOT_APP_WORKFLOW_URI_PREFIX`] count; agents, skills, and other
-/// primitives are ignored. Best-effort: a malformed lockfile yields an empty
-/// set rather than an error so the fixup simply does nothing.
-pub(super) fn read_deployed_workflow_ids(ctx: &Context) -> Option<BTreeSet<String>> {
+/// primitives are ignored.
+pub(super) fn read_deployed_workflow_ids(ctx: &Context) -> Result<Option<BTreeSet<String>>> {
     let lock = ctx.home().join(".apm").join("apm.lock.yaml");
     let content = match std::fs::read_to_string(&lock) {
         Ok(content) => content,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
         Err(e) => {
-            if e.kind() != ErrorKind::NotFound {
-                ctx.debug_fmt(|| {
-                    format!(
-                        "autopilot scope: cannot read {} (treating as no workflows): {e}",
-                        lock.display()
-                    )
-                });
-            }
-            return None;
+            return Err(e)
+                .with_context(|| format!("reading workflow ownership {}", lock.display()));
         }
     };
-    Some(parse_deployed_workflow_ids(&content))
+    let value: serde_yaml_ng::Value =
+        serde_yaml_ng::from_str(&content).context("parsing workflow ownership")?;
+    anyhow::ensure!(value.is_mapping(), "workflow ownership must be a mapping");
+    if let Some(dependencies) = value.get("dependencies") {
+        anyhow::ensure!(
+            dependencies.is_sequence(),
+            "workflow dependencies must be a sequence"
+        );
+    }
+    Ok(Some(parse_deployed_workflow_ids(&content)))
 }
 
 /// Extract the dotfiles-deployed workflow ids from APM lockfile text.

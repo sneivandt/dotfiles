@@ -12,6 +12,22 @@ mod notifications;
 mod progress;
 mod summary;
 
+#[cfg(test)]
+mod isolation_tests {
+    use super::Logger;
+
+    #[test]
+    #[should_panic(expected = "unit tests must use Logger::test")]
+    fn production_constructor_is_blocked_before_resolving_host_logs() {
+        drop(Logger::new("test"));
+    }
+
+    #[test]
+    fn ordinary_test_logger_has_no_durable_sink() {
+        assert!(Logger::test().run_log.is_none());
+    }
+}
+
 pub(in crate::infra::logging) use progress::stdout_supports_progress;
 
 use std::borrow::Cow;
@@ -67,10 +83,28 @@ impl Logger {
     /// Opens the run log for `command` in the dotfiles log directory.  If
     /// the file cannot be created the run continues without a file log.
     #[must_use]
+    #[allow(
+        clippy::assertions_on_constants,
+        clippy::missing_panics_doc,
+        reason = "unit-test builds deliberately reject the production log sink before resolving host paths"
+    )]
     pub fn new(command: &str) -> Self {
+        assert!(
+            !cfg!(test),
+            "unit tests must use Logger::test or an explicitly isolated logger"
+        );
         let start = Instant::now();
         let run_log = RunLog::create(command, start).map(Arc::new);
+        if run_log.is_none() {
+            super::runlog::warn_degraded("the log directory or file could not be created");
+        }
         Self::build(command, run_log, start, true)
+    }
+
+    /// Create a silent, nonpersistent logger for unit tests.
+    #[cfg(test)]
+    pub(crate) fn test() -> Self {
+        Self::build("test", None, Instant::now(), false)
     }
 
     /// Create a new logger using an explicit base directory.
@@ -85,6 +119,9 @@ impl Logger {
         let run_log = dotfiles_log_subdir(base_dir)
             .and_then(|dir| RunLog::new(command, &dir, start))
             .map(Arc::new);
+        if run_log.is_none() {
+            super::runlog::warn_degraded("the log directory or file could not be created");
+        }
         Self::build(command, run_log, start, false)
     }
 
@@ -94,9 +131,6 @@ impl Logger {
         start: Instant,
         console_output: bool,
     ) -> Self {
-        if run_log.is_none() {
-            super::runlog::warn_degraded("the log directory or file could not be created");
-        }
         Self {
             console: Arc::new(super::console::Console::new(console_output)),
             command: command.to_string(),

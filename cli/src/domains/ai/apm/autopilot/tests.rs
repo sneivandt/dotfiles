@@ -12,6 +12,13 @@ use super::super::test_fixture::{
     update_task, write_copilot_app_db, write_current_manifest_and_lock, write_home_fragment,
 };
 use super::DesiredApmWorkflows;
+use crate::engine::Context;
+
+fn repair_changed(ctx: &Context, pre: &DesiredApmWorkflows) -> bool {
+    super::apply_workflow_autopilot_fixup(ctx, pre)
+        .expect("workflow repair must complete")
+        .changed()
+}
 use super::lockfile::parse_deployed_workflow_ids;
 use super::outcome::{
     FixupExecution, FixupFailure, FixupOutcome, decide_fixup_outcome, interpret_fixup_result,
@@ -700,14 +707,14 @@ fn readable_workflow_sources_use_one_process_per_snapshot_or_fixup() {
         initial_db,
         "snapshot must remain read-only without the separate scope probe"
     );
-    assert!(super::apply_workflow_autopilot_fixup(&ctx, &before));
+    assert!(repair_changed(&ctx, &before));
     let desired = super::snapshot_desired_apm_workflow_ids(&ctx);
     assert_eq!(
         desired,
         DesiredApmWorkflows::Known(id_set(&["apm--_local--fixture--review"]))
     );
     let repaired = query_local_cron_fixture(python, db);
-    assert!(!super::apply_workflow_autopilot_fixup(&ctx, &desired));
+    assert!(!repair_changed(&ctx, &desired));
     assert_eq!(
         query_local_cron_fixture(python, db),
         repaired,
@@ -751,7 +758,7 @@ fn local_source_cron_schedules_converge_with_stale_lock_entries() {
     let id = "apm--_local--fixture--review";
     let before = super::snapshot_desired_apm_workflow_ids(&ctx);
     assert_eq!(before, DesiredApmWorkflows::Known(id_set(&[])));
-    assert!(super::apply_workflow_autopilot_fixup(&ctx, &before));
+    assert!(repair_changed(&ctx, &before));
     let desired = super::snapshot_desired_apm_workflow_ids(&ctx);
     assert_eq!(desired, DesiredApmWorkflows::Known(id_set(&[id])));
 
@@ -761,7 +768,7 @@ fn local_source_cron_schedules_converge_with_stale_lock_entries() {
     assert_eq!(initial[2], "manual");
     assert_eq!(initial[3], "15 7,11,15 * * 1-5");
     assert!(initial[4].is_string(), "{initial}");
-    assert!(!super::apply_workflow_autopilot_fixup(&ctx, &desired));
+    assert!(!repair_changed(&ctx, &desired));
     assert_eq!(
         query_local_cron_fixture(python, db),
         initial,
@@ -771,7 +778,7 @@ fn local_source_cron_schedules_converge_with_stale_lock_entries() {
     write_local_cron_prompt(&prompt, Some("45 18 * * 1-5"));
     let before_change = super::snapshot_desired_apm_workflow_ids(&ctx);
     assert_eq!(before_change, DesiredApmWorkflows::Known(id_set(&[])));
-    assert!(super::apply_workflow_autopilot_fixup(&ctx, &before_change));
+    assert!(repair_changed(&ctx, &before_change));
     assert_eq!(
         super::snapshot_desired_apm_workflow_ids(&ctx),
         DesiredApmWorkflows::Known(id_set(&[id]))
@@ -785,10 +792,7 @@ fn local_source_cron_schedules_converge_with_stale_lock_entries() {
 
     write_local_cron_prompt(&prompt, Some("99 18 * * 1-5"));
     let before_invalid = super::snapshot_desired_apm_workflow_ids(&ctx);
-    assert!(!super::apply_workflow_autopilot_fixup(
-        &ctx,
-        &before_invalid
-    ));
+    assert!(super::apply_workflow_autopilot_fixup(&ctx, &before_invalid).is_err());
     assert_eq!(
         query_local_cron_fixture(python, db),
         changed,
@@ -798,7 +802,7 @@ fn local_source_cron_schedules_converge_with_stale_lock_entries() {
     write_local_cron_prompt(&prompt, None);
     let before_removal = super::snapshot_desired_apm_workflow_ids(&ctx);
     assert_eq!(before_removal, DesiredApmWorkflows::Known(id_set(&[])));
-    assert!(super::apply_workflow_autopilot_fixup(&ctx, &before_removal));
+    assert!(repair_changed(&ctx, &before_removal));
     let removed = query_local_cron_fixture(python, db);
     assert!(removed[3].is_null(), "{removed}");
     assert!(removed[4].is_null(), "{removed}");
@@ -837,7 +841,7 @@ fn missing_active_workflow_source_is_reported_without_mutation() {
     );
     let pre = super::snapshot_desired_apm_workflow_ids(&ctx);
     assert_eq!(pre, DesiredApmWorkflows::Unavailable);
-    assert!(!super::apply_workflow_autopilot_fixup(&ctx, &pre));
+    assert!(super::apply_workflow_autopilot_fixup(&ctx, &pre).is_err());
     assert_eq!(query_local_cron_fixture(python, db), initial);
 }
 
@@ -884,7 +888,7 @@ con.commit()
     );
     let pre = super::snapshot_desired_apm_workflow_ids(&ctx);
     assert_eq!(pre, DesiredApmWorkflows::Known(id_set(&[])));
-    assert!(!super::apply_workflow_autopilot_fixup(&ctx, &pre));
+    assert!(!repair_changed(&ctx, &pre));
     assert_eq!(std::fs::read(&db_path).unwrap(), before);
 }
 
@@ -1066,7 +1070,9 @@ fn run_restores_workflows_when_cowork_reconciliation_fails() {
 
 #[test]
 fn run_restores_workflows_without_masking_native_failure_outcomes() {
-    for auth_failure in [false, true] {
+    for (auth_failure, repair_failure) in
+        [(false, false), (true, false), (false, true), (true, true)]
+    {
         let dir = tempfile::tempdir_in(".").expect("create fixture directory");
         write_autopilot_fixture(dir.path(), &["apm--a"]);
         let mut mock = MockExecutor::new();
@@ -1096,14 +1102,21 @@ fn run_restores_workflows_without_masking_native_failure_outcomes() {
                     ExecResult::failure("", message, Some(1)),
                 ))
             });
-        expect_workflow_script(
-            &mut mock,
-            &mut seq,
-            dir.path(),
-            WORKFLOW_AUTOPILOT_SCRIPT,
-            &["apm--a"],
-            "1 1\napm--a\n",
-        );
+        if repair_failure {
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut seq)
+                .returning(|_| Ok(ExecResult::failure("", "database is locked", Some(1))));
+        } else {
+            expect_workflow_script(
+                &mut mock,
+                &mut seq,
+                dir.path(),
+                WORKFLOW_AUTOPILOT_SCRIPT,
+                &["apm--a"],
+                "1 1\napm--a\n",
+            );
+        }
         let ctx = make_home_context_with_executor(dir.path(), mock);
         let result = install_task().run(&ctx);
 
@@ -1117,32 +1130,43 @@ fn run_restores_workflows_without_masking_native_failure_outcomes() {
 
 #[test]
 fn run_warns_when_python_missing_for_autopilot_fixup() {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    write_autopilot_fixture(dir.path(), &["apm--a"]);
+    for strict in [false, true] {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        write_autopilot_fixture(dir.path(), &["apm--a"]);
 
-    let mut mock = MockExecutor::new();
-    let mut seq = mockall::Sequence::new();
-    expect_which_apm(&mut mock, true);
-    expect_apm_install(&mut mock, &mut seq, dir.path());
-    // Probed twice (pre-install snapshot + post-install fixup); both fall
-    // back to `python` and then give up, so neither runs a query.
-    expect_python3(&mut mock, 2, false);
-    mock.expect_which()
-        .with(mockall::predicate::eq("python"))
-        .times(2)
-        .returning(|_| false);
+        let mut mock = MockExecutor::new();
+        let mut seq = mockall::Sequence::new();
+        expect_which_apm(&mut mock, true);
+        expect_apm_install(&mut mock, &mut seq, dir.path());
+        // Probed twice (pre-install snapshot + post-install fixup); both fall
+        // back to `python` and then give up, so neither runs a query.
+        expect_python3(&mut mock, 2, false);
+        mock.expect_which()
+            .with(mockall::predicate::eq("python"))
+            .times(2)
+            .returning(|_| false);
 
-    let ctx = make_home_context_with_executor(dir.path(), mock);
-    let result = install_task().run(&ctx).expect("run should not error");
-    assert_task_changed(&result);
+        let ctx = make_home_context_with_executor(dir.path(), mock).with_require_complete(strict);
+        if strict {
+            assert_eq!(
+                crate::engine::execute(&install_task(), &ctx),
+                crate::infra::logging::TaskStatus::Failed
+            );
+        } else {
+            let result = install_task().run(&ctx).expect("run should not error");
+            assert!(matches!(
+                result,
+                crate::engine::TaskResult::Skipped {
+                    kind: crate::engine::SkipKind::UnmetWork,
+                    ..
+                }
+            ));
+        }
+    }
 }
 
 #[test]
-fn run_warns_on_degraded_workflow_db_cases() {
-    // A locked database and a schema-drifted database (e.g. the `mode` column
-    // was renamed) both degrade the fixup non-fatally: the pre-install
-    // snapshot treats the error as `Unavailable` rather than `no such table`,
-    // and the apm install itself still succeeds.
+fn run_fails_on_degraded_workflow_db_cases() {
     for message in ["database is locked", "no such column: mode"] {
         let dir = tempfile::tempdir().expect("create temp dir");
         write_autopilot_fixture(dir.path(), &["apm--a"]);
@@ -1168,8 +1192,13 @@ fn run_warns_on_degraded_workflow_db_cases() {
             });
 
         let ctx = make_home_context_with_executor(dir.path(), mock);
-        let result = install_task().run(&ctx).expect("run should not error");
-        assert_task_changed(&result);
+        let error = install_task()
+            .run(&ctx)
+            .expect_err("failed repair must fail the task");
+        assert!(
+            format!("{error:#}").contains("workflow repair failed"),
+            "{error:#}"
+        );
     }
 }
 

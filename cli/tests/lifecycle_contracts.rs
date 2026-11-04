@@ -435,6 +435,15 @@ fn hook_fixture() -> Fixture {
         &fixture.repo.join(".git").join("hooks").join("pre-commit"),
         "obsolete hook\n",
     );
+    {
+        use base64::Engine as _;
+        use sha2::{Digest as _, Sha256};
+        write(
+            &fixture.repo.join(".git/hooks/pre-commit.dotfiles-owned"),
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .encode(Sha256::digest(b"obsolete hook\n")),
+        );
+    }
     fixture
 }
 
@@ -526,6 +535,7 @@ fn git_hooks_preserve_direct_source_hooks_path() {
             std::os::windows::fs::symlink_dir(source, alias)
                 .expect("native symlinks require a symlink-capable test worker");
         }
+
         git2::Repository::open(&fixture.repo)
             .unwrap()
             .config()
@@ -548,6 +558,64 @@ fn git_hooks_preserve_direct_source_hooks_path() {
         }
         assert_eq!(fixture.command_count(), 0);
     }
+}
+
+#[test]
+fn shared_hook_destinations_preserve_foreign_hooks() {
+    let fixture = hook_fixture();
+    let shared = fixture.home.join("shared-hooks");
+    write(&shared.join("pre-commit"), "foreign hook\n");
+    git2::Repository::open(&fixture.repo)
+        .unwrap()
+        .config()
+        .unwrap()
+        .set_str("core.hooksPath", shared.to_str().unwrap())
+        .unwrap();
+    for dry_run in [true, false] {
+        let run = fixture.run(dry_run, false, |_| Box::new(InstallGitHooks::new()));
+        run.assert_batch_with_failures(2, 0, 1);
+        assert_eq!(
+            std::fs::read_to_string(shared.join("pre-commit")).unwrap(),
+            "foreign hook\n"
+        );
+        assert!(!shared.join("pre-commit.dotfiles-owned").exists());
+    }
+}
+
+#[test]
+fn inherited_hooks_path_blocks_installation_without_changing_shared_files() {
+    let fixture = hook_fixture();
+    let shared = fixture.home.join("shared-hooks");
+    write(&shared.join("pre-commit"), "foreign hook\n");
+    let global_path = fixture.home.join(".gitconfig");
+    write(&global_path, "");
+    git2::Config::open(&global_path)
+        .unwrap()
+        .set_str("core.hooksPath", shared.to_str().unwrap())
+        .unwrap();
+    let mut command =
+        common::cli_command(&fixture.repo, &fixture.home, None, "update", "git-hooks");
+    git2::Repository::open(&fixture.repo)
+        .unwrap()
+        .config()
+        .unwrap()
+        .remove("core.hooksPath")
+        .unwrap();
+    let output = command.output().unwrap();
+    assert!(!output.status.success());
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        text.contains("inherited from shared Git configuration"),
+        "{text}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(shared.join("pre-commit")).unwrap(),
+        "foreign hook\n"
+    );
 }
 
 const fn platform(os: Os) -> Platform {

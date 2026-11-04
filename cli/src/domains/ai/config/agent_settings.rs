@@ -115,7 +115,7 @@ pub(crate) fn value_is_finite(value: &toml::Value) -> bool {
 /// Validate agent settings entries and return semantic diagnostics.
 #[must_use]
 pub fn validate(settings: &[AgentSetting]) -> Vec<Diagnostic> {
-    use crate::infra::config::validation::{Validator, check, check_error};
+    use crate::infra::config::validation::{Validator, check_error};
 
     let mut diagnostics = Validator::new(AGENT_SETTINGS_TOML)
         .check_each(
@@ -128,12 +128,12 @@ pub fn validate(settings: &[AgentSetting]) -> Vec<Diagnostic> {
                         AGENT_SETTINGS_NONFINITE_VALUE,
                         "settings value contains NaN or infinity; use finite numbers",
                     ),
-                    check(
+                    check_error(
                         setting.key.trim().is_empty(),
                         AGENT_SETTINGS_EMPTY_KEY,
                         "settings key is empty",
                     ),
-                    check(
+                    check_error(
                         setting.key.split('.').any(str::is_empty),
                         AGENT_SETTINGS_KEY_EMPTY_SEGMENT,
                         "settings key has an empty path segment (e.g. 'a..b')",
@@ -231,6 +231,11 @@ settings = [{ target = "codex", key = "model", value = "x" }]
         }];
         let warnings = validate(&settings);
         assert!(warnings.iter().any(|w| w.message.contains("key is empty")));
+        assert!(
+            warnings
+                .iter()
+                .all(|w| w.severity == crate::infra::config::Severity::Error)
+        );
     }
 
     #[test]
@@ -243,6 +248,10 @@ settings = [{ target = "codex", key = "model", value = "x" }]
         let warnings = validate(&settings);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("empty path segment"));
+        assert_eq!(warnings[0].severity, crate::infra::config::Severity::Error);
+        assert_eq!(warnings[0].code, AGENT_SETTINGS_KEY_EMPTY_SEGMENT);
+        assert_eq!(warnings[0].source, AGENT_SETTINGS_TOML);
+        assert_eq!(warnings[0].item, "footer..showBranch");
     }
 
     #[test]

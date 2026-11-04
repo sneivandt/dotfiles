@@ -392,7 +392,7 @@ restoration even after an earlier deployment phase fails.
 | [Fragment merging](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/fragments.rs) | Use effective source filenames and the [fragment merge rules](agent-configuration.md#fragment-merge-rules), including unmanaged home fragments |
 | [Copilot workflow repair](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/ai/apm/autopilot/) | Install with `apm install -g --target copilot-app --only apm`; repair only exact lockfile-owned workflow IDs, preserving foreign workflows |
 | [Cowork path selection](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/targets.rs) | A nonempty environment override wins; malformed persisted configuration fails rather than silently falling back |
-| [Cowork copying](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/cowork.rs) | Copy files without native Cowork deployment; preserve directory ACLs and foreign files, reject linked destination directories, and clean only inventory-owned `SKILL.md` files |
+| [Cowork copying](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/cowork.rs) | Stage file updates without native Cowork deployment; preserve directory ACLs and foreign files, reject linked destination directories, and remove unchanged stale files recorded in the ownership inventory |
 
 Keep workflow scheduling and duplicate cleanup limited to owned IDs. Cowork
 updates must preserve directory permissions and foreign files, respect package

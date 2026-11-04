@@ -5,11 +5,11 @@
 //! dotfiles copies the already-resolved shared skill tree into each existing
 //! Cowork directory without replacing that directory.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_yaml_ng::Value;
 
 use super::targets::copilot_cowork_skills_path;
@@ -22,6 +22,135 @@ use crate::infra::fs::{
 const COWORK_TARGET: &str = "copilot-cowork";
 const COWORK_URI_PREFIX: &str = "cowork://";
 const OWNERSHIP_FILE: &str = ".dotfiles-apm-skills.json";
+const FILE_OWNERSHIP_FILE: &str = ".dotfiles-apm-files.json";
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+struct OwnedFile {
+    hash: String,
+    link: bool,
+}
+
+type FileInventory = BTreeMap<String, OwnedFile>;
+type SkillInventory = BTreeMap<String, FileInventory>;
+
+fn file_fingerprint(path: &Path) -> Result<Option<OwnedFile>> {
+    let Some(metadata) = symlink_metadata_optional(path, "inspect owned Cowork file")? else {
+        return Ok(None);
+    };
+    if metadata.is_symlink() {
+        return Ok(Some(OwnedFile {
+            hash: crate::infra::fs::content_hash(
+                std::fs::read_link(path)?.as_os_str().as_encoded_bytes(),
+            ),
+            link: true,
+        }));
+    }
+    if !metadata.is_file() {
+        return Ok(None);
+    }
+    Ok(Some(OwnedFile {
+        hash: crate::infra::fs::content_hash(std::fs::read(path)?),
+        link: false,
+    }))
+}
+
+fn inventory_files(root: &Path, path: &Path, files: &mut FileInventory) -> Result<()> {
+    let metadata = path.symlink_metadata()?;
+    if metadata.is_dir() && !metadata.is_symlink() {
+        for entry in std::fs::read_dir(path)? {
+            inventory_files(root, &entry?.path(), files)?;
+        }
+    } else {
+        let fingerprint = file_fingerprint(path)?.context("unsupported Cowork source file")?;
+        let relative = path
+            .strip_prefix(root)?
+            .components()
+            .map(|part| {
+                let segment = part
+                    .as_os_str()
+                    .to_str()
+                    .context("Cowork ownership paths must be UTF-8")?;
+                anyhow::ensure!(
+                    !segment.contains(['\\', ':']),
+                    "unsupported Cowork ownership path {}",
+                    path.display()
+                );
+                Ok(segment)
+            })
+            .collect::<Result<Vec<_>>>()?
+            .join("/");
+        anyhow::ensure!(
+            !relative.is_empty(),
+            "Cowork skill root must be a regular directory: {}",
+            root.display()
+        );
+        files.insert(relative, fingerprint);
+    }
+    Ok(())
+}
+
+fn read_file_inventory(target: &Path) -> Result<SkillInventory> {
+    let bytes = match std::fs::read(target.join(FILE_OWNERSHIP_FILE)) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
+        Err(error) => return Err(error).context("reading Cowork file ownership"),
+    };
+    let inventory: SkillInventory =
+        serde_json::from_slice(&bytes).context("parsing Cowork file ownership")?;
+    for (name, files) in &inventory {
+        anyhow::ensure!(
+            valid_skill_name(name),
+            "invalid skill name in Cowork file ownership"
+        );
+        for relative in files.keys() {
+            let path = Path::new(relative);
+            anyhow::ensure!(
+                !relative.is_empty()
+                    && path
+                        .components()
+                        .all(|part| matches!(part, std::path::Component::Normal(_))),
+                "unsafe Cowork ownership path {}",
+                path.display()
+            );
+            anyhow::ensure!(
+                !relative.contains(['\\', ':']),
+                "unsafe Cowork ownership path {}",
+                path.display()
+            );
+        }
+    }
+    Ok(inventory)
+}
+
+fn prune_stale_files(
+    target: &Path,
+    previous: &FileInventory,
+    desired: &FileInventory,
+) -> Result<bool> {
+    let mut changed = false;
+    for (relative, fingerprint) in previous {
+        if desired.contains_key(relative) {
+            continue;
+        }
+        let path = target.join(relative);
+        reject_destination_link(path.parent().context("owned file has no parent")?)?;
+        let Some(metadata) = symlink_metadata_optional(&path, "inspect stale Cowork file")? else {
+            continue;
+        };
+        anyhow::ensure!(
+            file_fingerprint(&path)?.as_ref() == Some(fingerprint),
+            "preserving modified stale Cowork file {}; move it aside and retry",
+            path.display()
+        );
+        if metadata.is_symlink() && is_dir_like(&metadata) {
+            std::fs::remove_dir(&path)?;
+        } else {
+            std::fs::remove_file(&path)?;
+        }
+        changed = true;
+    }
+    Ok(changed)
+}
 
 /// Reconcile APM's shared skill deployment into Cowork's protected skill tree.
 ///
@@ -35,6 +164,7 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
     let mut changed = remove_legacy_cowork_lock_deployments(ctx)?;
     let desired = desired_cowork_skill_names(ctx.home())?;
     let mut owned = read_owned_skills(&target)?;
+    let mut inventory = read_file_inventory(&target)?;
     changed |= !target.exists();
     std::fs::create_dir_all(&target)
         .with_context(|| format!("creating Copilot Cowork skill target {}", target.display()))?;
@@ -47,6 +177,11 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
             "APM shared skill {} is missing",
             source_skill.display()
         );
+        let mut files = FileInventory::new();
+        inventory_files(&source_skill, &source_skill, &mut files)?;
+        if let Some(previous) = inventory.get(name) {
+            changed |= prune_stale_files(&target_skill, previous, &files)?;
+        }
         if !skill_files_match(&source_skill, &target_skill)? {
             copy_skill_files(&source_skill, &target_skill).with_context(|| {
                 format!(
@@ -72,6 +207,14 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
             write_owned_skills(&target, &owned)?;
             changed = true;
         }
+        if inventory.get(name) != Some(&files) {
+            inventory.insert(name.clone(), files);
+            write_atomic(
+                &target.join(FILE_OWNERSHIP_FILE),
+                serde_json::to_vec_pretty(&inventory)?,
+            )?;
+            changed = true;
+        }
     }
 
     #[cfg(windows)]
@@ -90,7 +233,12 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
         if is_desired_skill_directory(&target.join(name), &desired_directories)? {
             continue;
         }
-        if remove_skill_entry_point(&target.join(name))? {
+        let removed = if let Some(previous) = inventory.get(name) {
+            prune_stale_files(&target.join(name), previous, &FileInventory::new())?
+        } else {
+            remove_skill_entry_point(&target.join(name))?
+        };
+        if removed {
             changed = true;
             ctx.log().action(
                 "remove",
@@ -98,6 +246,13 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
                 false,
                 &format!("remove Copilot Cowork skill {name}"),
             );
+        }
+        if inventory.remove(name).is_some() {
+            write_atomic(
+                &target.join(FILE_OWNERSHIP_FILE),
+                serde_json::to_vec_pretty(&inventory)?,
+            )?;
+            changed = true;
         }
     }
     if owned != desired {
@@ -232,22 +387,49 @@ fn copy_skill_files(source: &Path, target: &Path) -> Result<()> {
                 "cannot replace Cowork-owned directory {}",
                 target.display()
             );
-            if meta.file_type().is_symlink() || source_meta.file_type().is_symlink() {
-                if meta.file_type().is_symlink() && is_dir_like(&meta) {
-                    std::fs::remove_dir(target)?;
-                } else {
-                    std::fs::remove_file(target)?;
-                }
-            }
         }
         if source_meta.file_type().is_symlink() {
+            let parent = target.parent().context("Cowork symlink has no parent")?;
+            let mut staged =
+                crate::infra::fs::TempGuard::create_unique_dir(parent, ".dotfiles-cowork", "link")?;
+            let link = staged.path().join("entry");
             create_native_symlink(
                 &std::fs::read_link(source)?,
-                target,
+                &link,
                 is_dir_like(&source_meta),
             )?;
+            let directory_link =
+                symlink_metadata_optional(target, "inspect Cowork link publication")?
+                    .is_some_and(|metadata| metadata.is_symlink() && is_dir_like(&metadata));
+            if directory_link {
+                let previous = staged.path().join("previous");
+                std::fs::rename(target, &previous)?;
+                if let Err(error) = crate::infra::fs::rename_into_place(&link, target) {
+                    if let Err(restore) = std::fs::rename(&previous, target) {
+                        staged.persist();
+                        anyhow::bail!(
+                            "Cowork link publication failed: {error:#}; restore failed: {restore}; original preserved at {}",
+                            previous.display()
+                        );
+                    }
+                    return Err(error);
+                }
+            } else {
+                crate::infra::fs::rename_into_place(&link, target)?;
+            }
         } else {
-            std::fs::copy(source, target)?;
+            let parent = target.parent().context("Cowork file has no parent")?;
+            let (mut staged, file) = crate::infra::fs::TempGuard::create_unique_file_with_mode(
+                parent,
+                ".dotfiles-cowork",
+                "tmp",
+                0o600,
+            )?;
+            drop(file);
+            std::fs::copy(source, staged.path())?;
+            std::fs::set_permissions(staged.path(), source_meta.permissions())?;
+            crate::infra::fs::rename_into_place(staged.path(), target)?;
+            staged.persist();
         }
     }
     Ok(())
@@ -615,6 +797,96 @@ mod tests {
             "current"
         );
         assert!(target_skill.join("placeholder.txt").exists());
+    }
+
+    #[test]
+    fn deleted_source_files_are_pruned_but_unowned_files_are_preserved() {
+        let dir = tempfile::tempdir().unwrap();
+        let (source, target, ctx) = setup_skill(dir.path(), "[copilot-cowork]");
+        std::fs::create_dir(source.join("scripts")).unwrap();
+        std::fs::write(source.join("scripts/old.py"), "old managed script").unwrap();
+        assert!(reconcile_cowork_skills(&ctx).unwrap());
+        std::fs::write(target.join("scripts/personal.py"), "unmanaged").unwrap();
+        std::fs::remove_file(source.join("scripts/old.py")).unwrap();
+        assert!(reconcile_cowork_skills(&ctx).unwrap());
+        assert!(!target.join("scripts/old.py").exists());
+        assert_eq!(
+            std::fs::read_to_string(target.join("scripts/personal.py")).unwrap(),
+            "unmanaged"
+        );
+        assert!(!reconcile_cowork_skills(&ctx).unwrap());
+    }
+
+    #[test]
+    fn modified_stale_files_are_reported_and_retained_until_resolved() {
+        for whole_skill in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let (source, target, ctx) = setup_skill(dir.path(), "[copilot-cowork]");
+            std::fs::write(source.join("old.txt"), "managed").unwrap();
+            reconcile_cowork_skills(&ctx).unwrap();
+            std::fs::write(target.join("old.txt"), "my changes").unwrap();
+            if whole_skill {
+                std::fs::write(dir.path().join(".apm/apm.lock.yaml"), "dependencies: []\n")
+                    .unwrap();
+            } else {
+                std::fs::remove_file(source.join("old.txt")).unwrap();
+            }
+            let error = reconcile_cowork_skills(&ctx).unwrap_err();
+            assert!(
+                error.to_string().contains("modified stale Cowork file"),
+                "{error:#}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(target.join("old.txt")).unwrap(),
+                "my changes"
+            );
+            std::fs::remove_file(target.join("old.txt")).unwrap();
+            assert!(reconcile_cowork_skills(&ctx).unwrap());
+            assert!(!reconcile_cowork_skills(&ctx).unwrap());
+        }
+    }
+
+    #[test]
+    fn unsafe_file_ownership_is_rejected_before_deployment() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_, target, ctx) = setup_skill(dir.path(), "[copilot-cowork]");
+        std::fs::write(target.join("SKILL.md"), "preserve").unwrap();
+        std::fs::write(
+            target.parent().unwrap().join(FILE_OWNERSHIP_FILE),
+            r#"{"example":{"../outside":{"hash":"x","link":false}}}"#,
+        )
+        .unwrap();
+        assert!(reconcile_cowork_skills(&ctx).is_err());
+        assert_eq!(
+            std::fs::read_to_string(target.join("SKILL.md")).unwrap(),
+            "preserve"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn interrupted_copy_keeps_the_existing_file_and_cleans_staging() {
+        const CHILD_ROOT: &str = "DOTFILES_TEST_COWORK_COPY_ROOT";
+        if let Some(root) = std::env::var_os(CHILD_ROOT) {
+            let root = PathBuf::from(root);
+            assert!(copy_skill_files(&root.join("source"), &root.join("target")).is_err());
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("source"), "x".repeat(65536)).unwrap();
+        std::fs::write(dir.path().join("target"), "previous deployment").unwrap();
+        let status = std::process::Command::new("sh")
+            .args(["-c", "trap '' XFSZ; ulimit -f 1; exec \"$@\"", "limited-cowork-copy"])
+            .arg(std::env::current_exe().unwrap())
+            .args(["--exact", "domains::ai::apm::cowork::tests::interrupted_copy_keeps_the_existing_file_and_cleans_staging"])
+            .env(CHILD_ROOT, dir.path()).env("LLVM_PROFILE_FILE", "/dev/null")
+            .status().unwrap();
+        assert!(status.success());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("target")).unwrap(),
+            "previous deployment"
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
     }
 
     #[cfg(windows)]

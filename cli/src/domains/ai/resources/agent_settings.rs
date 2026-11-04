@@ -4,7 +4,7 @@
 //! resource owns one dot-separated key path and writes only that key, preserving
 //! unmanaged preferences and integration configuration.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
 use serde_json::{Map, Value};
@@ -148,6 +148,7 @@ impl AgentSettingResource {
         Ok(())
     }
 
+    #[cfg(test)]
     fn set_in_toml_document(&self, document: &mut toml::Table) -> Result<()> {
         let segments: Vec<&str> = self.key.split('.').collect();
         let Some((last, parents)) = segments.split_last() else {
@@ -181,45 +182,18 @@ impl Resource for AgentSettingResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        if !value_is_finite(&self.desired_value) {
-            return Err(anyhow::anyhow!("settings value contains NaN or infinity").into());
-        }
-        let mut serialized = match self.format {
-            SettingsFormat::Json => {
-                let mut document = self.read_json_document()?;
-                self.set_in_json_document(&mut document)?;
-                serde_json::to_string_pretty(&document)
-                    .with_context(|| format!("serializing {}", self.path.display()))?
-            }
-            SettingsFormat::Toml => {
-                let mut document = self.read_toml_document()?;
-                self.set_in_toml_document(&mut document)?;
-                toml::to_string_pretty(&document)
-                    .with_context(|| format!("serializing {}", self.path.display()))?
-            }
-        };
-        if !serialized.ends_with('\n') {
-            serialized.push('\n');
-        }
-        // Preserve an existing redirection while publishing a complete document
-        // at its referent. Broken links fail rather than being replaced silently.
-        let path = match crate::infra::fs::symlink_metadata_optional(
-            &self.path,
-            "inspect settings destination",
-        )? {
-            Some(metadata) if metadata.is_symlink() => crate::infra::fs::canonicalize(&self.path)?,
-            _ => self.path.clone(),
-        };
-        crate::infra::fs::write_atomic(&path, serialized)?;
-        Ok(ResourceChange::Applied)
+        Ok(apply_document(
+            std::slice::from_ref(self),
+            &document_path(&self.path)?,
+        )?)
     }
 }
 
 impl IntrinsicState for AgentSettingResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
-        if !value_is_finite(&self.desired_value) {
+        if !value_is_finite(&self.desired_value) || invalid_key(&self.key) {
             return Ok(ResourceState::Invalid {
-                reason: "settings value contains NaN or infinity".into(),
+                reason: "settings key is empty/has an empty path segment, or value contains NaN or infinity".into(),
             });
         }
         match self.format {
@@ -232,6 +206,252 @@ impl IntrinsicState for AgentSettingResource {
                 Ok(self.state_from_toml_document(&document))
             }
         }
+    }
+}
+
+fn invalid_key(key: &str) -> bool {
+    key.trim().is_empty() || key.split('.').any(str::is_empty)
+}
+
+fn document_path(path: &Path) -> Result<PathBuf> {
+    if crate::infra::fs::symlink_metadata_optional(path, "inspect settings destination")?.is_some()
+    {
+        crate::infra::fs::canonicalize(path)
+    } else {
+        let parent = path.parent().context("settings document has no parent")?;
+        Ok(document_path(parent)?.join(path.file_name().context("settings document has no name")?))
+    }
+}
+
+fn read_baseline(path: &Path) -> Result<Option<Vec<u8>>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("reading {}", path.display())),
+    }
+}
+
+fn set_editable_toml(
+    document: &mut toml_edit::DocumentMut,
+    setting: &AgentSettingResource,
+) -> Result<()> {
+    let segments: Vec<_> = setting.key.split('.').collect();
+    let (last, parents) = segments.split_last().context("empty settings path")?;
+    let mut table: &mut dyn toml_edit::TableLike = document.as_table_mut();
+    for segment in parents {
+        if !table.contains_key(segment) {
+            table.insert(segment, toml_edit::Item::Table(toml_edit::Table::new()));
+        }
+        table = table
+            .get_mut(segment)
+            .and_then(toml_edit::Item::as_table_like_mut)
+            .with_context(|| {
+                format!(
+                    "cannot set '{}': '{segment}' is not a TOML table",
+                    setting.key
+                )
+            })?;
+    }
+    let serialized = toml::to_string(&toml::Table::from_iter([(
+        "value".into(),
+        setting.desired_value.clone(),
+    )]))?;
+    let mut value = serialized
+        .parse::<toml_edit::DocumentMut>()?
+        .remove("value")
+        .context("serialized setting missing")?;
+    if let (Some(old), Some(new)) = (
+        table.get(last).and_then(toml_edit::Item::as_value),
+        value.as_value_mut(),
+    ) {
+        *new.decor_mut() = old.decor().clone();
+    }
+    if let Some(item) = table.get_mut(last) {
+        *item = value;
+    } else {
+        table.insert(last, value);
+    }
+    Ok(())
+}
+
+fn apply_document(settings: &[AgentSettingResource], path: &Path) -> Result<ResourceChange> {
+    let first = settings.first().context("settings document has no keys")?;
+    for setting in settings {
+        anyhow::ensure!(
+            !invalid_key(&setting.key),
+            "invalid settings key '{}'",
+            setting.key
+        );
+        anyhow::ensure!(
+            value_is_finite(&setting.desired_value),
+            "settings value contains NaN or infinity"
+        );
+    }
+    let before = read_baseline(path)?;
+    let contents = std::str::from_utf8(before.as_deref().unwrap_or_default())?;
+    let mut serialized = match first.format {
+        SettingsFormat::Json => {
+            let mut document = if contents.trim().is_empty() {
+                Value::Object(Map::new())
+            } else {
+                Value::Object(serde_json::from_str::<Map<String, Value>>(contents)?)
+            };
+            for setting in settings {
+                setting.set_in_json_document(&mut document)?;
+            }
+            serde_json::to_string_pretty(&document)?
+        }
+        SettingsFormat::Toml => {
+            let mut document = contents.parse::<toml_edit::DocumentMut>()?;
+            for setting in settings {
+                set_editable_toml(&mut document, setting)?;
+            }
+            document.to_string()
+        }
+    };
+    if !serialized.ends_with('\n') {
+        serialized.push('\n');
+    }
+    publish_document(settings, path, before.as_deref(), serialized)?;
+    Ok(ResourceChange::Applied)
+}
+
+fn publish_document(
+    settings: &[AgentSettingResource],
+    path: &Path,
+    before: Option<&[u8]>,
+    serialized: String,
+) -> Result<()> {
+    crate::infra::fs::write_atomic_checked(path, serialized, || {
+        anyhow::ensure!(
+            read_baseline(path)?.as_deref() == before,
+            "settings document {} changed during update; retry",
+            path.display()
+        );
+        for setting in settings {
+            anyhow::ensure!(
+                document_path(&setting.path)? == path,
+                "settings destination changed during update; retry"
+            );
+        }
+        Ok(())
+    })
+}
+
+/// One transaction for all managed keys in a resolved settings document.
+#[derive(Debug)]
+pub struct AgentSettingsDocument {
+    path: PathBuf,
+    settings: Vec<AgentSettingResource>,
+}
+
+impl AgentSettingsDocument {
+    /// Group keys by filesystem destination, rejecting incompatible document formats.
+    ///
+    /// # Errors
+    ///
+    /// Returns resolution errors or conflicting format errors before any writes.
+    pub fn group(settings: Vec<AgentSettingResource>) -> Result<Vec<Self>> {
+        let mut documents = Vec::<Self>::new();
+        for setting in settings {
+            let path = document_path(&setting.path)?;
+            if let Some(document) = documents.iter_mut().find(|document| document.path == path) {
+                anyhow::ensure!(
+                    document
+                        .settings
+                        .iter()
+                        .all(|other| other.key != setting.key
+                            || other.desired_value == setting.desired_value),
+                    "conflicting values for settings key '{}' in {}",
+                    setting.key,
+                    path.display()
+                );
+                anyhow::ensure!(
+                    document
+                        .settings
+                        .iter()
+                        .all(|other| other.format == setting.format),
+                    "incompatible settings formats share {}",
+                    path.display()
+                );
+                document.settings.push(setting);
+            } else {
+                documents.push(Self {
+                    path,
+                    settings: vec![setting],
+                });
+            }
+        }
+        Ok(documents)
+    }
+}
+
+impl Resource for AgentSettingsDocument {
+    fn access_claims(&self) -> Vec<AccessClaim> {
+        vec![AccessClaim::exclusive(
+            "agent-settings-document",
+            self.path.as_os_str(),
+        )]
+    }
+
+    fn description(&self) -> String {
+        format!(
+            "{} ({} managed keys)",
+            self.path.display(),
+            self.settings.len()
+        )
+    }
+
+    fn apply(&self) -> ResourceResult<ResourceChange> {
+        Ok(apply_document(&self.settings, &self.path)?)
+    }
+}
+
+impl IntrinsicState for AgentSettingsDocument {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
+        let contents = read_baseline(&self.path)?.unwrap_or_default();
+        let contents = std::str::from_utf8(&contents).map_err(anyhow::Error::from)?;
+        let first = self
+            .settings
+            .first()
+            .context("settings document has no keys")?;
+        let json = if first.format == SettingsFormat::Json {
+            Some(if contents.trim().is_empty() {
+                Value::Object(Map::new())
+            } else {
+                Value::Object(
+                    serde_json::from_str::<Map<String, Value>>(contents)
+                        .map_err(anyhow::Error::from)?,
+                )
+            })
+        } else {
+            None
+        };
+        let toml = if first.format == SettingsFormat::Toml {
+            Some(if contents.trim().is_empty() {
+                toml::Table::new()
+            } else {
+                toml::from_str(contents).map_err(anyhow::Error::from)?
+            })
+        } else {
+            None
+        };
+        for setting in &self.settings {
+            if invalid_key(&setting.key) || !value_is_finite(&setting.desired_value) {
+                return Ok(ResourceState::Invalid {
+                    reason: "invalid settings key or value".into(),
+                });
+            }
+            let state = if let Some(document) = &json {
+                setting.state_from_json_document(document)
+            } else {
+                setting.state_from_toml_document(toml.as_ref().context("missing TOML document")?)
+            };
+            if state != ResourceState::Correct {
+                return Ok(state);
+            }
+        }
+        Ok(ResourceState::Correct)
     }
 }
 
@@ -310,6 +530,98 @@ mod tests {
         resource.set_in_json_document(&mut document).unwrap();
         assert_eq!(document["footer"]["showQuota"], serde_json::json!(false));
         assert_eq!(document["footer"]["showBranch"], serde_json::json!(true));
+    }
+
+    #[test]
+    fn stale_document_baselines_and_newly_appeared_files_are_not_overwritten() {
+        for before in [None, Some(b"{\"baseline\":true}".to_vec())] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("settings.json");
+            std::fs::write(&path, "{\"external\":\"edit\"}").unwrap();
+            let setting = AgentSettingResource::new(
+                "copilot".into(),
+                "managed".into(),
+                true.into(),
+                SettingsFormat::Json,
+                path.clone(),
+            );
+            let error = publish_document(
+                &[setting],
+                &document_path(&path).unwrap(),
+                before.as_deref(),
+                "{\"managed\":true}".into(),
+            )
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("changed during update"),
+                "{error:#}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                "{\"external\":\"edit\"}"
+            );
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        }
+    }
+
+    #[test]
+    fn toml_edits_preserve_unmanaged_comments_layout_and_inline_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let before = "# My settings\nmodel = 'old' # preferred model\n\n# Integration notes\n[mcp_servers.example]\ncommand = 'tool' # do not change\noptions = { x = 1, y = 2 }\n";
+        std::fs::write(&path, before).unwrap();
+        let setting = AgentSettingResource::new(
+            "codex".into(),
+            "model".into(),
+            "new".into(),
+            SettingsFormat::Toml,
+            path.clone(),
+        );
+        setting.apply().unwrap();
+        let after = std::fs::read_to_string(path).unwrap();
+        assert!(after.contains("# preferred model"));
+        assert!(after.starts_with("# My settings\n"));
+        assert!(after.ends_with("# Integration notes\n[mcp_servers.example]\ncommand = 'tool' # do not change\noptions = { x = 1, y = 2 }\n"));
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn aliased_paths_share_a_single_document_transaction() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let alias = dir.path().join("alias.json");
+        std::fs::write(&path, "{}").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&path, &alias).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&path, &alias).unwrap();
+        let settings = [(path.clone(), "one"), (alias.clone(), "two")].map(|(path, key)| {
+            AgentSettingResource::new(
+                "copilot".into(),
+                key.into(),
+                true.into(),
+                SettingsFormat::Json,
+                path,
+            )
+        });
+        let documents = AgentSettingsDocument::group(settings.into()).unwrap();
+        assert_eq!(documents.len(), 1);
+        documents[0].apply().unwrap();
+        let document: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        assert_eq!(document, serde_json::json!({"one":true,"two":true}));
+        assert!(alias.symlink_metadata().unwrap().is_symlink());
+        let conflicting = [(alias, true), (dir.path().join("settings.json"), false)].map(
+            |(destination, value)| {
+                AgentSettingResource::new(
+                    "copilot".into(),
+                    "one".into(),
+                    value.into(),
+                    SettingsFormat::Json,
+                    destination,
+                )
+            },
+        );
+        assert!(AgentSettingsDocument::group(conflicting.into()).is_err());
     }
 
     #[test]

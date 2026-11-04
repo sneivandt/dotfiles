@@ -1,4 +1,5 @@
 //! Git hook resource.
+use crate::infra::fs::content_hash;
 use std::path::PathBuf;
 
 use crate::engine::{
@@ -31,6 +32,36 @@ impl HookFileResource {
         Ok(crate::infra::fs::canonicalize(&self.source)?
             == crate::infra::fs::canonicalize(&self.target)?)
     }
+
+    fn ownership_path(&self) -> PathBuf {
+        self.target.with_extension("dotfiles-owned")
+    }
+
+    fn owned(&self, contents: &[u8]) -> ResourceResult<bool> {
+        let recorded = match std::fs::read_to_string(self.ownership_path()) {
+            Ok(recorded) => recorded,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(error.into()),
+        };
+        let hash = content_hash(contents);
+        Ok(recorded.lines().any(|line| line == hash))
+    }
+
+    fn target_contents(&self) -> ResourceResult<Option<Vec<u8>>> {
+        let Some(metadata) =
+            crate::infra::fs::symlink_metadata_optional(&self.target, "stat hook")?
+        else {
+            return Ok(None);
+        };
+        if !metadata.is_file() || metadata.is_symlink() {
+            return Err(anyhow::anyhow!(
+                "preserving foreign hook {}; move it aside before installing dotfiles hooks",
+                self.target.display()
+            )
+            .into());
+        }
+        Ok(Some(crate::infra::fs::read_bytes(&self.target)?))
+    }
 }
 
 impl Resource for HookFileResource {
@@ -45,6 +76,17 @@ impl Resource for HookFileResource {
         if self.targets_source()? {
             return Ok(ResourceChange::AlreadyCorrect);
         }
+        let source = crate::infra::fs::read_bytes(&self.source)?;
+        let before = self.target_contents()?;
+        if let Some(contents) = &before
+            && *contents != source
+            && !self.owned(contents)?
+        {
+            return Err(anyhow::anyhow!(
+                "preserving foreign or modified hook {}; back it up and move it aside before installing",
+                self.target.display()
+            ).into());
+        }
         crate::infra::fs::ensure_parent_dir(&self.target)?;
         let parent = self
             .target
@@ -53,24 +95,68 @@ impl Resource for HookFileResource {
         let (mut staged, file) =
             crate::infra::fs::TempGuard::create_unique_file(parent, ".dotfiles-hook", "tmp")?;
         drop(file);
-        crate::infra::fs::copy_file(&self.source, staged.path())?;
+        std::fs::write(staged.path(), &source)?;
 
         #[cfg(unix)]
         crate::infra::fs::set_executable(staged.path())?;
 
+        if self.target_contents()? != before {
+            return Err(anyhow::anyhow!(
+                "hook {} changed during installation; retry",
+                self.target.display()
+            )
+            .into());
+        }
+        // Record both possible publication outcomes so an interrupted update remains owned.
+        let mut ownership = format!("{}\n", content_hash(&source));
+        if let Some(before) = &before {
+            ownership.push_str(&content_hash(before));
+            ownership.push('\n');
+        }
+        crate::infra::fs::write_atomic(&self.ownership_path(), ownership)?;
         crate::infra::fs::rename_into_place(staged.path(), &self.target)?;
         staged.persist();
+        crate::infra::fs::write_atomic(
+            &self.ownership_path(),
+            format!("{}\n", content_hash(source)),
+        )?;
 
         Ok(ResourceChange::Applied)
     }
 }
 
 impl RemovableResource for HookFileResource {
+    fn removal_state(&self) -> ResourceResult<ResourceState> {
+        if self.targets_source()? {
+            return Ok(ResourceState::Missing);
+        }
+        let Some(contents) = self.target_contents()? else {
+            return Ok(ResourceState::Missing);
+        };
+        if self.owned(&contents)?
+            || (self.source.try_exists()?
+                && crate::infra::fs::read_bytes(&self.source)? == contents)
+        {
+            Ok(ResourceState::Correct)
+        } else {
+            Ok(ResourceState::Incorrect {
+                current: "foreign or modified hook".into(),
+            })
+        }
+    }
+
     fn remove(&self) -> ResourceResult<ResourceChange> {
         if self.targets_source()? {
             return Ok(ResourceChange::AlreadyCorrect);
         }
+        if self.removal_state()? != ResourceState::Correct {
+            return Ok(ResourceChange::AlreadyCorrect);
+        }
         if crate::infra::fs::remove_file_if_present(&self.target, "stat hook")? {
+            crate::infra::fs::remove_file_if_present(
+                &self.ownership_path(),
+                "stat hook ownership",
+            )?;
             Ok(ResourceChange::Applied)
         } else {
             Ok(ResourceChange::AlreadyCorrect)
@@ -86,13 +172,22 @@ impl IntrinsicState for HookFileResource {
 
         // Detect broken symlinks at the target location
         match crate::infra::fs::symlink_metadata_optional(&self.target, "stat target")? {
-            Some(_) if !self.target.try_exists()? => {
-                return Ok(ResourceState::Incorrect {
-                    current: "broken symlink".to_string(),
+            Some(metadata) if metadata.is_symlink() && !self.targets_source()? => {
+                return Ok(ResourceState::Invalid {
+                    reason: "foreign hook symlink; move it aside before installing dotfiles hooks"
+                        .into(),
                 });
             }
             None => return Ok(ResourceState::Missing),
             Some(_) => {}
+        }
+        let src_content = crate::infra::fs::read_bytes(&self.source)?;
+        let dst_content = crate::infra::fs::read_bytes(&self.target)?;
+        let owned = self.owned(&dst_content)?;
+        if src_content != dst_content && !owned {
+            return Ok(ResourceState::Invalid {
+                reason: "foreign or modified hook; back it up and move it aside before installing dotfiles hooks".into(),
+            });
         }
 
         // On Unix, verify the installed hook has the executable bit set
@@ -112,14 +207,16 @@ impl IntrinsicState for HookFileResource {
         }
 
         // Compare file contents
-        let src_content = crate::infra::fs::read_bytes(&self.source)?;
-        let dst_content = crate::infra::fs::read_bytes(&self.target)?;
-
-        if src_content == dst_content {
+        if src_content == dst_content && (owned || self.targets_source()?) {
             Ok(ResourceState::Correct)
         } else {
             Ok(ResourceState::Incorrect {
-                current: "content differs".to_string(),
+                current: if owned {
+                    "content differs"
+                } else {
+                    "ownership not recorded"
+                }
+                .to_string(),
             })
         }
     }
@@ -199,6 +296,7 @@ mod tests {
             std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let resource = HookFileResource::new(src, dst);
+        resource.apply().unwrap();
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
@@ -233,11 +331,14 @@ mod tests {
             std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let resource = HookFileResource::new(src, dst);
-        assert_eq!(
+        assert!(matches!(
             resource.current_state().unwrap(),
-            ResourceState::Incorrect {
-                current: "content differs".into(),
-            }
+            ResourceState::Invalid { .. }
+        ));
+        assert!(resource.apply().is_err());
+        assert_eq!(
+            std::fs::read_to_string(&resource.target).unwrap(),
+            "old content"
         );
     }
 
@@ -277,15 +378,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("source");
         let target = dir.path().join("pre-commit");
+        std::fs::write(&source, "old hook").unwrap();
+        let resource = HookFileResource::new(source.clone(), target.clone());
+        resource.apply().unwrap();
         std::fs::write(&source, "new hook").unwrap();
-        std::fs::write(&target, "old hook").unwrap();
-        let resource = HookFileResource::new(source, target.clone());
 
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
 
         assert_eq!(std::fs::read_to_string(target).unwrap(), "new hook");
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 3);
     }
 
     #[test]
@@ -309,7 +411,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn apply_replaces_hook_symlink_without_writing_through_it() {
+    fn apply_preserves_foreign_hook_symlink_and_its_referent() {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("source");
         let target = dir.path().join("pre-commit");
@@ -319,20 +421,23 @@ mod tests {
         std::os::unix::fs::symlink(&unrelated, &target).unwrap();
         let resource = HookFileResource::new(source, target.clone());
 
-        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
-
-        assert!(!target.symlink_metadata().unwrap().is_symlink());
-        assert_eq!(std::fs::read_to_string(target).unwrap(), "new hook");
+        assert!(resource.apply().is_err());
+        assert!(target.symlink_metadata().unwrap().is_symlink());
         assert_eq!(std::fs::read_to_string(unrelated).unwrap(), "user content");
-        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Invalid { .. }
+        ));
     }
 
     #[test]
     fn remove_deletes_file() {
         let dir = tempfile::tempdir().unwrap();
         let dst = dir.path().join("target");
-        std::fs::write(&dst, "content").unwrap();
-        let resource = HookFileResource::new(dir.path().join("src"), dst.clone());
+        let source = dir.path().join("src");
+        std::fs::write(&source, "content").unwrap();
+        let resource = HookFileResource::new(source, dst.clone());
+        resource.apply().unwrap();
         let result = resource.remove().unwrap();
         assert_eq!(result, ResourceChange::Applied);
         assert!(!dst.exists());
@@ -389,7 +494,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn remove_deletes_broken_symlink() {
+    fn remove_preserves_foreign_broken_symlink() {
         use std::os::unix::fs::symlink;
 
         let dir = tempfile::tempdir().unwrap();
@@ -401,9 +506,38 @@ mod tests {
         assert!(!dst.exists());
         assert!(dst.symlink_metadata().is_ok());
 
-        let result = resource.remove().unwrap();
+        assert!(resource.remove().is_err());
+        assert!(dst.symlink_metadata().is_ok());
+    }
 
-        assert_eq!(result, ResourceChange::Applied);
-        assert!(dst.symlink_metadata().is_err());
+    #[test]
+    fn edited_owned_hook_is_preserved_by_update_and_removal() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let target = dir.path().join("pre-commit");
+        std::fs::write(&source, "managed").unwrap();
+        let resource = HookFileResource::new(source, target.clone());
+        resource.apply().unwrap();
+        std::fs::write(&target, "user modified").unwrap();
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Invalid { .. }
+        ));
+        assert!(resource.apply().is_err());
+        assert_eq!(resource.remove().unwrap(), ResourceChange::AlreadyCorrect);
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "user modified");
+    }
+
+    #[test]
+    fn removal_recognizes_owned_hook_after_source_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        std::fs::write(&source, "version one").unwrap();
+        let resource = HookFileResource::new(source.clone(), dir.path().join("pre-commit"));
+        resource.apply().unwrap();
+        std::fs::write(source, "version two").unwrap();
+        assert_eq!(resource.removal_state().unwrap(), ResourceState::Correct);
+        assert_eq!(resource.remove().unwrap(), ResourceChange::Applied);
+        assert!(!resource.ownership_path().exists());
     }
 }

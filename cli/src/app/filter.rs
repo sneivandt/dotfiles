@@ -317,7 +317,7 @@ mod tests {
             &["symlinks".to_string()],
             &["symlinks".to_string()],
             false,
-            &Logger::new("test"),
+            &Logger::test(),
         )
         .err()
         .expect("contradictory filters should fail");
@@ -398,7 +398,7 @@ mod tests {
             &["dependent".to_string()],
             &[],
             false,
-            &Logger::new("test"),
+            &Logger::test(),
         )
         .expect("valid filter");
         assert_eq!(
@@ -430,7 +430,7 @@ mod tests {
             &["ordering-dependent".to_string()],
             &[],
             false,
-            &Logger::new("test"),
+            &Logger::test(),
         )
         .expect("valid filter");
 
@@ -484,7 +484,7 @@ mod tests {
                 &["packages".to_string()],
                 &skip,
                 with_deps,
-                &Logger::new("test"),
+                &Logger::test(),
             )
             .expect("valid filter");
             assert_eq!(

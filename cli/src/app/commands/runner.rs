@@ -481,7 +481,7 @@ mod root_tests {
             .unwrap()
             .set_str("dotfiles.profile", "base")
             .unwrap();
-        let log = Logger::new("test");
+        let log = Logger::test();
 
         for (flags, env_profile, expected) in [
             (vec![], None, Some("base")),

@@ -8,6 +8,8 @@
 //!   shared staging and rename mechanics for resources that replace an
 //!   existing path in place.
 use anyhow::{Context as _, Result};
+use base64::Engine as _;
+use sha2::{Digest as _, Sha256};
 use std::path::{Path, PathBuf};
 
 mod copy;
@@ -16,8 +18,13 @@ mod temp;
 
 pub(crate) use copy::open_regular_source;
 pub use copy::{copy_dir_recursive, reject_destination_link};
-pub use place::{rename_into_place, write_atomic};
+pub use place::{rename_into_place, write_atomic, write_atomic_checked};
 pub use temp::TempGuard;
+
+/// Fingerprint owned file bytes without storing their contents in a ledger.
+pub(crate) fn content_hash(bytes: impl AsRef<[u8]>) -> String {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(bytes.as_ref()))
+}
 
 /// Ensure the parent directory of `path` exists, creating it (and any
 /// ancestors) if necessary.
@@ -80,16 +87,6 @@ pub fn read_bytes(path: &Path) -> Result<Vec<u8>> {
 /// Returns an error if the file cannot be read as a string.
 pub fn read_string(path: &Path) -> Result<String> {
     std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))
-}
-
-/// Copy a file with consistent path context.
-///
-/// # Errors
-///
-/// Returns an error if the source cannot be copied to the destination.
-pub fn copy_file(source: &Path, target: &Path) -> Result<u64> {
-    std::fs::copy(source, target)
-        .with_context(|| format!("copy {} to {}", source.display(), target.display()))
 }
 
 /// Remove a file with consistent path context.

@@ -20,8 +20,19 @@ fn discover_hooks(ctx: &Context) -> Result<Vec<HookFileResource>> {
     let hooks_src = ctx.hooks_dir().to_path_buf();
     let repository =
         git2::Repository::open(ctx.root()).context("opening repository for Git hooks")?;
-    let hooks_dst = match repository.config()?.get_path("core.hooksPath") {
-        Ok(path) => ctx.root().join(path),
+    let config = repository.config()?;
+    let hooks_dst = match config.get_path("core.hooksPath") {
+        Ok(path) => {
+            let entry = config.get_entry("core.hooksPath")?;
+            anyhow::ensure!(
+                matches!(
+                    entry.level(),
+                    git2::ConfigLevel::Local | git2::ConfigLevel::Worktree
+                ),
+                "core.hooksPath is inherited from shared Git configuration; set a repository-local hooksPath before installing dotfiles hooks"
+            );
+            ctx.root().join(path)
+        }
         Err(error) if error.code() == git2::ErrorCode::NotFound => {
             repository.commondir().join("hooks")
         }
@@ -108,6 +119,19 @@ mod tests {
     use super::*;
     use crate::test_helpers::make_linux_context;
 
+    fn init_repo(root: &std::path::Path) -> git2::Repository {
+        let repository = git2::Repository::init(root).unwrap();
+        repository
+            .config()
+            .unwrap()
+            .set_str(
+                "core.hooksPath",
+                repository.path().join("hooks").to_str().unwrap(),
+            )
+            .unwrap();
+        repository
+    }
+
     fn tasks() -> [&'static dyn Task; 2] {
         [&InstallGitHooks, &UninstallGitHooks]
     }
@@ -140,7 +164,7 @@ mod tests {
     #[test]
     fn discovery_filters_files_and_resolves_the_git_destination() {
         let dir = tempfile::tempdir().unwrap();
-        git2::Repository::init(dir.path()).unwrap();
+        init_repo(dir.path());
         let hooks = dir.path().join("hooks");
         std::fs::create_dir(&hooks).unwrap();
         for name in ["pre-commit", "commit-msg", "hooks.ini"] {
@@ -168,7 +192,7 @@ mod tests {
     #[test]
     fn discovery_propagates_directory_read_errors_for_both_actions() {
         let dir = tempfile::tempdir().unwrap();
-        git2::Repository::init(dir.path()).unwrap();
+        init_repo(dir.path());
         std::fs::write(dir.path().join("hooks"), "not a directory").unwrap();
         let ctx = make_linux_context(dir.path().to_path_buf(), None);
         for task in tasks() {
@@ -188,7 +212,7 @@ mod tests {
 
         // Create .git/hooks/ dir
         let git_hooks_dir = dir.path().join(".git").join("hooks");
-        git2::Repository::init(dir.path()).unwrap();
+        init_repo(dir.path());
 
         let ctx = make_linux_context(dir.path().to_path_buf(), None);
         let task = InstallGitHooks::new();
@@ -215,7 +239,7 @@ mod tests {
 
         // Create .git/hooks/ with the hook already installed (executable, as apply() would)
         let git_hooks_dir = dir.path().join(".git").join("hooks");
-        git2::Repository::init(dir.path()).unwrap();
+        init_repo(dir.path());
         std::fs::write(git_hooks_dir.join("pre-commit"), "#!/bin/sh\nexit 0").unwrap();
         #[cfg(unix)]
         {
@@ -245,7 +269,7 @@ mod tests {
     fn linked_worktree_hooks_use_git_directory_and_custom_hooks_path() {
         for custom in [false, true] {
             let dir = tempfile::tempdir().unwrap();
-            let repository = git2::Repository::init(dir.path()).unwrap();
+            let repository = init_repo(dir.path());
             std::fs::create_dir(dir.path().join("hooks")).unwrap();
             std::fs::write(dir.path().join("hooks/pre-commit"), "#!/bin/sh\nexit 0\n").unwrap();
             let mut index = repository.index().unwrap();

@@ -29,7 +29,18 @@ fi
 if [ -f "$2" ]; then
     cp --attributes-only --preserve=mode,ownership -- "$2" "$replacement"
 fi
-mv -fT -- "$replacement" "$2"
+if [ -n "$3" ]; then
+    expected=$(sha256sum < "$3")
+    if [ -L "$2" ] || [ ! -f "$2" ] ||
+        ! actual=$(sha256sum < "$2") || [ "$actual" != "$expected" ]; then
+        printf 'System file changed or could not be verified while preparing update: %s; retry the update\n' "$2" >&2
+        exit 1
+    fi
+    mv -fT -- "$replacement" "$2"
+else
+    # Publishing a new file must also fail if the target appears after discovery.
+    ln -T -- "$replacement" "$2"
+fi
 "#;
 
 /// Converges one system file from a tracked source fragment.
@@ -126,6 +137,36 @@ impl SystemFileResource {
             MergeStrategy::Pam => Ok(merge_pam(current, fragment)? == current),
         }
     }
+
+    fn state_for(&self, current: &CurrentFile, fragment: &str) -> ResourceState {
+        let content = match current {
+            CurrentFile::Missing if self.entry.merge == MergeStrategy::Pam => {
+                return ResourceState::Invalid {
+                    reason: format!(
+                        "required PAM service file {} is missing",
+                        self.entry.target.display()
+                    ),
+                };
+            }
+            CurrentFile::Missing => "",
+            CurrentFile::NonRegular => {
+                return ResourceState::Invalid {
+                    reason: format!("{} is not a regular file", self.entry.target.display()),
+                };
+            }
+            CurrentFile::Present(content) => content,
+        };
+        match self.content_is_correct(content, fragment) {
+            Err(error) => ResourceState::Invalid {
+                reason: error.to_string(),
+            },
+            Ok(_) if matches!(current, CurrentFile::Missing) => ResourceState::Missing,
+            Ok(true) => ResourceState::Correct,
+            Ok(false) => ResourceState::Incorrect {
+                current: "managed content differs".to_string(),
+            },
+        }
+    }
 }
 
 impl Resource for SystemFileResource {
@@ -134,7 +175,9 @@ impl Resource for SystemFileResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        match self.current_state()? {
+        let fragment = self.fragment()?;
+        let current = self.current_content()?;
+        match self.state_for(&current, &fragment) {
             ResourceState::Correct => return Ok(ResourceChange::AlreadyCorrect),
             ResourceState::Invalid { reason } => {
                 return Err(crate::engine::resource::ResourceError::conflicting_state(
@@ -147,17 +190,28 @@ impl Resource for SystemFileResource {
             | ResourceState::Incorrect { .. }
             | ResourceState::Unknown { .. } => {}
         }
-        let fragment = self.fragment()?;
-        let current = match self.current_content()? {
-            CurrentFile::Missing => String::new(),
-            CurrentFile::Present(text) => text,
+        let current = match current {
+            CurrentFile::Missing => None,
+            CurrentFile::Present(text) => Some(text),
             CurrentFile::NonRegular => {
                 return Err(
                     anyhow!("{} is not a regular file", self.entry.target.display()).into(),
                 );
             }
         };
-        let desired = self.desired_content(&current, &fragment)?;
+        let desired = self.desired_content(current.as_deref().unwrap_or_default(), &fragment)?;
+        let expected = current
+            .map(|content| -> anyhow::Result<_> {
+                let (guard, mut file) = crate::infra::fs::TempGuard::create_unique_file_with_mode(
+                    &self.temp_dir,
+                    ".dotfiles-system-file-original",
+                    "tmp",
+                    0o600,
+                )?;
+                file.write_all(content.as_bytes())?;
+                Ok(guard)
+            })
+            .transpose()?;
         let (temporary, mut file) = crate::infra::fs::TempGuard::create_unique_file_with_mode(
             &self.temp_dir,
             ".dotfiles-system-file",
@@ -172,7 +226,11 @@ impl Resource for SystemFileResource {
                 CommandSpec::new("sudo")
                     .args(&["sh", "-c", ATOMIC_INSTALL, "dotfiles-system-file"])
                     .arg(temporary.path())
-                    .arg(&self.entry.target),
+                    .arg(&self.entry.target)
+                    .arg(expected.as_ref().map_or_else(
+                        || std::path::Path::new(""),
+                        crate::infra::fs::TempGuard::path,
+                    )),
             )
             .with_context(|| format!("installing {}", self.entry.target.display()))?;
         Ok(ResourceChange::Applied)
@@ -182,45 +240,7 @@ impl Resource for SystemFileResource {
 impl IntrinsicState for SystemFileResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
         let fragment = self.fragment()?;
-        let current = match self.current_content()? {
-            CurrentFile::Missing => {
-                return Ok(if self.entry.merge == MergeStrategy::Pam {
-                    ResourceState::Invalid {
-                        reason: format!(
-                            "required PAM service file {} is missing",
-                            self.entry.target.display()
-                        ),
-                    }
-                } else if let Err(error) = self.content_is_correct("", &fragment) {
-                    ResourceState::Invalid {
-                        reason: error.to_string(),
-                    }
-                } else {
-                    ResourceState::Missing
-                });
-            }
-            CurrentFile::NonRegular => {
-                return Ok(ResourceState::Invalid {
-                    reason: format!("{} is not a regular file", self.entry.target.display()),
-                });
-            }
-            CurrentFile::Present(content) => content,
-        };
-        let content_matches = match self.content_is_correct(&current, &fragment) {
-            Ok(matches) => matches,
-            Err(error) => {
-                return Ok(ResourceState::Invalid {
-                    reason: error.to_string(),
-                });
-            }
-        };
-        Ok(if content_matches {
-            ResourceState::Correct
-        } else {
-            ResourceState::Incorrect {
-                current: "managed content differs".to_string(),
-            }
-        })
+        Ok(self.state_for(&self.current_content()?, &fragment))
     }
 }
 
@@ -1195,31 +1215,8 @@ mod tests {
         assert_eq!(fs::read_to_string(target).unwrap(), "not = [valid\n");
     }
 
-    #[test]
     #[cfg(target_os = "linux")]
-    fn atomic_install_preserves_destination_on_partial_copy_or_rename_failure() {
-        use std::os::unix::fs::PermissionsExt as _;
-
-        for existing in [false, true] {
-            for failure in ["copy", "rename", "none"] {
-                let root = tempfile::tempdir().unwrap();
-                let tools = root.path().join("tools");
-                fs::create_dir(&tools).unwrap();
-                // Quotes and shell syntax must be passed as data, even through sudo sh.
-                let parent = root.path().join("parent ' $(false)");
-                let target = parent.join("target ' $(false).toml");
-                let source = root.path().join("source ' $(false).toml");
-                fs::write(&source, "replacement content\n").unwrap();
-                if existing {
-                    fs::create_dir(&parent).unwrap();
-                    fs::write(&target, "original content\n").unwrap();
-                    fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
-                }
-                let original = fs::metadata(&target).ok();
-                let install = tools.join("install");
-                fs::write(
-                    &install,
-                    r#"#!/bin/sh
+    const INSTALL_FIXTURE: &str = r#"#!/bin/sh
 set -eu
 test "$1" = -D && test "$2" = --owner=root
 test "$3" = --group=root && test "$4" = --mode=0644
@@ -1230,26 +1227,56 @@ if [ "$FAILURE" = copy ]; then
     printf 'partial' > "$2"
     exit 1
 fi
+if [ "$FAILURE" = conflict ]; then
+    printf 'intervening edit\n' > "$TARGET"
+fi
 # Exercise the real copy without requiring root in the fixture.
 exec "$REAL_INSTALL" --mode=0644 -- "$1" "$2"
-"#,
-                )
-                .unwrap();
-                let rename = tools.join("mv");
-                fs::write(
-                    &rename,
-                    r#"#!/bin/sh
+"#;
+
+    #[cfg(target_os = "linux")]
+    const PUBLISH_FIXTURE: &str = r#"#!/bin/sh
 set -eu
-if [ "$FAILURE" = rename ]; then
+if [ "$FAILURE" = publish ]; then
     exit 1
 fi
-exec "$REAL_MV" "$@"
-"#,
-                )
-                .unwrap();
-                for tool in [&install, &rename] {
-                    fs::set_permissions(tool, fs::Permissions::from_mode(0o755)).unwrap();
+case "${0##*/}" in
+    mv) exec "$REAL_MV" "$@" ;;
+    ln) exec "$REAL_LN" "$@" ;;
+esac
+"#;
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn atomic_install_preserves_destination_on_failures_and_intervening_edits() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        for existing in [false, true] {
+            for failure in ["copy", "publish", "conflict", "none"] {
+                let root = tempfile::tempdir().unwrap();
+                let tools = root.path().join("tools");
+                fs::create_dir(&tools).unwrap();
+                // Quotes and shell syntax must be passed as data, even through sudo sh.
+                let parent = root.path().join("parent ' $(false)");
+                let target = parent.join("target ' $(false).toml");
+                let source = root.path().join("source ' $(false).toml");
+                let expected = root.path().join("original ' $(false).toml");
+                fs::write(&source, "replacement content\n").unwrap();
+                if existing {
+                    fs::create_dir(&parent).unwrap();
+                    fs::write(&target, "original content\n").unwrap();
+                    fs::copy(&target, &expected).unwrap();
+                    fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
                 }
+                let original = fs::metadata(&target).ok();
+                let install = tools.join("install");
+                fs::write(&install, INSTALL_FIXTURE).unwrap();
+                for tool in ["mv", "ln"] {
+                    let publish = tools.join(tool);
+                    fs::write(&publish, PUBLISH_FIXTURE).unwrap();
+                    fs::set_permissions(publish, fs::Permissions::from_mode(0o755)).unwrap();
+                }
+                fs::set_permissions(install, fs::Permissions::from_mode(0o755)).unwrap();
                 let path = std::env::join_paths(
                     std::iter::once(tools)
                         .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap())),
@@ -1259,10 +1286,17 @@ exec "$REAL_MV" "$@"
                     .args(["-c", ATOMIC_INSTALL, "dotfiles-system-file"])
                     .arg(&source)
                     .arg(&target)
+                    .arg(if existing {
+                        expected.as_path()
+                    } else {
+                        Path::new("")
+                    })
                     .env("PATH", path)
                     .env("FAILURE", failure)
+                    .env("TARGET", &target)
                     .env("REAL_INSTALL", which::which("install").unwrap())
                     .env("REAL_MV", which::which("mv").unwrap())
+                    .env("REAL_LN", which::which("ln").unwrap())
                     .output()
                     .unwrap();
 
@@ -1277,6 +1311,13 @@ exec "$REAL_MV" "$@"
                         fs::metadata(&target).unwrap().permissions().mode() & 0o777,
                         if existing { 0o600 } else { 0o644 }
                     );
+                } else if failure == "conflict" {
+                    assert_eq!(fs::read(&target).unwrap(), b"intervening edit\n");
+                    if existing {
+                        assert!(
+                            String::from_utf8_lossy(&result.stderr).contains("retry the update")
+                        );
+                    }
                 } else if let Some(original) = original {
                     assert_eq!(fs::read(&target).unwrap(), b"original content\n");
                     let after = fs::metadata(&target).unwrap();
@@ -1331,12 +1372,18 @@ exec "$REAL_MV" "$@"
                 .in_sequence(&mut sequence)
                 .returning(move |spec| {
                     assert_eq!(spec.program(), "sudo");
-                    assert_eq!(spec.arguments().len(), 6);
+                    assert_eq!(spec.arguments().len(), 7);
                     assert_eq!(
                         &spec.arguments()[..4],
                         ["sh", "-c", ATOMIC_INSTALL, "dotfiles-system-file"]
                     );
                     assert_eq!(spec.arguments()[5], expected_target.as_os_str());
+                    let original = Path::new(&spec.arguments()[6]);
+                    assert_eq!(original.parent(), Some(expected_staging.as_path()));
+                    assert_eq!(
+                        fs::read_to_string(original).unwrap(),
+                        "unmanaged = 'keep'\n"
+                    );
                     assert_eq!(spec.working_dir(), None);
                     assert!(spec.is_checked());
                     let staged = Path::new(&spec.arguments()[4]);

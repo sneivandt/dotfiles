@@ -1,57 +1,69 @@
 use super::Symlink;
 use anyhow::{Result, bail};
-use std::path::{Component, Path};
+use std::ffi::OsString;
+use std::path::{Component, Path, PathBuf};
 
 pub(super) fn validate_unique_targets(symlinks: &[Symlink]) -> Result<()> {
-    let mut targets: Vec<(String, Vec<String>, String)> = Vec::new();
-    for symlink in symlinks {
-        let target = target_key(symlink);
-        let segments = target_identity(symlink);
+    validate_target_paths(
+        symlinks
+            .iter()
+            .map(|symlink| (target_key(symlink).into(), symlink.source.clone())),
+    )
+}
+
+pub(crate) fn validate_target_paths(
+    paths: impl IntoIterator<Item = (PathBuf, String)>,
+) -> Result<()> {
+    let mut targets = Vec::<(PathBuf, Vec<OsString>, String)>::new();
+    for (target, source) in paths {
+        let segments = path_identity(&target);
         for (existing_target, existing_segments, existing_source) in &targets {
+            let existing_target = existing_target.display();
+            let target = target.display();
             if existing_segments == &segments {
                 bail!(
-                    "symlink target collision for '{target}': '{existing_source}' and '{}' both map to the same target",
-                    symlink.source
+                    "symlink target collision for '{target}': '{existing_source}' and '{source}' both map to the same target",
                 );
             }
 
             if is_ancestor(existing_segments, &segments) {
                 bail!(
-                    "symlink target overlap: '{existing_source}' maps to parent target '{existing_target}', which contains target '{target}' for '{}'",
-                    symlink.source
+                    "symlink target overlap: '{existing_source}' maps to parent target '{existing_target}', which contains target '{target}' for '{source}'",
                 );
             }
             if is_ancestor(&segments, existing_segments) {
                 bail!(
-                    "symlink target overlap: '{}' maps to parent target '{target}', which contains target '{existing_target}' for '{existing_source}'",
-                    symlink.source
+                    "symlink target overlap: '{source}' maps to parent target '{target}', which contains target '{existing_target}' for '{existing_source}'",
                 );
             }
         }
-        targets.push((target, segments, symlink.source.clone()));
+        targets.push((target, segments, source));
     }
     Ok(())
 }
 
-pub(crate) fn target_identity(symlink: &Symlink) -> Vec<String> {
-    Path::new(&target_key(symlink))
-        .components()
+pub(crate) fn target_identity(symlink: &Symlink) -> Vec<OsString> {
+    path_identity(Path::new(&target_key(symlink)))
+}
+
+fn path_identity(path: &Path) -> Vec<OsString> {
+    path.components()
         .filter(|component| !matches!(component, Component::CurDir))
         .map(|component| {
-            let segment = component.as_os_str().to_string_lossy();
+            let segment = component.as_os_str();
             #[cfg(windows)]
             {
-                segment.to_lowercase()
+                segment.to_string_lossy().to_lowercase().into()
             }
             #[cfg(not(windows))]
             {
-                segment.into_owned()
+                segment.to_os_string()
             }
         })
         .collect()
 }
 
-fn is_ancestor(parent: &[String], child: &[String]) -> bool {
+fn is_ancestor(parent: &[OsString], child: &[OsString]) -> bool {
     parent.len() < child.len() && child.starts_with(parent)
 }
 

@@ -82,6 +82,13 @@ fn assert_link(target: &Path, source: &Path) {
     );
 }
 
+fn directory_link(source: &Path, target: &Path) {
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_dir(source, target).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(source, target).unwrap();
+}
+
 fn assert_symlinks_installed(fixture: &Fixture) {
     for (target, source) in [
         (
@@ -307,6 +314,78 @@ fn symlink_conflict_preserves_unrelated_progress_and_retry_converges() {
         3,
         || assert_symlinks_installed(&fixture),
     );
+}
+
+#[test]
+fn resolved_symlink_collisions_and_overlaps_fail_before_any_write() {
+    let fixture = symlink_fixture();
+    let real = fixture.home.join("real");
+    std::fs::create_dir(&real).unwrap();
+    directory_link(&real, &fixture.home.join("alias"));
+    for (other, reason) in [("item", "collision"), ("item/child", "overlap")] {
+        fixture.config(
+            "symlinks.toml",
+            &format!(
+                "[base]\nsymlinks = [{{ source = 'folder', target = 'real/item' }}, \
+                 {{ source = 'first', target = 'alias/{other}' }}]\n"
+            ),
+        );
+        let before = fixture.snapshot();
+        for dry_run in [true, false] {
+            let result = fixture.run(dry_run, true, |store| {
+                Box::new(InstallSymlinks::new(store.symlinks))
+            });
+            result.assert_failure(&[reason, "~/real/item", &format!("~/alias/{other}")]);
+            assert_eq!(fixture.snapshot(), before);
+        }
+    }
+}
+
+#[test]
+fn materialization_preserves_internal_relative_links_and_refuses_escaping_links() {
+    let fixture = symlink_fixture();
+    fixture.config("symlinks.toml", "[base]\nsymlinks = ['folder']\n");
+    let source = fixture.repo.join("symlinks/folder");
+    let target = fixture.home.join(".folder");
+    let link = source.join("settings");
+    directory_link(&source, &target);
+
+    for (referent, expected, escapes) in [
+        ("../first", "first source\n", true),
+        ("nested", "nested source\n", false),
+    ] {
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(referent, &link).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(referent, &link).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(target.join("settings")).unwrap(),
+            expected
+        );
+        let run = fixture.run(false, false, |store| {
+            Box::new(UninstallSymlinks::new(store.symlinks))
+        });
+        if escapes {
+            run.assert_failure(&["escapes the copied directory"]);
+            assert_link(&target, &source);
+            assert_eq!(std::fs::read_dir(&fixture.home).unwrap().count(), 1);
+        } else {
+            run.assert_batch(1, 0);
+            assert!(!target.symlink_metadata().unwrap().is_symlink());
+            assert_eq!(
+                std::fs::read_link(target.join("settings")).unwrap(),
+                Path::new(referent)
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(target.join("settings")).unwrap(),
+            expected
+        );
+        if escapes {
+            std::fs::remove_file(&link).unwrap();
+        }
+    }
 }
 
 fn hook_fixture() -> Fixture {

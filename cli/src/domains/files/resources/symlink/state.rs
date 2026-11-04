@@ -7,20 +7,8 @@ pub(super) fn current_state(
     resource: &SymlinkResource,
     target: &Path,
 ) -> ResourceResult<ResourceState> {
-    if let Some(reason) = &resource.validation_error {
-        return Ok(ResourceState::Invalid {
-            reason: reason.clone(),
-        });
-    }
-
-    if let Some(reason) = crate::infra::fs::missing_source_reason(&resource.source)? {
+    if let Some(reason) = invalid_source_reason(resource, target)? {
         return Ok(ResourceState::Invalid { reason });
-    }
-
-    if same_entry(&resource.source, target) {
-        return Ok(ResourceState::Invalid {
-            reason: "target aliases the source entry through its parent directory".to_string(),
-        });
     }
 
     std::fs::read_link(target).map_or_else(
@@ -50,6 +38,20 @@ pub(super) fn current_state(
             }
         },
     )
+}
+
+pub(super) fn invalid_source_reason(
+    resource: &SymlinkResource,
+    target: &Path,
+) -> ResourceResult<Option<String>> {
+    if let Some(reason) = &resource.validation_error {
+        return Ok(Some(reason.clone()));
+    }
+    if let Some(reason) = crate::infra::fs::missing_source_reason(&resource.source)? {
+        return Ok(Some(reason));
+    }
+    Ok(same_entry(&resource.source, target)
+        .then(|| "target aliases the source entry through its parent directory".to_string()))
 }
 
 pub(super) fn link_points_to_source(target: &Path, existing: &Path, source: &Path) -> bool {

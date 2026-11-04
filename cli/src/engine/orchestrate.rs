@@ -200,7 +200,7 @@ pub fn process_resources_remove<R: IntrinsicState + RemovableResource + Send>(
         !ctx.parallel(),
         Resource::access_claims,
         |resource| {
-            let current = resource.current_state().with_context(|| {
+            let current = resource.removal_state().with_context(|| {
                 format!("failed to check {} for removal", resource.description())
             })?;
             apply::remove_single(ctx, &resource, &current, verb)

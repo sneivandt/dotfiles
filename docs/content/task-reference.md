@@ -203,6 +203,9 @@ Overlay entries retain their origin.
 Existing files, directories, and unrelated links are left in place and
 reported as conflicts. Back up and move them aside before applying.
 
+Removal leaves a managed directory link in place if copying it would relocate
+a relative link that points outside the directory being copied.
+
 Linked sources stay live. On Windows, the task independently assesses
 elevation and rejects Git symlink placeholders checked out as ordinary files.
 See [Symlinks](configuration-reference.md#symlinks) for path and glob rules.

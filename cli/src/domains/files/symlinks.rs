@@ -3,11 +3,11 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::domains::files::config::symlinks::{Symlink, default_target};
+use crate::domains::files::config::symlinks::{Symlink, default_target, validate_target_paths};
 use crate::domains::files::resources::symlink::SymlinkResource;
 use crate::engine::{
-    Context, IntrinsicState as _, ProcessOpts, ResourceState, Task, TaskMeta, TaskResult,
-    process_resources_remove, run_resource_task, task_metadata,
+    Context, IntrinsicState as _, ProcessOpts, Resource as _, ResourceState, Task, TaskMeta,
+    TaskResult, process_resources_remove, run_resource_task, task_metadata,
 };
 
 /// Build a single [`SymlinkResource`] from a config entry.
@@ -51,6 +51,16 @@ pub(crate) fn build_resources(ctx: &Context, symlinks: &[Symlink]) -> Vec<Symlin
         .collect()
 }
 
+fn validate_resolved_targets(resources: &[SymlinkResource]) -> Result<()> {
+    validate_target_paths(resources.iter().filter_map(|resource| {
+        // Resource discovery reports individual paths that cannot be resolved.
+        resource
+            .checked_target()
+            .ok()
+            .map(|path| (path, resource.description()))
+    }))
+}
+
 crate::engine::config_task! {
     /// Create symlinks from symlinks/ to $HOME.
     pub struct InstallSymlinks(Vec<Symlink>);
@@ -84,6 +94,7 @@ impl Task for InstallSymlinks {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let symlinks = self.config.get();
         let resources = build_resources(ctx, symlinks);
+        validate_resolved_targets(&resources)?;
         run_resource_task(ctx, resources, &ProcessOpts::strict("link"))
     }
 }
@@ -104,7 +115,9 @@ impl Task for UninstallSymlinks {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let symlinks = self.config.get();
-        process_resources_remove(ctx, build_resources(ctx, symlinks), "materialize")
+        let resources = build_resources(ctx, symlinks);
+        validate_resolved_targets(&resources)?;
+        process_resources_remove(ctx, resources, "materialize")
     }
 }
 
@@ -157,7 +170,7 @@ impl GitSymlinkPlaceholders {
 mod tests {
     use super::*;
     use crate::domains::files::config::symlinks::Symlink;
-    use crate::engine::{RemovableResource as _, Resource as _, ResourceChange};
+    use crate::engine::{RemovableResource as _, ResourceChange};
     use crate::infra::ConfigHandle;
     use crate::test_helpers::make_linux_context;
     use crate::test_helpers::symlink;

@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use std::path::Path;
+use std::path::{Component, Path};
 
 use super::platform::{is_link_like, remove_symlink};
 use super::state::{link_points_to_source, same_entry};
@@ -104,6 +104,8 @@ pub(super) fn copy_dir_into_place(
             guard.path().display()
         )
     })?;
+    validate_relocated_links(guard.path(), guard.path())
+        .with_context(|| format!("cannot safely materialize directory {}", source.display()))?;
 
     clear_link_target(source, target, executor, "symlink/junction")?;
 
@@ -133,6 +135,65 @@ pub(super) fn copy_dir_into_place(
         guard.persist();
     }
     Ok(())
+}
+
+fn validate_relocated_links(root: &Path, directory: &Path) -> Result<()> {
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = path.symlink_metadata()?;
+        if is_link_like(&path, &metadata) {
+            let target = std::fs::read_link(&path)?;
+            if !target.is_absolute() {
+                let relative = path.strip_prefix(root)?;
+                anyhow::ensure!(
+                    stays_in_tree(root, directory, &target)?,
+                    "relative link {} -> {} escapes the copied directory",
+                    relative.display(),
+                    target.display()
+                );
+            }
+        } else if metadata.is_dir() {
+            validate_relocated_links(root, &path)?;
+        }
+    }
+    Ok(())
+}
+
+fn stays_in_tree(root: &Path, directory: &Path, target: &Path) -> Result<bool> {
+    let root = dunce::canonicalize(root)?;
+    let mut resolved = dunce::canonicalize(directory)?;
+    for part in target.components() {
+        match part {
+            Component::Normal(name) => {
+                resolved.push(name);
+                match dunce::canonicalize(&resolved) {
+                    Ok(path) => resolved = path,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        if let Some(metadata) = crate::infra::fs::symlink_metadata_optional(
+                            &resolved,
+                            "stat link component",
+                        )? && is_link_like(&resolved, &metadata)
+                        {
+                            return Err(error).with_context(|| {
+                                format!("cannot resolve link component {}", resolved.display())
+                            });
+                        }
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            Component::Prefix(_) | Component::RootDir => return Ok(false),
+        }
+        if !resolved.starts_with(&root) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 #[cfg(test)]

@@ -188,6 +188,14 @@ impl Run {
         }
     }
 
+    pub(crate) fn assert_failure(&self, reasons: &[&str]) {
+        let error = self.result.as_ref().expect_err("task must fail");
+        let message = format!("{error:#}");
+        for reason in reasons {
+            assert!(message.contains(reason), "missing {reason:?} in {message}");
+        }
+    }
+
     pub(crate) fn assert_partial_failure(&self, changed: u32, not_attempted: u32) {
         let error = self.result.as_ref().expect_err("Nth resource must fail");
         let report = error

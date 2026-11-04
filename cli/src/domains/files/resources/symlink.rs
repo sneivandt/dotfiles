@@ -91,7 +91,7 @@ impl SymlinkResource {
         Ok((resolved_parent.join(name), external))
     }
 
-    fn checked_target(&self) -> anyhow::Result<PathBuf> {
+    pub(crate) fn checked_target(&self) -> anyhow::Result<PathBuf> {
         let (resolved, external) = self.resolved_target()?;
         anyhow::ensure!(
             !external || self.allow_external_target,
@@ -191,6 +191,41 @@ impl Resource for SymlinkResource {
 }
 
 impl RemovableResource for SymlinkResource {
+    fn removal_state(&self) -> ResourceResult<ResourceState> {
+        let target = match self.checked_target() {
+            Ok(target) => target,
+            Err(error) => {
+                return Ok(ResourceState::Unknown {
+                    reason: format!("{error:#}"),
+                });
+            }
+        };
+        let metadata = crate::infra::fs::symlink_metadata_optional(&target, "stat target")?;
+        if let Some(meta) = &metadata {
+            let managed = is_link_like(&target, meta)
+                && !state::same_entry(&self.source, &target)
+                && state::link_points_to_source(
+                    &target,
+                    &std::fs::read_link(&target)
+                        .with_context(|| format!("read link: {}", target.display()))?,
+                    &self.source,
+                );
+            if !managed {
+                return Ok(ResourceState::Incorrect {
+                    current: "target is not a managed link".into(),
+                });
+            }
+        }
+        if let Some(reason) = state::invalid_source_reason(self, &target)? {
+            return Ok(ResourceState::Unknown { reason });
+        }
+        Ok(if metadata.is_some() {
+            ResourceState::Correct
+        } else {
+            ResourceState::Missing
+        })
+    }
+
     fn remove_when_missing(&self) -> bool {
         true
     }

@@ -84,6 +84,18 @@ pub trait IntrinsicState: Resource {
 /// require this bound, which makes "this resource cannot be removed" a
 /// compile error at the call site instead of a failed task.
 pub trait RemovableResource: Resource {
+    /// Inspect removal eligibility, which can differ from apply state.
+    ///
+    /// # Errors
+    ///
+    /// Returns a resource error when removal eligibility cannot be determined.
+    fn removal_state(&self) -> ResourceResult<ResourceState>
+    where
+        Self: IntrinsicState,
+    {
+        self.current_state()
+    }
+
     /// Whether removal must run when the managed target is already missing.
     ///
     /// Most resources are already removed in that state. Resources that

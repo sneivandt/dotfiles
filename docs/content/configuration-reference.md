@@ -416,9 +416,10 @@ Duplicate active destinations within a repository are errors.
 | `ini` | Assigned keys and bare flags within sections, including Pacman options |
 | `pam` | Module rules, placed at the end of their existing authentication, account, password, or session stack |
 
-Unrelated content is preserved. TOML and INI fragments are validated even when
-the destination is absent. INI cannot assign different values to the same key
-within one section; identical repeated assignments are allowed.
+Unrelated settings are preserved. A TOML update can remove comments and change
+formatting. TOML and INI fragments are validated even when the destination is
+absent. INI cannot assign different values to the same key within one section.
+Identical repeated assignments are allowed.
 
 PAM needs an existing service file and a stack of the same type as each fragment
 rule. A rule for the same module in that stack is replaced; other rules remain.

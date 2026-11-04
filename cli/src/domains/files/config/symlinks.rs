@@ -118,6 +118,8 @@ pub(crate) fn validate_unique_targets(symlinks: &[Symlink]) -> Result<()> {
     target_validation::validate_unique_targets(symlinks)
 }
 
+pub(crate) use target_validation::validate_target_paths;
+
 /// Load symlink entries from every category without filtering.
 ///
 /// # Errors

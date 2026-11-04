@@ -87,6 +87,42 @@ mod unix_e2e {
     use tasks::files::symlinks::{InstallSymlinks, UninstallSymlinks};
     use tasks::git::hooks::{InstallGitHooks, UninstallGitHooks};
 
+    #[test]
+    fn remove_reports_blocked_external_symlink_and_leaves_it_intact() {
+        let test = common::TestContextBuilder::new()
+            .with_config_file(
+                "symlinks.toml",
+                "[base]\nsymlinks = [{ source = 'settings', target = 'redirect/config' }]\n",
+            )
+            .with_symlink_source_content("settings", "managed config\n")
+            .build();
+        let home = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let source = test.root_path().join("symlinks/settings");
+        let target = outside.path().join("config");
+        std::os::unix::fs::symlink(&source, &target).unwrap();
+        std::os::unix::fs::symlink(outside.path(), home.path().join("redirect")).unwrap();
+
+        for dry_run in [true, false] {
+            let mut command =
+                common::cli_command(test.root_path(), home.path(), None, "remove", "symlinks");
+            command.arg("--fail-on-skip");
+            if dry_run {
+                command.arg("--dry-run");
+            }
+            let output = command.output().unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(!output.status.success(), "{stdout}\n{stderr}");
+            assert!(
+                stdout.contains("resolves outside home")
+                    || stderr.contains("resolves outside home"),
+                "{stdout}\n{stderr}"
+            );
+            assert_eq!(std::fs::read_link(&target).unwrap(), source);
+        }
+    }
+
     fn build_full_fixture() -> (common::IntegrationTestContext, common::ExecutionContext) {
         let test = common::TestContextBuilder::new()
             .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")

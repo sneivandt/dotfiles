@@ -357,9 +357,18 @@ fn materialization_preserves_internal_relative_links_and_refuses_escaping_links(
     let original_settings = &link;
     #[cfg(unix)]
     let original_settings = &installed_settings;
-    for (referent, expected, escapes) in [
-        (Path::new("..").join("first"), "first source\n", true),
-        ("nested".into(), "nested source\n", false),
+    for (referent, expected, problem) in [
+        (
+            Path::new("..").join("first"),
+            "first source\n",
+            Some("escapes the copied directory"),
+        ),
+        (
+            fixture.repo.join("symlinks/first"),
+            "first source\n",
+            Some("depends on the checkout"),
+        ),
+        ("nested".into(), "nested source\n", None),
     ] {
         #[cfg(windows)]
         std::os::windows::fs::symlink_file(&referent, &link).unwrap();
@@ -373,8 +382,8 @@ fn materialization_preserves_internal_relative_links_and_refuses_escaping_links(
         let run = fixture.run(false, false, |store| {
             Box::new(UninstallSymlinks::new(store.symlinks))
         });
-        if escapes {
-            run.assert_failure(&["escapes the copied directory"]);
+        if let Some(problem) = problem {
+            run.assert_failure(&[problem]);
             assert_link(&target, &source);
             assert_eq!(std::fs::read_dir(&fixture.home).unwrap().count(), 1);
             assert_eq!(

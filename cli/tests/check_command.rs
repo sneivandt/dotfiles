@@ -80,7 +80,7 @@ fn check_console_compacts_only_non_verbose_single_line_tasks() {
 }
 
 // ---------------------------------------------------------------------------
-// test command: warning handling
+// check command: diagnostics
 // ---------------------------------------------------------------------------
 
 /// The `test` command should fail when config validation emits warnings.
@@ -121,4 +121,45 @@ fn check_command_fails_on_config_warnings() {
         "{text}"
     );
     assert!(text.contains("1 task failed"), "{text}");
+}
+#[test]
+fn check_rejects_malformed_system_fragments_without_reading_targets() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file(
+            "system-files.toml",
+            "[linux]\nfiles = [\
+                { source = 'broken.toml', merge = 'toml' },\
+                { source = 'broken.ini', merge = 'ini' },\
+                { source = 'broken.pam', merge = 'pam' }]\n",
+        )
+        .build();
+    let system = ctx.root_path().join("system");
+    std::fs::create_dir(&system).unwrap();
+    for (name, content) in [
+        ("broken.toml", "[missing-bracket"),
+        ("broken.ini", "key=value"),
+        ("broken.pam", "auth optional"),
+    ] {
+        std::fs::write(system.join(name), content).unwrap();
+    }
+    let home = tempfile::tempdir().unwrap();
+    let output = common::cli_command(
+        ctx.root_path(),
+        home.path(),
+        None,
+        "check",
+        "config-diagnostics",
+    )
+    .output()
+    .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!output.status.success(), "{text}");
+    for name in ["broken.toml", "broken.ini", "broken.pam"] {
+        assert!(text.contains(name), "{text}");
+    }
+    assert!(text.contains("system-file.invalid-fragment"), "{text}");
 }

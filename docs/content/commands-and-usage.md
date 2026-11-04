@@ -214,7 +214,10 @@ changed, pass the original `--profile` and `--overlay` explicitly.
 **Remove is not rollback.** The copies contain current configured content,
 not your pre-install files. A missing home target can also receive a copy;
 existing non-link targets and links that no longer point to the managed source
-are preserved. Keep the checkout until copying succeeds.
+are preserved. Keep the checkout until copying succeeds. If removal reports a
+nested link that depends on the checkout, fix the reported link before retrying.
+If another process replaces a target during removal, keep the new entry and
+review the recovery path printed by dotfiles.
 
 Packages, registry settings, PATH, services, system files, permissions, login
 shell, Git/agent settings, completions, editor extensions, and agent deployments

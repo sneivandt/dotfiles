@@ -41,41 +41,51 @@ pub(super) fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor
     Ok(())
 }
 
-/// Remove a symlink, handling platform differences.
-///
-/// On Windows, directory symlinks must be removed with `remove_dir` (not
-/// `remove_file`). Rust's `symlink_metadata().is_dir()` returns `false` for
-/// symlinks, so the raw `FILE_ATTRIBUTE_DIRECTORY` flag detects directory
-/// symlinks. If `remove_dir` still fails with OS error 5 (access denied),
-/// `remove_dir_all` retries through the standard library without invoking a
-/// command shell.
-///
-/// The `remove_dir_all` retry is confined to link-like entries so a real
-/// directory can never be recursively removed by this fallback.
-pub(super) fn remove_symlink(path: &Path, _executor: &dyn Executor) -> Result<()> {
-    let meta = match std::fs::symlink_metadata(path) {
-        Ok(m) => m,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(e.into()),
-        Err(e) => {
-            return Err(
-                anyhow::Error::new(e).context(format!("reading metadata: {}", path.display()))
-            );
+/// Publish a staged sibling without replacing an entry created by another writer.
+#[cfg(any(target_os = "linux", target_vendor = "apple"))]
+pub(super) fn rename_noreplace(source: &Path, target: &Path) -> std::io::Result<()> {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+    renameat_with(CWD, source, CWD, target, RenameFlags::NOREPLACE)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+#[allow(
+    unsafe_code,
+    reason = "Win32 provides the no-replace rename missing from std"
+)]
+pub(super) fn rename_noreplace(source: &Path, target: &Path) -> std::io::Result<()> {
+    use std::io;
+    use std::os::windows::ffi::OsStrExt as _;
+    use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
+
+    fn wide_path(path: &Path) -> io::Result<Vec<u16>> {
+        // Canonicalize only the parent to get a verbatim path for long names
+        // without following the final entry, which may itself be a link.
+        let parent = path.parent().unwrap_or_else(|| Path::new("."));
+        let name = path.file_name().ok_or(io::ErrorKind::InvalidInput)?;
+        let absolute_path = std::fs::canonicalize(parent)?.join(name);
+        let mut wide: Vec<_> = absolute_path.as_os_str().encode_wide().collect();
+        if wide.contains(&0) {
+            return Err(io::ErrorKind::InvalidInput.into());
         }
-    };
-    if crate::infra::fs::is_dir_like(&meta) {
-        match std::fs::remove_dir(path) {
-            Ok(()) => {}
-            #[cfg(windows)]
-            Err(e) if e.raw_os_error() == Some(5) && is_link_like(path, &meta) => {
-                std::fs::remove_dir_all(path)
-                    .with_context(|| format!("removing directory symlink: {}", path.display()))?;
-            }
-            Err(e) => return Err(e.into()),
-        }
-    } else {
-        std::fs::remove_file(path).with_context(|| format!("removing file: {}", path.display()))?;
+        wide.push(0);
+        Ok(wide)
+    }
+
+    let source = wide_path(source)?;
+    let target = wide_path(target)?;
+    // SAFETY: Both buffers are NUL-terminated and live throughout the call.
+    // Zero flags disallow replacing an entry or falling back to a copy.
+    if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), 0) } == 0 {
+        return Err(io::Error::last_os_error());
     }
     Ok(())
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_vendor = "apple")))]
+pub(super) fn rename_noreplace(_source: &Path, _target: &Path) -> std::io::Result<()> {
+    Err(std::io::ErrorKind::Unsupported.into())
 }
 
 /// Check if metadata represents a managed link-like entry.

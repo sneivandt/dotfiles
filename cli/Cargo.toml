@@ -68,6 +68,10 @@ proc-macro2 = { version = "1", default-features = false, features = ["span-locat
 [target.'cfg(windows)'.dependencies]
 process-wrap = { version = "10", default-features = false, features = ["std", "job-object"] }
 winreg = "0.56"
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+
+[target.'cfg(any(target_os = "linux", target_vendor = "apple"))'.dependencies]
+rustix = { version = "1", features = ["fs"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["process", "signal", "user"] }

@@ -5,6 +5,7 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::{Result, bail};
 use serde::{Deserialize, Deserializer};
 
+use super::super::resources::system_file::validate_fragment;
 use crate::infra::config::config_section;
 
 /// How a tracked source fragment is combined with an existing target.
@@ -135,24 +136,42 @@ pub(crate) fn validate_entries(files: &[SystemFile]) -> Result<()> {
     Ok(())
 }
 
-/// Validate tracked fragment paths for the repository check command.
+/// Validate tracked fragments without reading their installed destinations.
 #[must_use]
 pub fn validate(files: &[SystemFile]) -> Vec<crate::infra::config::Diagnostic> {
     use crate::infra::config::{Diagnostic, DiagnosticCode};
 
     const MISSING_SOURCE: DiagnosticCode = DiagnosticCode::new("system-file", "missing-source");
+    const INVALID_FRAGMENT: DiagnosticCode = DiagnosticCode::new("system-file", "invalid-fragment");
     files
         .iter()
         .filter_map(|file| {
             let source = file.source_path();
-            (!source.is_file()).then(|| {
-                Diagnostic::error(
-                    SYSTEM_FILES_TOML,
-                    file.target.display().to_string(),
-                    MISSING_SOURCE,
-                    format!("tracked fragment {} does not exist", source.display()),
-                )
-            })
+            let fragment = std::fs::metadata(&source).and_then(|metadata| {
+                if !metadata.is_file() {
+                    return Err(std::io::Error::other("expected a regular file"));
+                }
+                std::fs::read_to_string(&source)
+            });
+            let (code, reason) = match fragment {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    (MISSING_SOURCE, "does not exist".to_string())
+                }
+                Err(error) => (INVALID_FRAGMENT, format!("could not be read ({error})")),
+                Ok(fragment) => (
+                    INVALID_FRAGMENT,
+                    format!(
+                        "is invalid ({:#})",
+                        validate_fragment(file.merge, &fragment).err()?
+                    ),
+                ),
+            };
+            Some(Diagnostic::error(
+                SYSTEM_FILES_TOML,
+                file.target.display().to_string(),
+                code,
+                format!("tracked fragment {} {reason}", source.display()),
+            ))
         })
         .collect()
 }

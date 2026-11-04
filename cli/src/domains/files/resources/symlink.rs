@@ -30,8 +30,8 @@ pub struct SymlinkResource {
     /// Home directory used to abbreviate user-facing target paths.
     display_home: Option<PathBuf>,
     allow_external_target: bool,
-    /// Repository root used to abbreviate user-facing source paths.
-    display_root: Option<PathBuf>,
+    /// Owning repository, used for source display and relocation checks.
+    source_root: Option<PathBuf>,
 }
 
 impl SymlinkResource {
@@ -49,7 +49,7 @@ impl SymlinkResource {
             validation_error: None,
             display_home: None,
             allow_external_target: false,
-            display_root: None,
+            source_root: None,
         }
     }
 
@@ -60,7 +60,7 @@ impl SymlinkResource {
         self
     }
 
-    /// Attach roots used to render concise user-facing paths.
+    /// Attach the home and owning repository roots.
     #[must_use]
     pub fn with_display_roots(
         mut self,
@@ -68,7 +68,7 @@ impl SymlinkResource {
         root: impl Into<PathBuf>,
     ) -> Self {
         self.display_home = Some(home.into());
-        self.display_root = Some(root.into());
+        self.source_root = Some(root.into());
         self
     }
 
@@ -120,7 +120,7 @@ impl SymlinkResource {
     }
 
     fn display_source(&self) -> String {
-        self.display_root
+        self.source_root
             .as_deref()
             .and_then(|root| self.source.strip_prefix(root).ok())
             .map_or_else(|| display_path(&self.source), display_path)
@@ -261,9 +261,9 @@ impl RemovableResource for SymlinkResource {
             }
         }
 
-        // Copy source content into place, then remove the symlink, so the user
-        // retains the file/directory after uninstall instead of losing it.
-        copy_into_place(&self.source, &target, &*self.executor).with_context(|| {
+        // Stage source content before replacing the managed link.
+        let repository = self.source_root.as_deref().unwrap_or(&self.source);
+        copy_into_place(&self.source, &target, repository).with_context(|| {
             format!(
                 "materialize {} to {}",
                 self.source.display(),
@@ -289,9 +289,9 @@ impl IntrinsicState for SymlinkResource {
 pub(super) fn copy_dir_into_place(
     source: &Path,
     target: &Path,
-    executor: &dyn Executor,
+    repository: &Path,
 ) -> anyhow::Result<()> {
-    materialize::copy_dir_into_place(source, target, executor)
+    materialize::copy_dir_into_place(source, target, repository)
 }
 
 #[cfg(test)]

@@ -309,6 +309,7 @@ dependencies = [
  "process-wrap",
  "proptest",
  "rayon",
+ "rustix",
  "serde",
  "serde_json",
  "serde_yaml_ng",
@@ -324,6 +325,7 @@ dependencies = [
  "unicode-width",
  "ureq",
  "which",
+ "windows-sys 0.61.2",
  "winreg",
 ]
 

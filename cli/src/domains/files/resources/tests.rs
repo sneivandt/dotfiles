@@ -773,8 +773,7 @@ mod symlink {
         std::fs::create_dir(&stale_tmp).unwrap();
         std::fs::write(stale_tmp.join("stale.txt"), "stale").unwrap();
 
-        let executor = system_executor();
-        copy_dir_into_place(&source, &target, &*executor).unwrap();
+        copy_dir_into_place(&source, &target, temp_dir.path()).unwrap();
 
         assert_eq!(
             std::fs::read_to_string(target.join("kept.txt")).unwrap(),

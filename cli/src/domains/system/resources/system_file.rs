@@ -452,14 +452,40 @@ fn pam_rule_identity(line: &str) -> anyhow::Result<(&str, &str)> {
     Ok((facility, module))
 }
 
-fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
-    let mut lines = current.lines().map(str::to_string).collect::<Vec<_>>();
-    for rule in fragment
+pub(crate) fn validate_fragment(merge: MergeStrategy, fragment: &str) -> anyhow::Result<()> {
+    match merge {
+        MergeStrategy::Toml => parse_toml(fragment).map(drop),
+        MergeStrategy::Ini => ini_settings(fragment, true).map(drop),
+        MergeStrategy::Pam => pam_rules(fragment).try_for_each(|rule| rule.map(drop)),
+    }
+}
+
+fn pam_rules(fragment: &str) -> impl Iterator<Item = anyhow::Result<(&str, &str, &str)>> {
+    fragment
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
-    {
-        let (facility, module) = pam_rule_identity(rule)?;
+        .map(|rule| pam_rule_identity(rule).map(|(facility, module)| (rule, facility, module)))
+}
+
+fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
+    let mut lines = current.lines().map(str::to_string).collect::<Vec<_>>();
+    for rule in pam_rules(fragment) {
+        let (rule, facility, module) = rule?;
+        for (current_facility, current_module) in lines.iter().filter_map(|line| {
+            let code = line.split_once('#').map_or(line.as_str(), |(code, _)| code);
+            pam_rule_identity(code).ok()
+        }) {
+            if same_pam_facility(current_facility, facility)
+                && current_module != module
+                && std::path::Path::new(current_module).file_name()
+                    == std::path::Path::new(module).file_name()
+            {
+                bail!(
+                    "ambiguous PAM {facility} module paths {current_module} and {module}. Review the installed rule and the fragment before retrying"
+                );
+            }
+        }
         let Some(index) = lines.iter().rposition(|line| {
             line.split_whitespace()
                 .next()
@@ -535,6 +561,23 @@ mod tests {
         .unwrap();
         assert!(pam.contains("auth optional old.so"));
         assert!(pam.ends_with("auth optional keyring.so\n"));
+    }
+
+    #[test]
+    fn pam_refuses_conflicting_module_paths_in_the_same_facility() {
+        let installed = "auth required /usr/lib/security/pam_gnome_keyring.so\n";
+        let desired = "auth optional pam_gnome_keyring.so\n";
+        let error = merge_pam(installed, desired).unwrap_err().to_string();
+        assert!(error.contains("ambiguous PAM auth module paths"), "{error}");
+        assert!(
+            error.contains("/usr/lib/security/pam_gnome_keyring.so"),
+            "{error}"
+        );
+        assert!(merge_pam(
+            "session required /usr/lib/security/pam_gnome_keyring.so\nauth include system-auth\n",
+            desired
+        )
+        .is_ok());
     }
 
     #[test]

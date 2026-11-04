@@ -875,13 +875,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("source"), "x".repeat(65536)).unwrap();
         std::fs::write(dir.path().join("target"), "previous deployment").unwrap();
-        let status = std::process::Command::new("sh")
+        let output = std::process::Command::new("sh")
             .args(["-c", "trap '' XFSZ; ulimit -f 1; exec \"$@\"", "limited-cowork-copy"])
             .arg(std::env::current_exe().unwrap())
             .args(["--exact", "domains::ai::apm::cowork::tests::interrupted_copy_keeps_the_existing_file_and_cleans_staging"])
             .env(CHILD_ROOT, dir.path()).env("LLVM_PROFILE_FILE", "/dev/null")
-            .status().unwrap();
-        assert!(status.success());
+            .output().unwrap();
+        assert!(output.status.success(), "limited copy failed: {output:?}");
         assert_eq!(
             std::fs::read_to_string(dir.path().join("target")).unwrap(),
             "previous deployment"

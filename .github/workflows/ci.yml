@@ -757,6 +757,9 @@ jobs:
         with:
           name: dotfiles-windows
           path: bin/
+      - name: Create an empty fixture home
+        shell: bash
+        run: sh .github/workflows/scripts/linux/ci-fixture-home.sh
       - name: Run PowerShell wrapper tests
         shell: pwsh
         env:

@@ -628,21 +628,33 @@ mod symlink {
         crate::infra::fs::create_native_symlink(&sources, &home.join(".config"), true).unwrap();
         let original_config_target = std::fs::read_link(home.join(".config")).unwrap();
         assert!(paths_equal(&original_config_target, &sources));
-        for (source, target) in [
-            ("managed", "managed"),
-            ("alias", "alias"),
-            ("alias", "managed"),
+        for (source, target, expected_reason) in [
+            (
+                "managed",
+                "managed",
+                "target aliases the source entry through its parent directory",
+            ),
+            (
+                "alias",
+                "alias",
+                "target aliases the source entry through its parent directory",
+            ),
+            (
+                "alias",
+                "managed",
+                "target resolves to the source instead of a separate managed link",
+            ),
         ] {
             let resource = SymlinkResource::new(
                 sources.join(source),
                 home.join(".config").join(target),
                 system_executor(),
             );
-            assert!(
-                matches!(
-                    resource.current_state().unwrap(),
-                    ResourceState::Invalid { .. }
-                ),
+            assert_eq!(
+                resource.current_state().unwrap(),
+                ResourceState::Invalid {
+                    reason: expected_reason.to_string(),
+                },
                 "{source} -> {target} would mutate the source entry"
             );
             assert!(resource.apply().is_err(), "{source} -> {target}");
@@ -1129,6 +1141,36 @@ mod symlink {
         }
         assert_eq!(std::fs::read_to_string(&source).unwrap(), "managed content");
         assert_eq!(std::fs::read_dir(fixture.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_parent_resolution_preserves_non_missing_errors() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path();
+        let source = root.join("source");
+        let parent = root.join("file");
+        std::fs::write(&source, "managed content").unwrap();
+        std::fs::write(&parent, "user content").unwrap();
+        let resource =
+            SymlinkResource::new(source, parent.join("subdir/target"), system_executor())
+                .with_display_roots(root, root);
+
+        let state = resource.current_state().unwrap();
+        assert!(
+            matches!(&state, ResourceState::Invalid { reason } if reason.contains("resolve target parent")),
+            "{state:?}"
+        );
+        for error in [
+            resource.apply().unwrap_err(),
+            resource.remove().unwrap_err(),
+        ] {
+            assert!(
+                format!("{error:#}").contains("resolve target parent"),
+                "{error:#}"
+            );
+        }
+        assert_eq!(std::fs::read_to_string(&parent).unwrap(), "user content");
     }
 
     #[test]

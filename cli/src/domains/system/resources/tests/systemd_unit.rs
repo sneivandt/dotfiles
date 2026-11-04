@@ -158,6 +158,38 @@ fn runtime_state_handles_daemons_and_completed_oneshots() {
 }
 
 #[test]
+fn runtime_state_accepts_condition_skips_without_hiding_stopped_or_failed_units() {
+    for (label, properties, expected) in [
+        (
+            "condition-skipped timer",
+            "ActiveState=inactive\nConditionResult=no\nResult=success",
+            ResourceState::Correct,
+        ),
+        (
+            "condition-skipped daemon",
+            "ActiveState=inactive\nType=simple\nConditionResult=no\nResult=success",
+            ResourceState::Correct,
+        ),
+        (
+            "stopped timer",
+            "ActiveState=inactive\nConditionResult=yes\nResult=success",
+            ResourceState::Incorrect {
+                current: "runtime state is inactive".into(),
+            },
+        ),
+        (
+            "failed unit with unmet condition",
+            "ActiveState=failed\nConditionResult=no\nResult=exit-code",
+            ResourceState::Incorrect {
+                current: "runtime state is failed".into(),
+            },
+        ),
+    ] {
+        assert_eq!(runtime_state(true, properties), expected, "{label}");
+    }
+}
+
+#[test]
 fn runtime_probe_failure_is_not_converged() {
     let mut mock = MockExecutor::new();
     mock.expect_execute()

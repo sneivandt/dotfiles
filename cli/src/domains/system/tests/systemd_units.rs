@@ -424,6 +424,36 @@ fn run_does_not_reload_enabled_system_scope_units() {
 }
 
 #[test]
+fn condition_skipped_system_timer_needs_no_elevation_or_mutation() {
+    let name = "fstrim.timer";
+    let task = systemd_task(name, UnitScope::System, true);
+    for dry_run in [false, true] {
+        let mut executor = script();
+        for _ in 0..5 {
+            executor = executor
+                .command(
+                    systemctl(&["is-enabled", name]),
+                    Ok(ExecResult::success("enabled\n")),
+                )
+                .command(
+                    runtime_probe(name),
+                    Ok(ExecResult::success(
+                        "ActiveState=inactive\nConditionResult=no\nResult=success\n",
+                    )),
+                );
+        }
+        let ctx = context(executor).with_dry_run(dry_run);
+        assert!(!task.needs_elevation(&ctx));
+        for _ in 0..2 {
+            let result = task.run(&ctx).unwrap();
+            let stats = crate::test_helpers::task_batch(&result);
+            assert_eq!(stats.already_ok_count(), 1, "dry_run={dry_run}");
+            assert_eq!(stats.changed_count(), 0, "dry_run={dry_run}");
+        }
+    }
+}
+
+#[test]
 fn run_reloads_then_changes_system_enablement_with_sudo() {
     for (name, enabled, action, observed) in [
         ("sshd.service", true, "enable", disabled_result()),

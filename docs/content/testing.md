@@ -133,15 +133,17 @@ snapshot rather than relying on working-tree or commit-hook results.
 
 ### Documentation and skills
 
-For a docs-and-skills-only patch, use the native checker from the repository root:
+Validate documentation once on the checkout's native platform, including mixed
+patches. From the repository root, run:
 
 ```powershell
 python docs/check.py --committed
 ```
 
 Use `python3` where required. This validates `origin/main..HEAD` in a temporary
-native checkout and rejects other kinds of changes. It restores locked npm
-dependencies and checks links, skill metadata, the site build, and browser
+native checkout. For mixed patches it checks only documentation, not the
+implementation. It restores locked npm dependencies and checks links, skill
+metadata, the site build, and browser
 behavior using the committed files. Staged or unstaged fixes cannot satisfy it.
 See [site prerequisites and checks](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#checks).
 
@@ -152,13 +154,19 @@ by browser emulation. Check the exact commit's CI and deployment after pushing.
 
 ### Implementation and mixed patches
 
-For other patches, run the manual Linux pre-push checker
+For implementation and mixed patches, run the manual Linux pre-push checker
 (Python 3.11 or newer):
 
 ```sh
 python3 -B .github/workflows/scripts/linux/pre-push.py --plan
 python3 -B .github/workflows/scripts/linux/pre-push.py
 ```
+
+If documentation already passed the native checker for this commit, add
+`--docs-checked <commit>` to both commands, using the SHA printed by the native
+checker. The Linux checker then omits npm setup and the docs stage, but keeps
+all selected CLI and platform checks. A different commit is rejected.
+Do not provision another OS just to repeat documentation validation.
 
 The default range is `origin/main..HEAD`. Make sure that remote-tracking ref is
 current. For another destination or base, pass `--base <remote-sha>` and
@@ -172,9 +180,10 @@ state and logs into temporary directories.
 
 Install the tools required by the printed plan before running the checker.
 Keep the pinned compiler on `PATH`; Rust changes can also require the minimum
-supported compiler and Windows target. The docs checks need Playwright's
-Chromium runtime. The checker does not install these tools, but it restores
-locked npm dependencies inside the isolated checkout.
+supported compiler and Windows target. When docs have not already been checked,
+their checks need Playwright's Chromium runtime. The checker does not install
+these tools; it restores locked npm
+dependencies only when running docs locally.
 Cargo and dependency checks may still need network or cache access. It is a
 manual command, not an installed Git hook, and does not push.
 

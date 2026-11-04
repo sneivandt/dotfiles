@@ -59,9 +59,11 @@ This is a routing review, not proof of a model's runtime behavior.
 Review frontmatter, paths, and contradictions with neighboring skills, then use
 the [native documentation check](../../../docs/README.md#checks). Run it with
 Windows tools for a Windows checkout, not through WSL on the mounted Windows
-filesystem. Use its committed-snapshot mode before pushing docs/skills-only
-changes; mixed implementation changes need the broader checks in
+filesystem. One native docs check is enough, including mixed patches. Use its
+committed-snapshot mode before pushing; mixed implementation changes also need
+the broader checks in
 [Testing](../../../docs/content/testing.md#choosing-coverage).
+Reuse the exact commit's docs result instead of repeating it in WSL.
 Its link check covers tracked and unignored new Markdown, including unstaged
 moves; generated and ignored files are excluded.
 

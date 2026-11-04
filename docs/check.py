@@ -63,10 +63,7 @@ def check_committed(root, base, env):
         raise RuntimeError("The committed range is empty; no documentation checks ran")
     unsupported = [path for path in paths if not documentation_path(path)]
     if unsupported:
-        raise RuntimeError(
-            "Not a docs-and-skills-only patch: " + ", ".join(unsupported)
-            + ". Use the repository pre-push checker for mixed or implementation changes."
-        )
+        print("Checking documentation only. Other changes still require implementation checks.", flush=True)
     run(["git", "diff", "--check", base_sha, head, "--"], root, env)
     print(f"Checking committed documentation: {base_sha}..{head}", flush=True)
     with tempfile.TemporaryDirectory(prefix="dotfiles-docs-") as temporary:
@@ -90,7 +87,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--committed", action="store_true",
-        help="check HEAD in an isolated native checkout; reject non-documentation changes",
+        help="check documentation from HEAD in an isolated native checkout, including mixed patches",
     )
     parser.add_argument("--base", help="comparison base for --committed (default: origin/main)")
     args = parser.parse_args()

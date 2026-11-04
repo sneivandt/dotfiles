@@ -19,3 +19,7 @@ description: >
 3. Use isolated fixtures and the current source with the pinned toolchain.
    Do not substitute a host install or a bootstrap-downloaded binary for tests.
    A skipped stage is unavailable coverage, even if the runner exits successfully.
+4. Documentation needs one successful native-platform check, not platform
+   parity. For mixed patches, reuse that exact commit's docs result through
+   the pre-push checker's `--docs-checked` option rather than rerunning the site
+   in WSL. Keep CLI compilation and platform-sensitive tests separate.

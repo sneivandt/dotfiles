@@ -242,6 +242,17 @@ class ClassificationTests(unittest.TestCase):
 
 
 class PrePushPlanTests(unittest.TestCase):
+    def test_native_docs_reuse_keeps_all_implementation_checks(self):
+        selection = classify(["cli/Cargo.toml"])
+        commands, deferred = PRE_PUSH["plan"](selection, "1.91")
+        reused, remaining = PRE_PUSH["plan"](selection, "1.91", docs_checked=True)
+        expected = [
+            (label, directory, [argument for argument in command if argument != "docs"])
+            for label, directory, command in commands if label != "documentation dependencies"
+        ]
+        self.assertEqual(reused, expected)
+        self.assertEqual(remaining, deferred)
+
     def test_docs_stay_focused_and_rust_adds_platform_checks(self):
         commands, deferred = PRE_PUSH["plan"](classify(["README.md"]), "1.91")
         self.assertEqual(len(commands), 2)
@@ -815,6 +826,8 @@ class GitRangeTests(unittest.TestCase):
         command = ["python3", "-B", str(self.repo / LINUX / "pre-push.py")]
         for arguments, expected, message in (
             (["--base", base, "--head", head], 1, "exit status 17"),
+            (["--base", base, "--head", head, "--docs-checked", head], 1, "exit status 17"),
+            (["--base", base, "--head", head, "--docs-checked", base], 1, "exact commit"),
             (["--base", head, "--head", head], 0, "no checks run"),
             (["--base", "invalid-ref"], 1, "Pre-push validation failed"),
         ):

@@ -15,9 +15,9 @@ import tomllib
 SCRIPTS = Path(__file__).resolve().parent
 
 
-def plan(selection, msrv):
+def plan(selection, msrv, docs_checked=False):
     """Return safe local commands and selected coverage reserved for CI."""
-    stages = ["docs", "ci"]
+    stages = ["ci"] if docs_checked else ["docs", "ci"]
     for flag, stage in (
         ("rust_fmt", "fmt"), ("rust_checks", "clippy"),
         ("rust_checks", "test"), ("rust_checks", "rustdoc"),
@@ -28,10 +28,10 @@ def plan(selection, msrv):
             stages.append(stage)
     for item in selection["lint_matrix"]["include"]:
         stages.append("shell" if item["name"] == "ShellCheck" else "powershell")
-    commands = [
-        ("documentation dependencies", "docs", ["npm", "ci", "--no-audit", "--no-fund"]),
-        ("core checks", ".", ["sh", ".github/workflows/scripts/linux/check.sh", "--strict", *stages]),
-    ]
+    commands = []
+    if not docs_checked:
+        commands.append(("documentation dependencies", "docs", ["npm", "ci", "--no-audit", "--no-fund"]))
+    commands.append(("core checks", ".", ["sh", ".github/workflows/scripts/linux/check.sh", "--strict", *stages]))
     if selection["run_config_drift"] and not selection["run_rust_checks"]:
         commands.append(("configuration drift", "cli", ["cargo", "test", "--locked", "--profile", "ci", "--test", "config_drift"]))
     if selection["run_rust_checks"]:
@@ -89,12 +89,18 @@ def main():
     parser.add_argument("--base", default="origin/main", help="remote commit before the push (default: origin/main)")
     parser.add_argument("--head", default="HEAD", help="commit to validate (default: HEAD)")
     parser.add_argument("--plan", action="store_true", help="print selected checks without running them")
+    parser.add_argument("--docs-checked", metavar="COMMIT",
+                        help="reuse successful native documentation checks for this exact commit")
     args = parser.parse_args()
     if sys.platform != "linux":
         parser.error("this local checker requires Linux; native Windows coverage remains in CI")
     root = Path(git(SCRIPTS, "rev-parse", "--show-toplevel"))
     base = git(root, "rev-parse", "--verify", args.base + "^{commit}")
     head = git(root, "rev-parse", "--verify", args.head + "^{commit}")
+    if args.docs_checked:
+        checked = git(root, "rev-parse", "--verify", args.docs_checked + "^{commit}")
+        if checked != head:
+            raise RuntimeError("--docs-checked must identify the exact commit being validated")
     policy = committed_policy(root, head)
     paths = policy["changed_paths"](str(root), base, head)
     subprocess.run(["git", "-C", str(root), "diff", "--check", base, head, "--"], check=True)
@@ -103,8 +109,10 @@ def main():
         return
     manifest = tomllib.loads(git(root, "show", head + ":cli/Cargo.toml"))
     selection = policy["classify"](paths)
-    commands, deferred = plan(selection, manifest["package"]["rust-version"])
+    commands, deferred = plan(selection, manifest["package"]["rust-version"], bool(args.docs_checked))
     print(f"Committed range: {base}..{head} ({len(paths)} changed paths)", flush=True)
+    if args.docs_checked:
+        print(f"Reusing successful native documentation checks for {head}; not repeating them on Linux.", flush=True)
     for label, directory, command in commands:
         print(f"LOCAL {label}: (cd {directory} && {shlex.join(command)})", flush=True)
     print("REMAINING CI: " + (", ".join(deferred) or "always-on workflow checks"), flush=True)

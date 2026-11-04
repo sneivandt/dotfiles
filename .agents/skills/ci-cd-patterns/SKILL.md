@@ -55,3 +55,5 @@ Start with [CI](../../../.github/workflows/ci.yml) and
 (the `.sh` entry point delegates to it).
 Use [Testing](../../../docs/content/testing.md) for canonical commands and the current CI
 coverage matrix.
+Documentation needs only one native-platform check. Reuse its exact commit's
+result with `--docs-checked` when running Linux implementation checks.

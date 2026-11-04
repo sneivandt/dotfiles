@@ -62,19 +62,22 @@ checker fixtures, a production build, published links, and browser regressions.
 It stops at the first failure. It does not install dependencies, run the Rust
 compiler, or apply machine configuration.
 
-Before pushing a **docs-and-skills-only patch**, commit it, refresh the comparison
+Before pushing, commit the patch, refresh the comparison
 base with `git fetch origin`, then run:
 
 ```powershell
 python docs/check.py --committed
 ```
 
-This compares `origin/main..HEAD`, rejects non-documentation changes, and checks
-the committed code in a temporary native checkout. It restores locked npm
+This compares `origin/main..HEAD` and checks documentation from the committed
+code in a temporary native checkout. It restores locked npm
 dependencies there and runs the committed checker, ignoring staged, unstaged,
 and untracked work. Use `--base <ref>` with `--committed` for another comparison.
-This is the pre-push path for documentation and skills, not a replacement for
-the broader [implementation checker](content/testing.md#implementation-and-mixed-patches).
+This also works for mixed patches, but validates only their documentation.
+One successful platform is enough. Reuse that exact commit's result with
+`--docs-checked <commit>` in the broader
+[implementation checker](content/testing.md#implementation-and-mixed-patches)
+instead of repeating site checks in WSL.
 
 The Rust task-selector fixture and workflow checks remain in CI. The Linux
 `docs` stage also runs the selector fixture locally; it is not required just to

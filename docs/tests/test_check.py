@@ -77,17 +77,12 @@ class CommittedTests(unittest.TestCase):
         self.git("add", ".")
         self.git("commit", "--quiet", "-m", "Fixture inputs")
 
-    def test_empty_invalid_and_non_documentation_ranges_fail_before_restore(self):
+    def test_empty_and_invalid_ranges_fail_before_restore(self):
         with patch.object(CHECKER, "run") as run:
             with self.assertRaisesRegex(RuntimeError, "empty"):
                 CHECKER.check_committed(self.root, self.base, self.env)
             with self.assertRaises(subprocess.CalledProcessError):
                 CHECKER.check_committed(self.root, "missing-fixture-ref", self.env)
-            (self.root / "conf").mkdir()
-            (self.root / "conf/packages.toml").write_text("", encoding="utf-8")
-            self.commit()
-            with self.assertRaisesRegex(RuntimeError, "Not a docs-and-skills-only patch"):
-                CHECKER.check_committed(self.root, self.base, self.env)
             run.assert_not_called()
 
     def test_snapshot_uses_committed_checker_and_leaves_worktree_untouched(self):
@@ -102,6 +97,8 @@ class CommittedTests(unittest.TestCase):
         )
         marker = docs / "marker"
         marker.write_text("committed", encoding="utf-8")
+        (self.root / "conf").mkdir()
+        (self.root / "conf/packages.toml").write_text("", encoding="utf-8")
         self.commit()
         marker.write_text("staged", encoding="utf-8")
         self.git("add", "docs/marker")

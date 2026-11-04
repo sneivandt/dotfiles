@@ -51,6 +51,9 @@ changes usually do not need engine changes.
 
 - Choose coverage from [Testing](docs/content/testing.md#choosing-coverage), including
   affected script/application regressions. Use the pinned Rust toolchain.
+- Validate documentation once on the checkout's native platform, including mixed
+  patches. Do not repeat docs checks in WSL or on another OS; cross-platform
+  verification applies to the CLI and platform-sensitive behavior.
 - Validate the committed patch with the [pre-push checker](docs/content/testing.md#before-pushing).
   A successful commit hook or focused test alone is not push validation.
 - Fix selected local failures. Report unavailable checks and remaining Windows,

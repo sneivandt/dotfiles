@@ -350,17 +350,24 @@ fn materialization_preserves_internal_relative_links_and_refuses_escaping_links(
     let link = source.join("settings");
     directory_link(&source, &target);
 
+    let installed_settings = target.join("settings");
+    // Windows stores the relative target in the reparse point using native
+    // separators. Verify it directly in the source tree before relocation.
+    #[cfg(windows)]
+    let original_settings = &link;
+    #[cfg(unix)]
+    let original_settings = &installed_settings;
     for (referent, expected, escapes) in [
-        ("../first", "first source\n", true),
-        ("nested", "nested source\n", false),
+        (Path::new("..").join("first"), "first source\n", true),
+        ("nested".into(), "nested source\n", false),
     ] {
         #[cfg(windows)]
-        std::os::windows::fs::symlink_file(referent, &link).unwrap();
+        std::os::windows::fs::symlink_file(&referent, &link).unwrap();
         #[cfg(unix)]
-        std::os::unix::fs::symlink(referent, &link).unwrap();
+        std::os::unix::fs::symlink(&referent, &link).unwrap();
 
         assert_eq!(
-            std::fs::read_to_string(target.join("settings")).unwrap(),
+            std::fs::read_to_string(original_settings).unwrap(),
             expected
         );
         let run = fixture.run(false, false, |store| {
@@ -370,20 +377,19 @@ fn materialization_preserves_internal_relative_links_and_refuses_escaping_links(
             run.assert_failure(&["escapes the copied directory"]);
             assert_link(&target, &source);
             assert_eq!(std::fs::read_dir(&fixture.home).unwrap().count(), 1);
+            assert_eq!(
+                std::fs::read_to_string(original_settings).unwrap(),
+                expected
+            );
+            std::fs::remove_file(&link).unwrap();
         } else {
             run.assert_batch(1, 0);
             assert!(!target.symlink_metadata().unwrap().is_symlink());
+            assert_eq!(std::fs::read_link(&installed_settings).unwrap(), referent);
             assert_eq!(
-                std::fs::read_link(target.join("settings")).unwrap(),
-                Path::new(referent)
+                std::fs::read_to_string(&installed_settings).unwrap(),
+                expected
             );
-        }
-        assert_eq!(
-            std::fs::read_to_string(target.join("settings")).unwrap(),
-            expected
-        );
-        if escapes {
-            std::fs::remove_file(&link).unwrap();
         }
     }
 }

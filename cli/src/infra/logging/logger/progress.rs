@@ -98,9 +98,10 @@ fn active_display_line(
     };
     let count = remaining.map_or_else(String::new, |count| {
         let unit = if count == 1 { "task" } else { "tasks" };
-        format!("{count} {unit} left · ")
+        format!("{count} {unit} left")
     });
-    let prefix = format!("{spinner} {count}");
+    let separator = if remaining.is_some() { " · " } else { "" };
+    let prefix = format!("{spinner} {count}{separator}");
     // Very narrow terminals still get a bounded line, even without room for names.
     if prefix.width() >= cols || active.is_empty() {
         return transient_display_line_with_style(&prefix, cols, style);
@@ -123,7 +124,7 @@ fn active_display_line(
         "{} {}{}{}",
         style.paint(TextStyle::MutedCyan, spinner),
         count,
-        style.paint(TextStyle::Dim, &names),
+        style.paint(TextStyle::Dim, &format!("{separator}{names}")),
         style.paint(TextStyle::Dim, &suffix)
     )
 }
@@ -305,7 +306,7 @@ mod tests {
                 80,
                 StyleChoice::colored()
             ),
-            "\x1b[2;36m⠋\x1b[0m 4 tasks left · \x1b[2mPackages, Symlinks, Fonts\x1b[0m\x1b[2m +1\x1b[0m"
+            "\x1b[2;36m⠋\x1b[0m 4 tasks left\x1b[2m · Packages, Symlinks, Fonts\x1b[0m\x1b[2m +1\x1b[0m"
         );
     }
 

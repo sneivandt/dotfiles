@@ -18,6 +18,12 @@ organization, routes, navigation, rendering, or publication.
 
 ## Establish what the reader needs
 
+For each new or changed behavior, ask what a reader would need to know or do
+differently. Update the owning guide if the change affects a documented
+workflow, a meaningful choice, a prerequisite readers must plan for, or a
+safety concern. Leave small presentation changes, implementation details, and
+edge cases explained by the tool itself out unless they affect a reader's task.
+
 1. Identify the reader, their task, and the next decision or action. Put the
    common workflow before inventories, internals, and exceptions.
 2. Verify commands, defaults, paths, prerequisites, and behavioral claims against

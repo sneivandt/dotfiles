@@ -37,7 +37,8 @@ changes usually do not need engine changes.
 
 ## Human documentation
 
-- Update the owning guide when user-visible behavior changes. Use
+- For each change, decide whether readers need to know or do something
+  differently. Update the owning guide when it helps them. Use
   [docs-writing](.agents/skills/docs-writing/SKILL.md) for clear, accurate,
   natural prose at the right level of detail. Use
   [docs-publishing](.agents/skills/docs-publishing/SKILL.md) for documentation

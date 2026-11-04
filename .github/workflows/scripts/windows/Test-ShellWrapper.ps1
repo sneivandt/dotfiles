@@ -155,8 +155,8 @@ function Test-UpdateArgumentForwarding {
     }
 
     try {
-        $originalGuard = $env:DOTFILES_REEXEC_GUARD
-        $env:DOTFILES_REEXEC_GUARD = '1'
+        $originalSkipSelfUpdate = $env:DOTFILES_SKIP_SELF_UPDATE
+        $env:DOTFILES_SKIP_SELF_UPDATE = '1'
         $output = & $wrapper update -p base -n --skip 'agent-packages,vscode-extensions' 2>&1
         $text = ($output | Out-String)
         $plain = $text -replace "$([char]27)\[[0-9;]*m", ''
@@ -172,10 +172,10 @@ function Test-UpdateArgumentForwarding {
         Write-TestFail "Update argument forwarding failed: $_"
         return $false
     } finally {
-        if ($null -eq $originalGuard) {
-            Remove-Item Env:DOTFILES_REEXEC_GUARD -ErrorAction SilentlyContinue
+        if ($null -eq $originalSkipSelfUpdate) {
+            Remove-Item Env:DOTFILES_SKIP_SELF_UPDATE -ErrorAction SilentlyContinue
         } else {
-            $env:DOTFILES_REEXEC_GUARD = $originalGuard
+            $env:DOTFILES_SKIP_SELF_UPDATE = $originalSkipSelfUpdate
         }
     }
 }
@@ -185,8 +185,8 @@ function Test-AdvancedFlagForwarding {
 
     $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
     try {
-        $originalGuard = $env:DOTFILES_REEXEC_GUARD
-        $env:DOTFILES_REEXEC_GUARD = '1'
+        $originalSkipSelfUpdate = $env:DOTFILES_SKIP_SELF_UPDATE
+        $env:DOTFILES_SKIP_SELF_UPDATE = '1'
         $output = & $wrapper update -p base -n --skip symlinks --only packages --no-parallel 2>&1
         $text = ($output | Out-String)
         $plain = $text -replace "$([char]27)\[[0-9;]*m", ''
@@ -202,10 +202,10 @@ function Test-AdvancedFlagForwarding {
         Write-TestFail "Advanced flag forwarding failed: $_"
         return $false
     } finally {
-        if ($null -eq $originalGuard) {
-            Remove-Item Env:DOTFILES_REEXEC_GUARD -ErrorAction SilentlyContinue
+        if ($null -eq $originalSkipSelfUpdate) {
+            Remove-Item Env:DOTFILES_SKIP_SELF_UPDATE -ErrorAction SilentlyContinue
         } else {
-            $env:DOTFILES_REEXEC_GUARD = $originalGuard
+            $env:DOTFILES_SKIP_SELF_UPDATE = $originalSkipSelfUpdate
         }
     }
 }

@@ -38,7 +38,7 @@ JOB_CONDITIONS = {
 }
 SPECIAL_CONDITIONS = {
     "validate-config": "needs.classify-changes.outputs.run_validate_config == 'true' && needs.build-linux.result == 'success'",
-    "mutation": "needs.classify-changes.outputs.run_mutation == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))",
+    "mutation": "needs.classify-changes.outputs.run_mutation == 'true'",
 }
 
 

@@ -719,11 +719,47 @@ class GitRangeTests(unittest.TestCase):
                 values = dict(
                     line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines()
                 )
-                self.env.update(BASE_SHA=values["base_sha"], HEAD_SHA=values["head_sha"])
+                self.assertEqual((values["base_sha"], values["head_sha"]), (before, head))
+                self.env.update(BASE_SHA=values["base_sha"], HEAD_SHA=values["head_sha"],
+                                CI_FORCE_FULL=values["force_full"])
                 jobs = self.script()
                 self.assertEqual(jobs["docs_only"], state == "success", result.stderr.decode())
                 self.assertEqual(jobs["run_build_linux"], state != "success")
                 self.assertEqual(jobs["run_build_windows"], state != "success")
+
+    def test_mutation_range_is_kept_for_full_recovery_and_manual_runs(self):
+        self.write("cli/src/main.rs", 'fn main() { println!("changed"); }\n')
+        head = self.commit()
+
+        tools = self.root / "mutation-tools"
+        tools.mkdir()
+        gh = tools / "gh"
+        gh.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        gh.chmod(0o755)
+        self.env["PATH"] = str(tools) + os.pathsep + self.env["PATH"]
+        for event in ("push", "workflow_dispatch"):
+            with self.subTest(event=event):
+                self.env.update(GITHUB_EVENT_NAME=event, GITHUB_SHA=head,
+                                PUSH_BEFORE=self.base, MUTATION_BASE=self.base)
+                output = Path(self.env["GITHUB_OUTPUT"])
+                output.write_text("", encoding="utf-8")
+                result = subprocess.run(
+                    ["sh", str(SCRIPTS / "ci-comparison-range.sh")],
+                    env=self.env, cwd=self.repo, check=True, capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 0)
+                output = Path(self.env["GITHUB_OUTPUT"])
+                values = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
+                self.assertEqual((values["base_sha"], values["head_sha"]), (self.base, head))
+                self.assertEqual(values["force_full"], "true")
+                self.env.update(BASE_SHA=values["base_sha"], HEAD_SHA=values["head_sha"],
+                                CI_FORCE_FULL=values["force_full"])
+                jobs = self.script()
+                self.assertTrue(jobs["run_mutation"])
+                self.assertTrue(jobs["run_build_windows"])
+
+        self.env["MUTATION_BASE"] = "HEAD"
+        self.script("ci-comparison-range.sh", success=False)
 
     def test_rename_deletion_and_unusual_paths(self):
         self.git("mv", "cli/src/main.rs", "example.md")

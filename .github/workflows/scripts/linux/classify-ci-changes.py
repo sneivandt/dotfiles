@@ -255,7 +255,11 @@ def main() -> None:
     root = os.environ["DIR"]
     output = Path(os.environ["GITHUB_OUTPUT"])
     base, head = os.environ.get("BASE_SHA"), os.environ.get("HEAD_SHA")
-    full = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" or not (base and head)
+    full = (
+        os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+        or os.environ.get("CI_FORCE_FULL") == "true"
+        or not (base and head)
+    )
     paths = changed_paths(root, base, head) if base and head else []
     print("Full CI requested" if full else f"Classifying {len(paths)} changed paths")
     outputs = classify(paths, full=full)

@@ -159,24 +159,30 @@ pub(crate) fn resolve_target_entry(path: &Path) -> anyhow::Result<PathBuf> {
 // Resolve existing parents without following the final target entry. A dangling
 // parent link is an error rather than a missing directory we can create.
 fn resolve_directory(path: &Path) -> anyhow::Result<PathBuf> {
+    resolve_directory_with(path, |ancestor| dunce::canonicalize(ancestor))
+}
+
+fn resolve_directory_with(
+    path: &Path,
+    canonicalize: impl Fn(&Path) -> std::io::Result<PathBuf>,
+) -> anyhow::Result<PathBuf> {
     let absolute = std::path::absolute(path)?;
     for ancestor in absolute.ancestors() {
-        match dunce::canonicalize(ancestor) {
-            Ok(resolved) => return Ok(resolved.join(absolute.strip_prefix(ancestor)?)),
+        let resolved = match canonicalize(ancestor) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 if crate::infra::fs::symlink_metadata_optional(ancestor, "inspect target parent")?
                     .is_none()
                 {
                     continue;
                 }
-                return Err(error)
-                    .with_context(|| format!("resolve target parent {}", ancestor.display()));
+                // A parallel resource may have just created this directory.
+                // A dangling link will still fail the second resolution.
+                canonicalize(ancestor)
             }
-            Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("resolve target parent {}", ancestor.display()));
-            }
+            result => result,
         }
+        .with_context(|| format!("resolve target parent {}", ancestor.display()))?;
+        return Ok(resolved.join(absolute.strip_prefix(ancestor)?));
     }
     anyhow::bail!("cannot resolve target parent {}", path.display())
 }
@@ -332,4 +338,27 @@ pub(super) fn create_junction(
     executor: &dyn Executor,
 ) -> anyhow::Result<()> {
     platform::create_junction(target, link, executor)
+}
+
+#[cfg(test)]
+mod resolution_tests {
+    use super::*;
+
+    #[test]
+    fn directory_created_between_resolution_and_metadata_is_resolved() {
+        let fixture = tempfile::tempdir().unwrap();
+        let parent = fixture.path().join("concurrent-parent");
+        let resolved = resolve_directory_with(&parent, |path| {
+            let result = dunce::canonicalize(path);
+            if result
+                .as_ref()
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+            {
+                std::fs::create_dir(path).unwrap();
+            }
+            result
+        })
+        .unwrap();
+        assert_eq!(resolved, dunce::canonicalize(parent).unwrap());
+    }
 }

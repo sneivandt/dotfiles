@@ -1,6 +1,7 @@
 //! Top-level command handlers and shared command orchestration.
 
 pub mod check;
+pub(crate) mod explain;
 pub mod list;
 pub mod log;
 pub mod remove;

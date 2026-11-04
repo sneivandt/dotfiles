@@ -75,9 +75,18 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
             copy_dir_recursive(&src_path, &dst_path, skip_git)?;
         } else {
             reject_destination_link(&dst_path)?;
-            std::fs::copy(&src_path, &dst_path).with_context(|| {
+            anyhow::ensure!(
+                meta.is_file(),
+                "unsupported special file: {}",
+                src_path.display()
+            );
+            let mut source = open_regular_source(&src_path)?;
+            let mut destination = std::fs::File::create(&dst_path)
+                .with_context(|| format!("create {}", dst_path.display()))?;
+            std::io::copy(&mut source, &mut destination).with_context(|| {
                 format!("copying {} to {}", src_path.display(), dst_path.display())
             })?;
+            destination.set_permissions(source.metadata()?.permissions())?;
         }
     }
     #[cfg(unix)]
@@ -152,6 +161,26 @@ fn is_link_like(path: &Path, metadata: &std::fs::Metadata) -> bool {
         let _ = path;
         metadata.is_symlink()
     }
+}
+
+/// Open a copy source without waiting on a FIFO that replaced a regular file.
+pub(crate) fn open_regular_source(path: &Path) -> Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.custom_flags(nix::libc::O_NONBLOCK);
+    }
+    let file = options
+        .open(path)
+        .with_context(|| format!("open source file {}", path.display()))?;
+    anyhow::ensure!(
+        file.metadata()?.is_file(),
+        "unsupported special file: {}",
+        path.display()
+    );
+    Ok(file)
 }
 
 #[cfg(test)]

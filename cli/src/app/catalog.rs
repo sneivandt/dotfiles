@@ -62,9 +62,12 @@ pub fn generate_powershell_completions() -> String {
 
 /// The complete set of tasks run by the remove command.
 #[must_use]
-pub fn all_remove_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
+pub fn all_remove_tasks(store: &ConfigStore, restore_missing: bool) -> Vec<Box<dyn Task>> {
     vec![
-        Box::new(UninstallSymlinks::new(store.symlinks.clone())),
+        Box::new(UninstallSymlinks::with_restore_missing(
+            store.symlinks.clone(),
+            restore_missing,
+        )),
         Box::new(UninstallGitHooks::new()),
         Box::new(UninstallWrapper),
     ]

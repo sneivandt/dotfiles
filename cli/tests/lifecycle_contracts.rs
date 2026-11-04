@@ -357,6 +357,11 @@ fn materialization_preserves_internal_relative_links_and_refuses_escaping_links(
     let original_settings = &link;
     #[cfg(unix)]
     let original_settings = &installed_settings;
+    let alias = fixture.home.join("external-alias");
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(fixture.repo.join("symlinks/first"), &alias).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(fixture.repo.join("symlinks/first"), &alias).unwrap();
     for (referent, expected, problem) in [
         (
             Path::new("..").join("first"),
@@ -368,6 +373,7 @@ fn materialization_preserves_internal_relative_links_and_refuses_escaping_links(
             "first source\n",
             Some("depends on the checkout"),
         ),
+        (alias, "first source\n", Some("depends on the checkout")),
         ("nested".into(), "nested source\n", None),
     ] {
         #[cfg(windows)]
@@ -379,13 +385,21 @@ fn materialization_preserves_internal_relative_links_and_refuses_escaping_links(
             std::fs::read_to_string(original_settings).unwrap(),
             expected
         );
+        if let Some(problem) = problem {
+            let before = fixture.snapshot();
+            let preview = fixture.run(true, false, |store| {
+                Box::new(UninstallSymlinks::new(store.symlinks))
+            });
+            preview.assert_failure(&[problem]);
+            assert_eq!(fixture.snapshot(), before);
+        }
         let run = fixture.run(false, false, |store| {
             Box::new(UninstallSymlinks::new(store.symlinks))
         });
         if let Some(problem) = problem {
             run.assert_failure(&[problem]);
             assert_link(&target, &source);
-            assert_eq!(std::fs::read_dir(&fixture.home).unwrap().count(), 1);
+            assert_eq!(std::fs::read_dir(&fixture.home).unwrap().count(), 2);
             assert_eq!(
                 std::fs::read_to_string(original_settings).unwrap(),
                 expected

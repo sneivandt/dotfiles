@@ -646,3 +646,129 @@ fn startup_failure_writes_finished_history_and_an_exact_diagnostic_hint() {
     );
     assert!(read_retained_log(&log_dir, &["--list"]).contains("failed"));
 }
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "self-contained real Git remotes and two command runs"
+)]
+fn partial_repository_refresh_can_retry_with_fresh_configuration() {
+    use std::path::Path;
+    use std::process::Command;
+
+    fn git(root: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .args([
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+            ])
+            .args([
+                "-c",
+                "core.hooksPath=unused-hooks",
+                "-c",
+                "commit.gpgSign=false",
+            ])
+            .args(args)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", root.join("no-global-config"))
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    }
+
+    let fixture = tempfile::tempdir().unwrap();
+    let home = fixture.path().join("home");
+    let root = fixture.path().join("main");
+    let overlay = fixture.path().join("overlay");
+    std::fs::create_dir(&home).unwrap();
+    common::setup_minimal_repo(&root);
+    std::fs::create_dir(&overlay).unwrap();
+    for (repo, remote_name) in [(&root, "main-upstream"), (&overlay, "overlay-upstream")] {
+        git(
+            fixture.path(),
+            &["init", "--bare", "-b", "main", remote_name],
+        );
+        git(repo, &["init", "-b", "main"]);
+        std::fs::write(repo.join("README"), "initial").unwrap();
+        git(repo, &["add", "."]);
+        git(repo, &["commit", "-m", "initial"]);
+        let remote = fixture.path().join(remote_name);
+        git(repo, &["remote", "add", "origin", remote.to_str().unwrap()]);
+        git(repo, &["push", "-u", "origin", "main"]);
+    }
+    let initial_main = git(&root, &["rev-parse", "HEAD"]);
+    let initial_overlay = git(&overlay, &["rev-parse", "HEAD"]);
+    std::fs::write(
+        root.join("conf/symlinks.toml"),
+        "[base]\nsymlinks = [\"fresh\"]\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("symlinks/fresh"), "new configuration").unwrap();
+    std::fs::write(overlay.join("collision"), "upstream").unwrap();
+    std::fs::create_dir(overlay.join("conf")).unwrap();
+    std::fs::create_dir(overlay.join("symlinks")).unwrap();
+    std::fs::write(
+        overlay.join("conf/symlinks.toml"),
+        "[base]\nsymlinks = [\"second\"]\n",
+    )
+    .unwrap();
+    std::fs::write(overlay.join("symlinks/second"), "fresh overlay").unwrap();
+    for (repo, initial) in [(&root, &initial_main), (&overlay, &initial_overlay)] {
+        git(repo, &["add", "."]);
+        git(repo, &["commit", "-m", "advance"]);
+        git(repo, &["push", "origin", "main"]);
+        git(repo, &["reset", "--hard", initial]);
+    }
+    let obstruction = overlay.join("collision");
+    std::fs::write(&obstruction, "local untracked data").unwrap();
+
+    let update = || {
+        let output = common::isolated_cli_command(
+            &root,
+            &home,
+            Some(&overlay),
+            "update",
+            "repository,symlinks",
+            true,
+        )
+        .output()
+        .unwrap();
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        (output.status, text)
+    };
+    let (status, text) = update();
+    assert!(!status.success(), "{text}");
+    assert!(text.contains("Already advanced repository"), "{text}");
+    assert_ne!(git(&root, &["rev-parse", "HEAD"]), initial_main);
+    assert_eq!(git(&overlay, &["rev-parse", "HEAD"]), initial_overlay);
+    assert_eq!(
+        std::fs::read_to_string(&obstruction).unwrap(),
+        "local untracked data"
+    );
+    assert!(!home.join(".fresh").exists());
+
+    std::fs::remove_file(obstruction).unwrap();
+    let (retry_status, retry_text) = update();
+    assert!(retry_status.success(), "{retry_text}");
+    assert_ne!(git(&overlay, &["rev-parse", "HEAD"]), initial_overlay);
+    assert_eq!(
+        std::fs::read_to_string(home.join(".second")).unwrap(),
+        "fresh overlay"
+    );
+    assert_eq!(
+        std::fs::read_to_string(home.join(".fresh")).unwrap(),
+        "new configuration"
+    );
+}

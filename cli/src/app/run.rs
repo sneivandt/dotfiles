@@ -41,6 +41,9 @@ pub fn run() -> ExitCode {
         cli::Command::List(opts) => {
             return standalone(commands::list::run(&opts));
         }
+        cli::Command::Explain(opts) => {
+            return standalone(commands::explain::run(&opts));
+        }
         cli::Command::Update(opts) => update_command(opts),
         cli::Command::Remove(opts) => {
             let (global, opts, verbose) = opts.into_engine_parts();
@@ -258,6 +261,7 @@ mod tests {
                 cli::Command::Remove(_)
                 | cli::Command::Check(_)
                 | cli::Command::List(_)
+                | cli::Command::Explain(_)
                 | cli::Command::Log(_)
                 | cli::Command::Completions(_) => panic!("expected update"),
             };

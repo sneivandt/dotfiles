@@ -27,7 +27,7 @@ if [ -L "$2" ] || { [ -e "$2" ] && [ ! -f "$2" ]; }; then
     exit 1
 fi
 if [ -f "$2" ]; then
-    cp --attributes-only --preserve=mode,ownership -- "$2" "$replacement"
+    cp --attributes-only --preserve=mode,ownership,xattr -- "$2" "$replacement"
 fi
 if [ -n "$3" ]; then
     expected=$(sha256sum < "$3")
@@ -1291,6 +1291,10 @@ esac
 
     #[test]
     #[cfg(target_os = "linux")]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "shared setup for publication and preservation cases"
+    )]
     fn atomic_install_preserves_destination_on_failures_and_intervening_edits() {
         use std::os::unix::fs::PermissionsExt as _;
 
@@ -1309,6 +1313,13 @@ esac
                     fs::create_dir(&parent).unwrap();
                     fs::write(&target, "original content\n").unwrap();
                     fs::copy(&target, &expected).unwrap();
+                    rustix::fs::setxattr(
+                        &target,
+                        "user.dotfiles-fixture",
+                        b"preserve me",
+                        rustix::fs::XattrFlags::empty(),
+                    )
+                    .unwrap();
                     fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
                 }
                 let original = fs::metadata(&target).ok();
@@ -1350,6 +1361,13 @@ esac
                 );
                 if failure == "none" {
                     assert_eq!(fs::read(&target).unwrap(), b"replacement content\n");
+                    if existing {
+                        let mut value = [0_u8; 32];
+                        let count =
+                            rustix::fs::getxattr(&target, "user.dotfiles-fixture", &mut value[..])
+                                .unwrap();
+                        assert_eq!(&value[..count], b"preserve me");
+                    }
                     assert_eq!(
                         fs::metadata(&target).unwrap().permissions().mode() & 0o777,
                         if existing { 0o600 } else { 0o644 }

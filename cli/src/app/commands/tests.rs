@@ -80,32 +80,22 @@ mod reexec_tests {
         use crate::infra::env::MapEnv;
 
         let global = global(&[]);
-        for (guards, expected) in [
-            (vec![], true),
-            (vec![REEXEC_GUARD_VAR], false),
-            (vec![REPOSITORY_REEXEC_GUARD_VAR], false),
-            (vec![REEXEC_GUARD_VAR, REPOSITORY_REEXEC_GUARD_VAR], false),
-            (vec![SELF_UPDATE_REEXEC_GUARD_VAR], false),
-            (vec![REEXEC_GUARD_VAR, SELF_UPDATE_REEXEC_GUARD_VAR], false),
-            (
-                vec![REPOSITORY_REEXEC_GUARD_VAR, SELF_UPDATE_REEXEC_GUARD_VAR],
-                false,
-            ),
-            (
-                vec![
-                    REEXEC_GUARD_VAR,
-                    REPOSITORY_REEXEC_GUARD_VAR,
-                    SELF_UPDATE_REEXEC_GUARD_VAR,
-                ],
-                false,
-            ),
+        for guards in [
+            vec![],
+            vec![REEXEC_GUARD_VAR],
+            vec![REPOSITORY_REEXEC_GUARD_VAR],
+            vec![SELF_UPDATE_REEXEC_GUARD_VAR],
+            vec![
+                REEXEC_GUARD_VAR,
+                REPOSITORY_REEXEC_GUARD_VAR,
+                SELF_UPDATE_REEXEC_GUARD_VAR,
+            ],
         ] {
-            // Empty guards still count as present, unlike the elevation marker.
             let env = guards
                 .iter()
                 .fold(MapEnv::new(), |env, guard| env.with(guard, ""));
             let runtime = RuntimePolicy::new(&global, false, env.clone().into_handle(), true, true);
-            assert_eq!(should_check_self_update(&runtime), expected, "{guards:?}");
+            assert!(should_check_self_update(&runtime), "{guards:?}");
             let elevated = RuntimePolicy::new(
                 &global,
                 false,

@@ -593,7 +593,7 @@ mod symlink {
 
         let error = resource.remove().unwrap_err();
         assert!(
-            format!("{error:#}").contains("open source file"),
+            format!("{error:#}").contains("inspect materialization source"),
             "{error:#}"
         );
         assert_eq!(std::fs::read_link(&target).unwrap(), original_link);
@@ -1092,7 +1092,7 @@ mod symlink {
                     }
                     .unwrap();
                     let expected_change = if remove {
-                        matches!(existing, "missing" | "managed")
+                        existing == "managed"
                     } else {
                         existing == "missing"
                     };
@@ -1212,6 +1212,7 @@ mod symlink {
                     target.clone(),
                     Arc::new(crate::infra::exec::MockExecutor::new()),
                 );
+                let resource = resource.with_restore_missing(missing_link);
                 resource.apply().unwrap();
                 assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
                 if missing_link {

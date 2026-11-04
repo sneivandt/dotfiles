@@ -58,21 +58,10 @@ impl TaskListing {
 /// Returns an error if configuration cannot be loaded, task metadata
 /// conflicts, or output cannot be written.
 pub fn run(opts: &ListOpts) -> Result<()> {
-    let root = super::runner::resolve_root_path(opts.repository.root.as_deref())?;
     let env = crate::infra::env::system();
     let platform = Platform::detect();
-    let overlay = crate::domains::overlay::resolution::resolve_read_only(
-        opts.repository.overlay.as_deref(),
-        &root,
-        env.as_ref(),
-    )?;
-    let profile = crate::app::config::profiles::resolve_read_only(
-        opts.repository.profile.as_deref(),
-        &root,
-        platform,
-        env.as_ref(),
-    )?;
-    let config = Config::load(&root, &profile, platform, overlay.as_deref())?;
+    let config = load_discovery_config(&opts.repository, env.as_ref(), platform)?;
+    let overlay = config.overlay.clone();
     let store = ConfigStore::from_config(config);
     let stdout = std::io::stdout();
     if let Some(command) = opts.graph {
@@ -91,6 +80,26 @@ pub fn run(opts: &ListOpts) -> Result<()> {
         }
         write_listings(&listings, opts.format, &mut stdout.lock())
     }
+}
+
+pub(super) fn load_discovery_config(
+    repository: &crate::app::cli::RepositoryOpts,
+    env: &dyn crate::infra::env::Env,
+    platform: Platform,
+) -> Result<Config> {
+    let root = super::runner::resolve_root_path(repository.root.as_deref())?;
+    let overlay = crate::domains::overlay::resolution::resolve_read_only(
+        repository.overlay.as_deref(),
+        &root,
+        env,
+    )?;
+    let profile = crate::app::config::profiles::resolve_read_only(
+        repository.profile.as_deref(),
+        &root,
+        platform,
+        env,
+    )?;
+    Config::load(&root, &profile, platform, overlay.as_deref())
 }
 
 /// Only reject tasks whose platform or immutable configuration proves there
@@ -143,7 +152,7 @@ fn command_tasks(
             tasks
         }
         TaskGraphCommand::Remove => {
-            let mut tasks = crate::app::catalog::all_remove_tasks(store);
+            let mut tasks = crate::app::catalog::all_remove_tasks(store, false);
             if let Some(root) = overlay {
                 tasks.extend(
                     crate::domains::overlay::scripts::overlay_script_removal_tasks(

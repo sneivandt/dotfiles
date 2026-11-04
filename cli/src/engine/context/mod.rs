@@ -231,21 +231,14 @@ impl Context {
         env: Arc<dyn Env>,
         execution_policy: ExecutionPolicy,
     ) -> Result<Self> {
-        let home = if platform.is_windows() {
-            env.var_os("USERPROFILE")
-                .or_else(|| env.var_os("HOME"))
-                .context("neither USERPROFILE nor HOME environment variable is set")?
-        } else {
-            env.var_os("HOME")
-                .context("HOME environment variable is not set")?
-        };
+        let home = home_directory(env.as_ref(), platform)?;
 
         Ok(Self {
             paths: Arc::new(RepoPaths::new(root)),
             overlay,
             platform,
             log,
-            home: Arc::new(std::path::PathBuf::from(home)),
+            home: Arc::new(home),
             executor,
             http: Arc::new(crate::infra::github::UreqClient::new(
                 std::time::Duration::from_secs(60),
@@ -558,3 +551,15 @@ impl Context {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+pub(crate) fn home_directory(env: &dyn Env, platform: Platform) -> Result<std::path::PathBuf> {
+    let home = if platform.is_windows() {
+        env.var_os("USERPROFILE")
+            .or_else(|| env.var_os("HOME"))
+            .context("neither USERPROFILE nor HOME environment variable is set")?
+    } else {
+        env.var_os("HOME")
+            .context("HOME environment variable is not set")?
+    };
+    Ok(home.into())
+}

@@ -111,6 +111,8 @@ class ClassificationTests(unittest.TestCase):
              config | {"managed_scripts", "desktop_python", "desktop_qml"}),
             ("symlinks/config/quickshell/tests/qml/mocks/Quickshell/Io/qmldir",
              config | {"managed_scripts", "desktop_python", "desktop_qml"}),
+            (LINUX + "test-arch-acceptance.sh", {"roundtrip_linux", "build_linux", "lint"}),
+            (LINUX + "test-desktop-session.sh", {"desktop_qml", "lint"}),
             (LINUX + "test-uninstall.sh", {"roundtrip_linux", "build_linux", "lint"}),
             (WINDOWS + "Test-ShellWrapper.ps1", {"wrapper_windows", "build_windows", "lint"}),
             (WINDOWS + "Test-InstallUninstall.ps1", {"roundtrip_windows", "build_windows", "lint"}),

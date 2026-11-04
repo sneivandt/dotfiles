@@ -53,6 +53,7 @@ pub(super) fn apply_repository_updates(
         }
     }
 
+    let mut changed = Vec::new();
     for plan in plans.iter().filter(|plan| plan.needs_update) {
         let result = ctx.executor().execute(git_command(
             ctx,
@@ -66,19 +67,28 @@ pub(super) fn apply_repository_updates(
                 ctx.log()
                     .info(format!("update {}", plan.target.description()));
                 repo_updated.mark_updated();
+                changed.push(plan.target.description());
             }
             Err(e) => {
                 if e.is_cancelled() {
                     return Err(e.into());
                 }
-                let reason = plan.target.reason("git merge --ff-only failed");
+                let merge_failure = plan.target.reason("git merge --ff-only failed");
+                let reason = if changed.is_empty() {
+                    merge_failure
+                } else {
+                    format!(
+                        "{merge_failure}. Already advanced {}. Resolve the failed merge and retry update",
+                        changed.join(", ")
+                    )
+                };
                 ctx.log().warn(format!("{reason}: {e:#}"));
                 return Ok(TaskResult::Failed(reason));
             }
         }
     }
 
-    let changed = plans.iter().filter(|plan| plan.needs_update).count();
+    let changed = changed.len();
     Ok(if changed == 0 {
         TaskResult::Ok
     } else {

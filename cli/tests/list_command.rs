@@ -284,3 +284,52 @@ fn renamed_tasks_accept_legacy_selectors_and_labels_in_both_filter_flags() {
         }
     }
 }
+
+#[test]
+fn explain_uses_the_active_overlay_declaration_without_writing_state() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file("symlinks.toml", "[base]\nsymlinks = ['other']\n")
+        .with_symlink_source_content("other", "public")
+        .build();
+    let overlay = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir(overlay.path().join("conf")).unwrap();
+    std::fs::create_dir(overlay.path().join("symlinks")).unwrap();
+    let platform = if cfg!(windows) { "windows" } else { "linux" };
+    std::fs::write(
+        overlay.path().join("conf/symlinks.toml"),
+        format!("[base]\nsymlinks = [{{ source = 'fixture', target = '.decoy' }}]\n[base-{platform}]\nsymlinks = [{{ source = 'fixture', target = 'alias/settings' }}]\n"),
+    )
+    .unwrap();
+    std::fs::write(overlay.path().join("symlinks/fixture"), "desired").unwrap();
+    let actual = home.path().join("actual");
+    let alias = home.path().join("alias");
+    std::fs::create_dir(&actual).unwrap();
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_dir(&actual, &alias).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&actual, &alias).unwrap();
+    let output = common::cli_command(
+        repo.root_path(),
+        home.path(),
+        Some(overlay.path()),
+        "explain",
+        "",
+    )
+    .arg(actual.join("settings"))
+    .output()
+    .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("Profile: base"), "{text}");
+    assert!(text.contains("Active overlay:"), "{text}");
+    assert!(
+        text.contains(&format!("symlinks.toml [base-{platform}]")),
+        "{text}"
+    );
+    assert!(text.contains("Update: create managed link"), "{text}");
+    assert!(text.contains("Remove: leave target as it is"), "{text}");
+    assert_eq!(std::fs::read_dir(home.path()).unwrap().count(), 2);
+    assert!(!actual.join("settings").exists());
+    assert!(!repo.root_path().join(".git/dotfiles-run.lock").exists());
+}

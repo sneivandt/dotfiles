@@ -174,6 +174,11 @@ jobs:
           arch: linux_gcc_64
       - name: Test QML with inert Quickshell mocks
         run: sh .github/workflows/scripts/linux/test-desktop-qml.sh
+      - name: Start Quickshell in a disposable Wayland session
+        run: >-
+          docker run --rm --init --volume "$GITHUB_WORKSPACE:/workspace:ro"
+          archlinux@sha256:767de6eaa40dcfeda5263a48737ea03a782caabdf3a403b6e6a203c7fd333681
+          sh /workspace/.github/workflows/scripts/linux/test-desktop-session.sh
 
   # ── Documentation Consistency ─────────────────────────
   docs:
@@ -485,6 +490,8 @@ jobs:
         run: >-
           cargo mutants --in-place --no-shuffle --in-diff mutants.diff
           --shard "$MUTATION_SHARD/8"
+          --exclude-re '^src/infra/run_lock/windows\.rs:'
+          --exclude-re '^src/domains/files/resources/symlink/platform\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported)\b'
           --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b'
           --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|append_user_path|user_path_contains)\b'
           --exclude-re '^src/domains/ai/apm/cowork\.rs:.*\bis_desired_skill_directory\b'
@@ -620,6 +627,11 @@ jobs:
           DIR: ${{ github.workspace }}
           BINARY_PATH: ${{ github.workspace }}/bin/dotfiles
         run: sh .github/workflows/scripts/linux/test-uninstall.sh
+      - name: Check native Arch convergence and recovery
+        run: >-
+          docker run --rm --init --volume "$GITHUB_WORKSPACE:/workspace:ro"
+          archlinux@sha256:767de6eaa40dcfeda5263a48737ea03a782caabdf3a403b6e6a203c7fd333681
+          sh /workspace/.github/workflows/scripts/linux/test-arch-acceptance.sh
 
   test-install-uninstall-windows:
     name: "Integration: Install/Uninstall round-trip (Windows)"

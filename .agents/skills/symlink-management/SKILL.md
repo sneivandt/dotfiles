@@ -40,9 +40,8 @@ source captures in number; do not assume general shell glob syntax or recursive
 - Check where existing target parents resolve. External destinations require
   the entry's `allow_external_target` opt-in for installation and removal.
 - Uninstall materializes managed links into real files/directories rather than
-  deleting their content. Missing targets also materialize via
-  `remove_when_missing()`; incorrect or user-replaced targets are left alone by
-  normal removal processing.
+  deleting their content. Missing targets stay absent unless `--restore-missing`
+  is selected. Preserve incorrect and user-replaced targets.
 - Never overwrite an existing non-link target during removal.
 - Stage copies before unlinking the target; preserve temporary cleanup and
   cross-filesystem handling. Cover copy/rename failures rather than assuming

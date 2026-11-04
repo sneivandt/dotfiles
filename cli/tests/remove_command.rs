@@ -26,7 +26,7 @@ fn remove_tasks() -> Vec<Box<dyn tasks::Task>> {
 fn remove_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>> {
     let ctx = common::IntegrationTestContext::new();
     let store = ConfigStore::from_config(ctx.load_config_for_platform("base", platform));
-    tasks::all_remove_tasks(&store)
+    tasks::all_remove_tasks(&store, false)
 }
 
 // ---------------------------------------------------------------------------
@@ -94,7 +94,7 @@ fn remove_catalog_applicability_tracks_managed_inputs_on_both_platforms() {
                 },
                 std::sync::Arc::new(common::StubExecutor),
             );
-            let mut applicable: Vec<_> = tasks::all_remove_tasks(&ec.store)
+            let mut applicable: Vec<_> = tasks::all_remove_tasks(&ec.store, false)
                 .into_iter()
                 .filter(|task| task.should_run(&ec.ctx))
                 .map(|task| task.selector().to_string())
@@ -301,4 +301,77 @@ fn remove_removes_active_overlay_script_state_by_default() {
         "{}",
         String::from_utf8_lossy(&repeated.stderr)
     );
+}
+
+#[test]
+fn missing_symlink_targets_are_only_materialized_on_request() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file("symlinks.toml", "[base]\nsymlinks = ['fixture']\n")
+        .with_symlink_source_content("fixture", "configured content\n")
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let target = home.path().join(".fixture");
+    for restore in [false, true] {
+        let mut command =
+            common::cli_command(repo.root_path(), home.path(), None, "remove", "symlinks");
+        if restore {
+            command.arg("--restore-missing");
+        }
+        let output = command.output().unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(target.exists(), restore);
+    }
+    assert_eq!(
+        std::fs::read_to_string(target).unwrap(),
+        "configured content\n"
+    );
+}
+
+#[test]
+fn materialization_refuses_nested_absolute_links_to_the_active_overlay() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file("symlinks.toml", "[base]\nsymlinks = ['fixture']\n")
+        .with_symlink_source_content("fixture/file", "content")
+        .build();
+    let overlay = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let source = repo.root_path().join("symlinks/fixture");
+    let target = home.path().join(".fixture");
+    let external_source = overlay.path().join("external");
+    std::fs::write(&external_source, "overlay content").unwrap();
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_dir(&source, &target).unwrap();
+        std::os::windows::fs::symlink_file(&external_source, source.join("nested")).unwrap();
+    }
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&source, &target).unwrap();
+        std::os::unix::fs::symlink(&external_source, source.join("nested")).unwrap();
+    }
+    for preview in [true, false] {
+        let mut command = common::cli_command(
+            repo.root_path(),
+            home.path(),
+            Some(overlay.path()),
+            "remove",
+            "symlinks",
+        );
+        if preview {
+            command.arg("--dry-run");
+        }
+        let output = command.output().unwrap();
+        assert!(!output.status.success(), "{output:?}");
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(text.contains("depends on the checkout"), "{text}");
+        assert!(std::fs::read_link(&target).is_ok());
+        assert_eq!(
+            dunce::canonicalize(&target).unwrap(),
+            dunce::canonicalize(&source).unwrap()
+        );
+    }
 }

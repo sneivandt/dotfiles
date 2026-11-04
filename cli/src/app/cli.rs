@@ -155,6 +155,9 @@ JSON Lines output disables prompts."
     /// Inspect task selectors and dependencies
     List(ListOpts),
 
+    /// Explain how a configured home symlink is managed
+    Explain(ExplainOpts),
+
     /// Inspect previous runs and task diagnostics
     Log(LogOpts),
 
@@ -356,6 +359,17 @@ impl TaskGraphCommand {
             Self::Check => "check",
         }
     }
+}
+
+/// Options for inspecting one managed home target.
+#[derive(Args, Debug, Clone)]
+pub struct ExplainOpts {
+    /// Repository and profile selection.
+    #[command(flatten)]
+    pub repository: RepositoryOpts,
+
+    /// Absolute or home-relative target path.
+    pub path: std::path::PathBuf,
 }
 
 /// Options for the `list` command.
@@ -602,7 +616,16 @@ pub struct TaskFilters {
 pub type CheckOpts = TaskFilters;
 
 /// Options for the `remove` task set.
-pub type RemoveOpts = TaskFilters;
+#[derive(Args, Debug, Clone)]
+pub struct RemoveOpts {
+    /// Select removal tasks.
+    #[command(flatten)]
+    pub filters: TaskFilters,
+
+    /// Materialize configured home targets even if they are missing
+    #[arg(long)]
+    pub restore_missing: bool,
+}
 
 /// Canonical command names accepted by `log --command`.
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
@@ -772,17 +795,19 @@ mod tests {
     fn top_level_help_is_small_and_uses_canonical_commands() {
         let help = display_output(&["dotfiles", "--help"], ErrorKind::DisplayHelp);
 
+        let normalized = help.split_whitespace().collect::<Vec<_>>().join(" ");
         for text in [
-            "update  Apply configuration and update dependencies",
-            "remove  Remove managed links and integrations",
-            "check   Validate configuration and repository files",
-            "list    Inspect task selectors and dependencies",
-            "log     Inspect previous runs and task diagnostics",
-            "help    Print this message or the help of the given subcommand(s)",
+            "update Apply configuration and update dependencies",
+            "remove Remove managed links and integrations",
+            "check Validate configuration and repository files",
+            "list Inspect task selectors and dependencies",
+            "explain Explain how a configured home symlink is managed",
+            "log Inspect previous runs and task diagnostics",
+            "help Print this message or the help of the given subcommand(s)",
             "dotfiles check",
         ] {
             assert!(
-                help.contains(text),
+                normalized.contains(text),
                 "top-level help should contain {text:?}"
             );
         }
@@ -960,8 +985,11 @@ mod tests {
             let (only, skip) = match cli.command {
                 Command::Update(opts) => (opts.tasks.filters.only, opts.tasks.filters.skip),
                 Command::Check(opts) => (opts.tasks.only, opts.tasks.skip),
-                Command::Remove(opts) => (opts.tasks.only, opts.tasks.skip),
-                Command::List(_) | Command::Log(_) | Command::Completions(_) => {
+                Command::Remove(opts) => (opts.tasks.filters.only, opts.tasks.filters.skip),
+                Command::List(_)
+                | Command::Explain(_)
+                | Command::Log(_)
+                | Command::Completions(_) => {
                     panic!("expected execution command")
                 }
             };
@@ -1206,7 +1234,10 @@ mod tests {
                     Command::Update(opts) => opts.into_engine_parts().0,
                     Command::Remove(opts) => opts.into_engine_parts().0,
                     Command::Check(opts) => opts.into_engine_parts().0,
-                    Command::List(_) | Command::Log(_) | Command::Completions(_) => {
+                    Command::List(_)
+                    | Command::Explain(_)
+                    | Command::Log(_)
+                    | Command::Completions(_) => {
                         panic!("expected engine command")
                     }
                 };
@@ -1364,7 +1395,10 @@ mod tests {
                     assert!(!global.no_repo_update);
                     (global, verbose)
                 }
-                Command::List(_) | Command::Log(_) | Command::Completions(_) => {
+                Command::List(_)
+                | Command::Explain(_)
+                | Command::Log(_)
+                | Command::Completions(_) => {
                     panic!("expected engine command")
                 }
             };

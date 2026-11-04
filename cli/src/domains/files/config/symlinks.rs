@@ -23,7 +23,7 @@ mod glob_expansion;
 mod target_capture;
 mod target_validation;
 
-pub(crate) use target_validation::target_identity;
+pub(crate) use target_validation::{path_identity, target_identity};
 
 /// A symlink to create: source (in symlinks/) → target (in $HOME).
 #[derive(Debug, Clone)]
@@ -80,6 +80,34 @@ config_section! {
             origin: None,
         },
     },
+}
+
+pub(crate) fn declaring_section(
+    entry: &Symlink,
+    root: &Path,
+    categories: &[crate::infra::config::category_matcher::Category],
+) -> Result<Option<String>> {
+    use crate::infra::config::toml_loader::{ConfigDocument, read_config};
+    let origin = entry.origin.as_deref().unwrap_or(root);
+    let path = origin.join("conf").join(SYMLINKS_TOML);
+    let content = read_config(&path, false)?;
+    let sections = decode(&ConfigDocument::parse(&path, &content)?)?;
+    for (name, mut items) in sections {
+        let selected = crate::infra::config::toml_loader::filter_by_categories(
+            vec![(name.clone(), vec![()])],
+            categories,
+        );
+        if selected.is_empty() {
+            continue;
+        }
+        set_origin(&mut items, origin);
+        if expand_glob_patterns(&items, root)?.iter().any(|item| {
+            item.source == entry.source && target_identity(item) == target_identity(entry)
+        }) {
+            return Ok(Some(name));
+        }
+    }
+    Ok(None)
 }
 
 /// Stamp the originating repository root onto every symlink entry.

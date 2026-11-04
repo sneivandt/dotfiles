@@ -45,6 +45,17 @@ pub(crate) fn cli_command(
     verb: &str,
     selector: &str,
 ) -> Command {
+    isolated_cli_command(repo, home, overlay, verb, selector, false)
+}
+
+pub(crate) fn isolated_cli_command(
+    repo: &Path,
+    home: &Path,
+    overlay: Option<&Path>,
+    verb: &str,
+    selector: &str,
+    sync_repositories: bool,
+) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_dotfiles"));
     for (key, _) in std::env::vars_os() {
         let name = key.to_string_lossy().to_ascii_uppercase();
@@ -73,7 +84,7 @@ pub(crate) fn cli_command(
         // falling through to that checkout's profile, hooks, or run lock.
         initialize_git_repo(repo);
         command.args(["--profile", "base", "--root"]).arg(repo);
-        if verb != "list" {
+        if !matches!(verb, "list" | "explain") {
             command.arg("--non-interactive");
         }
         if !selector.is_empty() {
@@ -83,7 +94,7 @@ pub(crate) fn cli_command(
             command.arg("--overlay").arg(overlay);
         }
     }
-    if verb == "update" {
+    if verb == "update" && !sync_repositories {
         command.arg("--no-repo-update");
     }
     command

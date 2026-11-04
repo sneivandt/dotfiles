@@ -21,11 +21,23 @@ fn completions_report_changes_then_current() {
             "completions",
         );
         command.arg("--no-symbols");
-        if repository_child {
+        let _legacy_lock = repository_child.then(|| {
+            use std::io::Write as _;
+
+            let mut lock = std::fs::OpenOptions::new()
+                .create_new(true)
+                .read(true)
+                .write(true)
+                .open(repo.root_path().join(".git/dotfiles-run.lock"))
+                .unwrap();
+            lock.try_lock().unwrap();
+            write!(lock, "{{\"pid\":{}}}", std::process::id()).unwrap();
+            lock.sync_all().unwrap();
             command
                 .env("DOTFILES_REEXEC_GUARD", "1")
                 .env("DOTFILES_REPOSITORY_REEXEC_GUARD", "1");
-        }
+            lock
+        });
         for expected in ["CHANGED Shell completions", "No changes · 1 task current"] {
             let output = command.output().unwrap();
             let stdout = String::from_utf8(output.stdout).unwrap();

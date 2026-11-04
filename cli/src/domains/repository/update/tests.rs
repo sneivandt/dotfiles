@@ -664,7 +664,8 @@ fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_sign
             let result = result.unwrap();
             assert!(
                 matches!(&result, TaskResult::Failed(reason)
-                    if reason == "git merge --ff-only failed in overlay repository"),
+                    if reason.contains("git merge --ff-only failed in overlay repository")
+                    && reason.contains("Already advanced repository")),
                 "the overlay failure must remain a failed update: {result:?}"
             );
         }

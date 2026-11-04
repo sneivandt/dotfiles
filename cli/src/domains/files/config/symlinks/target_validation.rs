@@ -46,7 +46,7 @@ pub(crate) fn target_identity(symlink: &Symlink) -> Vec<OsString> {
     path_identity(Path::new(&target_key(symlink)))
 }
 
-fn path_identity(path: &Path) -> Vec<OsString> {
+pub(crate) fn path_identity(path: &Path) -> Vec<OsString> {
     path.components()
         .filter(|component| !matches!(component, Component::CurDir))
         .map(|component| {

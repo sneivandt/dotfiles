@@ -25,7 +25,7 @@ pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
         &reexec_args(log),
         SELF_UPDATE_REEXEC_GUARD_VAR,
     );
-    run_reexec(command, log)
+    run_reexec(command, root, log)
 }
 
 fn reexec_args(log: &dyn Output) -> Vec<String> {
@@ -41,7 +41,33 @@ fn finish_reexec(log: &dyn Output, code: i32) -> i32 {
     log.finish_run(code)
 }
 
-fn run_reexec(mut command: std::process::Command, log: &dyn Output) -> ! {
+fn inherited_lease(marker: Option<std::ffi::OsString>) -> Option<std::ffi::OsString> {
+    marker.filter(|value| !value.is_empty() && value != "1")
+}
+
+fn run_reexec(mut command: std::process::Command, root: &std::path::Path, log: &dyn Output) -> ! {
+    let mut setup = || -> Result<_> {
+        let inherited = inherited_lease(std::env::var_os(REEXEC_GUARD_VAR));
+        if let Some(marker) = inherited {
+            command.env(REEXEC_GUARD_VAR, marker);
+            return Ok(None);
+        }
+        let env = crate::infra::env::system();
+        let lease = crate::infra::run_lock::RestartLease::new(
+            root,
+            env.as_ref(),
+            crate::infra::platform::Platform::detect(),
+        )?;
+        command.env(REEXEC_GUARD_VAR, lease.marker()?);
+        Ok(Some(lease))
+    };
+    let lease = match setup() {
+        Ok(lease) => lease,
+        Err(error) => {
+            log.error(format!("could not prepare restart: {error:#}"));
+            std::process::exit(finish_reexec(log, 1));
+        }
+    };
     let code = match command.status() {
         Ok(status) => {
             if status.code().is_none() {
@@ -54,6 +80,7 @@ fn run_reexec(mut command: std::process::Command, log: &dyn Output) -> ! {
             1
         }
     };
+    drop(lease);
     std::process::exit(finish_reexec(log, code))
 }
 
@@ -72,7 +99,7 @@ pub(super) fn build_reexec_command(
 }
 
 /// Restart the current binary after the repository checkout changed.
-pub(crate) fn re_exec_after_repository_update(log: &dyn Output) -> ! {
+pub(crate) fn re_exec_after_repository_update(root: &std::path::Path, log: &dyn Output) -> ! {
     let exe = match std::env::current_exe() {
         Ok(exe) => exe,
         Err(error) => {
@@ -84,7 +111,7 @@ pub(crate) fn re_exec_after_repository_update(log: &dyn Output) -> ! {
     };
     let command = build_reexec_command(&exe, &reexec_args(log), REPOSITORY_REEXEC_GUARD_VAR);
     log.startup("Repository synced · restarting to load configuration");
-    run_reexec(command, log)
+    run_reexec(command, root, log)
 }
 
 pub(super) const fn should_check_self_update(runtime: &RuntimePolicy<'_>) -> bool {
@@ -138,6 +165,24 @@ mod tests {
     use crate::infra::exec::{CommandSpec, Executor as _, ProcessExecutor};
     use crate::infra::logging::records::{Record, RunOutcome, StoredRecord};
 
+    #[test]
+    fn restart_chains_forward_live_lease_markers_only() {
+        for (input, expected) in [
+            (None, None),
+            (Some(""), None),
+            (Some("1"), None),
+            (
+                Some(".dotfiles-restart-123-0-lock"),
+                Some(".dotfiles-restart-123-0-lock"),
+            ),
+        ] {
+            assert_eq!(
+                inherited_lease(input.map(Into::into)),
+                expected.map(Into::into)
+            );
+        }
+    }
+
     const CHILD_TEST: &str = "app::commands::reexec::tests::restart_child";
     const CHILD_ROLE: &str = "DOTFILES_RESTART_TEST_ROLE";
     const CHILD_ROOT: &str = "DOTFILES_RESTART_TEST_ROOT";
@@ -170,7 +215,8 @@ mod tests {
             command
         };
         command.stdin(std::process::Stdio::null());
-        run_reexec(command, &log);
+        git2::Repository::init(&root).unwrap();
+        run_reexec(command, &root, &log);
     }
 
     #[test]

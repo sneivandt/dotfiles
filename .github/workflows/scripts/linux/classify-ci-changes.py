@@ -111,7 +111,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             pass  # Always executed by classify-changes.
         elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh", LINUX + "release-tag.sh"}:
             pass  # Publishing builds are selected independently of CI builds.
-        elif path == LINUX + "test-desktop-qml.sh":
+        elif path in {LINUX + "test-desktop-qml.sh", LINUX + "test-desktop-session.sh"}:
             enable("desktop_qml")
         elif path == LINUX + "test-workflows.sh":
             pass  # Always executed by classify-changes.
@@ -129,7 +129,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("wrapper_linux")
         elif path in {"dotfiles.ps1", WINDOWS + "Test-ShellWrapper.ps1"}:
             enable("wrapper_windows")
-        elif path == LINUX + "test-uninstall.sh":
+        elif path in {LINUX + "test-uninstall.sh", LINUX + "test-arch-acceptance.sh"}:
             enable("roundtrip_linux")
         elif path == WINDOWS + "Test-InstallUninstall.ps1":
             enable("roundtrip_windows")

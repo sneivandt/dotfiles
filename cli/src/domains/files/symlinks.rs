@@ -40,18 +40,40 @@ fn build_resource(
 
 /// Build [`SymlinkResource`] instances from a symlink configuration slice.
 pub(crate) fn build_resources(ctx: &Context, symlinks: &[Symlink]) -> Vec<SymlinkResource> {
-    let executor = ctx.executor_arc();
-    let mut placeholders = ctx
-        .platform()
-        .is_windows()
-        .then(GitSymlinkPlaceholders::default);
+    resources_for(
+        ctx.root(),
+        ctx.overlay(),
+        ctx.home(),
+        ctx.platform(),
+        &ctx.executor_arc(),
+        symlinks,
+    )
+}
+
+pub(crate) fn resources_for(
+    root: &Path,
+    overlay: Option<&Path>,
+    home: &Path,
+    platform: crate::infra::platform::Platform,
+    executor: &Arc<dyn crate::infra::exec::Executor>,
+    symlinks: &[Symlink],
+) -> Vec<SymlinkResource> {
+    let mut placeholders = platform.is_windows().then(GitSymlinkPlaceholders::default);
     symlinks
         .iter()
-        .map(|s| build_resource(s, ctx.root(), ctx.home(), &executor, placeholders.as_mut()))
+        .map(|entry| {
+            let other_root = if entry.origin.as_deref().is_some_and(|origin| origin != root) {
+                Some(root)
+            } else {
+                overlay
+            };
+            build_resource(entry, root, home, executor, placeholders.as_mut())
+                .with_other_checkout(other_root.map(Path::to_path_buf))
+        })
         .collect()
 }
 
-fn validate_resolved_targets(resources: &[SymlinkResource]) -> Result<()> {
+pub(crate) fn validate_resolved_targets(resources: &[SymlinkResource]) -> Result<()> {
     validate_target_paths(resources.iter().filter_map(|resource| {
         // Resource discovery reports individual paths that cannot be resolved.
         resource
@@ -99,9 +121,29 @@ impl Task for InstallSymlinks {
     }
 }
 
-crate::engine::config_task! {
-    /// Materialize installed symlinks into real files/directories.
-    pub struct UninstallSymlinks(Vec<Symlink>);
+/// Materialize installed symlinks into real files and directories.
+#[derive(Debug)]
+pub struct UninstallSymlinks {
+    config: crate::infra::ConfigHandle<Vec<Symlink>>,
+    restore_missing: bool,
+}
+
+impl UninstallSymlinks {
+    /// Materialize only existing managed links.
+    pub const fn new(config: crate::infra::ConfigHandle<Vec<Symlink>>) -> Self {
+        Self::with_restore_missing(config, false)
+    }
+
+    /// Select whether missing targets also receive copies.
+    pub const fn with_restore_missing(
+        config: crate::infra::ConfigHandle<Vec<Symlink>>,
+        restore_missing: bool,
+    ) -> Self {
+        Self {
+            config,
+            restore_missing,
+        }
+    }
 }
 
 impl Task for UninstallSymlinks {
@@ -115,7 +157,10 @@ impl Task for UninstallSymlinks {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let symlinks = self.config.get();
-        let resources = build_resources(ctx, symlinks);
+        let resources: Vec<_> = build_resources(ctx, symlinks)
+            .into_iter()
+            .map(|resource| resource.with_restore_missing(self.restore_missing))
+            .collect();
         validate_resolved_targets(&resources)?;
         process_resources_remove(ctx, resources, "materialize")
     }
@@ -254,7 +299,10 @@ mod tests {
 
         assert_eq!(resource.target, home.join(".bashrc"));
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
-        assert_eq!(resource.remove().unwrap(), ResourceChange::Applied);
+        assert_eq!(
+            resource.with_restore_missing(true).remove().unwrap(),
+            ResourceChange::Applied
+        );
         assert_eq!(
             std::fs::read_to_string(home.join(".bashrc")).unwrap(),
             "source"
@@ -680,7 +728,11 @@ mod tests {
         let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
 
-        let result = UninstallSymlinks::new(handle(vec![symlink("config/git/config", None)]))
+        let config = handle(vec![symlink("config/git/config", None)]);
+        let default = UninstallSymlinks::new(config.clone()).run(&ctx).unwrap();
+        assert!(matches!(default, TaskResult::Batch(stats) if stats.changed_count() == 0));
+        assert!(!target.exists());
+        let result = UninstallSymlinks::with_restore_missing(config, true)
             .run(&ctx)
             .unwrap();
 

@@ -43,9 +43,9 @@ impl<'a> RuntimePolicy<'a> {
         stdin_terminal: bool,
         stdout_terminal: bool,
     ) -> Self {
-        // CI and restart guards use presence, including empty/non-Unicode values.
-        // The elevated-child environment marker historically requires a value.
+        // CI uses presence. Restart markers require a value and are verified by the runner.
         let is_ci = env.var_os("CI").is_some();
+        let reexec_guarded = env.is_set(REEXEC_GUARD_VAR);
         Self {
             global,
             execution: ExecutionPolicy {
@@ -62,9 +62,9 @@ impl<'a> RuntimePolicy<'a> {
                     || env.is_set(crate::infra::elevation::ELEVATED_CHILD_VAR),
             },
             verbose,
-            reexec_guarded: env.var_os(REEXEC_GUARD_VAR).is_some(),
-            repository_child: env.var_os(REPOSITORY_REEXEC_GUARD_VAR).is_some(),
-            self_update_child: env.var_os(SELF_UPDATE_REEXEC_GUARD_VAR).is_some(),
+            reexec_guarded,
+            repository_child: reexec_guarded && env.is_set(REPOSITORY_REEXEC_GUARD_VAR),
+            self_update_child: reexec_guarded && env.is_set(SELF_UPDATE_REEXEC_GUARD_VAR),
             env,
         }
     }

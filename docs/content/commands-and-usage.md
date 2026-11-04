@@ -194,6 +194,13 @@ Review logs for private paths, configuration, and tool output before sharing
 them. The [log reference](cli-reference.md#logs) covers older runs, filters,
 raw output, retention, and storage locations.
 
+## Inspect a home path
+
+Run `dotfiles explain .config/git/config` to see which declaration manages that
+path, where it resolves, and what update and removal would do. Use the same
+profile and overlay you use for updates. Run an existing CLI binary to inspect
+the path without starting a task or writing a run log.
+
 ## Remove integrations
 
 Preview with the original profile and overlay while their sources still exist:
@@ -212,9 +219,9 @@ changed, pass the original `--profile` and `--overlay` explicitly.
 | Active overlay scripts | Their removal actions run when their checks find managed state |
 
 **Remove is not rollback.** The copies contain current configured content,
-not your pre-install files. A missing home target can also receive a copy;
-existing non-link targets and links that no longer point to the managed source
-are preserved. Keep the checkout until copying succeeds. If removal reports a
+not your pre-install files. Missing targets stay missing. Use
+`dotfiles remove --only symlinks --restore-missing` if you also want copies at
+missing paths. Existing files and links to other sources are preserved. Keep the checkout until copying succeeds. If removal reports a
 nested link that depends on the checkout, fix the reported link before retrying.
 If another process replaces a target during removal, keep the new entry and
 review the recovery path printed by dotfiles.

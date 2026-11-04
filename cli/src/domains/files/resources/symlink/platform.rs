@@ -54,7 +54,7 @@ pub(super) fn rename_noreplace(source: &Path, target: &Path) -> std::io::Result<
     unsafe_code,
     reason = "Win32 provides the no-replace rename missing from std"
 )]
-pub(super) fn rename_noreplace(source: &Path, target: &Path) -> std::io::Result<()> {
+pub(super) fn rename_noreplace_windows(source: &Path, target: &Path) -> std::io::Result<()> {
     use std::io;
     use std::os::windows::ffi::OsStrExt as _;
     use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
@@ -84,9 +84,14 @@ pub(super) fn rename_noreplace(source: &Path, target: &Path) -> std::io::Result<
 }
 
 #[cfg(not(any(windows, target_os = "linux", target_vendor = "apple")))]
-pub(super) fn rename_noreplace(_source: &Path, _target: &Path) -> std::io::Result<()> {
+pub(super) fn rename_noreplace_unsupported(_source: &Path, _target: &Path) -> std::io::Result<()> {
     Err(std::io::ErrorKind::Unsupported.into())
 }
+
+#[cfg(not(any(windows, target_os = "linux", target_vendor = "apple")))]
+pub(super) use rename_noreplace_unsupported as rename_noreplace;
+#[cfg(windows)]
+pub(super) use rename_noreplace_windows as rename_noreplace;
 
 /// Check if metadata represents a managed link-like entry.
 #[cfg_attr(

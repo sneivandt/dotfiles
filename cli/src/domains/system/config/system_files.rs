@@ -183,6 +183,34 @@ mod tests {
     use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
 
     #[test]
+    fn fragment_diagnostics_distinguish_absence_and_non_regular_sources() {
+        let fixture = tempfile::tempdir().unwrap();
+        let system = fixture.path().join("system");
+        std::fs::create_dir(&system).unwrap();
+        let source = system.join("fixture.toml");
+        let file = SystemFile {
+            target: "/etc/fixture.toml".into(),
+            source: "fixture.toml".into(),
+            merge: MergeStrategy::Toml,
+            origin: Some(fixture.path().to_path_buf()),
+        };
+        assert_eq!(
+            validate(std::slice::from_ref(&file))[0].code.to_string(),
+            "system-file.missing-source"
+        );
+        std::fs::create_dir(&source).unwrap();
+        let diagnostics = validate(std::slice::from_ref(&file));
+        assert_eq!(
+            diagnostics[0].code.to_string(),
+            "system-file.invalid-fragment"
+        );
+        assert!(diagnostics[0].message.contains("expected a regular file"));
+        std::fs::remove_dir(&source).unwrap();
+        std::fs::write(source, "configured = true").unwrap();
+        assert!(validate(&[file]).is_empty());
+    }
+
+    #[test]
     fn filters_profile_and_environment_sections() {
         let (_dir, path) = write_temp_toml(
             "[linux]\nfiles = [{ target = '/etc/base', source = 'base', merge = 'toml' }]\n\

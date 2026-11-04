@@ -18,11 +18,18 @@ pub fn run(
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
-    super::record_scope(log, opts, false, false);
+    super::record_scope(log, &opts.filters, false, false);
     let run_lock = super::prepare_self_update(runtime, log)?;
     let runner = super::CommandRunner::new_with_lock(runtime, log, token, run_lock)?;
-    let tasks = runner.remove_tasks();
+    let tasks = runner.remove_tasks(opts.restore_missing);
     let overlay_tasks = runner.overlay_script_removal_tasks();
-    let filtered = apply_task_filters(&tasks, &overlay_tasks, &opts.only, &opts.skip, false, log)?;
+    let filtered = apply_task_filters(
+        &tasks,
+        &overlay_tasks,
+        &opts.filters.only,
+        &opts.filters.skip,
+        false,
+        log,
+    )?;
     runner.run(filtered)
 }

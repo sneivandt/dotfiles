@@ -45,12 +45,20 @@ impl CommandRunner {
         runtime: &RuntimePolicy<'_>,
         log: &Arc<Logger>,
     ) -> Result<Option<crate::infra::run_lock::RunLock>> {
-        if runtime.execution.elevated_child || runtime.reexec_guarded {
+        if runtime.execution.elevated_child {
             return Ok(None);
         }
 
         let platform = Platform::detect();
         let root = resolve_root(runtime)?;
+        if let Some(marker) = runtime
+            .env
+            .var_os(super::reexec::REEXEC_GUARD_VAR)
+            .filter(|marker| !marker.is_empty())
+        {
+            crate::infra::run_lock::verify_restart(&root, runtime.env.as_ref(), platform, &marker)?;
+            return Ok(None);
+        }
         crate::infra::run_lock::RunLock::acquire(
             &root,
             runtime.env.as_ref(),
@@ -112,8 +120,8 @@ impl CommandRunner {
 
     /// Build the full set of remove tasks, wired to the shared config store.
     #[must_use]
-    pub fn remove_tasks(&self) -> Vec<Box<dyn Task>> {
-        crate::app::catalog::all_remove_tasks(&self.store)
+    pub fn remove_tasks(&self, restore_missing: bool) -> Vec<Box<dyn Task>> {
+        crate::app::catalog::all_remove_tasks(&self.store, restore_missing)
     }
 
     /// A handle to the aggregate configuration for app-owned validation tasks.
@@ -364,7 +372,7 @@ mod root_tests {
                 let lock = CommandRunner::acquire_run_lock(&runtime, &log).unwrap();
                 assert_eq!(
                     lock.is_some(),
-                    !elevated && !guarded,
+                    !elevated,
                     "elevated={elevated}, guarded={guarded}"
                 );
             }

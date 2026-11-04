@@ -32,6 +32,8 @@ pub struct SymlinkResource {
     allow_external_target: bool,
     /// Owning repository, used for source display and relocation checks.
     source_root: Option<PathBuf>,
+    other_root: Option<PathBuf>,
+    restore_missing: bool,
 }
 
 impl SymlinkResource {
@@ -50,6 +52,8 @@ impl SymlinkResource {
             display_home: None,
             allow_external_target: false,
             source_root: None,
+            other_root: None,
+            restore_missing: false,
         }
     }
 
@@ -77,6 +81,24 @@ impl SymlinkResource {
     pub const fn with_external_target_allowed(mut self, allowed: bool) -> Self {
         self.allow_external_target = allowed;
         self
+    }
+
+    pub(crate) fn with_other_checkout(mut self, other_root: Option<PathBuf>) -> Self {
+        self.other_root = other_root;
+        self
+    }
+
+    pub(crate) const fn with_restore_missing(mut self, restore_missing: bool) -> Self {
+        self.restore_missing = restore_missing;
+        self
+    }
+
+    fn checkout_roots(&self) -> Vec<&Path> {
+        self.source_root
+            .as_deref()
+            .into_iter()
+            .chain(self.other_root.as_deref())
+            .collect()
     }
 
     fn resolved_target(&self) -> anyhow::Result<(PathBuf, bool)> {
@@ -200,6 +222,7 @@ impl RemovableResource for SymlinkResource {
                 });
             }
         };
+        materialize::check_recovery(&target)?;
         let metadata = crate::infra::fs::symlink_metadata_optional(&target, "stat target")?;
         if let Some(meta) = &metadata {
             let managed = is_link_like(&target, meta)
@@ -216,9 +239,13 @@ impl RemovableResource for SymlinkResource {
                 });
             }
         }
+        if metadata.is_none() && !self.restore_missing {
+            return Ok(ResourceState::Missing);
+        }
         if let Some(reason) = state::invalid_source_reason(self, &target)? {
             return Ok(ResourceState::Unknown { reason });
         }
+        materialize::validate_source(&self.source, &self.checkout_roots())?;
         Ok(if metadata.is_some() {
             ResourceState::Correct
         } else {
@@ -227,7 +254,7 @@ impl RemovableResource for SymlinkResource {
     }
 
     fn remove_when_missing(&self) -> bool {
-        true
+        self.restore_missing
     }
 
     fn remove(&self) -> ResourceResult<ResourceChange> {
@@ -237,39 +264,30 @@ impl RemovableResource for SymlinkResource {
                 "invalid symlink resource will not be materialized",
             ));
         }
-        // Classify the target explicitly so that unexpected metadata errors
-        // do not fall through to `copy_into_place` (which would materialize
-        // the source into place — the wrong thing to do for a transient
-        // stat failure).  A missing target is fine: we still materialize so
-        // the user retains the file/directory after uninstall.
         match crate::infra::fs::symlink_metadata_optional(&target, "stat target")? {
-            Some(meta) if is_link_like(&target, &meta) => {
-                // Proceed with the normal materialize-then-remove path below.
-            }
+            Some(meta) if is_link_like(&target, &meta) => {}
             Some(_) => {
-                // Target exists but is not a symlink: refuse to overwrite to
-                // protect user data that replaced the managed symlink.
                 return Ok(ResourceChange::skipped(format!(
                     "target is not a symlink and will not be overwritten: {}",
                     target.display()
                 )));
             }
-            None => {
-                // Target already absent: still materialize source content into
-                // place so the user ends up with the real file/directory after
-                // uninstall, matching the behaviour when the symlink is present.
-            }
+            None if !self.restore_missing => return Ok(ResourceChange::AlreadyCorrect),
+            None => {}
         }
 
         // Stage source content before replacing the managed link.
-        let repository = self.source_root.as_deref().unwrap_or(&self.source);
-        copy_into_place(&self.source, &target, repository).with_context(|| {
-            format!(
-                "materialize {} to {}",
-                self.source.display(),
-                target.display()
-            )
-        })?;
+        let roots = self.checkout_roots();
+        materialize::validate_source(&self.source, &roots)?;
+        copy_into_place(&self.source, &target, &roots, self.restore_missing).with_context(
+            || {
+                format!(
+                    "materialize {} to {}",
+                    self.source.display(),
+                    target.display()
+                )
+            },
+        )?;
         Ok(ResourceChange::Applied)
     }
 }
@@ -291,7 +309,7 @@ pub(super) fn copy_dir_into_place(
     target: &Path,
     repository: &Path,
 ) -> anyhow::Result<()> {
-    materialize::copy_dir_into_place(source, target, repository)
+    materialize::copy_dir_into_place(source, target, &[repository], true)
 }
 
 #[cfg(test)]

@@ -13,6 +13,13 @@ use sha2::{Digest as _, Sha256};
 use crate::infra::env::Env;
 use crate::infra::platform::Platform;
 
+#[cfg(windows)]
+#[allow(
+    unsafe_code,
+    reason = "Win32 file mapping and process snapshot for legacy updater compatibility"
+)]
+mod windows;
+
 /// An exclusive lock held for the lifetime of one command run.
 #[derive(Debug)]
 pub(crate) struct RunLock {
@@ -26,6 +33,103 @@ struct Owner<'a> {
     command: &'a str,
 }
 
+const LOCK_NAME: &str = "dotfiles-run.lock";
+const RESTART_PREFIX: &str = ".dotfiles-restart";
+
+/// A repository-scoped lock held by the process that starts a restart chain.
+pub(crate) struct RestartLease {
+    _file: File,
+    marker: crate::infra::fs::TempGuard,
+}
+
+impl RestartLease {
+    pub(crate) fn new(root: &Path, env: &dyn Env, platform: Platform) -> Result<Self> {
+        let path = repository_state_path(root, env, platform, LOCK_NAME)?;
+        let parent = path.parent().context("missing run-lock directory")?;
+        let (marker, file) = crate::infra::fs::TempGuard::create_unique_file_with_mode(
+            parent,
+            RESTART_PREFIX,
+            "lock",
+            0o600,
+        )?;
+        file.try_lock()
+            .map_err(|error| lock_error(marker.path(), error))?;
+        Ok(Self {
+            _file: file,
+            marker,
+        })
+    }
+
+    pub(crate) fn marker(&self) -> Result<&std::ffi::OsStr> {
+        self.marker
+            .path()
+            .file_name()
+            .context("missing restart lease name")
+    }
+}
+
+fn is_held(path: &Path) -> Result<bool> {
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .with_context(|| format!("opening {}", path.display()))?;
+    match file.try_lock() {
+        Ok(()) => Ok(false),
+        Err(TryLockError::WouldBlock) => Ok(true),
+        Err(error) => Err(lock_error(path, error)),
+    }
+}
+
+pub(crate) fn verify_restart(
+    root: &Path,
+    env: &dyn Env,
+    platform: Platform,
+    marker: &std::ffi::OsStr,
+) -> Result<()> {
+    let lock = repository_state_path(root, env, platform, LOCK_NAME)?;
+    anyhow::ensure!(
+        is_held(&lock)?,
+        "restart has no active repository lock. Retry the command"
+    );
+    // Existing release binaries pass a literal 1. Match their recorded owner
+    // to the actual parent, while still requiring the original lock above.
+    #[cfg(any(unix, windows))]
+    if marker == "1" {
+        #[cfg(unix)]
+        let (bytes, parent) = (
+            std::fs::read(&lock)?,
+            i64::from(nix::unistd::getppid().as_raw()),
+        );
+        #[cfg(windows)]
+        let (bytes, parent) = {
+            let (bytes, parent) = windows::legacy_owner(&lock)?;
+            (bytes, i64::from(parent))
+        };
+        let owner: serde_json::Value = serde_json::from_slice(&bytes)?;
+        anyhow::ensure!(
+            owner.get("pid").and_then(serde_json::Value::as_i64) == Some(parent),
+            "restart parent does not own the repository lock. Retry the command"
+        );
+        return Ok(());
+    }
+    let name = marker.to_str().context("invalid restart lease")?;
+    anyhow::ensure!(
+        name.starts_with(RESTART_PREFIX)
+            && name.ends_with("-lock")
+            && name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-')),
+        "restart has no verifiable lease. Retry the command"
+    );
+    let lease = lock.with_file_name(name);
+    anyhow::ensure!(
+        is_held(&lease)?,
+        "restart lease has expired. Retry the command"
+    );
+    Ok(())
+}
+
 impl RunLock {
     /// Acquire the lock associated with `root`.
     pub(crate) fn acquire(
@@ -34,7 +138,7 @@ impl RunLock {
         platform: Platform,
         command: &str,
     ) -> Result<Self> {
-        let path = repository_state_path(root, env, platform, "dotfiles-run.lock")?;
+        let path = repository_state_path(root, env, platform, LOCK_NAME)?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating run-lock directory {}", parent.display()))?;
@@ -147,6 +251,35 @@ mod tests {
     use crate::infra::env::MapEnv;
     use crate::infra::platform::{Os, Platform};
     use std::io::Read as _;
+
+    #[test]
+    fn restart_requires_both_a_live_lease_and_its_repository_lock() {
+        let root = tempfile::tempdir().unwrap();
+        git2::Repository::init(root.path()).unwrap();
+        let env = MapEnv::new();
+        let platform = Platform::detect();
+        let lock = RunLock::acquire(root.path(), &env, platform, "update").unwrap();
+        let lease = RestartLease::new(root.path(), &env, platform).unwrap();
+        let marker = lease.marker().unwrap().to_owned();
+        verify_restart(root.path(), &env, platform, &marker).unwrap();
+        for invalid in [
+            "",
+            "../.dotfiles-restart-lock",
+            ".dotfiles-restart-fake-lock",
+        ] {
+            assert!(verify_restart(root.path(), &env, platform, invalid.as_ref()).is_err());
+        }
+        drop(lock);
+        assert!(
+            verify_restart(root.path(), &env, platform, &marker)
+                .unwrap_err()
+                .to_string()
+                .contains("no active repository lock")
+        );
+        let _lock = RunLock::acquire(root.path(), &env, platform, "update").unwrap();
+        drop(lease);
+        assert!(verify_restart(root.path(), &env, platform, &marker).is_err());
+    }
 
     #[test]
     fn operational_lock_errors_are_not_reported_as_contention() {

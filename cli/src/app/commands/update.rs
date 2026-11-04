@@ -65,11 +65,12 @@ pub fn run(
         filtered.retain(|task| task.task_id() != repository_task);
     }
 
+    let root = super::runner::resolve_root(runtime)?;
     runner.run_with_restart(
         filtered,
         repository_task,
         move || runtime.restart_after_repository_update(repository_update.was_updated()),
-        || super::re_exec_after_repository_update(&**log),
+        || super::re_exec_after_repository_update(&root, &**log),
     )
 }
 

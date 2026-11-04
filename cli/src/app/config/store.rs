@@ -96,6 +96,7 @@ mod tests {
         Symlink {
             source: source.to_string(),
             target: None,
+            allow_external_target: false,
             origin: Some(root.to_path_buf()),
         }
     }
@@ -144,6 +145,7 @@ mod tests {
             config.symlinks = vec![Symlink {
                 source: source.into(),
                 target: target.map(str::to_owned),
+                allow_external_target: false,
                 origin: Some(root.clone()),
             }];
             let store = ConfigStore::from_config(config);
@@ -166,6 +168,7 @@ mod tests {
         config.symlinks = vec![Symlink {
             source: "fragment.yml".into(),
             target: Some(r".apm\config\base.yml".into()),
+            allow_external_target: false,
             origin: None,
         }];
 
@@ -187,6 +190,7 @@ mod tests {
             let entry = Symlink {
                 source: source.into(),
                 target: target.map(str::to_owned),
+                allow_external_target: false,
                 origin: None,
             };
             assert_eq!(

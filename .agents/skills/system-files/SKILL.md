@@ -31,8 +31,9 @@ description: >
   facility stack. All strategies preserve unrelated target content.
 - Refuse malformed content, non-regular targets, missing PAM service files,
   and PAM fragments whose facilities do not exist.
-- Install through the executor as `root:root` mode `0644` from a unique staged
-  file. Constructors, state discovery, and dry runs stay read-only.
+- Install through the executor from a unique staged file. Preserve existing
+  owner, group, and permissions. New files use `root:root` and mode `0644`.
+  Constructors, state discovery, and dry runs stay read-only.
 - Keep package ownership in `conf/packages.toml`; selection may align a fragment
   with a package profile, but system-file entries do not probe package state.
 

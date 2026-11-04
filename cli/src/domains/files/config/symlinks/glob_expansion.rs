@@ -81,6 +81,7 @@ fn expand_one(symlink: &Symlink, fallback: &Path) -> Result<Vec<Symlink>> {
             Ok(Symlink {
                 source: path_to_config_string(&glob_match.relative_source),
                 target,
+                allow_external_target: symlink.allow_external_target,
                 origin: symlink.origin.clone(),
             })
         })

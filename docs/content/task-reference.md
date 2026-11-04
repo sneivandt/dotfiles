@@ -149,8 +149,8 @@ On Linux outside CI, merges declared `system/` fragments into files below
 [configuration format](configuration-reference.md#system-files) before editing.
 
 Malformed or non-regular destinations fail. Missing PAM service files are not
-created. Changed content is staged and installed as `root:root`, mode `0644`,
-using `sudo install`; dry-run does not write those destinations.
+created. A merge preserves the destination's owner, group, and permissions.
+New files use `root:root` and mode `0644`. Dry-run leaves destinations unchanged.
 
 ### System packages
 
@@ -200,9 +200,8 @@ the preview. Applying this task builds and executes package-supplied code.
 Links sources from the declaring repository's `symlinks/` into home.
 Overlay entries retain their origin.
 
-**Existing regular files and empty directories can be replaced without backup,
-replacement warning or confirmation.** Nonempty directories fail rather than
-being recursively deleted. Move unrelated targets aside before applying.
+Existing files, directories, and unrelated links are left in place and
+reported as conflicts. Back up and move them aside before applying.
 
 Linked sources stay live. On Windows, the task independently assesses
 elevation and rejects Git symlink placeholders checked out as ordinary files.

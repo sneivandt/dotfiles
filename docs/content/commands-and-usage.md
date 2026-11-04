@@ -29,9 +29,8 @@ is selected. Read-only listing needs an existing selection or an explicit
 
 Use `--profile base` or `--profile desktop` to override the saved role for one
 run. Neither profile is a user-files-only mode.
-**Back up existing configuration before the first apply:**
-installing links can replace regular files and empty directories without a
-backup. Changes to linked application settings may take effect immediately.
+Preview before the first apply. Back up and move aside any entries that block
+managed links. Changes to linked application settings may take effect immediately.
 
 ## Dry-run scope
 

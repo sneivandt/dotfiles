@@ -45,7 +45,6 @@ fn symlink_fixture() -> Fixture {
         &fixture.repo.join("symlinks").join("profile file"),
         "profile source\n",
     );
-    write(&fixture.home.join(".first"), "obsolete file to replace\n");
     require_native_file_symlinks(&fixture);
     fixture
 }
@@ -223,6 +222,17 @@ fn symlink_config_transition_preserves_removed_and_inactive_targets() {
         );
         // The old folder declaration is gone; the profile declaration is now
         // inactive. Neither change authorizes removing its installed link.
+        let before_conflict = fixture.snapshot();
+        let conflict = fixture.run(false, parallel, |store| {
+            Box::new(InstallSymlinks::new(store.symlinks))
+        });
+        conflict.assert_batch_with_failures(0, 0, 1);
+        conflict.assert_actions("link", &[], false);
+        before_conflict.assert_changes_confined_to(fixture.snapshot(), &[]);
+        let first = fixture.home.join(".first");
+        let backup = fixture.home.join(".first.previous");
+        std::fs::rename(first, &backup).unwrap();
+        assert_link(&backup, &fixture.repo.join("symlinks/first"));
         let before = fixture.snapshot();
         assert_lifecycle(
             &fixture,
@@ -256,15 +266,22 @@ fn symlink_config_transition_preserves_removed_and_inactive_targets() {
 }
 
 #[test]
-fn symlink_nth_failure_preserves_success_and_retry_converges() {
+fn symlink_conflict_preserves_unrelated_progress_and_retry_converges() {
     let fixture = symlink_fixture();
     let blocker = fixture.home.join(".folder");
     write(&blocker.join("user-file"), "do not recursively delete\n");
     let run = fixture.run(false, false, |store| {
         Box::new(InstallSymlinks::new(store.symlinks))
     });
-    run.assert_partial_failure(1, 1);
-    run.assert_actions("link", &["~/.first → symlinks/first"], false);
+    run.assert_batch_with_failures(2, 0, 1);
+    run.assert_actions(
+        "link",
+        &[
+            "~/.first → symlinks/first",
+            "~/Documents/profile.ps1 → symlinks/profile file",
+        ],
+        false,
+    );
     assert_link(
         &fixture.home.join(".first"),
         &fixture.repo.join("symlinks").join("first"),
@@ -272,11 +289,11 @@ fn symlink_nth_failure_preserves_success_and_retry_converges() {
     assert_eq!(
         std::fs::read(blocker.join("user-file")).unwrap(),
         b"do not recursively delete\n",
-        "Nth apply failure must leave the blocked target untouched"
+        "a conflict must leave the blocked target untouched"
     );
-    assert!(
-        !fixture.home.join("Documents").exists(),
-        "third resource must not be attempted after strict failure"
+    assert_link(
+        &fixture.home.join("Documents/profile.ps1"),
+        &fixture.repo.join("symlinks/profile file"),
     );
 
     std::fs::remove_file(blocker.join("user-file")).unwrap();
@@ -286,10 +303,7 @@ fn symlink_nth_failure_preserves_success_and_retry_converges() {
         false,
         |store| Box::new(InstallSymlinks::new(store.symlinks)),
         "link",
-        &[
-            "~/.folder → symlinks/folder",
-            "~/Documents/profile.ps1 → symlinks/profile file",
-        ],
+        &["~/.folder → symlinks/folder"],
         3,
         || assert_symlinks_installed(&fixture),
     );

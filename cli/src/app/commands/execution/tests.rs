@@ -179,6 +179,7 @@ fn unavailable_developer_mode_does_not_block_unprivileged_symlink_work() {
             config.symlinks.push(Symlink {
                 source: "example".into(),
                 target: None,
+                allow_external_target: false,
                 origin: None,
             });
             let log = Arc::new(Logger::new("test"));

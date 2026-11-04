@@ -563,10 +563,7 @@ mod symlink {
         );
 
         let error = resource.apply().unwrap_err();
-        assert!(
-            format!("{error:#}").contains("remove existing"),
-            "{error:#}"
-        );
+        assert!(format!("{error:#}").contains("move it aside"), "{error:#}");
         assert!(std::fs::symlink_metadata(&target).unwrap().is_dir());
         assert_eq!(
             std::fs::read_to_string(target.join("user-file")).unwrap(),
@@ -870,7 +867,7 @@ mod symlink {
                 assert_eq!(state, ResourceState::Correct, "{existing:?}");
             } else {
                 assert!(
-                    matches!(state, ResourceState::Incorrect { .. }),
+                    matches!(state, ResourceState::Invalid { .. }),
                     "{existing:?}: {state:?}"
                 );
             }
@@ -891,12 +888,12 @@ mod symlink {
 
         assert!(matches!(
             resource.current_state().unwrap(),
-            ResourceState::Incorrect { .. }
+            ResourceState::Invalid { .. }
         ));
     }
 
     #[test]
-    fn symlink_resource_incorrect_when_target_is_regular_file() {
+    fn symlink_resource_rejects_existing_regular_file() {
         let temp_dir = tempfile::tempdir().unwrap();
         let source = temp_dir.path().join("source");
         let target = temp_dir.path().join("target");
@@ -906,7 +903,7 @@ mod symlink {
         let resource = SymlinkResource::new(source, target, system_executor());
 
         let state = resource.current_state().unwrap();
-        assert!(matches!(state, ResourceState::Incorrect { .. }));
+        assert!(matches!(state, ResourceState::Invalid { .. }));
     }
 
     #[test]
@@ -929,25 +926,7 @@ mod symlink {
     }
 
     #[test]
-    fn symlink_resource_does_not_warn_about_replacement() {
-        for directory in [false, true] {
-            let temp_dir = tempfile::tempdir().unwrap();
-            let source = temp_dir.path().join("source");
-            let target = temp_dir.path().join("target");
-            std::fs::write(&source, "managed content").unwrap();
-            if directory {
-                std::fs::create_dir(&target).unwrap();
-            } else {
-                std::fs::write(&target, "user content").unwrap();
-            }
-            let resource = SymlinkResource::new(source, target, system_executor());
-
-            assert_eq!(resource.pre_apply_warning().unwrap(), None);
-        }
-    }
-
-    #[test]
-    fn symlink_apply_replaces_only_the_target_and_converges() {
+    fn symlink_apply_requires_existing_target_to_be_moved_aside() {
         for directory in [false, true] {
             for existing in ["file", "empty directory", "wrong link", "dangling link"] {
                 let fixture = tempfile::tempdir_in(".").unwrap();
@@ -988,10 +967,14 @@ mod symlink {
                 assert!(
                     matches!(
                         resource.current_state().unwrap(),
-                        ResourceState::Incorrect { .. }
+                        ResourceState::Invalid { .. }
                     ),
                     "directory={directory}, existing={existing}"
                 );
+                let error = resource.apply().unwrap_err();
+                assert!(format!("{error:#}").contains("move it aside"));
+                let backup = root.join("backup");
+                std::fs::rename(&target, &backup).unwrap();
                 assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
                 assert!(target.symlink_metadata().unwrap().is_symlink());
                 assert!(paths_equal(
@@ -1008,7 +991,7 @@ mod symlink {
                     std::fs::read_to_string(&other).unwrap(),
                     "unmanaged content"
                 );
-                assert_eq!(std::fs::read_dir(&root).unwrap().count(), 3);
+                assert_eq!(std::fs::read_dir(&root).unwrap().count(), 4);
             }
         }
     }
@@ -1100,16 +1083,20 @@ mod symlink {
                     let expected_change = if remove {
                         matches!(existing, "missing" | "managed")
                     } else {
-                        existing != "managed"
+                        existing == "missing"
                     };
+                    let blocked = !remove && !matches!(existing, "missing" | "managed");
                     let stats = task_batch(&result);
                     assert_eq!(
                         stats.changed_count(),
                         u32::from(expected_change),
                         "directory={directory}, existing={existing}, remove={remove}"
                     );
-                    assert_eq!(stats.already_ok_count(), u32::from(!expected_change));
-                    assert_eq!(stats.failed_count(), 0);
+                    assert_eq!(
+                        stats.already_ok_count(),
+                        u32::from(!expected_change && !blocked)
+                    );
+                    assert_eq!(stats.failed_count(), u32::from(blocked));
                     assert_eq!(stats.skipped_count(), 0);
                     assert_eq!(
                         std::fs::read_to_string(&source_file).unwrap(),

@@ -1,6 +1,6 @@
 //! Symlink resource.
 use anyhow::Context as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::engine::{
@@ -13,7 +13,7 @@ mod platform;
 mod state;
 
 use materialize::copy_into_place;
-use platform::{create_symlink, is_link_like, remove_symlink};
+use platform::{create_symlink, is_link_like};
 use state::current_state;
 
 /// A symlink resource that can be checked and applied.
@@ -29,6 +29,7 @@ pub struct SymlinkResource {
     validation_error: Option<String>,
     /// Home directory used to abbreviate user-facing target paths.
     display_home: Option<PathBuf>,
+    allow_external_target: bool,
     /// Repository root used to abbreviate user-facing source paths.
     display_root: Option<PathBuf>,
 }
@@ -47,6 +48,7 @@ impl SymlinkResource {
             executor,
             validation_error: None,
             display_home: None,
+            allow_external_target: false,
             display_root: None,
         }
     }
@@ -68,6 +70,36 @@ impl SymlinkResource {
         self.display_home = Some(home.into());
         self.display_root = Some(root.into());
         self
+    }
+
+    /// Permit a target redirected outside home by an existing parent link.
+    #[must_use]
+    pub const fn with_external_target_allowed(mut self, allowed: bool) -> Self {
+        self.allow_external_target = allowed;
+        self
+    }
+
+    fn resolved_target(&self) -> anyhow::Result<(PathBuf, bool)> {
+        let Some(home) = &self.display_home else {
+            return Ok((self.target.clone(), false));
+        };
+        let home = resolve_directory(home)?;
+        let parent = self.target.parent().context("target has no parent")?;
+        let resolved_parent = resolve_directory(parent)?;
+        let external = !resolved_parent.starts_with(home);
+        let name = self.target.file_name().context("target has no file name")?;
+        Ok((resolved_parent.join(name), external))
+    }
+
+    fn checked_target(&self) -> anyhow::Result<PathBuf> {
+        let (resolved, external) = self.resolved_target()?;
+        anyhow::ensure!(
+            !external || self.allow_external_target,
+            "target {} resolves outside home to {}; set allow_external_target = true to permit it",
+            self.target.display(),
+            resolved.display()
+        );
+        Ok(resolved)
     }
 
     fn display_target(&self) -> String {
@@ -95,7 +127,32 @@ impl SymlinkResource {
     }
 }
 
-fn display_path(path: &std::path::Path) -> String {
+// Resolve existing parents without following the final target entry. A dangling
+// parent link is an error rather than a missing directory we can create.
+fn resolve_directory(path: &Path) -> anyhow::Result<PathBuf> {
+    let absolute = std::path::absolute(path)?;
+    for ancestor in absolute.ancestors() {
+        match dunce::canonicalize(ancestor) {
+            Ok(resolved) => return Ok(resolved.join(absolute.strip_prefix(ancestor)?)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if crate::infra::fs::symlink_metadata_optional(ancestor, "inspect target parent")?
+                    .is_none()
+                {
+                    continue;
+                }
+                return Err(error)
+                    .with_context(|| format!("resolve target parent {}", ancestor.display()));
+            }
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("resolve target parent {}", ancestor.display()));
+            }
+        }
+    }
+    anyhow::bail!("cannot resolve target parent {}", path.display())
+}
+
+fn display_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
@@ -103,51 +160,32 @@ impl Resource for SymlinkResource {
     /// Render as `target \u{2192} source`, matching every other resource's
     /// left-to-right `subject \u{2192} value` reading.
     fn description(&self) -> String {
-        format!(
-            "{} \u{2192} {}",
-            self.display_target(),
-            self.display_source()
-        )
+        let target = self.display_target();
+        let source = self.display_source();
+        if let Ok((resolved, true)) = self.resolved_target() {
+            return format!("{target} ({}) \u{2192} {source}", display_path(&resolved));
+        }
+        format!("{target} \u{2192} {source}")
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        match self.current_state()? {
+        let target = self.checked_target()?;
+        match current_state(self, &target)? {
             ResourceState::Correct => return Ok(ResourceChange::AlreadyCorrect),
-            ResourceState::Invalid { reason } => {
+            ResourceState::Missing => {}
+            ResourceState::Invalid { reason }
+            | ResourceState::Unknown { reason }
+            | ResourceState::Incorrect { current: reason } => {
                 return Err(crate::engine::resource::ResourceError::conflicting_state(
-                    self.target.display().to_string(),
-                    "a target separate from a valid symlink source",
+                    target.display().to_string(),
+                    "an absent target or the correct managed link",
                     reason,
                 ));
             }
-            ResourceState::Missing
-            | ResourceState::Incorrect { .. }
-            | ResourceState::Unknown { .. } => {}
         }
-        crate::infra::fs::ensure_parent_dir(&self.target)?;
-
-        // Attempt to remove any existing target; ignore NotFound since the
-        // path may already be absent.  This avoids a TOCTOU race between a
-        // separate existence check and the removal.
-        match remove_symlink(&self.target, &*self.executor) {
-            Ok(()) => {}
-            Err(e)
-                if e.downcast_ref::<std::io::Error>()
-                    .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound) =>
-            {
-                // Path was already absent — nothing to remove.
-            }
-            Err(e) => {
-                return Err(e
-                    .context(format!("remove existing: {}", self.target.display()))
-                    .into());
-            }
-        }
-
-        // Create the symlink
-        create_symlink(&self.source, &self.target, &*self.executor)
-            .with_context(|| format!("create link: {}", self.target.display()))?;
-
+        crate::infra::fs::ensure_parent_dir(&target)?;
+        create_symlink(&self.source, &target, &*self.executor)
+            .with_context(|| format!("create link: {}", target.display()))?;
         Ok(ResourceChange::Applied)
     }
 }
@@ -158,7 +196,8 @@ impl RemovableResource for SymlinkResource {
     }
 
     fn remove(&self) -> ResourceResult<ResourceChange> {
-        if self.validation_error.is_some() || state::same_entry(&self.source, &self.target) {
+        let target = self.checked_target()?;
+        if self.validation_error.is_some() || state::same_entry(&self.source, &target) {
             return Ok(ResourceChange::skipped(
                 "invalid symlink resource will not be materialized",
             ));
@@ -168,8 +207,8 @@ impl RemovableResource for SymlinkResource {
         // the source into place — the wrong thing to do for a transient
         // stat failure).  A missing target is fine: we still materialize so
         // the user retains the file/directory after uninstall.
-        match crate::infra::fs::symlink_metadata_optional(&self.target, "stat target")? {
-            Some(meta) if is_link_like(&self.target, &meta) => {
+        match crate::infra::fs::symlink_metadata_optional(&target, "stat target")? {
+            Some(meta) if is_link_like(&target, &meta) => {
                 // Proceed with the normal materialize-then-remove path below.
             }
             Some(_) => {
@@ -177,7 +216,7 @@ impl RemovableResource for SymlinkResource {
                 // protect user data that replaced the managed symlink.
                 return Ok(ResourceChange::skipped(format!(
                     "target is not a symlink and will not be overwritten: {}",
-                    self.target.display()
+                    target.display()
                 )));
             }
             None => {
@@ -189,11 +228,11 @@ impl RemovableResource for SymlinkResource {
 
         // Copy source content into place, then remove the symlink, so the user
         // retains the file/directory after uninstall instead of losing it.
-        copy_into_place(&self.source, &self.target, &*self.executor).with_context(|| {
+        copy_into_place(&self.source, &target, &*self.executor).with_context(|| {
             format!(
                 "materialize {} to {}",
                 self.source.display(),
-                self.target.display()
+                target.display()
             )
         })?;
         Ok(ResourceChange::Applied)
@@ -202,29 +241,34 @@ impl RemovableResource for SymlinkResource {
 
 impl IntrinsicState for SymlinkResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
-        current_state(self)
+        match self.checked_target() {
+            Ok(target) => current_state(self, &target),
+            Err(error) => Ok(ResourceState::Invalid {
+                reason: format!("{error:#}"),
+            }),
+        }
     }
 }
 
 #[cfg(test)]
 pub(super) fn copy_dir_into_place(
-    source: &std::path::Path,
-    target: &std::path::Path,
+    source: &Path,
+    target: &Path,
     executor: &dyn Executor,
 ) -> anyhow::Result<()> {
     materialize::copy_dir_into_place(source, target, executor)
 }
 
 #[cfg(test)]
-pub(super) fn paths_equal(a: &std::path::Path, b: &std::path::Path) -> bool {
+pub(super) fn paths_equal(a: &Path, b: &Path) -> bool {
     state::paths_equal(a, b)
 }
 
 #[cfg(windows)]
 #[cfg(test)]
 pub(super) fn create_junction(
-    target: &std::path::Path,
-    link: &std::path::Path,
+    target: &Path,
+    link: &Path,
     executor: &dyn Executor,
 ) -> anyhow::Result<()> {
     platform::create_junction(target, link, executor)

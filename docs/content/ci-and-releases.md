@@ -51,7 +51,10 @@ are informational and excluded from the aggregate gate.
 ## Change-aware scheduling
 
 Checks are selected by input, platform, linter, and application. The table is a
-guide, not a replacement for the classifier's exact rules.
+guide, not a replacement for the classifier's exact rules. A push uses the
+previous tip as its comparison base only when that tip's push CI succeeded.
+If the preceding run failed, was cancelled, or cannot be verified, the new push
+runs full CI so earlier changes still receive coverage.
 
 | Changed input | Typical additional coverage |
 |---|---|

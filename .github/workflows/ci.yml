@@ -21,6 +21,9 @@ jobs:
     name: "CI: Classify changes"
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
     outputs:
       docs_only: ${{ steps.classify.outputs.docs_only }}
       run_docs_checks: ${{ steps.classify.outputs.run_docs_checks }}
@@ -58,18 +61,12 @@ jobs:
           fetch-depth: 0
       - name: Determine comparison range
         id: range
-        shell: bash
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "base_sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
-            echo "head_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.event_name }}" == "push" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
-            echo "base_sha=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
-            echo "head_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "base_sha=" >> "$GITHUB_OUTPUT"
-            echo "head_sha=" >> "$GITHUB_OUTPUT"
-          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: sh .github/workflows/scripts/linux/ci-comparison-range.sh
       - name: Classify changed paths
         id: classify
         env:
@@ -561,6 +558,9 @@ jobs:
         with:
           name: dotfiles-linux
           path: bin/
+      - name: Create an empty fixture home
+        shell: bash
+        run: sh .github/workflows/scripts/linux/ci-fixture-home.sh
       - name: Make binary executable
         run: chmod +x bin/dotfiles
       - name: Dry-run update
@@ -586,6 +586,9 @@ jobs:
         with:
           name: dotfiles-windows
           path: bin/
+      - name: Create an empty fixture home
+        shell: bash
+        run: sh .github/workflows/scripts/linux/ci-fixture-home.sh
       - name: Dry-run update
         # APM is not provisioned in this profile matrix.
         shell: bash
@@ -607,6 +610,9 @@ jobs:
         with:
           name: dotfiles-linux
           path: bin/
+      - name: Create an empty fixture home
+        shell: bash
+        run: sh .github/workflows/scripts/linux/ci-fixture-home.sh
       - name: Make binary executable
         run: chmod +x bin/dotfiles
       - name: Run install/uninstall round-trip test
@@ -627,6 +633,9 @@ jobs:
         with:
           name: dotfiles-windows
           path: bin/
+      - name: Create an empty fixture home
+        shell: bash
+        run: sh .github/workflows/scripts/linux/ci-fixture-home.sh
       - name: Run install/uninstall round-trip test
         shell: pwsh
         env:
@@ -646,6 +655,9 @@ jobs:
       matrix: ${{ fromJSON(needs.classify-changes.outputs.app_matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Create an empty fixture home
+        shell: bash
+        run: sh .github/workflows/scripts/linux/ci-fixture-home.sh
       - name: Install ${{ matrix.packages }}
         run: sh .github/workflows/scripts/linux/install-apt-packages.sh ${{ matrix.packages }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -681,6 +693,9 @@ jobs:
         with:
           name: dotfiles-windows
           path: bin/
+      - name: Create an empty fixture home
+        shell: bash
+        run: sh .github/workflows/scripts/linux/ci-fixture-home.sh
       - name: Install dotfiles with base profile
         shell: pwsh
         # Skip unavailable external installers: winget installs fail inside CI

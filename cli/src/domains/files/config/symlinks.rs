@@ -32,6 +32,8 @@ pub struct Symlink {
     pub source: String,
     /// Explicit target path relative to `$HOME`; derived by convention when absent.
     pub target: Option<String>,
+    /// Allow existing parent links to resolve the target outside the home directory.
+    pub allow_external_target: bool,
     /// Root of the repository that owns this symlink entry.
     /// Used to resolve `source` against `<origin>/symlinks/`.
     ///
@@ -52,6 +54,8 @@ struct SymlinkWithTarget {
     source: String,
     /// Explicit target path relative to `$HOME`.
     target: String,
+    #[serde(default)]
+    allow_external_target: bool,
 }
 
 /// A single entry in a symlinks section — either a plain source path or a
@@ -66,11 +70,13 @@ config_section! {
         StringOrTable::Bare(source) => Symlink {
             source,
             target: None,
+            allow_external_target: false,
             origin: None,
         },
-        StringOrTable::Table(SymlinkWithTarget { source, target }) => Symlink {
+        StringOrTable::Table(SymlinkWithTarget { source, target, allow_external_target }) => Symlink {
             source,
             target: Some(target),
+            allow_external_target,
             origin: None,
         },
     },
@@ -542,6 +548,7 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
         let pattern = Symlink {
             source: "apps/*/*".into(),
             target: Some(".config/*/managed/*".into()),
+            allow_external_target: true,
             origin: Some(origin.clone()),
         };
 
@@ -563,6 +570,7 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
                 .iter()
                 .all(|entry| entry.origin.as_ref() == Some(&origin))
         );
+        assert!(expanded.iter().all(|entry| entry.allow_external_target));
     }
 
     #[test]
@@ -711,6 +719,7 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
         let symlinks = vec![Symlink {
             source: "skills/*".to_string(),
             target: Some(".copilot/skills/*".to_string()),
+            allow_external_target: false,
             origin: Some(origin.clone()),
         }];
 

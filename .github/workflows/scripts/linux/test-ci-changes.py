@@ -684,6 +684,45 @@ class GitRangeTests(unittest.TestCase):
             for key, value in (line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
         }
 
+    def test_docs_push_carries_forward_unverified_rust_changes(self):
+        self.write("cli/src/main.rs", "fn main() { println!(\"changed\"); }\n")
+        before = self.commit()
+        self.write("docs/example.md", "docs only\n")
+        head = self.commit()
+
+        tools = self.root / "tools"
+        tools.mkdir()
+        gh = tools / "gh"
+        gh.write_text(
+            '#!/bin/sh\n'
+            'test "$1" = api && test "$4" = "repos/fixture/repository/actions/workflows/ci.yml/runs" || exit 2\n'
+            'test "${10}" = "head_sha=$PUSH_BEFORE" || exit 2\n'
+            'case "$FIXTURE_CI" in success) echo "$PUSH_BEFORE";; unavailable) exit 1;; esac\n',
+            encoding="utf-8",
+        )
+        gh.chmod(0o755)
+        self.env.update(
+            PATH=str(tools) + os.pathsep + self.env["PATH"],
+            PUSH_BEFORE=before, GITHUB_SHA=head,
+        )
+        for state in ("success", "cancelled", "failed", "in_progress", "unavailable"):
+            with self.subTest(state=state):
+                self.env["FIXTURE_CI"] = state
+                output = Path(self.env["GITHUB_OUTPUT"])
+                output.write_text("", encoding="utf-8")
+                result = subprocess.run(
+                    ["sh", str(SCRIPTS / "ci-comparison-range.sh")],
+                    env=self.env, cwd=self.repo, check=True, capture_output=True,
+                )
+                values = dict(
+                    line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines()
+                )
+                self.env.update(BASE_SHA=values["base_sha"], HEAD_SHA=values["head_sha"])
+                jobs = self.script()
+                self.assertEqual(jobs["docs_only"], state == "success", result.stderr.decode())
+                self.assertEqual(jobs["run_build_linux"], state != "success")
+                self.assertEqual(jobs["run_build_windows"], state != "success")
+
     def test_rename_deletion_and_unusual_paths(self):
         self.git("mv", "cli/src/main.rs", "example.md")
         self.env["HEAD_SHA"] = self.commit()

@@ -102,6 +102,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
 
         if path == ".github/workflows/ci.yml" or path in {
             LINUX + "classify-ci-changes.py", LINUX + "classify-ci-changes.sh",
+            LINUX + "ci-comparison-range.sh", LINUX + "ci-fixture-home.sh",
             LINUX + "lib/test-helpers.sh", LINUX + "check.sh", WINDOWS + "Check.ps1",
             LINUX + "pre-push.py",
         }:

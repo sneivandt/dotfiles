@@ -34,6 +34,7 @@ fn build_resource(
         .or_else(|| placeholders.and_then(|cache| cache.reason(&source, source_root)));
     SymlinkResource::new(source, target, Arc::clone(executor))
         .with_display_roots(home, source_root)
+        .with_external_target_allowed(s.allow_external_target)
         .with_validation_error(validation_error)
 }
 
@@ -76,10 +77,7 @@ impl Task for InstallSymlinks {
         let symlinks = self.config.get();
         build_resources(ctx, symlinks).iter().any(|resource| {
             resource.source.is_file()
-                && matches!(
-                    resource.current_state(),
-                    Ok(ResourceState::Missing | ResourceState::Incorrect { .. })
-                )
+                && matches!(resource.current_state(), Ok(ResourceState::Missing))
         })
     }
 
@@ -259,6 +257,7 @@ mod tests {
         let symlink = Symlink {
             source: "config/example".to_string(),
             target: None,
+            allow_external_target: false,
             origin: Some(overlay),
         };
         let ctx = make_linux_context(root.clone(), None).with_home(home);
@@ -302,6 +301,7 @@ mod tests {
             let symlink = Symlink {
                 source: "placeholder".into(),
                 target: Some(".configuration".into()),
+                allow_external_target: false,
                 origin,
             };
             let resource = build_resource(
@@ -476,6 +476,52 @@ mod tests {
     // ------------------------------------------------------------------
     // InstallSymlinks::run / UninstallSymlinks::run — real filesystem
     // ------------------------------------------------------------------
+
+    #[cfg(unix)]
+    #[test]
+    fn redirected_home_target_requires_opt_in_for_preview_apply_and_remove() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("repo");
+        let home = fixture.path().join("home");
+        let outside = fixture.path().join("outside");
+        std::fs::create_dir_all(root.join("symlinks")).unwrap();
+        std::fs::create_dir(&home).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        let source = root.join("symlinks/bashrc");
+        std::fs::write(&source, "managed content").unwrap();
+        std::os::unix::fs::symlink(&outside, home.join(".config")).unwrap();
+        let target = outside.join("nested/config");
+        let ctx = make_linux_context(root.clone(), None).with_home(home.clone());
+        let mut entry = symlink("bashrc", Some(".config/nested/config"));
+        let blocked = build_resource(&entry, &root, &home, &ctx.executor_arc(), None);
+
+        assert!(matches!(
+            blocked.current_state().unwrap(),
+            ResourceState::Invalid { reason }
+                if reason.contains("allow_external_target") && reason.contains(&*target.to_string_lossy())
+        ));
+        assert!(crate::engine::Resource::apply(&blocked).is_err());
+        assert!(crate::engine::RemovableResource::remove(&blocked).is_err());
+        assert!(!outside.join("nested").exists());
+
+        entry.allow_external_target = true;
+        let allowed = build_resource(&entry, &root, &home, &ctx.executor_arc(), None);
+        assert_eq!(allowed.current_state().unwrap(), ResourceState::Missing);
+        assert!(
+            crate::engine::Resource::description(&allowed).contains(&*target.to_string_lossy())
+        );
+        crate::engine::Resource::apply(&allowed).unwrap();
+        assert_eq!(std::fs::read_link(&target).unwrap(), source);
+        assert!(matches!(
+            blocked.current_state().unwrap(),
+            ResourceState::Invalid { .. }
+        ));
+        assert!(crate::engine::RemovableResource::remove(&blocked).is_err());
+        assert!(target.is_symlink());
+        crate::engine::RemovableResource::remove(&allowed).unwrap();
+        assert!(!target.is_symlink());
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "managed content");
+    }
 
     #[cfg(unix)]
     #[test]

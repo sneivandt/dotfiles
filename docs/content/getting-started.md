@@ -89,10 +89,10 @@ or a [private overlay](private-overlays.md) for changes you do not want in the
 public repository.
 
 :::caution[Back up existing configuration first]
-Installing a symlink can replace an
-ordinary file or empty directory without a backup or confirmation prompt.
-Nonempty directories cause a failure rather than being recursively removed.
-Review any overlay scripts too: they are executable code.
+Preview the update, then back up and move aside any files, directories, or
+unrelated links that block a managed link. Dotfiles leaves these entries in
+place and reports the conflicts. Review any overlay scripts before running
+the preview. They execute code.
 :::
 
 Before the first apply, check these defaults in particular:

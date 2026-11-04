@@ -25,8 +25,8 @@ Windows setup, permissions, packages, and the changes that need a new session.
 
 Keep the checkout at a stable path: home links and the installed launcher refer
 back to it. Review `conf/` and **back up existing home configuration** before
-applying. Link installation can replace regular files and empty directories
-without a backup.
+applying. Move aside any existing files, directories, or unrelated links that
+block installation.
 
 ## Bootstrap
 
@@ -87,7 +87,7 @@ If linking fails, distinguish these causes:
 | Problem | What to do |
 |---|---|
 | File-link creation is not permitted | Resolve Developer Mode or the requested elevation |
-| A home target conflicts | Back it up; nonempty directories are not recursively deleted |
+| A home target conflicts | Back it up and move it aside before retrying |
 | Git checked out a source symlink as plain text | Repair the source checkout, not the home target |
 
 For the last case, inspect the checkout without changing it:

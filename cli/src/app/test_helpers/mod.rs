@@ -90,6 +90,7 @@ pub fn symlink(
     crate::domains::files::config::symlinks::Symlink {
         source: source.to_string(),
         target: target.map(str::to_string),
+        allow_external_target: false,
         origin: None,
     }
 }

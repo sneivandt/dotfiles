@@ -50,12 +50,8 @@ pub(super) fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor
 /// `remove_dir_all` retries through the standard library without invoking a
 /// command shell.
 ///
-/// The `remove_dir_all` retry is confined to link-like entries. Callers such as
-/// [`Resource::apply`](crate::engine::resource::Resource::apply) invoke this on whatever currently occupies
-/// the target, which may be a real user directory; recursing into one because
-/// it happened to be access-denied would destroy user data. `remove_dir_all` on
-/// a directory symlink removes only the link, so restricting the retry keeps
-/// the original intent intact.
+/// The `remove_dir_all` retry is confined to link-like entries so a real
+/// directory can never be recursively removed by this fallback.
 pub(super) fn remove_symlink(path: &Path, _executor: &dyn Executor) -> Result<()> {
     let meta = match std::fs::symlink_metadata(path) {
         Ok(m) => m,

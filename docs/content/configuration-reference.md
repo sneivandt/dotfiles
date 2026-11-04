@@ -164,11 +164,14 @@ normalizes separators and `.` components, and ignores case on Windows.
 Targets that alias their own source through existing directory links are
 rejected.
 
-**Installation does not back up existing files.** A regular file or empty
-directory at a managed target can be replaced. A nonempty real directory
-fails rather than being recursively deleted. See
-[Home symlinks](task-reference.md#home-symlinks) and [Remove tasks](task-reference.md#remove-tasks)
-before taking over an existing application's configuration.
+If an existing parent link redirects the destination outside home, Dotfiles
+reports the resolved destination and skips the entry. To manage that location
+intentionally, set `allow_external_target = true` in the table entry. Keep
+`target` relative to home. The opt-in applies to installation and removal.
+
+See [Home symlinks](task-reference.md#home-symlinks) and
+[Remove tasks](task-reference.md#remove-tasks) before taking over an existing
+application's configuration.
 
 ### Glob patterns
 

@@ -445,6 +445,7 @@ mod root_tests {
         let task = InstallSymlinks::new(ConfigHandle::new(vec![Symlink {
             source: "example".into(),
             target: None,
+            allow_external_target: false,
             origin: Some(resolved),
         }]));
 

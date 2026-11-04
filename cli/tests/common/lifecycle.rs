@@ -164,10 +164,14 @@ impl Run {
     }
 
     pub(crate) fn assert_batch(&self, changed: u32, current: u32) {
+        self.assert_batch_with_failures(changed, current, 0);
+    }
+
+    pub(crate) fn assert_batch_with_failures(&self, changed: u32, current: u32, failed: u32) {
         let TaskResult::Batch(stats) = self.result.as_ref().expect("task must complete") else {
             panic!("expected a resource batch, got {:?}", self.result);
         };
-        assert_counts(stats, changed, current, 0);
+        assert_counts(stats, changed, current, failed);
     }
 
     pub(crate) fn assert_no_resources(&self) {

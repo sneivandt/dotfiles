@@ -20,25 +20,29 @@ mkdir -p -- "$parent"
 stage_dir=$(mktemp -d -- "$parent/.dotfiles-system-file.XXXXXXXXXX")
 trap 'rm -rf -- "$stage_dir"' EXIT
 trap 'exit 1' HUP INT TERM
-install -D --owner=root --group=root --mode=0644 -- "$1" "$stage_dir/replacement"
-mv -fT -- "$stage_dir/replacement" "$2"
+replacement="$stage_dir/replacement"
+install -D --owner=root --group=root --mode=0644 -- "$1" "$replacement"
+if [ -L "$2" ] || { [ -e "$2" ] && [ ! -f "$2" ]; }; then
+    printf 'Refusing to replace a non-regular system file: %s\n' "$2" >&2
+    exit 1
+fi
+if [ -f "$2" ]; then
+    cp --attributes-only --preserve=mode,ownership -- "$2" "$replacement"
+fi
+mv -fT -- "$replacement" "$2"
 "#;
 
-/// Converges one root-owned file from a tracked source fragment.
+/// Converges one system file from a tracked source fragment.
 pub struct SystemFileResource {
     entry: SystemFile,
     temp_dir: PathBuf,
     executor: Arc<dyn Executor>,
-    #[cfg(unix)]
-    expected_uid: u32,
-    #[cfg(unix)]
-    expected_gid: u32,
 }
 
 enum CurrentFile {
     Missing,
     NonRegular,
-    Present(String, fs::Metadata),
+    Present(String),
 }
 
 impl std::fmt::Debug for SystemFileResource {
@@ -59,10 +63,6 @@ impl SystemFileResource {
             entry,
             temp_dir: std::env::temp_dir(),
             executor,
-            #[cfg(unix)]
-            expected_uid: 0,
-            #[cfg(unix)]
-            expected_gid: 0,
         }
     }
 
@@ -108,15 +108,7 @@ impl SystemFileResource {
                     .into());
             }
         };
-        Ok(CurrentFile::Present(content, metadata))
-    }
-
-    #[cfg(unix)]
-    fn metadata_is_correct(&self, metadata: &fs::Metadata) -> bool {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-        metadata.uid() == self.expected_uid
-            && metadata.gid() == self.expected_gid
-            && metadata.permissions().mode() & 0o7777 == 0o644
+        Ok(CurrentFile::Present(content))
     }
 
     fn desired_content(&self, current: &str, fragment: &str) -> anyhow::Result<String> {
@@ -158,7 +150,7 @@ impl Resource for SystemFileResource {
         let fragment = self.fragment()?;
         let current = match self.current_content()? {
             CurrentFile::Missing => String::new(),
-            CurrentFile::Present(text, _) => text,
+            CurrentFile::Present(text) => text,
             CurrentFile::NonRegular => {
                 return Err(
                     anyhow!("{} is not a regular file", self.entry.target.display()).into(),
@@ -190,7 +182,7 @@ impl Resource for SystemFileResource {
 impl IntrinsicState for SystemFileResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
         let fragment = self.fragment()?;
-        let (current, metadata) = match self.current_content()? {
+        let current = match self.current_content()? {
             CurrentFile::Missing => {
                 return Ok(if self.entry.merge == MergeStrategy::Pam {
                     ResourceState::Invalid {
@@ -212,7 +204,7 @@ impl IntrinsicState for SystemFileResource {
                     reason: format!("{} is not a regular file", self.entry.target.display()),
                 });
             }
-            CurrentFile::Present(content, metadata) => (content, metadata),
+            CurrentFile::Present(content) => content,
         };
         let content_matches = match self.content_is_correct(&current, &fragment) {
             Ok(matches) => matches,
@@ -222,25 +214,11 @@ impl IntrinsicState for SystemFileResource {
                 });
             }
         };
-        #[cfg(unix)]
-        let metadata_matches = self.metadata_is_correct(&metadata);
-        #[cfg(not(unix))]
-        let metadata_matches = {
-            let _ = metadata;
-            true
-        };
-        Ok(if content_matches && metadata_matches {
+        Ok(if content_matches {
             ResourceState::Correct
         } else {
-            let mut differences = Vec::new();
-            if !content_matches {
-                differences.push("managed content differs");
-            }
-            if !metadata_matches {
-                differences.push("ownership or mode differs");
-            }
             ResourceState::Incorrect {
-                current: differences.join("; "),
+                current: "managed content differs".to_string(),
             }
         })
     }
@@ -675,7 +653,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn pam_resource_accepts_an_already_converged_single_module_stack() {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+        use std::os::unix::fs::PermissionsExt as _;
 
         let root = tempfile::tempdir_in(".").unwrap();
         fs::create_dir(root.path().join("system")).unwrap();
@@ -683,14 +661,11 @@ mod tests {
         fs::write(root.path().join("system/passwd"), content).unwrap();
         let target = root.path().join("passwd");
         fs::write(&target, content).unwrap();
-        fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
-        let metadata = fs::metadata(&target).unwrap();
-        let mut resource = SystemFileResource::new(
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
+        let resource = SystemFileResource::new(
             entry(root.path(), &target, "passwd", MergeStrategy::Pam),
             Arc::new(MockExecutor::new()),
         );
-        resource.expected_uid = metadata.uid();
-        resource.expected_gid = metadata.gid();
 
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
         assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
@@ -1238,7 +1213,7 @@ mod tests {
                 if existing {
                     fs::create_dir(&parent).unwrap();
                     fs::write(&target, "original content\n").unwrap();
-                    fs::set_permissions(&target, fs::Permissions::from_mode(0o640)).unwrap();
+                    fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
                 }
                 let original = fs::metadata(&target).ok();
                 let install = tools.join("install");
@@ -1300,7 +1275,7 @@ exec "$REAL_MV" "$@"
                     assert_eq!(fs::read(&target).unwrap(), b"replacement content\n");
                     assert_eq!(
                         fs::metadata(&target).unwrap().permissions().mode() & 0o777,
-                        0o644
+                        if existing { 0o600 } else { 0o644 }
                     );
                 } else if let Some(original) = original {
                     assert_eq!(fs::read(&target).unwrap(), b"original content\n");
@@ -1330,7 +1305,7 @@ exec "$REAL_MV" "$@"
     #[test]
     fn failed_install_cleans_staging_preserves_target_and_can_be_retried() {
         #[cfg(unix)]
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+        use std::os::unix::fs::PermissionsExt as _;
 
         let root = tempfile::tempdir_in(".").unwrap();
         fs::create_dir(root.path().join("system")).unwrap();
@@ -1345,8 +1320,6 @@ exec "$REAL_MV" "$@"
         fs::write(&target, "unmanaged = 'keep'\n").unwrap();
         #[cfg(unix)]
         fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
-        #[cfg(unix)]
-        let metadata = fs::metadata(&target).unwrap();
         let mut executor = MockExecutor::new();
         let mut sequence = mockall::Sequence::new();
         for fail in [true, false] {
@@ -1396,11 +1369,6 @@ exec "$REAL_MV" "$@"
             Arc::new(executor),
         );
         resource.temp_dir = staging.clone();
-        #[cfg(unix)]
-        {
-            resource.expected_uid = metadata.uid();
-            resource.expected_gid = metadata.gid();
-        }
 
         let error = resource.apply().unwrap_err();
         assert!(

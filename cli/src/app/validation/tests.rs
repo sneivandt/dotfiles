@@ -85,11 +85,13 @@ fn configured_source_validation_keeps_overlay_origins_and_unfiltered_sources() {
         Symlink {
             source: "skills/*".into(),
             target: None,
+            allow_external_target: false,
             origin: Some(overlay.clone()),
         },
         Symlink {
             source: "overlay-only.sh".into(),
             target: None,
+            allow_external_target: false,
             origin: Some(overlay.clone()),
         },
     ];

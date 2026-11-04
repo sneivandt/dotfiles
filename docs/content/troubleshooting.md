@@ -398,8 +398,8 @@ Check permission, target conflicts, and source checkout separately:
 
 - File links need Developer Mode or suitable elevation. Directory links can
   fall back to junctions.
-- Regular files and empty directories can be replaced without backup;
-  nonempty directories are not recursively removed.
+- Back up and move aside existing files, directories, or unrelated links
+  that block installation.
 - A Git symlink checked out as ordinary text must be repaired in the source
   checkout. Elevating the home-link task does not fix it.
 

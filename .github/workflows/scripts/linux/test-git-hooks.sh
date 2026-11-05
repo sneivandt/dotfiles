@@ -295,6 +295,23 @@ EOF
   rm -rf "$repo"
 }
 
+test_sensitive_scan_ignores_binary_attributes() {
+  repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
+  repo="$(mktemp -d)"
+  git init -q "$repo"
+  printf '%s\n' '*.txt -diff' > "$repo/.gitattributes"
+  printf '%s%s\n' '-----BEGIN ' 'PRIVATE KEY-----' > "$repo/example.txt"
+  git -C "$repo" add .gitattributes example.txt
+  if (cd "$repo" && sh "$repo_root/hooks/check-sensitive.sh") > "$repo/result" 2>&1; then
+    fail "Sensitive-data scan missed staged text marked binary"
+  elif ! grep -Fq 'In file: example.txt' "$repo/result"; then
+    fail "Sensitive-data scan did not report the matching staged path"
+  else
+    pass "Sensitive-data scan checks staged text marked binary"
+  fi
+  rm -rf "$repo"
+}
+
 test_sensitive_scan_unusual_paths() {
   key_header=$(printf '%s%s' '-----BEGIN ' 'PRIVATE KEY-----')
   repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
@@ -495,6 +512,7 @@ test_release_workflow_guards
 
 printf "Testing hook portability...\n"
 test_sensitive_scan_without_paste
+test_sensitive_scan_ignores_binary_attributes
 test_sensitive_scan_unusual_paths
 test_sensitive_scan_errors
 

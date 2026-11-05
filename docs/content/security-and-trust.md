@@ -71,7 +71,7 @@ The difference is what happens when `gh` is missing:
 | Download path | Without GitHub CLI |
 |---|---|
 | Wrapper bootstrap | Warns and accepts checksum verification alone, allowing first setup |
-| CLI self-update | Rejects the update |
+| CLI self-update | Keeps the current binary and continues the requested command |
 
 The bootstrap exception is weaker verification, not a successful attestation
 check. `DOTFILES_SKIP_ATTESTATION=1` explicitly skips provenance in both paths;

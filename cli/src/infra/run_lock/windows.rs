@@ -13,6 +13,19 @@ use windows_sys::Win32::System::{
     Memory::{CreateFileMappingW, FILE_MAP_READ, MapViewOfFile, PAGE_READONLY, UnmapViewOfFile},
 };
 
+pub(super) fn link_count(file: &File) -> io::Result<u64> {
+    use windows_sys::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+    };
+
+    let mut info = BY_HANDLE_FILE_INFORMATION::default();
+    // SAFETY: The file handle stays open and info is a writable output buffer.
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &raw mut info) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(u64::from(info.nNumberOfLinks))
+}
+
 pub(super) fn legacy_owner(path: &Path) -> anyhow::Result<(Vec<u8>, u32)> {
     let file = File::open(path)?;
     let len = usize::try_from(file.metadata()?.len())?;

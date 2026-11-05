@@ -16,7 +16,7 @@ use crate::infra::platform::Platform;
 #[cfg(windows)]
 #[allow(
     unsafe_code,
-    reason = "Win32 file mapping and process snapshot for legacy updater compatibility"
+    reason = "Win32 handle metadata, file mapping, and process snapshots for run locking"
 )]
 mod windows;
 
@@ -172,6 +172,19 @@ impl RunLock {
 
         file.try_lock().map_err(|error| lock_error(path, error))?;
 
+        #[cfg(unix)]
+        let links = {
+            use std::os::unix::fs::MetadataExt as _;
+            file.metadata()?.nlink()
+        };
+        #[cfg(windows)]
+        let links = windows::link_count(&file)?;
+        anyhow::ensure!(
+            links == 1,
+            "run lock must have exactly one hard link: {}",
+            path.display()
+        );
+
         let started_unix_seconds = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .context("system clock is before the Unix epoch")?
@@ -281,6 +294,19 @@ mod tests {
 
         assert!(RunLock::acquire_path(&lock, "fixture").is_err());
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "local data");
+    }
+
+    #[test]
+    fn lock_rejects_a_hard_link_without_writing_its_peer() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("original");
+        let lock = dir.path().join("lock");
+        std::fs::write(&target, b"keep this").unwrap();
+        std::fs::hard_link(&target, &lock).unwrap();
+
+        let error = RunLock::acquire_path(&lock, "fixture").unwrap_err();
+        assert!(error.to_string().contains("exactly one hard link"));
+        assert_eq!(std::fs::read(&target).unwrap(), b"keep this");
     }
 
     #[test]

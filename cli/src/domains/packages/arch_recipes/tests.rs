@@ -423,6 +423,23 @@ fn config_migrates_old_link_without_overwriting_tracked_source() {
     assert_eq!(std::fs::read_to_string(base).unwrap(), "[options]\nDevel\n");
 }
 
+#[cfg(unix)]
+#[test]
+fn config_preserves_unrelated_link_even_with_generated_content() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    let config = paru_config_path(&ctx).unwrap();
+    std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+    let other = dir.path().join("unrelated.conf");
+    std::fs::write(&other, PARU_CONFIG_HEADER).unwrap();
+    std::os::unix::fs::symlink(&other, &config).unwrap();
+
+    let error = ConfigureParu.run(&ctx).unwrap_err();
+    assert!(error.to_string().contains("non-file Paru configuration"));
+    assert_eq!(std::fs::read_link(config).unwrap(), other);
+    assert_eq!(std::fs::read_to_string(other).unwrap(), PARU_CONFIG_HEADER);
+}
+
 fn expect_metadata(mock: &mut MockExecutor) {
     mock.expect_execute()
         .withf(|spec| {
@@ -1457,8 +1474,15 @@ fn config_overrides_control_publication_and_readiness() {
         assert_eq!(std::fs::read_to_string(&default).unwrap(), "sentinel\n");
         // A valid default config must not mask an invalid active override.
         std::fs::copy(&target, &default).unwrap();
-        std::fs::write(&target, "[options]\n").unwrap();
+        let unmanaged = "[options]\n";
+        std::fs::write(&target, unmanaged).unwrap();
         assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+        for dry_run in [true, false] {
+            let error = ConfigureParu.run(&ctx.with_dry_run(dry_run)).unwrap_err();
+            assert!(format!("{error:#}").contains("unmanaged Paru configuration"));
+            assert_eq!(std::fs::read_to_string(&target).unwrap(), unmanaged);
+        }
+        std::fs::write(&target, format!("{PARU_CONFIG_HEADER}\n[options]\n")).unwrap();
         let _repaired = ConfigureParu.run(&ctx).unwrap();
         assert!(unavailable_packages(&ctx).unwrap().is_empty());
         assert!(matches!(ConfigureParu.run(&ctx).unwrap(), TaskResult::Ok));

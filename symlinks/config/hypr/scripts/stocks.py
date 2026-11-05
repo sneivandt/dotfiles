@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fetch desktop market quotes with a shared, atomically replaced JSON cache."""
 
+import argparse
 import json
 from concurrent.futures import ThreadPoolExecutor
 import math
@@ -136,10 +137,10 @@ def write_cache(path, payload):
             temporary.unlink(missing_ok=True)
 
 
-def quotes(cache_dir, fetch=fetch_quote):
+def quotes(cache_dir, fetch=fetch_quote, *, force=False):
     cache_dir.mkdir(parents=True, exist_ok=True)
     path = cache_dir / "quotes.json"
-    cached = fresh_cache(path, time.time())
+    cached = None if force else fresh_cache(path, time.time())
     if cached is not None:
         return cached
     # Keep the inode: unlinking the lock file would allow simultaneous owners.
@@ -148,7 +149,7 @@ def quotes(cache_dir, fetch=fetch_quote):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return read_cache(path)
-        cached = fresh_cache(path, time.time())
+        cached = None if force else fresh_cache(path, time.time())
         if cached is not None:
             return cached
         now = int(time.time())
@@ -157,7 +158,7 @@ def quotes(cache_dir, fetch=fetch_quote):
         def refresh(item):
             query, symbol, name, prefix = item
             cached_quote = previous.get(symbol)
-            if cached_quote is not None and fresh_quote(cached_quote, now):
+            if not force and cached_quote is not None and fresh_quote(cached_quote, now):
                 return cached_quote, False
             try:
                 quote = {**fetch(query, symbol, name, prefix, now), "updated": now}
@@ -182,11 +183,14 @@ def quotes(cache_dir, fetch=fetch_quote):
         return payload
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Read market quotes")
+    parser.add_argument("--force", action="store_true", help="fetch even when cached quotes are fresh")
+    args = parser.parse_args(argv)
     base = os.environ.get("XDG_CACHE_HOME")
     cache_dir = (Path(base) if base and Path(base).is_absolute() else Path.home() / ".cache") / "quickshell-stocks"
     try:
-        payload = quotes(cache_dir)
+        payload = quotes(cache_dir, force=args.force)
         code = 0
     except OSError as error:
         print(f"Cannot refresh market cache: {error.strerror or error}", file=sys.stderr)

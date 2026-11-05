@@ -51,7 +51,10 @@ second set of autostart commands to work around a failed service.
 | Super + Shift + S | Select an area for a screenshot |
 
 Screenshots are saved under `~/screenshots` and copied to the clipboard when
-available. Cancelling area selection saves nothing. Move images you want to
+available. Cancelling area selection saves nothing. Area capture requires
+`slurp`. To capture the full screen, run
+`~/.config/hypr/scripts/screenshot.sh --full-screen`.
+Move images you want to
 keep elsewhere: the desktop's
 [cleanup timer](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service)
 runs daily and deletes files and links after 31 complete days since their last
@@ -112,7 +115,8 @@ appear in its tooltip and log.
 ### Markets
 
 The Markets menu refreshes on startup and every five minutes, with a manual
-refresh control in the menu. Each symbol keeps its last successful quote and
+refresh control in the menu that requests fresh data even when the cache is
+recent. Each symbol keeps its last successful quote and
 timestamp when a request fails. The menu marks stale data rather than hiding
 every cached quote because one request failed. Configure the symbols in
 [stocks.py](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/scripts/stocks.py).

@@ -348,15 +348,18 @@ function Get-Binary
 
         try
         {
-            Move-Item -LiteralPath $stagedBinary -Destination $Binary -Force
+            # The two-argument overload never overwrites a concurrent winner.
+            [System.IO.File]::Move($stagedBinary, $Binary)
+            Write-Output "Downloaded · checksum verified · $Binary"
         }
         catch
         {
-            Write-Error "Failed to install downloaded binary: $($_.Exception.Message)"
-            exit 1
+            if (-not (Test-Path -LiteralPath $Binary -PathType Leaf))
+            {
+                Write-Error "Failed to install downloaded binary: $($_.Exception.Message)"
+                exit 1
+            }
         }
-
-        Write-Output "Downloaded · checksum verified · $Binary"
     }
     finally
     {

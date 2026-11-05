@@ -242,7 +242,12 @@ or Paru configuration.
 Snapshots are separate, owned Git repositories under Paru's build cache so
 `CleanAfter` cannot reset the source checkout. Keep `CloneDir`, repository `Path`,
 and the descriptor's package base aligned. Use the same environment for dotfiles
-and Paru. Edit tracked sources, not cached inputs or generated Paru sections.
+and Paru. Edit the tracked sources to change the generated Paru settings.
+
+If the active Paru configuration is hand-maintained, Dotfiles leaves it in place
+and reports a conflict. Back it up and move it aside before adopting the generated
+config. Port any settings you still need to the tracked `paru.conf.base` first.
+This also applies when `PARU_CONF` points to a custom path.
 
 Implementation details and regression cases live in
 [arch_recipes.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes.rs),

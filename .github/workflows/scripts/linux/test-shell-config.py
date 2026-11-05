@@ -1202,7 +1202,7 @@ class ShellConfigTests(unittest.TestCase):
         for suffix, tool in (
             (".tar.gz", "tar"), (".bz2", "bunzip2"), (".gz", "gunzip"),
             (".rar", "unrar"), (".zip", "unzip"), (".7z", "7z"),
-            (".Z", "uncompress"), (".xz", "unxz"), (".zst", "unzstd"),
+            (".Z", "gunzip"), (".xz", "unxz"), (".zst", "unzstd"),
             (".deb", "ar"), (".rpm", "bsdtar"),
         ):
             with self.subTest(suffix=suffix):
@@ -1233,6 +1233,7 @@ class ShellConfigTests(unittest.TestCase):
         archive.write_bytes(gzip.compress(b"fixture\n"))
         self.run_extract(archive.name)
         self.assertEqual((self.home / "-sample with spaces").read_bytes(), b"fixture\n")
+        self.assertTrue(archive.is_file())
 
     def test_extract_standalone_zstandard_archive(self):
         self.assertIsNotNone(shutil.which("zstd"), "zstd is required for extraction coverage")
@@ -1243,6 +1244,18 @@ class ShellConfigTests(unittest.TestCase):
         archive.write_bytes(compressed)
         self.run_extract(archive.name)
         self.assertEqual((self.home / "-sample with spaces").read_bytes(), b"fixture\n")
+        self.assertEqual(archive.read_bytes(), compressed)
+
+    def test_extract_explicit_removal(self):
+        archive = self.home / "sample.gz"
+        archive.write_bytes(gzip.compress(b"fixture\n"))
+        self.run_shell(
+            'cd "$HOME"\n'
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz extract\n'
+            'extract --remove sample.gz\n',
+        )
+        self.assertEqual((self.home / "sample").read_bytes(), b"fixture\n")
         self.assertFalse(archive.exists())
 
     def test_extract_rejects_multiple_archives_before_changing_any_files(self):

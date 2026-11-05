@@ -147,6 +147,9 @@ configured-name check, not a GitHub permission check.
 
 ## Shell configuration
 
+In Zsh, `extract <file>` keeps the original archive. Use
+`extract --remove <file>` to delete it after successful extraction.
+
 | Setting | Source |
 |---|---|
 | Bash and Zsh interactive startup | [bashrc](https://github.com/sneivandt/dotfiles/blob/main/symlinks/bashrc), [zshrc](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zshrc) |

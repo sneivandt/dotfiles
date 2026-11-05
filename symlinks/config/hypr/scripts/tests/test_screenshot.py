@@ -50,8 +50,8 @@ wl-copy() {
 
 @unittest.skipUnless(BASH, "Requires Bash (Git Bash on Windows)")
 class ScreenshotTests(ScriptFixture):
-    def capture(self, **env):
-        return self.run_script("screenshot.sh", MOCKS, env=env)
+    def capture(self, *args, **env):
+        return self.run_script("screenshot.sh", MOCKS, *args, env=env)
 
     def images(self):
         return list((self.work / "screenshots").glob("*.png"))
@@ -115,8 +115,16 @@ class ScreenshotTests(ScriptFixture):
                 result = self.capture(**env)
                 self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_fullscreen_fallback_without_slurp(self):
+    def test_area_capture_refuses_to_run_without_slurp(self):
         result = self.capture(NO_SLURP="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("slurp not found", result.stderr)
+        self.assertEqual(self.images(), [])
+        self.assertEqual(list(self.work.glob("clipboard-*")), [])
+        self.assertIn("Area capture unavailable", next(self.work.glob("notification-*")).read_text())
+
+    def test_explicit_fullscreen_without_slurp(self):
+        result = self.capture("--full-screen", NO_SLURP="1")
         self.assertEqual(result.returncode, 0, result.stderr)
         arguments = next(self.work.glob("arguments-*")).read_text().splitlines()
         self.assertEqual(len(arguments), 1)

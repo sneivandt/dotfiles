@@ -2,8 +2,13 @@
 
 # Extract archives
 
+local remove_archive=false
+case "${1:-}" in
+  --remove) remove_archive=true; shift ;;
+esac
+[[ "${1:-}" != -- ]] || shift
 if [ $# -ne 1 ] || [ -z "$1" ]; then
-  echo "Usage: extract <file>"
+  echo "Usage: extract [--remove] [--] <file>"
   return 1
 fi
 
@@ -20,14 +25,14 @@ local archive="$1"
 local -a extractor
 case "$archive" in
   *.tar.bz2|*.tbz2|*.tar.gz|*.tgz|*.tar.xz|*.txz|*.tar.Z|*.tar|*.tar.zst|*.tzst) extractor=(tar xf) ;;
-  *.bz2)            extractor=(bunzip2) ;;
-  *.gz)             extractor=(gunzip) ;;
+  *.bz2)            extractor=(bunzip2 -k) ;;
+  *.gz)             extractor=(gunzip -k) ;;
   *.rar)            extractor=(unrar x) ;;
   *.zip)            extractor=(unzip) ;;
   *.7z)             extractor=(7z x) ;;
-  *.Z)              extractor=(uncompress) ;;
-  *.xz)             extractor=(unxz) ;;
-  *.zst)            extractor=(unzstd --rm) ;;
+  *.Z)              extractor=(gunzip -k) ;;
+  *.xz)             extractor=(unxz -k) ;;
+  *.zst)            extractor=(unzstd -k) ;;
   *.deb)            extractor=(ar x) ;;
   *.rpm)            extractor=(bsdtar -xf) ;;
   *)                echo "'$1' cannot be extracted via extract()" 1>&2; return 1 ;;
@@ -38,4 +43,7 @@ if ! command -v "${extractor[1]}" >/dev/null 2>&1; then
   return 127
 fi
 
-"${extractor[@]}" "$archive"
+"${extractor[@]}" "$archive" || return $?
+if "$remove_archive"; then
+  rm -- "$archive"
+fi

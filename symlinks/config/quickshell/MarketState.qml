@@ -10,9 +10,13 @@ Scope {
     property bool _queryActive: false
     readonly property bool loading: _queryActive || query.running
 
-    function refresh() {
+    function refresh(force = false) {
         if (loading)
             return;
+        const command = ["python3", Quickshell.env("HOME") + "/.config/hypr/scripts/stocks.py"];
+        if (force)
+            command.push("--force");
+        query.command = command;
         _queryActive = true;
         query.running = true;
     }
@@ -22,7 +26,6 @@ Scope {
     Process {
         id: query
         objectName: "marketQueryProcess"
-        command: ["python3", Quickshell.env("HOME") + "/.config/hypr/scripts/stocks.py"]
         onRunningChanged: {
             if (!running && root._queryActive) {
                 root._queryActive = false;

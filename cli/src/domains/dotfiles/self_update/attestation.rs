@@ -246,6 +246,22 @@ mod tests {
         }
     }
 
+    #[test]
+    fn missing_verifier_defers_only_required_verification() {
+        assert!(super::super::verification_unavailable(
+            Policy::Required,
+            &stub(false, false)
+        ));
+        assert!(!super::super::verification_unavailable(
+            Policy::Required,
+            &stub(true, false)
+        ));
+        assert!(!super::super::verification_unavailable(
+            Policy::Skip,
+            &stub(false, false)
+        ));
+    }
+
     fn stub(available: bool, result: bool) -> StubGh {
         StubGh {
             available,

@@ -141,6 +141,14 @@ class StocksCacheTests(unittest.TestCase):
         self.fetch.assert_not_called()
         self.assertFalse(self.lock.exists())
 
+    def test_manual_refresh_fetches_fresh_symbols_and_preserves_cache_on_failure(self):
+        self.write_cache(stale=False)
+        self.fetch.side_effect = OSError("network unavailable")
+        result = stocks.quotes(self.cache, self.fetch, force=True)
+        self.assertEqual(self.fetch.call_count, len(stocks.QUOTES))
+        self.assertEqual(result["quotes"], self.cached["quotes"])
+        self.assertEqual(result["updated"], self.cached["updated"])
+
     def test_cache_refreshed_during_lock_acquisition_is_reused(self):
         lock = stocks.fcntl.flock
 
@@ -272,7 +280,7 @@ class StocksCacheTests(unittest.TestCase):
              patch.object(stocks, "quotes", side_effect=OSError("lock failed")), \
              patch.object(stocks, "read_cache", return_value=self.cached), \
              patch("builtins.print") as output:
-            self.assertEqual(stocks.main(), 1)
+            self.assertEqual(stocks.main([]), 1)
         self.assertIn("Cannot refresh market cache", output.call_args_list[0].args[0])
 
     def test_main_uses_only_absolute_xdg_cache_directories(self):
@@ -282,9 +290,9 @@ class StocksCacheTests(unittest.TestCase):
                  patch.object(stocks.Path, "home", return_value=self.cache / "home"), \
                  patch.object(stocks, "quotes", return_value={"quotes": [], "updated": 0}) as fetch, \
                  patch("builtins.print"):
-                self.assertEqual(stocks.main(), 0)
+                self.assertEqual(stocks.main([]), 0)
                 expected = Path(base) if base and Path(base).is_absolute() else self.cache / "home" / ".cache"
-                fetch.assert_called_once_with(expected / "quickshell-stocks")
+                fetch.assert_called_once_with(expected / "quickshell-stocks", force=False)
 
 
 if __name__ == "__main__":

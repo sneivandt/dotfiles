@@ -200,7 +200,7 @@ PanelWindow {
         currentDate: bar.currentDate
         loading: bar.markets.loading
         error: bar.markets.error
-        onRefreshRequested: bar.markets.refresh()
+        onRefreshRequested: bar.markets.refresh(true)
     }
     NetworkMenu {
         id: networkMenu

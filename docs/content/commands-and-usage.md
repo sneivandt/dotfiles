@@ -241,6 +241,18 @@ Packages, registry settings, PATH, services, system files, permissions, login
 shell, Git/agent settings, completions, editor extensions, and agent deployments
 remain. See [Remove tasks](task-reference.md#remove-tasks) before planning a cleanup.
 
+On Linux, the cleanup timers can keep deleting old files after removal.
+Inspect them with `systemctl --user list-timers --all`. To stop future
+cleanup, disable the timers that were installed for your profile:
+
+```sh
+systemctl --user disable --now clean-home-tmp.timer
+# If the Arch desktop profile installed the screenshot timer:
+systemctl --user disable --now clean-screenshots.timer
+```
+
+Disabling the timers does not stop a cleanup service that is already running.
+
 ## Shell completions
 
 The `completions` task installs Zsh or PowerShell registration. Open a new shell

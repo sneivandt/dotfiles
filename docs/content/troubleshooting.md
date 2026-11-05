@@ -196,6 +196,17 @@ finding and [CLI validation](testing.md#cli-validation) to recheck it.
 `check` does not repair files, and `config-diagnostics` fails on warning-severity
 diagnostics too.
 
+If the fix is already upstream and the checkout can fast-forward, preview a
+repository-only update:
+
+```sh
+dotfiles update --only repository --dry-run
+```
+
+This bypasses task configuration loading. After reviewing the preview, rerun
+without `--dry-run`, then run `dotfiles check`. The repository task also checks
+the active Git overlay when one is selected.
+
 ### Overlay is ignored
 
 For a sibling overlay called `dotfiles-private`, inspect it from the main

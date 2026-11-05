@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 
+use crate::domains::dotfiles::self_update::{UpdateOutcome, pre_update};
 use crate::infra::logging::Output;
 
 use super::{RuntimePolicy, runner};
@@ -137,12 +138,13 @@ pub(crate) fn prepare_self_update(
     }
 
     let root = runner::resolve_root(runtime)?;
-    if crate::domains::dotfiles::self_update::pre_update(
+    let outcome = pre_update(
         &root,
         &**log,
         runtime.execution.dry_run,
         runtime.global.skip_attestation,
-    )? {
+    )?;
+    if matches!(outcome, UpdateOutcome::Replaced) {
         re_exec(&root, &**log);
     }
     Ok(run_lock)
@@ -164,6 +166,24 @@ mod tests {
     use super::*;
     use crate::infra::exec::{CommandSpec, Executor as _, ProcessExecutor};
     use crate::infra::logging::records::{Record, RunOutcome, StoredRecord};
+
+    #[test]
+    fn preflight_keeps_the_run_lock_when_no_binary_is_replaced() {
+        let root = tempfile::tempdir().unwrap();
+        git2::Repository::init(root.path()).unwrap();
+        let mut global = super::super::tests::global(&[]);
+        global.root = Some(root.path().to_path_buf());
+        let env = crate::infra::env::MapEnv::new().into_handle();
+        let runtime = RuntimePolicy::new(&global, false, env, true, true);
+        let (log, _logs, _guard) = crate::infra::logging::isolated_logger();
+        let log = std::sync::Arc::new(log);
+
+        let lock = prepare_self_update(&runtime, &log).unwrap();
+        assert!(lock.is_some());
+        assert!(prepare_self_update(&runtime, &log).is_err());
+        drop(lock);
+        assert!(prepare_self_update(&runtime, &log).unwrap().is_some());
+    }
 
     #[test]
     fn restart_chains_forward_live_lease_markers_only() {

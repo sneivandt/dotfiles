@@ -195,10 +195,20 @@ fn with_status<T>(log: &dyn Output, status: &str, work: impl FnOnce() -> T) -> T
     result
 }
 
+fn verification_unavailable(policy: attestation::Policy, gh: &dyn attestation::GhCli) -> bool {
+    policy == attestation::Policy::Required && !gh.available()
+}
+
+/// Whether startup should restart into a newly installed binary.
+pub enum UpdateOutcome {
+    Retained,
+    Replaced,
+}
+
 /// Run the self-update check before the task graph.
 ///
 /// When the binary lives in `$root/bin/` and a newer release is available,
-/// this function downloads and replaces the binary, returning `Ok(true)`.
+/// this function downloads and replaces the binary, returning `UpdateOutcome::Replaced`.
 /// The caller should then re-exec the new binary so that all tasks run
 /// with the updated code.
 ///
@@ -206,9 +216,9 @@ fn with_status<T>(log: &dyn Output, status: &str, work: impl FnOnce() -> T) -> T
 /// already current leaves no console output at all; only an update that
 /// actually happened prints a durable, dimmed line.
 ///
-/// Returns `Ok(false)` when no update is needed or when running from a
-/// cargo build directory. Setting `DOTFILES_SKIP_SELF_UPDATE=1` also skips the
-/// check without weakening verification for downloads performed by other
+/// Returns `UpdateOutcome::Retained` when the installed binary stays in place.
+/// Setting `DOTFILES_SKIP_SELF_UPDATE=1` skips the check without weakening
+/// verification for downloads performed by other
 /// processes. `skip_attestation` bypasses provenance verification for the
 /// downloaded update while preserving checksum verification.
 ///
@@ -222,41 +232,63 @@ pub fn pre_update(
     log: &dyn Output,
     dry_run: bool,
     skip_attestation: bool,
-) -> Result<bool> {
+) -> Result<UpdateOutcome> {
     if self_update_skipped(&SystemEnv) {
         tracing::debug!("self-update skipped by {SKIP_SELF_UPDATE_ENV}");
-        return Ok(false);
+        return Ok(UpdateOutcome::Retained);
     }
     if REPO.is_empty() {
         tracing::debug!("self-update disabled: no release repository embedded at build time");
-        return Ok(false);
+        return Ok(UpdateOutcome::Retained);
     }
-    if !is_running_from_bin(root) {
-        return Ok(false);
+    if is_running_from_bin(root) {
+        let client = default_http_client();
+        let check = with_status(log, "Checking for updates", || {
+            let token = github_token(&SystemEnv, &ProcessExecutor::system());
+            check_for_update(root, &client, token.as_deref(), dry_run)
+        });
+        finish_update(
+            check,
+            log,
+            dry_run,
+            || {
+                verification_unavailable(
+                    attestation::policy(skip_attestation),
+                    &attestation::SystemGh,
+                )
+            },
+            |tag| download_and_install(root, tag, &client, skip_attestation),
+        )
+    } else {
+        Ok(UpdateOutcome::Retained)
     }
-    let client = default_http_client();
-    let check = with_status(log, "Checking for updates", || {
-        let token = github_token(&SystemEnv, &ProcessExecutor::system());
-        check_for_update(root, &client, token.as_deref(), dry_run)
-    });
-    match check {
-        UpdateCheck::Offline | UpdateCheck::DevBuild | UpdateCheck::AlreadyCurrent => Ok(false),
-        UpdateCheck::UpdateAvailable { latest, current } => {
-            if dry_run {
-                log.info(format!("update available: {current} \u{2192} {latest}"));
-                return Ok(false);
-            }
-            log.stage("CLI upgrade");
-            log.debug(format!("updating: {current} \u{2192} {latest}"));
-            with_status(log, &format!("Updating to {latest}"), || {
-                download_and_install(root, &latest, &client, skip_attestation)
-            })?;
+}
 
-            log.startup(format!("CLI upgraded \u{00b7} {current} \u{2192} {latest}"));
-
-            Ok(true)
-        }
+fn finish_update(
+    check: UpdateCheck,
+    log: &dyn Output,
+    dry_run: bool,
+    verifier_unavailable: impl FnOnce() -> bool,
+    install: impl FnOnce(&str) -> Result<()>,
+) -> Result<UpdateOutcome> {
+    let UpdateCheck::UpdateAvailable { latest, current } = check else {
+        return Ok(UpdateOutcome::Retained);
+    };
+    if dry_run {
+        log.info(format!("update available: {current} → {latest}"));
+        return Ok(UpdateOutcome::Retained);
     }
+    if verifier_unavailable() {
+        log.warn(format!(
+            "Deferring CLI upgrade to {latest}: install gh to verify build provenance"
+        ));
+        return Ok(UpdateOutcome::Retained);
+    }
+    log.stage("CLI upgrade");
+    log.debug(format!("updating: {current} → {latest}"));
+    with_status(log, &format!("Updating to {latest}"), || install(&latest))?;
+    log.startup(format!("CLI upgraded · {current} → {latest}"));
+    Ok(UpdateOutcome::Replaced)
 }
 
 /// Path of the installed binary inside `root`.
@@ -279,6 +311,47 @@ mod tests {
 
     const GH_TOKEN_ENV: &str = "GH_TOKEN";
     const GITHUB_TOKEN_ENV: &str = "GITHUB_TOKEN";
+
+    #[test]
+    fn available_update_defers_without_a_verifier_and_never_installs_in_preview() {
+        let (log, _logs, _guard) = crate::infra::logging::isolated_logger();
+        let update = || UpdateCheck::UpdateAvailable {
+            current: "v2026.01.01-1".to_owned(),
+            latest: "v2026.01.02-1".to_owned(),
+        };
+        for dry_run in [true, false] {
+            let outcome = finish_update(
+                update(),
+                &log,
+                dry_run,
+                || true,
+                |_| panic!("must keep the installed binary"),
+            )
+            .unwrap();
+            assert!(matches!(outcome, UpdateOutcome::Retained));
+        }
+        let outcome = finish_update(
+            update(),
+            &log,
+            false,
+            || false,
+            |tag| {
+                assert_eq!(tag, "v2026.01.02-1");
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert!(matches!(outcome, UpdateOutcome::Replaced));
+
+        let result = finish_update(
+            update(),
+            &log,
+            false,
+            || false,
+            |_| anyhow::bail!("verification failed"),
+        );
+        assert_eq!(result.err().unwrap().to_string(), "verification failed");
+    }
 
     #[test]
     fn self_update_skip_requires_explicit_one() {

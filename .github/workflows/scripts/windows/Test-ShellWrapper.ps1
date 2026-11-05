@@ -373,6 +373,11 @@ function Test-IsolatedWrapperPath {
                 [System.IO.File]::WriteAllText($Binary, 'concurrent fixture')
                 throw 'Fixture attestation process could not start'
             }
+            if ($env:WRAPPER_TEST_GH_EXIT -eq 'race') {
+                [System.IO.File]::WriteAllText($Binary, 'verified race winner')
+                $global:LASTEXITCODE = 0
+                return
+            }
             $global:LASTEXITCODE = [int]$env:WRAPPER_TEST_GH_EXIT
         }
         Set-Item Function:Invoke-WebRequest -Value {
@@ -482,7 +487,13 @@ function Test-IsolatedWrapperPath {
         if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
             throw 'Attestation invocation error changed the caller credential environment'
         }
-        Write-TestPass 'Wrappers preserve literal paths, cwd, arguments, exit codes, and failed-download cleanup'
+        Remove-Item -LiteralPath $binary
+        $env:WRAPPER_TEST_GH_EXIT = 'race'
+        & $wrapper --version | Out-Null
+        if ($LASTEXITCODE -ne 7 -or [System.IO.File]::ReadAllText($binary) -cne 'verified race winner') {
+            throw 'Verified bootstrap did not preserve and execute the concurrent winner'
+        }
+        Write-TestPass 'Wrappers preserve literal paths, cwd, arguments, exit codes, and concurrent installations'
         return $true
     } catch {
         Write-TestFail "Isolated wrapper regression failed: $_"

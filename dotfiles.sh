@@ -271,9 +271,13 @@ download_binary() {(
   fi
 
   chmod +x "$staged_binary"
-  mv -f "$staged_binary" "$BINARY"
-
-  echo "Downloaded · checksum verified · $BINARY"
+  # Publish without replacing a binary installed during verification.
+  if ln -T -- "$staged_binary" "$BINARY" 2>/dev/null; then
+    echo "Downloaded · checksum verified · $BINARY"
+  elif [ ! -f "$BINARY" ] || [ ! -x "$BINARY" ]; then
+    echo "ERROR: Cannot publish the downloaded binary at $BINARY" >&2
+    exit 1
+  fi
 )}
 
 # Bootstrap: download the latest binary only if no binary is present.

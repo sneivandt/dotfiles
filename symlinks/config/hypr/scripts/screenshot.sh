@@ -10,11 +10,27 @@ if ! command -v grim >/dev/null 2>&1; then
   exit 1
 fi
 
-set --
-if command -v slurp >/dev/null 2>&1; then
-  REGION="$(slurp 2>/dev/null)" || exit 0
-  set -- -g "$REGION"
-fi
+case "${1:-}" in
+  "")
+    if ! command -v slurp >/dev/null 2>&1; then
+      echo "ERROR: slurp not found; area capture unavailable" >&2
+      if command -v notify-send >/dev/null 2>&1; then
+        notify-send --app-name=dotfiles "Area capture unavailable" "Install slurp to select a region." || true
+      fi
+      exit 1
+    fi
+    REGION="$(slurp 2>/dev/null)" || exit 0
+    set -- -g "$REGION"
+    ;;
+  --full-screen)
+    [ "$#" -eq 1 ] || exit 2
+    set --
+    ;;
+  *)
+    printf 'Usage: %s [--full-screen]\n' "$0" >&2
+    exit 2
+    ;;
+esac
 
 SCREENSHOT_DIR="$HOME/screenshots"
 mkdir -p "$SCREENSHOT_DIR"

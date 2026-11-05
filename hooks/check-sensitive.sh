@@ -91,7 +91,8 @@ filenames="$tmpdir/filenames"
 # Git quotes tabs/newlines in patch headers; keep those escaped names for
 # diagnostics only. No pathname is decoded or passed back to Git. Taking the
 # complete diff also preserves rename detection and staged-only content.
-git diff --cached --unified=0 --inter-hunk-context=0 --no-color --no-ext-diff --no-textconv \
+# Force text hunks even when Git attributes mark a staged text file binary.
+git diff --cached --text --unified=0 --inter-hunk-context=0 --no-color --no-ext-diff --no-textconv \
   --src-prefix=a/ --dst-prefix=b/ "$against" -- > "$diff_file"
 
 # Keep content, source line numbers and display filenames in aligned files.
@@ -140,7 +141,7 @@ while IFS= read -r pattern; do
     ''|'#'*|'['*']') continue ;;
   esac
 
-  if matches=$(grep -inE -- "$pattern" "$content" 2>/dev/null); then
+  if matches=$(grep -ainE -- "$pattern" "$content" 2>/dev/null); then
     if [ "$found_secrets" -eq 0 ]; then
       printf '%sERROR: Potential sensitive information detected!%s\n' "$RED" "$NC"
       printf '%s======================================================%s\n\n' "$RED" "$NC"

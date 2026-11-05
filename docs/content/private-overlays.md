@@ -111,7 +111,8 @@ Selection priority is:
 
 Relative paths resolve from the **directory where you run the command**. A
 path passed with `--overlay` to update, remove, or check is saved
-as an absolute path. Environment selections are not saved. Existing saved
+as an absolute path after the CLI confirms it can open the directory.
+Environment selections are not saved. Existing saved
 relative paths retain their working-directory meaning until replaced.
 Read-only listing never saves a selection. Check for a persistence warning if a
 later run does not remember the path.

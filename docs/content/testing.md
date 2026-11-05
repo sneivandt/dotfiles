@@ -253,7 +253,8 @@ and detection of a secret elsewhere on the same line. Existing exceptions cover
 Action pins, checksums, `test.local` fixtures, and GitHub SSH syntax;
 `example.com` addresses are not generally exempt.
 
-The scanner does not cover unchanged history, binary data, or every encoded or
+Git attributes cannot suppress the scan of added lines. The scanner does not
+cover unchanged history or reliably recognize binary data and every encoded or
 unknown credential format. Follow [Secrets](security-and-trust.md#secrets).
 Keep hook scripts POSIX `sh` compatible and test partially staged input,
 renames/deletions, unusual filenames, and empty diffs. Run integration tests only

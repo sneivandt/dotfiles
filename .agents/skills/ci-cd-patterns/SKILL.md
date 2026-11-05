@@ -28,7 +28,12 @@ action-version inventories in guidance.
 
 ## After pushing
 
+- Treat a user request to push as including CI monitoring unless they explicitly
+  opt out. Do not stop at a successful Git push or wait for another request.
 - Find the CI run for the exact pushed SHA and verify the aggregate gate.
+- Wait for completion, inspect failed job logs, and report actionable failures.
+  If monitoring is unavailable, state the SHA, run, and blocker. A later push's
+  green run does not establish that the requested commit passed.
 - Mutation shards are required when selected. Inspect every shard report for
   survivors, timeouts, and tooling errors, and fix the cause before reporting
   success. Keep the exact matrix and use narrowly justified exclusions for
@@ -66,5 +71,6 @@ Start with [CI](../../../.github/workflows/ci.yml) and
 (the `.sh` entry point delegates to it).
 Use [Testing](../../../docs/content/testing.md) for canonical commands and the current CI
 coverage matrix.
-Documentation needs only one native-platform check. Reuse its exact commit's
-result with `--docs-checked` when running Linux implementation checks.
+Use one committed pre-push gate after focused edit-loop checks, not full checks
+at every layer. The checker coordinates native Windows and WSL fixtures on
+Windows and reuses documentation results for the same commit.

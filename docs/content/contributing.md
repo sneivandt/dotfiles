@@ -72,8 +72,11 @@ working files.
 
 After committing, run the [pre-push checker](testing.md#before-pushing).
 It verifies the committed range, not unstaged fixes. Resolve local failures and
-record unavailable checks. After pushing, follow the exact commit's
+record unavailable checks. Keep ordinary hooks lightweight rather than running
+the full gate at every commit. After pushing, follow the exact commit's
 [CI result](ci-and-releases.md#reading-a-run), including informational failures.
+A request to push includes that monitoring by default, not just uploading Git
+objects. Do not report completion while selected CI is pending.
 
 ## Development setup
 

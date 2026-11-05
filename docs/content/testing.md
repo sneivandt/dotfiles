@@ -9,6 +9,12 @@ Start with the smallest check that can prove your change. Then verify the
 committed patch before pushing. A local pass is not proof of a complete machine
 installation, and a skipped check is not a pass.
 
+Use focused checks during editing, ordinary lightweight commit hooks, and one
+broad committed pre-push gate. Full hook mode is optional troubleshooting
+coverage, not another required step before the same checks run at the final gate.
+Reuse results only for the same commit, platform, command, and relevant tool
+environment. Tests on native Linux and Windows cover different runtime behavior.
+
 Each example starts at the repository root unless it says otherwise or includes
 a `cd` command. Return to the root before following a separate example.
 [CI and releases](ci-and-releases.md) explains what runs after a push.
@@ -17,7 +23,7 @@ a `cd` command. Return to the root before following a separate example.
 
 | Change | Start with |
 |---|---|
-| Documentation or skills | [Native docs checker](#documentation-site) and a rendered-page review |
+| Documentation or skills | Focused metadata/link fixtures while editing; [native docs checker](#documentation-site) and rendered-page review at the final gate |
 | TOML, categories, or source layout | `config_drift` and local `config` stage |
 | Task selection or dependencies | Affected command suite and `task_execution` |
 | A concrete resource | Domain unit tests and affected lifecycle/end-to-end cases |
@@ -154,13 +160,37 @@ by browser emulation. Check the exact commit's CI and deployment after pushing.
 
 ### Implementation and mixed patches
 
-For implementation and mixed patches, run the manual Linux pre-push checker
-(Python 3.11 or newer):
+For implementation and mixed patches, run the coordinated pre-push checker
+with Python 3.11 or newer. From Windows:
+
+```powershell
+python .github\workflows\scripts\linux\pre-push.py --plan
+python .github\workflows\scripts\linux\pre-push.py
+```
+
+From Linux:
 
 ```sh
 python3 -B .github/workflows/scripts/linux/pre-push.py --plan
 python3 -B .github/workflows/scripts/linux/pre-push.py
 ```
+
+Despite its historical directory, the entrypoint supports both platforms.
+On Windows it runs documentation and selected native Rust, configuration,
+PowerShell wrapper, prompt, and Python fixtures in a temporary native checkout.
+It then runs the Linux worker through the default WSL distribution. Linux
+snapshots live under `/tmp`, and WSL Cargo artifacts use a separate Linux
+cache, never the Windows target directory. WSL reads Git objects from the
+source checkout but executes fixtures on the Linux filesystem.
+
+The Windows coordinator checks documentation once and passes the exact commit's
+result to Linux automatically. It also avoids repeating PSScriptAnalyzer and
+Windows cross-target Clippy after the corresponding native Windows checks.
+Linux and Windows Rust tests still both run when selected. A Linux-only
+invocation retains Windows cross-target Clippy and reports the native-runtime gap.
+Documentation-only work can use the native checker above without provisioning
+WSL. Host installation and full application integration remain disposable-runner
+coverage; safe shell and editor fixtures are included locally when selected.
 
 If documentation already passed the native checker for this commit, add
 `--docs-checked <commit>` to both commands, using the SHA printed by the native
@@ -168,19 +198,31 @@ checker. The Linux checker then omits npm setup and the docs stage, but keeps
 all selected CLI and platform checks. A different commit is rejected.
 Do not provision another OS just to repeat documentation validation.
 
-The default range is `origin/main..HEAD`. Make sure that remote-tracking ref is
-current. For another destination or base, pass `--base <remote-sha>` and
-optionally `--head <commit>`. The plan prints the selected checks without running
-them. An invalid range fails; an empty range reports that no checks ran.
+Refresh `origin/main` before planning. By default, the checker uses authenticated
+`gh` reads to verify that tip's push CI. If it did not succeed, the checker selects
+full coverage from a successful ancestor, preserving pending source changes even
+when the latest fix changes only tests. API/authentication failures and a missing
+successful ancestor fail rather than silently narrowing coverage.
 
-The checker exports the selected commit into a temporary Git checkout and runs
+For another destination, unavailable GitHub access, or a retry with a known
+baseline, pass `--base <original-verified-sha>` and optionally `--head <commit>`.
+Keep that original baseline through recovery; do not replace it with a failed
+push's tip. Use `--full` to select conservative full coverage explicitly.
+The plan prints selected checks without running them. An invalid range fails;
+an empty range reports that no checks ran.
+
+The checker exports the selected commit into temporary Git checkouts and runs
 CI-selected local checks with strict skip handling. **Unstaged fixes cannot
 satisfy a committed patch.** It reuses the Cargo target cache and redirects CLI
 state and logs into temporary directories.
 
-Install the tools required by the printed plan before running the checker.
+Provide the tools required by the printed plan before running the checker.
 Keep the pinned compiler on `PATH`; Rust changes can also require the minimum
-supported compiler and Windows target. When docs have not already been checked,
+supported compiler and, on Linux-only runs, the Windows target. Windows
+implementation checks require a configured WSL distribution with Linux tools.
+Shell fixtures also need Bash, Zsh, fzf, zstd, bat, and tmux; editor fixtures need
+Vim and Neovim. Missing required tools fail rather than yielding a passing skip.
+When docs have not already been checked,
 their checks need Playwright's Chromium runtime. The checker does not install
 these tools; it restores locked npm
 dependencies only when running docs locally.
@@ -188,9 +230,12 @@ Cargo and dependency checks may still need network or cache access. It is a
 manual command, not an installed Git hook, and does not push.
 
 Resolve selected local failures before publishing. Its `REMAINING CI` list
-identifies native Windows, host integration, mutation, or publication work left
-to CI. Report unavailable checks explicitly. After pushing, inspect the
-[exact commit's aggregate and informational results](ci-and-releases.md#reading-a-run).
+identifies full builds/integration, mutation, or publication work left to CI,
+even when narrower local fixtures for that area passed. Report unavailable
+checks explicitly. A request to push includes monitoring the
+[exact commit's aggregate and informational results](ci-and-releases.md#reading-a-run)
+by default, unless explicitly declined. A successful Git push is not completion
+while CI is pending; report monitoring blockers instead of claiming success.
 
 ## Specialized checks
 
@@ -315,13 +360,14 @@ These use fixture tools rather than bootstrapping or installing the real CLI:
 
 ```sh
 sh .github/workflows/scripts/linux/test-hook-inputs.sh \
-  test_staged_ci_guards test_ci_change_classification test_staged_ci_guard_deletions
+  test_staged_ci_guards test_staged_ci_guard_deletions
 sh .github/workflows/scripts/linux/test-shell-wrapper.sh \
   test_wrapper_preserves_runtime_context test_wrapper_uses_cargo_artifact
 ```
 
 With no selector, `test-hook-inputs.sh` runs all input regressions. Its build
 metadata case needs the pinned Rust compiler; without it, that case skips.
+Classification regressions run once in the `ci` stage, not again in this suite.
 
 On Windows, dot-source the wrapper suite to load only the isolated functions:
 

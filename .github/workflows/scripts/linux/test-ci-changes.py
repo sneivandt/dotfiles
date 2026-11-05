@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Isolated regressions for CI selection, result gates, and release catch-up."""
 
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -8,9 +10,10 @@ import re
 import runpy
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -274,6 +277,16 @@ class PrePushPlanTests(unittest.TestCase):
             self.assertIn(argument, flattened)
         self.assertNotIn("clippy", flattened)
 
+    def test_application_fixtures_follow_selected_applications(self):
+        for path, expected, absent in (
+            ("symlinks/zshrc", "test-shell-config.py", "symlinks/vim/tests"),
+            ("symlinks/vim/vimrc", "symlinks/vim/tests", "test-shell-config.py"),
+        ):
+            commands, _ = PRE_PUSH["plan"](classify([path]), "1.91")
+            flattened = " ".join(arg for _, _, command in commands for arg in command)
+            self.assertIn(expected, flattened)
+            self.assertNotIn(absent, flattened)
+
     def test_checker_changes_request_full_ci_without_binary_release(self):
         selected = classify([LINUX + "pre-push.py"])
         self.assertTrue(selected["run_rust_checks"])
@@ -282,6 +295,7 @@ class PrePushPlanTests(unittest.TestCase):
         self.assertFalse(selected["run_release"])
         self.assertFalse(selected["run_mutation"])
 
+    @unittest.skipUnless(sys.platform == "linux", "requires POSIX fixture executables")
     def test_missing_tools_fail_strict_checker(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -298,6 +312,149 @@ class PrePushPlanTests(unittest.TestCase):
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
                 self.assertIn("SKIP", result.stdout)
                 self.assertNotIn("All requested checks passed", result.stdout)
+
+
+class PrePushCoordinatorTests(unittest.TestCase):
+    def test_native_docs_only_do_not_run_rust_or_wrappers(self):
+        commands = PRE_PUSH["windows_plan"](classify(["README.md"]))
+        self.assertEqual(len(commands), 2)
+        self.assertEqual(commands[0][2], ["npm.cmd", "ci", "--no-audit", "--no-fund"])
+        self.assertEqual(commands[1][2], [sys.executable, "-B", "docs/check.py"])
+        self.assertEqual(PRE_PUSH["windows_plan"](classify(["README.md"]), docs_checked=True), [])
+
+    def test_native_windows_covers_runtime_without_repeating_linux_only_checks(self):
+        selection = classify(["cli/src/main.rs", "dotfiles.ps1"])
+        commands = PRE_PUSH["windows_plan"](selection)
+        stages = next(command for label, _, command in commands if label == "native Windows checks")
+        self.assertEqual(stages[stages.index("-Strict") + 1:], ["clippy", "test", "config", "powershell"])
+        flattened = [arg for _, _, command in commands for arg in command]
+        for unnecessary in ("fmt", "rustdoc", "audit", "deny", "x86_64-pc-windows-gnu"):
+            self.assertNotIn(unnecessary, flattened)
+        wrapper = next(command for label, _, command in commands if label == "isolated PowerShell wrapper")
+        self.assertIn("if (-not (Test-IsolatedWrapperPath)) { exit 1 }", wrapper[-1])
+        self.assertIn("if (-not (Test-CargoArtifactPath)) { exit 1 }", wrapper[-1])
+
+    def test_windows_receipt_omits_only_redundant_compilation_and_analyzer(self):
+        selection = classify(["cli/src/main.rs", "dotfiles.ps1"])
+        original, deferred = PRE_PUSH["plan"](selection, "1.91", docs_checked=True)
+        reused, remaining = PRE_PUSH["plan"](selection, "1.91", docs_checked=True, windows_checked=True)
+        expected = [
+            (label, directory, [arg for arg in command if arg != "powershell"])
+            if label == "core checks" else (label, directory, command)
+            for label, directory, command in original
+            if label != "Windows compilation (no runtime coverage)"
+        ]
+        self.assertEqual(reused, expected)
+        self.assertEqual(remaining, deferred)
+        self.assertTrue(any("test" in command for _, _, command in reused))
+
+    def test_wsl_worker_uses_exact_range_and_receipts(self):
+        with patch("shutil.which", return_value="wsl"), patch(
+            "subprocess.check_output", return_value="/mnt/c/repo with spaces/pre-push.py\n",
+        ) as output:
+            command = PRE_PUSH["wsl_command"]("base-sha", "head-sha", True)
+        self.assertEqual(command[:5], ["wsl", "--exec", "python3", "-B", "/mnt/c/repo with spaces/pre-push.py"])
+        self.assertEqual(command[5:], ["--base", "base-sha", "--head", "head-sha",
+                                     "--docs-checked", "head-sha", "--windows-checked", "head-sha", "--full"])
+        self.assertEqual(output.call_args.args[0][:4], ["wsl", "--exec", "wslpath", "-u"])
+        with patch("shutil.which", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "WSL is unavailable"):
+                PRE_PUSH["wsl_command"]("base", "head", False)
+
+    def test_wsl_cache_is_not_shared_with_windows(self):
+        root = Path(tempfile.gettempdir()) / "mounted source"
+        with patch.object(sys, "platform", "linux"), patch.dict(os.environ, {"WSL_INTEROP": "fixture"}):
+            cache = PRE_PUSH["target_cache"](root)
+            self.assertTrue(cache.is_relative_to(Path.home() / ".cache/dotfiles-pre-push"))
+            self.assertNotEqual(cache, root / "cli/target")
+            self.assertEqual(cache, PRE_PUSH["target_cache"](root))
+        with patch.object(sys, "platform", "win32"):
+            self.assertEqual(PRE_PUSH["target_cache"](root), root / "cli/target")
+
+    def test_explicit_baseline_does_not_query_github(self):
+        with patch.dict(PRE_PUSH["comparison_base"].__globals__, {"git": lambda *args: "original-sha"}):
+            with patch("subprocess.check_output") as output:
+                self.assertEqual(PRE_PUSH["comparison_base"](".", "original", "head"), ("original-sha", False))
+                output.assert_not_called()
+
+    def test_default_baseline_recovers_pending_source_changes(self):
+        for remote in ("https://github.com/fixture/repository.git", "git@github.com:fixture/repository.git"):
+            for conclusion in ("success", "failure", "cancelled", None):
+                with self.subTest(remote=remote, conclusion=conclusion):
+                    outputs = [json.dumps({"workflow_runs": [{"conclusion": conclusion}]})]
+                    if conclusion != "success":
+                        outputs.append(json.dumps({"workflow_runs": [{"head_sha": "original-sha"}]}))
+                    with patch.dict(PRE_PUSH["comparison_base"].__globals__, {
+                        "git": lambda root, *args: remote if args[0] == "remote" else "tip-sha",
+                    }), patch("subprocess.check_output", side_effect=outputs) as output, patch("subprocess.run") as run:
+                        run.return_value.returncode = 0
+                        expected = ("tip-sha", False) if conclusion == "success" else ("original-sha", True)
+                        self.assertEqual(PRE_PUSH["comparison_base"](".", None, "head"), expected)
+                        self.assertIn("repos/fixture/repository/actions/workflows/ci.yml/runs", output.call_args.args[0])
+
+    def test_missing_or_unverifiable_baseline_fails_closed(self):
+        with patch.dict(PRE_PUSH["comparison_base"].__globals__, {
+            "git": lambda root, *args: "https://github.com/fixture/repository.git" if args[0] == "remote" else "tip",
+        }):
+            with patch("subprocess.check_output", return_value='{"workflow_runs": []}'):
+                with self.assertRaisesRegex(RuntimeError, "No successful CI ancestor"):
+                    PRE_PUSH["comparison_base"](".", None, "head")
+            with patch("subprocess.check_output", side_effect=subprocess.CalledProcessError(1, ["gh"])):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    PRE_PUSH["comparison_base"](".", None, "head")
+
+    def test_windows_runs_native_before_linux_and_never_continues_after_failure(self):
+        worker = ["fixture-wsl", "--head", "head-sha"]
+        for failure in (False, True):
+            events = []
+
+            def execute(*args):
+                events.append("native")
+                if failure:
+                    raise subprocess.CalledProcessError(17, ["fixture-native"])
+
+            def run(command, **kwargs):
+                if command == worker:
+                    events.append("linux")
+
+            replacements = {
+                "git": lambda root, *args: str(SCRIPTS.parents[3]) if "--show-toplevel" in args else "head-sha",
+                "comparison_base": lambda *args: ("base-sha", True),
+                "committed_policy": lambda *args: {
+                    "changed_paths": lambda *args: ["cli/src/main.rs"], "classify": classify,
+                },
+                "execute": execute,
+                "wsl_command": Mock(return_value=worker),
+            }
+            # main reads only the committed Cargo rust-version after selection.
+            real_git = replacements["git"]
+            replacements["git"] = lambda root, *args: (
+                '[package]\nrust-version = "1.91"\n' if args[0] == "show" else real_git(root, *args)
+            )
+            with patch.dict(PRE_PUSH["main"].__globals__, replacements), patch.object(sys, "platform", "win32"), patch.object(
+                sys, "argv", ["pre-push.py"],
+            ), patch("subprocess.run", side_effect=run), contextlib.redirect_stdout(io.StringIO()):
+                if failure:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        PRE_PUSH["main"]()
+                else:
+                    PRE_PUSH["main"]()
+            self.assertEqual(events, ["native"] if failure else ["native", "linux"])
+            replacements["wsl_command"].assert_called_once_with("base-sha", "head-sha", True)
+
+    def test_mismatched_receipt_fails_before_executing_checks(self):
+        replacements = {
+            "git": lambda root, *args: "other-sha" if args[-1] == "old^{commit}" else "head-sha",
+            "comparison_base": lambda *args: ("base-sha", False),
+            "execute": Mock(),
+        }
+        for option in ("--docs-checked", "--windows-checked"):
+            with patch.dict(PRE_PUSH["main"].__globals__, replacements), patch.object(sys, "platform", "linux"), patch.object(
+                sys, "argv", ["pre-push.py", option, "old"],
+            ):
+                with self.assertRaisesRegex(RuntimeError, "exact commit"):
+                    PRE_PUSH["main"]()
+        replacements["execute"].assert_not_called()
 
 
 class LocalCheckTests(unittest.TestCase):

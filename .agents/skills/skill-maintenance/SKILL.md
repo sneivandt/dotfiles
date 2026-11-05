@@ -67,6 +67,10 @@ Reuse the exact commit's docs result instead of repeating it in WSL.
 Its link check covers tracked and unignored new Markdown, including unstaged
 moves; generated and ignored files are excluded.
 
+During editing, prefer focused metadata/link fixtures. Run the full native docs
+suite once at the final gate unless an earlier full run is needed to diagnose
+a failure. A working-tree pass cannot satisfy a later committed snapshot.
+
 The native checker and Linux docs stage run [metadata validation](scripts/check-skills.py) and its
 [regression fixtures](scripts/test-check-skills.py). Repository frontmatter uses
 only a plain lowercase hyphenated `name` and a two-space-indented YAML block

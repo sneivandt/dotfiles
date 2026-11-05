@@ -49,6 +49,8 @@ changes usually do not need engine changes.
 
 ## Before pushing
 
+- Use focused checks while editing and lightweight commit hooks. Run broad
+  coverage once at the final committed gate, not again at every layer.
 - Choose coverage from [Testing](docs/content/testing.md#choosing-coverage), including
   affected script/application regressions. Use the pinned Rust toolchain.
 - Validate documentation once on the checkout's native platform, including mixed
@@ -56,13 +58,18 @@ changes usually do not need engine changes.
   verification applies to the CLI and platform-sensitive behavior.
 - Validate the committed patch with the [pre-push checker](docs/content/testing.md#before-pushing).
   A successful commit hook or focused test alone is not push validation.
+  On Windows, use its coordinated native Windows and WSL checks. Do not treat
+  cross-compilation as a substitute for available native runtime tests.
 - Fix selected local failures. Report unavailable checks and remaining Windows,
   integration, and mutation coverage explicitly; a skip is not a pass.
 - Run [focused mutation testing](docs/content/testing.md#focused-mutation-testing)
   for changed Rust behavior, especially safety checks, scheduling, previews, and
   partial failures. When fixing a survivor, rerun the original source range
   even if the fix changes only tests.
-- After an authorized push, monitor the exact commit's aggregate CI and inspect
+- A request to push includes monitoring CI by default, without a separate
+  request. After an authorized push, monitor the exact commit's aggregate CI and inspect
   selected mutation shard reports. Survivors, timeouts, and tool failures block
   CI. Follow the [CI monitoring guidance](.agents/skills/ci-cd-patterns/SKILL.md#after-pushing)
-  and verify publication when reporting a release.
+  and verify publication when reporting a release. Do not report the push task
+  complete while its checks are pending. If monitoring is blocked, report the
+  exact SHA, run, and blocker instead of claiming success.

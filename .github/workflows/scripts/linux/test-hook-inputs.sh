@@ -291,11 +291,6 @@ EOF
 
 )}
 
-test_ci_change_classification()
-{
-  python3 -B "$SCRIPT_DIR/test-ci-changes.py"
-}
-
 test_staged_ci_guard_deletions()
 {(
   log_stage "Checking full CI guards classify staged deletions and both rename paths"
@@ -672,7 +667,6 @@ log_verbose "Hook input regression tests passed"
 )
 test_fixture_git_context
 test_staged_ci_guards
-test_ci_change_classification
 test_staged_ci_guard_deletions
 test_build_version_ref_triggers
 test_github_ssh_allowlist

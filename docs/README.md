@@ -56,6 +56,11 @@ Run the native documentation checker from the repository root:
 python docs/check.py
 ```
 
+For the edit loop, prefer the affected Markdown/checker fixtures or source-link
+check rather than rebuilding and rerunning browsers after every change. Reserve
+one full documentation run for the committed gate unless diagnosing a failure
+needs an earlier full run.
+
 Use `python3` instead of `python` on systems that require it. The checker runs
 skill metadata and its fixtures, source links, Astro diagnostics, Markdown and
 checker fixtures, a production build, published links, and browser regressions.
@@ -74,9 +79,13 @@ code in a temporary native checkout. It restores locked npm
 dependencies there and runs the committed checker, ignoring staged, unstaged,
 and untracked work. Use `--base <ref>` with `--committed` for another comparison.
 This also works for mixed patches, but validates only their documentation.
-One successful platform is enough. Reuse that exact commit's result with
-`--docs-checked <commit>` in the broader
+One successful platform is enough. For mixed patches, the coordinated
 [implementation checker](content/testing.md#implementation-and-mixed-patches)
+can run documentation itself, once on the native platform, alongside the
+selected implementation checks. If you already ran the committed docs checker,
+reuse that exact commit's result with
+`--docs-checked <commit>` in the broader
+implementation checker
 instead of repeating site checks in WSL.
 
 The Rust task-selector fixture and workflow checks remain in CI. The Linux

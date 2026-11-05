@@ -122,6 +122,18 @@ test('the homepage introduces the repository and links to setup, with grouped na
   await assertNoPageOverflow(page);
 });
 
+test('the terminal illustration dims every part of each live status line', async ({ page }) => {
+  await page.goto('/assets/terminal-screenshot.svg');
+  const rows = page.locator('g[class^="live-"]');
+  await expect(rows).toHaveCount(8);
+  for (const row of await rows.all()) {
+    const fills = await row.locator('text, tspan').evaluateAll((elements) =>
+      elements.map((element) => getComputedStyle(element).fill));
+    expect(fills.length).toBeGreaterThan(0);
+    expect(new Set(fills)).toEqual(new Set(['rgb(137, 146, 181)']));
+  }
+});
+
 test('consolidated topics link to their sections after everyday guidance', async ({ page }) => {
   for (const [guide, anchor, title] of [
     ['agent-configuration', 'deployment-maintenance', 'Deployment maintenance'],

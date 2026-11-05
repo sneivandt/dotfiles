@@ -103,29 +103,24 @@ fn active_display_line(
     let separator = if remaining.is_some() { " · " } else { "" };
     let prefix = format!("{spinner} {count}{separator}");
     // Very narrow terminals still get a bounded line, even without room for names.
-    if prefix.width() >= cols || active.is_empty() {
-        return transient_display_line_with_style(&prefix, cols, style);
-    }
-    let (names, hidden) = active_names(
-        &active,
-        if verbose { active.len() } else { 3 },
-        cols - prefix.width(),
-    );
-    let suffix = if hidden > 0 {
-        format!(" +{hidden}")
+    let line = if prefix.width() >= cols || active.is_empty() {
+        prefix
     } else {
-        String::new()
+        let (names, hidden) = active_names(
+            &active,
+            if verbose { active.len() } else { 3 },
+            cols - prefix.width(),
+        );
+        let suffix = if hidden > 0 {
+            format!(" +{hidden}")
+        } else {
+            String::new()
+        };
+        format!("{prefix}{names}{suffix}")
     };
-    let line = format!("{prefix}{names}{suffix}");
-    if line.width() > cols {
-        return transient_display_line_with_style(&line, cols, style);
-    }
-    format!(
-        "{} {}{}{}",
-        style.paint(TextStyle::MutedCyan, spinner),
-        count,
-        style.paint(TextStyle::Dim, &format!("{separator}{names}")),
-        style.paint(TextStyle::Dim, &suffix)
+    style.paint(
+        TextStyle::Dim,
+        &transient_display_line_with_style(&line, cols, style),
     )
 }
 
@@ -294,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn footer_emphasizes_count_and_dims_names_and_overflow() {
+    fn footer_dims_spinner_count_names_and_overflow() {
         let active = ["Packages", "Symlinks", "Fonts", "Git"].map(String::from);
         assert_eq!(
             super::active_display_line(
@@ -306,8 +301,48 @@ mod tests {
                 80,
                 StyleChoice::colored()
             ),
-            "\x1b[2;36m⠋\x1b[0m 4 tasks left\x1b[2m · Packages, Symlinks, Fonts\x1b[0m\x1b[2m +1\x1b[0m"
+            "\x1b[2m⠋ 4 tasks left · Packages, Symlinks, Fonts +1\x1b[0m"
         );
+    }
+
+    #[test]
+    fn footer_dims_every_width_and_symbol_mode_without_preserving_embedded_ansi() {
+        for active in [
+            vec![
+                "\x1b[32mLong package task\x1b[0m".to_string(),
+                "Fonts".into(),
+            ],
+            vec![],
+        ] {
+            for remaining in [None, Some(1), Some(12)] {
+                for symbols in [false, true] {
+                    for cols in 0..60 {
+                        let plain = super::active_display_line(
+                            &active,
+                            remaining,
+                            0,
+                            symbols,
+                            false,
+                            cols,
+                            StyleChoice::plain(),
+                        );
+                        assert_eq!(
+                            super::active_display_line(
+                                &active,
+                                remaining,
+                                0,
+                                symbols,
+                                false,
+                                cols,
+                                StyleChoice::colored(),
+                            ),
+                            format!("\x1b[2m{plain}\x1b[0m"),
+                            "active={active:?}, remaining={remaining:?}, symbols={symbols}, cols={cols}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -344,7 +379,7 @@ mod tests {
                 StyleChoice::colored()
             ),
             super::active_display_line(&names, Some(4), 0, true, false, 80, StyleChoice::colored()),
-            "a footer that fits exactly must keep its colors and dim context"
+            "a footer that fits exactly must stay dim throughout"
         );
     }
 

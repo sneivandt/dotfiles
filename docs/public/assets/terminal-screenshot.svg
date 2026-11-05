@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="760" height="500" viewBox="0 0 760 500" role="img" aria-labelledby="title desc">
   <title id="title">CLI self-update and one dotfiles update on an Arch Linux desktop</title>
-  <desc id="desc">Illustrative incremental update on an existing Arch desktop with its profile already selected, repository current, and package-manager authorization cached. The user types dotfiles update. The CLI first updates from example version v2026.01.01-1 to v2026.01.01-2, then continues the update. Home symlinks restores Git and Zsh configuration, Shell completions writes updated zsh completions, and System packages installs fd and ripgrep. A muted cyan spinner animates beside the remaining task count at normal brightness and dim active task names. The live status is replaced in place as tasks complete; already-current tasks stay quiet. The update finishes with 3 tasks changed and 14 tasks current in 6.1 seconds, followed immediately by the two-line shell prompt. A 20-second loop includes typing, self-update, and a reading pause. Reduced motion shows the completed transcript.</desc>
+  <desc id="desc">Illustrative incremental update on an existing Arch desktop with its profile already selected, repository current, and package-manager authorization cached. The user types dotfiles update. The CLI first updates from example version v2026.01.01-1 to v2026.01.01-2, then continues the update. Home symlinks restores Git and Zsh configuration, Shell completions writes updated zsh completions, and System packages installs fd and ripgrep. The entire live status line is dim, including the animated spinner, remaining task count, and active task names. The live status is replaced in place as tasks complete; already-current tasks stay quiet. The update finishes with 3 tasks changed and 14 tasks current in 6.1 seconds, followed immediately by the two-line shell prompt. A 20-second loop includes typing, self-update, and a reading pause. Reduced motion shows the completed transcript.</desc>
   <style>
     /* Alacritty colors, Source Code Pro, a 10px cell and 24px terminal rows.
        One update: self-update at 2.4s, update at 4.4s, summary at 10.5s.
@@ -98,6 +98,7 @@
     .spin-9 { animation: spin-9 1s step-end infinite; }
     /* Separate text elements avoid tspan opacity leaking across the text run. */
     [class^="char-"], .transient, [class^="live-"] { opacity: 0; }
+    [class^="live-"] text { fill: #8992b5; }
     @media (prefers-reduced-motion: reduce) {
       * { animation: none !important; }
       [class^="char-"] { opacity: 1; }

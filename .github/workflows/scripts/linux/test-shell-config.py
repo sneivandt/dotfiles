@@ -741,8 +741,33 @@ class ShellConfigTests(unittest.TestCase):
             self.run_shell(
                 'setopt extendedglob\n'
                 'source "$ROOT/symlinks/config/zsh/completion.zsh" || exit $?\n'
-                '[[ ${_comps[dotfiles]} == _clap_dynamic_completer_dotfiles ]]\n'
+                '[[ ${_comps[dotfiles]} == _dotfiles_complete ]]\n'
             )
+
+    def test_dot_explain_completes_home_path_without_escaping_tilde(self):
+        self.prepare_completion()
+        self.write(self.home / ".bashrc", "")
+        self.env["ZDOTDIR"] = str(self.home)
+        self.write(
+            self.home / ".zshrc",
+            'setopt extendedglob\n'
+            'completion_dirs=(${^fpath}/compinit(N:h))\n'
+            'fpath=("$completion_dirs[1]" "$completion_dirs[1]"/*(/N))\n'
+            'source "$ROOT/symlinks/config/zsh/completion.zsh" || exit $?\n'
+            'alias dot=dotfiles\n'
+            'PS1="READY>"\n'
+            'capture-buffer() { print -r -- "$BUFFER" > "$HOME/completed"; exit; }\n'
+            'zle -N capture-buffer\n'
+            'bindkey "^G" capture-buffer\n',
+        )
+        self.run_shell(
+            'zmodload zsh/zpty || exit $?\n'
+            'zpty fixture zsh -di || exit $?\n'
+            'zpty -r fixture output "*READY>*" || exit $?\n'
+            "zpty -w -n fixture $'dot explain ~/.bash\\t\\x07' || exit $?\n"
+            'while zpty -r fixture output; do :; done\n'
+        )
+        self.assertEqual((self.home / "completed").read_text(), "dot explain ~/.bashrc \n")
 
     def test_completion_without_generated_file(self):
         self.prepare_completion()
@@ -767,7 +792,7 @@ class ShellConfigTests(unittest.TestCase):
         self.run_shell(
             'setopt extendedglob\n'
             'source "$ROOT/symlinks/config/zsh/completion.zsh" || exit $?\n'
-            '[[ ${_comps[dotfiles]} == _clap_dynamic_completer_dotfiles ]]\n'
+            '[[ ${_comps[dotfiles]} == _dotfiles_complete ]]\n'
         )
 
     def test_completion_scan_age_does_not_depend_on_dump_changes(self):

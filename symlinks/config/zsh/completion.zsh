@@ -22,9 +22,21 @@ else
   fi
 fi
 
+_dotfiles_complete() {
+  # Generic candidates quote the leading tilde. Let Zsh complete home paths.
+  if [[ $PREFIX == '~/'* && -z $QIPREFIX ]]; then
+    _files
+  else
+    _clap_dynamic_completer_dotfiles "$@"
+  fi
+}
+
 # The generated dynamic registration is a source script, not a #compdef file.
 if [[ -r ~/.config/zsh/completions/_dotfiles ]] && command -v dotfiles >/dev/null 2>&1; then
   source ~/.config/zsh/completions/_dotfiles
+  if [[ ${_comps[dotfiles]} == _clap_dynamic_completer_dotfiles ]]; then
+    compdef _dotfiles_complete dotfiles
+  fi
 fi
 
 setopt always_to_end

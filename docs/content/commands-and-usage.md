@@ -13,8 +13,8 @@ The examples use the checkout behind your installed dotfiles launcher and
 your saved profile. Before installation, use `./dotfiles.sh` on Linux or
 `.\dotfiles.ps1` on Windows; see [Wrapper bootstrap](cli-reference.md#wrapper-bootstrap).
 In an interactive terminal, update, remove, and check prompt when no profile
-is selected. Read-only listing needs an existing selection or an explicit
-`--profile`. See [Unattended runs](#unattended-runs) for automation.
+is selected. The read-only list and explain commands need an existing selection
+or an explicit `--profile`. See [Unattended runs](#unattended-runs) for automation.
 
 ## Everyday commands
 
@@ -24,6 +24,7 @@ is selected. Read-only listing needs an existing selection or an explicit
 | Preview an update | `dotfiles update --dry-run` |
 | Sync the repository and apply updates | `dotfiles update` |
 | Validate configuration and repository files | `dotfiles check` |
+| Inspect a managed home symlink | `dotfiles explain .bashrc` |
 | Read the latest run | `dotfiles log` |
 | Preview removal | `dotfiles remove --dry-run` |
 
@@ -196,10 +197,17 @@ raw output, retention, and storage locations.
 
 ## Inspect a home path
 
-Run `dotfiles explain .config/git/config` to see which declaration manages that
-path, where it resolves, and what update and removal would do. Use the same
-profile and overlay you use for updates. Run an existing CLI binary to inspect
-the path without starting a task or writing a run log.
+Use explain to see which declaration manages a home symlink.
+
+```bash
+dotfiles explain .bashrc
+```
+
+Pass a path relative to your home directory, such as `.bashrc`, or an absolute
+path. On Linux, `~/.bashrc` also works. The output shows the declaration, source,
+resolved target, and what update and remove would do. Use the same profile and
+overlay you use for updates. An existing CLI binary inspects the path without
+starting a task or writing a run log.
 
 ## Remove integrations
 

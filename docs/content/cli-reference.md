@@ -23,6 +23,7 @@ are listed in [Task reference](task-reference.md).
 | `remove` | Detach a limited set of integrations, not restore machine defaults |
 | `check` | Validate configuration and repository files |
 | `list` | Discover selectors or inspect a dependency graph |
+| `explain <path>` | Inspect the declaration and planned actions for a [managed home symlink](commands-and-usage.md#inspect-a-home-path) |
 | `log` | Read saved run logs |
 | `help [command]` | Show command-specific usage |
 | `completions <shell>` | Emit shell registration; hidden support command |
@@ -35,7 +36,7 @@ apply to `update`. Use `dotfiles <command> --help` for full syntax, and
 
 ### Configuration selection
 
-These options apply to update, remove, check, and list:
+These options apply to update, remove, check, list, and explain:
 
 | Option | Purpose |
 |---|---|

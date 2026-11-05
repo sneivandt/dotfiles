@@ -310,3 +310,45 @@ fn permission_source_checks_follow_explicit_and_overlay_directory_mappings() {
         assert!(text.contains("file-permission source missing"), "{text}");
     }
 }
+
+#[test]
+fn permission_source_checks_accept_home_public_and_overlay_sources() {
+    for location in ["home", "public", "overlay"] {
+        let repo = common::TestContextBuilder::new()
+            .with_config_file(
+                "chmod.toml",
+                "[base]\npermissions = [{ mode = '600', path = '.custom' }]\n",
+            )
+            .build();
+        let home = tempfile::tempdir().unwrap();
+        let overlay = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(overlay.path().join("symlinks")).unwrap();
+        let source = match location {
+            "home" => home.path().join(".custom"),
+            "public" => repo.root_path().join("symlinks/custom"),
+            _ => overlay.path().join("symlinks/custom"),
+        };
+        std::fs::write(&source, "fixture").unwrap();
+        output(
+            &mut common::cli_command(
+                repo.root_path(),
+                home.path(),
+                Some(overlay.path()),
+                "check",
+                "symlink-sources",
+            ),
+            true,
+        );
+        std::fs::remove_file(source).unwrap();
+        output(
+            &mut common::cli_command(
+                repo.root_path(),
+                home.path(),
+                Some(overlay.path()),
+                "check",
+                "symlink-sources",
+            ),
+            false,
+        );
+    }
+}

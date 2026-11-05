@@ -260,8 +260,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn implicit_local_value_with_includes_fails_without_rewriting_either_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let included = dir.path().join("included");
+        let contents = "[core]\n autocrlf\n[include]\n path = included\n";
+        std::fs::write(&path, contents).unwrap();
+        std::fs::write(&included, "[core]\n autocrlf = true\n").unwrap();
+        let resource = GitConfigResource::with_config_path(
+            "core.autocrlf".into(),
+            "false".into(),
+            path.clone(),
+        );
+        assert!(format!("{:#}", resource.apply().unwrap_err()).contains("implicit values"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), contents);
+        assert_eq!(
+            std::fs::read_to_string(&included).unwrap(),
+            "[core]\n autocrlf = true\n"
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            2,
+            "failed staging must leave no temporary config"
+        );
+    }
+
+    #[test]
     fn included_values_are_preserved_and_global_overrides_converge() {
-        for local in ["", "[core]\n autocrlf = true\n"] {
+        for local in [
+            "",
+            "[core]\n autocrlf = true\n",
+            "[core]\n autocrlf = false\n",
+        ] {
             for include_first in [false, true] {
                 let dir = tempfile::tempdir().unwrap();
                 let path = dir.path().join("config");
@@ -283,7 +313,11 @@ mod tests {
                     "false".into(),
                     path.clone(),
                 );
-                assert_ne!(resource.current_state().unwrap(), ResourceState::Correct);
+                assert_eq!(
+                    resource.current_state().unwrap() == ResourceState::Correct,
+                    include_first && local.contains("false"),
+                    "a later include must not override a managed scalar value"
+                );
                 resource.apply().unwrap();
                 assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
                 let after = std::fs::read(&path).unwrap();

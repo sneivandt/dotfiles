@@ -13,6 +13,36 @@ mod chmod {
         OctalMode::parse(s).unwrap()
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn permission_descriptions_show_redirections_without_repeating_ordinary_paths() {
+        use crate::domains::files::config::chmod::ChmodEntry;
+        let fixture = tempfile::tempdir().unwrap();
+        let home = fixture.path().join("home");
+        std::fs::create_dir(&home).unwrap();
+        let ordinary = home.join(".ordinary");
+        let outside = fixture.path().join("outside");
+        std::fs::write(&ordinary, "fixture").unwrap();
+        std::fs::write(&outside, "fixture").unwrap();
+        let ordinary_resource =
+            ChmodResource::from_entry(&ChmodEntry::new("600", "ordinary"), &home);
+        assert_eq!(
+            ordinary_resource.description(),
+            format!("600 {}", ordinary.display())
+        );
+        std::os::unix::fs::symlink(&outside, home.join(".linked")).unwrap();
+        let redirected_resource =
+            ChmodResource::from_entry(&ChmodEntry::new("600", "linked"), &home);
+        assert_eq!(
+            redirected_resource.description(),
+            format!(
+                "600 {} (resolved {})",
+                home.join(".linked").display(),
+                outside.display()
+            )
+        );
+    }
+
     // -----------------------------------------------------------------------
     // OctalMode
     // -----------------------------------------------------------------------

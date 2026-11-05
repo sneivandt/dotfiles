@@ -133,6 +133,10 @@ impl WrapperResource {
         if contents == self.content.as_bytes() {
             return Ok(true);
         }
+        self.recorded(contents)
+    }
+
+    fn recorded(&self, contents: &[u8]) -> Result<bool> {
         let recorded = match std::fs::read_to_string(self.ownership_path()) {
             Ok(recorded) => recorded,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
@@ -272,7 +276,7 @@ impl IntrinsicState for WrapperResource {
         #[cfg(not(unix))]
         let permissions_correct = true;
 
-        if current == self.content && permissions_correct {
+        if current == self.content && permissions_correct && self.recorded(current.as_bytes())? {
             Ok(ResourceState::Correct)
         } else {
             Ok(ResourceState::Incorrect {
@@ -414,8 +418,12 @@ mod tests {
         #[cfg(unix)]
         crate::infra::fs::set_executable(&r.target).unwrap();
 
-        let state = r.current_state().unwrap();
-        assert_eq!(state, ResourceState::Correct);
+        assert!(
+            matches!(r.current_state().unwrap(), ResourceState::Incorrect { .. }),
+            "legacy copies must acquire an ownership record before the next template upgrade"
+        );
+        r.apply().unwrap();
+        assert_eq!(r.current_state().unwrap(), ResourceState::Correct);
     }
 
     #[cfg(unix)]
@@ -548,7 +556,10 @@ mod tests {
             std::fs::write(&new.target, &new.content).unwrap();
             #[cfg(unix)]
             crate::infra::fs::set_executable(&new.target).unwrap();
-            assert_eq!(new.current_state().unwrap(), ResourceState::Correct);
+            assert!(matches!(
+                new.current_state().unwrap(),
+                ResourceState::Incorrect { .. }
+            ));
             new.apply().unwrap();
             assert!(new.ownership_path().exists());
         }
@@ -568,6 +579,20 @@ mod tests {
             "concurrent user edit"
         );
         assert!(r.verify_baseline(Some(b"concurrent user edit")).is_ok());
+    }
+
+    #[test]
+    fn ownership_inspection_errors_are_not_treated_as_missing_records() {
+        let home = TempDir::new().unwrap();
+        let old = make_sh_resource(Path::new("/old"), home.path());
+        old.apply().unwrap();
+        std::fs::write(old.ownership_path(), [0xff]).unwrap();
+        let new = make_sh_resource(Path::new("/new"), home.path());
+        assert!(new.current_state().is_err());
+        assert!(new.apply().is_err());
+        assert!(new.remove().is_err());
+        assert_eq!(std::fs::read_to_string(&old.target).unwrap(), old.content);
+        assert_eq!(std::fs::read(old.ownership_path()).unwrap(), [0xff]);
     }
 
     // ── Remove ───────────────────────────────────────────────────────

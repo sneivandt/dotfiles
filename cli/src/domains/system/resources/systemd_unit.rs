@@ -2,7 +2,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::domains::system::config::systemd_units::UnitScope;
+use crate::domains::system::config::systemd_units::{UnitScope, safe_unit_name};
 use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::exec::{CommandSpec, Executor};
@@ -139,6 +139,11 @@ impl SystemdUnitResource {
     }
 
     fn offline_enablement_links(&self) -> ResourceResult<Vec<(PathBuf, PathBuf)>> {
+        if self.name.contains('@') {
+            return Err(ResourceError::not_supported(
+                "offline enablement of template units requires a live user systemd manager",
+            ));
+        }
         let unit_path = self.offline_unit_path()?.ok_or_else(|| {
             anyhow::anyhow!(
                 "user unit {} was not found in the unit search directories",
@@ -148,9 +153,7 @@ impl SystemdUnitResource {
         // Keep the installed path, even when it is a symlink into the checkout.
         // Uninstall materializes that path and may be followed by checkout removal.
         let source = unit_path.clone();
-        let content = std::fs::read_to_string(&unit_path).map_err(|error| {
-            anyhow::Error::new(error).context(format!("reading user unit {}", unit_path.display()))
-        })?;
+        let content = self.offline_install_contents(&unit_path)?;
         let targets = install_targets(&content)?;
         if targets.is_empty() {
             return Err(ResourceError::not_supported(format!(
@@ -159,17 +162,24 @@ impl SystemdUnitResource {
             )));
         }
         let user_dir = self.offline_user_dir()?;
-        Ok(targets
+        targets
             .into_iter()
-            .map(|target| (user_dir.join(target).join(&self.name), source.clone()))
-            .collect())
+            .map(|target| {
+                let parent =
+                    crate::infra::fs::checked_directory_chain(&user_dir, Path::new(&target))?;
+                Ok((parent.join(&self.name), source.clone()))
+            })
+            .collect()
     }
 
     fn offline_user_dir(&self) -> ResourceResult<PathBuf> {
         let home = self.home.as_deref().ok_or_else(|| {
             ResourceError::not_supported("offline user-unit enablement requires a home directory")
         })?;
-        Ok(home.join(".config/systemd/user"))
+        Ok(crate::infra::fs::checked_directory_chain(
+            home,
+            Path::new(".config/systemd/user"),
+        )?)
     }
 
     fn offline_unit_path(&self) -> ResourceResult<Option<PathBuf>> {
@@ -184,6 +194,64 @@ impl SystemdUnitResource {
             }
         }
         Ok(None)
+    }
+
+    // Support unit-specific drop-ins using native filename and search-path
+    // precedence. Broader drop-ins with install metadata require native systemd;
+    // silently ignoring them could enable a different relationship.
+    fn offline_install_contents(&self, unit: &Path) -> ResourceResult<String> {
+        let user_dir = self.offline_user_dir()?;
+        let directories: Vec<_> = std::iter::once(&user_dir)
+            .chain(&self.system_user_unit_dirs)
+            .collect();
+        let mut contents = std::fs::read_to_string(unit)?;
+        let mut dropins = std::collections::BTreeMap::new();
+        let (stem, suffix) = self
+            .name
+            .rsplit_once('.')
+            .ok_or_else(|| anyhow::anyhow!("unit name has no suffix"))?;
+        let mut broader = vec![format!("{suffix}.d")];
+        broader.extend(
+            stem.match_indices('-')
+                .map(|(index, _)| format!("{}.{suffix}.d", stem.get(..=index).unwrap_or(stem))),
+        );
+        for directory in directories {
+            for name in broader
+                .iter()
+                .chain(std::iter::once(&format!("{}.d", self.name)))
+            {
+                let entries = match std::fs::read_dir(directory.join(name)) {
+                    Ok(entries) => entries,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(error.into()),
+                };
+                for entry in entries {
+                    let entry = entry?;
+                    if entry
+                        .path()
+                        .extension()
+                        .is_none_or(|extension| extension != "conf")
+                    {
+                        continue;
+                    }
+                    if name == &format!("{}.d", self.name) {
+                        dropins
+                            .entry(entry.file_name())
+                            .or_insert_with(|| entry.path());
+                    } else if has_install_directives(&std::fs::read_to_string(entry.path())?) {
+                        return Err(ResourceError::not_supported(format!(
+                            "offline enablement cannot interpret [Install] directives in {}; use a live user systemd manager",
+                            entry.path().display()
+                        )));
+                    }
+                }
+            }
+        }
+        for path in dropins.into_values() {
+            contents.push_str("\n[Unit]\n");
+            contents.push_str(&std::fs::read_to_string(path)?);
+        }
+        Ok(contents)
     }
 
     fn offline_current_state(&self) -> ResourceResult<ResourceState> {
@@ -243,9 +311,20 @@ impl SystemdUnitResource {
                 .parent()
                 .ok_or_else(|| anyhow::anyhow!("enablement link has no parent"))?;
             std::fs::create_dir_all(parent)?;
+            let user_dir = self.offline_user_dir()?;
+            crate::infra::fs::checked_directory_chain(
+                &user_dir,
+                parent
+                    .strip_prefix(&user_dir)
+                    .map_err(anyhow::Error::from)?,
+            )?;
             match std::fs::symlink_metadata(&link) {
                 Ok(_) if symlink_references(&link, &source) => continue,
-                Ok(metadata) if metadata.file_type().is_symlink() => std::fs::remove_file(&link)?,
+                Ok(metadata)
+                    if metadata.file_type().is_symlink() && symlink_points_to(&link, &source) =>
+                {
+                    std::fs::remove_file(&link)?;
+                }
                 Ok(_) => {
                     return Err(ResourceError::conflicting_state(
                         link.display().to_string(),
@@ -312,6 +391,22 @@ impl SystemdUnitResource {
             return Ok(ResourceChange::AlreadyCorrect);
         }
         for link in links {
+            let user_dir = self.offline_user_dir()?;
+            let parent = link
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("enablement link has no parent"))?;
+            crate::infra::fs::checked_directory_chain(
+                &user_dir,
+                parent
+                    .strip_prefix(&user_dir)
+                    .map_err(anyhow::Error::from)?,
+            )?;
+            if !self.offline_disable_links()?.contains(&link) {
+                return Err(anyhow::anyhow!(
+                    "systemd enablement link changed during removal; retry"
+                )
+                .into());
+            }
             std::fs::remove_file(link)?;
         }
         Ok(ResourceChange::Applied)
@@ -384,17 +479,19 @@ fn install_targets(content: &str) -> ResourceResult<Vec<String>> {
         let suffix = match key.trim() {
             "WantedBy" => ".wants",
             "RequiredBy" => ".requires",
-            _ => continue,
+            _ if value.trim().is_empty() => continue,
+            key => {
+                return Err(ResourceError::not_supported(format!(
+                    "offline enablement cannot interpret [Install] {key}; use a live user systemd manager"
+                )));
+            }
         };
         if value.trim().is_empty() {
             targets.retain(|target| !target.ends_with(suffix));
             continue;
         }
         for target in value.split_whitespace() {
-            let mut components = Path::new(target).components();
-            if !matches!(components.next(), Some(std::path::Component::Normal(_)))
-                || components.next().is_some()
-            {
+            if !safe_unit_name(target) {
                 return Err(ResourceError::not_supported(format!(
                     "invalid [Install] target {target:?}"
                 )));
@@ -403,6 +500,17 @@ fn install_targets(content: &str) -> ResourceResult<Vec<String>> {
         }
     }
     Ok(targets)
+}
+
+fn has_install_directives(content: &str) -> bool {
+    let mut in_install = false;
+    content.lines().any(|line| {
+        let line = line.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            in_install = line == "[Install]";
+        }
+        in_install && !line.starts_with(['#', ';']) && line.contains('=')
+    })
 }
 
 fn symlink_points_to(link: &Path, expected: &Path) -> bool {
@@ -488,6 +596,11 @@ impl Resource for SystemdUnitResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
+        if !safe_unit_name(&self.name) {
+            return Err(ResourceError::not_supported(
+                "unit name must be a single safe systemd name, not a path or option",
+            ));
+        }
         if self.scope == UnitScope::User && !self.user_manager_available {
             return if self.enabled {
                 self.enable_offline()
@@ -516,6 +629,11 @@ impl Resource for SystemdUnitResource {
 
 impl IntrinsicState for SystemdUnitResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
+        if !safe_unit_name(&self.name) {
+            return Ok(ResourceState::Invalid {
+                reason: "unit name must be a single safe systemd name, not a path or option".into(),
+            });
+        }
         if self.scope == UnitScope::User && !self.user_manager_available {
             return self.offline_current_state();
         }

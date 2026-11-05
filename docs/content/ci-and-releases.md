@@ -103,14 +103,15 @@ Coverage below is conditional on the relevant job being selected.
 | Application integration | Git, Zsh, Vim, Neovim | Git |
 | Managed script fixtures | Yes | Yes |
 | Quickshell | Offscreen QML tests and startup under headless Sway | No |
-| Arch package and system-file acceptance | Disposable Arch container | No |
+| Arch package, system-file and offline systemd acceptance | Disposable Arch container | No |
 | Full commit-hook suite | Yes | No |
 | Coverage reports | Yes | Yes |
 | Mutation testing | Changed code | Focused registry, PATH and elevation contracts |
 
 These jobs do not cover every architecture, existing user configuration, or
 network/authentication setup. The Arch acceptance fixture covers package
-installation, a system-file merge, denied elevation, and repeat runs. The
+installation, a system-file merge, denied elevation, offline user-unit drop-ins,
+redirected-directory rejection, and repeat runs. The
 Quickshell startup check uses Sway. Hyprland session behavior, focus, networking,
 and locking need separate runtime checks. There is no native Git-for-Windows
 full hook suite. Coverage reports are informational; a

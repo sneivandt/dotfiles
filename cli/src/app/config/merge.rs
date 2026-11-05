@@ -50,6 +50,13 @@ impl OverlayEntry for systemd_units::SystemdUnit {
     fn same_target(&self, other: &Self, _platform: Platform) -> bool {
         self.name == other.name && self.scope == other.scope
     }
+
+    fn prepare(mut entries: Vec<Self>, _root: &Path) -> Result<Vec<Self>> {
+        error::reject_conflicts(systemd_units::validate_conflicts(&entries))?;
+        let mut seen = std::collections::HashSet::new();
+        entries.retain(|unit| seen.insert(format!("{:?}:{}", unit.scope, unit.name)));
+        Ok(entries)
+    }
 }
 
 impl OverlayEntry for chmod::ChmodEntry {

@@ -11,6 +11,8 @@ crate::infra::config::diagnostic_codes! {
     SYSTEMD_INVALID_EXTENSION => "invalid-extension",
     SYSTEMD_INVALID_SCOPE => "invalid-scope",
     SYSTEMD_PLATFORM_UNSUPPORTED => "platform-unsupported",
+    SYSTEMD_INVALID_NAME => "invalid-name",
+    SYSTEMD_CONFLICTING_VALUES => "conflicting-values",
 }
 
 /// A systemd unit and its desired enablement state.
@@ -86,15 +88,49 @@ const VALID_UNIT_EXTENSIONS: &[&str] = &[
     ".swap",
 ];
 
+/// Unit names are filesystem components and command arguments, never paths.
+pub(crate) fn safe_unit_name(name: &str) -> bool {
+    if name.is_empty() || name.len() > 255 || name.starts_with(['.', '-']) {
+        return false;
+    }
+    let mut bytes = name.bytes();
+    while let Some(byte) = bytes.next() {
+        if byte == b'\\' {
+            if bytes.next() != Some(b'x')
+                || !bytes.next().is_some_and(|digit| digit.is_ascii_hexdigit())
+                || !bytes.next().is_some_and(|digit| digit.is_ascii_hexdigit())
+            {
+                return false;
+            }
+        } else if !byte.is_ascii_alphanumeric() && !b":_.@-".contains(&byte) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Contradictory declarations cannot converge, even when processed sequentially.
+pub(crate) fn validate_conflicts(units: &[SystemdUnit]) -> Vec<Diagnostic> {
+    crate::infra::config::validation::Validator::new(SYSTEMD_UNITS_TOML)
+        .check_conflicts(
+            units,
+            SYSTEMD_CONFLICTING_VALUES,
+            |unit| format!("{:?}:{}", unit.scope, unit.name),
+            |unit| unit.enabled,
+            |_| None,
+        )
+        .finish()
+}
+
 /// Validate systemd unit entries and return any warnings.
 #[must_use]
 pub fn validate(
     units: &[SystemdUnit],
     platform: crate::infra::platform::Platform,
 ) -> Vec<Diagnostic> {
-    use crate::infra::config::validation::{Validator, check};
+    use crate::infra::config::validation::{Validator, check, check_error};
 
-    Validator::new(SYSTEMD_UNITS_TOML)
+    let mut diagnostics = Validator::new(SYSTEMD_UNITS_TOML)
         .warn_if(
             !units.is_empty() && !platform.supports_systemd(),
             SYSTEMD_PLATFORM_UNSUPPORTED,
@@ -111,6 +147,8 @@ pub fn validate(
                 .iter()
                 .any(|ext| u.name.ends_with(ext));
             [
+                check_error(!safe_unit_name(&u.name), SYSTEMD_INVALID_NAME,
+                    "unit name must be a single safe systemd name, not a path or option"),
                 check(u.name.trim().is_empty(), SYSTEMD_EMPTY_NAME, "unit name is empty"),
                 check(
                     matches!(u.scope, UnitScope::Invalid(_)),
@@ -124,7 +162,9 @@ pub fn validate(
                 ),
             ]
         })
-        .finish()
+        .finish();
+    diagnostics.extend(validate_conflicts(units));
+    diagnostics
 }
 
 /// TOML filename that backs this config section.
@@ -136,6 +176,85 @@ mod tests {
     use crate::infra::config::category_matcher::Category;
     use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
     use crate::infra::config::test_load_missing_returns_empty;
+
+    #[test]
+    fn safe_names_reject_paths_options_controls_and_malformed_escapes() {
+        for name in [
+            "../../audit.service",
+            "/audit.service",
+            "./audit.service",
+            "--root.service",
+            ".hidden.service",
+            "audit name.service",
+            "audit\n.service",
+            "audit\0.service",
+            r"a\b.service",
+            r"a\x.service",
+            r"a\x2.service",
+            r"a\xgg.service",
+            r"a\x2g.service",
+            r"a\X22.service",
+            "é.service",
+            "",
+        ] {
+            assert!(!safe_unit_name(name), "{name:?}");
+        }
+        assert!(!safe_unit_name(&"a".repeat(256)));
+        assert!(safe_unit_name(&"a".repeat(255)));
+        for name in ["audit.service", "a-b_c:1.2.service", r"a\x2d\xAF.mount"] {
+            assert!(safe_unit_name(name), "{name:?}");
+        }
+        for separator in ['-', '_', ':', '.', '@'] {
+            assert!(safe_unit_name(&format!("audit{separator}one.service")));
+        }
+        let units = [SystemdUnit {
+            name: "../audit.service".into(),
+            scope: UnitScope::User,
+            enabled: true,
+        }];
+        let diagnostics = validate(
+            &units,
+            crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
+        );
+        let diagnostic = diagnostics
+            .iter()
+            .find(|d| d.code == SYSTEMD_INVALID_NAME)
+            .unwrap();
+        assert_eq!(diagnostic.severity, crate::infra::config::Severity::Error);
+        assert_eq!(diagnostic.source, SYSTEMD_UNITS_TOML);
+        assert_eq!(diagnostic.item, "../audit.service");
+    }
+
+    #[test]
+    fn conflicts_are_scoped_by_unit_and_scope_and_identical_values_are_harmless() {
+        let first = SystemdUnit {
+            name: "audit.service".into(),
+            scope: UnitScope::User,
+            enabled: true,
+        };
+        for (name, scope, enabled, count) in [
+            ("audit.service", UnitScope::User, true, 0),
+            ("audit.service", UnitScope::User, false, 1),
+            ("audit.service", UnitScope::System, false, 0),
+            ("other.service", UnitScope::User, false, 0),
+        ] {
+            let diagnostics = validate_conflicts(&[
+                first.clone(),
+                SystemdUnit {
+                    name: name.into(),
+                    scope,
+                    enabled,
+                },
+            ]);
+            assert_eq!(diagnostics.len(), count);
+            if let Some(diagnostic) = diagnostics.first() {
+                assert_eq!(diagnostic.code, SYSTEMD_CONFLICTING_VALUES);
+                assert_eq!(diagnostic.severity, crate::infra::config::Severity::Error);
+                assert!(diagnostic.message.contains("entry 1"));
+                assert!(diagnostic.message.contains("entry 2"));
+            }
+        }
+    }
 
     #[test]
     fn unknown_key_in_unit_table_is_rejected() {

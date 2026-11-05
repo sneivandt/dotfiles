@@ -910,3 +910,45 @@ fn load_preserves_nonfatal_validation_findings() {
         "ordinary error-severity diagnostics are reported, not converted to load errors"
     );
 }
+
+#[test]
+fn systemd_conflicts_fail_loading_and_overlay_replacements_deduplicate() {
+    let (root, profile, platform) = setup_load(linux(), &[]);
+    let file = root.path().join("conf/systemd-units.toml");
+    std::fs::write(&file, "[base]\nunits = ['audit.service', { name = 'audit.service', scope = 'user', enabled = false }]\n").unwrap();
+    let error = Config::load(root.path(), &profile, platform, None).unwrap_err();
+    assert!(format!("{error:#}").contains("systemd.conflicting-values"));
+    std::fs::write(
+        &file,
+        "[base]\nunits = ['audit.service', 'audit.service']\n",
+    )
+    .unwrap();
+    assert_eq!(
+        Config::load(root.path(), &profile, platform, None)
+            .unwrap()
+            .units
+            .len(),
+        1
+    );
+    let overlay = tempfile::tempdir().unwrap();
+    write_overlay_config(
+        &overlay,
+        "systemd-units.toml",
+        "[base]\nunits = [{ name = 'audit.service', scope = 'user', enabled = false }]\n",
+    );
+    let config = Config::load(root.path(), &profile, platform, Some(overlay.path())).unwrap();
+    assert_eq!(config.units.len(), 1);
+    assert!(!config.units[0].enabled);
+    write_overlay_config(
+        &overlay,
+        "systemd-units.toml",
+        "[base]\nunits = ['audit.service', { name = 'audit.service', scope = 'user', enabled = false }]\n",
+    );
+    assert!(
+        format!(
+            "{:#}",
+            Config::load(root.path(), &profile, platform, Some(overlay.path())).unwrap_err()
+        )
+        .contains("systemd.conflicting-values")
+    );
+}

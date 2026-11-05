@@ -386,6 +386,10 @@ Without a user manager, the task prepares per-user enablement links for the
 next login rather than starting services. Disabling a unit removes its matching
 enablement links even if the unit file is gone. Enablement links still work
 after managed home links are replaced with local copies during removal.
+Offline enablement honors unit-specific drop-ins for `WantedBy` and `RequiredBy`.
+Templates, other install relationships, and install directives in shared drop-ins
+require a live user manager; the task reports these instead of partially enabling
+the unit. Conflicting declarations for the same scope and unit are rejected.
 
 See [Systemd units](task-reference.md#systemd-units) for when the task can run.
 Contributors changing offline unit lookup or enablement parsing should start

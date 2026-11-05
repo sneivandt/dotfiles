@@ -71,6 +71,10 @@ impl Task for ConfigureSystemd {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let units = self.config.get();
+        anyhow::ensure!(
+            super::config::systemd_units::validate_conflicts(units).is_empty(),
+            "conflicting systemd enablement declarations; keep one desired state per scope and unit"
+        );
         if units.is_empty() {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }

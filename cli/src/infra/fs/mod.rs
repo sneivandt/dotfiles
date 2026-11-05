@@ -13,11 +13,13 @@ use sha2::{Digest as _, Sha256};
 use std::path::{Path, PathBuf};
 
 mod copy;
+mod directories;
 mod place;
 mod temp;
 
 pub(crate) use copy::open_regular_source;
 pub use copy::{copy_dir_recursive, reject_destination_link};
+pub(crate) use directories::checked_directory_chain;
 pub use place::{rename_into_place, write_atomic, write_atomic_checked};
 pub use temp::TempGuard;
 

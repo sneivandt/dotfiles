@@ -1088,3 +1088,318 @@ fn indirect_units_retain_runtime_checks_without_requiring_direct_install_links()
         );
     }
 }
+
+#[test]
+fn unsafe_names_cannot_probe_or_mutate_even_when_resources_are_constructed_directly() {
+    for name in [
+        "../../audit.service",
+        "/audit.service",
+        "--root.service",
+        r"a\b.service",
+    ] {
+        let resource =
+            SystemdUnitResource::new(name, UnitScope::User, Arc::new(MockExecutor::new()));
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Invalid { .. }
+        ));
+        assert!(resource.apply().is_err());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn offline_discovery_preview_and_apply_reject_redirected_ancestors() {
+    for ancestor in [
+        ".config",
+        ".config/systemd",
+        ".config/systemd/user",
+        ".config/systemd/user/default.target.wants",
+    ] {
+        let home = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let packaged = tempfile::tempdir().unwrap();
+        std::fs::write(
+            packaged.path().join("audit.service"),
+            "[Install]\nWantedBy=default.target\n",
+        )
+        .unwrap();
+        let link = home.path().join(ancestor);
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+        let mut resource = offline_unit(home.path(), "audit.service", true);
+        resource.system_user_unit_dirs = vec![packaged.path().into()];
+        assert!(resource.current_state().is_err(), "{ancestor}");
+        assert!(resource.apply().is_err(), "{ancestor}");
+        let ctx =
+            crate::test_helpers::make_linux_context(home.path().into(), None).with_dry_run(true);
+        let outcome = crate::engine::process_resources(
+            &ctx,
+            [resource],
+            &crate::engine::ProcessOpts::strict("configure"),
+        );
+        assert!(outcome.is_err(), "unsafe preview must fail: {ancestor}");
+        assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
+        assert!(link.is_symlink());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn offline_rechecks_redirected_ancestors_and_preserves_foreign_links_before_apply() {
+    let home = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let user = home.path().join(".config/systemd/user");
+    std::fs::create_dir_all(&user).unwrap();
+    std::fs::write(
+        user.join("audit.service"),
+        "[Install]\nWantedBy=default.target\n",
+    )
+    .unwrap();
+    let resource = offline_unit(home.path(), "audit.service", true);
+    resource.current_state().unwrap();
+    let wants = user.join("default.target.wants");
+    std::os::unix::fs::symlink(outside.path(), &wants).unwrap();
+    assert!(resource.apply().is_err());
+    assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
+    std::fs::remove_file(&wants).unwrap();
+    std::fs::create_dir(&wants).unwrap();
+    let target = wants.join("audit.service");
+    std::os::unix::fs::symlink(outside.path().join("foreign"), &target).unwrap();
+    assert!(resource.apply().is_err());
+    assert_eq!(
+        std::fs::read_link(target).unwrap(),
+        outside.path().join("foreign")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn offline_dropins_reset_relationships_follow_precedence_and_preserve_read_errors() {
+    let home = tempfile::tempdir().unwrap();
+    let package = tempfile::tempdir().unwrap();
+    let user = home.path().join(".config/systemd/user");
+    for directory in [&user, &package.path().to_path_buf()] {
+        std::fs::create_dir_all(directory.join("audit.service.d")).unwrap();
+    }
+    std::fs::write(
+        user.join("audit.service"),
+        "[Install]\nWantedBy=default.target\nRequiredBy=old.target\n",
+    )
+    .unwrap();
+    std::fs::write(
+        package.path().join("audit.service.d/10-reset.conf"),
+        "[Install]\nWantedBy=\nWantedBy=wrong.target\n",
+    )
+    .unwrap();
+    std::fs::write(
+        user.join("audit.service.d/10-reset.conf"),
+        "[Install]\nWantedBy=\nWantedBy=other.target\nRequiredBy=\n",
+    )
+    .unwrap();
+    std::fs::write(
+        package.path().join("audit.service.d/20-extra.conf"),
+        "[Install]\nRequiredBy=another.target\n",
+    )
+    .unwrap();
+    std::fs::write(
+        user.join("audit.service.d/30-without-section.conf"),
+        "WantedBy=ignored.target\n",
+    )
+    .unwrap();
+    std::fs::write(user.join("audit.service.d/README"), "ignored").unwrap();
+    let mut resource = offline_unit(home.path(), "audit.service", true);
+    resource.system_user_unit_dirs = vec![package.path().into()];
+    assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+    resource.apply().unwrap();
+    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    assert!(user.join("other.target.wants/audit.service").is_symlink());
+    assert!(
+        user.join("another.target.requires/audit.service")
+            .is_symlink()
+    );
+    for name in [
+        "default.target.wants",
+        "wrong.target.wants",
+        "old.target.requires",
+        "ignored.target.wants",
+    ] {
+        assert!(!user.join(name).exists(), "{name}");
+    }
+    std::fs::create_dir(user.join("audit.service.d/40-invalid.conf")).unwrap();
+    assert!(resource.current_state().is_err());
+    assert!(resource.apply().is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn offline_dropin_directory_inspection_errors_block_discovery_and_apply() {
+    let home = tempfile::tempdir().unwrap();
+    let user = home.path().join(".config/systemd/user");
+    std::fs::create_dir_all(&user).unwrap();
+    std::fs::write(
+        user.join("audit.service"),
+        "[Install]\nWantedBy=default.target\n",
+    )
+    .unwrap();
+    let dropin = user.join("audit.service.d");
+    std::fs::write(&dropin, "not a directory").unwrap();
+    let resource = offline_unit(home.path(), "audit.service", true);
+    assert!(resource.current_state().is_err());
+    assert!(resource.apply().is_err());
+    assert_eq!(std::fs::read_to_string(dropin).unwrap(), "not a directory");
+    assert!(!user.join("default.target.wants").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn offline_partial_enablement_preserves_correct_relative_links() {
+    let home = tempfile::tempdir().unwrap();
+    let user = home.path().join(".config/systemd/user");
+    let wants = user.join("default.target.wants");
+    std::fs::create_dir_all(&wants).unwrap();
+    std::fs::write(
+        user.join("audit.service"),
+        "[Install]\nWantedBy=default.target other.target\n",
+    )
+    .unwrap();
+    let link = wants.join("audit.service");
+    std::os::unix::fs::symlink("../audit.service", &link).unwrap();
+    let resource = offline_unit(home.path(), "audit.service", true);
+    assert!(matches!(
+        resource.current_state().unwrap(),
+        ResourceState::Incorrect { .. }
+    ));
+    resource.apply().unwrap();
+    assert_eq!(
+        std::fs::read_link(link).unwrap(),
+        PathBuf::from("../audit.service")
+    );
+    assert!(user.join("other.target.wants/audit.service").is_symlink());
+    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+}
+
+#[cfg(unix)]
+#[test]
+fn offline_unsupported_install_semantics_fail_before_creating_links() {
+    for directive in [
+        "Alias=other.service",
+        "Also=other.service",
+        "DefaultInstance=one",
+        "UpheldBy=other.target",
+        "WantedBy=%i.target",
+        "WantedBy=\"other.target\"",
+    ] {
+        let home = tempfile::tempdir().unwrap();
+        let user = home.path().join(".config/systemd/user");
+        std::fs::create_dir_all(&user).unwrap();
+        std::fs::write(
+            user.join("audit.service"),
+            format!("[Install]\nWantedBy=default.target\n{directive}\n"),
+        )
+        .unwrap();
+        let resource = offline_unit(home.path(), "audit.service", true);
+        assert!(resource.current_state().is_err(), "{directive}");
+        assert!(resource.apply().is_err(), "{directive}");
+        assert_eq!(std::fs::read_dir(&user).unwrap().count(), 1);
+    }
+    for directory in ["service.d", "audit-.service.d"] {
+        let home = tempfile::tempdir().unwrap();
+        let user = home.path().join(".config/systemd/user");
+        std::fs::create_dir_all(user.join(directory)).unwrap();
+        std::fs::write(
+            user.join("audit-example.service"),
+            "[Install]\nWantedBy=default.target\n",
+        )
+        .unwrap();
+        std::fs::write(
+            user.join(directory).join("override.conf"),
+            "[Install]\nWantedBy=other.target\n",
+        )
+        .unwrap();
+        let resource = offline_unit(home.path(), "audit-example.service", true);
+        assert!(
+            format!("{:#}", resource.apply().unwrap_err()).contains("live user systemd manager")
+        );
+        assert!(!user.join("default.target.wants").exists());
+    }
+    let home = tempfile::tempdir().unwrap();
+    let resource = offline_unit(home.path(), &format!("audit{}one.service", '@'), true);
+    assert!(resource.apply().is_err());
+}
+
+#[test]
+fn shared_dropin_detection_ignores_runtime_sections_comments_and_bare_text() {
+    for (content, expected) in [
+        ("[Install]\nWantedBy=default.target", true),
+        ("[Install]\nWantedBy=", true),
+        ("[Install]\nWantedBy=other.target]", true),
+        ("[Install]\n[WantedBy=other.target", true),
+        (
+            "[Install]\n# WantedBy=default.target\n; RequiredBy=other.target",
+            false,
+        ),
+        ("[Service]\nEnvironment=NAME=value", false),
+        ("[Install]\n[Service]\nEnvironment=NAME=value", false),
+        ("[Install]\nbare-text", false),
+        ("WantedBy=default.target", false),
+    ] {
+        assert_eq!(has_install_directives(content), expected, "{content}");
+    }
+    assert_eq!(
+        install_targets("[Install]\nAlso=\nWantedBy=default.target").unwrap(),
+        ["default.target.wants"]
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn offline_dropin_enablement_matches_native_systemctl_in_a_disposable_root() {
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path().join("native");
+    let home = fixture.path().join("home");
+    let native = root.join("etc/systemd/user");
+    let user = home.join(".config/systemd/user");
+    for directory in [&native, &user] {
+        std::fs::create_dir_all(directory.join("audit.service.d")).unwrap();
+        std::fs::write(
+            directory.join("audit.service"),
+            "[Service]\nExecStart=/usr/bin/true\n[Install]\nWantedBy=default.target\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.join("audit.service.d/override.conf"),
+            "[Install]\nWantedBy=\nWantedBy=other.target\nRequiredBy=another.target\n",
+        )
+        .unwrap();
+    }
+    let output = std::process::Command::new("systemctl")
+        .args(["--root"])
+        .arg(&root)
+        .args(["--global", "enable", "audit.service"])
+        .env_remove("SYSTEMD_UNIT_PATH")
+        .output()
+        .expect("native systemctl is required on Linux test workers");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let resource = offline_unit(&home, "audit.service", true);
+    resource.apply().unwrap();
+    for directory in [
+        "other.target.wants",
+        "another.target.requires",
+        "default.target.wants",
+    ] {
+        assert_eq!(
+            user.join(directory).join("audit.service").is_symlink(),
+            native.join(directory).join("audit.service").is_symlink(),
+            "{directory}"
+        );
+    }
+    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    let disabled = offline_unit(&home, "audit.service", false);
+    disabled.apply().unwrap();
+    assert_eq!(disabled.current_state().unwrap(), ResourceState::Correct);
+}

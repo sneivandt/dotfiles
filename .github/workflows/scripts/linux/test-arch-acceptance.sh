@@ -5,7 +5,7 @@ test -e /.dockerenv
 test "$(id -u)" = 0
 test -e /etc/arch-release
 
-pacman -Syu --noconfirm --needed git sudo libgit2
+pacman -Syu --noconfirm --needed git sudo libgit2 systemd
 useradd -m smoke
 fixture=/home/smoke/fixture
 install -d -o smoke -g smoke "$fixture" "$fixture/conf" "$fixture/system"
@@ -51,6 +51,56 @@ grep -Fx 'managed = true' /etc/dotfiles-ci/config.toml
 state=$(stat -c '%i:%Y' /etc/dotfiles-ci/config.toml)
 run_update packages,system-files
 test "$state" = "$(stat -c '%i:%Y' /etc/dotfiles-ci/config.toml)"
+
+# Exercise the real CLI's offline user-unit path without a service manager.
+unit_dir=/home/smoke/.config/systemd/user
+install -d -o smoke -g smoke "$unit_dir/audit.service.d"
+cat > "$unit_dir/audit.service" <<'UNIT'
+[Service]
+ExecStart=/usr/bin/true
+[Install]
+WantedBy=default.target
+UNIT
+cat > "$unit_dir/audit.service.d/override.conf" <<'UNIT'
+[Install]
+WantedBy=
+WantedBy=other.target
+RequiredBy=another.target
+UNIT
+chown -R smoke:smoke /home/smoke/.config
+printf '[base]\nunits = ["audit.service"]\n' > "$fixture/conf/systemd-units.toml"
+run_offline_systemd() {
+  runuser -u smoke -- env -u CI HOME=/home/smoke XDG_STATE_HOME=/home/smoke/state \
+    DOTFILES_LOG_DIR=/home/smoke/logs DOTFILES_SKIP_SELF_UPDATE=1 \
+    DOTFILES_PROVISIONING=arch-chroot \
+    dotfiles update --root "$fixture" --profile base --non-interactive \
+      --fail-on-skip --no-repo-update --only systemd "$@"
+}
+run_offline_systemd --dry-run
+test ! -e "$unit_dir/other.target.wants"
+run_offline_systemd
+test -L "$unit_dir/other.target.wants/audit.service"
+test -L "$unit_dir/another.target.requires/audit.service"
+test ! -e "$unit_dir/default.target.wants"
+link_state=$(stat -c '%i:%Y' "$unit_dir/other.target.wants/audit.service")
+run_offline_systemd
+test "$link_state" = "$(stat -c '%i:%Y' "$unit_dir/other.target.wants/audit.service")"
+printf '[base]\nunits = [{ name = "audit.service", scope = "user", enabled = false }]\n' > "$fixture/conf/systemd-units.toml"
+run_offline_systemd
+test ! -L "$unit_dir/other.target.wants/audit.service"
+test ! -L "$unit_dir/another.target.requires/audit.service"
+run_offline_systemd
+
+# Replaced enablement directories must block preview and apply without writes.
+printf '[base]\nunits = ["audit.service"]\n' > "$fixture/conf/systemd-units.toml"
+rmdir "$unit_dir/other.target.wants"
+install -d -o smoke -g smoke /home/smoke/unmanaged
+runuser -u smoke -- ln -s /home/smoke/unmanaged "$unit_dir/other.target.wants"
+if run_offline_systemd --dry-run || run_offline_systemd; then
+  echo "redirected systemd enablement unexpectedly succeeded" >&2
+  exit 1
+fi
+test -z "$(find /home/smoke/unmanaged -mindepth 1 -print)"
 
 # A failed native package transaction must leave the existing system file intact
 # and converge after the package declaration is corrected.

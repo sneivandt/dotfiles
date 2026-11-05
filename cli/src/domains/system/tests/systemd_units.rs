@@ -64,6 +64,26 @@ fn missing_systemctl_is_checked_at_run_time() {
     }
 }
 
+#[test]
+fn contradictory_units_are_rejected_before_any_command_including_preview() {
+    let task = ConfigureSystemd::new(ConfigHandle::new(
+        [true, false]
+            .map(|enabled| SystemdUnit {
+                name: "audit.service".into(),
+                scope: UnitScope::User,
+                enabled,
+            })
+            .to_vec(),
+    ));
+    let ctx = context(MockExecutor::new());
+    for dry_run in [false, true] {
+        assert!(
+            format!("{:#}", task.run(&ctx.with_dry_run(dry_run)).unwrap_err())
+                .contains("conflicting systemd")
+        );
+    }
+}
+
 // ------------------------------------------------------------------
 // ConfigureSystemd::run
 // ------------------------------------------------------------------

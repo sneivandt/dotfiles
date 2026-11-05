@@ -153,6 +153,9 @@ def check(workflow: str) -> None:
     for required in ("runs-on: windows-latest", "decode_reg_string|encode_reg_string", "--cargo-arg=--profile=ci"):
         if required not in native:
             raise ValueError(f"native Windows mutation contract missing {required}")
+    for required in ('shard: [0, 1]', '--shard "$MUTATION_SHARD/2"', 'native::raw_value_type|run_elevated_child'):
+        if required not in native:
+            raise ValueError(f"native Windows mutation coverage missing {required}")
     if "continue-on-error:" in native:
         raise ValueError("native Windows mutations must propagate failures")
 

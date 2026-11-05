@@ -152,6 +152,68 @@ mod native {
             | REG_QWORD => None,
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn native_registry_decoding_preserves_data_and_declared_types() {
+            for (bytes, expected) in [
+                (vec![0, 0, 0, 0], 0_u32),
+                (vec![255, 255, 255, 255], u32::MAX),
+                (vec![1, 0, 0, 0, 255], 1),
+            ] {
+                let value = winreg::RegValue {
+                    bytes: bytes.into(),
+                    vtype: REG_DWORD,
+                };
+                assert_eq!(raw_value_to_string(&value), expected.to_string());
+                assert_eq!(raw_value_type(&value), Some(RegistryValueType::Dword));
+            }
+            for (vtype, expected_type) in [
+                (REG_SZ, Some(RegistryValueType::String)),
+                (REG_EXPAND_SZ, None),
+            ] {
+                let value = winreg::RegValue {
+                    bytes: "café 🦀 %USERPROFILE%\0"
+                        .encode_utf16()
+                        .flat_map(u16::to_le_bytes)
+                        .collect(),
+                    vtype,
+                };
+                assert_eq!(raw_value_to_string(&value), "café 🦀 %USERPROFILE%");
+                assert_eq!(raw_value_type(&value), expected_type);
+            }
+        }
+
+        #[test]
+        fn unsupported_registry_types_and_short_dwords_are_not_coerced() {
+            for vtype in [
+                REG_NONE,
+                REG_BINARY,
+                REG_DWORD_BIG_ENDIAN,
+                REG_LINK,
+                REG_MULTI_SZ,
+                REG_RESOURCE_LIST,
+                REG_FULL_RESOURCE_DESCRIPTOR,
+                REG_RESOURCE_REQUIREMENTS_LIST,
+                REG_QWORD,
+            ] {
+                let value = winreg::RegValue {
+                    bytes: vec![1, 2, 3].into(),
+                    vtype,
+                };
+                assert_eq!(raw_value_to_string(&value), "[1, 2, 3]");
+                assert_eq!(raw_value_type(&value), None);
+            }
+            let short = winreg::RegValue {
+                bytes: vec![1, 2, 3].into(),
+                vtype: REG_DWORD,
+            };
+            assert_eq!(raw_value_to_string(&short), "[1, 2, 3]");
+        }
+    }
 }
 
 #[cfg(any(windows, test))]

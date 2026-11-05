@@ -36,7 +36,7 @@ ureq = "3"
 tracing-subscriber = "0.3"
 which = "8.0.3"
 terminal_size = "0.4.4"
-serde-saphyr = { version = "2.1", default-features = false, features = ["serialize", "deserialize"] }
+serde-saphyr = { version = "2.0", default-features = false, features = ["serialize", "deserialize"] }
 unicode-width = "0.2"
 toml_edit = "0.25"
 

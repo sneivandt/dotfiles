@@ -2,6 +2,19 @@
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
+fn open_file(path: &std::path::Path) -> Result<git2::Config> {
+    // libgit2's relative-include resolver recognizes '/' separators, including
+    // on Windows. Native backslashes can otherwise make an include appear absent.
+    #[cfg(windows)]
+    let normalized = path
+        .to_str()
+        .context("Git config path is not valid UTF-8")?
+        .replace('\\', "/");
+    #[cfg(windows)]
+    let path = std::path::Path::new(&normalized);
+    Ok(git2::Config::open(path)?)
+}
+
 use crate::engine::{
     AccessClaim, IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState,
 };
@@ -69,8 +82,7 @@ impl GitConfigResource {
                     .context("opening global git config")
             },
             |path| {
-                git2::Config::open(path)
-                    .with_context(|| format!("opening git config {}", path.display()))
+                open_file(path).with_context(|| format!("opening git config {}", path.display()))
             },
         )
     }
@@ -185,7 +197,7 @@ impl GitConfigResource {
         drop(file);
         std::fs::write(stage.path(), &before)?;
         {
-            let mut staged = git2::Config::open(stage.path())?;
+            let mut staged = open_file(stage.path())?;
             let values = self.values_from_config(config)?;
             if values.iter().any(Option::is_none) {
                 anyhow::bail!(
@@ -203,7 +215,7 @@ impl GitConfigResource {
             // after every include so scalar Git precedence selects the desired value.
             std::fs::write(stage.path(), [])?;
             {
-                let mut stanza = git2::Config::open(stage.path())?;
+                let mut stanza = open_file(stage.path())?;
                 stanza.set_str(&self.key, desired)?;
             }
             replacement.push(b'\n');
@@ -322,7 +334,7 @@ mod tests {
                 assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
                 let after = std::fs::read(&path).unwrap();
                 assert_eq!(
-                    git2::Config::open(&path)
+                    open_file(&path)
                         .unwrap()
                         .get_string("core.autocrlf")
                         .unwrap(),
@@ -335,7 +347,7 @@ mod tests {
                 absent.apply().unwrap();
                 assert_eq!(absent.current_state().unwrap(), ResourceState::Correct);
                 assert_eq!(
-                    git2::Config::open(&path)
+                    open_file(&path)
                         .unwrap()
                         .get_string("core.autocrlf")
                         .unwrap(),

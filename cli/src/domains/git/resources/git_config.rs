@@ -6,12 +6,14 @@ fn open_file(path: &std::path::Path) -> Result<git2::Config> {
     // libgit2's relative-include resolver recognizes '/' separators, including
     // on Windows. Native backslashes can otherwise make an include appear absent.
     #[cfg(windows)]
-    let normalized = path
-        .to_str()
-        .context("Git config path is not valid UTF-8")?
-        .replace('\\', "/");
-    #[cfg(windows)]
-    let path = std::path::Path::new(&normalized);
+    {
+        let normalized = path
+            .to_str()
+            .context("Git config path is not valid UTF-8")?
+            .replace('\\', "/");
+        Ok(git2::Config::open(std::path::Path::new(&normalized))?)
+    }
+    #[cfg(not(windows))]
     Ok(git2::Config::open(path)?)
 }
 
@@ -305,7 +307,10 @@ mod tests {
             "[core]\n autocrlf = false\n",
         ] {
             for include_first in [false, true] {
-                let dir = tempfile::tempdir().unwrap();
+                let dir = tempfile::Builder::new()
+                    .prefix("git settings ")
+                    .tempdir()
+                    .unwrap();
                 let path = dir.path().join("config");
                 let included = dir.path().join("included");
                 let content = "[core]\n autocrlf = true\n editor = user-editor\n";
@@ -324,6 +329,15 @@ mod tests {
                     "core.autocrlf".into(),
                     "false".into(),
                     path.clone(),
+                );
+                assert_eq!(
+                    resource
+                        .open_config()
+                        .unwrap()
+                        .get_string("core.editor")
+                        .unwrap(),
+                    "user-editor",
+                    "relative includes must load from the configuration directory"
                 );
                 assert_eq!(
                     resource.current_state().unwrap() == ResourceState::Correct,

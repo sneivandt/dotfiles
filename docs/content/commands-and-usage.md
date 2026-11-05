@@ -18,13 +18,13 @@ or an explicit `--profile`. See [Unattended runs](#unattended-runs) for automati
 
 ## Everyday commands
 
-| Goal | Command |
+| Goal | What to run |
 |---|---|
 | See the available tasks | `dotfiles list` |
 | Preview an update | `dotfiles update --dry-run` |
 | Sync the repository and apply updates | `dotfiles update` |
 | Validate configuration and repository files | `dotfiles check` |
-| Inspect a managed home symlink | `dotfiles explain .bashrc` |
+| Inspect a managed home symlink | `dotfiles explain <path>` |
 | Read the latest run | `dotfiles log` |
 | Preview removal | `dotfiles remove --dry-run` |
 
@@ -73,7 +73,8 @@ Update is the default: running the launcher without a command applies an update.
 Tasks check what is installed or configured and leave it alone when it already
 matches the configuration.
 See [Update lifecycle](#update-lifecycle) for startup and repository synchronization.
-For a targeted change, preview the selection first:
+For a targeted change, pass a task selector to `--only` and preview the
+selection. For example, to preview changes to managed symlinks:
 
 ```sh
 dotfiles update --only symlinks --dry-run
@@ -83,7 +84,8 @@ Remove `--dry-run` after review. Filters select tasks, not the CLI release check
 
 ### Select tasks
 
-Use selectors from the task listing, not package names or partial task names:
+Use exact selectors from the task listing. For example, select `symlinks` and
+`git-hooks` together:
 
 ```bash
 dotfiles list
@@ -197,14 +199,15 @@ raw output, retention, and storage locations.
 
 ## Inspect a home path
 
-Use explain to see which declaration manages a home symlink.
+Use `dotfiles explain <path>` to see which declaration manages a home symlink.
+Pass a path relative to your home directory or an absolute path. For example,
+to inspect your Bash startup file:
 
 ```bash
 dotfiles explain .bashrc
 ```
 
-Pass a path relative to your home directory, such as `.bashrc`, or an absolute
-path. On Linux, `~/.bashrc` also works. The output shows the declaration, source,
+On Linux, `~/.bashrc` also works. The output shows the declaration, source,
 resolved target, and what update and remove would do. Use the same profile and
 overlay you use for updates. An existing CLI binary inspects the path without
 starting a task or writing a run log.

@@ -27,8 +27,9 @@ dotfiles log --list
 dotfiles log --task symlinks --verbose
 ```
 
-The second command examines the newest run. For an older failure, add its
-actual `--id` from history; IDs stay stable when new runs are added.
+The second command examines the `symlinks` task in the newest run. Replace
+`symlinks` with the selector for the task that failed. For an older failure,
+pass its run ID from history to `--id`; IDs stay stable when new runs are added.
 
 Read the failed command's diagnostics, not just the task summary or an
 “update available” notice. If the run only reports a restart or elevation,
@@ -224,7 +225,8 @@ for selection, persistence, and linked-worktree requirements.
 
 ### Task is missing or skipped
 
-Inspect selection before executing more work:
+Inspect selection before executing more work. For an update task, pass its
+selector to `--only` when viewing the graph. This example uses `systemd`:
 
 ```bash
 dotfiles list

@@ -23,9 +23,9 @@ are listed in [Task reference](task-reference.md).
 | `remove` | Detach a limited set of integrations, not restore machine defaults |
 | `check` | Validate configuration and repository files |
 | `list` | Discover selectors or inspect a dependency graph |
-| `explain <path>` | Inspect the declaration and planned actions for a [managed home symlink](commands-and-usage.md#inspect-a-home-path) |
+| `explain` | Inspect the declaration and planned actions for a [managed home symlink](commands-and-usage.md#inspect-a-home-path) |
 | `log` | Read saved run logs |
-| `help [command]` | Show command-specific usage |
+| `help` | Show general usage, or pass a command name to see its usage |
 
 ## Command options
 
@@ -234,8 +234,9 @@ dotfiles log --task symlinks --verbose # one task in the newest run
 dotfiles log --raw                    # original stored records
 ```
 
-Use the actual history ID with `--id`, optionally adding `--task` and either
-`--verbose` or `--raw`. `--id` cannot be combined with an index, `--list`, or
+Use the actual history ID with `--id`. To narrow the log, pass the task selector
+to `--task` (the example uses `symlinks`). Add `--verbose` for diagnostics or
+`--raw` for the original records. `--id` cannot be combined with an index, `--list`, or
 `--command`; verbose and raw are mutually exclusive.
 
 `--command update`, `remove`, or `check` filters history before selecting an

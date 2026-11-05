@@ -36,8 +36,12 @@ impl UpdateTarget {
 
     pub(super) fn dry_run_action(&self) -> String {
         match self.kind {
-            UpdateTargetKind::Main => "git pull".to_string(),
-            UpdateTargetKind::Overlay => format!("git pull ({})", self.description()),
+            UpdateTargetKind::Main => {
+                "fast-forward available (local merge eligibility not checked)".to_string()
+            }
+            UpdateTargetKind::Overlay => {
+                "overlay fast-forward available (local merge eligibility not checked)".to_string()
+            }
         }
     }
 }
@@ -64,11 +68,11 @@ pub(super) enum RepositorySetReadiness {
     NotApplicable(String),
 }
 
-/// Outcome of the pre-fetch divergence check.
+/// A repository and the exact commit eligible for a fast-forward.
 #[derive(Debug)]
 pub(super) struct RepositoryUpdatePlan {
     pub(super) target: UpdateTarget,
-    pub(super) needs_update: bool,
+    pub(super) commit: Option<String>,
 }
 
 #[derive(Debug)]

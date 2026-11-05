@@ -188,6 +188,37 @@ pub(super) fn upstream_remote_sha(
     root: &Path,
     head_ref: &str,
 ) -> Result<Option<String>> {
+    let Some((remote, merge_ref)) = upstream(ctx, root, head_ref)? else {
+        return Ok(None);
+    };
+    let Some(ls_remote) = optional_git_output(
+        ctx,
+        root,
+        &[
+            "ls-remote",
+            "--exit-code",
+            "--refs",
+            "--",
+            &remote,
+            &merge_ref,
+        ],
+        2,
+    )?
+    else {
+        return Ok(None);
+    };
+
+    Ok(ls_remote.lines().find_map(|line| {
+        let (sha, reference) = line.split_once('\t')?;
+        (reference == merge_ref).then(|| sha.to_owned())
+    }))
+}
+
+pub(super) fn upstream(
+    ctx: &Context,
+    root: &Path,
+    head_ref: &str,
+) -> Result<Option<(String, String)>> {
     let branch = head_ref.strip_prefix("refs/heads/").unwrap_or(head_ref);
     let remote_key = format!("branch.{branch}.remote");
     let merge_key = format!("branch.{branch}.merge");
@@ -200,21 +231,7 @@ pub(super) fn upstream_remote_sha(
         return Ok(None);
     };
 
-    if remote.is_empty() || merge_ref.is_empty() {
-        return Ok(None);
-    }
-
-    let Some(ls_remote) = optional_git_output(
-        ctx,
-        root,
-        &["ls-remote", "--exit-code", &remote, &merge_ref],
-        2,
-    )?
-    else {
-        return Ok(None);
-    };
-
-    Ok(ls_remote.split_whitespace().next().map(ToString::to_string))
+    Ok((!remote.is_empty() && !merge_ref.is_empty()).then_some((remote, merge_ref)))
 }
 
 /// Return `true` when tracked files in the worktree have uncommitted

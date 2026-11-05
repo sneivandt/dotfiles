@@ -87,25 +87,68 @@ impl CommandRunner {
         let config = load_config(&root, &profile, platform, overlay.as_deref(), log)?;
         let store = ConfigStore::from_config(config);
 
-        let executor: Arc<dyn crate::infra::exec::Executor> =
-            Arc::new(crate::infra::exec::ProcessExecutor::managed(token.clone()));
-        let log_output: Arc<dyn Log> = Arc::<Logger>::clone(log);
-        let ctx = Context::new_with_policy(
-            root,
-            overlay,
-            platform,
-            log_output,
-            executor,
-            Arc::clone(env),
-            runtime.execution,
-        )?
-        .with_cancellation(token.clone());
+        let ctx = Self::context(runtime, log, token, root, overlay, platform)?;
         Ok(Self {
             _run_lock: run_lock,
             ctx,
             log: Arc::clone(log),
             store,
         })
+    }
+
+    pub(super) fn run_repository(
+        runtime: &RuntimePolicy<'_>,
+        log: &Arc<Logger>,
+        token: &crate::engine::CancellationToken,
+        task: &dyn Task,
+    ) -> Result<()> {
+        let platform = Platform::detect();
+        let root = resolve_root(runtime)?;
+        let overlay = crate::domains::overlay::resolution::resolve_from_args(
+            runtime.global.overlay.as_deref(),
+            &root,
+            runtime.env.as_ref(),
+            runtime.execution.non_interactive,
+        )?;
+        let preview = if runtime.execution.dry_run {
+            " · dry run"
+        } else {
+            ""
+        };
+        emit_startup_context(
+            log.as_ref(),
+            &format!(
+                "{}{preview} · {}",
+                log.command_title(),
+                platform.description()
+            ),
+            runtime.repository_child,
+        );
+        let ctx = Self::context(runtime, log, token, root, overlay, platform)?;
+        RunCoordinator::new(&ctx, log).execute(ExecutionPlan::single([task]))
+    }
+
+    fn context(
+        runtime: &RuntimePolicy<'_>,
+        log: &Arc<Logger>,
+        token: &crate::engine::CancellationToken,
+        root: std::path::PathBuf,
+        overlay: Option<std::path::PathBuf>,
+        platform: Platform,
+    ) -> Result<Context> {
+        let executor: Arc<dyn crate::infra::exec::Executor> =
+            Arc::new(crate::infra::exec::ProcessExecutor::managed(token.clone()));
+        let log_output: Arc<dyn Log> = Arc::<Logger>::clone(log);
+        Ok(Context::new_with_policy(
+            root,
+            overlay,
+            platform,
+            log_output,
+            executor,
+            Arc::clone(&runtime.env),
+            runtime.execution,
+        )?
+        .with_cancellation(token.clone()))
     }
 
     /// Build update tasks with repository restart state.

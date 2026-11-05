@@ -105,6 +105,9 @@ is not a transaction: a later failure does not undo an earlier success.
 Dry-run may query remote refs with `git ls-remote`. If the upstream commit is
 missing locally, dry-run reports that it cannot verify a fast-forward. It
 leaves the local repository unchanged.
+If broken configuration prevents update from starting, use
+`dotfiles update --only repository` to refresh the checkout before retrying.
+
 For update, `--no-repo-update` removes this task even from dependency expansion.
 It does **not** disable binary self-update or all network access.
 

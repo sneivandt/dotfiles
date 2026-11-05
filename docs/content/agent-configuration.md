@@ -307,10 +307,10 @@ disappear from the source or leave the selected skill set. An existing file
 that matches the source can become managed. Dotfiles reports a conflict when
 a destination file differs from both the source and its last deployed version,
 or when a stale file has local edits. Move the conflicting file aside before
-retrying. Directories, unrelated skills, and other unowned files remain. Keep the destination's
+retrying. Unrelated skills and unowned files remain. Keep the destination's
 `.dotfiles-apm-skills.json` and `.dotfiles-apm-files.json` ownership records.
-For older deployments without file hashes, cleanup remains limited to the
-recorded skill's `SKILL.md`. For path-resolution failures or copy conflicts, see
+For older deployments, Dotfiles removes a stale `SKILL.md` only when its
+recorded hash matches. Move unverified files aside to continue cleanup. For path-resolution failures or copy conflicts, see
 [Deployment maintenance](#deployment-maintenance).
 
 ## Removing packages and targets

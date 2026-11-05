@@ -6,6 +6,7 @@ use anyhow::Result;
 use crate::engine::{Context, TaskResult, TaskStats};
 use crate::infra::exec::ExecError;
 
+use super::discovery::upstream;
 use super::models::{CheckedRepository, RepositoryPlanReadiness, RepositoryUpdatePlan};
 use super::{RepositoryUpdateSignal, git_command};
 use crate::infra::logging::OutputExt as _;
@@ -41,7 +42,18 @@ pub(super) fn apply_repository_updates(
 ) -> Result<TaskResult> {
     // Fetch first so divergence can be evaluated without invoking `git pull`,
     // which fails noisily when the local branch has diverged from upstream.
-    if let Some(reason) = fetch_all(ctx, repositories)? {
+    let mut tracked = Vec::with_capacity(repositories.len());
+    for repository in repositories {
+        let Some((remote, reference)) =
+            upstream(ctx, &repository.target.root, &repository.head_ref)?
+        else {
+            return Ok(TaskResult::unmet(
+                repository.target.reason("no upstream tracking branch"),
+            ));
+        };
+        tracked.push((repository, remote, reference));
+    }
+    if let Some(reason) = fetch_all(ctx, &tracked)? {
         return Ok(TaskResult::Failed(reason));
     }
 
@@ -54,11 +66,14 @@ pub(super) fn apply_repository_updates(
     }
 
     let mut changed = Vec::new();
-    for plan in plans.iter().filter(|plan| plan.needs_update) {
+    for (plan, commit) in plans
+        .iter()
+        .filter_map(|plan| Some((plan, plan.commit.as_deref()?)))
+    {
         let result = ctx.executor().execute(git_command(
             ctx,
             &plan.target.root,
-            &["merge", "--ff-only", "--no-overwrite-ignore", "@{u}"],
+            &["merge", "--ff-only", "--no-overwrite-ignore", commit],
         ));
         match result {
             Ok(r) => {
@@ -105,15 +120,15 @@ pub(super) fn apply_repository_updates(
 /// restart, so the saving is on the run's critical path.
 fn fetch_all(
     ctx: &Context,
-    repositories: &[CheckedRepository],
+    repositories: &[(&CheckedRepository, String, String)],
 ) -> std::result::Result<Option<String>, ExecError> {
     use rayon::prelude::*;
 
     let fetch_one =
-        |repository: &CheckedRepository| -> std::result::Result<Option<String>, ExecError> {
+        |(repository, remote, reference): &(&CheckedRepository, String, String)| -> std::result::Result<Option<String>, ExecError> {
             ctx.log()
                 .debug(format!("pulling from {}", repository.target.root.display()));
-            match fetch_with_retry(ctx, repository) {
+            match fetch_with_retry(ctx, repository, remote, reference) {
                 Ok(()) => Ok(None),
                 Err(error) if error.is_cancelled() => Err(error),
                 Err(error) => {
@@ -156,12 +171,18 @@ fn fetch_all(
 fn fetch_with_retry(
     ctx: &Context,
     repository: &CheckedRepository,
+    remote: &str,
+    reference: &str,
 ) -> std::result::Result<(), ExecError> {
     let mut attempt = 1_u32;
     loop {
         match ctx.executor().execute(
-            git_command(ctx, &repository.target.root, &["fetch", "--quiet"])
-                .timeout(Duration::from_mins(5)),
+            git_command(
+                ctx,
+                &repository.target.root,
+                &["fetch", "--quiet", "--no-tags", "--", remote, reference],
+            )
+            .timeout(Duration::from_mins(5)),
         ) {
             Ok(_) => return Ok(()),
             Err(error) if error.is_cancelled() => return Err(error),
@@ -212,25 +233,16 @@ pub(super) fn plan_repository_update(
         .trim()
         .to_string();
 
-    let upstream_sha = match ctx.executor().execute(git_command(
-        ctx,
-        &repository.target.root,
-        &["rev-parse", "@{u}"],
-    )) {
-        Ok(r) => r.stdout.trim().to_string(),
-        Err(e @ ExecError::NonZero { .. }) => {
-            let reason = repository.target.reason("no upstream tracking branch");
-            ctx.log().warn(format!("{reason}: {e:#}"));
-            return Ok(RepositoryPlanReadiness::Skipped(reason));
-        }
-        Err(
-            e @ (ExecError::Cancelled { .. }
-            | ExecError::TimedOut { .. }
-            | ExecError::OutputLimit { .. }
-            | ExecError::Spawn { .. }
-            | ExecError::Io { .. }),
-        ) => return Err(e.into()),
-    };
+    let upstream_sha = ctx
+        .executor()
+        .execute(git_command(
+            ctx,
+            &repository.target.root,
+            &["rev-parse", "--verify", "FETCH_HEAD^{commit}"],
+        ))?
+        .stdout
+        .trim()
+        .to_string();
 
     if pre_sha == upstream_sha {
         ctx.log().debug(format!(
@@ -239,7 +251,7 @@ pub(super) fn plan_repository_update(
         ));
         return Ok(RepositoryPlanReadiness::Ready(RepositoryUpdatePlan {
             target: repository.target.clone(),
-            needs_update: false,
+            commit: None,
         }));
     }
 
@@ -251,7 +263,7 @@ pub(super) fn plan_repository_update(
         .execute(git_command(
             ctx,
             &repository.target.root,
-            &["rev-list", "--count", "@{u}..HEAD"],
+            &["rev-list", "--count", &format!("{upstream_sha}..{pre_sha}")],
         ))?
         .stdout
         .trim()
@@ -278,6 +290,6 @@ pub(super) fn plan_repository_update(
 
     Ok(RepositoryPlanReadiness::Ready(RepositoryUpdatePlan {
         target: repository.target.clone(),
-        needs_update: true,
+        commit: Some(upstream_sha),
     }))
 }

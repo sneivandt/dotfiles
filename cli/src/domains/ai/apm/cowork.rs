@@ -136,18 +136,85 @@ fn checked_file_path(target: &Path, relative: &str) -> Result<PathBuf> {
     Ok(path.join(file))
 }
 
+fn check_retiring_directory(
+    target: &Path,
+    relative: &str,
+    previous: &FileInventory,
+    directories: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let path = target.join(relative);
+    reject_destination_link(&path)?;
+    let prefix = format!("{relative}/");
+    anyhow::ensure!(
+        previous.keys().any(|owned| owned.starts_with(&prefix)),
+        "cannot replace unowned Cowork directory {}",
+        path.display()
+    );
+    for entry in std::fs::read_dir(&path)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = name
+            .to_str()
+            .context("Cowork ownership paths must be UTF-8")?;
+        let child = format!("{prefix}{name}");
+        let child_path = entry.path();
+        let metadata = entry.file_type()?;
+        if metadata.is_dir() {
+            check_retiring_directory(target, &child, previous, directories)?;
+        } else {
+            anyhow::ensure!(
+                previous.contains_key(&child)
+                    && file_fingerprint(&child_path)?.as_ref() == previous.get(&child),
+                "preserving unowned or modified Cowork file {}; move it aside and retry",
+                child_path.display()
+            );
+        }
+    }
+    directories.push(path);
+    Ok(())
+}
+
+fn ancestor_paths(relative: &str) -> impl Iterator<Item = &str> {
+    relative
+        .match_indices('/')
+        .map(|(index, _)| &relative[..index])
+}
+
 fn check_active_files(
     target: &Path,
     previous: Option<&FileInventory>,
     desired: &FileInventory,
-) -> Result<()> {
-    for (relative, fingerprint) in desired {
+) -> Result<Vec<PathBuf>> {
+    let mut directories = Vec::new();
+    'files: for (relative, fingerprint) in desired {
+        if let Some(previous) = previous {
+            for ancestor in ancestor_paths(relative) {
+                if let Some(expected) = previous.get(ancestor) {
+                    let path = checked_file_path(target, ancestor)?;
+                    if let Some(current) = file_fingerprint(&path)? {
+                        anyhow::ensure!(
+                            current == *expected,
+                            "preserving modified Cowork file {}; move it aside and retry",
+                            path.display()
+                        );
+                        // The unchanged owned entry will be pruned before copying.
+                        continue 'files;
+                    }
+                }
+            }
+        }
         let path = checked_file_path(target, relative)?;
         let Some(metadata) = symlink_metadata_optional(&path, "inspect Cowork destination")? else {
             continue;
         };
         if !metadata.is_symlink() {
             reject_destination_link(&path)?;
+            if metadata.is_dir()
+                && let Some(previous) = previous
+            {
+                check_retiring_directory(target, relative, previous, &mut directories)?;
+                continue;
+            }
             anyhow::ensure!(
                 metadata.is_file(),
                 "cannot replace Cowork-owned directory or special file {}",
@@ -162,7 +229,7 @@ fn check_active_files(
             path.display()
         );
     }
-    Ok(())
+    Ok(directories)
 }
 
 fn prune_stale_files(
@@ -175,10 +242,31 @@ fn prune_stale_files(
         if desired.contains_key(relative) {
             continue;
         }
+        // A prior attempt can have published the new file before saving its inventory.
+        let mut replaced_parent = false;
+        for ancestor in ancestor_paths(relative) {
+            if let Some(expected) = desired.get(ancestor) {
+                let path = checked_file_path(target, ancestor)?;
+                if file_fingerprint(&path)?.as_ref() == Some(expected) {
+                    replaced_parent = true;
+                    break;
+                }
+            }
+        }
+        if replaced_parent {
+            continue;
+        }
         let path = checked_file_path(target, relative)?;
         let Some(metadata) = symlink_metadata_optional(&path, "inspect stale Cowork file")? else {
             continue;
         };
+        if metadata.is_dir() && !metadata.is_symlink() {
+            reject_destination_link(&path)?;
+            let prefix = format!("{relative}/");
+            if desired.keys().any(|file| file.starts_with(&prefix)) {
+                continue;
+            }
+        }
         anyhow::ensure!(
             file_fingerprint(&path)?.as_ref() == Some(fingerprint),
             "preserving modified stale Cowork file {}; move it aside and retry",
@@ -189,6 +277,25 @@ fn prune_stale_files(
         } else {
             std::fs::remove_file(&path)?;
         }
+        changed = true;
+    }
+    Ok(changed)
+}
+
+fn prepare_skill_paths(
+    target: &Path,
+    previous: Option<&FileInventory>,
+    desired: &FileInventory,
+) -> Result<bool> {
+    let retiring_directories = check_active_files(target, previous, desired)?;
+    let mut changed = false;
+    if let Some(previous) = previous {
+        changed |= prune_stale_files(target, previous, desired)?;
+    }
+    for directory in retiring_directories {
+        reject_destination_link(&directory)?;
+        std::fs::remove_dir(&directory)
+            .with_context(|| format!("retiring Cowork directory {}", directory.display()))?;
         changed = true;
     }
     Ok(changed)
@@ -222,10 +329,7 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
         let mut files = FileInventory::new();
         inventory_files(&source_skill, &source_skill, &mut files)?;
         let previous = inventory.get(name);
-        check_active_files(&target_skill, previous, &files)?;
-        if let Some(previous) = previous {
-            changed |= prune_stale_files(&target_skill, previous, &files)?;
-        }
+        changed |= prepare_skill_paths(&target_skill, previous, &files)?;
         if !skill_files_match(&source_skill, &target_skill)? {
             copy_skill_files(&source_skill, &target_skill).with_context(|| {
                 format!(
@@ -280,7 +384,8 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
         let removed = if let Some(previous) = inventory.get(name) {
             prune_stale_files(&target.join(name), previous, &FileInventory::new())?
         } else {
-            remove_skill_entry_point(&target.join(name))?
+            check_legacy_entry_point(&target.join(name))?;
+            false
         };
         if removed {
             changed = true;
@@ -499,6 +604,7 @@ pub(super) fn remove_legacy_cowork_lock_deployments(ctx: &Context) -> Result<boo
     }
     let mut lock: Value = serde_yaml_ng::from_str(&text)
         .with_context(|| format!("parsing APM lockfile {}", lock_path.display()))?;
+    let fingerprints = legacy_entry_point_fingerprints(&lock);
     let mut legacy_skills = BTreeSet::new();
     if !strip_legacy_cowork_deployments(&mut lock, &mut legacy_skills) {
         return Ok(false);
@@ -509,6 +615,25 @@ pub(super) fn remove_legacy_cowork_lock_deployments(ctx: &Context) -> Result<boo
             .with_context(|| format!("checking {}", target.display()))?
     {
         reject_destination_link(&target)?;
+        let mut inventory = read_file_inventory(&target)?;
+        let mut imported = false;
+        for (name, fingerprint) in fingerprints {
+            if !inventory.contains_key(&name)
+                && let Some(fingerprint) = fingerprint
+            {
+                inventory.insert(
+                    name,
+                    FileInventory::from([("SKILL.md".into(), fingerprint)]),
+                );
+                imported = true;
+            }
+        }
+        if imported {
+            write_atomic(
+                &target.join(FILE_OWNERSHIP_FILE),
+                serde_json::to_vec_pretty(&inventory)?,
+            )?;
+        }
         let mut owned = read_owned_skills(&target)?;
         let before = owned.len();
         owned.extend(legacy_skills);
@@ -523,6 +648,63 @@ pub(super) fn remove_legacy_cowork_lock_deployments(ctx: &Context) -> Result<boo
     write_atomic(&lock_path, serialized)
         .with_context(|| format!("updating APM lockfile {}", lock_path.display()))?;
     Ok(true)
+}
+
+fn legacy_entry_point_fingerprints(lock: &Value) -> BTreeMap<String, Option<OwnedFile>> {
+    use base64::Engine as _;
+
+    let mut fingerprints = BTreeMap::new();
+    for dependency in lock
+        .get("dependencies")
+        .and_then(Value::as_sequence)
+        .into_iter()
+        .flatten()
+    {
+        let Some(hashes) = dependency
+            .get("deployed_file_hashes")
+            .and_then(Value::as_mapping)
+        else {
+            continue;
+        };
+        for (uri, hash) in hashes {
+            let Some(name) = uri
+                .as_str()
+                .and_then(|uri| uri.strip_prefix("cowork://skills/"))
+                .and_then(|path| path.strip_suffix("/SKILL.md"))
+                .filter(|name| valid_skill_name(name))
+            else {
+                continue;
+            };
+            let candidate = hash
+                .as_str()
+                .and_then(|hash| hash.strip_prefix("sha256:"))
+                .and_then(decode_sha256_hex)
+                .map(|bytes| OwnedFile {
+                    hash: base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes),
+                    link: false,
+                });
+            fingerprints
+                .entry(name.to_owned())
+                .and_modify(|current| {
+                    if *current != candidate {
+                        *current = None;
+                    }
+                })
+                .or_insert(candidate);
+        }
+    }
+    fingerprints
+}
+
+fn decode_sha256_hex(hash: &str) -> Option<[u8; 32]> {
+    if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let mut bytes = [0; 32];
+    for (pair, byte) in hash.as_bytes().as_chunks::<2>().0.iter().zip(&mut bytes) {
+        *byte = u8::from_str_radix(std::str::from_utf8(pair).ok()?, 16).ok()?;
+    }
+    Some(bytes)
 }
 
 fn strip_legacy_cowork_deployments(lock: &mut Value, names: &mut BTreeSet<String>) -> bool {
@@ -611,19 +793,15 @@ fn is_cowork_uri(value: &Value) -> bool {
         .is_some_and(|value| value.starts_with(COWORK_URI_PREFIX))
 }
 
-fn remove_skill_entry_point(target_skill: &Path) -> Result<bool> {
+fn check_legacy_entry_point(target_skill: &Path) -> Result<()> {
     reject_destination_link(target_skill)?;
     let entry_point = target_skill.join("SKILL.md");
-    match std::fs::remove_file(&entry_point) {
-        Ok(()) => Ok(true),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(err) => Err(err).with_context(|| {
-            format!(
-                "removing excluded Copilot Cowork skill entry point {}",
-                entry_point.display()
-            )
-        }),
-    }
+    anyhow::ensure!(
+        symlink_metadata_optional(&entry_point, "inspect legacy Cowork entry point")?.is_none(),
+        "preserving legacy Cowork file {} without a verified fingerprint; move it aside and retry",
+        entry_point.display()
+    );
+    Ok(())
 }
 
 fn cowork_skill_paths(ctx: &Context) -> Result<(PathBuf, PathBuf)> {
@@ -1226,6 +1404,17 @@ mod tests {
         std::fs::write(stale_skill.join("SKILL.md"), "stale managed entry").unwrap();
         std::fs::write(stale_skill.join("notes.txt"), "Cowork-owned notes").unwrap();
         write_owned_skills(target, &BTreeSet::from(["old".to_string()])).unwrap();
+        let old_files = FileInventory::from([(
+            "SKILL.md".to_owned(),
+            file_fingerprint(&stale_skill.join("SKILL.md"))
+                .unwrap()
+                .unwrap(),
+        )]);
+        write_atomic(
+            &target.join(FILE_OWNERSHIP_FILE),
+            serde_json::to_vec(&SkillInventory::from([("old".to_owned(), old_files)])).unwrap(),
+        )
+        .unwrap();
         std::fs::write(
             dir.path().join(".apm").join("apm.lock.yaml"),
             "dependencies:\n  - deployed_files:\n      - .agents/skills/example/SKILL.md\n\
@@ -1406,8 +1595,14 @@ mod tests {
             "dependencies: []\n",
         )
         .expect("simulate native removal of dependency");
-        assert!(reconcile_cowork_skills(&ctx).expect("remove legacy skill"));
-        assert!(!target_skill.join("SKILL.md").exists());
+        let error = reconcile_cowork_skills(&ctx).unwrap_err();
+        assert!(error.to_string().contains("without a verified fingerprint"));
+        assert_eq!(
+            std::fs::read_to_string(target_skill.join("SKILL.md")).unwrap(),
+            "legacy deployment"
+        );
+        std::fs::remove_file(target_skill.join("SKILL.md")).unwrap();
+        assert!(reconcile_cowork_skills(&ctx).expect("retry after moving the local file"));
     }
 
     #[test]
@@ -1424,24 +1619,82 @@ mod tests {
     }
 
     #[test]
-    fn reconcile_migrates_legacy_records_created_by_the_native_command() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let (_, target_skill, ctx) = setup_skill(dir.path(), "[agent-skills]");
-        let lock_path = dir.path().join(".apm").join("apm.lock.yaml");
-        std::fs::write(
-            &lock_path,
-            "dependencies:\n  - deployed_files:\n      - cowork://skills/example/SKILL.md\n",
-        )
-        .unwrap();
-        std::fs::write(target_skill.join("SKILL.md"), "legacy").unwrap();
+    fn legacy_cleanup_requires_a_matching_deployment_hash() {
+        use sha2::{Digest as _, Sha256};
 
-        assert!(reconcile_cowork_skills(&ctx).expect("migrate and reconcile"));
-        assert!(
-            !std::fs::read_to_string(lock_path)
-                .unwrap()
-                .contains("cowork://")
+        for modified in [false, true] {
+            let dir = tempfile::tempdir().expect("create temp dir");
+            let (_, target_skill, ctx) = setup_skill(dir.path(), "[agent-skills]");
+            let lock_path = dir.path().join(".apm").join("apm.lock.yaml");
+            let hash = Sha256::digest(b"deployed")
+                .iter()
+                .fold(String::new(), |mut hex, byte| {
+                    use std::fmt::Write as _;
+                    write!(hex, "{byte:02x}").unwrap();
+                    hex
+                });
+            std::fs::write(
+                &lock_path,
+                format!("dependencies:\n  - deployed_file_hashes:\n      cowork://skills/example/SKILL.md: sha256:{hash}\n"),
+            ).unwrap();
+            let entry = target_skill.join("SKILL.md");
+            std::fs::write(&entry, if modified { "edited" } else { "deployed" }).unwrap();
+
+            let result = reconcile_cowork_skills(&ctx);
+            if modified {
+                assert!(result.unwrap_err().to_string().contains("modified stale"));
+                assert_eq!(std::fs::read_to_string(entry).unwrap(), "edited");
+            } else {
+                assert!(result.unwrap());
+                assert!(!entry.exists());
+                assert!(!reconcile_cowork_skills(&ctx).unwrap());
+            }
+            assert!(
+                !std::fs::read_to_string(lock_path)
+                    .unwrap()
+                    .contains("cowork://")
+            );
+        }
+    }
+
+    #[test]
+    fn owned_file_and_directory_transitions_preserve_local_content_and_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let (source_skill, target_skill, ctx) =
+            setup_skill(dir.path(), "[agent-skills, copilot-cowork]");
+        let source = source_skill.join("asset");
+        let target = target_skill.join("asset");
+        std::fs::write(&source, "file").unwrap();
+        assert!(reconcile_cowork_skills(&ctx).unwrap());
+
+        std::fs::remove_file(&source).unwrap();
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("nested"), "nested").unwrap();
+        std::fs::write(&target, "edited").unwrap();
+        assert!(reconcile_cowork_skills(&ctx).is_err());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "edited");
+        std::fs::write(&target, "file").unwrap();
+        assert!(reconcile_cowork_skills(&ctx).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(target.join("nested")).unwrap(),
+            "nested"
         );
-        assert!(!target_skill.join("SKILL.md").exists());
-        assert!(!reconcile_cowork_skills(&ctx).expect("repeat reconciliation"));
+
+        std::fs::remove_dir_all(&source).unwrap();
+        std::fs::write(&source, "new file").unwrap();
+        std::fs::write(target.join("local"), "keep").unwrap();
+        assert!(reconcile_cowork_skills(&ctx).is_err());
+        assert_eq!(
+            std::fs::read_to_string(target.join("local")).unwrap(),
+            "keep"
+        );
+        assert_eq!(
+            std::fs::read_to_string(target.join("nested")).unwrap(),
+            "nested"
+        );
+        std::fs::remove_file(target.join("local")).unwrap();
+        assert!(reconcile_cowork_skills(&ctx).unwrap());
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "new file");
+        assert!(!reconcile_cowork_skills(&ctx).unwrap());
     }
 }

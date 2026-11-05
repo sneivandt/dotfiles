@@ -139,20 +139,38 @@ impl RunLock {
         command: &str,
     ) -> Result<Self> {
         let path = repository_state_path(root, env, platform, LOCK_NAME)?;
+        Self::acquire_path(&path, command)
+    }
+
+    pub(crate) fn acquire_path(path: &Path, command: &str) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating run-lock directory {}", parent.display()))?;
         }
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .write(true)
-            .truncate(false)
-            .open(&path)
+        let mut options = OpenOptions::new();
+        options.create(true).read(true).write(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            options.custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt as _;
+            use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
+            options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        }
+        let mut file = options
+            .open(path)
             .with_context(|| format!("opening run lock {}", path.display()))?;
+        anyhow::ensure!(
+            file.metadata()?.is_file(),
+            "run lock is not a regular file: {}",
+            path.display()
+        );
 
-        file.try_lock().map_err(|error| lock_error(&path, error))?;
+        file.try_lock().map_err(|error| lock_error(path, error))?;
 
         let started_unix_seconds = SystemTime::now()
             .duration_since(UNIX_EPOCH)

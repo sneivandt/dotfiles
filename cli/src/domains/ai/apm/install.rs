@@ -80,6 +80,14 @@ impl Task for InstallApmPackages {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         process_requirement(ctx, &environment_requirement(self.mode), |targets| {
+            let _lock = if ctx.dry_run() {
+                None
+            } else {
+                Some(crate::infra::run_lock::RunLock::acquire_path(
+                    &ctx.home().join(".apm").join(".dotfiles-run.lock"),
+                    "Agent packages",
+                )?)
+            };
             let fragments = discover_effective_fragment_files(ctx.home(), self.fragments.get())?;
             if fragments.is_empty() {
                 return Ok(skip("no manifest fragments found under ~/.apm/config/"));

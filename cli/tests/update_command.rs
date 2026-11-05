@@ -662,37 +662,6 @@ fn ignored_overlay_file_blocks_merge_and_survives_retry() {
     reason = "real Git remotes and update recovery"
 )]
 fn check_partial_repository_refresh(ignored: bool) {
-    use std::path::Path;
-    use std::process::Command;
-
-    fn git(root: &Path, args: &[&str]) -> String {
-        let output = Command::new("git")
-            .args([
-                "-c",
-                "user.name=Fixture",
-                "-c",
-                "user.email=fixture@example.invalid",
-            ])
-            .args([
-                "-c",
-                "core.hooksPath=unused-hooks",
-                "-c",
-                "commit.gpgSign=false",
-            ])
-            .args(args)
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", root.join("no-global-config"))
-            .current_dir(root)
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{args:?}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        String::from_utf8(output.stdout).unwrap().trim().to_owned()
-    }
-
     let fixture = tempfile::tempdir().unwrap();
     let home = fixture.path().join("home");
     let root = fixture.path().join("main");
@@ -742,6 +711,31 @@ fn check_partial_repository_refresh(ignored: bool) {
     }
     let obstruction = overlay.join("collision");
     std::fs::write(&obstruction, "local untracked data").unwrap();
+
+    if ignored {
+        let preview = common::isolated_cli_command(
+            &root,
+            &home,
+            Some(&overlay),
+            "update",
+            "repository",
+            true,
+        )
+        .arg("--dry-run")
+        .output()
+        .unwrap();
+        assert!(preview.status.success(), "{preview:?}");
+        assert!(
+            String::from_utf8_lossy(&preview.stdout)
+                .contains("local merge eligibility not checked"),
+            "preview must disclose the unchecked local collision: {preview:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&obstruction).unwrap(),
+            "local untracked data",
+            "preview must preserve the ignored file"
+        );
+    }
 
     let update = || {
         let output = common::isolated_cli_command(
@@ -840,4 +834,106 @@ fn check_partial_repository_refresh(ignored: bool) {
 
     git(&root, &["fetch", "origin"]);
     check_preview("local branch diverged from upstream");
+}
+
+fn git(root: &std::path::Path, args: &[&str]) -> String {
+    let output = std::process::Command::new("git")
+        .args([
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@test.local",
+        ])
+        .args([
+            "-c",
+            "core.hooksPath=unused-hooks",
+            "-c",
+            "commit.gpgSign=false",
+        ])
+        .args(args)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", root.join("no-global-config"))
+        .current_dir(root)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+#[test]
+fn repository_only_update_recovers_bad_config_and_refuses_a_deleted_upstream() {
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path().join("checkout");
+    let home = fixture.path().join("home");
+    let remote = fixture.path().join("remote");
+    common::setup_minimal_repo(&root);
+    std::fs::create_dir(&home).unwrap();
+    let config = root.join("conf/symlinks.toml");
+    std::fs::write(&config, "[invalid").unwrap();
+    git(
+        fixture.path(),
+        &["init", "--bare", "-b", "main", remote.to_str().unwrap()],
+    );
+    git(&root, &["init", "-b", "main"]);
+    git(&root, &["add", "."]);
+    git(&root, &["commit", "-m", "broken configuration"]);
+    let broken = git(&root, &["rev-parse", "HEAD"]);
+    git(
+        &root,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    git(&root, &["push", "-u", "origin", "main"]);
+    std::fs::write(&config, "").unwrap();
+    git(&root, &["add", "."]);
+    git(&root, &["commit", "-m", "repair configuration"]);
+    let fixed = git(&root, &["rev-parse", "HEAD"]);
+    git(&root, &["push", "origin", "main"]);
+    git(&root, &["reset", "--hard", &broken]);
+
+    let update = || common::isolated_cli_command(&root, &home, None, "update", "repository", true);
+    let preview = update().arg("--dry-run").output().unwrap();
+    assert!(preview.status.success(), "{preview:?}");
+    assert!(
+        String::from_utf8_lossy(&preview.stdout).contains("local merge eligibility not checked"),
+        "repository-only preview must reach Git despite the invalid config: {preview:?}"
+    );
+    assert_eq!(
+        git(&root, &["rev-parse", "HEAD"]),
+        broken,
+        "this operation must leave HEAD at its original commit"
+    );
+    let repair = update().output().unwrap();
+    assert!(repair.status.success(), "{repair:?}");
+    assert!(
+        String::from_utf8_lossy(&repair.stdout).contains("1 task changed"),
+        "repository-only repair must report the change: {repair:?}"
+    );
+    assert_eq!(
+        git(&root, &["rev-parse", "HEAD"]),
+        fixed,
+        "must reach the repair commit"
+    );
+    assert!(
+        std::fs::read(&config).unwrap().is_empty(),
+        "must restore the valid config"
+    );
+
+    git(&root, &["reset", "--hard", &broken]);
+    git(&remote, &["update-ref", "-d", "refs/heads/main"]);
+    assert_eq!(
+        git(&root, &["rev-parse", "@{u}"]),
+        fixed,
+        "the deleted branch must remain available through the stale tracking ref"
+    );
+    let missing = update().output().unwrap();
+    assert!(!missing.status.success(), "{missing:?}");
+    assert_eq!(
+        git(&root, &["rev-parse", "HEAD"]),
+        broken,
+        "this operation must leave HEAD at its original commit"
+    );
 }

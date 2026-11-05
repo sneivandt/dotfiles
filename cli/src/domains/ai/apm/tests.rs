@@ -25,6 +25,25 @@ fn linux_context(home: &Path, executor: MockExecutor) -> Context {
 }
 
 #[test]
+fn apm_apply_refuses_a_shared_home_lock_before_invoking_apm() {
+    let dir = tempfile::tempdir().unwrap();
+    write_default_home_fragment(dir.path());
+    let path = dir.path().join(".apm/.dotfiles-run.lock");
+    let lock = crate::infra::run_lock::RunLock::acquire_path(&path, "first checkout").unwrap();
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    let ctx = linux_context(dir.path(), mock);
+    let error = update_task().run(&ctx).unwrap_err();
+    assert!(
+        error.to_string().contains("another dotfiles run holds"),
+        "{error:#}"
+    );
+    assert!(!dir.path().join(".apm/apm.yml").exists());
+    drop(lock);
+    assert!(crate::infra::run_lock::RunLock::acquire_path(&path, "retry").is_ok());
+}
+
+#[test]
 fn cowork_repairs_report_changes_even_when_the_lock_is_unchanged() {
     for update in [false, true] {
         let dir = tempfile::tempdir().unwrap();

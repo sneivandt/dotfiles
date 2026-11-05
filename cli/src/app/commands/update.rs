@@ -31,10 +31,25 @@ pub fn run(
         opts.with_deps,
         runtime.global.no_repo_update,
     );
-    let run_lock = super::prepare_self_update(runtime, log)?;
-    let runner = super::CommandRunner::new_with_lock(runtime, log, token, run_lock)?;
-
     let repository_update = RepositoryUpdateSignal::new();
+    let repository_only = UpdateRepository::standalone();
+    if runtime.global.no_repo_update {
+        reject_disabled_repository_selection(Some(&repository_only), &opts.filters.only)?;
+    }
+    let run_lock = super::prepare_self_update(runtime, log)?;
+    if !runtime.repository_child
+        && !opts.filters.only.is_empty()
+        && opts.filters.skip.is_empty()
+        && opts
+            .filters
+            .only
+            .iter()
+            .all(|selector| task_matches_filter(&repository_only, selector))
+    {
+        return super::CommandRunner::run_repository(runtime, log, token, &repository_only);
+    }
+
+    let runner = super::CommandRunner::new_with_lock(runtime, log, token, run_lock)?;
     let mut all_tasks = runner.update_tasks_for_run(&repository_update, ApmPackageMode::UpdatePins);
     let repository_task = TaskId::Type(std::any::TypeId::of::<UpdateRepository>());
     let mut effective_skip = opts.filters.skip.clone();
@@ -43,7 +58,6 @@ pub fn run(
             .iter()
             .find(|task| task.task_id() == repository_task)
             .map(Box::as_ref);
-        reject_disabled_repository_selection(repository, &opts.filters.only)?;
         if let Some(repository) = repository {
             effective_skip.retain(|selector| !task_matches_filter(repository, selector));
         }

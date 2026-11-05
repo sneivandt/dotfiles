@@ -7,7 +7,6 @@ use std::path::Path;
 
 use crate::engine::{
     Context, Operation, OperationState, Task, TaskResult, TaskResultDisplay, process_operation,
-    task_metadata,
 };
 use crate::infra::exec::CommandSpec;
 
@@ -52,21 +51,32 @@ pub struct UpdateRepository {
     /// Set when the repository changes so the application can restart from the
     /// freshly loaded checkout.
     pub(super) repo_updated: RepositoryUpdateSignal,
+    result_display: TaskResultDisplay,
 }
 
 impl UpdateRepository {
     /// Create a new task sharing the application's restart signal.
     #[must_use]
     pub const fn new(repo_updated: RepositoryUpdateSignal) -> Self {
-        Self { repo_updated }
+        Self {
+            repo_updated,
+            result_display: TaskResultDisplay::RestartNotice,
+        }
+    }
+
+    pub(crate) fn standalone() -> Self {
+        Self {
+            repo_updated: RepositoryUpdateSignal::new(),
+            result_display: TaskResultDisplay::Standard,
+        }
     }
 }
 
 impl Task for UpdateRepository {
-    task_metadata! {
-        name: "Dotfiles repository",
-        selector: "repository",
-        result_display: TaskResultDisplay::RestartNotice,
+    fn meta(&self) -> crate::engine::TaskMeta<'_> {
+        crate::engine::TaskMeta::new("Dotfiles repository")
+            .with_selector("repository")
+            .with_result_display(self.result_display)
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

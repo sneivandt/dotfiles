@@ -44,11 +44,10 @@ an earlier failure and verifies that every selected gating job succeeded and
 every unselected job was skipped. Missing outputs, cancellation, unexpected
 skips, and classification failure fail the gate.
 
-After a push, inspect the run for the **exact pushed SHA**. Coverage and
-mutation results are informational and excluded from the aggregate gate. When
-mutation testing is selected, wait for all shards. Check that each ran the
-mutation step and inspect the artifacts for missed mutants, timeouts, and tool
-errors.
+After a push, inspect the run for the **exact pushed SHA**. Selected mutation
+shards must pass before the aggregate gate succeeds. Inspect their artifacts
+for surviving mutants, timeouts, and tool errors. Coverage reports remain
+informational.
 
 ## Change-aware scheduling
 
@@ -118,8 +117,9 @@ Code. Separate jobs or local checks cover some of those concerns; do not call
 the profile matrix a full clean-machine installation test.
 
 Mutation jobs run when a pull request or push to main changes Rust source
-under `cli/src/`. The selected mutations are split across jobs. Standalone
-test, lockfile-only, and CI-only changes do not select them. Linux excludes
+under `cli/src/`. The selected mutations are split across jobs. A push after
+failed or unfinished CI compares against a successful ancestor, so a test-only
+fix can still exercise pending source changes. Linux excludes
 native Windows code; exact filters live in the workflow. See the
 [mutation testing guide](testing.md#focused-mutation-testing).
 

@@ -435,12 +435,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # ── Mutation Testing (informational, non-gating) ───────
+  # ── Mutation Testing (gating) ───────
   mutation:
     name: "Rust: Mutation (changed code, shard ${{ matrix.shard }})"
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    continue-on-error: true
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_mutation == 'true'
     strategy:
@@ -455,39 +454,31 @@ jobs:
         with:
           fetch-depth: 0
       - name: Build changed-code diff
-        id: diff
         shell: bash
         env:
           BASE_SHA: ${{ needs.classify-changes.outputs.comparison_base }}
           HEAD_SHA: ${{ needs.classify-changes.outputs.comparison_head }}
         run: |
           if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
-            echo "No comparison base for changed-code mutation testing"
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "Selected mutation testing requires a comparison base." >&2
+            exit 1
           fi
-          git diff --relative=cli --unified=0 "$BASE_SHA" "$HEAD_SHA" -- src > mutants.diff
-          if [[ -s mutants.diff ]]; then
-            echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No changed Rust source; skipping mutation tooling"
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          git diff --relative=cli --no-renames --unified=0 "$BASE_SHA" "$HEAD_SHA" -- src > mutants.diff
+          if [[ ! -s mutants.diff ]]; then
+            echo "Selected mutation testing produced an empty source diff." >&2
+            exit 1
           fi
       - name: Install Rust toolchain
-        if: steps.diff.outputs.has_changes == 'true'
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: steps.diff.outputs.has_changes == 'true'
         with:
           workspaces: "cli -> target"
           cache-on-failure: true
       - name: Install cargo-mutants
-        if: steps.diff.outputs.has_changes == 'true'
         uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
-          tool: cargo-mutants
+          tool: cargo-mutants@27.1.0
       - name: Test changed-code mutants
-        if: steps.diff.outputs.has_changes == 'true'
         env:
           MUTATION_SHARD: ${{ matrix.shard }}
         # cargo-mutants does not evaluate cfg attributes. These Windows-only
@@ -496,10 +487,12 @@ jobs:
         # PATH backend names also cover their tested unsupported-host stubs.
         # Canonicalizing an existing regular settings file is equivalent to
         # writing its original path; retain every other settings mutation.
+        # The Unix lock flags are disjoint, so XOR has the same effect as OR.
         run: >-
           cargo mutants --in-place --no-shuffle --in-diff mutants.diff
           --shard "$MUTATION_SHARD/8"
           --exclude 'src/infra/run_lock/windows.rs'
+          --exclude-re '^src/infra/run_lock\.rs:[0-9]+:[0-9]+: replace \| with \^ in RunLock::acquire_path$'
           --exclude-re '^src/domains/files/resources/symlink/platform\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported)\b'
           --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b'
           --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|append_user_path|user_path_contains)\b'
@@ -805,6 +798,7 @@ jobs:
       - deny
       - build-linux
       - msrv
+      - mutation
       - build-windows
       - integration-linux
       - integration-windows

@@ -58,9 +58,11 @@ changes usually do not need engine changes.
   A successful commit hook or focused test alone is not push validation.
 - Fix selected local failures. Report unavailable checks and remaining Windows,
   integration, and mutation coverage explicitly; a skip is not a pass.
-- For changed Rust behavior, consider [focused mutation testing](docs/content/testing.md#focused-mutation-testing),
-  especially error handling, scheduling, previews, and partial failures.
+- Run [focused mutation testing](docs/content/testing.md#focused-mutation-testing)
+  for changed Rust behavior, especially safety checks, scheduling, previews, and
+  partial failures. When fixing a survivor, rerun the original source range
+  even if the fix changes only tests.
 - After an authorized push, monitor the exact commit's aggregate CI and inspect
-  each selected mutation shard separately. Follow the
-  [CI monitoring guidance](.agents/skills/ci-cd-patterns/SKILL.md#after-pushing)
+  selected mutation shard reports. Survivors, timeouts, and tool failures block
+  CI. Follow the [CI monitoring guidance](.agents/skills/ci-cd-patterns/SKILL.md#after-pushing)
   and verify publication when reporting a release.

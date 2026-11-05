@@ -260,7 +260,7 @@ fn prune_stale_files(
         let Some(metadata) = symlink_metadata_optional(&path, "inspect stale Cowork file")? else {
             continue;
         };
-        if metadata.is_dir() && !metadata.is_symlink() {
+        if metadata.is_dir() {
             reject_destination_link(&path)?;
             let prefix = format!("{relative}/");
             if desired.keys().any(|file| file.starts_with(&prefix)) {
@@ -286,19 +286,17 @@ fn prepare_skill_paths(
     target: &Path,
     previous: Option<&FileInventory>,
     desired: &FileInventory,
-) -> Result<bool> {
+) -> Result<()> {
     let retiring_directories = check_active_files(target, previous, desired)?;
-    let mut changed = false;
     if let Some(previous) = previous {
-        changed |= prune_stale_files(target, previous, desired)?;
+        prune_stale_files(target, previous, desired)?;
     }
     for directory in retiring_directories {
         reject_destination_link(&directory)?;
         std::fs::remove_dir(&directory)
             .with_context(|| format!("retiring Cowork directory {}", directory.display()))?;
-        changed = true;
     }
-    Ok(changed)
+    Ok(())
 }
 
 /// Reconcile APM's shared skill deployment into Cowork's protected skill tree.
@@ -329,7 +327,7 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
         let mut files = FileInventory::new();
         inventory_files(&source_skill, &source_skill, &mut files)?;
         let previous = inventory.get(name);
-        changed |= prepare_skill_paths(&target_skill, previous, &files)?;
+        prepare_skill_paths(&target_skill, previous, &files)?;
         if !skill_files_match(&source_skill, &target_skill)? {
             copy_skill_files(&source_skill, &target_skill).with_context(|| {
                 format!(
@@ -1616,6 +1614,32 @@ mod tests {
 
         assert!(remove_legacy_cowork_lock_deployments(&ctx).is_err());
         assert_eq!(std::fs::read_to_string(lock_path).unwrap(), lock);
+    }
+
+    #[test]
+    fn legacy_fingerprints_require_valid_agreeing_hashes() {
+        let first = "ab".repeat(32);
+        let other = "cd".repeat(32);
+        let signed = format!("+b{}", "ab".repeat(31));
+        for (second, verified) in [
+            (first.as_str(), true),
+            (other.as_str(), false),
+            ("ab", false),
+            (signed.as_str(), false),
+        ] {
+            let lock: Value = serde_yaml_ng::from_str(&format!(
+                "dependencies:\n- deployed_file_hashes:\n    cowork://skills/example/SKILL.md: sha256:{first}\n- deployed_file_hashes:\n    cowork://skills/example/SKILL.md: sha256:{second}\n"
+            )).unwrap();
+            let fingerprints = legacy_entry_point_fingerprints(&lock);
+            assert_eq!(
+                fingerprints.get("example").map(Option::is_some),
+                Some(verified),
+                "{second}"
+            );
+        }
+        assert_eq!(decode_sha256_hex(&first), Some([0xab; 32]));
+        assert_eq!(decode_sha256_hex("ab"), None);
+        assert_eq!(decode_sha256_hex(&signed), None);
     }
 
     #[test]

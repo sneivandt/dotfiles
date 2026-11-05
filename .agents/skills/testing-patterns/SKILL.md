@@ -71,6 +71,19 @@ change. Do not accept broad rewrites without inspecting the diff.
 Do not weaken assertions or regenerate unrelated snapshots just to make a
 failure disappear.
 
+## Mutation regressions
+
+- Read each survivor's diff and identify what a caller would observe if the
+  mutation were real. Assert the result and the relevant side effect or
+  preserved state. Cover the negative case for guards and the success case
+  for paths the mutant might disable.
+- Verify the original code passes and the mutant is caught in a disposable
+  checkout using the original source range. A test-only patch diff can select
+  zero mutations. See [Focused mutation testing](../../../docs/content/testing.md#focused-mutation-testing).
+- Treat a timeout or tool error as a failed check. An unviable mutant could not
+  compile. For an equivalent mutant, explain the equivalence and prefer
+  simplifying the code or using a narrowly scoped, reviewed exclusion.
+
 ## Scope validation
 
 Test target selection and commands live in

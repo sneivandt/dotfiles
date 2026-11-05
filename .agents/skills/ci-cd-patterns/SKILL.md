@@ -29,12 +29,13 @@ action-version inventories in guidance.
 ## After pushing
 
 - Find the CI run for the exact pushed SHA and verify the aggregate gate.
-- If mutation testing was selected, wait for every shard and check that each
-  ran the mutation step. Inspect its results for missed mutants, timeouts, and
-  tooling errors. Report those separately from the aggregate gate.
-- If a recovery run skipped mutation testing because it lacked a comparison
-  base, use the validated `mutation_base` input with the original ancestor
-  and inspect the resulting shards. A skipped shard gives no coverage.
+- Mutation shards are required when selected. Inspect every shard report for
+  survivors, timeouts, and tooling errors, and fix the cause before reporting
+  success. Keep the exact matrix and use narrowly justified exclusions for
+  equivalent or platform-only mutations.
+- Push recovery compares against a successful ancestor so a test-only follow-up
+  still checks pending Rust changes. For manual replay, pass the original ancestor
+  through `mutation_base` and verify that the run selected the shards.
 
 ## Release rules
 

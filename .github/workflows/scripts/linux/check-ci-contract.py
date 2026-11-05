@@ -9,7 +9,7 @@ import sys
 
 
 WORKFLOW = Path(__file__).resolve().parents[2] / "ci.yml"
-INFORMATIONAL_JOBS = {"coverage", "mutation"}
+INFORMATIONAL_JOBS = {"coverage"}
 JOB_CONDITIONS = {
     "rust-fmt": "run_rust_fmt",
     "lint": "run_lint",
@@ -134,6 +134,10 @@ def check(workflow: str) -> None:
         raise ValueError("ci-success must verify selected jobs, not just absence of failures")
 
     mutation = jobs["mutation"]
+    if re.search(r"(?m)^\s+continue-on-error:", mutation):
+        raise ValueError("mutation jobs and steps must propagate failures")
+    if 'Selected mutation testing requires a comparison base.' not in mutation:
+        raise ValueError("selected mutation testing must reject a missing comparison base")
     shards = re.search(r"(?m)^        shard: \[([0-9, ]+)\]$", mutation)
     partition = re.search(r'--shard "\$MUTATION_SHARD/([0-9]+)"', mutation)
     if shards is None or partition is None:

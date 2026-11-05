@@ -12,18 +12,34 @@ case "${GITHUB_EVENT_NAME:?}" in
         ;;
     push)
         before=${PUSH_BEFORE:-}
-        if [ -n "$before" ] && [ "$before" != 0000000000000000000000000000000000000000 ] &&
-            git merge-base --is-ancestor "$before" "${GITHUB_SHA:?}"; then
+        head=${GITHUB_SHA:?}
+        workflow_runs="repos/${GITHUB_REPOSITORY:?}/actions/workflows/ci.yml/runs"
+        if [ -n "$before" ] && git merge-base --is-ancestor "$before" "$head" &&
+            [ "$(gh api --method GET "$workflow_runs" -f event=push -f branch=main \
+                -f head_sha="$before" -F per_page=1 \
+                --jq '.workflow_runs[0] | select(.conclusion == "success") | .head_sha')" = "$before" ]; then
             base=$before
-            head=$GITHUB_SHA
-        fi
-        if [ -z "$base" ] ||
-            ! previous=$(gh api --method GET "repos/${GITHUB_REPOSITORY:?}/actions/workflows/ci.yml/runs" \
-                -f event=push -f branch=main -f head_sha="$base" -F per_page=1 \
-                --jq '.workflow_runs[0] | select(.conclusion == "success") | .head_sha') ||
-            [ "$previous" != "$base" ]; then
+        else
             echo "Preceding push CI could not be verified. Selecting full CI."
             force_full=true
+            # A test-only retry must still exercise all source changes that
+            # have not passed CI. Filter out unrelated history and this run.
+            if ! candidates=$(gh api --method GET "$workflow_runs" -f event=push \
+                -f branch=main -f status=success -F per_page=100 \
+                --jq '.workflow_runs[].head_sha'); then
+                echo "Cannot verify a successful CI comparison base." >&2
+                exit 1
+            fi
+            for candidate in $candidates; do
+                if [ "$candidate" != "$head" ] && git merge-base --is-ancestor "$candidate" "$head"; then
+                    base=$candidate
+                    break
+                fi
+            done
+            if [ -z "$base" ]; then
+                # Initial CI has no prior coverage to inherit.
+                base=$(git hash-object -t tree /dev/null)
+            fi
         fi
         ;;
     workflow_dispatch)

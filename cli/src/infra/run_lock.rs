@@ -270,6 +270,19 @@ mod tests {
     use crate::infra::platform::{Os, Platform};
     use std::io::Read as _;
 
+    #[cfg(unix)]
+    #[test]
+    fn lock_rejects_a_symlink_without_writing_its_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("local-file");
+        let lock = dir.path().join("lock");
+        std::fs::write(&target, "local data").unwrap();
+        std::os::unix::fs::symlink(&target, &lock).unwrap();
+
+        assert!(RunLock::acquire_path(&lock, "fixture").is_err());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "local data");
+    }
+
     #[test]
     fn restart_requires_both_a_live_lease_and_its_repository_lock() {
         let root = tempfile::tempdir().unwrap();

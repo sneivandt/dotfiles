@@ -494,12 +494,14 @@ fixture. See [Private overlays](security-and-trust.md#private-overlays).
 ### Focused mutation testing
 
 Mutation testing temporarily changes code to check whether tests notice a
-wrong branch, lost error, or incorrect preview. Consider it for behavior changes,
-especially failure handling, scheduling, and partial success.
+wrong branch, lost error, or incorrect preview. Run focused mutation tests for
+Rust behavior changes, especially failure handling, scheduling, and partial success.
 
 Run `cargo-mutants` in a disposable checkout, never the shared working copy.
-Inspect each `MISSED` result: add an assertion for observable behavior or explain why the mutation
-is equivalent. Ordinary tests and `--all` do not run mutation testing.
+For a `MISSED` result, add an assertion that passes on the original code and
+fails with the mutation, or establish that the mutant is equivalent. Selected
+shards with survivors, timeouts, or tooling failures block CI. Ordinary tests
+and `--all` do not run mutation testing.
 
 With `cargo-mutants` installed, select the affected module in that disposable
 checkout. For example:
@@ -509,8 +511,16 @@ cd cli
 cargo mutants --file src/app/filter.rs --cargo-arg=--profile=ci --cargo-arg=--locked
 ```
 
-Use `--in-diff` with a unified Git diff for changed-line coverage. Record any
-narrowed scope and inspect `mutants.out` before cleaning up. CI handles its
+For a retry, generate the diff from the original source base, even if your
+fix only changes tests. Run these commands from `cli/` in the disposable checkout.
+
+```sh
+git diff --relative=cli --no-renames --unified=0 ORIGINAL_BASE_SHA -- src > mutants.diff
+cargo mutants --in-diff mutants.diff --cargo-arg=--profile=ci --cargo-arg=--locked
+```
+
+Use `--re` to replay a specific mutant by its report description. Inspect
+`mutants.out` before cleaning up. CI handles its
 changed-code selection, shards, and native-code exclusions; see
 [Mutation coverage](ci-and-releases.md#platform-coverage) instead of copying that setup into
 each local command. Linux checks do not provide native Windows mutation coverage.

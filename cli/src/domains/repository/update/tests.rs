@@ -314,6 +314,33 @@ fn worktree_has_local_changes_ignores_untracked_files() {
 }
 
 #[test]
+fn apply_requires_both_configured_upstream_values() {
+    for (remote, reference) in [("", "refs/heads/main"), ("origin", "")] {
+        let root = tempfile::tempdir().unwrap();
+        let executor = ScriptedExecutor::new()
+            .git(
+                root.path(),
+                &["symbolic-ref", "--quiet", "HEAD"],
+                "refs/heads/main",
+            )
+            .git(
+                root.path(),
+                &["status", "--porcelain", "--untracked-files=no"],
+                "",
+            )
+            .git(root.path(), REMOTE_MAIN, remote)
+            .git(root.path(), MERGE_MAIN, reference);
+        let ctx = make_update_context(root.path().to_path_buf(), None, executor);
+        let signal = UpdateSignal::new();
+        let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Skipped { reason, .. } if reason.contains("no upstream tracking branch"))
+        );
+        assert!(!signal.was_updated());
+    }
+}
+
+#[test]
 fn run_returns_failed_when_fetch_fails() {
     // 1. symbolic-ref → on a branch
     // 2. status → clean worktree

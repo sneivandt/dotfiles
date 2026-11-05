@@ -457,12 +457,20 @@ class GateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             CONTRACT["check_results"](needs)
 
+    def test_mutation_must_succeed_when_selected(self):
+        for result in ("failure", "cancelled", "skipped"):
+            with self.subTest(result=result):
+                needs = self.results(["cli/src/main.rs"])
+                needs["mutation"]["result"] = result
+                with self.assertRaisesRegex(ValueError, f"mutation: expected success, got {result}"):
+                    CONTRACT["check_results"](needs)
+
     def test_every_selected_job_must_report_success(self):
-        baseline = self.results([".github/workflows/ci.yml"])
-        for job in baseline:
+        paths = [".github/workflows/ci.yml", "cli/src/main.rs"]
+        for job in self.results(paths):
             for result in ("failure", "cancelled", "skipped"):
                 with self.subTest(job=job, result=result):
-                    needs = self.results([".github/workflows/ci.yml"])
+                    needs = self.results(paths)
                     needs[job]["result"] = result
                     with self.assertRaises(ValueError):
                         CONTRACT["check_results"](needs)
@@ -504,6 +512,10 @@ class GateTests(unittest.TestCase):
                 CONTRACT["check_pages"](broken, workflow)
         for broken in (
             workflow.replace("      - docs\n", ""),
+            workflow.replace("      - mutation\n", ""),
+            workflow.replace("  mutation:\n", "  mutation:\n    continue-on-error: true\n"),
+            workflow.replace("      - name: Test changed-code mutants\n",
+                             "      - name: Test changed-code mutants\n        continue-on-error: true\n"),
             workflow.replace("      - desktop-qml\n", ""),
             workflow.replace("run_build_windows == 'true'", "run_build_linux == 'true'"),
             workflow.replace("check-ci-contract.py --results", "echo success"),
@@ -709,65 +721,66 @@ class GitRangeTests(unittest.TestCase):
         gh.write_text(
             '#!/bin/sh\n'
             'test "$1" = api && test "$4" = "repos/fixture/repository/actions/workflows/ci.yml/runs" || exit 2\n'
-            'test "${10}" = "head_sha=$PUSH_BEFORE" || exit 2\n'
-            'case "$FIXTURE_CI" in success) echo "$PUSH_BEFORE";; unavailable) exit 1;; esac\n',
+            'case "${10}" in\n'
+            '  "head_sha=$PUSH_BEFORE") if [ "$FIXTURE_CI" = success ]; then echo "$PUSH_BEFORE"; fi;;\n'
+            '  status=success)\n'
+            '    if [ "$FIXTURE_CI" = unavailable ]; then exit 1; fi\n'
+            '    printf "%s\\n" "$GITHUB_SHA" "$FIXTURE_BASE";;\n'
+            '  *) exit 2;;\n'
+            'esac\n',
             encoding="utf-8",
         )
         gh.chmod(0o755)
         self.env.update(
             PATH=str(tools) + os.pathsep + self.env["PATH"],
-            PUSH_BEFORE=before, GITHUB_SHA=head,
+            PUSH_BEFORE=before, GITHUB_SHA=head, FIXTURE_BASE=self.base,
         )
-        for state in ("success", "cancelled", "failed", "in_progress", "unavailable"):
+        for state in ("success", "cancelled", "failed", "in_progress", "unavailable", "initial"):
             with self.subTest(state=state):
-                self.env["FIXTURE_CI"] = state
-                output = Path(self.env["GITHUB_OUTPUT"])
-                output.write_text("", encoding="utf-8")
-                result = subprocess.run(
-                    ["sh", str(SCRIPTS / "ci-comparison-range.sh")],
-                    env=self.env, cwd=self.repo, check=True, capture_output=True,
-                )
-                values = dict(
-                    line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines()
-                )
-                self.assertEqual((values["base_sha"], values["head_sha"]), (before, head))
-                self.env.update(BASE_SHA=values["base_sha"], HEAD_SHA=values["head_sha"],
-                                CI_FORCE_FULL=values["force_full"])
-                jobs = self.script()
-                self.assertEqual(jobs["docs_only"], state == "success", result.stderr.decode())
-                self.assertEqual(jobs["run_build_linux"], state != "success")
-                self.assertEqual(jobs["run_build_windows"], state != "success")
-
-    def test_mutation_range_is_kept_for_full_recovery_and_manual_runs(self):
-        self.write("cli/src/main.rs", 'fn main() { println!("changed"); }\n')
-        head = self.commit()
-
-        tools = self.root / "mutation-tools"
-        tools.mkdir()
-        gh = tools / "gh"
-        gh.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
-        gh.chmod(0o755)
-        self.env["PATH"] = str(tools) + os.pathsep + self.env["PATH"]
-        for event in ("push", "workflow_dispatch"):
-            with self.subTest(event=event):
-                self.env.update(GITHUB_EVENT_NAME=event, GITHUB_SHA=head,
-                                PUSH_BEFORE=self.base, MUTATION_BASE=self.base)
+                self.env.update(FIXTURE_CI=state, FIXTURE_BASE="" if state == "initial" else self.base)
+                if state == "unavailable":
+                    self.script("ci-comparison-range.sh", success=False)
+                    continue
                 output = Path(self.env["GITHUB_OUTPUT"])
                 output.write_text("", encoding="utf-8")
                 result = subprocess.run(
                     ["sh", str(SCRIPTS / "ci-comparison-range.sh")],
                     env=self.env, cwd=self.repo, check=True, capture_output=True, text=True,
                 )
-                self.assertEqual(result.returncode, 0)
-                output = Path(self.env["GITHUB_OUTPUT"])
-                values = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
-                self.assertEqual((values["base_sha"], values["head_sha"]), (self.base, head))
-                self.assertEqual(values["force_full"], "true")
+                values = dict(
+                    line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines()
+                )
+                expected = {"success": before, "initial": self.git("hash-object", "-t", "tree", "/dev/null")}.get(state, self.base)
+                self.assertEqual((values["base_sha"], values["head_sha"]), (expected, head))
                 self.env.update(BASE_SHA=values["base_sha"], HEAD_SHA=values["head_sha"],
                                 CI_FORCE_FULL=values["force_full"])
                 jobs = self.script()
-                self.assertTrue(jobs["run_mutation"])
-                self.assertTrue(jobs["run_build_windows"])
+                self.assertEqual(jobs["docs_only"], state == "success", result.stderr)
+                self.assertEqual(jobs["run_mutation"], state != "success")
+                self.assertEqual(jobs["run_build_linux"], state != "success")
+                self.assertEqual(jobs["run_build_windows"], state != "success")
+
+    def test_manual_recovery_uses_the_requested_mutation_range(self):
+        self.write("cli/src/main.rs", 'fn main() { println!("changed"); }\n')
+        head = self.commit()
+        self.env.update(GITHUB_EVENT_NAME="workflow_dispatch", GITHUB_SHA=head,
+                        MUTATION_BASE=self.base)
+        output = Path(self.env["GITHUB_OUTPUT"])
+        output.write_text("", encoding="utf-8")
+        subprocess.run(
+            ["sh", str(SCRIPTS / "ci-comparison-range.sh")],
+            env=self.env, cwd=self.repo, check=True, capture_output=True, text=True,
+        )
+        values = dict(
+            line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines()
+        )
+        self.assertEqual((values["base_sha"], values["head_sha"]), (self.base, head))
+        self.assertEqual(values["force_full"], "true")
+        self.env.update(BASE_SHA=values["base_sha"], HEAD_SHA=values["head_sha"],
+                        CI_FORCE_FULL=values["force_full"])
+        jobs = self.script()
+        self.assertTrue(jobs["run_mutation"])
+        self.assertTrue(jobs["run_build_windows"])
 
         self.env["MUTATION_BASE"] = "HEAD"
         self.script("ci-comparison-range.sh", success=False)

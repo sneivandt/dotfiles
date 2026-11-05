@@ -21,6 +21,8 @@ pub struct ChmodResource {
     home: Option<PathBuf>,
     validation_error: Option<String>,
     excluded_targets: Vec<PathBuf>,
+    source_roots: Vec<PathBuf>,
+    allow_external_target: bool,
 }
 
 impl ChmodResource {
@@ -34,6 +36,8 @@ impl ChmodResource {
             home: None,
             validation_error: None,
             excluded_targets: Vec::new(),
+            source_roots: Vec::new(),
+            allow_external_target: false,
         }
     }
 
@@ -50,7 +54,16 @@ impl ChmodResource {
             home: Some(home.to_path_buf()),
             validation_error: validate_path(&entry.path).err(),
             excluded_targets: Vec::new(),
+            source_roots: Vec::new(),
+            allow_external_target: entry.allow_external_target,
         }
+    }
+
+    /// Permit links into the public and overlay managed source trees.
+    #[must_use]
+    pub fn with_source_roots(mut self, roots: &[PathBuf]) -> Self {
+        self.source_roots = roots.to_vec();
+        self
     }
 
     /// Leave explicitly configured descendants to their own permission resources.
@@ -70,10 +83,27 @@ impl ChmodResource {
         }
         if let Some(home) = &self.home
             && self.target.try_exists()?
-            && crate::infra::fs::canonicalize(&self.target)?
-                == crate::infra::fs::canonicalize(home)?
         {
-            return Ok(Some("chmod target resolves to $HOME itself".into()));
+            let target = crate::infra::fs::canonicalize(&self.target)?;
+            let home = crate::infra::fs::canonicalize(home)?;
+            if target == home {
+                return Ok(Some("chmod target resolves to $HOME itself".into()));
+            }
+            let managed = self
+                .source_roots
+                .iter()
+                .map(|root| {
+                    crate::infra::fs::resolve_directory(root).map(|root| target.starts_with(root))
+                })
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .any(|allowed| allowed);
+            if !target.starts_with(home) && !managed && !self.allow_external_target {
+                return Ok(Some(format!(
+                    "chmod target resolves outside home and managed sources to {}; set allow_external_target = true to permit it",
+                    target.display()
+                )));
+            }
         }
         Ok(None)
     }
@@ -82,7 +112,15 @@ impl ChmodResource {
 impl Resource for ChmodResource {
     fn description(&self) -> String {
         match &self.mode {
-            Ok(mode) => format!("{mode} {}", self.target.display()),
+            Ok(mode) => {
+                let target = self.target.display();
+                match std::fs::canonicalize(&self.target) {
+                    Ok(resolved) if resolved != self.target && self.home.is_some() => {
+                        format!("{mode} {target} (resolved {})", resolved.display())
+                    }
+                    _ => format!("{mode} {target}"),
+                }
+            }
             Err(reason) => format!(
                 "invalid chmod mode ({reason}) for {}",
                 self.target.display()
@@ -108,16 +146,22 @@ impl Resource for ChmodResource {
                 )
             })?;
             let mode = mode.as_u32();
+            let target = crate::infra::fs::canonicalize(&self.target)?;
+            let excluded = self
+                .excluded_targets
+                .iter()
+                .map(|path| crate::infra::fs::resolve_target_entry(path))
+                .collect::<Result<Vec<_>>>()?;
 
-            if self.target.is_dir() {
+            if target.is_dir() {
                 apply_recursive(
-                    &self.target,
+                    &target,
                     ensure_dir_execute_bits(mode),
                     strip_file_execute_bits(mode),
-                    &self.excluded_targets,
+                    &excluded,
                 )?;
             } else {
-                set_permissions(&self.target, mode)?;
+                set_permissions(&target, mode)?;
             }
 
             Ok(ResourceChange::Applied)

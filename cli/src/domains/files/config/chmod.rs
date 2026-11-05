@@ -101,6 +101,8 @@ pub struct ChmodEntry {
     pub mode: String,
     /// Relative path under $HOME.
     pub path: String,
+    /// Permit a resolved destination outside home and managed source trees.
+    pub allow_external_target: bool,
     parsed_mode: Result<OctalMode, String>,
 }
 
@@ -109,6 +111,8 @@ pub struct ChmodEntry {
 struct RawChmodEntry {
     mode: String,
     path: String,
+    #[serde(default)]
+    allow_external_target: bool,
 }
 
 impl<'de> Deserialize<'de> for ChmodEntry {
@@ -117,7 +121,9 @@ impl<'de> Deserialize<'de> for ChmodEntry {
         D: serde::Deserializer<'de>,
     {
         let raw = RawChmodEntry::deserialize(deserializer)?;
-        Ok(Self::new(raw.mode, raw.path))
+        let mut entry = Self::new(raw.mode, raw.path);
+        entry.allow_external_target = raw.allow_external_target;
+        Ok(entry)
     }
 }
 
@@ -130,6 +136,7 @@ impl ChmodEntry {
         Self {
             mode,
             path: path.into(),
+            allow_external_target: false,
             parsed_mode,
         }
     }

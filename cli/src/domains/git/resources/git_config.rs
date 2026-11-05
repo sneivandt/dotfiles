@@ -81,6 +81,9 @@ impl GitConfigResource {
             let mut values = Vec::new();
             while let Some(entry) = entries.next() {
                 let entry = entry?;
+                if entry.include_depth() != 0 {
+                    continue;
+                }
                 values.push(if entry.has_value() {
                     Some(entry.value()?.to_string())
                 } else {
@@ -109,6 +112,9 @@ impl GitConfigResource {
                 values
                     .iter()
                     .all(|value| value.as_deref() == Some(desired.as_str()))
+                    && config.get_entry(&self.key).is_ok_and(|entry| {
+                        entry.has_value() && entry.value().is_ok_and(|value| value == desired)
+                    })
             }) {
                 ResourceState::Correct
             } else {
@@ -155,6 +161,64 @@ impl GitConfigResource {
         }
         Ok(ResourceChange::Applied)
     }
+
+    fn has_includes(&self, config: &git2::Config) -> Result<bool> {
+        let mut entries = config.multivar(&self.key, None)?;
+        while let Some(entry) = entries.next() {
+            if entry?.include_depth() != 0 {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn apply_with_includes(&self, config: &git2::Config) -> Result<ResourceChange> {
+        let configured = self
+            .config_path
+            .clone()
+            .map_or_else(git2::Config::find_global, Ok)?;
+        let path = crate::infra::fs::canonicalize(&configured)?;
+        let before = std::fs::read(&path)?;
+        let parent = path.parent().context("global Git config has no parent")?;
+        let (stage, file) =
+            crate::infra::fs::TempGuard::create_unique_file(parent, ".dotfiles-git", "config")?;
+        drop(file);
+        std::fs::write(stage.path(), &before)?;
+        {
+            let mut staged = git2::Config::open(stage.path())?;
+            let values = self.values_from_config(config)?;
+            if values.iter().any(Option::is_none) {
+                anyhow::bail!(
+                    "cannot safely replace repeated implicit values for git config {}; give each entry an explicit value first",
+                    self.key
+                );
+            }
+            if !values.is_empty() {
+                staged.remove_multivar(&self.key, ".*")?;
+            }
+        }
+        let mut replacement = std::fs::read(stage.path())?;
+        if let Some(desired) = &self.desired {
+            // Let libgit2 validate and quote the key/value, then append its stanza
+            // after every include so scalar Git precedence selects the desired value.
+            std::fs::write(stage.path(), [])?;
+            {
+                let mut stanza = git2::Config::open(stage.path())?;
+                stanza.set_str(&self.key, desired)?;
+            }
+            replacement.push(b'\n');
+            replacement.extend(std::fs::read(stage.path())?);
+        }
+        crate::infra::fs::write_atomic_checked(&path, replacement, || {
+            anyhow::ensure!(
+                crate::infra::fs::canonicalize(&configured)? == path
+                    && std::fs::read(&path)? == before,
+                "global Git config changed during update; retry"
+            );
+            Ok(())
+        })?;
+        Ok(ResourceChange::Applied)
+    }
 }
 
 impl Resource for GitConfigResource {
@@ -175,6 +239,9 @@ impl Resource for GitConfigResource {
         let mut config = self
             .open_config()
             .with_context(|| format!("setting git config {}", self.key))?;
+        if self.has_includes(&config)? {
+            return Ok(self.apply_with_includes(&config)?);
+        }
         Ok(self.apply_to_config(&mut config)?)
     }
 }
@@ -191,6 +258,59 @@ impl IntrinsicState for GitConfigResource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn included_values_are_preserved_and_global_overrides_converge() {
+        for local in ["", "[core]\n autocrlf = true\n"] {
+            for include_first in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join("config");
+                let included = dir.path().join("included");
+                let content = "[core]\n autocrlf = true\n editor = user-editor\n";
+                std::fs::write(&included, content).unwrap();
+                let include = "[include]\n path = included\n";
+                std::fs::write(
+                    &path,
+                    if include_first {
+                        format!("{include}{local}")
+                    } else {
+                        format!("{local}{include}")
+                    },
+                )
+                .unwrap();
+                let resource = GitConfigResource::with_config_path(
+                    "core.autocrlf".into(),
+                    "false".into(),
+                    path.clone(),
+                );
+                assert_ne!(resource.current_state().unwrap(), ResourceState::Correct);
+                resource.apply().unwrap();
+                assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+                let after = std::fs::read(&path).unwrap();
+                assert_eq!(
+                    git2::Config::open(&path)
+                        .unwrap()
+                        .get_string("core.autocrlf")
+                        .unwrap(),
+                    "false"
+                );
+                assert_eq!(std::fs::read_to_string(&included).unwrap(), content);
+                assert_eq!(std::fs::read(&path).unwrap(), after);
+                let absent = GitConfigResource::absent("core.autocrlf".into())
+                    .using_config_path(path.clone());
+                absent.apply().unwrap();
+                assert_eq!(absent.current_state().unwrap(), ResourceState::Correct);
+                assert_eq!(
+                    git2::Config::open(&path)
+                        .unwrap()
+                        .get_string("core.autocrlf")
+                        .unwrap(),
+                    "true"
+                );
+                assert_eq!(std::fs::read_to_string(&included).unwrap(), content);
+            }
+        }
+    }
 
     #[test]
     fn open_failure_names_the_key() {

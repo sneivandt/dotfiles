@@ -31,12 +31,12 @@ pub(super) fn read_deployed_workflow_ids(ctx: &Context) -> Result<Option<BTreeSe
                 .with_context(|| format!("reading workflow ownership {}", lock.display()));
         }
     };
-    let value: serde_yaml_ng::Value =
-        serde_yaml_ng::from_str(&content).context("parsing workflow ownership")?;
-    anyhow::ensure!(value.is_mapping(), "workflow ownership must be a mapping");
+    let value: crate::infra::yaml::Value =
+        crate::infra::yaml::from_str(&content).context("parsing workflow ownership")?;
+    anyhow::ensure!(value.is_object(), "workflow ownership must be a mapping");
     if let Some(dependencies) = value.get("dependencies") {
         anyhow::ensure!(
-            dependencies.is_sequence(),
+            dependencies.is_array(),
             "workflow dependencies must be a sequence"
         );
     }
@@ -49,17 +49,17 @@ pub(super) fn read_deployed_workflow_ids(ctx: &Context) -> Result<Option<BTreeSe
 /// starts with [`COPILOT_APP_WORKFLOW_URI_PREFIX`], stripped to the bare
 /// workflow id. Any parse failure or unexpected shape yields an empty set.
 pub(super) fn parse_deployed_workflow_ids(lockfile: &str) -> BTreeSet<String> {
-    use serde_yaml_ng::Value;
+    use crate::infra::yaml::Value;
 
     let mut ids = BTreeSet::new();
-    let Ok(value) = serde_yaml_ng::from_str::<Value>(lockfile) else {
+    let Ok(value) = crate::infra::yaml::from_str::<Value>(lockfile) else {
         return ids;
     };
-    let Some(deps) = value.get("dependencies").and_then(Value::as_sequence) else {
+    let Some(deps) = value.get("dependencies").and_then(Value::as_array) else {
         return ids;
     };
     for dep in deps {
-        let Some(files) = dep.get("deployed_files").and_then(Value::as_sequence) else {
+        let Some(files) = dep.get("deployed_files").and_then(Value::as_array) else {
             continue;
         };
         for file in files {

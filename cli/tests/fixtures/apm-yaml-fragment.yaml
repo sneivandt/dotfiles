@@ -1,0 +1,20 @@
+# Synthetic compatibility cases for the string-keyed APM document boundary.
+name: fixture
+version: '1.0.0'
+defaults: &defaults
+  command: fixture
+  args: ['--flag', 'false', '0755']
+dependencies:
+  apm: [example/fixture]
+  mcp:
+    - name: fixture-server
+      <<: *defaults
+      env:
+        LITERAL: '${KEEP_THIS_LITERAL}'
+        NUMBER: '001'
+        DATE: '2026-01-01'
+notes: |
+  first line
+  second line
+numeric_identifier: 0755
+underscored_identifier: 1_000

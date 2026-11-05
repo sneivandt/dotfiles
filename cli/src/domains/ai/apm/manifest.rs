@@ -1,8 +1,8 @@
 //! Generated-manifest persistence and dependency descriptions.
 
+use crate::infra::yaml::Value;
 use anyhow::{Context as _, Result};
 use serde::Deserialize;
-use serde_yaml_ng::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::ErrorKind;
 use std::path::Path;
@@ -154,7 +154,7 @@ fn parse_locked_dependencies(
     bytes: Option<&[u8]>,
 ) -> Option<BTreeMap<String, Vec<LockedDependency>>> {
     let lock = match bytes {
-        Some(bytes) => serde_yaml_ng::from_slice::<ApmLock>(bytes).ok()?,
+        Some(bytes) => crate::infra::yaml::from_slice::<ApmLock>(bytes).ok()?,
         None => ApmLock {
             dependencies: Vec::new(),
         },

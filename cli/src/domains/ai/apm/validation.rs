@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use serde_yaml_ng::Value as YamlValue;
+use crate::infra::yaml::Value as YamlValue;
 
 use super::fragments::discover_yaml_files;
 use crate::infra::config::Diagnostic;
@@ -65,7 +65,7 @@ fn validate_fragment(validator: &mut Validator, root: &Path, fragment: &Path) {
             return;
         }
     };
-    let Ok(value) = serde_yaml_ng::from_str::<YamlValue>(&content) else {
+    let Ok(value) = crate::infra::yaml::from_str::<YamlValue>(&content) else {
         return;
     };
 
@@ -73,7 +73,7 @@ fn validate_fragment(validator: &mut Validator, root: &Path, fragment: &Path) {
         let Some(apm_deps) = value
             .get(section)
             .and_then(|dependencies| dependencies.get("apm"))
-            .and_then(YamlValue::as_sequence)
+            .and_then(YamlValue::as_array)
         else {
             continue;
         };

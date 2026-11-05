@@ -8,9 +8,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use crate::infra::yaml::Value;
 use anyhow::{Context as _, Result};
 use serde::{Deserialize, Serialize};
-use serde_yaml_ng::Value;
 
 use super::targets::copilot_cowork_skills_path;
 use crate::engine::Context;
@@ -600,7 +600,7 @@ pub(super) fn remove_legacy_cowork_lock_deployments(ctx: &Context) -> Result<boo
     if !text.contains(COWORK_URI_PREFIX) && !text.contains(COWORK_TARGET) {
         return Ok(false);
     }
-    let mut lock: Value = serde_yaml_ng::from_str(&text)
+    let mut lock: Value = crate::infra::yaml::from_str(&text)
         .with_context(|| format!("parsing APM lockfile {}", lock_path.display()))?;
     let fingerprints = legacy_entry_point_fingerprints(&lock);
     let mut legacy_skills = BTreeSet::new();
@@ -641,7 +641,7 @@ pub(super) fn remove_legacy_cowork_lock_deployments(ctx: &Context) -> Result<boo
             write_owned_skills(&target, &owned)?;
         }
     }
-    let serialized = serde_yaml_ng::to_string(&lock)
+    let serialized = crate::infra::yaml::to_string(&lock)
         .with_context(|| format!("serializing APM lockfile {}", lock_path.display()))?;
     write_atomic(&lock_path, serialized)
         .with_context(|| format!("updating APM lockfile {}", lock_path.display()))?;
@@ -654,20 +654,19 @@ fn legacy_entry_point_fingerprints(lock: &Value) -> BTreeMap<String, Option<Owne
     let mut fingerprints = BTreeMap::new();
     for dependency in lock
         .get("dependencies")
-        .and_then(Value::as_sequence)
+        .and_then(Value::as_array)
         .into_iter()
         .flatten()
     {
         let Some(hashes) = dependency
             .get("deployed_file_hashes")
-            .and_then(Value::as_mapping)
+            .and_then(Value::as_object)
         else {
             continue;
         };
         for (uri, hash) in hashes {
             let Some(name) = uri
-                .as_str()
-                .and_then(|uri| uri.strip_prefix("cowork://skills/"))
+                .strip_prefix("cowork://skills/")
                 .and_then(|path| path.strip_suffix("/SKILL.md"))
                 .filter(|name| valid_skill_name(name))
             else {
@@ -706,61 +705,83 @@ fn decode_sha256_hex(hash: &str) -> Option<[u8; 32]> {
 }
 
 fn strip_legacy_cowork_deployments(lock: &mut Value, names: &mut BTreeSet<String>) -> bool {
-    let Some(root) = lock.as_mapping_mut() else {
+    let Some(root) = lock.as_object_mut() else {
         return false;
     };
     let mut changed = false;
 
-    if let Some(dependencies) = root
-        .get_mut(Value::String("dependencies".to_owned()))
-        .and_then(Value::as_sequence_mut)
-    {
+    if let Some(dependencies) = root.get_mut("dependencies").and_then(Value::as_array_mut) {
         for dependency in dependencies {
-            let Some(dependency) = dependency.as_mapping_mut() else {
+            let Some(dependency) = dependency.as_object_mut() else {
                 continue;
             };
             if let Some(files) = dependency
-                .get_mut(Value::String("deployed_files".to_owned()))
-                .and_then(Value::as_sequence_mut)
+                .get_mut("deployed_files")
+                .and_then(Value::as_array_mut)
             {
                 let before = files.len();
                 files.retain(|file| !record_legacy_cowork_uri(file, names));
                 changed |= files.len() != before;
             }
             if let Some(hashes) = dependency
-                .get_mut(Value::String("deployed_file_hashes".to_owned()))
-                .and_then(Value::as_mapping_mut)
+                .get_mut("deployed_file_hashes")
+                .and_then(Value::as_object_mut)
             {
                 let before = hashes.len();
-                hashes.retain(|key, _| !record_legacy_cowork_uri(key, names));
+                hashes
+                    .retain(|key, _| !record_legacy_cowork_uri(&Value::String(key.clone()), names));
                 changed |= hashes.len() != before;
             }
         }
     }
 
-    if let Some(deployments) = root.get_mut(Value::String("deployments".to_owned())) {
+    if let Some(deployments) = root.get_mut("deployments") {
         match deployments {
-            Value::Sequence(records) => {
+            Value::Array(records) => {
                 let before = records.len();
                 records.retain(|record| !record_legacy_cowork_deployment(record, names));
                 changed |= records.len() != before;
             }
-            Value::Mapping(by_owner) => {
-                for records in by_owner.values_mut().filter_map(Value::as_sequence_mut) {
+            Value::Object(by_owner) => {
+                for records in by_owner.values_mut().filter_map(Value::as_array_mut) {
                     let before = records.len();
                     records.retain(|record| !record_legacy_cowork_deployment(record, names));
                     changed |= records.len() != before;
                 }
             }
-            Value::Null
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_)
-            | Value::Tagged(_) => {}
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
         }
     }
 
     changed
+}
+
+#[cfg(test)]
+#[test]
+fn apm_033_lock_adapter_preserves_unknown_metadata_and_workflow_ownership() {
+    let text = include_str!("../../../../tests/fixtures/apm-0.33.0-lock.yaml");
+    let mut lock: Value = crate::infra::yaml::from_str(text).unwrap();
+    let before = lock.clone();
+    let mut names = BTreeSet::new();
+    assert!(strip_legacy_cowork_deployments(&mut lock, &mut names));
+    assert_eq!(names, BTreeSet::from(["example".to_string()]));
+    assert_eq!(
+        lock["dependencies"][0]["future_metadata"],
+        before["dependencies"][0]["future_metadata"]
+    );
+    let serialized = crate::infra::yaml::to_string(&lock).unwrap();
+    assert_eq!(
+        lock["dependencies"][0]["deployed_files"],
+        serde_json::json!([
+            "copilot-app-db://workflows/apm--example--fixture--review",
+            ".agents/skills/example/SKILL.md"
+        ])
+    );
+    assert!(!strip_legacy_cowork_deployments(&mut lock, &mut names));
+    assert_eq!(
+        crate::infra::yaml::from_str::<Value>(&serialized).unwrap(),
+        lock
+    );
 }
 
 fn record_legacy_cowork_deployment(value: &Value, names: &mut BTreeSet<String>) -> bool {
@@ -828,7 +849,7 @@ fn desired_cowork_skill_names(home: &Path) -> Result<BTreeSet<String>> {
     let lock_path = home.join(".apm").join("apm.lock.yaml");
     let lock = std::fs::read_to_string(&lock_path)
         .with_context(|| format!("reading APM lockfile {}", lock_path.display()))?;
-    let lock: ApmLock = serde_yaml_ng::from_str(&lock)
+    let lock: ApmLock = crate::infra::yaml::from_str(&lock)
         .with_context(|| format!("parsing APM lockfile {}", lock_path.display()))?;
     let mut names = BTreeSet::new();
     for dependency in lock.dependencies {
@@ -1235,7 +1256,7 @@ mod tests {
         assert_eq!(desired_cowork_skill_names(dir.path()).unwrap(), expected);
 
         let mut lock: Value =
-            serde_yaml_ng::from_str(&content.replace(".agents/skills/", "cowork://skills/"))
+            crate::infra::yaml::from_str(&content.replace(".agents/skills/", "cowork://skills/"))
                 .unwrap();
         let mut legacy = BTreeSet::new();
         assert!(strip_legacy_cowork_deployments(&mut lock, &mut legacy));
@@ -1498,12 +1519,12 @@ mod tests {
             "deployments:\n- target: copilot-cowork\n  value: cowork://skills/example/SKILL.md\n",
             "deployments:\n  owner:\n  - target: copilot-cowork\n    value: cowork://skills/example/SKILL.md\n",
         ] {
-            let mut lock: Value = serde_yaml_ng::from_str(record).unwrap();
+            let mut lock: Value = crate::infra::yaml::from_str(record).unwrap();
             let mut names = BTreeSet::new();
             assert!(strip_legacy_cowork_deployments(&mut lock, &mut names));
             assert_eq!(names, BTreeSet::from(["example".to_string()]));
         }
-        let mut lock: Value = serde_yaml_ng::from_str(
+        let mut lock: Value = crate::infra::yaml::from_str(
             "dependencies:\n- deployed_files: [.agents/skills/personal/SKILL.md]\n\
              deployments:\n- value: cowork://skills/../SKILL.md\n",
         )
@@ -1519,7 +1540,7 @@ mod tests {
             .agents/skills/personal/SKILL.md: shared\n    \
             42: [unrelated, values]\n    \
             copilot-app-db://workflows/example: workflow\n";
-        let mut lock: Value = serde_yaml_ng::from_str(&format!(
+        let mut lock: Value = crate::infra::yaml::from_str(&format!(
             "{retained}    cowork://skills/example/SKILL.md: old\n    \
              cowork://skills/../SKILL.md: unsafe\n    \
              cowork://other/record: legacy\n"
@@ -1528,7 +1549,10 @@ mod tests {
         let mut names = BTreeSet::new();
 
         assert!(strip_legacy_cowork_deployments(&mut lock, &mut names));
-        assert_eq!(lock, serde_yaml_ng::from_str::<Value>(retained).unwrap());
+        assert_eq!(
+            lock,
+            crate::infra::yaml::from_str::<Value>(retained).unwrap()
+        );
         assert_eq!(names, BTreeSet::from(["example".to_string()]));
         assert!(!strip_legacy_cowork_deployments(&mut lock, &mut names));
     }
@@ -1544,7 +1568,7 @@ mod tests {
             ("value: .agents/skills/example/SKILL.md", false),
             ("{}", false),
         ] {
-            let value = serde_yaml_ng::from_str::<Value>(record).unwrap();
+            let value = crate::infra::yaml::from_str::<Value>(record).unwrap();
             let mut names = BTreeSet::new();
             assert_eq!(
                 record_legacy_cowork_deployment(&value, &mut names),
@@ -1627,7 +1651,7 @@ mod tests {
             ("ab", false),
             (signed.as_str(), false),
         ] {
-            let lock: Value = serde_yaml_ng::from_str(&format!(
+            let lock: Value = crate::infra::yaml::from_str(&format!(
                 "dependencies:\n- deployed_file_hashes:\n    cowork://skills/example/SKILL.md: sha256:{first}\n- deployed_file_hashes:\n    cowork://skills/example/SKILL.md: sha256:{second}\n"
             )).unwrap();
             let fingerprints = legacy_entry_point_fingerprints(&lock);

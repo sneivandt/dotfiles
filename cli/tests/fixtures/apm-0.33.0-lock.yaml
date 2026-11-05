@@ -1,0 +1,21 @@
+# Synthetic values, schema derived from microsoft/apm v0.33.0 deps/lockfile.py.
+lockfile_version: '2'
+apm_version: '0.33.0'
+generated_at: '2026-01-01T00:00:00+00:00'
+dependencies:
+  - repo_url: https://github.com/example/fixture
+    name: fixture
+    resolved_commit: 'fixture-commit'
+    version: '001'
+    deployed_files:
+      - cowork://skills/example/SKILL.md
+      - copilot-app-db://workflows/apm--example--fixture--review
+      - .agents/skills/example/SKILL.md
+    deployed_file_hashes:
+      cowork://skills/example/SKILL.md: sha256:fixture-digest
+    target_subset: [copilot, copilot-cowork]
+    future_metadata:
+      quoted_boolean: 'false'
+      quoted_number: '0755'
+      nested: [null, true, 42, '2026-01-01']
+deployments: []

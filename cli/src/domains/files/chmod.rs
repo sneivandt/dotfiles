@@ -25,11 +25,15 @@ impl Task for ApplyFilePermissions {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let roots: Vec<_> = std::iter::once(ctx.root())
+            .chain(ctx.overlay())
+            .map(|root| root.join("symlinks"))
+            .collect();
         let resources: Vec<_> = self
             .config
             .get()
             .iter()
-            .map(|entry| ChmodResource::from_entry(entry, ctx.home()))
+            .map(|entry| ChmodResource::from_entry(entry, ctx.home()).with_source_roots(&roots))
             .collect();
         let targets: Vec<_> = resources
             .iter()

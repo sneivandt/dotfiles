@@ -433,6 +433,16 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn registry_path_encoding_is_utf16_little_endian_with_one_terminator() {
+        assert_eq!(encode_reg_string(""), [0, 0]);
+        assert_eq!(
+            encode_reg_string("Aé🦀"),
+            [65, 0, 233, 0, 62, 216, 128, 221, 0, 0]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn registry_path_decoding_preserves_supported_string_values() {
         use winreg::enums::{REG_EXPAND_SZ, REG_SZ};
 

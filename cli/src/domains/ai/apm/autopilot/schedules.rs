@@ -4,9 +4,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
+use crate::infra::yaml::Value;
 use anyhow::{Context as _, Result};
 use serde::Deserialize;
-use serde_yaml_ng::Value;
 
 use super::lockfile::COPILOT_APP_WORKFLOW_URI_PREFIX;
 
@@ -41,7 +41,7 @@ pub(super) fn read_source_cron_schedules(
         }
     };
     let lock: WorkflowLock =
-        serde_yaml_ng::from_str(&content).context("reading APM workflow sources")?;
+        crate::infra::yaml::from_str(&content).context("reading APM workflow sources")?;
     let mut schedules = BTreeMap::new();
     for dependency in lock.dependencies {
         let managed: BTreeSet<&str> = dependency
@@ -161,10 +161,10 @@ fn read_prompt_cron(path: &Path) -> Result<Option<String>> {
         frontmatter.push('\n');
     }
     anyhow::ensure!(closed, "unclosed frontmatter in {}", path.display());
-    let metadata: Value = serde_yaml_ng::from_str(&frontmatter)
+    let metadata: Value = crate::infra::yaml::from_str(&frontmatter)
         .with_context(|| format!("reading workflow frontmatter {}", path.display()))?;
     anyhow::ensure!(
-        metadata.is_mapping(),
+        metadata.is_object(),
         "workflow frontmatter must be a mapping in {}",
         path.display()
     );

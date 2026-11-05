@@ -245,6 +245,9 @@ settings = [
 Both fields are strings, including booleans written as `"true"` or `"false"`.
 These settings affect **global** Git configuration. Avoid contradicting the
 shared files under [symlinks/config/git/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git).
+Included files remain unchanged. Managed values are written to the global file
+after its includes so scalar settings take precedence. This does not remove
+inherited entries for multivalue settings such as `credential.helper`.
 
 On Windows, the task also removes global `core.autocrlf` when no active
 declaration manages it, even if `settings` is empty. Declare that key explicitly
@@ -310,6 +313,10 @@ cleared. Give executable files their own entries. Explicit descendant entries
 override recursive ancestors regardless of ordering or parallel execution.
 
 Permission changes through managed links can affect the source checkout.
+Other destinations outside home and the public or overlay `symlinks/` trees
+are blocked. Set `allow_external_target = true` on a permission entry only
+when you intend to change that external file or directory tree. Previews show
+the resolved destination.
 
 ## Registry
 

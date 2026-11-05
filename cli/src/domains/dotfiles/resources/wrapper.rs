@@ -109,6 +109,48 @@ impl WrapperResource {
     fn target_metadata(&self) -> Result<Option<std::fs::Metadata>> {
         crate::infra::fs::symlink_metadata_optional(&self.target, "stat wrapper")
     }
+
+    fn ownership_path(&self) -> PathBuf {
+        let mut name = self.target.as_os_str().to_os_string();
+        name.push(".dotfiles-owned");
+        name.into()
+    }
+
+    fn target_contents(&self) -> Result<Option<Vec<u8>>> {
+        let Some(metadata) = self.target_metadata()? else {
+            return Ok(None);
+        };
+        anyhow::ensure!(
+            metadata.is_file() && !metadata.is_symlink(),
+            "preserving foreign launcher {}; move it aside before installing",
+            self.target.display()
+        );
+        Ok(Some(crate::infra::fs::read_bytes(&self.target)?))
+    }
+
+    fn owned(&self, contents: &[u8]) -> Result<bool> {
+        // Adopt an exact copy installed before ownership records existed.
+        if contents == self.content.as_bytes() {
+            return Ok(true);
+        }
+        let recorded = match std::fs::read_to_string(self.ownership_path()) {
+            Ok(recorded) => recorded,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(error.into()),
+        };
+        Ok(recorded
+            .lines()
+            .any(|line| line == crate::infra::fs::content_hash(contents)))
+    }
+
+    fn verify_baseline(&self, before: Option<&[u8]>) -> Result<()> {
+        anyhow::ensure!(
+            self.target_contents()?.as_deref() == before,
+            "launcher {} changed during installation; retry",
+            self.target.display()
+        );
+        Ok(())
+    }
 }
 
 fn sh_single_quote(value: &str) -> String {
@@ -125,42 +167,76 @@ impl Resource for WrapperResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        // A symlink at the target is replaced by the atomic rename below; a
-        // real directory is user state this resource must not remove.
-        if let Some(metadata) = self.target_metadata()?
-            && metadata.is_dir()
+        let before = self.target_contents()?;
+        if let Some(contents) = &before
+            && !self.owned(contents)?
         {
-            return Err(crate::engine::resource::ResourceError::conflicting_state(
-                self.description(),
-                "wrapper file",
-                "directory",
-            ));
+            return Err(anyhow::anyhow!(
+                "preserving foreign or modified launcher {}; move it aside before installing",
+                self.target.display()
+            )
+            .into());
         }
-
-        crate::infra::fs::write_atomic(&self.target, &self.content)?;
-
+        crate::infra::fs::ensure_parent_dir(&self.target)?;
+        let parent = self
+            .target
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("launcher has no parent"))?;
+        let (mut staged, file) =
+            crate::infra::fs::TempGuard::create_unique_file(parent, ".dotfiles-launcher", "tmp")?;
+        drop(file);
+        std::fs::write(staged.path(), &self.content)?;
         #[cfg(unix)]
-        crate::infra::fs::set_executable(&self.target)?;
-
+        crate::infra::fs::set_executable(staged.path())?;
+        self.verify_baseline(before.as_deref())?;
+        // Retain both outcomes if publication or the final ledger write is interrupted.
+        let hash = crate::infra::fs::content_hash(&self.content);
+        let mut ownership = format!("{hash}\n");
+        if let Some(contents) = &before {
+            ownership.push_str(&crate::infra::fs::content_hash(contents));
+            ownership.push('\n');
+        }
+        crate::infra::fs::write_atomic(&self.ownership_path(), ownership)?;
+        self.verify_baseline(before.as_deref())?;
+        if before.is_none() {
+            std::fs::hard_link(staged.path(), &self.target)?;
+        } else {
+            crate::infra::fs::rename_into_place(staged.path(), &self.target)?;
+            staged.persist();
+        }
+        crate::infra::fs::write_atomic(&self.ownership_path(), format!("{hash}\n"))?;
         Ok(ResourceChange::Applied)
     }
 }
 
 impl RemovableResource for WrapperResource {
-    fn remove(&self) -> ResourceResult<ResourceChange> {
-        match self.target_metadata()? {
-            Some(metadata) if metadata.is_dir() => {
-                Err(crate::engine::resource::ResourceError::conflicting_state(
-                    self.description(),
-                    "wrapper target to be absent",
-                    "directory",
-                ))
+    fn removal_state(&self) -> ResourceResult<ResourceState> {
+        let Some(contents) = self.target_contents()? else {
+            return Ok(ResourceState::Missing);
+        };
+        Ok(if self.owned(&contents)? {
+            ResourceState::Correct
+        } else {
+            ResourceState::Incorrect {
+                current: "foreign or modified launcher".into(),
             }
-            Some(_) => {
+        })
+    }
+
+    fn remove(&self) -> ResourceResult<ResourceChange> {
+        match self.removal_state()? {
+            ResourceState::Correct => {
                 crate::infra::fs::remove_file(&self.target)?;
+                crate::infra::fs::remove_file_if_present(
+                    &self.ownership_path(),
+                    "stat launcher ownership",
+                )?;
                 Ok(ResourceChange::Applied)
             }
-            None => Ok(ResourceChange::AlreadyCorrect),
+            ResourceState::Missing
+            | ResourceState::Incorrect { .. }
+            | ResourceState::Invalid { .. }
+            | ResourceState::Unknown { .. } => Ok(ResourceChange::AlreadyCorrect),
         }
     }
 }
@@ -172,21 +248,21 @@ impl IntrinsicState for WrapperResource {
         };
 
         if metadata.file_type().is_symlink() {
-            let current = match std::fs::metadata(&self.target) {
-                Ok(_) => "symlink",
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => "broken symlink",
-                Err(error) => {
-                    return Err(anyhow::Error::new(error)
-                        .context(format!("stat wrapper target {}", self.target.display()))
-                        .into());
-                }
-            };
-            return Ok(ResourceState::Incorrect {
-                current: current.to_string(),
+            return Ok(ResourceState::Invalid {
+                reason: "foreign launcher symlink; move it aside before installing".into(),
             });
         }
-
+        if !metadata.is_file() {
+            return Ok(ResourceState::Invalid {
+                reason: "launcher target is not a regular file".into(),
+            });
+        }
         let current = crate::infra::fs::read_string(&self.target)?;
+        if !self.owned(current.as_bytes())? {
+            return Ok(ResourceState::Invalid {
+                reason: "foreign or modified launcher; move it aside before installing".into(),
+            });
+        }
 
         #[cfg(unix)]
         let permissions_correct = {
@@ -199,7 +275,9 @@ impl IntrinsicState for WrapperResource {
         if current == self.content && permissions_correct {
             Ok(ResourceState::Correct)
         } else {
-            Ok(ResourceState::Incorrect { current })
+            Ok(ResourceState::Incorrect {
+                current: "managed launcher needs updating".into(),
+            })
         }
     }
 }
@@ -358,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn state_incorrect_when_content_differs() {
+    fn state_invalid_when_content_is_foreign() {
         let tmp = TempDir::new().unwrap();
         let home = tmp.path();
         let r = make_sh_resource(Path::new("/repo"), home);
@@ -367,12 +445,12 @@ mod tests {
         std::fs::write(&r.target, "old content").unwrap();
 
         let state = r.current_state().unwrap();
-        assert!(matches!(state, ResourceState::Incorrect { .. }));
+        assert!(matches!(state, ResourceState::Invalid { .. }));
     }
 
     #[cfg(unix)]
     #[test]
-    fn state_broken_symlink_is_incorrect_not_missing() {
+    fn state_broken_symlink_is_invalid_not_missing() {
         let tmp = TempDir::new().unwrap();
         let home = tmp.path();
         let r = make_sh_resource(Path::new("/repo"), home);
@@ -381,10 +459,7 @@ mod tests {
         std::os::unix::fs::symlink("/nonexistent/dotfiles-wrapper", &r.target).unwrap();
 
         let state = r.current_state().unwrap();
-        assert!(matches!(
-            state,
-            ResourceState::Incorrect { ref current } if current == "broken symlink"
-        ));
+        assert!(matches!(state, ResourceState::Invalid { .. }));
     }
 
     // ── Apply ────────────────────────────────────────────────────────
@@ -418,40 +493,81 @@ mod tests {
     }
 
     #[test]
-    fn apply_overwrites_existing_file() {
-        let tmp = TempDir::new().unwrap();
-        let home = tmp.path();
-        let r = make_sh_resource(Path::new("/repo"), home);
-
-        std::fs::create_dir_all(r.target.parent().unwrap()).unwrap();
-        std::fs::write(&r.target, "old content").unwrap();
-
-        r.apply().unwrap();
-        let actual = std::fs::read_to_string(&r.target).unwrap();
-        assert_eq!(actual, r.content);
+    fn foreign_and_modified_launchers_are_preserved() {
+        for wrapper_type in [WrapperType::Sh, WrapperType::Pwsh] {
+            for installed in [false, true] {
+                let home = TempDir::new().unwrap();
+                let r = WrapperResource::new(wrapper_type, Path::new("/repo"), home.path());
+                if installed {
+                    r.apply().unwrap();
+                }
+                std::fs::create_dir_all(r.target.parent().unwrap()).unwrap();
+                std::fs::write(&r.target, "user-owned content").unwrap();
+                assert!(matches!(
+                    r.current_state().unwrap(),
+                    ResourceState::Invalid { .. }
+                ));
+                assert!(r.apply().is_err());
+                assert_eq!(r.remove().unwrap(), ResourceChange::AlreadyCorrect);
+                assert_eq!(
+                    std::fs::read_to_string(&r.target).unwrap(),
+                    "user-owned content"
+                );
+            }
+        }
     }
 
-    #[cfg(unix)]
     #[test]
-    fn apply_replaces_broken_symlink_with_wrapper_file() {
-        let tmp = TempDir::new().unwrap();
-        let home = tmp.path();
-        let r = make_sh_resource(Path::new("/repo"), home);
+    fn owned_launchers_upgrade_and_legacy_exact_copies_are_adopted() {
+        for wrapper_type in [WrapperType::Sh, WrapperType::Pwsh] {
+            let home = TempDir::new().unwrap();
+            let old = WrapperResource::new(wrapper_type, Path::new("/old"), home.path());
+            old.apply().unwrap();
+            let new = WrapperResource::new(wrapper_type, Path::new("/new"), home.path());
+            assert!(matches!(
+                new.current_state().unwrap(),
+                ResourceState::Incorrect { .. }
+            ));
+            new.apply().unwrap();
+            assert_eq!(new.current_state().unwrap(), ResourceState::Correct);
+            assert_eq!(std::fs::read_to_string(&new.target).unwrap(), new.content);
+            // Both entries are valid recovery outcomes until publication is finalized.
+            std::fs::write(
+                new.ownership_path(),
+                format!(
+                    "{}\n{}\n",
+                    crate::infra::fs::content_hash(&old.content),
+                    crate::infra::fs::content_hash(&new.content)
+                ),
+            )
+            .unwrap();
+            assert!(new.owned(old.content.as_bytes()).unwrap());
+            assert!(new.owned(new.content.as_bytes()).unwrap());
+            assert_eq!(new.remove().unwrap(), ResourceChange::Applied);
+            assert!(!new.ownership_path().exists());
+            std::fs::write(&new.target, &new.content).unwrap();
+            #[cfg(unix)]
+            crate::infra::fs::set_executable(&new.target).unwrap();
+            assert_eq!(new.current_state().unwrap(), ResourceState::Correct);
+            new.apply().unwrap();
+            assert!(new.ownership_path().exists());
+        }
+    }
 
-        std::fs::create_dir_all(r.target.parent().unwrap()).unwrap();
-        std::os::unix::fs::symlink("/nonexistent/dotfiles-wrapper", &r.target).unwrap();
-
-        let result = r.apply().unwrap();
-
-        assert_eq!(result, ResourceChange::Applied);
-        assert!(
-            !std::fs::symlink_metadata(&r.target)
-                .unwrap()
-                .file_type()
-                .is_symlink(),
-            "wrapper target must be a regular file after apply"
+    #[test]
+    fn baseline_recheck_preserves_intervening_changes() {
+        let home = TempDir::new().unwrap();
+        let r = make_sh_resource(Path::new("/repo"), home.path());
+        r.apply().unwrap();
+        let before = std::fs::read(&r.target).unwrap();
+        std::fs::write(&r.target, "concurrent user edit").unwrap();
+        assert!(r.verify_baseline(Some(&before)).is_err());
+        assert!(r.verify_baseline(None).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&r.target).unwrap(),
+            "concurrent user edit"
         );
-        assert_eq!(std::fs::read_to_string(&r.target).unwrap(), r.content);
+        assert!(r.verify_baseline(Some(b"concurrent user edit")).is_ok());
     }
 
     // ── Remove ───────────────────────────────────────────────────────
@@ -480,7 +596,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn remove_deletes_broken_symlink() {
+    fn foreign_symlinks_are_preserved_on_apply_and_remove() {
         let tmp = TempDir::new().unwrap();
         let home = tmp.path();
         let r = make_sh_resource(Path::new("/repo"), home);
@@ -488,10 +604,12 @@ mod tests {
         std::fs::create_dir_all(r.target.parent().unwrap()).unwrap();
         std::os::unix::fs::symlink("/nonexistent/dotfiles-wrapper", &r.target).unwrap();
 
-        let result = r.remove().unwrap();
-
-        assert_eq!(result, ResourceChange::Applied);
-        assert!(r.target.symlink_metadata().is_err());
+        assert!(r.apply().is_err());
+        assert!(r.remove().is_err());
+        assert_eq!(
+            std::fs::read_link(&r.target).unwrap(),
+            Path::new("/nonexistent/dotfiles-wrapper")
+        );
     }
 
     // ── Target paths ─────────────────────────────────────────────────

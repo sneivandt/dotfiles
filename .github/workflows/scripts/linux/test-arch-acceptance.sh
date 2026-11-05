@@ -51,3 +51,50 @@ grep -Fx 'managed = true' /etc/dotfiles-ci/config.toml
 state=$(stat -c '%i:%Y' /etc/dotfiles-ci/config.toml)
 run_update packages,system-files
 test "$state" = "$(stat -c '%i:%Y' /etc/dotfiles-ci/config.toml)"
+
+# A failed native package transaction must leave the existing system file intact
+# and converge after the package declaration is corrected.
+printf '[arch]\npackages = ["dotfiles-ci-package-that-does-not-exist"]\n' > "$fixture/conf/packages.toml"
+if run_update packages; then
+  echo "an unavailable package unexpectedly converged" >&2
+  exit 1
+fi
+test "$state" = "$(stat -c '%i:%Y' /etc/dotfiles-ci/config.toml)"
+printf '[arch]\npackages = ["tree"]\n' > "$fixture/conf/packages.toml"
+run_update packages,system-files
+
+# Fail privileged publication after discovery. Atomic installation must preserve
+# the administrator file, remove staging, and allow the same update to retry.
+cp /etc/dotfiles-ci/config.toml /tmp/config.converged
+printf 'managed = true\nretry = true\n' > "$fixture/system/fixture.toml"
+install -d -m 0755 /home/smoke/fixture-bin
+cat > /home/smoke/fixture-bin/sudo <<'SH'
+#!/bin/sh
+case "$*" in
+  *dotfiles-system-file*)
+    exec /usr/bin/sudo env PATH=/home/smoke/fixture-bin:/usr/bin "$@" ;;
+esac
+exec /usr/bin/sudo "$@"
+SH
+chmod 0755 /home/smoke/fixture-bin/sudo
+cat > /home/smoke/fixture-bin/mv <<'SH'
+#!/bin/sh
+echo "injected publication interruption" >&2
+exit 1
+SH
+chmod 0755 /home/smoke/fixture-bin/mv
+if runuser -u smoke -- env HOME=/home/smoke XDG_STATE_HOME=/home/smoke/state \
+  DOTFILES_LOG_DIR=/home/smoke/logs DOTFILES_SKIP_SELF_UPDATE=1 \
+  PATH=/home/smoke/fixture-bin:/usr/local/bin:/usr/bin \
+  dotfiles update --root "$fixture" --profile base --non-interactive \
+    --fail-on-skip --no-repo-update --only system-files; then
+  echo "injected publication failure unexpectedly succeeded" >&2
+  exit 1
+fi
+cmp /tmp/config.converged /etc/dotfiles-ci/config.toml
+test -z "$(find /etc/dotfiles-ci -maxdepth 1 -name '.dotfiles-system-file.*' -print)"
+run_update system-files
+grep -Fx 'retry = true' /etc/dotfiles-ci/config.toml
+state=$(stat -c '%i:%Y' /etc/dotfiles-ci/config.toml)
+run_update system-files
+test "$state" = "$(stat -c '%i:%Y' /etc/dotfiles-ci/config.toml)"

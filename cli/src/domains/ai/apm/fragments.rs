@@ -1,7 +1,7 @@
 //! Discovery, merging, and de-duplication of APM YAML config fragments.
 
+use crate::infra::yaml::{Mapping, Value};
 use anyhow::{Context as _, Result};
-use serde_yaml_ng::{Mapping, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
 use std::io::ErrorKind;
@@ -127,8 +127,8 @@ fn is_yaml_fragment(path: &Path) -> bool {
 /// dotfiles so the generated manifest identity is stable.
 pub(super) fn merge_fragments(fragments: &[PathBuf]) -> Result<String> {
     let mut root = Mapping::new();
-    root.insert(Value::from("name"), Value::from("dotfiles"));
-    root.insert(Value::from("version"), Value::from("1.0.0"));
+    root.insert("name".into(), Value::from("dotfiles"));
+    root.insert("version".into(), Value::from("1.0.0"));
 
     let mut seen_dependencies = HashMap::new();
 
@@ -138,17 +138,17 @@ pub(super) fn merge_fragments(fragments: &[PathBuf]) -> Result<String> {
         if content.trim().is_empty() {
             continue;
         }
-        let value: Value = serde_yaml_ng::from_str(&content)
+        let value: Value = crate::infra::yaml::from_str(&content)
             .with_context(|| format!("parsing manifest fragment {}", path.display()))?;
 
-        let mapping = value.as_mapping().with_context(|| {
+        let mapping = value.as_object().with_context(|| {
             format!("manifest fragment {} is not a YAML mapping", path.display())
         })?;
 
         for (key, fragment_value) in mapping {
             match key.as_str() {
-                Some("name" | "version") => {}
-                Some(section @ ("dependencies" | "devDependencies")) => merge_dependency_section(
+                "name" | "version" => {}
+                section @ ("dependencies" | "devDependencies") => merge_dependency_section(
                     &mut root,
                     section,
                     fragment_value,
@@ -160,17 +160,17 @@ pub(super) fn merge_fragments(fragments: &[PathBuf]) -> Result<String> {
         }
     }
 
-    let body = serde_yaml_ng::to_string(&Value::Mapping(root))
+    let body = crate::infra::yaml::to_string(&Value::Object(root))
         .context("serialising merged apm manifest")?;
     Ok(format!("{GENERATED_HEADER}{body}"))
 }
 
 /// Merge a top-level non-dependency manifest field into the generated root.
-fn merge_manifest_value(root: &mut Mapping, key: &Value, incoming: &Value) {
+fn merge_manifest_value(root: &mut Mapping, key: &str, incoming: &Value) {
     match root.get_mut(key) {
         Some(existing) => merge_layered_value(existing, incoming),
         None => {
-            root.insert(key.clone(), incoming.clone());
+            root.insert(key.to_string(), incoming.clone());
         }
     }
 }
@@ -178,12 +178,12 @@ fn merge_manifest_value(root: &mut Mapping, key: &Value, incoming: &Value) {
 /// Merge one layered YAML value into another.
 fn merge_layered_value(existing: &mut Value, incoming: &Value) {
     match (existing, incoming) {
-        (Value::Mapping(existing_map), Value::Mapping(incoming_map)) => {
+        (Value::Object(existing_map), Value::Object(incoming_map)) => {
             for (key, value) in incoming_map {
                 merge_manifest_value(existing_map, key, value);
             }
         }
-        (Value::Sequence(existing_items), Value::Sequence(incoming_items)) => {
+        (Value::Array(existing_items), Value::Array(incoming_items)) => {
             append_unique_values(existing_items, incoming_items);
         }
         (existing_value, incoming_value) if existing_value == incoming_value => {}
@@ -211,7 +211,7 @@ fn merge_dependency_section(
     seen: &mut HashMap<String, HashSet<String>>,
     fragment: &Path,
 ) -> Result<()> {
-    let groups = section.as_mapping().with_context(|| {
+    let groups = section.as_object().with_context(|| {
         format!(
             "{section_name} in manifest fragment {} must be a YAML mapping",
             fragment.display()
@@ -220,13 +220,8 @@ fn merge_dependency_section(
     let target_section = ensure_mapping_field(root, section_name)?;
 
     for (kind_value, entries_value) in groups {
-        let kind = kind_value.as_str().with_context(|| {
-            format!(
-                "{section_name} dependency kind in manifest fragment {} is not a string",
-                fragment.display()
-            )
-        })?;
-        let entries = entries_value.as_sequence().with_context(|| {
+        let kind = kind_value.as_str();
+        let entries = entries_value.as_array().with_context(|| {
             format!(
                 "{section_name}.{kind} in manifest fragment {} must be a YAML sequence",
                 fragment.display()
@@ -246,9 +241,9 @@ fn merge_dependency_section(
 
 /// Return a mapping field, creating it if needed.
 fn ensure_mapping_field<'a>(mapping: &'a mut Mapping, field: &str) -> Result<&'a mut Mapping> {
-    let Value::Mapping(value) = mapping
-        .entry(Value::from(field))
-        .or_insert_with(|| Value::Mapping(Mapping::new()))
+    let Value::Object(value) = mapping
+        .entry(field.to_string())
+        .or_insert_with(|| Value::Object(Mapping::new()))
     else {
         anyhow::bail!("generated APM manifest field {field} is not a mapping");
     };
@@ -257,9 +252,9 @@ fn ensure_mapping_field<'a>(mapping: &'a mut Mapping, field: &str) -> Result<&'a
 
 /// Return a sequence field, creating it if needed.
 fn ensure_sequence_field<'a>(mapping: &'a mut Mapping, field: &str) -> Result<&'a mut Vec<Value>> {
-    let Value::Sequence(value) = mapping
-        .entry(Value::from(field))
-        .or_insert_with(|| Value::Sequence(Vec::new()))
+    let Value::Array(value) = mapping
+        .entry(field.to_string())
+        .or_insert_with(|| Value::Array(Vec::new()))
     else {
         anyhow::bail!("generated APM manifest dependency group {field} is not a sequence");
     };
@@ -281,7 +276,7 @@ fn dependency_dedup_key(kind: &str, entry: &Value) -> String {
 
 /// Deduplication key for a generic YAML value: its serialized representation.
 fn value_dedup_key(entry: &Value) -> String {
-    serde_yaml_ng::to_string(entry).unwrap_or_else(|_| format!("{entry:?}"))
+    crate::infra::yaml::to_string(entry).unwrap_or_else(|_| format!("{entry:?}"))
 }
 
 #[cfg(test)]
@@ -411,11 +406,11 @@ devDependencies:
     - example/plugin
 ";
         let merged = merge_test_fragments(&[fragment, fragment]).expect("merge");
-        let document: Value = serde_yaml_ng::from_str(&merged).expect("parse merged manifest");
+        let document: Value = crate::infra::yaml::from_str(&merged).expect("parse merged manifest");
         for section in ["dependencies", "devDependencies"] {
             assert_eq!(
                 document[section]["apm"],
-                Value::Sequence(vec![Value::from("example/plugin")]),
+                Value::Array(vec![Value::from("example/plugin")]),
                 "{section} must retain its own deduplicated dependency"
             );
         }

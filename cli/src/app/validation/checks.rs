@@ -113,12 +113,52 @@ impl Task for ValidateSymlinkSources {
 
         let main_sources = repo_root.join("symlinks");
         let overlay_sources = config.overlay.as_ref().map(|root| root.join("symlinks"));
+        let expanded =
+            crate::domains::files::config::symlinks::expand_glob_patterns(symlinks, repo_root)?;
         for entry in chmod {
-            let main_source = main_sources.join(&entry.path);
+            let target = crate::domains::files::config::chmod::target_path(&entry.path);
+            let sources: Vec<_> = expanded
+                .iter()
+                .filter_map(|link| {
+                    let link_target = link.target.clone().unwrap_or_else(|| {
+                        crate::domains::files::config::symlinks::default_target(&link.source)
+                    });
+                    let suffix = target.strip_prefix(&link_target).ok()?;
+                    let root = crate::domains::files::config::symlinks::resolve_symlinks_dir(
+                        link, repo_root,
+                    );
+                    let source = root.join(&link.source);
+                    Some(if suffix.as_os_str().is_empty() {
+                        source
+                    } else {
+                        source.join(suffix)
+                    })
+                })
+                .collect();
+            if !sources.is_empty() {
+                for source in sources {
+                    if !source.try_exists()? {
+                        ctx.log().error(format!(
+                            "file-permission source missing: {}",
+                            source.display()
+                        ));
+                        missing = missing.saturating_add(1);
+                    }
+                }
+                continue;
+            }
+            let spelling = target.to_string_lossy();
+            let relative = spelling.strip_prefix('.').unwrap_or(&spelling);
+            let main_source = main_sources.join(relative);
             let overlay_source_exists = overlay_sources
                 .as_ref()
-                .is_some_and(|root| root.join(&entry.path).exists());
-            if !main_source.exists() && !overlay_source_exists {
+                .map(|root| root.join(relative).try_exists())
+                .transpose()?
+                .unwrap_or(false);
+            if !main_source.try_exists()?
+                && !overlay_source_exists
+                && !ctx.home().join(&target).try_exists()?
+            {
                 ctx.log().error(format!(
                     "file-permission source missing: {}",
                     main_source.display()

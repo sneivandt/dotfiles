@@ -23,6 +23,7 @@ JOB_CONDITIONS = {
     "msrv": "run_rust_checks",
     "coverage": "run_rust_checks",
     "mutation": "run_mutation",
+    "mutation-windows": "run_mutation",
     "build-windows": "run_build_windows",
     "integration-linux": "run_profile_linux",
     "integration-windows": "run_profile_windows",
@@ -148,6 +149,12 @@ def check(workflow: str) -> None:
         raise ValueError("mutation shard matrix must cover every shard exactly once")
     if "fail-fast: false" not in mutation or "--cargo-arg=--profile=ci" not in mutation:
         raise ValueError("mutation shards must all run using the ci Cargo profile")
+    native = jobs["mutation-windows"]
+    for required in ("runs-on: windows-latest", "decode_reg_string|encode_reg_string", "--cargo-arg=--profile=ci"):
+        if required not in native:
+            raise ValueError(f"native Windows mutation contract missing {required}")
+    if "continue-on-error:" in native:
+        raise ValueError("native Windows mutations must propagate failures")
 
 
 def check_release(workflow: str) -> None:

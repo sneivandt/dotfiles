@@ -101,7 +101,7 @@ Coverage below is conditional on the relevant job being selected.
 | Arch package and system-file acceptance | Disposable Arch container | No |
 | Full commit-hook suite | Yes | No |
 | Coverage reports | Yes | Yes |
-| Mutation testing | Changed code | No |
+| Mutation testing | Changed code | Focused native registry PATH encoding |
 
 These jobs do not cover every architecture, existing user configuration, or
 network/authentication setup. The Arch acceptance fixture covers package
@@ -120,7 +120,8 @@ Mutation jobs run when a pull request or push to main changes Rust source
 under `cli/src/`. The selected mutations are split across jobs. A push after
 failed or unfinished CI compares against a successful ancestor, so a test-only
 fix can still exercise pending source changes. Linux excludes
-native Windows code; exact filters live in the workflow. See the
+native Windows code; a separate native job checks registry PATH encoding and
+decoding. Exact filters live in the workflow. See the
 [mutation testing guide](testing.md#focused-mutation-testing).
 
 ## Scheduled dependency checks

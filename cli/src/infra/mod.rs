@@ -15,6 +15,7 @@ pub mod logging;
 pub mod platform;
 pub mod provisioning;
 pub(crate) mod run_lock;
+pub(crate) mod yaml;
 
 /// Shared one-shot boolean flag backing cross-thread signalling primitives.
 pub(crate) mod atomic_flag;

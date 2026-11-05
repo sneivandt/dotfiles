@@ -508,6 +508,42 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  mutation-windows:
+    name: "Rust: Native Windows mutation"
+    runs-on: windows-latest
+    timeout-minutes: 45
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_mutation == 'true'
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: "cli -> target"
+          cache-on-failure: true
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-mutants@27.1.0
+      - name: Check native registry PATH encoding
+        # These functions are compiled out of Linux. Exercise their full range
+        # even when this push changes only their consumers or tests.
+        run: >-
+          cargo mutants --in-place --no-shuffle
+          --file src/domains/dotfiles/resources/path_entry.rs
+          --re '(decode_reg_string|encode_reg_string)'
+          --cargo-arg=--profile=ci --cargo-arg=--locked
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: rust-mutation-results-windows
+          path: cli/mutants.out
+          if-no-files-found: error
+          retention-days: 7
+
   build-windows:
     name: "Build: Windows"
     runs-on: windows-latest
@@ -799,6 +835,7 @@ jobs:
       - build-linux
       - msrv
       - mutation
+      - mutation-windows
       - build-windows
       - integration-linux
       - integration-windows

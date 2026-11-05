@@ -26,7 +26,6 @@ are listed in [Task reference](task-reference.md).
 | `explain <path>` | Inspect the declaration and planned actions for a [managed home symlink](commands-and-usage.md#inspect-a-home-path) |
 | `log` | Read saved run logs |
 | `help [command]` | Show command-specific usage |
-| `completions <shell>` | Emit shell registration; hidden support command |
 
 ## Command options
 

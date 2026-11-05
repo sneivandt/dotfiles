@@ -122,6 +122,49 @@ fn read_file_inventory(target: &Path) -> Result<SkillInventory> {
     Ok(inventory)
 }
 
+// Inspect from the skill root down so even a linked grandparent is rejected
+// before we read or delete anything beneath it.
+fn checked_file_path(target: &Path, relative: &str) -> Result<PathBuf> {
+    let mut components = Path::new(relative).components();
+    let file = components.next_back().context("owned file has no name")?;
+    let mut path = target.to_path_buf();
+    reject_destination_link(&path)?;
+    for component in components {
+        path.push(component);
+        reject_destination_link(&path)?;
+    }
+    Ok(path.join(file))
+}
+
+fn check_active_files(
+    target: &Path,
+    previous: Option<&FileInventory>,
+    desired: &FileInventory,
+) -> Result<()> {
+    for (relative, fingerprint) in desired {
+        let path = checked_file_path(target, relative)?;
+        let Some(metadata) = symlink_metadata_optional(&path, "inspect Cowork destination")? else {
+            continue;
+        };
+        if !metadata.is_symlink() {
+            reject_destination_link(&path)?;
+            anyhow::ensure!(
+                metadata.is_file(),
+                "cannot replace Cowork-owned directory or special file {}",
+                path.display()
+            );
+        }
+        let current = file_fingerprint(&path)?.context("unsupported Cowork destination file")?;
+        anyhow::ensure!(
+            current == *fingerprint
+                || previous.and_then(|files| files.get(relative)) == Some(&current),
+            "preserving unowned or modified Cowork file {}; move it aside and retry",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
 fn prune_stale_files(
     target: &Path,
     previous: &FileInventory,
@@ -132,8 +175,7 @@ fn prune_stale_files(
         if desired.contains_key(relative) {
             continue;
         }
-        let path = target.join(relative);
-        reject_destination_link(path.parent().context("owned file has no parent")?)?;
+        let path = checked_file_path(target, relative)?;
         let Some(metadata) = symlink_metadata_optional(&path, "inspect stale Cowork file")? else {
             continue;
         };
@@ -179,7 +221,9 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
         );
         let mut files = FileInventory::new();
         inventory_files(&source_skill, &source_skill, &mut files)?;
-        if let Some(previous) = inventory.get(name) {
+        let previous = inventory.get(name);
+        check_active_files(&target_skill, previous, &files)?;
+        if let Some(previous) = previous {
             changed |= prune_stale_files(&target_skill, previous, &files)?;
         }
         if !skill_files_match(&source_skill, &target_skill)? {
@@ -464,6 +508,7 @@ pub(super) fn remove_legacy_cowork_lock_deployments(ctx: &Context) -> Result<boo
             .try_exists()
             .with_context(|| format!("checking {}", target.display()))?
     {
+        reject_destination_link(&target)?;
         let mut owned = read_owned_skills(&target)?;
         let before = owned.len();
         owned.extend(legacy_skills);
@@ -818,6 +863,62 @@ mod tests {
     }
 
     #[test]
+    fn differing_unowned_and_modified_active_files_are_preserved() {
+        let dir = tempfile::tempdir().unwrap();
+        let (source, target, ctx) = setup_skill(dir.path(), "[copilot-cowork]");
+        let skill = target.join("SKILL.md");
+        for owned in [false, true] {
+            if owned {
+                std::fs::remove_file(&skill).unwrap();
+                assert!(reconcile_cowork_skills(&ctx).unwrap());
+                std::fs::write(source.join("SKILL.md"), "new upstream content").unwrap();
+            }
+            std::fs::write(&skill, "local content").unwrap();
+            let error = reconcile_cowork_skills(&ctx).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("preserving unowned or modified Cowork file")
+            );
+            assert_eq!(std::fs::read_to_string(&skill).unwrap(), "local content");
+            assert_eq!(
+                target.parent().unwrap().join(FILE_OWNERSHIP_FILE).exists(),
+                owned
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(any(unix, windows))]
+    fn stale_cleanup_refuses_a_linked_grandparent() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let (source, target, ctx) = setup_skill(&root, "[copilot-cowork]");
+        let stale = source.join("nested/scripts/old.py");
+        std::fs::create_dir_all(stale.parent().unwrap()).unwrap();
+        std::fs::write(&stale, "managed").unwrap();
+        assert!(reconcile_cowork_skills(&ctx).unwrap());
+
+        let outside = root.join("outside");
+        let linked = target.join("nested");
+        std::fs::rename(&linked, &outside).unwrap();
+        create_directory_link(&outside, &linked);
+        std::fs::remove_file(stale).unwrap();
+
+        let error = reconcile_cowork_skills(&ctx).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("refusing to copy through destination link")
+        );
+        assert_eq!(
+            std::fs::read_to_string(outside.join("scripts/old.py")).unwrap(),
+            "managed"
+        );
+        remove_directory_link(&linked);
+    }
+
+    #[test]
     fn modified_stale_files_are_reported_and_retained_until_resolved() {
         for whole_skill in [false, true] {
             let dir = tempfile::tempdir().unwrap();
@@ -993,7 +1094,7 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn reconcile_retargets_links_and_replaces_destination_links_without_following_them() {
+    fn reconcile_retargets_owned_links_and_preserves_modified_destination_links() {
         let dir = tempfile::tempdir_in(".").expect("create fixture");
         let (source, target, ctx) = setup_skill(dir.path(), "[agent-skills, copilot-cowork]");
         std::os::unix::fs::symlink("SKILL.md", source.join("reference")).unwrap();
@@ -1008,7 +1109,16 @@ mod tests {
         std::os::unix::fs::symlink("new.md", source.join("reference")).unwrap();
         std::fs::write(source.join("new.md"), "new reference").unwrap();
 
-        assert!(reconcile_cowork_skills(&ctx).expect("repair links"));
+        let error = reconcile_cowork_skills(&ctx).expect_err("keep the modified link");
+        assert!(error.to_string().contains("modified Cowork file"));
+        assert_eq!(
+            std::fs::read_link(target.join("SKILL.md")).unwrap(),
+            external
+        );
+        std::fs::remove_file(target.join("SKILL.md")).unwrap();
+        assert!(
+            reconcile_cowork_skills(&ctx).expect("restore missing file and retarget owned link")
+        );
         assert_eq!(std::fs::read_to_string(&external).unwrap(), "unmanaged");
         assert!(
             !target

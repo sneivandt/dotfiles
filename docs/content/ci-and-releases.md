@@ -44,9 +44,11 @@ an earlier failure and verifies that every selected gating job succeeded and
 every unselected job was skipped. Missing outputs, cancellation, unexpected
 skips, and classification failure fail the gate.
 
-After a push, inspect the run for the **exact pushed SHA**, not simply the newest
-green run on the branch. Read coverage and mutation results separately: they
-are informational and excluded from the aggregate gate.
+After a push, inspect the run for the **exact pushed SHA**. Coverage and
+mutation results are informational and excluded from the aggregate gate. When
+mutation testing is selected, wait for all shards. Check that each ran the
+mutation step and inspect the artifacts for missed mutants, timeouts, and tool
+errors.
 
 ## Change-aware scheduling
 
@@ -96,15 +98,18 @@ Coverage below is conditional on the relevant job being selected.
 | Wrappers | POSIX | PowerShell |
 | Application integration | Git, Zsh, Vim, Neovim | Git |
 | Managed script fixtures | Yes | Yes |
-| Quickshell QML | Offscreen | No |
+| Quickshell | Offscreen QML tests and startup under headless Sway | No |
+| Arch package and system-file acceptance | Disposable Arch container | No |
 | Full commit-hook suite | Yes | No |
 | Coverage reports | Yes | Yes |
 | Mutation testing | Changed code | No |
 
 These jobs do not cover every architecture, existing user configuration, or
-network/authentication setup. Mocked script and QML tests do not prove live
-desktop rendering, focus, networking, or locking. There is no native
-Git-for-Windows full hook suite. Coverage reports are informational; a
+network/authentication setup. The Arch acceptance fixture covers package
+installation, a system-file merge, denied elevation, and repeat runs. The
+Quickshell startup check uses Sway. Hyprland session behavior, focus, networking,
+and locking need separate runtime checks. There is no native Git-for-Windows
+full hook suite. Coverage reports are informational; a
 coverage percentage does not establish correctness.
 
 Profile previews skip VS Code, and profile `check` runs omit external APM and

@@ -26,6 +26,42 @@ pub(crate) fn content_hash(bytes: impl AsRef<[u8]>) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(bytes.as_ref()))
 }
 
+/// Resolve the parents of a target while preserving its final entry.
+pub(crate) fn resolve_target_entry(path: &Path) -> Result<PathBuf> {
+    let parent = path.parent().context("target has no parent")?;
+    let name = path.file_name().context("target has no file name")?;
+    Ok(resolve_directory(parent)?.join(name))
+}
+
+// Resolve existing parents without following the final target entry. A dangling
+// parent link is an error rather than a missing directory we can create.
+pub(crate) fn resolve_directory(path: &Path) -> Result<PathBuf> {
+    resolve_directory_with(path, |ancestor| dunce::canonicalize(ancestor))
+}
+
+pub(crate) fn resolve_directory_with(
+    path: &Path,
+    canonicalize: impl Fn(&Path) -> std::io::Result<PathBuf>,
+) -> Result<PathBuf> {
+    let absolute = std::path::absolute(path)?;
+    for ancestor in absolute.ancestors() {
+        let resolved = match canonicalize(ancestor) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if symlink_metadata_optional(ancestor, "inspect target parent")?.is_none() {
+                    continue;
+                }
+                // A parallel resource may have just created this directory.
+                // A dangling link will still fail the second resolution.
+                canonicalize(ancestor)
+            }
+            result => result,
+        }
+        .with_context(|| format!("resolve target parent {}", ancestor.display()))?;
+        return Ok(resolved.join(absolute.strip_prefix(ancestor)?));
+    }
+    anyhow::bail!("cannot resolve target parent {}", path.display())
+}
+
 /// Ensure the parent directory of `path` exists, creating it (and any
 /// ancestors) if necessary.
 ///

@@ -12,6 +12,10 @@ mod materialize;
 mod platform;
 mod state;
 
+#[cfg(test)]
+use crate::infra::fs::resolve_directory_with;
+use crate::infra::fs::{resolve_directory, resolve_target_entry};
+
 use materialize::copy_into_place;
 use platform::{create_symlink, is_link_like};
 use state::current_state;
@@ -149,44 +153,6 @@ impl SymlinkResource {
     }
 }
 
-/// Resolve the parents of a target while preserving its final entry.
-pub(crate) fn resolve_target_entry(path: &Path) -> anyhow::Result<PathBuf> {
-    let parent = path.parent().context("target has no parent")?;
-    let name = path.file_name().context("target has no file name")?;
-    Ok(resolve_directory(parent)?.join(name))
-}
-
-// Resolve existing parents without following the final target entry. A dangling
-// parent link is an error rather than a missing directory we can create.
-fn resolve_directory(path: &Path) -> anyhow::Result<PathBuf> {
-    resolve_directory_with(path, |ancestor| dunce::canonicalize(ancestor))
-}
-
-fn resolve_directory_with(
-    path: &Path,
-    canonicalize: impl Fn(&Path) -> std::io::Result<PathBuf>,
-) -> anyhow::Result<PathBuf> {
-    let absolute = std::path::absolute(path)?;
-    for ancestor in absolute.ancestors() {
-        let resolved = match canonicalize(ancestor) {
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                if crate::infra::fs::symlink_metadata_optional(ancestor, "inspect target parent")?
-                    .is_none()
-                {
-                    continue;
-                }
-                // A parallel resource may have just created this directory.
-                // A dangling link will still fail the second resolution.
-                canonicalize(ancestor)
-            }
-            result => result,
-        }
-        .with_context(|| format!("resolve target parent {}", ancestor.display()))?;
-        return Ok(resolved.join(absolute.strip_prefix(ancestor)?));
-    }
-    anyhow::bail!("cannot resolve target parent {}", path.display())
-}
-
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -205,6 +171,7 @@ impl Resource for SymlinkResource {
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
         let target = self.checked_target()?;
+        materialize::check_recovery(&target)?;
         match current_state(self, &target)? {
             ResourceState::Correct => return Ok(ResourceChange::AlreadyCorrect),
             ResourceState::Missing => {}
@@ -308,7 +275,14 @@ impl RemovableResource for SymlinkResource {
 impl IntrinsicState for SymlinkResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
         match self.checked_target() {
-            Ok(target) => current_state(self, &target),
+            Ok(target) => {
+                if let Err(error) = materialize::check_recovery(&target) {
+                    return Ok(ResourceState::Invalid {
+                        reason: format!("{error:#}"),
+                    });
+                }
+                current_state(self, &target)
+            }
             Err(error) => Ok(ResourceState::Invalid {
                 reason: format!("{error:#}"),
             }),

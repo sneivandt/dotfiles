@@ -36,7 +36,7 @@ pub(super) fn check_recovery(target: &Path) -> Result<()> {
         .is_some()
     {
         anyhow::bail!(
-            "unfinished removal for {}. Check {}. If the target is missing and the directory contains original, move original back to the target. Remove the empty recovery directory before retrying",
+            "unfinished removal for {}. Check {}. If the target is missing and the directory contains original, move original back to the target. If both entries exist, inspect them and move original somewhere safe before retrying. Remove the empty recovery directory when finished",
             target.display(),
             recovery.display()
         );
@@ -343,6 +343,41 @@ mod tests {
         std::fs::remove_dir(backup).unwrap();
         publish(&source, &staged, &target, true, rename_noreplace).unwrap();
         assert_eq!(std::fs::read_to_string(target).unwrap(), "replacement");
+    }
+
+    #[test]
+    fn update_preserves_interrupted_removal_before_and_after_publication() {
+        use crate::engine::{IntrinsicState, Resource, ResourceState};
+        use crate::infra::exec::MockExecutor;
+        use std::sync::Arc;
+
+        for published in [false, true] {
+            let fixture = tempfile::tempdir().unwrap();
+            let source = fixture.path().join("source");
+            let target = fixture.path().join("target");
+            let recovery = recovery_directory(&target);
+            std::fs::write(&source, "source").unwrap();
+            std::fs::create_dir(&recovery).unwrap();
+            let original = recovery.join("original");
+            crate::infra::fs::create_native_symlink(&source, &original, false).unwrap();
+            if published {
+                std::fs::write(&target, "replacement").unwrap();
+            }
+
+            let resource =
+                super::super::SymlinkResource::new(&source, &target, Arc::new(MockExecutor::new()));
+            assert!(matches!(
+                resource.current_state().unwrap(),
+                ResourceState::Invalid { reason } if reason.contains("unfinished removal")
+            ));
+            assert!(resource.apply().is_err());
+            assert_eq!(std::fs::read_link(original).unwrap(), source);
+            if published {
+                assert_eq!(std::fs::read_to_string(target).unwrap(), "replacement");
+            } else {
+                assert!(target.symlink_metadata().is_err());
+            }
+        }
     }
 
     #[cfg(target_os = "linux")]

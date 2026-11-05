@@ -648,11 +648,20 @@ fn startup_failure_writes_finished_history_and_an_exact_diagnostic_hint() {
 }
 
 #[test]
+fn partial_repository_refresh_can_retry_with_fresh_configuration() {
+    check_partial_repository_refresh(false);
+}
+
+#[test]
+fn ignored_overlay_file_blocks_merge_and_survives_retry() {
+    check_partial_repository_refresh(true);
+}
+
 #[allow(
     clippy::too_many_lines,
-    reason = "self-contained real Git remotes and two command runs"
+    reason = "real Git remotes and update recovery"
 )]
-fn partial_repository_refresh_can_retry_with_fresh_configuration() {
+fn check_partial_repository_refresh(ignored: bool) {
     use std::path::Path;
     use std::process::Command;
 
@@ -698,6 +707,9 @@ fn partial_repository_refresh_can_retry_with_fresh_configuration() {
         );
         git(repo, &["init", "-b", "main"]);
         std::fs::write(repo.join("README"), "initial").unwrap();
+        if ignored && repo == &overlay {
+            std::fs::write(repo.join(".gitignore"), "collision\n").unwrap();
+        }
         git(repo, &["add", "."]);
         git(repo, &["commit", "-m", "initial"]);
         let remote = fixture.path().join(remote_name);
@@ -713,6 +725,7 @@ fn partial_repository_refresh_can_retry_with_fresh_configuration() {
     .unwrap();
     std::fs::write(root.join("symlinks/fresh"), "new configuration").unwrap();
     std::fs::write(overlay.join("collision"), "upstream").unwrap();
+    git(&overlay, &["add", "-f", "collision"]);
     std::fs::create_dir(overlay.join("conf")).unwrap();
     std::fs::create_dir(overlay.join("symlinks")).unwrap();
     std::fs::write(
@@ -751,24 +764,80 @@ fn partial_repository_refresh_can_retry_with_fresh_configuration() {
     let (status, text) = update();
     assert!(!status.success(), "{text}");
     assert!(text.contains("Already advanced repository"), "{text}");
-    assert_ne!(git(&root, &["rev-parse", "HEAD"]), initial_main);
-    assert_eq!(git(&overlay, &["rev-parse", "HEAD"]), initial_overlay);
+    assert_ne!(
+        git(&root, &["rev-parse", "HEAD"]),
+        initial_main,
+        "the main checkout should advance before the overlay blocks"
+    );
+    assert_eq!(
+        git(&overlay, &["rev-parse", "HEAD"]),
+        initial_overlay,
+        "the blocked overlay should keep its original HEAD"
+    );
     assert_eq!(
         std::fs::read_to_string(&obstruction).unwrap(),
-        "local untracked data"
+        "local untracked data",
+        "the overlay merge must preserve the local obstruction"
     );
-    assert!(!home.join(".fresh").exists());
+    assert!(
+        !home.join(".fresh").exists(),
+        "convergence must wait for repository sync"
+    );
 
     std::fs::remove_file(obstruction).unwrap();
     let (retry_status, retry_text) = update();
     assert!(retry_status.success(), "{retry_text}");
-    assert_ne!(git(&overlay, &["rev-parse", "HEAD"]), initial_overlay);
+    assert_ne!(
+        git(&overlay, &["rev-parse", "HEAD"]),
+        initial_overlay,
+        "the overlay should advance after the obstruction is removed"
+    );
     assert_eq!(
         std::fs::read_to_string(home.join(".second")).unwrap(),
-        "fresh overlay"
+        "fresh overlay",
+        "the retry must apply the refreshed overlay configuration"
     );
     assert_eq!(
         std::fs::read_to_string(home.join(".fresh")).unwrap(),
-        "new configuration"
+        "new configuration",
+        "the retry must apply the refreshed main configuration"
     );
+
+    git(&root, &["commit", "--allow-empty", "-m", "local only"]);
+    let check_preview = |expected: &str| {
+        let output = common::isolated_cli_command(&root, &home, None, "update", "repository", true)
+            .arg("--dry-run")
+            .output()
+            .unwrap();
+        let preview_text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.status.success(), "{preview_text}");
+        assert!(!preview_text.contains("would change"), "{preview_text}");
+        assert!(preview_text.contains(expected), "{preview_text}");
+    };
+    check_preview("local branch is ahead of upstream");
+
+    let publisher = fixture.path().join("publisher");
+    git(
+        fixture.path(),
+        &["clone", "--no-local", "main-upstream", "publisher"],
+    );
+    git(
+        &publisher,
+        &["commit", "--allow-empty", "-m", "upstream only"],
+    );
+    git(&publisher, &["push", "origin", "main"]);
+    let tracking_before = git(&root, &["rev-parse", "@{u}"]);
+    check_preview("cannot determine fast-forward eligibility");
+    assert_eq!(
+        git(&root, &["rev-parse", "@{u}"]),
+        tracking_before,
+        "preview must not update the local tracking ref"
+    );
+
+    git(&root, &["fetch", "origin"]);
+    check_preview("local branch diverged from upstream");
 }

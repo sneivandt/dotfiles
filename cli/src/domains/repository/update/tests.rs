@@ -162,7 +162,7 @@ fn run_with_git_output(outputs: &[&str]) -> (TaskResult, bool) {
         &["rev-parse", "HEAD"],
         &["rev-parse", "@{u}"],
         &["rev-list", "--count", "@{u}..HEAD"],
-        &["merge", "--ff-only", "@{u}"],
+        &["merge", "--ff-only", "--no-overwrite-ignore", "@{u}"],
     ];
     assert!(outputs.len() <= commands.len(), "too many scripted outputs");
     let exec = outputs
@@ -472,7 +472,7 @@ fn run_updates_overlay_repository_when_behind_upstream() {
         )
         .git(
             overlay_root,
-            &["merge", "--ff-only", "@{u}"],
+            &["merge", "--ff-only", "--no-overwrite-ignore", "@{u}"],
             "Updating def456..fed654\nFast-forward",
         );
 
@@ -640,10 +640,14 @@ fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_sign
             .git(&overlay_root, &["rev-parse", "HEAD"], "overlay-old")
             .git(&overlay_root, &["rev-parse", "@{u}"], "overlay-new")
             .git(&overlay_root, &["rev-list", "--count", "@{u}..HEAD"], "0")
-            .git(&main_root, &["merge", "--ff-only", "@{u}"], "updated")
+            .git(
+                &main_root,
+                &["merge", "--ff-only", "--no-overwrite-ignore", "@{u}"],
+                "updated",
+            )
             .command(
                 CommandSpec::new("git")
-                    .args(&["merge", "--ff-only", "@{u}"])
+                    .args(&["merge", "--ff-only", "--no-overwrite-ignore", "@{u}"])
                     .current_dir(&overlay_root),
                 Err(error),
             );
@@ -755,7 +759,11 @@ fn repeat_update_after_fast_forward_does_not_merge_or_request_another_restart() 
         if head == "old" {
             executor = executor
                 .git(root.path(), &["rev-list", "--count", "@{u}..HEAD"], "0")
-                .git(root.path(), &["merge", "--ff-only", "@{u}"], "updated");
+                .git(
+                    root.path(),
+                    &["merge", "--ff-only", "--no-overwrite-ignore", "@{u}"],
+                    "updated",
+                );
         }
     }
     let ctx = make_update_context(root.path().to_path_buf(), None, executor);
@@ -840,6 +848,20 @@ fn dry_run_queries_remote_without_fetch_merge_or_restart() {
                 ],
                 format!("{remote_sha}\trefs/heads/feature/test\n"),
             );
+        let exec = if changed {
+            exec.git(
+                root.path(),
+                &["rev-parse", "--verify", "--quiet", "def456^{commit}"],
+                "def456",
+            )
+            .git(
+                root.path(),
+                &["merge-base", "--is-ancestor", "abc123", "def456"],
+                "",
+            )
+        } else {
+            exec
+        };
         let ctx = make_update_context(root.path().to_path_buf(), None, exec).with_dry_run(true);
         let signal = UpdateSignal::new();
         let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
@@ -903,7 +925,9 @@ fn dry_run_only_treats_documented_probe_exits_as_absence() {
             let result = UpdateRepository::new(signal.clone()).run(&ctx);
             if code == Some(absent_code) {
                 let result = result.unwrap();
-                assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);
+                assert!(
+                    format!("{result:?}").contains("cannot determine fast-forward eligibility")
+                );
             } else {
                 let error = result.expect_err("failed probes must not fall back to cached refs");
                 assert!(
@@ -942,7 +966,7 @@ fn merge_failure_or_cancellation_does_not_signal_a_successful_update() {
             &mut mock,
             &mut sequence,
             root.path(),
-            &["merge", "--ff-only", "@{u}"],
+            &["merge", "--ff-only", "--no-overwrite-ignore", "@{u}"],
             Err(if cancelled {
                 cancelled_git_error()
             } else {

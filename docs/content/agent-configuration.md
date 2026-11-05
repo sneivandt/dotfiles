@@ -303,9 +303,11 @@ If a package restricts its targets, include `copilot-cowork` to send its skills
 here.
 
 Dotfiles records deployed file hashes and removes unchanged owned files that
-disappear from the source or leave the selected skill set. Modified stale files
-are preserved and reported as conflicts; move them aside before retrying.
-Directories, unowned files, and unrelated skills remain. Keep the destination's
+disappear from the source or leave the selected skill set. An existing file
+that matches the source can become managed. Dotfiles reports a conflict when
+a destination file differs from both the source and its last deployed version,
+or when a stale file has local edits. Move the conflicting file aside before
+retrying. Directories, unrelated skills, and other unowned files remain. Keep the destination's
 `.dotfiles-apm-skills.json` and `.dotfiles-apm-files.json` ownership records.
 For older deployments without file hashes, cleanup remains limited to the
 recorded skill's `SKILL.md`. For path-resolution failures or copy conflicts, see

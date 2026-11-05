@@ -6,12 +6,11 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 
 use crate::app::cli::ExplainOpts;
-use crate::domains::files::{
-    config::symlinks as config, resources::symlink::resolve_target_entry, symlinks,
-};
+use crate::domains::files::{config::symlinks as config, symlinks};
 use crate::engine::plan::{ApplyOperation, RemoveOperation};
 use crate::engine::{IntrinsicState as _, ProcessOpts, RemovableResource as _};
 use crate::infra::exec::{Executor, ProcessExecutor};
+use crate::infra::fs::resolve_target_entry;
 use crate::infra::platform::Platform;
 
 pub(crate) fn run(opts: &ExplainOpts) -> Result<()> {

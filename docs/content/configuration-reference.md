@@ -407,8 +407,10 @@ files = [{ source = "wsl.conf", merge = "ini" }]
 
 `source` and `merge` are required. Sources belong under the declaring
 repository's `system/`. The optional `target` defaults to `/etc/<source>` and
-must be an absolute path strictly below `/etc`; neither path may contain `..`.
-Duplicate active destinations within a repository are errors.
+must be an absolute path below `/etc`. Both paths must omit `..`. The
+destination must resolve within `/etc`. Its parent directories there must be
+owned by root, with writes restricted to root. Duplicate active destinations
+within a repository are errors.
 
 | Strategy | What the fragment manages |
 |---|---|

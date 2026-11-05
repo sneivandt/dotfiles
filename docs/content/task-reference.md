@@ -96,12 +96,15 @@ readiness check. Detached HEAD is inapplicable. Missing upstream or local-only/
 diverged commits produce unmet work, not a reset or rebase. Other branch-query
 errors remain failures.
 
-Apply fetches and uses `git merge --ff-only @{u}`. A successfully changed
+Apply fetches and fast-forwards. A local file that would be overwritten blocks
+the merge, including a file Git normally ignores. A successfully changed
 checkout triggers the guarded [configuration restart](architecture.md#repository-updates-are-a-restart-boundary)
 before later tasks run. The parent keeps the run lock. Updating two repositories
 is not a transaction: a later failure does not undo an earlier success.
 
-Dry-run may query remote refs with `git ls-remote`, but does not fetch or merge.
+Dry-run may query remote refs with `git ls-remote`. If the upstream commit is
+missing locally, dry-run reports that it cannot verify a fast-forward. It
+leaves the local repository unchanged.
 For update, `--no-repo-update` removes this task even from dependency expansion.
 It does **not** disable binary self-update or all network access.
 

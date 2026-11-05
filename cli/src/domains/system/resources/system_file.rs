@@ -15,9 +15,50 @@ use crate::infra::exec::{CommandSpec, Executor, OutputLog};
 // publishes it. A private directory prevents another user from replacing the
 // staged file; the exit trap also removes a partial copy on command failure.
 const ATOMIC_INSTALL: &str = r#"set -eu
-parent=$(dirname -- "$2")
-mkdir -p -- "$parent"
-stage_dir=$(mktemp -d -- "$parent/.dotfiles-system-file.XXXXXXXXXX")
+input=$1
+expected_input=$3
+case "$input" in /*) ;; *) input="$PWD/$input" ;; esac
+case "$expected_input" in ''|/*) ;; *) expected_input="$PWD/$expected_input" ;; esac
+owner=$(id -u)
+check_directory() {
+    if [ "$(find . -maxdepth 0 -uid "$owner" ! -perm /022 -print)" != . ]; then
+        printf 'System file directory must be owned by the installer and writable only by its owner: %s\n' "$PWD" >&2
+        exit 1
+    fi
+}
+cd -P -- "$4"
+check_directory
+boundary=$PWD
+parent=${2%/*}
+case "$parent" in
+    "$boundary") remaining= ;;
+    "$boundary"/*) remaining=${parent#"$boundary"/} ;;
+    *) printf 'System file target is outside %s: %s\n' "$boundary" "$2" >&2; exit 1 ;;
+esac
+# Enter each directory relative to the verified parent. A link introduced
+# after discovery must never redirect mkdir, staging, or publication.
+while [ -n "$remaining" ]; do
+    component=${remaining%%/*}
+    case "$component" in ''|.|..) exit 1 ;; esac
+    next="$PWD/$component"
+    if [ -L "./$component" ]; then
+        printf 'System file parent became a symlink: %s\n' "$next" >&2
+        exit 1
+    fi
+    if [ ! -d "./$component" ]; then
+        mkdir -m 0755 -- "./$component"
+    fi
+    cd -P -- "./$component"
+    if [ "$PWD" != "$next" ]; then
+        printf 'System file parent changed while entering %s\n' "$next" >&2
+        exit 1
+    fi
+    check_directory
+    case "$remaining" in */*) remaining=${remaining#*/} ;; *) remaining= ;; esac
+done
+test "$(pwd -P)" = "$parent"
+set -- "$input" "./${2##*/}" "$expected_input"
+stage_dir=$(mktemp -d -- ./.dotfiles-system-file.XXXXXXXXXX)
 trap 'rm -rf -- "$stage_dir"' EXIT
 trap 'exit 1' HUP INT TERM
 replacement="$stage_dir/replacement"
@@ -36,9 +77,11 @@ if [ -n "$3" ]; then
         printf 'System file changed or could not be verified while preparing update: %s; retry the update\n' "$2" >&2
         exit 1
     fi
+    test "$(pwd -P)" = "$parent"
     mv -fT -- "$replacement" "$2"
 else
     # Publishing a new file must also fail if the target appears after discovery.
+    test "$(pwd -P)" = "$parent"
     ln -T -- "$replacement" "$2"
 fi
 "#;
@@ -47,6 +90,7 @@ fi
 pub struct SystemFileResource {
     entry: SystemFile,
     temp_dir: PathBuf,
+    target_root: PathBuf,
     executor: Arc<dyn Executor>,
 }
 
@@ -73,6 +117,7 @@ impl SystemFileResource {
         Self {
             entry,
             temp_dir: std::env::temp_dir(),
+            target_root: PathBuf::from("/etc"),
             executor,
         }
     }
@@ -83,23 +128,33 @@ impl SystemFileResource {
             .map_err(Into::into)
     }
 
-    fn current_content(&self) -> ResourceResult<CurrentFile> {
-        let metadata = match fs::symlink_metadata(&self.entry.target) {
+    fn checked_target(&self) -> anyhow::Result<PathBuf> {
+        let root = dunce::canonicalize(&self.target_root)?;
+        let target = crate::infra::fs::resolve_target_entry(&self.entry.target)?;
+        anyhow::ensure!(
+            target != root && target.starts_with(&root),
+            "system file target {} resolves outside {} to {}",
+            self.entry.target.display(),
+            self.target_root.display(),
+            target.display()
+        );
+        Ok(target)
+    }
+
+    fn current_content(&self, target: &std::path::Path) -> ResourceResult<CurrentFile> {
+        let metadata = match fs::symlink_metadata(target) {
             Ok(metadata) => metadata,
             Err(error) if error.kind() == ErrorKind::NotFound => return Ok(CurrentFile::Missing),
             Err(error) => {
                 return Err(anyhow!(error)
-                    .context(format!(
-                        "reading metadata for {}",
-                        self.entry.target.display()
-                    ))
+                    .context(format!("reading metadata for {}", target.display()))
                     .into());
             }
         };
         if !metadata.is_file() {
             return Ok(CurrentFile::NonRegular);
         }
-        let content = match fs::read_to_string(&self.entry.target) {
+        let content = match fs::read_to_string(target) {
             Ok(content) => content,
             Err(error) if error.kind() == ErrorKind::PermissionDenied => {
                 self.executor
@@ -107,15 +162,15 @@ impl SystemFileResource {
                         CommandSpec::new("sudo")
                             .arg("cat")
                             .arg("--")
-                            .arg(&self.entry.target)
+                            .arg(target)
                             .output_log(OutputLog::Omit),
                     )
-                    .with_context(|| format!("reading {}", self.entry.target.display()))?
+                    .with_context(|| format!("reading {}", target.display()))?
                     .stdout
             }
             Err(error) => {
                 return Err(anyhow!(error)
-                    .context(format!("reading {}", self.entry.target.display()))
+                    .context(format!("reading {}", target.display()))
                     .into());
             }
         };
@@ -176,7 +231,8 @@ impl Resource for SystemFileResource {
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
         let fragment = self.fragment()?;
-        let current = self.current_content()?;
+        let target = self.checked_target()?;
+        let current = self.current_content(&target)?;
         match self.state_for(&current, &fragment) {
             ResourceState::Correct => return Ok(ResourceChange::AlreadyCorrect),
             ResourceState::Invalid { reason } => {
@@ -226,11 +282,12 @@ impl Resource for SystemFileResource {
                 CommandSpec::new("sudo")
                     .args(&["sh", "-c", ATOMIC_INSTALL, "dotfiles-system-file"])
                     .arg(temporary.path())
-                    .arg(&self.entry.target)
+                    .arg(&target)
                     .arg(expected.as_ref().map_or_else(
                         || std::path::Path::new(""),
                         crate::infra::fs::TempGuard::path,
-                    )),
+                    ))
+                    .arg(&self.target_root),
             )
             .with_context(|| format!("installing {}", self.entry.target.display()))?;
         Ok(ResourceChange::Applied)
@@ -240,7 +297,8 @@ impl Resource for SystemFileResource {
 impl IntrinsicState for SystemFileResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
         let fragment = self.fragment()?;
-        Ok(self.state_for(&self.current_content()?, &fragment))
+        let target = self.checked_target()?;
+        Ok(self.state_for(&self.current_content(&target)?, &fragment))
     }
 }
 
@@ -523,11 +581,18 @@ mod tests {
         }
     }
 
+    fn fixture_resource(entry: SystemFile, executor: Arc<dyn Executor>) -> SystemFileResource {
+        let root = entry.origin.clone().unwrap();
+        let mut resource = SystemFileResource::new(entry, executor);
+        resource.target_root = root;
+        resource
+    }
+
     #[test]
     fn description_is_the_target_path() {
         let root = tempfile::tempdir().unwrap();
         let target = Path::new("/etc/pacman.conf");
-        let resource = SystemFileResource::new(
+        let resource = fixture_resource(
             entry(root.path(), target, "pacman.conf", MergeStrategy::Ini),
             Arc::new(MockExecutor::new()),
         );
@@ -587,7 +652,7 @@ mod tests {
             fs::create_dir(root.path().join("system")).unwrap();
             fs::write(root.path().join("system/login"), fragment).unwrap();
             let target = root.path().join("missing-login");
-            let mut resource = SystemFileResource::new(
+            let mut resource = fixture_resource(
                 entry(root.path(), &target, "login", MergeStrategy::Pam),
                 Arc::new(MockExecutor::new()),
             );
@@ -725,7 +790,7 @@ mod tests {
         let target = root.path().join("passwd");
         fs::write(&target, content).unwrap();
         fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
-        let resource = SystemFileResource::new(
+        let resource = fixture_resource(
             entry(root.path(), &target, "passwd", MergeStrategy::Pam),
             Arc::new(MockExecutor::new()),
         );
@@ -938,7 +1003,7 @@ mod tests {
                 if existing {
                     fs::write(&target, original).unwrap();
                 }
-                let mut resource = SystemFileResource::new(
+                let mut resource = fixture_resource(
                     entry(root.path(), &target, "fragment", merge),
                     Arc::new(MockExecutor::new()),
                 );
@@ -1003,7 +1068,7 @@ mod tests {
             }
             let original_metadata = fs::metadata(&target).ok();
             let staging = root.path().join("staging-must-not-be-created");
-            let mut resource = SystemFileResource::new(
+            let mut resource = fixture_resource(
                 entry(root.path(), &target, "fragment", merge),
                 Arc::new(MockExecutor::new()),
             );
@@ -1083,7 +1148,7 @@ mod tests {
                 _ => panic!("unexpected target kind: {kind}"),
             }
             let original_link = fs::read_link(&target).ok();
-            let mut resource = SystemFileResource::new(
+            let mut resource = fixture_resource(
                 entry(&root, &target, "fragment", MergeStrategy::Toml),
                 Arc::new(MockExecutor::new()),
             );
@@ -1148,7 +1213,7 @@ mod tests {
             } else {
                 target.clone()
             };
-            let mut resource = SystemFileResource::new(
+            let mut resource = fixture_resource(
                 entry(
                     root.path(),
                     &resource_target,
@@ -1165,9 +1230,9 @@ mod tests {
             ] {
                 let message = format!("{error:#}");
                 let expected_path = if failure.contains("fragment") {
-                    &source
+                    source.clone()
                 } else {
-                    &resource_target
+                    crate::infra::fs::resolve_target_entry(&resource_target).unwrap()
                 };
                 assert!(
                     message.contains(&format!("reading {}", expected_path.display()))
@@ -1242,7 +1307,7 @@ mod tests {
         fs::write(root.path().join("system/fragment.toml"), "managed = true\n").unwrap();
         let target = root.path().join("target.toml");
         fs::write(&target, "not = [valid\n").unwrap();
-        let resource = SystemFileResource::new(
+        let resource = fixture_resource(
             entry(root.path(), &target, "fragment.toml", MergeStrategy::Toml),
             Arc::new(MockExecutor::new()),
         );
@@ -1345,6 +1410,7 @@ esac
                     } else {
                         Path::new("")
                     })
+                    .arg(root.path())
                     .env("PATH", path)
                     .env("FAILURE", failure)
                     .env("TARGET", &target)
@@ -1405,6 +1471,51 @@ esac
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
+    fn system_file_publication_refuses_escaping_and_changed_parents() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("etc");
+        let outside = fixture.path().join("outside");
+        let actual = root.join("actual");
+        for directory in [&root, &outside, &actual] {
+            fs::create_dir(directory).unwrap();
+        }
+        let target = root.join("alias/subdir/config.toml");
+        let alias = root.join("alias");
+        std::os::unix::fs::symlink(&outside, &alias).unwrap();
+        let resource = fixture_resource(
+            entry(&root, &target, "fragment.toml", MergeStrategy::Toml),
+            Arc::new(MockExecutor::new()),
+        );
+        assert!(
+            resource
+                .checked_target()
+                .unwrap_err()
+                .to_string()
+                .contains("resolves outside")
+        );
+        fs::remove_file(&alias).unwrap();
+        std::os::unix::fs::symlink(&actual, &alias).unwrap();
+        let resolved = resource.checked_target().unwrap();
+        assert_eq!(resolved, actual.join("subdir/config.toml"));
+
+        // Simulate a parent replaced after discovery. The helper must reject it
+        // before it creates either the missing subdirectory or staging files.
+        fs::remove_dir(&actual).unwrap();
+        std::os::unix::fs::symlink(&outside, &actual).unwrap();
+        let result = std::process::Command::new("sh")
+            .args(["-c", ATOMIC_INSTALL, "dotfiles-system-file", "unused-input"])
+            .arg(&resolved)
+            .arg("")
+            .arg(&root)
+            .output()
+            .unwrap();
+        assert!(!result.status.success(), "{result:?}");
+        assert!(String::from_utf8_lossy(&result.stderr).contains("became a symlink"));
+        assert_eq!(fs::read_dir(outside).unwrap().count(), 0);
+    }
+
+    #[test]
     fn failed_install_cleans_staging_preserves_target_and_can_be_retried() {
         #[cfg(unix)]
         use std::os::unix::fs::PermissionsExt as _;
@@ -1425,7 +1536,7 @@ esac
         let mut executor = MockExecutor::new();
         let mut sequence = mockall::Sequence::new();
         for fail in [true, false] {
-            let expected_target = target.clone();
+            let expected_target = crate::infra::fs::resolve_target_entry(&target).unwrap();
             let expected_staging = staging.clone();
             executor
                 .expect_execute()
@@ -1433,7 +1544,7 @@ esac
                 .in_sequence(&mut sequence)
                 .returning(move |spec| {
                     assert_eq!(spec.program(), "sudo");
-                    assert_eq!(spec.arguments().len(), 7);
+                    assert_eq!(spec.arguments().len(), 8);
                     assert_eq!(
                         &spec.arguments()[..4],
                         ["sh", "-c", ATOMIC_INSTALL, "dotfiles-system-file"]
@@ -1472,7 +1583,7 @@ esac
                     }
                 });
         }
-        let mut resource = SystemFileResource::new(
+        let mut resource = fixture_resource(
             entry(root.path(), &target, "fragment.toml", MergeStrategy::Toml),
             Arc::new(executor),
         );

@@ -37,8 +37,7 @@ fn cowork_repairs_report_changes_even_when_the_lock_is_unchanged() {
             .join("OneDrive - Test/Documents/Cowork/skills/example");
         std::fs::create_dir_all(&source).unwrap();
         std::fs::create_dir_all(&target).unwrap();
-        std::fs::write(source.join("SKILL.md"), "current fixture").unwrap();
-        std::fs::write(target.join("SKILL.md"), "stale fixture").unwrap();
+        std::fs::write(source.join("SKILL.md"), "stale fixture").unwrap();
         std::fs::write(target.join("cowork-owned.txt"), "preserve").unwrap();
         let mut mock = MockExecutor::new();
         mock.expect_which()
@@ -71,6 +70,8 @@ fn cowork_repairs_report_changes_even_when_the_lock_is_unchanged() {
             })
             .returning(|_| Ok(ExecResult::success("")));
         let ctx = make_windows_cowork_context(dir.path(), mock);
+        assert!(cowork::reconcile_cowork_skills(&ctx).unwrap());
+        std::fs::write(source.join("SKILL.md"), "current fixture").unwrap();
         let task: Box<dyn Task> = if update {
             Box::new(update_task())
         } else {

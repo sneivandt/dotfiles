@@ -61,4 +61,6 @@ changes usually do not need engine changes.
 - For changed Rust behavior, consider [focused mutation testing](docs/content/testing.md#focused-mutation-testing),
   especially error handling, scheduling, previews, and partial failures.
 - After an authorized push, monitor the exact commit's aggregate CI and inspect
-  informational failures separately. Verify publication when reporting a release.
+  each selected mutation shard separately. Follow the
+  [CI monitoring guidance](.agents/skills/ci-cd-patterns/SKILL.md#after-pushing)
+  and verify publication when reporting a release.

@@ -82,5 +82,7 @@ pub(super) enum RepositoryPlanReadiness {
 pub(super) enum DryRunUpdateStatus {
     AlreadyCurrent,
     WouldUpdate,
+    Ahead,
+    Diverged,
     Unknown,
 }

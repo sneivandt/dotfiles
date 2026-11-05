@@ -104,7 +104,7 @@ pub(super) fn dry_run_repositories(
     ctx: &Context,
     repositories: &[CheckedRepository],
 ) -> Result<TaskResult> {
-    let mut would_update = false;
+    let mut updates = Vec::new();
     for repository in repositories {
         match dry_run_update_status(ctx, &repository.target.root, &repository.head_ref)? {
             DryRunUpdateStatus::AlreadyCurrent => {
@@ -113,17 +113,36 @@ pub(super) fn dry_run_repositories(
                     repository.target.description()
                 ));
             }
-            DryRunUpdateStatus::WouldUpdate | DryRunUpdateStatus::Unknown => {
-                ctx.log().dry_run(repository.target.dry_run_action());
-                would_update = true;
+            DryRunUpdateStatus::WouldUpdate => updates.push(&repository.target),
+            DryRunUpdateStatus::Ahead => {
+                return Ok(TaskResult::unmet(
+                    repository
+                        .target
+                        .reason("local branch is ahead of upstream"),
+                ));
+            }
+            DryRunUpdateStatus::Diverged => {
+                return Ok(TaskResult::unmet(
+                    repository
+                        .target
+                        .reason("local branch diverged from upstream"),
+                ));
+            }
+            DryRunUpdateStatus::Unknown => {
+                return Ok(TaskResult::unmet(repository.target.reason(
+                    "cannot determine fast-forward eligibility without fetching",
+                )));
             }
         }
     }
 
-    Ok(if would_update {
-        TaskStats::changed().finish()
-    } else {
+    for target in &updates {
+        ctx.log().dry_run(target.dry_run_action());
+    }
+    Ok(if updates.is_empty() {
         TaskResult::Ok
+    } else {
+        TaskStats::changed().finish()
     })
 }
 
@@ -137,12 +156,28 @@ pub(super) fn dry_run_update_status(
     let head = ctx
         .executor()
         .execute(git_command(ctx, root, &["rev-parse", "HEAD"]))?;
-    let upstream = upstream_remote_sha(ctx, root, head_ref)?;
-
-    Ok(match upstream {
-        Some(sha) if head.stdout.trim() == sha => DryRunUpdateStatus::AlreadyCurrent,
-        Some(_) => DryRunUpdateStatus::WouldUpdate,
-        None => DryRunUpdateStatus::Unknown,
+    let head = head.stdout.trim();
+    let Some(upstream) = upstream_remote_sha(ctx, root, head_ref)? else {
+        return Ok(DryRunUpdateStatus::Unknown);
+    };
+    if head == upstream {
+        return Ok(DryRunUpdateStatus::AlreadyCurrent);
+    }
+    let commit = format!("{upstream}^{{commit}}");
+    if optional_git_output(ctx, root, &["rev-parse", "--verify", "--quiet", &commit], 1)?.is_none()
+    {
+        return Ok(DryRunUpdateStatus::Unknown);
+    }
+    let is_ancestor = |older: &str, newer: &str| {
+        optional_git_output(ctx, root, &["merge-base", "--is-ancestor", older, newer], 1)
+            .map(|result| result.is_some())
+    };
+    Ok(if is_ancestor(head, &upstream)? {
+        DryRunUpdateStatus::WouldUpdate
+    } else if is_ancestor(&upstream, head)? {
+        DryRunUpdateStatus::Ahead
+    } else {
+        DryRunUpdateStatus::Diverged
     })
 }
 

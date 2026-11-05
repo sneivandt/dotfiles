@@ -58,7 +58,7 @@ pub(super) fn apply_repository_updates(
         let result = ctx.executor().execute(git_command(
             ctx,
             &plan.target.root,
-            &["merge", "--ff-only", "@{u}"],
+            &["merge", "--ff-only", "--no-overwrite-ignore", "@{u}"],
         ));
         match result {
             Ok(r) => {

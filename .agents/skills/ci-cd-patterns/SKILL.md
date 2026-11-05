@@ -26,6 +26,16 @@ action-version inventories in guidance.
   distinguish intended skips from failures/cancellation in the success gate.
 - Keep local `check.sh` and `Check.ps1` stages aligned with gating concerns.
 
+## After pushing
+
+- Find the CI run for the exact pushed SHA and verify the aggregate gate.
+- If mutation testing was selected, wait for every shard and check that each
+  ran the mutation step. Inspect its results for missed mutants, timeouts, and
+  tooling errors. Report those separately from the aggregate gate.
+- If a recovery run skipped mutation testing because it lacked a comparison
+  base, use the validated `mutation_base` input with the original ancestor
+  and inspect the resulting shards. A skipped shard gives no coverage.
+
 ## Release rules
 
 - Release tags are `vYYYY.MM.DD-N`.

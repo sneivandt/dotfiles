@@ -79,6 +79,12 @@ These commands execute the script's checks. An update preview can also execute i
 `--dryrun` mode; a removal preview does not. Review the script before either command.
 Its safety and completeness depend on its implementation.
 
+Compare the reported work with the script's intended ownership boundary.
+Fix protocol errors in an isolated fixture before retrying against the
+machine. Only [apply the reviewed change](task-reference.md#preview-and-apply)
+once every mode is implemented; inspect the script's actual managed state
+afterward rather than treating a zero exit status as an independent audit.
+
 The Rust CLI cannot make a script's check read-only or undo a partially applied
 script. Test every protocol mode in an isolated fixture before selecting it
 for a real machine. A normal preview is not that fixture: it actually invokes

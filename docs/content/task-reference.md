@@ -129,6 +129,28 @@ relationships than dotfiles' offline user-unit preparation does. Prefer the
 task's documented scope when planning an update, and the linked upstream
 documentation when learning the tool itself.
 
+## Preview and apply
+
+Task-page commands assume an installed launcher and saved profile for the
+intended checkout. Before installation, use that checkout's wrapper as described
+in [Getting started](getting-started.md).
+
+Run the task's preview and inspect the proposed items and destinations. Add
+`--verbose` to include items that are already current. Resolve failures and unmet
+prerequisites, then repeat the command without `--dry-run` to apply. Applying
+inspects the current state again; the preview is not a saved execution plan.
+
+Selecting one task does not include its predecessors. Use [Task
+selection](commands-and-usage.md#select-tasks) to decide whether to add
+`--with-deps` for update. Review the expanded graph before applying, because it
+can include package installation or repository synchronization.
+
+A preview can query the network, write logs, and save selections. Overlay
+script previews execute code. Task filters do not disable startup behavior,
+including the CLI release check. Read [Dry-run
+scope](commands-and-usage.md#dry-run-scope) for the shared limits as well as the
+task's local warnings.
+
 ## Scheduling model
 
 Tasks run when their dependencies allow, not in catalog order. Each update task's
@@ -159,7 +181,7 @@ dotfiles list --graph check
 
 A dependency row describes ordering when both tasks are selected. Selecting a task
 alone does not automatically select its predecessors; `--with-deps` expands the
-selection for update and remove.
+selection for update and update graphs only. Remove and check do not accept it.
 
 Use [Task selection](commands-and-usage.md#select-tasks) for filtering and
 dependency expansion. The [discovery reference](cli-reference.md#task-discovery-output)

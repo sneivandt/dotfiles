@@ -241,6 +241,51 @@ Packages, registry settings, PATH, services, system files, permissions, login
 shell, Git/agent settings, completions, editor extensions, and agent deployments
 remain. See [Remove tasks](task-reference.md#remove-tasks) before planning a cleanup.
 
+## Move a checkout
+
+Keep the checkout at a permanent location when possible. Moving it does not
+retarget installed home links or the launcher, and `remove` is not a relocation
+command. These steps assume an already configured machine with its existing
+tools, profile, and overlay still available.
+
+1. Stop dotfiles runs and save work in applications using linked settings.
+   Record the active profile and overlay, preserve local edits, and keep a
+   recoverable copy of the sources. Move an ordinary checkout with your normal
+   file tools; use Git's worktree relocation procedure for a linked worktree.
+2. Open a terminal in the new checkout. Correct any `DOTFILES_ROOT` override
+   pointing to the old directory. If the overlay also moved, update its
+   selection and any `DOTFILES_OVERLAY` override. Use this checkout's wrapper
+   rather than the old launcher.
+3. Preview the path-dependent integrations using the same profile and overlay
+   as before. On Linux:
+
+   ```sh
+   ./dotfiles.sh update --no-repo-update --only launcher,symlinks,git-hooks,completions --dry-run
+   ```
+
+   On Windows:
+
+   ```powershell
+   .\dotfiles.ps1 update --no-repo-update --only launcher,symlinks,git-hooks,completions --dry-run
+   ```
+
+4. Inspect each reported conflict before changing it. The symlinks task
+   preserves links to old sources rather than retargeting them automatically.
+   Use `readlink` on Linux or `Get-Item` with `LinkType` and `Target` on Windows
+   to confirm the old destination, then move only that obsolete link itself
+   aside. Do not move or delete the directory contents reached through a link
+   or junction. Preserve unrelated files and modified hooks or launchers.
+5. Repeat the preview until it proposes the intended new paths without unresolved
+   conflicts, then remove `--dry-run` to apply the reviewed work. Keep `--build`
+   after the wrapper name if you use source builds. Open a new shell and repeat
+   the [installation checks](getting-started.md#5-verify-the-installation).
+
+Do not delete the old sources or backups until the selected links, launcher,
+and affected applications work from the new location. Custom scripts and
+application settings can contain additional absolute paths; this scoped update
+does not search for or rewrite them. The usual [preview limits](#dry-run-scope)
+still apply.
+
 ## Shell completions
 
 The `completions` task installs Zsh or PowerShell registration. Open a new shell

@@ -63,16 +63,17 @@ external file or directory tree. Previews show the resolved destination.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview the modes and resolved destinations:
 
 ```sh
 dotfiles update --only file-permissions --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check recursive directory entries and any explicit executable descendants.
+If a destination resolves outside the allowed roots, inspect the link chain
+before considering the external-target opt-in. After [applying the reviewed
+change](task-reference.md#preview-and-apply), inspect the affected files' modes;
+a missing target still needs its content supplied separately.
 
 ## Removal
 

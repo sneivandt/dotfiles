@@ -42,16 +42,17 @@ configuration](application-settings.md#shell-configuration).
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview the persisted launcher-directory addition:
 
 ```sh
 dotfiles update --only path --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+The intended addition is your home directory's `.local/bin`, not the checkout
+or its `bin/` directory. Resolve any profile or saved-PATH read error before
+[applying the change](task-reference.md#preview-and-apply). Open a new shell and
+confirm it finds the launcher; retrying this task does not refresh an existing
+terminal's environment.
 
 ## Removal
 

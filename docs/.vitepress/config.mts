@@ -41,7 +41,7 @@ const reference = [
   },
 ];
 const contribute = [
-  group('Contributing', ['contributing', 'writing-documentation']),
+  group('Getting involved', ['contributing', 'writing-documentation']),
   group('Implementation', ['architecture', 'adding-a-task', 'debugging']),
   group('Verification', ['testing', 'writing-tests', 'ci-and-releases']),
 ];

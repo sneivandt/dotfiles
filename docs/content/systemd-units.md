@@ -108,16 +108,18 @@ another enable attempt.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview the selected units' desired enablement and running state:
 
 ```sh
 dotfiles update --only systemd --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check unit names, user/system scope, and disabled declarations. Resolve missing
+unit files or manager requirements before [applying the
+change](task-reference.md#preview-and-apply). Review unit commands first,
+especially timers that schedule cleanup. Afterward, use the enablement and
+status queries above; offline user enablement must be checked again after
+a real login.
 
 ## Removal
 

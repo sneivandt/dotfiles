@@ -133,29 +133,77 @@ already-managed profile content. They compare the file bytes after preview,
 check the managed addition after apply, and assert zero changes on repeat.
 Use that pattern rather than checking only `is_ok()`.
 
-The essential assertions are small. This abbreviated sketch assumes the
-test has already created a fixture task, context, and target file:
+### A complete isolated task regression
+
+This example can be saved as `cli/tests/hook_regression.rs`. It uses the
+existing `common` integration helpers and the public testing API, not an
+installed CLI or a real home. The hook is inert fixture content; installing it
+does not execute it or create commits.
 
 ```rust
-let before = std::fs::read(&target).unwrap();
-let preview = task.run(&ctx.with_dry_run(true)).unwrap();
-assert_eq!(task_batch(&preview).changed_count(), 1);
-assert_eq!(std::fs::read(&target).unwrap(), before);
+//! Isolated preview, apply, and repeat coverage for managed hooks.
+#![allow(clippy::unwrap_used, reason = "fixture failures abort the regression")]
 
-let applied = task.run(&ctx).unwrap();
-assert_eq!(task_batch(&applied).changed_count(), 1);
-assert_eq!(std::fs::read(&target).unwrap(), expected);
+mod common;
 
-let repeated = task.run(&ctx).unwrap();
-assert_eq!(task_batch(&repeated).changed_count(), 0);
-assert_eq!(task_batch(&repeated).already_ok_count(), 1);
-assert_eq!(std::fs::read(&target).unwrap(), expected);
+use dotfiles_cli::testing::tasks::git::hooks::InstallGitHooks;
+use dotfiles_cli::testing::tasks::{Task, TaskResult};
+
+#[test]
+fn hook_preview_apply_and_repeat_stay_in_the_fixture() {
+    let content = "#!/bin/sh\nexit 0\n";
+    let repo = common::TestContextBuilder::new()
+        .with_hook_source("pre-commit", content)
+        .with_git_hooks_dir()
+        .build();
+    let fixture = repo.make_context("base");
+    let target = repo.root_path().join(".git").join("hooks").join("pre-commit");
+    let ownership = target.with_extension("dotfiles-owned");
+    let unrelated = target.with_file_name("user-note.txt");
+    std::fs::write(&unrelated, "keep me").unwrap();
+    let task = InstallGitHooks::new();
+
+    let preview = task.run(&fixture.ctx.with_dry_run(true)).unwrap();
+    assert!(matches!(preview, TaskResult::Batch(stats)
+        if stats.changed_count() == 1));
+    assert!(!target.exists());
+    assert!(!ownership.exists());
+
+    let applied = task.run(&fixture.ctx).unwrap();
+    assert!(matches!(applied, TaskResult::Batch(stats)
+        if stats.changed_count() == 1));
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), content);
+    let recorded_owner = std::fs::read(&ownership).unwrap();
+
+    let repeated = task.run(&fixture.ctx).unwrap();
+    assert!(matches!(repeated, TaskResult::Batch(stats)
+        if stats.changed_count() == 0 && stats.already_ok_count() == 1));
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), content);
+    assert_eq!(std::fs::read(&ownership).unwrap(), recorded_owner);
+    assert_eq!(std::fs::read_to_string(&unrelated).unwrap(), "keep me");
+}
 ```
 
-The bytes prove preservation and the intended change; counts distinguish
-planned work, an application, and an already-current result. Use named cases
-for closely related inputs, but separate tests when platform contracts differ.
-The shared
+The builder creates minimal declarations and a repository-local hooks path.
+`make_context` supplies an isolated home, `MapEnv`, fixture log directory,
+and an executor that rejects subprocesses. The helpers own the temporary
+directories and remove them when dropped.
+
+Run only this example from `cli/`:
+
+```sh
+cargo test --locked --profile ci --test hook_regression
+```
+
+Expect one passing test on either native platform. The assertions check the
+planned count, absence of preview writes, installed bytes, ownership record,
+unchanged user content, and an already-current repeat. They do not prove hook
+execution or command-level selection. Keep the case in the owning existing
+suite when incorporating it into a real change, rather than adding a target
+for every regression.
+
+Use named cases for closely related inputs, but separate tests when platform
+contracts differ. The shared
 [lifecycle fixtures](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/common/lifecycle.rs)
 exercise symlinks, Git hooks, and Git settings across fresh contexts.
 

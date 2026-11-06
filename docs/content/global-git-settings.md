@@ -71,16 +71,17 @@ multivalue settings, and each supported key.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview the global keys that need changing:
 
 ```sh
 dotfiles update --only git --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check the proposed values, including any Windows `core.autocrlf` removal.
+Resolve configuration read errors rather than treating them as absent keys.
+After [applying the reviewed change](task-reference.md#preview-and-apply), use
+the origin-and-scope query above in an affected repository to distinguish the
+stored global value from repository or included overrides.
 
 ## Removal
 

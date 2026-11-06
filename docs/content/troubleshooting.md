@@ -408,6 +408,29 @@ Check permission, target conflicts, and source checkout separately:
 See [Developer Mode and symlinks](windows-and-wsl.md#developer-mode-and-symlinks) for
 inspection commands and a preview including Developer Mode.
 
+### PowerShell profile does not load
+
+Check the profile path in the affected shell, not a different PowerShell edition
+or terminal host:
+
+```powershell
+$PROFILE.CurrentUserCurrentHost
+Test-Path -LiteralPath $PROFILE.CurrentUserCurrentHost
+Get-ExecutionPolicy -List
+```
+
+Compare that path with the
+[managed profile destinations](windows-and-wsl.md#powershell-configuration).
+Redirected Documents folders and hosts such as VS Code can use another path.
+Also check whether the shell was started with `-NoProfile` and read any startup
+error. An existing profile file alone does not prove that the shell loaded it.
+
+If execution policy blocks the profile or checkout wrapper, follow your
+organization's policy and PowerShell's reported error. Do not weaken
+machine-wide policy as a general repair. Correct a destination in the tracked
+declaration, then preview the symlinks task; edit preferences in the tracked
+profile source, not a second installed copy.
+
 ### Service changes are not visible
 
 First check whether the configured unit is user or system scope.

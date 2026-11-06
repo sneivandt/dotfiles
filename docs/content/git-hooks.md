@@ -66,16 +66,17 @@ tracked source before changing Git's hook configuration.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview the hook copies after inspecting the destination above:
 
 ```sh
 dotfiles update --only git-hooks --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Confirm that the hook names and configured destination belong to this checkout.
+If ownership or an inherited hooks path blocks installation, resolve that
+conflict before [applying the change](task-reference.md#preview-and-apply).
+Compare the installed entrypoints with their tracked sources afterward; a
+successful copy does not establish that every optional analyzer is available.
 
 ## Removal
 

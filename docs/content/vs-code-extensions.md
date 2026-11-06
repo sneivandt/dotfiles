@@ -25,6 +25,11 @@ After waiting for package tasks, finds an editor CLI, reads installed extensions
 installs missing ones. If no CLI is available, the task is skipped rather than reported
 as successful.
 
+The search prefers `code-insiders` over `code` on Linux, and
+`code-insiders.cmd` over `code.cmd` on Windows. The selected CLI receives all
+configured extensions; having stable Code open does not make it the selected
+edition. There is no editor-selection key in this declaration.
+
 Arch chroot provisioning instead defers installation to `dotfiles-first-login.service`,
 which retries until configured extensions are installed in a real user session.
 
@@ -53,16 +58,18 @@ and inspect that editor's Extensions view. Preferences belong in
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview missing extensions with your configured launcher:
 
 ```sh
 dotfiles update --only vscode-extensions --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check the missing IDs and use `--verbose` to see the selected CLI. If it is
+unavailable, install the intended editor and make its launcher discoverable
+before retrying. After [applying the reviewed
+change](task-reference.md#preview-and-apply), inspect that edition's Extensions
+view or run its CLI with `--list-extensions`. In a chroot, verify the deferred
+installation after the first real user login instead.
 
 ## Removal
 

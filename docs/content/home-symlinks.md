@@ -138,16 +138,18 @@ actually reads; an explicit target does not get another leading dot.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview the selected source-to-home links:
 
 ```sh
 dotfiles update --only symlinks --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check each source and home destination, especially explicit targets and paths
+redirected by existing parent links. Back up and move aside conflicting
+ordinary content before [applying the reviewed
+change](task-reference.md#preview-and-apply). Use [Inspect a home
+path](commands-and-usage.md#inspect-a-home-path) to diagnose a surprising mapping.
+Application behavior can change as soon as the link is created.
 
 ## Removal
 

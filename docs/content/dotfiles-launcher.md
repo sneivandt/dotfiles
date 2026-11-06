@@ -43,16 +43,17 @@ records the selected checkout path, so keep that checkout in a permanent locatio
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview the launcher destination using your configured checkout:
 
 ```sh
 dotfiles update --only launcher --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check that the destination is this user's `.local/bin`. If an existing launcher
+is reported as foreign or modified, back it up and move it aside rather than
+overwriting it. After [applying the reviewed
+change](task-reference.md#preview-and-apply), confirm the launcher points to the
+intended checkout. If the shell cannot find it, check [Shell PATH](shell-path.md).
 
 ## Removal
 

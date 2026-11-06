@@ -46,16 +46,17 @@ packages](aur-packages.md) selects the packages installed through it.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview whether Paru is healthy, missing, or needs rebuilding:
 
 ```sh
 dotfiles update --only paru --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+If installation or rebuilding is proposed, check the build prerequisites above
+before [applying the change](task-reference.md#preview-and-apply). The preview
+does not build the helper or prove the build toolchain works. After apply,
+confirm the task reports a validated helper before retrying AUR installation.
+A failed health query needs diagnosis, not an assumed reinstall.
 
 ## Removal
 

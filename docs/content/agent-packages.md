@@ -30,7 +30,7 @@ proceed before those package tasks finish.
 See [Agent configuration](agent-configuration.md) for sources, targets, authentication,
 and cleanup, including [what a preview can
 show](agent-configuration.md#what-a-preview-can-show). The [implementation
-reference](architecture.md#agent-deployment-implementation) explains the command
+reference](agent-configuration.md#deployment-maintenance) explains the command
 sequence and compatibility adapters.
 
 ## Configuration
@@ -67,16 +67,19 @@ Adding a dependency can introduce executable hooks or tools, not just text.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview deployment from the selected APM fragments:
 
 ```sh
 dotfiles update --only agent-packages --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check the intended targets and any reported dependency additions, updates, or
+removals. A manifest-merge plan is not a complete remote dependency plan;
+read [what a preview can show](agent-configuration.md#what-a-preview-can-show).
+Resolve missing fragment links, APM, or authentication before [applying the
+reviewed change](task-reference.md#preview-and-apply). After deployment, inspect
+the expected content in the selected harnesses rather than only the generated
+manifest.
 
 ## Removal
 

@@ -23,7 +23,9 @@ published pacman binary repository and not the source checkout itself.
 
 Prepares disposable Git snapshots of dotfiles-managed Arch recipes and configures Paru
 to use them. It runs on platforms with Arch/AUR support and waits for version discovery
-before preparing snapshots.
+before preparing snapshots. Discovery and preparation cover every managed
+recipe under the main checkout's `packages/`, even if the current profile does
+not request its installation.
 
 A recipe failure does not block unrelated AUR packages. A missing selected custom
 package is counted as a failure and excluded from installation when its snapshot is
@@ -49,6 +51,23 @@ packages](aur-packages.md#configuration). [Package
 management](package-management.md#arch-package-recipes) explains the snapshot format and
 Paru configuration.
 
+The editable Paru defaults are
+[symlinks/config/paru/paru.conf.base](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/paru/paru.conf.base).
+The task generates a complete configuration from that file, the build-cache
+location, and the prepared repository sections.
+
+::: warning Existing Paru configuration is replaced
+Applying this task replaces the whole destination document, not just its
+generated repository sections. Unrelated preferences in that document are not
+merged or backed up. Review and back up an existing configuration before
+applying, and put durable preferences in the tracked base file.
+:::
+
+The destination is `PARU_CONF` when set, otherwise
+`$XDG_CONFIG_HOME/paru/paru.conf` when that variable is set, otherwise
+`~/.config/paru/paru.conf`. Set overrides to absolute paths; empty or relative
+values are rejected. Use the same environment when running dotfiles and Paru.
+
 For the underlying tools, use the
 [PKGBUILD format reference](https://man.archlinux.org/man/PKGBUILD.5.en) and
 [Paru documentation](https://github.com/Morganamilo/paru). Their formats do
@@ -58,16 +77,17 @@ or pointing Paru directly at the source checkout.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview snapshot and configuration changes with your configured launcher:
 
 ```sh
 dotfiles update --only custom-package-repository --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check the proposed snapshot paths and Paru configuration destination. Resolve
+ownership conflicts before retrying; do not delete an unfamiliar cache.
+Back up existing Paru preferences and review every recipe before [applying
+the change](task-reference.md#preview-and-apply), which can execute PKGBUILD
+code even for recipes whose applications are not selected for installation.
 
 ## Removal
 

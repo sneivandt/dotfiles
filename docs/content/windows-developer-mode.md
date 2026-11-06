@@ -45,16 +45,17 @@ cannot substitute for this machine-level setting.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview whether the machine's Developer Mode policy needs enabling:
 
 ```sh
 dotfiles update --only developer-mode --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check that the proposed change is the machine-wide value described above.
+If organizational policy or elevation prevents it, resolve that restriction
+before [applying the change](task-reference.md#preview-and-apply), rather than
+adding an HKCU setting. Afterward, preview [Home symlinks](home-symlinks.md)
+to assess the links' own remaining requirements.
 
 ## Removal
 

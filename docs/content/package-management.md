@@ -187,9 +187,12 @@ Selecting one needs only its package declaration; you do not need to edit a reci
 | `github-copilot-cli-dotfiles` | [Copilot CLI](https://github.com/sneivandt/dotfiles/tree/main/packages/github-copilot-cli/) |
 | `openai-codex-dotfiles` | [Codex CLI](https://github.com/sneivandt/dotfiles/tree/main/packages/openai-codex/) |
 
-A normal update discovers release versions, prepares snapshots for Paru, and
-installs missing selected packages. **Preparing a recipe does not upgrade an
-installed application.** Follow the [Arch upgrade workflow](#arch-linux) afterward.
+A normal Arch update discovers release versions and prepares snapshots for all
+managed recipes in the checkout, independently of the selected package list.
+The package list selects which missing applications to install; removing an
+entry does not exclude its recipe from discovery or preparation.
+**Preparing a recipe does not upgrade an installed application.**
+Follow the [Arch upgrade workflow](#arch-linux) afterward.
 Paru alone uses the last prepared snapshot, not your latest source edits.
 
 ```mermaid
@@ -226,6 +229,16 @@ inputs require extending the snapshot implementation first.
 PKGBUILDs execute shell code during metadata generation, even without building
 or installing. Temporary copies are not a sandbox. Review sources before
 applying preparation; Paru skips normal recipe review for these local repositories.
+:::
+
+::: warning Preparation replaces Paru preferences
+Preparation replaces the complete Paru configuration with a document
+generated from
+[paru.conf.base](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/paru/paru.conf.base).
+Back up existing Paru preferences and incorporate the ones you want into that
+tracked source before applying. Existing destination contents are not merged.
+The [Custom package repository reference](custom-package-repository.md)
+explains destination overrides and snapshot ownership.
 :::
 
 On an Arch machine with a configured checkout and selected profile, preview

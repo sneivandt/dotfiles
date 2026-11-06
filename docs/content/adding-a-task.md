@@ -37,6 +37,66 @@ Unix-capable platforms and waits for Home symlinks. The resource owns mode
 inspection and application. It has no removal promise because the original
 permissions are not recorded.
 
+### Follow one declaration through the task
+
+This excerpt from
+[conf/chmod.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml)
+omits the other permission entry:
+
+```toml
+[linux]
+permissions = [
+  { mode = "600", path = "ssh/config" },
+]
+```
+
+It requests owner-only read/write access to the existing `~/.ssh/config`.
+This is not a new table to paste into the file: extend its existing
+`permissions` array when adding an entry. File creation belongs to another
+task or the user, not File permissions.
+
+Follow the same entry across these boundaries:
+
+| Step | Connected implementation |
+|---|---|
+| Decode and select | The [chmod decoder](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/files/config/chmod.rs) reads `permissions` into `ChmodEntry` values; the shared loader selects active categories |
+| Share the input | The [configuration inventory](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/config/mod.rs) exposes the selected entries as `store.chmod` |
+| Construct the task | The update catalog adds `Box::new(ApplyFilePermissions::new(store.chmod.clone()))`; the remove catalog does not include it |
+| Schedule it | The task metadata declares selector `file-permissions` and a success dependency on `InstallSymlinks`; `should_run` requires chmod-capable runtime platforms |
+| Inspect and apply | Each entry becomes `ChmodResource::from_entry(entry, ctx.home())`; the adapter supplies managed source roots and explicit descendant exclusions before calling the shared lifecycle |
+
+These are exact excerpts from the task adapter, with the surrounding
+implementation omitted:
+
+```rust
+task_metadata! {
+    name: NAME,
+    selector: "file-permissions",
+    deps: [crate::domains::files::symlinks::InstallSymlinks],
+}
+```
+
+```rust
+run_resource_task(ctx, resources, &ProcessOpts::fix_existing("configure"))
+```
+
+The dependency ensures link work succeeds first. The processing policy repairs
+an existing target but leaves a missing one unmet; it never creates the file.
+Keep the source-root and descendant handling when adapting this example,
+because they protect linked sources and overlapping permission declarations.
+
+From `cli/`, inspect the declaration's selected update graph without applying
+permissions:
+
+```sh
+cargo run --locked --profile ci -- list --root .. --profile desktop --graph update --only file-permissions --with-deps
+```
+
+Expect `file-permissions` and its `symlinks` prerequisite in the graph.
+The graph can also include transitive predecessors, and does not probe runtime
+chmod support or inspect the target file. Native permission changes still need
+an isolated Unix fixture.
+
 ## Add configuration only where needed
 
 Keep fixed integration behavior in the implementation. Config-backed state

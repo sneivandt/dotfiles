@@ -64,16 +64,17 @@ recovery for you.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview synchronization of the selected checkout and overlay:
 
 ```sh
 dotfiles update --only repository --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check the affected branches and any fast-forward limitation. If the task is
+unmet, use the Git inspection commands above to resolve local changes or
+upstream history before retrying. Only [apply the reviewed
+update](task-reference.md#preview-and-apply) when you are ready for changes to
+live linked configuration as well as tracked files.
 
 ## Removal
 

@@ -164,8 +164,9 @@ own sidebar and previous/next sequence:
   Task reference parent containing the individual task pages. The parent
   explains task selection, scheduling, and removal scope; its children cover
   each domain's behavior and declarations, including validation tasks.
-- Development: contributor workflow and documentation authoring; architecture,
-  task implementation and debugging; then running checks, writing tests, and CI.
+- Development: Getting involved covers contributor workflow and documentation
+  authoring; Implementation covers architecture, task implementation, and
+  debugging; Verification covers running checks, writing tests, and CI.
 
 Guide and Development groups start expanded with native collapse controls.
 Reference has only one collapsible parent, Task reference, rather than a

@@ -69,16 +69,18 @@ original value before deliberately changing a preference you may want to undo.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview the current-user value changes:
 
 ```sh
 dotfiles update --only registry --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check each key, value name, and desired data against the application's
+documentation, including the TOML type that selects DWORD or string storage.
+Record values you may need to restore before [applying the
+change](task-reference.md#preview-and-apply). If an application ignores a
+stored value, check its expected type and restart requirements rather than
+broadening the registry scope.
 
 ## Removal
 

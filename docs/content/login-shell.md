@@ -46,16 +46,17 @@ running this task.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview whether the account needs to switch to zsh:
 
 ```sh
 dotfiles update --only login-shell --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Resolve missing zsh or account-query errors before [applying the
+change](task-reference.md#preview-and-apply). Apply may need account-management
+permissions or authentication. Verify the selected shell in a new login
+session; the current terminal and its `$SHELL` value are not the result of
+this update.
 
 ## Removal
 

@@ -83,6 +83,10 @@ test('header sections replace the sidebar, including direct links and search des
     await page.locator(isMobile ? '.VPNavScreen' : '.VPNavBarMenu').getByRole('link', { name: label, exact: true }).click();
     await expect(page).toHaveURL(entry);
     await expect(page.locator('.VPSidebar a')).toHaveText([...titles]);
+    if (label === 'Development') {
+      await expect(page.locator('.VPSidebar .group h2'))
+        .toHaveText(['Getting involved', 'Implementation', 'Verification']);
+    }
     if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText(label);
   }
   await page.goto('/home-symlinks.html#configuration');
@@ -130,10 +134,12 @@ test('development guides connect implementation and isolated test authoring', as
   for (const anchor of ['choose-the-boundary', 'implement-inspection-and-application', 'wire-command-membership-and-dependencies']) {
     await expect(page.locator(`main h2#${anchor}`)).toHaveCount(1);
   }
+  await expect(page.locator('main h3#follow-one-declaration-through-the-task')).toHaveCount(1);
   await page.locator('main').getByRole('link', { name: 'Writing tests', exact: true }).first().click();
   await expect(page).toHaveURL('/writing-tests.html');
   await expect(page.locator('main #confine-every-writable-path')).toHaveCount(1);
   await expect(page.locator('main #exercise-a-complete-state-transition')).toHaveCount(1);
+  await expect(page.locator('main #a-complete-isolated-task-regression')).toHaveCount(1);
   await expect(page.locator('main #integration-test-suites')).toHaveCount(1);
   await expect(page.locator('main #dry-run-testing')).toHaveCount(1);
   await expect(page.locator('.VPDocFooter .next')).toContainText('CI and releases');
@@ -142,6 +148,16 @@ test('development guides connect implementation and isolated test authoring', as
     await expect(page.locator(`main h2#${anchor}`)).toHaveCount(1);
   }
   await expect(page.locator('main #integration-test-suites, main #dry-run-testing')).toHaveCount(0);
+  await assertNoPageOverflow(page);
+});
+
+test('agent deployment contracts live with agent configuration, not general architecture', async ({ page }) => {
+  await page.goto('/architecture.html');
+  await expect(page.locator('main #agent-deployment-implementation')).toHaveCount(0);
+  await page.locator('main').getByRole('link', { name: 'Agent deployment maintenance', exact: true }).click();
+  await expect(page).toHaveURL('/agent-configuration.html#deployment-maintenance');
+  await expect(page.locator('main #deployment-maintenance')).toBeVisible();
+  await expect(page.locator('main').getByRole('link', { name: 'Copilot workflow repair', exact: true })).toBeVisible();
   await assertNoPageOverflow(page);
 });
 
@@ -306,7 +322,7 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 for (const [guide, titles] of [
-  ['package-management', ['Installing a missing package can upgrade the system', 'Review recipes before preparing packages']],
+  ['package-management', ['Installing a missing package can upgrade the system', 'Review recipes before preparing packages', 'Preparation replaces Paru preferences']],
   ['agent-configuration', ['Packages can do more than provide text', 'Disabling a managed workflow in the App is temporary']],
   ['getting-started', ['Back up existing configuration first', 'A preview is not a sandbox']],
   ['profiles-and-categories', ['Profiles are roles, not safety levels']],

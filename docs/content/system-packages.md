@@ -77,16 +77,18 @@ instruction to uninstall the packages it once selected.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview the missing packages for the selected platform and profile:
 
 ```sh
 dotfiles update --only packages --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check provider-specific names and the proposed missing-package list. Resolve
+package-manager or inventory-query errors before [applying the
+change](task-reference.md#preview-and-apply). On Arch, be ready for the full
+system upgrade that accompanies installation; on Windows, installers may
+request UAC consent. An already-present package is not a promise that its
+version is current.
 
 ## Removal
 

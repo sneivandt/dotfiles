@@ -44,16 +44,17 @@ managed profiles load it.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview the generated registration's destination:
 
 ```sh
 dotfiles update --only completions --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Expect the zsh path inside the checkout on Linux or the PowerShell profile
+fragment in home on Windows. Resolve a destination read error or unexpected
+symlink before [applying the change](task-reference.md#preview-and-apply).
+Then start a new shell and try Tab after `dotfiles update --only `. If no
+selectors appear, check profile loading before editing generated content.
 
 ## Removal
 

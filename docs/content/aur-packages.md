@@ -55,16 +55,17 @@ Use the [Arch upgrade workflow](package-management.md#arch-linux) for that.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview the missing packages selected for Paru:
 
 ```sh
 dotfiles update --only aur-packages --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check the package names and any unavailable custom-recipe reports. Resolve
+those preparation failures instead of substituting a remote AUR package.
+Before [applying the reviewed change](task-reference.md#preview-and-apply),
+ensure Paru is healthy and review the recipes and their sources. A successful
+preview of pacman's inventory does not validate package-supplied code.
 
 ## Removal
 

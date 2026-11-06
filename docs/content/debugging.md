@@ -126,7 +126,9 @@ cargo test --locked --profile ci --test update_command
 ```
 
 Backtraces do not replace the error context of an ordinary returned failure.
-If frames lack useful symbols, enable debug information as described in
+If frames lack useful symbols, enable debug information for the selected
+profile. These examples use `ci`, so they need `CARGO_PROFILE_CI_DEBUG`, not
+the dev or test profile override. See the POSIX and PowerShell commands in
 [Builds and debugging](contributing.md#builds-and-debugging).
 Revert temporary logging and inspect snapshot diffs before finishing.
 

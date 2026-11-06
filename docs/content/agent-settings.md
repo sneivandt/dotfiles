@@ -72,16 +72,18 @@ key to replace an entire settings table.
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview which harness documents need changing:
 
 ```sh
 dotfiles update --only agent-settings --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check the destination documents and review their declared keys and values;
+the preview summarizes documents, not a per-key diff. If an existing document
+is malformed, repair it without discarding unrelated settings before
+[applying the change](task-reference.md#preview-and-apply). Inspect the stored
+keys afterward, then check the harness's effective settings if project or
+policy layers override them.
 
 ## Removal
 

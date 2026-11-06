@@ -186,8 +186,30 @@ not the executable; use the desired checkout's wrapper when both matter.
 
 ## PowerShell configuration
 
-The Windows symlinks install the managed profile for PowerShell and Windows
-PowerShell. Edit the tracked
+The Windows symlinks select these profile destinations relative to your home:
+
+| Shell | Managed destination |
+|---|---|
+| PowerShell 7 | `Documents/PowerShell/Microsoft.PowerShell_profile.ps1` |
+| Windows PowerShell | `Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1` |
+
+These are fixed declaration paths, not a lookup of Windows' Documents folder.
+In each shell you use, inspect its actual profile path:
+
+```powershell
+$PROFILE.CurrentUserCurrentHost
+Test-Path -LiteralPath $PROFILE.CurrentUserCurrentHost
+```
+
+Redirected Documents folders, including OneDrive locations, and other hosts
+such as VS Code can use a different path. If it differs, adjust the matching
+home-relative destination in your
+[symlink declarations](home-symlinks.md#configuration) before applying.
+Absolute target paths are not supported. An existing parent link that redirects
+outside home needs the explicit external-target permission described there.
+Do not create a second independently maintained copy of the shared preferences.
+
+Edit the tracked
 [Microsoft.PowerShell_profile.ps1](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/powershell/Microsoft.PowerShell_profile.ps1),
 not an installed copy.
 The profile provides a path and Git-aware prompt, command history, and

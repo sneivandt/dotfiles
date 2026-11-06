@@ -92,16 +92,19 @@ requirements, use [Windows and WSL](windows-and-wsl.md).
 
 ## Preview and apply
 
-With an [installed launcher and saved profile](getting-started.md), preview this task:
+Preview which administrator-owned destinations need a merge:
 
 ```sh
 dotfiles update --only system-files --dry-run
 ```
 
-Review the result before repeating the command without `--dry-run`. [Task
-selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
-[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
-preview can still have.
+Check the destination paths, then review each fragment and the current file
+together; the preview identifies work, not a complete merged-file diff.
+Resolve malformed content or unsafe destination paths before retrying.
+Back up affected files and keep a separate recovery path for authentication
+changes before [applying the privileged
+merge](task-reference.md#preview-and-apply). Inspect the merged settings
+afterward; removal will not restore the backup for you.
 
 ## Removal
 

@@ -52,7 +52,8 @@ cd dotfiles
 ```
 
 Keep this directory: installed links and the launcher point back into it.
-Moving or deleting the checkout can break applications.
+Moving or deleting the checkout can break applications. If its location must
+change later, use [Move a checkout](commands-and-usage.md#move-a-checkout).
 
 The wrapper scripts, `dotfiles.sh` and `dotfiles.ps1`, download and verify the
 CLI when needed, so you do not need Rust installed. To maintain your own public

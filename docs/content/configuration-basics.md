@@ -137,10 +137,19 @@ caveat](agent-configuration.md#removing-packages-and-targets).
 
 ## Loading and reload behavior
 
-All required files are loaded before tasks are selected. `--only` cannot bypass a
-malformed file or incompatible declarations in another section. When repository
-synchronization changes content, the CLI restarts with fresh configuration before later
-tasks run; this is not a separate selectable reload task. See the [restart
+Normal update, remove, and check runs load all required files before selecting
+tasks. `--only` cannot bypass a malformed file or incompatible declarations in
+another section during those runs.
+
+There is one recovery exception: `dotfiles update --only repository`, without
+other selectors or skips, can synchronize the checkout without loading its TOML
+configuration. Use it when an upstream configuration fix is available, as
+described in [Dotfiles repository](dotfiles-repository.md#what-it-does).
+It does not bypass Git's readiness and safety checks.
+
+When repository synchronization changes content in a normal update, the CLI
+restarts with fresh configuration before later tasks run; this is not a separate
+selectable reload task. See the [restart
 boundary](architecture.md#repository-updates-are-a-restart-boundary).
 
 ### Unknown keys are errors

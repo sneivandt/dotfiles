@@ -146,10 +146,31 @@ To restore debugger information for a Linux build:
 CARGO_PROFILE_DEV_DEBUG=2 cargo build --locked
 ```
 
-Use `line-tables-only` instead of `2` for file/line backtraces, or
-`CARGO_PROFILE_TEST_DEBUG` for tests. In PowerShell, set the corresponding
-environment variable before invoking Cargo. Changing these settings rebuilds
-affected artifacts.
+The override must match Cargo's selected profile. Use
+`CARGO_PROFILE_TEST_DEBUG` for ordinary `cargo test`, but
+`CARGO_PROFILE_CI_DEBUG` for the `--profile ci` commands in
+[Debugging](debugging.md#panics-and-debugger-builds). From `cli/`, enable
+debugger information for one targeted CI-profile test run in a POSIX shell:
+
+```sh
+CARGO_PROFILE_CI_DEBUG=2 cargo test --locked --profile ci --test update_command repository
+```
+
+In PowerShell, restore the previous environment value afterward so later
+commands do not inherit the override:
+
+```powershell
+$previousDebug = $env:CARGO_PROFILE_CI_DEBUG
+try {
+    $env:CARGO_PROFILE_CI_DEBUG = '2'
+    cargo test --locked --profile ci --test update_command repository
+} finally {
+    $env:CARGO_PROFILE_CI_DEBUG = $previousDebug
+}
+```
+
+Use `line-tables-only` instead of `2` when only file/line backtraces are
+needed. Changing these settings rebuilds affected artifacts.
 
 Install optional analyzers only for the checks you need. The
 [local stages](testing.md#fast-local-sequence) explain their requirements.

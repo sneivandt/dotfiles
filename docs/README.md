@@ -109,6 +109,17 @@ keep that port free.
 The site uses VitePress's default theme. Dependencies are pinned in
 [package.json](package.json) and its lockfile.
 
+Vite and esbuild are direct, pinned development dependencies with npm overrides
+so Dependabot can update them even while stable VitePress requires older
+versions. Keep the overrides tied to those direct dependencies with `$vite`
+and `$esbuild`; remove them when VitePress accepts patched versions itself.
+The build targets Safari 14.1 or newer because patched esbuild cannot lower
+destructuring for Safari 14.0. Other browser targets retain Vite 6 defaults.
+Run `npm audit` after dependency changes and the full site checks before pushing.
+CI audits the docs dependencies on docs changes and in the weekly dependency
+security workflow. Dependabot groups security fixes separately from routine
+version updates.
+
 | Change | Source |
 |---|---|
 | Guide prose | [content/](content/) |

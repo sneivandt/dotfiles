@@ -35,7 +35,11 @@ export default defineConfig({
   lang: 'en-US',
   srcDir: 'content',
   outDir: 'dist',
-  vite: { publicDir: resolve(import.meta.dirname, '../public') },
+  vite: {
+    publicDir: resolve(import.meta.dirname, '../public'),
+    // esbuild 0.28 cannot lower destructuring for Safari 14.0's implementation.
+    build: { target: ['es2020', 'chrome87', 'edge88', 'firefox78', 'safari14.1'] },
+  },
   appearance: 'dark',
   lastUpdated: true,
   head: [['link', { rel: 'icon', href: '/favicon.svg' }]],

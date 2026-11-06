@@ -9,7 +9,12 @@ updates:
     assignees:
       - sneivandt
     groups:
+      documentation-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
       documentation:
+        applies-to: version-updates
         patterns:
           - "*"
 
@@ -21,7 +26,12 @@ updates:
     assignees:
       - sneivandt
     groups:
+      rust-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
       rust-dependencies:
+        applies-to: version-updates
         patterns:
           - "*"
 
@@ -41,6 +51,11 @@ updates:
     assignees:
       - sneivandt
     groups:
+      github-actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
       github-actions:
+        applies-to: version-updates
         patterns:
           - "*"

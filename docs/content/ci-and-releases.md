@@ -133,9 +133,11 @@ and elevation dispatch. Exact filters live in the workflow. See the
 ## Scheduled dependency checks
 
 [dependency-security.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/dependency-security.yml)
-runs `cargo audit` and `cargo deny check all` weekly and on manual dispatch,
-independently of changed paths. The policy check still runs after an advisory
-failure unless the workflow is cancelled.
+runs `cargo audit`, `cargo deny check all`, and a separate npm audit of the docs
+lockfile weekly and on manual dispatch, independently of changed paths. The
+Rust policy check still runs after an advisory failure unless the workflow is
+cancelled. The docs CI job also runs `npm audit` before building the site;
+advisories at any severity fail these audits.
 
 This separate workflow neither satisfies `ci-success` nor triggers a release.
 Enable Actions failure notifications and configure Dependabot alerts/security

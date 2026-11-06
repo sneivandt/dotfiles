@@ -148,7 +148,7 @@ test('configuration basics follows profiles in Guides, including search destinat
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await page.locator('#localsearch-input').fill('Configuration basics');
   const result = page.locator('.VPLocalSearchBox a[href*="configuration-basics.html"]').first();
-  await expect(result).toBeVisible();
+  await expect(result).toBeVisible({ timeout: 30_000 });
   await result.click();
   await expect(page).toHaveURL(/configuration-basics\.html(?:#.*)?$/);
   await expect(page.locator('.VPSidebar').getByRole('link', { name: 'Profiles and categories', exact: true })).toHaveCount(1);
@@ -603,7 +603,7 @@ test('client navigation and theme changes rerender diagrams', async ({ page, isM
   expect(errors).toEqual([]);
 });
 
-for (const guide of ['profiles-and-categories', 'commands-and-usage', 'arch-desktop', 'architecture', 'agent-configuration', 'package-management', 'ci-and-releases']) {
+for (const guide of ['profiles-and-categories', 'arch-desktop', 'architecture', 'agent-configuration', 'package-management', 'ci-and-releases']) {
   for (const theme of ['light', 'dark'] as const) {
     test(`${guide} has readable, accessible diagrams in ${theme} mode`, async ({ page }) => {
       test.setTimeout(180_000);

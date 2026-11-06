@@ -16,7 +16,7 @@ content for these applications; a local plugin is maintained in this checkout.
 Repository instructions in `AGENTS.md` and `.agents/skills/` are read directly
 and need no deployment.
 
-:::caution[Packages can do more than provide text]
+::: warning Packages can do more than provide text
 Review package sources before applying them. Packages can contain executable
 hooks, MCP servers (tools the agent can call), and scheduled workflows.
 When the Copilot App is detected, dotfiles enables its managed workflows in
@@ -273,7 +273,7 @@ When the App database exists, dotfiles enables APM's experimental `copilot-app`
 support and installs workflow packages after the primary deployment. It does
 not send manifest-wide MCP dependencies to this workflow-only integration.
 
-:::caution[Disabling a managed workflow in the App is temporary]
+::: warning Disabling a managed workflow in the App is temporary
 Dotfiles restores its managed workflows to **enabled, autopilot** state and
 repairs their next-run schedules. The next agent-package update can enable a
 workflow you disabled in the App. Change the package source or dependency

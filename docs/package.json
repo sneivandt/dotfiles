@@ -6,27 +6,23 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "astro dev",
-    "check": "astro check",
-    "build": "astro build",
-    "preview": "astro preview",
+    "dev": "vitepress dev",
+    "check": "vue-tsc --noEmit",
+    "build": "vitepress build",
+    "preview": "vitepress preview",
     "test": "node --test tests/*.test.mjs",
     "test:browser": "playwright test"
   },
   "dependencies": {
-    "@astrojs/markdown-remark": "7.3.5",
-    "@astrojs/sitemap": "3.7.4",
-    "@astrojs/starlight": "0.42.8",
-    "astro": "7.4.4",
-    "astro-mermaid": "2.2.0",
     "github-slugger": "2.0.0",
     "mermaid": "12.2.0",
-    "starlight-theme-flexoki": "0.3.0",
-    "unist-util-visit": "5.2.0"
+    "vitepress": "1.6.4",
+    "vue": "3.5.45"
   },
   "devDependencies": {
-    "@astrojs/check": "0.9.12",
     "@playwright/test": "1.64.1",
-    "typescript": "6.0.3"
+    "@types/node": "24.19.2",
+    "typescript": "6.0.3",
+    "vue-tsc": "3.3.14"
   }
 }

@@ -31,7 +31,7 @@ dotfiles list --profile desktop
 Names are exactly `base` and `desktop`, in lowercase. `linux`, `arch`, `windows`,
 and `wsl` describe the environment; they are not valid profile names.
 
-:::caution[Profiles are roles, not safety levels]
+::: warning Profiles are roles, not safety levels
 Base does not mean harmless or unprivileged. Platform settings can still
 install packages, change the login shell, or manage system files. Review the
 [preview](commands-and-usage.md#dry-run-scope) before applying either role.

@@ -62,7 +62,7 @@ one full documentation run for the committed gate unless diagnosing a failure
 needs an earlier full run.
 
 Use `python3` instead of `python` on systems that require it. The checker runs
-skill metadata and its fixtures, source links, Astro diagnostics, Markdown and
+skill metadata and its fixtures, source links, Vue/TypeScript diagnostics, Markdown and
 checker fixtures, a production build, published links, and browser regressions.
 It stops at the first failure. It does not install dependencies, run the Rust
 compiler, or apply machine configuration.
@@ -101,58 +101,62 @@ contents and that tables fit a narrow screen without shrinking their text.
 Diagram labels must stay at least 14 CSS pixels.
 Mobile emulation is not a native phone/browser test.
 
-The browser suite starts and stops its own loopback preview on port 4322;
+The browser suite starts and stops its own local preview on port 4322;
 keep that port free.
 
 ## Find the owning source
 
-The site uses Astro and Starlight with Flexoki styling. Dependencies are pinned
-in [package.json](package.json)
-and its lockfile.
+The site uses VitePress's default theme. Dependencies are pinned in
+[package.json](package.json) and its lockfile.
 
 | Change | Source |
 |---|---|
 | Guide prose | [content/](content/) |
-| Navigation, integrations, and site defaults | [astro.config.mjs](astro.config.mjs) |
-| Content loading | [src/content.config.ts](src/content.config.ts) |
-| Markdown links and title anchors | [src/remark-docs.mjs](src/remark-docs.mjs) |
-| Theme initialization | [src/components/ThemeProvider.astro](src/components/ThemeProvider.astro) |
-| Layout and styling | [src/styles/custom.css](src/styles/custom.css) |
+| Navigation, search, metadata, and output | [.vitepress/config.mts](.vitepress/config.mts) |
+| Theme registration | [.vitepress/theme/index.ts](.vitepress/theme/index.ts) |
+| Diagram rendering | [.vitepress/theme/MermaidDiagram.vue](.vitepress/theme/MermaidDiagram.vue) |
+| Diagram containment | [.vitepress/theme/style.css](.vitepress/theme/style.css) |
 | Domain and static assets | [public/](public/) |
 
-Keep the content loader and Starlight's `markdown.processedDirs` aligned on
-`content/`; otherwise native callouts and heading links are not processed.
-The Markdown transform removes the duplicate displayed H1, preserves its
-anchor, and converts relative `.md` links to published URLs.
-
-After changing that processing pipeline, run `npm exec -- astro sync --force`
-from `docs/` before rebuilding so unchanged guides receive the new transforms.
+VitePress reads only `content/` and copies assets from `public/`. Guides keep
+one Markdown H1 and relative `.md` links; VitePress produces the corresponding
+`.html` destinations. Heading slugs use the same GitHub-compatible algorithm as
+the repository link checker. The root introduction publishes at `/`.
 
 ## Navigation and appearance
 
-Keep guides one level deep in the sidebar. Put maintenance sections after
-everyday guidance in their owning guide. Group related topics under recognizable
-headings rather than giving every topic its own small section. Page boundaries follow
-reader tasks; they do not need to match navigation groups.
+The header switches between three documentation sections. Each section has its
+own sidebar and previous/next sequence:
 
-The site title links to the separate introduction at `/`; Getting started
-owns the setup walkthrough.
+- Guides: Introduction, Workflows, Platforms, and Customization. Platform
+  guides cover environment-specific setup and behavior; Workflows covers
+  everyday commands, packages, and troubleshooting.
+- Reference: exact CLI syntax, task catalog, and configuration declarations.
+- Development: contributor workflow, testing, architecture, and CI/releases.
 
-Keep the compact spacing between the header icon and title. Use the template's
-navigation and scrollbar appearance without custom overrides. Navigation groups start expanded on desktop and mobile, with
-native reader toggles preserved. New visits default to dark mode, while the theme
-control retains explicit Light and System choices.
+Keep the Guides groups one level deep, starting expanded and collapsible with
+the native arrow controls. Reference and Development show their small page
+lists directly, without repeating the header labels as group headings. Page boundaries follow reader tasks rather than length.
+The active header link follows the page, including direct links from another
+section and search results. Search covers all three sections.
 
-Keep source and topic links visually distinct from literal syntax: ordinary
-link labels should not also be boxed as inline code. Use
-[Docs writing](../.agents/skills/docs-writing/SKILL.md#choose-links-code-and-emphasis)
-for link, code, and bold-emphasis choices; do not compensate for excessive
-markup by hiding code styling in the theme.
+The site title returns to the short personal introduction. Getting started owns
+the setup walkthrough. The introduction uses the standard reading layout with
+its outline and previous/next links disabled. Guides have a heading outline
+through level three, source edit links, and previous/next navigation within the
+current section.
 
-Prefer Starlight's built-in callouts, navigation, search, and theme controls to
-custom components. Mermaid is bundled locally and follows the selected theme.
-Give diagrams an `accTitle` and `accDescr`, use short labels, and retain readable
-text size with contained scrolling rather than shrinking diagrams to fit.
+Use the default theme's typography, colors, navigation, callouts, code blocks,
+and local search. New visits default to dark mode; the native theme switch
+retains a reader's light/dark choice. VitePress also supports following the
+system preference through its saved `auto` setting.
+
+Safety callouts use `::: warning Title` blocks. Mermaid is loaded locally on
+pages containing diagrams and rerenders when the theme changes, including
+during client-side navigation. Give diagrams an `accTitle` and `accDescr`,
+use short labels, and retain readable text with contained horizontal scrolling.
+Reference tables use VitePress's native horizontal scrolling on narrow screens.
+Do not shrink tables or diagram text to force them to fit.
 
 ## Configure publishing
 
@@ -160,7 +164,7 @@ In **Settings > Pages > Build and deployment**, select **GitHub Actions** as
 the publishing source, not **Deploy from a branch**. This is a repository
 setting; editing site files does not change it.
 
-Astro derives its site URL from
+VitePress derives its site URL from
 [public/CNAME](public/CNAME),
 which is also copied into the build. Keep the custom domain and HTTPS
 enforcement configured in Pages. CNAME does not configure DNS or enable HTTPS.
@@ -168,7 +172,7 @@ enforcement configured in Pages. CNAME does not configure DNS or enable HTTPS.
 When changing the domain, update these together:
 
 - `public/CNAME`, which contains the hostname, not a full URL.
-- The homepage's explicit canonical, social, and structured-data URLs in
+- The canonical and social URLs generated by [.vitepress/config.mts](.vitepress/config.mts), and the structured-data URL in
   [content/index.md](content/index.md).
 - The sitemap URL in
   [public/robots.txt](public/robots.txt)
@@ -177,7 +181,7 @@ When changing the domain, update these together:
   [browser tests](tests/browser/site.spec.ts).
 
 The current site assumes a domain root. Publishing a fork under a Pages project
-path such as `/dotfiles/` needs an Astro base-path configuration and a review of
+path such as `/dotfiles/` needs a VitePress base-path configuration and a review of
 root-relative links and assets; changing CNAME alone is not enough. Forks need
 their own Pages and Actions setup. Publication accepts only a successful push
 CI run on `main` from the same repository, not a pull-request run or a run

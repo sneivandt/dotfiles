@@ -2,7 +2,7 @@
 name: docs-publishing
 description: >
   Use for documentation organization and site management: adding or moving
-  docs/content/ pages, README/site links, Astro/Starlight navigation, themes,
+  docs/content/ pages, README/site links, VitePress navigation, themes,
   search, diagrams, domain configuration, site checks, or Pages publishing.
   Not for prose-only editing (docs-writing), internal agent instructions
   (skill-maintenance), or CLI binary releases (ci-cd-patterns).
@@ -10,10 +10,10 @@ description: >
 
 # Documentation Management and Publishing
 
-Start with [site configuration](../../../docs/astro.config.mjs),
+Start with [site configuration](../../../docs/.vitepress/config.mts),
 [domain declaration](../../../docs/public/CNAME), and the
 [site README](../../../docs/README.md).
-CI builds Astro from `docs/`; Pages deploys that verified artifact after the
+CI builds VitePress from `docs/`; Pages deploys that verified artifact after the
 aggregate succeeds for a push to `main`. Binary release selection is separate.
 The root README directs readers to the published guides; keep its URLs and
 heading anchors aligned with the site's output. Use
@@ -63,32 +63,36 @@ examples, and the amount of detail.
   bypassing TLS or moving the whole site check to another OS. One platform is
   sufficient, including mixed patches; do not repeat successful docs checks
   in WSL for cross-platform CLI coverage.
-- Keep dependencies pinned in `docs/package.json` and its lockfile. Use supported
-  Starlight configuration and components before adding custom JavaScript.
-- Guides belong in `docs/content/`, separate from the site implementation.
-  Match the front-matter title, Markdown H1, and sidebar label. Filenames and
-  URLs use the lowercase, hyphenated title: `getting-started.md` publishes at
-  `/getting-started.html`. Keep a description and place guides in explicit
-  sidebar groups. Keep the site root at `/` as a separate landing page
-  with a prominent path to the Getting started guide.
-- Keep the custom content loader and Starlight's `markdown.processedDirs`
-  aligned on `content/`; otherwise native callouts and heading links are skipped.
-  Verify callout structure and visible styling in the rendered site.
-- Keep guide links relative with `.md` extensions. The
-  [Markdown transform](../../../docs/src/remark-docs.mjs) rewrites published
-  destinations and preserves each Markdown title's anchor without a
-  duplicate H1. Repository source links outside the guides need GitHub URLs.
-- Mermaid is bundled locally through `astro-mermaid` and follows the selected
-  theme. Use short labels, compact layouts, and `accTitle`/`accDescr`. Keep native
-  text size and contained scrolling; do not shrink diagrams to fit mobile.
-- Default new visits to dark mode while retaining explicit Light and System
-  choices. Reuse Starlight's theme provider and picker, with theme credit text
-  disabled. Use Starlight's default expanded sidebar groups on desktop and
-  mobile; preserve its native reader toggles and saved desktop choices. Use the
-  template's navigation scrollbar appearance without overrides; retain compact
-  header icon/title spacing.
-- Astro derives its site URL from `docs/public/CNAME`. Keep the homepage's
-  explicit canonical/social/structured-data URLs, `public/robots.txt`, README
+- Keep dependencies pinned in `docs/package.json` and its lockfile. Extend
+  VitePress's default theme only where the documentation needs behavior it does
+  not supply; prefer its native navigation, callouts, search, and code blocks.
+- Guides belong in `docs/content/`, selected by `srcDir`. Match the front-matter
+  title, Markdown H1, and sidebar label. Filenames and URLs use lowercase,
+  hyphenated titles; `getting-started.md` publishes at `/getting-started.html`.
+  Keep a description and an explicit sidebar group for every guide.
+- Keep one Markdown H1 and relative `.md` guide links. VitePress handles the
+  published link extensions; the configured GitHub-compatible heading slugger
+  preserves repository anchors. Repository source links need GitHub URLs.
+- Keep the root introduction short, with a prominent Getting started link.
+  Use the standard reading layout with outline and previous/next links disabled.
+  Put platform setup and behavior in Platforms, package workflows in Workflows,
+  and exact CLI/task/configuration lookups in Reference. Preserve one-level
+  sidebar groups and native mobile navigation. Header links switch between
+  Guides, Reference, and Development, each with its own sidebar and previous/next
+  sequence. Guides has Introduction, Workflows, Platforms, and Customization.
+  Its groups start expanded with native right-hand collapse arrows. The small
+  Reference and Development sidebars list pages directly without redundant
+  headings.
+- Use `::: warning Title` for safety callouts. Verify their title, body, and
+  visible styling in the rendered site. The guide outline includes levels 2–3.
+- Mermaid is rendered by the local theme component and follows theme changes
+  and client-side navigation. Use `accTitle`/`accDescr`, short labels, and native
+  text size with contained horizontal scrolling. Tables also scroll within
+  their content area on narrow screens rather than shrinking text.
+- New visits default to dark mode; preserve the native appearance switch and
+  reader preferences. Use the default theme's colors, typography, and spacing.
+- VitePress derives its site URL from `docs/public/CNAME`. Keep generated canonical/social URLs and the homepage's
+  explicit structured-data URL, `public/robots.txt`, README
   links, and domain-specific browser assertions aligned when changing domains.
   The current site assumes a domain root, not a Pages project subpath.
   Pages must use **GitHub Actions**, not branch/Jekyll publishing. Forks need
@@ -104,7 +108,7 @@ committed-snapshot mode for both docs-only and mixed patches, and the preview
 procedure in that README. Keep the Rust catalog fixture and workflow checks
 explicit as remaining CI coverage; the Linux aggregate is not required for
 this native documentation path. Inspect navigation on desktop/mobile,
-search, all theme choices, Mermaid SVG output, and links to source files.
+search, light/dark and system preference behavior, Mermaid SVG output, and links to source files.
 The static check verifies matching titles, names, navigation, anchors, and assets;
 browser tests also enforce readable diagram labels and theme preferences.
 A source link check is not a rendered-site check, and

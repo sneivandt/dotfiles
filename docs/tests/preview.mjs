@@ -1,3 +1,3 @@
-import { preview } from 'astro';
+import { serve } from 'vitepress';
 
-await preview({ server: { host: 'localhost', port: Number(process.env.DOCS_TEST_PORT ?? 4322) } });
+await serve({ root: process.cwd(), port: Number(process.env.DOCS_TEST_PORT ?? 4322) });

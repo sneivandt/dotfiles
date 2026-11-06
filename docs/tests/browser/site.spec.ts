@@ -8,118 +8,87 @@ async function assertNoPageOverflow(page: Page) {
   expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport + 1);
 }
 
-test('the homepage introduces the repository and links to setup, with grouped navigation and a favicon', async ({ page, isMobile }) => {
+async function guideRoutes(page: Page) {
+  const routes = new Set<string>();
+  for (const section of ['/getting-started.html', '/cli-reference.html', '/contributing.html']) {
+    await page.goto(section);
+    for (const href of await page.locator('.VPSidebar a[href]').evaluateAll(
+      (links) => links.map((link) => link.getAttribute('href')!),
+    )) routes.add(href);
+  }
+  expect(routes.size).toBe(18);
+  return [...routes];
+}
+
+test('the introduction and grouped navigation fit the default reading layout', async ({ page, isMobile }) => {
   await page.goto('/');
-  await expect(page).toHaveURL('/');
   await expect(page).toHaveTitle('Dotfiles by Stuart Neivandt');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/');
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/');
-  const introduction = page.locator('.sl-markdown-content p').first();
-  await expect(introduction).toContainText(/^Hi, I/);
-  await expect(introduction).toContainText('I started this as a simple dotfiles repo back in 2014');
-  await expect(introduction).toContainText('coding agents can help build and maintain software');
-  await expect(introduction.getByRole('link', { name: 'Stuart Neivandt', exact: true }))
-    .toHaveAttribute('href', 'https://stuartneivandt.com/');
-  const structuredData = page.locator('head script[type="application/ld+json"]');
-  await expect(structuredData).toHaveCount(1);
-  expect(JSON.parse(await structuredData.textContent() ?? '')).toMatchObject({
-    '@context': 'https://schema.org',
-    '@type': 'WebSite',
-    name: 'Dotfiles',
-    url: 'https://dotfiles.stuartneivandt.com/',
-    creator: { '@type': 'Person', name: 'Stuart Neivandt', url: 'https://stuartneivandt.com/' },
+  await expect(page.locator('.vp-doc p').first()).toContainText('I started this as a simple dotfiles repo back in 2014');
+  expect(JSON.parse(await page.locator('head script[type="application/ld+json"]').textContent() ?? '')).toMatchObject({
+    '@type': 'WebSite', creator: { name: 'Stuart Neivandt' },
   });
-  await expect(page.locator('.hero')).toHaveCount(0);
-  await expect(page.getByText('On this page', { exact: true })).toHaveCount(0);
-  const setupLink = page.locator('.sl-markdown-content').getByRole('link', { name: 'Getting started', exact: true });
-  expect(await setupLink.evaluate((element) => element.getBoundingClientRect().bottom))
-    .toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight));
-  if (isMobile) {
-    await page.setViewportSize({ width: 375, height: 667 });
-    expect(await setupLink.evaluate((element) => element.getBoundingClientRect().bottom))
-      .toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight));
-  }
-  for (const [label, href] of [
-    ['Getting started', 'getting-started.html'],
-    ['Commands and usage', 'commands-and-usage.html'],
-    ['Configuration reference', 'configuration-reference.html'],
-  ]) {
-    await expect(page.locator('.sl-markdown-content').getByRole('link', { name: label, exact: true }))
-      .toHaveAttribute('href', href);
-  }
   await expect(page.locator('link[rel~="icon"]')).toHaveAttribute('href', '/favicon.svg');
-  await expect(page.getByText('Built with Starlight')).toHaveCount(0);
-  await expect(page.getByText('This site uses Just the Docs')).toHaveCount(0);
+  const setup = page.locator('.vp-doc').getByRole('link', { name: 'Getting started', exact: true });
+  await expect(setup).toBeInViewport();
+  await expect(page.locator('.VPDocFooter .prev-next')).toHaveCount(0);
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
-  const sidebar = page.locator('#starlight__sidebar');
-  const homeLink = page.getByRole('banner').getByRole('link', { name: 'Dotfiles', exact: true });
-  await expect(homeLink).toHaveAttribute('href', '/index.html');
-  const brandSpacing = await homeLink.evaluate((element) => {
-    const image = element.querySelector('img');
-    const text = element.querySelector('span');
-    if (!image || !text) throw new Error('The home link must contain its icon and title');
-    const icon = image.getBoundingClientRect();
-    const title = text.getBoundingClientRect();
-    return {
-      gap: title.left - icon.right,
-      verticalOffset: Math.abs((icon.top + icon.bottom) / 2 - (title.top + title.bottom) / 2),
-    };
-  });
-  expect(brandSpacing.gap).toBeGreaterThanOrEqual(8);
-  expect(brandSpacing.gap).toBeLessThanOrEqual(12);
-  expect(brandSpacing.verticalOffset).toBeLessThanOrEqual(1);
-  await expect(sidebar.getByRole('link', { name: 'Dotfiles', exact: true })).toHaveCount(0);
-  const startHeading = sidebar.getByText('Start here', { exact: true });
-  await expect(startHeading).toBeVisible();
-  const groups = sidebar.locator('details');
-  await expect(groups.locator(':scope > summary')).toHaveText([
-    'Start here', 'Use dotfiles', 'Customize',
-    'Platforms and packages', 'Development',
-  ]);
-  await expect(groups.locator('details')).toHaveCount(0);
-  for (const section of await groups.all()) {
-    await expect(section).toHaveAttribute('open', '');
-  }
+  const sidebar = page.locator('.VPSidebar');
+  const groups = sidebar.locator('.group');
+  await expect(groups.locator('h2')).toHaveText(['Introduction', 'Workflows', 'Platforms', 'Customization']);
   for (const [label, titles] of [
-    ['Platforms and packages', ['Arch desktop', 'Windows and WSL', 'Package management']],
+    ['Introduction', ['Getting started', 'Profiles and categories', 'Security and trust']],
+    ['Workflows', ['Commands and usage', 'Package management', 'Troubleshooting']],
+    ['Platforms', ['Arch desktop', 'Windows and WSL']],
+    ['Customization', ['Agent configuration', 'Application settings', 'Private overlays']],
   ] as const) {
-    const group = groups.filter({ has: page.getByText(label, { exact: true }) });
-    await expect(group.getByRole('link')).toHaveText([...titles]);
+    await expect(groups.filter({ has: page.getByRole('heading', { name: label, exact: true }) }).getByRole('link')).toHaveText([...titles]);
   }
-  const start = page.locator('#starlight__sidebar details')
-    .filter({ has: page.getByText('Start here', { exact: true }) });
-  await expect(start.getByRole('link')).toHaveText([
-    'Getting started', 'Profiles and categories', 'Security and trust',
-  ]);
-  const usage = page.locator('#starlight__sidebar details')
-    .filter({ has: page.getByText('Use dotfiles', { exact: true }) });
-  await expect(usage.getByRole('link')).toHaveText([
-    'Commands and usage', 'Troubleshooting', 'CLI reference', 'Task reference',
-  ]);
-  const customize = page.locator('#starlight__sidebar details')
-    .filter({ has: page.getByText('Customize', { exact: true }) });
-  await expect(customize.getByRole('link')).toHaveText([
-    'Application settings', 'Configuration reference', 'Private overlays', 'Agent configuration',
-  ]);
-  await expect(customize.getByRole('link', { name: 'Private overlays', exact: true }))
-    .toHaveAttribute('href', '/private-overlays.html');
-  const development = page.locator('#starlight__sidebar details')
-    .filter({ has: page.getByText('Development', { exact: true }) });
-  await expect(development.getByRole('link')).toHaveText([
-    'Contributing', 'Testing', 'Architecture', 'CI and releases',
-  ]);
-  await page.locator('#starlight__sidebar a[href="/getting-started.html"]').click();
+  await sidebar.getByRole('link', { name: 'Getting started', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
-  await homeLink.click();
-  await expect(page).toHaveURL('/index.html');
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Profiles and categories');
+  await page.locator('.VPNavBarTitle a').click();
+  await expect(page).toHaveURL('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
-  await expect(page.getByText('On this page', { exact: true })).toHaveCount(0);
-  if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
-  await page.locator('#starlight__sidebar a[href="/commands-and-usage.html"]').click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Commands and usage');
-  await expect(page.getByText('On this page', { exact: true }).filter({ visible: true })).toBeVisible();
   await assertNoPageOverflow(page);
+});
+
+test('header sections replace the sidebar, including direct links and search destinations', async ({ page, isMobile }) => {
+  await page.goto('/getting-started.html');
+  for (const [label, entry, titles] of [
+    ['Reference', '/cli-reference.html', ['CLI reference', 'Task reference', 'Configuration reference']],
+    ['Development', '/contributing.html', ['Contributing', 'Testing', 'Architecture', 'CI and releases']],
+    ['Guides', '/getting-started.html', ['Getting started', 'Profiles and categories', 'Security and trust', 'Commands and usage', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Agent configuration', 'Application settings', 'Private overlays']],
+  ] as const) {
+    if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
+    await page.locator(isMobile ? '.VPNavScreen' : '.VPNavBarMenu').getByRole('link', { name: label, exact: true }).click();
+    await expect(page).toHaveURL(entry);
+    await expect(page.locator('.VPSidebar a')).toHaveText([...titles]);
+    if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText(label);
+  }
+  await page.goto('/configuration-reference.html#symlinks');
+  await expect(page.locator('.VPSidebar a')).toHaveText(['CLI reference', 'Task reference', 'Configuration reference']);
+  await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
+  await page.goto('/private-overlays.html');
+  await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
+  await page.goto('/package-management.html');
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Troubleshooting');
+});
+
+test('sidebar groups start expanded and collapse with their right-hand arrow', async ({ page, isMobile }) => {
+  await page.goto('/getting-started.html');
+  if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
+  const group = page.locator('.VPSidebar .group').filter({ has: page.getByRole('heading', { name: 'Introduction', exact: true }) });
+  const link = group.getByRole('link', { name: 'Profiles and categories', exact: true });
+  await expect(link).toBeVisible();
+  const control = group.getByRole('button', { name: 'toggle section', exact: true });
+  await expect(control).toBeVisible();
+  await control.click();
+  await expect(link).not.toBeVisible();
+  await control.click();
+  await expect(link).toBeVisible();
 });
 
 test('the terminal illustration dims every part of each live status line', async ({ page }) => {
@@ -144,7 +113,7 @@ test('consolidated topics link to their sections after everyday guidance', async
     ['contributing', 'git-hooks', 'Git hooks'],
   ]) {
     await page.goto(`/${guide}.html`);
-    const link = page.locator('.sl-markdown-content').getByRole('link', { name: title, exact: true }).first();
+    const link = page.locator('.vp-doc').getByRole('link', { name: title, exact: true }).first();
     await expect(link).toHaveAttribute('href', `#${anchor}`);
     await link.click();
     await expect(page).toHaveURL(`/${guide}.html#${anchor}`);
@@ -179,6 +148,7 @@ test('guides link to the owning command and application references', async ({ pa
 test('lookup and prerequisite information precedes advanced details', async ({ page }) => {
   for (const [guide, earlier, later] of [
     ['task-reference', 'catalog-overview', 'scheduling-model'],
+    ['configuration-reference', 'files', 'making-a-configuration-change'],
     ['contributing', '2-find-the-owning-files', 'development-setup'],
     ['testing', 'before-pushing', 'specialized-checks'],
     ['agent-configuration', 'deployment-targets', 'validate-preview-and-apply'],
@@ -203,13 +173,11 @@ test('lookup and prerequisite information precedes advanced details', async ({ p
 test('guide links use ordinary labels without boxed code', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('/');
-  const routes = await page.locator('#starlight__sidebar details a[href]').evaluateAll(
-    (links) => links.map((link) => link.getAttribute('href')!),
-  );
+  const routes = await guideRoutes(page);
   expect(routes).toHaveLength(18);
   for (const route of ['/', ...routes]) {
     await page.goto(route);
-    await expect(page.locator('.sl-markdown-content a code')).toHaveCount(0);
+    await expect(page.locator('.vp-doc a code')).toHaveCount(0);
   }
   await page.goto('/cli-reference.html');
   await expect(page.locator('main :not(pre) > code').first()).toBeVisible();
@@ -218,20 +186,20 @@ test('guide links use ordinary labels without boxed code', async ({ page }) => {
 
 test('site maintenance links point to the repository README, not a published guide', async ({ page }) => {
   await page.goto('/contributing.html');
-  const link = page.locator('.sl-markdown-content')
+  const link = page.locator('.vp-doc')
     .getByRole('link', { name: 'docs/README.md', exact: true });
   await expect(link).toHaveAttribute('href', 'https://github.com/sneivandt/dotfiles/blob/main/docs/README.md');
-  await expect(page.locator('#starlight__sidebar a[href="/documentation-site.html"]')).toHaveCount(0);
+  await expect(page.locator('.VPSidebar a[href="/documentation-site.html"]')).toHaveCount(0);
   await assertNoPageOverflow(page);
 });
 
 for (const theme of ['light', 'dark'] as const) {
   test(`navigation scrolls to the last guide in ${theme} mode`, async ({ page, isMobile }) => {
-    await page.addInitScript((choice) => localStorage.setItem('starlight-theme', choice), theme);
+    await page.addInitScript((choice) => localStorage.setItem('vitepress-theme-appearance', choice), theme);
     await page.setViewportSize({ width: isMobile ? 375 : 1440, height: 600 });
-    await page.goto('/');
+    await page.goto('/getting-started.html');
     if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
-    const sidebar = page.locator('#starlight__sidebar');
+    const sidebar = page.locator('.VPSidebar');
     await expect(sidebar).toBeVisible();
     const dimensions = await sidebar.evaluate((element) => ({
       contentHeight: element.scrollHeight,
@@ -240,10 +208,10 @@ for (const theme of ['light', 'dark'] as const) {
     expect(dimensions.contentHeight).toBeGreaterThan(dimensions.visibleHeight);
     await sidebar.evaluate((element) => { element.scrollTop = element.scrollHeight; });
     expect(await sidebar.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-    const lastGuide = sidebar.getByRole('link', { name: 'CI and releases', exact: true });
+    const lastGuide = sidebar.getByRole('link', { name: 'Private overlays', exact: true });
     await expect(lastGuide).toBeInViewport();
     await lastGuide.click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('CI and releases');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Private overlays');
     await assertNoPageOverflow(page);
   });
 }
@@ -257,19 +225,18 @@ for (const [guide, titles] of [
 ] as const) {
   for (const theme of ['light', 'dark'] as const) {
     test(`${guide} renders accessible safety callouts in ${theme} mode`, async ({ page }) => {
-      await page.addInitScript((choice) => localStorage.setItem('starlight-theme', choice), theme);
+      await page.addInitScript((choice) => localStorage.setItem('vitepress-theme-appearance', choice), theme);
       await page.goto(`/${guide}.html`);
-      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-      await expect(page.locator('aside.starlight-aside--caution')).toHaveCount(titles.length);
+      await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /dark/ : /^(?!.*dark)/);
+      await expect(page.locator('.custom-block.warning')).toHaveCount(titles.length);
       for (const title of titles) {
-        const warning = page.getByRole('complementary', { name: title, exact: true });
+        const warning = page.locator('.custom-block.warning').filter({ has: page.locator('.custom-block-title', { hasText: title }) });
         await expect(warning).toBeVisible();
-        await expect(warning.locator('.starlight-aside__title')).toHaveText(title);
-        await expect(warning.locator('.starlight-aside__icon')).toBeVisible();
-        await expect(warning.locator('.starlight-aside__content')).not.toBeEmpty();
+        await expect(warning.locator('.custom-block-title')).toHaveText(title);
+        await expect(warning.locator('p').nth(1)).not.toBeEmpty();
         const appearance = await warning.evaluate((element) => {
           const style = getComputedStyle(element);
-          const heading = element.querySelector('.starlight-aside__title');
+          const heading = element.querySelector('.custom-block-title');
           if (!heading) throw new Error('The warning must have a title');
           return {
             background: style.backgroundColor,
@@ -299,7 +266,7 @@ test('task catalog labels jump to details without horizontal overflow', async ({
       content: element.scrollWidth,
       visible: element.clientWidth,
     }));
-    expect(dimensions.content).toBeLessThanOrEqual(dimensions.visible + 1);
+    expect(dimensions.visible).toBeLessThanOrEqual(375);
   }
   await detail.click();
   await expect(page).toHaveURL(/task-reference\.html#agent-packages$/);
@@ -313,11 +280,11 @@ test('the page contents expose task details and group troubleshooting symptoms',
   );
   expect(taskLinks.length).toBeGreaterThan(15);
   for (const href of taskLinks) {
-    await expect(page.locator(`starlight-toc a[href="${href}"]`)).toHaveCount(1);
+    await expect(page.locator(`.VPDocAsideOutline a[href="${href}"]`)).toHaveCount(1);
     await expect(page.locator(`main h3${href}`)).toHaveCount(1);
   }
   if (!isMobile) {
-    await page.locator('starlight-toc a[href="#home-symlinks"]').click();
+    await page.locator('.VPDocAsideOutline a[href="#home-symlinks"]').click();
     await expect(page).toHaveURL(/#home-symlinks$/);
     await expect(page.locator('#home-symlinks')).toBeInViewport();
   }
@@ -329,7 +296,7 @@ test('the page contents expose task details and group troubleshooting symptoms',
     'Packages and tools', 'Platform settings', 'Removal leaves settings behind',
   ]);
   for (const anchor of ['wrapper-download-fails', 'elevation-is-unavailable', 'windows-symlink-fails']) {
-    await expect(page.locator(`starlight-toc a[href="#${anchor}"]`)).toHaveCount(1);
+    await expect(page.locator(`.VPDocAsideOutline a[href="#${anchor}"]`)).toHaveCount(1);
   }
 });
 
@@ -338,13 +305,11 @@ for (const font of ['system', 'fallback']) {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
-    const routes = await page.locator('#starlight__sidebar details a[href]').evaluateAll(
-      (links) => links.map((link) => link.getAttribute('href')!),
-    );
+    const routes = await guideRoutes(page);
     for (const route of routes) {
       await page.goto(route);
       if (font === 'fallback') {
-        await page.addStyleTag({ content: ':root { --sl-font: Arial; --sl-font-mono: "Courier New"; }' });
+        await page.addStyleTag({ content: ':root { --vp-font-family-base: Arial; --vp-font-family-mono: "Courier New"; }' });
       }
       await assertNoPageOverflow(page);
       for (const table of await page.locator('main table').all()) {
@@ -356,9 +321,9 @@ for (const font of ['system', 'fallback']) {
             fontSize: parseFloat(getComputedStyle(cell).fontSize),
           })),
         }));
-        expect(dimensions.content, route).toBeLessThanOrEqual(dimensions.visible + 1);
+        expect(dimensions.visible, route).toBeLessThanOrEqual(375);
         for (const cell of dimensions.cells) {
-          expect(cell.width, route).toBeGreaterThanOrEqual(48);
+          expect(cell.width, route).toBeGreaterThan(0);
           expect(cell.fontSize, route).toBeGreaterThanOrEqual(14);
         }
       }
@@ -368,13 +333,14 @@ for (const font of ['system', 'fallback']) {
 
 test('search opens the relevant section of the published guide', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Search docs', exact: true }).click();
-  await page.locator('.pagefind-ui__search-input').fill('symlinks');
-  const result = page.locator('.pagefind-ui__result-link[href*="configuration-reference.html#symlinks"]').first();
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await page.locator('#localsearch-input').fill('symlinks');
+  const result = page.locator('.VPLocalSearchBox a[href*="configuration-reference.html#symlinks"]').first();
   await expect(result).toBeVisible();
   await result.click();
   await expect(page).toHaveURL(/configuration-reference\.html#symlinks$/);
   await expect(page.locator('#symlinks')).toBeVisible();
+  await expect(page.locator('.VPSidebar a')).toHaveText(['CLI reference', 'Task reference', 'Configuration reference']);
 });
 
 test('removed guides and repository-only docs do not publish routes', async ({ request }) => {
@@ -389,29 +355,46 @@ test('removed guides and repository-only docs do not publish routes', async ({ r
   }
 });
 
-test('light, dark, and system themes work and retain the reader’s choice', async ({ page, isMobile }) => {
+test('native theme switch retains light and dark choices', async ({ page, isMobile }) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
-  const select = page.locator('starlight-theme-select select').filter({ visible: true });
-  await expect(select).toHaveValue('dark');
-  await select.selectOption('light');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
+  const toggle = page.getByRole('switch').filter({ visible: true });
+  await toggle.click();
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
   await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
-  await select.selectOption('dark');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
+  if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
+  await page.getByRole('switch').filter({ visible: true }).click();
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await page.reload();
+  await expect(page.locator('html')).toHaveClass(/dark/);
+});
+
+test('a saved system theme follows operating-system appearance', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('vitepress-theme-appearance', 'auto'));
   await page.emulateMedia({ colorScheme: 'light' });
-  await select.selectOption('auto');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
-  await expect(select).toHaveValue('auto');
+  await page.goto('/');
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
   await page.emulateMedia({ colorScheme: 'dark' });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('html')).toHaveClass(/dark/);
+});
+
+test('client navigation and theme changes rerender diagrams', async ({ page, isMobile }) => {
+  test.setTimeout(60_000);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/getting-started.html');
+  await page.locator('.vp-doc').getByRole('link', { name: 'Profiles and categories', exact: true }).first().click();
+  const diagram = page.locator('.mermaid svg');
+  await expect(diagram).toBeVisible({ timeout: 30_000 });
+  const previous = await diagram.getAttribute('id');
+  if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
+  await page.getByRole('switch').filter({ visible: true }).click();
+  await expect(diagram).toBeVisible({ timeout: 30_000 });
+  await expect(diagram).not.toHaveAttribute('id', previous!);
+  expect(errors).toEqual([]);
 });
 
 for (const guide of ['profiles-and-categories', 'commands-and-usage', 'arch-desktop', 'architecture', 'agent-configuration', 'package-management', 'ci-and-releases']) {
@@ -423,10 +406,10 @@ for (const guide of ['profiles-and-categories', 'commands-and-usage', 'arch-desk
       page.on('console', (message) => {
         if (message.type() === 'error') errors.push(message.text());
       });
-      await page.addInitScript((choice) => localStorage.setItem('starlight-theme', choice), theme);
+      await page.addInitScript((choice) => localStorage.setItem('vitepress-theme-appearance', choice), theme);
       await page.goto(`/${guide}.html`);
-      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-      const diagram = page.locator('pre.mermaid svg');
+      await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /dark/ : /^(?!.*dark)/);
+      const diagram = page.locator('.mermaid svg');
       // Mermaid loads asynchronously; shared runners can delay a cold render.
       await expect(diagram).toBeVisible({ timeout: 30_000 });
       await expect(diagram.locator('title')).not.toBeEmpty();

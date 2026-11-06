@@ -19,6 +19,5 @@ export default defineConfig({
     command: 'node tests/preview.mjs',
     url: `http://localhost:${port}`,
     reuseExistingServer: false,
-    env: { ASTRO_TELEMETRY_DISABLED: '1' },
   },
 });

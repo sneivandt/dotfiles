@@ -37,7 +37,7 @@ flowchart TB
 The last step applies only to successful, same-repository **push** CI on `main`.
 Pull request CI cannot publish a release.
 
-Always-on work includes documentation consistency and the Starlight site build
+Always-on work includes documentation consistency and the VitePress site build
 and browser regressions, actionlint, workflow
 contracts, and classification regressions. The `ci-success` job runs even after
 an earlier failure and verifies that every selected gating job succeeded and

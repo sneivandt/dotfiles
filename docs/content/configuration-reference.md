@@ -16,6 +16,27 @@ this checkout, so source edits can affect applications immediately, before
 another update. Shell preferences, desktop appearance and keybindings are
 covered in [Application settings](application-settings.md).
 
+## Files
+
+Every main file listed here is required, even on platforms where its task does
+not apply. A required file may be empty.
+
+| File | Purpose |
+|---|---|
+| [symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml) | Link repository content into home |
+| [packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml) | Install Arch or Windows packages |
+| [git-config.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml) | Set global Git values |
+| [agent-settings.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml) | Set Copilot/Codex preferences |
+| [chmod.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml) | Apply Unix file/directory modes |
+| [registry.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/registry.toml) | Set Windows current-user values |
+| [systemd-units.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml) | Enable/start or disable/stop units |
+| [system-files.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml) | Merge fragments into files below `/etc` |
+| [vscode-extensions.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml) | Install editor extensions |
+
+Private overlays may also provide
+[conf/scripts.toml](private-overlays.md#overlay-scripts). The main repository's
+`conf/scripts.toml` is not loaded.
+
 ## Making a configuration change
 
 1. Find the owning file below.
@@ -49,27 +70,6 @@ The preview uses current checkout content, but still has the
 Not installed yet? [Getting started](getting-started.md) covers the wrapper,
 profile selection, backups, and the first apply. Contributors changing the
 loader or configuration model should also use [Testing](testing.md#cli-validation).
-
-## Files
-
-Every main file listed here is required, even on platforms where its task does
-not apply. A required file may be empty.
-
-| File | Purpose |
-|---|---|
-| [symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml) | Link repository content into home |
-| [packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml) | Install Arch or Windows packages |
-| [git-config.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml) | Set global Git values |
-| [agent-settings.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml) | Set Copilot/Codex preferences |
-| [chmod.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml) | Apply Unix file/directory modes |
-| [registry.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/registry.toml) | Set Windows current-user values |
-| [systemd-units.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml) | Enable/start or disable/stop units |
-| [system-files.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml) | Merge fragments into files below `/etc` |
-| [vscode-extensions.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml) | Install editor extensions |
-
-Private overlays may also provide
-[conf/scripts.toml](private-overlays.md#overlay-scripts). The main repository's
-`conf/scripts.toml` is not loaded.
 
 ## Category sections
 

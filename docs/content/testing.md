@@ -90,7 +90,7 @@ With no stage names, the scripts run their default stages:
 | `test` | Full Rust test suite, not shell/PowerShell integration scripts |
 | `rustdoc` | Private-item documentation and configured rustdoc lints |
 | `config` | CLI configuration, source paths, and required config files |
-| `docs` | Markdown links, skill metadata/fixtures, task selectors, and the Starlight build, published links, and browser regressions; Linux entrypoint only |
+| `docs` | Markdown links, skill metadata/fixtures, task selectors, and the VitePress build, published links, and browser regressions; Linux entrypoint only |
 | `ci` | Workflow contracts, path/release classification, aggregate gating, and actionlint; Linux entrypoint only |
 | `shell` | Shared ShellCheck discovery and rules |
 | `powershell` | PSScriptAnalyzer at Warning/Error severity |

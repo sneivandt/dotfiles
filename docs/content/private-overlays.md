@@ -95,7 +95,7 @@ Check that the directory exists and contains the intended files. Missing
 optional configuration contributes nothing, so a mistyped path can look like
 an empty overlay rather than producing a missing-file error.
 
-:::caution[Review overlay scripts before previewing]
+::: warning Review overlay scripts before previewing
 `--check` and `--dryrun` execute overlay code with your access. They can use the
 network, expose private data, or mutate files if implemented incorrectly.
 A private repository and a dry-run flag do not sandbox that code.

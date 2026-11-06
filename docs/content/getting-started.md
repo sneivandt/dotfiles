@@ -1,9 +1,7 @@
 ---
 title: Getting started
 description: Set up a machine, make the configuration your own, and understand what changes before applying them.
-tableOfContents:
-  minHeadingLevel: 2
-  maxHeadingLevel: 3
+outline: [2, 3]
 ---
 
 # Getting started
@@ -27,8 +25,10 @@ Already installed? See [Commands and usage](commands-and-usage.md) or
 | Windows | Windows configuration and winget packages; no Hyprland desktop |
 | WSL | The Linux distribution and its WSL integration; configure the Windows host separately |
 
-Published binaries support Linux x86-64/AArch64 and Windows x86-64. See
-[Windows and WSL](windows-and-wsl.md) for that platform's requirements.
+Published binaries support Linux x86-64/AArch64 and Windows x86-64. Use
+[Arch desktop](arch-desktop.md) for the Hyprland session and desktop services,
+or [Windows and WSL](windows-and-wsl.md) for Windows requirements, elevation,
+and Linux integration. These guides are grouped under Platforms.
 
 ## Set up your machine
 
@@ -88,7 +88,7 @@ Use [Application settings](application-settings.md) to find other sources,
 or a [private overlay](private-overlays.md) for changes you do not want in the
 public repository.
 
-:::caution[Back up existing configuration first]
+::: warning Back up existing configuration first
 Preview the update, then back up and move aside any files, directories, or
 unrelated links that block a managed link. Dotfiles leaves these entries in
 place and reports the conflicts. Review any overlay scripts before running
@@ -142,7 +142,7 @@ On Windows, start PowerShell as your normal user, not as Administrator:
 If you chose the source-build route, include `--build` after the wrapper name.
 For example: `./dotfiles.sh --build update --no-repo-update --dry-run`.
 
-:::caution[A preview is not a sandbox]
+::: warning A preview is not a sandbox
 The wrapper can download the CLI before the preview starts. Dry-run writes
 logs, may save your selections, and can execute overlay check/preview scripts.
 It does not apply the planned configuration changes. See

@@ -35,7 +35,6 @@ docs_site()
   log_stage "Checking the built documentation and browser behavior"
   (
     cd "$DIR/docs"
-    export ASTRO_TELEMETRY_DISABLED=1
     npm run check &&
       npm test &&
       npm run build &&

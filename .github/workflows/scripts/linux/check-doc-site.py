@@ -40,13 +40,13 @@ class Page(HTMLParser):
             self.h1_count += 1
             self.titles.append("")
             self.in_title = True
-        if tag == "nav" and attrs.get("aria-label") == "Main":
+        if tag == "nav" and attrs.get("id") == "VPSidebarNav":
             self.in_nav = True
         if tag == "a" and attrs.get("href"):
             self.links.append(attrs["href"])
             if self.in_nav:
                 self.nav_link = [attrs["href"], ""]
-            if "site-title" in attrs.get("class", "").split():
+            if "title" in attrs.get("class", "").split():
                 self.site_title_link = [attrs["href"], ""]
         if tag in {"script", "img"} and attrs.get("src"):
             self.assets.append(attrs["src"])
@@ -63,7 +63,7 @@ class Page(HTMLParser):
 
     def handle_data(self, text):
         if self.in_title:
-            self.titles[-1] += text
+            self.titles[-1] += text.replace("\u200b", "")
         if self.nav_link is not None:
             self.nav_link[1] += text
         if self.site_title_link is not None:
@@ -125,11 +125,12 @@ def check_site(root):
     if not (root / "docs/content/index.md").is_file():
         errors.append("Missing Markdown homepage docs/content/index.md")
     sidebar_routes = {
-        urlsplit(urljoin(origin + "/index.html", href)).path
-        for href, _ in pages["/index.html"].nav_links
+        urlsplit(urljoin(origin + route, href)).path
+        for route, page in pages.items()
+        for href, _ in page.nav_links
     }
     homepage = pages["/index.html"]
-    if homepage.site_title_links != [("/index.html", "Dotfiles")]:
+    if homepage.site_title_links != [("/", "Dotfiles")]:
         errors.append("Homepage header must link to the introduction with the site title")
     if "/index.html" in sidebar_routes:
         errors.append("Homepage must not appear in sidebar navigation")
@@ -147,19 +148,19 @@ def check_site(root):
     for source in sorted((root / "docs/content").glob("*.md")):
         route = "/" + source.stem + ".html"
         if source.stem not in {"404", "index"} and route not in sidebar_routes:
-            errors.append(f"{source.name}: missing from homepage navigation")
+            errors.append(f"{source.name}: missing from sidebar navigation")
         if route not in pages:
             errors.append(f"{source.name}: missing published route {route}")
             continue
         page = pages[route]
         source_text = source.read_text(encoding="utf-8")
-        missing = heading_anchors(source_text) - page.ids
+        missing = (heading_anchors(source_text) - page.ids) if source.stem != "404" else set()
         if missing:
             errors.append(f"{route}: missing heading anchors {sorted(missing)}")
-        if page.h1_count != 1:
+        if source.stem != "404" and page.h1_count != 1:
             errors.append(f"{route}: expected one page title, found {page.h1_count}")
         elif source.stem != "404":
-            title = page.titles[0].strip()
+            title = page.titles[0].strip().rstrip("#").strip()
             slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
             if source.stem != "index" and source.stem != slug:
                 errors.append(f"{route}: filename and URL do not match title {title!r}")
@@ -192,7 +193,7 @@ def check_site(root):
             errors.append(f"{route}: duplicate IDs {sorted(page.duplicates)}")
         for href, label in page.nav_links:
             target = pages.get(urlsplit(urljoin(origin + route, href)).path)
-            if target is not None and target.titles != [label]:
+            if target is not None and [title.strip().rstrip("#").strip() for title in target.titles] != [label]:
                 errors.append(f"{route}: navigation label {label!r} does not match {href}")
         for target in page.links + page.assets:
             url = urlsplit(urljoin(origin + route, target))

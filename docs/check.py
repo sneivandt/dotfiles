@@ -95,7 +95,6 @@ def main():
         parser.error("--base requires --committed")
     root = Path(__file__).resolve().parent.parent
     env = {key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "DOTFILES_"))}
-    env["ASTRO_TELEMETRY_DISABLED"] = "1"
     env["DOCS_TEST_PYTHON"] = sys.executable
     if args.committed:
         check_committed(root, args.base or "origin/main", env)

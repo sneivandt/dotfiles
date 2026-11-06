@@ -39,6 +39,8 @@ configuration. A clean working tree does not make a live installation safe.
 | Task membership or cross-domain dependencies | [app/catalog.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs) |
 | How one kind of state is applied | Its module under [domains/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/) |
 | Process, filesystem, or output mechanics | [infra/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra/) |
+| Custom Arch package recipes | [packages/](https://github.com/sneivandt/dotfiles/tree/main/packages/) and [Arch package recipes](package-management.md#arch-package-recipes) |
+| Documentation content or site | [Documentation](#documentation), with website sources in the [site maintenance README](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md) |
 | Hooks or automation | [Git hooks](#git-hooks) and [CI and releases](ci-and-releases.md) |
 
 Read the closest existing implementation before adding a new abstraction.
@@ -302,7 +304,7 @@ Link to existing explanations instead of repeating them.
 Use relative `.md` links between guides and full GitHub URLs for tracked sources
 outside the guide collection. For new pages, match the title, filename, and
 sidebar label, then register the guide in
-[docs/astro.config.mjs](https://github.com/sneivandt/dotfiles/blob/main/docs/astro.config.mjs).
+[docs/.vitepress/config.mts](https://github.com/sneivandt/dotfiles/blob/main/docs/.vitepress/config.mts).
 Update incoming links after moving pages or headings; do not add compatibility
 routes or heading aliases.
 

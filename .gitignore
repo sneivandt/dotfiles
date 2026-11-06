@@ -52,7 +52,8 @@ symlinks/config/zsh/completions/_dotfiles
 
 # Local documentation previews
 /docs/node_modules/
-/docs/.astro/
+/docs/.vitepress/cache/
+/docs/.vitepress/.temp/
 /docs/dist/
 /docs/playwright-report/
 /docs/test-results/

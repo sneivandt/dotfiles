@@ -82,7 +82,7 @@ helper setup and recipe preparation. See
 
 ### Arch Linux
 
-:::caution[Installing a missing package can upgrade the system]
+::: warning Installing a missing package can upgrade the system
 Pacman installation uses `pacman -Syu --needed --noconfirm`. It can synchronize
 databases and upgrade other installed packages as well as install missing ones.
 Review the transaction's possible system effects before applying.
@@ -221,7 +221,7 @@ makepkg. Supported snapshot inputs are `PKGBUILD`, `version.sh`, optional
 `package.install`, `LICENSE`, `NOTICE`, and generated `.SRCINFO`. Other local
 inputs require extending the snapshot implementation first.
 
-:::caution[Review recipes before preparing packages]
+::: warning Review recipes before preparing packages
 PKGBUILDs execute shell code during metadata generation, even without building
 or installing. Temporary copies are not a sandbox. Review sources before
 applying preparation; Paru skips normal recipe review for these local repositories.

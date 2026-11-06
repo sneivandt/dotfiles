@@ -1,34 +1,14 @@
 ---
 title: About this project
+titleTemplate: false
 description: Stuart Neivandt's dotfiles and Rust configuration engine for Arch Linux and Windows, with notes on agentic engineering.
+outline: false
+prev: false
+next: false
 head:
-  - tag: title
-    content: Dotfiles by Stuart Neivandt
-  - tag: link
-    attrs:
-      rel: canonical
-      href: https://dotfiles.stuartneivandt.com/
-  - tag: meta
-    attrs:
-      property: og:url
-      content: https://dotfiles.stuartneivandt.com/
-  - tag: script
-    attrs:
-      type: application/ld+json
-    content: |
-      {
-        "@context": "https://schema.org",
-        "@type": "WebSite",
-        "name": "Dotfiles",
-        "url": "https://dotfiles.stuartneivandt.com/",
-        "description": "Stuart Neivandt's dotfiles and Rust configuration engine for Arch Linux and Windows.",
-        "creator": {
-          "@type": "Person",
-          "name": "Stuart Neivandt",
-          "url": "https://stuartneivandt.com/"
-        }
-      }
-tableOfContents: false
+  - - script
+    - type: application/ld+json
+    - '{"@context":"https://schema.org","@type":"WebSite","name":"Dotfiles","url":"https://dotfiles.stuartneivandt.com/","creator":{"@type":"Person","name":"Stuart Neivandt","url":"https://stuartneivandt.com/"}}'
 ---
 
 # About this project
@@ -50,5 +30,7 @@ applications, and services for different machines. Linux package management
 and graphical setup target Arch Linux.
 
 Already using it? [Commands and usage](commands-and-usage.md) covers everyday
-tasks, and [Configuration reference](configuration-reference.md) shows how to
-make the setup your own.
+tasks. Use **Reference** for [CLI syntax](cli-reference.md), the
+[task catalog](task-reference.md), and [configuration declarations](configuration-reference.md).
+To change the project itself, start with [Contributing](contributing.md) under
+**Development**.

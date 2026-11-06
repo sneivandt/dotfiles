@@ -5,10 +5,14 @@ description: Disposable snapshots of managed Arch recipes.
 
 # Custom package repository
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `custom-package-repository` |
 | Commands | `update` |
+| Availability | Arch/AUR support |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | [Custom package versions](custom-package-versions.md) |
+| Implementation | [packages/arch_recipes.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes.rs) |
 
 ## What it does
 

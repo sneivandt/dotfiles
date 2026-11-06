@@ -147,10 +147,11 @@ own sidebar and previous/next sequence:
 - Guides: Introduction, Workflows, Platforms, and Customization. Platform
   guides cover environment-specific setup and behavior; Workflows covers
   everyday commands, packages, and troubleshooting.
-- Reference: CLI syntax and shared configuration rules, followed by task pages
-  grouped into checkout and shell, files and Windows, packages and services,
-  agents and overlays, and validation. Each task page combines its behavior and
-  configuration.
+- Reference: a CLI and configuration group for shared lookups, followed by
+  explicitly labeled task groups matching the CLI's domain folders. Validation
+  has its own task group, matching `app/validation`. Each task page combines its
+  behavior and configuration, with a summary of selection, availability,
+  dependencies, and implementation sources.
 - Development: contributor workflow, testing, architecture, and CI/releases.
 
 Keep sidebar groups one level deep, starting expanded and collapsible with

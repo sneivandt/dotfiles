@@ -5,10 +5,14 @@ description: Copilot and Codex preferences.
 
 # Agent settings
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `agent-settings` |
 | Commands | `update` |
+| Availability | Configured harness settings |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | None |
+| Implementation | [ai/agent_settings.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/agent_settings.rs) |
 
 ## What it does
 

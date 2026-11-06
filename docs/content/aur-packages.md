@@ -5,10 +5,14 @@ description: Arch packages installed through Paru.
 
 # AUR packages
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `aur-packages` |
 | Commands | `update` |
+| Availability | Arch/AUR support with AUR entries |
+| [Requires success](task-reference.md#scheduling-model) | [Paru package manager](paru-package-manager.md) |
+| [Runs after](task-reference.md#scheduling-model) | [Custom package repository](custom-package-repository.md) |
+| Implementation | [packages/install.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/install.rs) |
 
 ## What it does
 

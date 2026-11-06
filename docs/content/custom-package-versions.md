@@ -5,10 +5,14 @@ description: Release pins for managed Arch recipes.
 
 # Custom package versions
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `custom-package-versions` |
 | Commands | `update` |
+| Availability | Arch/AUR support; work depends on managed recipes |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | [System packages](system-packages.md) |
+| Implementation | [packages/arch_recipes.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes.rs) |
 
 ## What it does
 

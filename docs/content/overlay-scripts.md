@@ -5,6 +5,14 @@ description: Declare private setup and removal scripts, understand their selecto
 
 # Overlay scripts
 
+| Task detail | Value |
+|---|---|
+| Selector | `script-<normalized-name>` for each active declaration |
+| Commands | `update`, `remove` |
+| Availability | Active private overlay script declarations |
+| Task dependencies | None |
+| Implementation | [overlay/scripts.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/overlay/scripts.rs) |
+
 ## What it does
 
 Each active entry in the private overlay's `conf/scripts.toml` becomes a task for

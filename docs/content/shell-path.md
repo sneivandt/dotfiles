@@ -5,10 +5,14 @@ description: The user PATH entry for the launcher.
 
 # Shell PATH
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `path` |
 | Commands | `update` |
+| Availability | Linux or Windows |
+| [Requires success](task-reference.md#scheduling-model) | [Dotfiles launcher](dotfiles-launcher.md) |
+| [Runs after](task-reference.md#scheduling-model) | None |
+| Implementation | [dotfiles/path.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/dotfiles/path.rs) |
 
 ## What it does
 

@@ -5,10 +5,13 @@ description: Checks declared symlink and permission sources across active and in
 
 # Symlink sources
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `symlink-sources` |
 | Commands | `check` |
+| Scope and tools | Declared link and permission sources, including inactive categories |
+| Task dependencies | None; configuration loads before task selection |
+| Implementation | [app/validation/checks.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/validation/checks.rs) |
 
 ## What it checks
 

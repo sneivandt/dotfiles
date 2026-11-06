@@ -5,10 +5,14 @@ description: Live links from home to managed sources.
 
 # Home symlinks
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `symlinks` |
 | Commands | `update`, `remove` |
+| Availability | Configured links |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | [Windows Developer Mode](windows-developer-mode.md) during update |
+| Implementation | [files/symlinks.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/files/symlinks.rs) |
 
 ## What it does
 

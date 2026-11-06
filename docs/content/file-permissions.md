@@ -5,10 +5,14 @@ description: Unix modes for declared home paths.
 
 # File permissions
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `file-permissions` |
 | Commands | `update` |
+| Availability | Platform supports Unix modes |
+| [Requires success](task-reference.md#scheduling-model) | [Home symlinks](home-symlinks.md) |
+| [Runs after](task-reference.md#scheduling-model) | None |
+| Implementation | [files/chmod.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/files/chmod.rs) |
 
 ## What it does
 

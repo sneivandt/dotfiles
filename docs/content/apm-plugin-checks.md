@@ -5,10 +5,13 @@ description: Validates local APM plugins without deploying them.
 
 # APM plugin checks
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `apm-plugins` |
 | Commands | `check` |
+| Scope and tools | Local main-repository plugins; requires APM |
+| Task dependencies | None; configuration loads before task selection |
+| Implementation | [app/validation/checks.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/validation/checks.rs) |
 
 ## What it checks
 

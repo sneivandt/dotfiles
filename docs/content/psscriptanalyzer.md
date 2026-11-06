@@ -5,10 +5,13 @@ description: Analyzes PowerShell scripts in the main repository.
 
 # PSScriptAnalyzer
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `psscriptanalyzer` |
 | Commands | `check` |
+| Scope and tools | Main-repository PowerShell scripts; requires PowerShell and PSScriptAnalyzer |
+| Task dependencies | None; configuration loads before task selection |
+| Implementation | [app/validation/checks.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/validation/checks.rs) |
 
 ## What it checks
 

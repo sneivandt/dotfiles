@@ -5,10 +5,14 @@ description: Completion registration for the current CLI.
 
 # Shell completions
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `completions` |
 | Commands | `update` |
+| Availability | Linux (zsh) or Windows (PowerShell) |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | [Dotfiles repository](dotfiles-repository.md) |
+| Implementation | [shell/completions.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/shell/completions.rs) |
 
 ## What it does
 

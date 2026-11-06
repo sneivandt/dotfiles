@@ -103,7 +103,11 @@ additional integration/configuration-drift coverage as appropriate.
 
 ## Scheduling model
 
-Tasks run when their dependencies allow, not in catalog order.
+Tasks run when their dependencies allow, not in catalog order. Each update task's
+summary table distinguishes **Requires success** from **Runs after**, using the
+terms below. These rows describe task dependencies, not required tools or privileges;
+read the task's behavior and availability too. Removal uses its own graph and does
+not inherit update dependencies.
 
 | Dependency | Meaning when both tasks are selected |
 |---|---|
@@ -113,6 +117,21 @@ Tasks run when their dependencies allow, not in catalog order.
 For example, AUR installation requires a working Paru bootstrap. Systemd only
 waits for package and symlink work: an unrelated failure there must not prevent
 it inspecting units that are available.
+
+Package waits for systemd, VS Code extensions, and agent packages are conditional:
+a readiness probe can release the wait before package installation finishes. The
+task still checks its own prerequisites. To see the selected graph for your current
+platform, profile, and overlay:
+
+```sh
+dotfiles list --graph update
+dotfiles list --graph remove
+dotfiles list --graph check
+```
+
+A dependency row describes ordering when both tasks are selected. Selecting a task
+alone does not automatically select its predecessors; `--with-deps` expands the
+selection for update and remove.
 
 Use [Task selection](commands-and-usage.md#select-tasks) for filtering and
 dependency expansion. The [discovery reference](cli-reference.md#task-discovery-output)

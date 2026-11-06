@@ -278,7 +278,12 @@ Give each explanation one home. Everyday commands belong in
 [CLI reference](cli-reference.md). Keep application, agent, and package guidance
 in their owning guides, with maintenance details after everyday workflows.
 Each [task page](task-reference.md) owns the task's behavior and configuration
-format. Shared loading, category, and path rules belong in
+format. Keep its summary table useful for selection: commands, availability,
+blocking dependencies, ordering-only dependencies, and the owning implementation.
+Verify dependencies in both the domain and app catalog; distinguish conditional
+waits and keep removal separate. Refer to other pages by name rather than by
+where they appear in navigation, so each page works as a shared link.
+Shared loading, category, and path rules belong in
 [Configuration basics](configuration-basics.md). Link to those explanations
 instead of keeping another copy in a long reference page.
 

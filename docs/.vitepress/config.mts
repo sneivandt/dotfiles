@@ -21,12 +21,18 @@ const guide = [
   group('Customization', ['agent-configuration', 'application-settings', 'private-overlays']),
 ];
 const reference = [
-  group('Reference', ['cli-reference', 'task-reference', 'configuration-basics']),
-  group('Checkout and shell', ['dotfiles-repository', 'dotfiles-launcher', 'shell-path', 'git-hooks', 'shell-completions', 'global-git-settings', 'login-shell']),
-  group('Files and Windows', ['home-symlinks', 'file-permissions', 'system-configuration-files', 'windows-developer-mode', 'user-registry-settings']),
-  group('Packages and services', ['system-packages', 'paru-package-manager', 'aur-packages', 'custom-package-versions', 'custom-package-repository', 'systemd-units', 'vs-code-extensions']),
-  group('Agents and overlays', ['agent-settings', 'agent-packages', 'overlay-scripts']),
-  group('Validation', ['configuration-diagnostics', 'symlink-sources', 'configuration-files', 'apm-plugin-checks', 'shellcheck', 'psscriptanalyzer']),
+  group('CLI and configuration', ['cli-reference', 'task-reference', 'configuration-basics']),
+  group('Repository tasks', ['dotfiles-repository']),
+  group('Dotfiles tasks', ['dotfiles-launcher', 'shell-path']),
+  group('Git tasks', ['global-git-settings', 'git-hooks']),
+  group('File tasks', ['home-symlinks', 'file-permissions']),
+  group('Shell tasks', ['shell-completions', 'login-shell']),
+  group('System tasks', ['windows-developer-mode', 'user-registry-settings', 'system-configuration-files', 'systemd-units']),
+  group('Package tasks', ['system-packages', 'paru-package-manager', 'aur-packages', 'custom-package-versions', 'custom-package-repository']),
+  group('Editor tasks', ['vs-code-extensions']),
+  group('AI tasks', ['agent-settings', 'agent-packages']),
+  group('Overlay tasks', ['overlay-scripts']),
+  group('Validation tasks', ['configuration-diagnostics', 'symlink-sources', 'configuration-files', 'apm-plugin-checks', 'shellcheck', 'psscriptanalyzer']),
 ];
 const contribute = [group('Development', ['contributing', 'testing', 'architecture', 'ci-and-releases'])];
 const sectionMatch = (groups: ReturnType<typeof group>[]) =>

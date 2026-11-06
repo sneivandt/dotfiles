@@ -44,6 +44,11 @@ edge cases explained by the tool itself out unless they affect a reader's task.
 
 ## Choose links, code, and emphasis
 
+- Keep reader-facing prose independent of the site's navigation. Refer to other
+  pages by name and link to them; do not describe where a page sits in a sidebar,
+  header section, or navigation group. Navigation can change without changing
+  the topic. Keep navigation structure in site-maintenance guidance when needed.
+
 - Use plain prose for tool names and concepts. Link to the owning guide or
   tracked source when it helps the reader act, normally at the first useful
   mention or in a source table. Avoid linking every repeated mention.

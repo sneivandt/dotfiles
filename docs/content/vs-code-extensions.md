@@ -5,10 +5,14 @@ description: Missing editor extensions.
 
 # VS Code extensions
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `vscode-extensions` |
 | Commands | `update` |
+| Availability | Configured extensions |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | [System packages](system-packages.md), [AUR packages](aur-packages.md), conditional on readiness |
+| Implementation | [editors/vscode_extensions.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/editors/vscode_extensions.rs) |
 
 ## What it does
 

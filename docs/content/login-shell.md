@@ -5,10 +5,14 @@ description: The account login shell on Linux.
 
 # Login shell
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `login-shell` |
 | Commands | `update` |
+| Availability | Linux, outside CI |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | [System packages](system-packages.md) |
+| Implementation | [shell/login_shell.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/shell/login_shell.rs) |
 
 ## What it does
 

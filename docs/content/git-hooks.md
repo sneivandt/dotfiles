@@ -5,10 +5,14 @@ description: Repository commit and maintenance hooks.
 
 # Git hooks
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `git-hooks` |
 | Commands | `update`, `remove` |
+| Availability | Repository hook sources |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | [Dotfiles repository](dotfiles-repository.md) during update |
+| Implementation | [git/hooks.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/git/hooks.rs) |
 
 ## What it does
 

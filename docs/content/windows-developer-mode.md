@@ -5,10 +5,14 @@ description: Machine policy for Windows development features.
 
 # Windows Developer Mode
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `developer-mode` |
 | Commands | `update` |
+| Availability | Windows |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | None |
+| Implementation | [system/developer_mode.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/developer_mode.rs) |
 
 ## What it does
 

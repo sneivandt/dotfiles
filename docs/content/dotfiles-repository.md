@@ -5,10 +5,14 @@ description: Fast-forward updates of the checkout and overlay.
 
 # Dotfiles repository
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `repository` |
 | Commands | `update` |
+| Availability | Eligible Git checkout |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | None |
+| Implementation | [repository/update.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/repository/update.rs) |
 
 ## What it does
 

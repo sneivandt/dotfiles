@@ -5,10 +5,14 @@ description: A command that delegates to this checkout.
 
 # Dotfiles launcher
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `launcher` |
 | Commands | `update`, `remove` |
+| Availability | Linux or Windows |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | None |
+| Implementation | [dotfiles/wrapper.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/dotfiles/wrapper.rs) |
 
 ## What it does
 

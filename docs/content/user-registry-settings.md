@@ -5,10 +5,14 @@ description: Declared Windows current-user registry values.
 
 # User registry settings
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `registry` |
 | Commands | `update` |
+| Availability | Windows with configured values |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | None |
+| Implementation | [system/registry.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/registry.rs) |
 
 ## What it does
 

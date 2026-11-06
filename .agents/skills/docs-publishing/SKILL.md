@@ -81,9 +81,14 @@ examples, and the amount of detail.
   Guides, Reference, and Development, each with its own sidebar and previous/next
   sequence. Guides has Introduction, Workflows, Platforms, and Customization.
   Its groups start expanded with native right-hand collapse arrows. Reference
-  groups task pages by the work they manage, with CLI syntax and
-  shared configuration rules first. Each task page owns its behavior, declarations,
-  prerequisites, preview limits, and removal scope. Keep the task catalog as an
+  labels task groups explicitly and follows the CLI's domain folders, with
+  app-owned validation tasks in their own group. Keep CLI syntax, the task index,
+  and shared configuration rules together outside task groups. Each task page
+  owns its behavior, declarations, prerequisites, preview limits, and removal
+  scope. Its summary table records commands, availability, dependency types,
+  and implementation sources. Verify domain dependencies plus app-catalog wiring;
+  distinguish success requirements, ordering-only and conditional waits, and
+  update versus removal graphs. Keep the task catalog as an
   index rather than a second copy of those explanations. Development remains a
   short direct list.
 - Use `::: warning Title` for safety callouts. Verify their title, body, and

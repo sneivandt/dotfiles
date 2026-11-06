@@ -5,10 +5,14 @@ description: Global Git values and Windows autocrlf cleanup.
 
 # Global Git settings
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `git` |
 | Commands | `update` |
+| Availability | Configured values; Windows also cleans up undeclared autocrlf |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | None |
+| Implementation | [git/git_config.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/git/git_config.rs) |
 
 ## What it does
 

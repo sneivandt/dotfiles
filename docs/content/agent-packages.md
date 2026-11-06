@@ -5,10 +5,14 @@ description: APM YAML fragments selected by symlinks.
 
 # Agent packages
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `agent-packages` |
 | Commands | `update` |
+| Availability | Active APM fragments |
+| [Requires success](task-reference.md#scheduling-model) | [Home symlinks](home-symlinks.md) |
+| [Runs after](task-reference.md#scheduling-model) | [System packages](system-packages.md), [AUR packages](aur-packages.md), conditional on readiness |
+| Implementation | [ai/apm/install.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/install.rs) |
 
 ## What it does
 

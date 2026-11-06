@@ -3,15 +3,16 @@ import { expect, test, type Page } from '@playwright/test';
 
 const referenceTitles = [
   'CLI reference', 'Task reference', 'Configuration basics',
-  'Dotfiles repository', 'Dotfiles launcher', 'Shell PATH', 'Git hooks',
-  'Shell completions', 'Global Git settings', 'Login shell',
-  'Home symlinks', 'File permissions', 'System configuration files',
-  'Windows Developer Mode', 'User registry settings',
-  'System packages', 'Paru package manager', 'AUR packages',
-  'Custom package versions', 'Custom package repository', 'Systemd units', 'VS Code extensions',
-  'Agent settings', 'Agent packages', 'Overlay scripts',
-  'Configuration diagnostics', 'Symlink sources', 'Configuration files',
-  'APM plugin checks', 'ShellCheck', 'PSScriptAnalyzer',
+  'Dotfiles repository', 'Dotfiles launcher', 'Shell PATH',
+  'Global Git settings', 'Git hooks', 'Home symlinks',
+  'File permissions', 'Shell completions', 'Login shell',
+  'Windows Developer Mode', 'User registry settings', 'System configuration files',
+  'Systemd units', 'System packages', 'Paru package manager',
+  'AUR packages', 'Custom package versions', 'Custom package repository',
+  'VS Code extensions', 'Agent settings', 'Agent packages',
+  'Overlay scripts', 'Configuration diagnostics', 'Symlink sources',
+  'Configuration files', 'APM plugin checks', 'ShellCheck',
+  'PSScriptAnalyzer',
 ];
 const pageCount = readdirSync(new URL('../../content/', import.meta.url))
   .filter((name) => name.endsWith('.md') && !['index.md', '404.md'].includes(name)).length;
@@ -88,7 +89,7 @@ test('header sections replace the sidebar, including direct links and search des
   await expect(page.locator('.VPSidebar a')).toHaveText(referenceTitles);
   await expect(page.locator('.VPDocFooter .next')).toContainText('File permissions');
   await expect(page.locator('.VPSidebar .group h2')).toHaveText([
-    'Reference', 'Checkout and shell', 'Files and Windows', 'Packages and services', 'Agents and overlays', 'Validation',
+    'CLI and configuration', 'Repository tasks', 'Dotfiles tasks', 'Git tasks', 'File tasks', 'Shell tasks', 'System tasks', 'Package tasks', 'Editor tasks', 'AI tasks', 'Overlay tasks', 'Validation tasks',
   ]);
   await page.goto('/private-overlays.html');
   await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);

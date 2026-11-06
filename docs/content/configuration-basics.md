@@ -5,6 +5,9 @@ description: Find configuration files and understand categories, paths, loading,
 
 # Configuration basics
 
+These rules apply across configuration files. Individual
+[task pages](task-reference.md) describe what runs and how to configure it.
+
 Declarations under `conf/` choose what dotfiles manages. Each [task
 page](task-reference.md) combines its behavior with the format of its declarations. This
 page covers the rules shared by those files.

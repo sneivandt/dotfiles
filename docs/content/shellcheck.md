@@ -5,10 +5,13 @@ description: Analyzes shell scripts in the main repository.
 
 # ShellCheck
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `shellcheck` |
 | Commands | `check` |
+| Scope and tools | Main-repository shell scripts; requires ShellCheck |
+| Task dependencies | None; configuration loads before task selection |
+| Implementation | [app/validation/checks.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/validation/checks.rs) |
 
 ## What it checks
 

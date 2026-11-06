@@ -5,10 +5,13 @@ description: Checks that required main configuration files are present.
 
 # Configuration files
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `config-files` |
 | Commands | `check` |
+| Scope and tools | Main checkout |
+| Task dependencies | None; configuration loads before task selection |
+| Implementation | [app/validation/checks.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/validation/checks.rs) |
 
 ## What it checks
 

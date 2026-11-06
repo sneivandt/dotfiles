@@ -5,6 +5,9 @@ description: Look up command options, wrapper bootstrap, configuration paths, lo
 
 # CLI reference
 
+This page describes command syntax and output. For runnable tasks and their
+selectors, use [Task reference](task-reference.md).
+
 This is the syntax and behavior reference for the dotfiles command-line program.
 For a first installation, use [Getting started](getting-started.md); for common
 workflows, use [Commands and usage](commands-and-usage.md).

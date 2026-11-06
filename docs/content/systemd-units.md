@@ -5,10 +5,14 @@ description: User and system service enablement and state.
 
 # Systemd units
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `systemd` |
 | Commands | `update` |
+| Availability | Supported systemd platform with configured units, outside CI |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | [System packages](system-packages.md), [AUR packages](aur-packages.md), [Home symlinks](home-symlinks.md), [File permissions](file-permissions.md). Package waits are conditional on readiness. |
+| Implementation | [system/systemd_units.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/systemd_units.rs) |
 
 ## What it does
 

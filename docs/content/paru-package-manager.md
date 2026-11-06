@@ -5,10 +5,14 @@ description: Installation and health checks for the AUR helper.
 
 # Paru package manager
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `paru` |
 | Commands | `update` |
+| Availability | Pacman platform |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | [System packages](system-packages.md) |
+| Implementation | [packages/install.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/install.rs) |
 
 ## What it does
 

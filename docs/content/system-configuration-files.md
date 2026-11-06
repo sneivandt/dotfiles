@@ -5,10 +5,14 @@ description: Structured merges into files below /etc.
 
 # System configuration files
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `system-files` |
 | Commands | `update` |
+| Availability | Linux with configured fragments, outside CI |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | [System packages](system-packages.md) |
+| Implementation | [system/system_files.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/system_files.rs) |
 
 ## What it does
 

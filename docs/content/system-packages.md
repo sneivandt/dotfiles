@@ -5,16 +5,20 @@ description: Arch pacman packages and Windows winget IDs.
 
 # System packages
 
-| Task | Selection |
+| Task detail | Value |
 |---|---|
 | Selector | `packages` |
 | Commands | `update` |
+| Availability | Configured non-AUR packages |
+| [Requires success](task-reference.md#scheduling-model) | None |
+| [Runs after](task-reference.md#scheduling-model) | None |
+| Implementation | [packages/install.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/install.rs) |
 
 ## What it does
 
 Installs missing non-AUR declarations using pacman on Linux or winget on Windows. It
 does not install packages through apt or dnf. A missing package manager leaves the task
-skipped; If the installed-package query fails, the task stops rather than assuming every
+skipped; if the installed-package query fails, the task stops rather than assuming every
 package is missing. After a failed batch transaction, it checks again to report packages
 that did install; the transaction still counts as a failure.
 

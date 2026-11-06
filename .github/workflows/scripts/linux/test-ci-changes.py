@@ -349,14 +349,16 @@ class PrePushCoordinatorTests(unittest.TestCase):
         self.assertTrue(any("test" in command for _, _, command in reused))
 
     def test_wsl_worker_uses_exact_range_and_receipts(self):
-        with patch("shutil.which", return_value="wsl"), patch(
-            "subprocess.check_output", return_value="/mnt/c/repo with spaces/pre-push.py\n",
-        ) as output:
-            command = PRE_PUSH["wsl_command"]("base-sha", "head-sha", True)
-        self.assertEqual(command[:5], ["wsl", "--exec", "python3", "-B", "/mnt/c/repo with spaces/pre-push.py"])
-        self.assertEqual(command[5:], ["--base", "base-sha", "--head", "head-sha",
-                                     "--docs-checked", "head-sha", "--windows-checked", "head-sha", "--full"])
-        self.assertEqual(output.call_args.args[0][:4], ["wsl", "--exec", "wslpath", "-u"])
+        for unavailable in (False, True):
+            with self.subTest(unavailable=unavailable), patch("shutil.which", return_value="wsl"), patch(
+                "subprocess.check_output", return_value="/mnt/c/repo with spaces/pre-push.py\n",
+            ) as output:
+                command = PRE_PUSH["wsl_command"]("base-sha", "head-sha", True, npm_tls_unavailable=unavailable)
+            self.assertEqual(command[:5], ["wsl", "--exec", "python3", "-B", "/mnt/c/repo with spaces/pre-push.py"])
+            receipt = "--npm-tls-unavailable" if unavailable else "--docs-checked"
+            self.assertEqual(command[5:], ["--base", "base-sha", "--head", "head-sha",
+                                         receipt, "head-sha", "--windows-checked", "head-sha", "--full"])
+            self.assertEqual(output.call_args.args[0][:4], ["wsl", "--exec", "wslpath", "-u"])
         with patch("shutil.which", return_value=None):
             with self.assertRaisesRegex(RuntimeError, "WSL is unavailable"):
                 PRE_PUSH["wsl_command"]("base", "head", False)
@@ -440,7 +442,56 @@ class PrePushCoordinatorTests(unittest.TestCase):
                 else:
                     PRE_PUSH["main"]()
             self.assertEqual(events, ["native"] if failure else ["native", "linux"])
-            replacements["wsl_command"].assert_called_once_with("base-sha", "head-sha", True)
+            replacements["wsl_command"].assert_called_once_with("base-sha", "head-sha", True, npm_tls_unavailable=False)
+
+    def test_tls_receipt_defers_only_docs_and_never_hides_other_failures(self):
+        for platform in ("win32", "linux"):
+            for failure in (False, True):
+                with self.subTest(platform=platform, failure=failure):
+                    execute = Mock(side_effect=subprocess.CalledProcessError(17, ["fixture-check"]) if failure else None)
+                    worker = ["fixture-wsl"]
+                    replacements = {
+                        "git": lambda root, *args: (
+                            '[package]\nrust-version = "1.91"\n' if args[0] == "show" else "head-sha"
+                        ),
+                        "comparison_base": lambda *args: ("base-sha", False),
+                        "committed_policy": lambda *args: {
+                            "changed_paths": lambda *args: ["conf/symlinks.toml"], "classify": classify,
+                        },
+                        "execute": execute,
+                        "wsl_command": Mock(return_value=worker),
+                    }
+                    output = io.StringIO()
+                    with patch.dict(PRE_PUSH["main"].__globals__, replacements), patch.object(sys, "platform", platform), patch.object(
+                        sys, "argv", ["pre-push.py", "--npm-tls-unavailable", "head-sha"],
+                    ), patch("subprocess.run") as run, contextlib.redirect_stdout(output):
+                        if failure:
+                            with self.assertRaises(subprocess.CalledProcessError):
+                                PRE_PUSH["main"]()
+                        else:
+                            PRE_PUSH["main"]()
+                    commands = execute.call_args.args[2]
+                    self.assertTrue(commands)
+                    self.assertFalse(any("documentation" in label for label, _, _ in commands))
+                    self.assertNotIn("docs", [arg for _, _, command in commands for arg in command])
+                    self.assertIn("config", [arg for _, _, command in commands for arg in command])
+                    self.assertIn("UNAVAILABLE documentation for head-sha", output.getvalue())
+                    self.assertNotIn("Selected local checks passed", output.getvalue())
+                    self.assertEqual("Local checks completed" in output.getvalue(), not failure)
+                    worker_calls = [call for call in run.call_args_list if call.args[0] == worker]
+                    self.assertEqual(len(worker_calls), int(platform == "win32" and not failure))
+                    if platform == "win32":
+                        replacements["wsl_command"].assert_called_once_with(
+                            "base-sha", "head-sha", False, npm_tls_unavailable=True,
+                        )
+
+    def test_success_and_tls_unavailability_receipts_are_mutually_exclusive(self):
+        with patch.object(sys, "argv", [
+            "pre-push.py", "--docs-checked", "head", "--npm-tls-unavailable", "head",
+        ]), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                PRE_PUSH["main"]()
+        self.assertEqual(error.exception.code, 2)
 
     def test_mismatched_receipt_fails_before_executing_checks(self):
         replacements = {
@@ -448,7 +499,7 @@ class PrePushCoordinatorTests(unittest.TestCase):
             "comparison_base": lambda *args: ("base-sha", False),
             "execute": Mock(),
         }
-        for option in ("--docs-checked", "--windows-checked"):
+        for option in ("--docs-checked", "--windows-checked", "--npm-tls-unavailable"):
             with patch.dict(PRE_PUSH["main"].__globals__, replacements), patch.object(sys, "platform", "linux"), patch.object(
                 sys, "argv", ["pre-push.py", option, "old"],
             ):

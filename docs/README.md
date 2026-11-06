@@ -108,6 +108,12 @@ reuse that exact commit's result with
 implementation checker
 instead of repeating site checks in WSL.
 
+If a local npm TLS failure prevents restoring the committed dependencies,
+use the coordinator's
+[explicit unavailable-coverage receipt](content/testing.md#local-npm-tls-failures).
+That records the gap without blocking a push or claiming documentation passed;
+all other selected checks and the exact commit's CI documentation job remain required.
+
 The Rust task-selector fixture and workflow checks remain in CI. The Linux
 `docs` stage also runs the selector fixture locally; it is not required just to
 validate a documentation patch on Windows.

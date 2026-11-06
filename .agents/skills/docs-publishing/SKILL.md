@@ -63,6 +63,10 @@ examples, and the amount of detail.
   bypassing TLS or moving the whole site check to another OS. One platform is
   sufficient, including mixed patches; do not repeat successful docs checks
   in WSL for cross-platform CLI coverage.
+  For a confirmed local npm TLS failure, use the
+  [explicit unavailable-coverage receipt](../../../docs/content/testing.md#local-npm-tls-failures)
+  instead of blocking the push or claiming documentation passed. Other local
+  checks and the exact commit's CI documentation job remain required.
 - Keep dependencies pinned in `docs/package.json` and its lockfile. Extend
   VitePress's default theme only where the documentation needs behavior it does
   not supply; prefer its native navigation, callouts, search, and code blocks.

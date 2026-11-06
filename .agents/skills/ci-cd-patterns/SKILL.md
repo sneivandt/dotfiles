@@ -25,6 +25,11 @@ action-version inventories in guidance.
   job that is always skipped is not coverage; preserve docs-only execution and
   distinguish intended skips from failures/cancellation in the success gate.
 - Keep local `check.sh` and `Check.ps1` stages aligned with gating concerns.
+- A confirmed local npm TLS failure need not block a push. Use the pre-push
+  checker's [unavailable-coverage receipt](../../../docs/content/testing.md#local-npm-tls-failures)
+  for the exact commit, run the remaining selected checks, and report docs as
+  unavailable, not passed. Other failures remain blocking, TLS validation stays
+  enabled, and the exact commit's CI documentation job must still pass.
 
 ## After pushing
 

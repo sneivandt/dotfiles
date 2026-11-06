@@ -207,14 +207,15 @@ def execute(root, head, commands, selection):
             subprocess.run(command, cwd=checkout / directory, env=env, check=True)
 
 
-def wsl_command(base, head, full):
+def wsl_command(base, head, full, npm_tls_unavailable=False):
     if not shutil.which("wsl"):
         raise RuntimeError("WSL is unavailable; Linux committed validation is required for implementation patches")
     script = subprocess.check_output(
         ["wsl", "--exec", "wslpath", "-u", str(Path(__file__).resolve())], text=True,
     ).strip()
     return ["wsl", "--exec", "python3", "-B", script, "--base", base, "--head", head,
-            "--docs-checked", head, "--windows-checked", head, *(["--full"] if full else [])]
+            "--npm-tls-unavailable" if npm_tls_unavailable else "--docs-checked", head,
+            "--windows-checked", head, *(["--full"] if full else [])]
 
 
 def main():
@@ -222,8 +223,11 @@ def main():
     parser.add_argument("--base", help="explicit original verified baseline (default: verify origin/main's CI, recovering to a successful ancestor)")
     parser.add_argument("--head", default="HEAD", help="commit to validate (default: HEAD)")
     parser.add_argument("--plan", action="store_true", help="print selected checks without running them")
-    parser.add_argument("--docs-checked", metavar="COMMIT",
-                        help="reuse successful native documentation checks for this exact commit")
+    docs = parser.add_mutually_exclusive_group()
+    docs.add_argument("--docs-checked", metavar="COMMIT",
+                      help="reuse successful native documentation checks for this exact commit")
+    docs.add_argument("--npm-tls-unavailable", metavar="COMMIT",
+                      help="record a confirmed local npm TLS failure for this exact commit; defer documentation coverage to CI")
     parser.add_argument("--windows-checked", metavar="COMMIT",
                         help="reuse successful native Windows checks for this exact commit; omit cross-target Clippy")
     parser.add_argument("--full", action="store_true", help="select full CI coverage, including during recovery")
@@ -235,7 +239,10 @@ def main():
     root = Path(git(SCRIPTS, "rev-parse", "--show-toplevel"))
     head = git(root, "rev-parse", "--verify", args.head + "^{commit}")
     base, recovery = comparison_base(root, args.base, head)
-    for option, value in (("--docs-checked", args.docs_checked), ("--windows-checked", args.windows_checked)):
+    for option, value in (
+        ("--docs-checked", args.docs_checked), ("--windows-checked", args.windows_checked),
+        ("--npm-tls-unavailable", args.npm_tls_unavailable),
+    ):
         if value and git(root, "rev-parse", "--verify", value + "^{commit}") != head:
             raise RuntimeError(option + " must identify the exact commit being validated")
     policy = committed_policy(root, head)
@@ -247,17 +254,21 @@ def main():
     manifest = tomllib.loads(git(root, "show", head + ":cli/Cargo.toml"))
     full = args.full or recovery
     selection = policy["classify"](paths, full=full)
-    commands, deferred = plan(selection, manifest["package"]["rust-version"], bool(args.docs_checked), bool(args.windows_checked))
+    omit_docs = bool(args.docs_checked or args.npm_tls_unavailable)
+    commands, deferred = plan(selection, manifest["package"]["rust-version"], omit_docs, bool(args.windows_checked))
     linux = None
     if sys.platform == "win32":
-        commands = windows_plan(selection, bool(args.docs_checked))
+        commands = windows_plan(selection, omit_docs)
         if not selection["docs_only"]:
-            linux = wsl_command(base, head, full)
+            linux = wsl_command(base, head, full, npm_tls_unavailable=bool(args.npm_tls_unavailable))
     print(f"Committed range: {base}..{head} ({len(paths)} changed paths)", flush=True)
     if recovery:
         print("Remote tip CI is not successful; selecting full checks from a successful ancestor.", flush=True)
     if args.docs_checked:
         print(f"Reusing successful native documentation checks for {head}; not repeating them on Linux.", flush=True)
+    if args.npm_tls_unavailable:
+        print(f"UNAVAILABLE documentation for {head}: confirmed local npm TLS failure; not a passing check. "
+              "CI documentation checks must pass before reporting completion.", flush=True)
     for label, directory, command in commands:
         print(f"LOCAL {label}: (cd {directory} && {shlex.join(command)})", flush=True)
     if linux:
@@ -274,7 +285,11 @@ def main():
     execute(root, head, commands, selection)
     if linux:
         subprocess.run(linux, check=True)
-    print(f"Selected local checks passed for {head}; remaining CI coverage is listed above.")
+    if args.npm_tls_unavailable:
+        print(f"Local checks completed for {head} with documentation UNAVAILABLE; "
+              "CI documentation coverage is required, alongside the remaining CI checks listed above.")
+    else:
+        print(f"Selected local checks passed for {head}; remaining CI coverage is listed above.")
 
 
 if __name__ == "__main__":

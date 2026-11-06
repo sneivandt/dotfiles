@@ -62,6 +62,10 @@ changes usually do not need engine changes.
   cross-compilation as a substitute for available native runtime tests.
 - Fix selected local failures. Report unavailable checks and remaining Windows,
   integration, and mutation coverage explicitly; a skip is not a pass.
+  A confirmed local npm TLS failure may use the
+  [explicit unavailable-coverage receipt](docs/content/testing.md#local-npm-tls-failures).
+  Continue the other local checks and require the exact commit's CI documentation
+  job to pass; do not disable TLS validation or report unavailable checks as passed.
 - Run [focused mutation testing](docs/content/testing.md#focused-mutation-testing)
   for changed Rust behavior, especially safety checks, scheduling, previews, and
   partial failures. When fixing a survivor, rerun the original source range

@@ -222,6 +222,36 @@ checker. The Linux checker then omits npm setup and the docs stage, but keeps
 all selected CLI and platform checks. A different commit is rejected.
 Do not provision another OS just to repeat documentation validation.
 
+#### Local npm TLS failures
+
+If a local TLS failure prevents the committed snapshot from restoring npm
+dependencies, documentation coverage is unavailable, not failed validation.
+It need not block a push when the remaining selected local checks pass and
+the exact commit's documentation checks will run in GitHub CI.
+
+After confirming the TLS failure, record it explicitly with the coordinator.
+From PowerShell:
+
+```powershell
+$commit = git rev-parse HEAD
+python .github\workflows\scripts\linux\pre-push.py --npm-tls-unavailable $commit
+```
+
+The receipt must identify the exact commit being validated. The coordinator
+omits npm installation and documentation checks, prints `UNAVAILABLE` rather
+than a passing result, and preserves every other selected local check.
+Windows forwards that same unavailable status to WSL rather than pretending
+documentation passed or retrying it on another platform. This option also
+supports documentation-only changes without provisioning WSL.
+
+This is an explicit acknowledgement of an observed npm TLS failure, not an
+automatic exception for arbitrary install errors. Do not use it for missing
+package versions, authentication errors, build failures, or failing tests.
+Do not pass `--docs-checked` for an unavailable check, disable TLS validation,
+or weaken CI. Report the local coverage gap and follow the exact commit's
+CI and documentation publication through completion. GitHub's documentation
+job remains required; its failure still blocks completion.
+
 Refresh `origin/main` before planning. By default, the checker uses authenticated
 `gh` reads to verify that tip's push CI. If it did not succeed, the checker selects
 full coverage from a successful ancestor, preserving pending source changes even

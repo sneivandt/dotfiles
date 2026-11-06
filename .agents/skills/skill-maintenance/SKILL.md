@@ -56,6 +56,11 @@ request. Check that the descriptions select the intended owner and only necessar
 can an agent find the current API, avoid side effects, and choose useful coverage?
 This is a routing review, not proof of a model's runtime behavior.
 
+For documentation guidance, also walk the
+[acceptance scenarios](../../../docs/content/writing-documentation.md#acceptance-scenarios)
+through the revised body. Routing to the right skill does not prove that its
+instructions produce a correct procedure for an already-managed machine.
+
 Review frontmatter, paths, and contradictions with neighboring skills, then use
 the [native documentation check](../../../docs/README.md#checks). Run it with
 Windows tools for a Windows checkout, not through WSL on the mounted Windows

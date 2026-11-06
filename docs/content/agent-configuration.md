@@ -360,6 +360,10 @@ the retained fragment. See [preview behavior](#what-a-preview-can-show).
 | Cowork path/copy failure | Check destination precedence, directory/link conflicts, and the ownership inventory |
 | Package edits did not deploy | Confirm source links and inspect verbose native install output |
 
+Use `dotfiles log --id <run-id> --task agent-packages --verbose`, replacing
+`<run-id>` with the stable ID from the failed run. Omitting the ID deliberately
+selects the newest run, which may no longer be the failure you are investigating.
+
 APM subprocesses cannot open interactive Git credential prompts. Recognized
 authentication failures are reported as unmet prerequisites; other native
 failures fail the task. Keep tokens out of fragments and diagnostic excerpts.

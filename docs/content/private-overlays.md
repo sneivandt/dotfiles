@@ -71,9 +71,32 @@ dotfiles update --overlay ../dotfiles-private --only symlinks --dry-run
 ```
 
 Look for `~/.config/git/config` pointing into `dotfiles-private`, and review all
-other selected links too. Back up existing targets before removing `--dry-run`.
-After applying, run `git config --show-origin --get user.name` to verify the
-selected identity. Keep this overlay available for future runs.
+other selected links too. On a fresh installation, an absent target can receive
+the overlay link directly. On an already configured machine, the existing base
+link is a conflict: dotfiles does not retarget it automatically.
+
+Inspect the destination before changing it:
+
+```sh
+readlink "$HOME/.config/git/config"
+```
+
+In PowerShell:
+
+```powershell
+Get-Item -LiteralPath "$HOME/.config/git/config" |
+    Select-Object FullName, LinkType, Target
+```
+
+Confirm it is the old link you intend to replace. Preserve its resolved contents
+and recorded target using the [backup procedure](application-settings.md#back-up-and-restore-a-file),
+then move the destination link itself aside, not the source it points to.
+Preserve an ordinary file or unrelated link instead of assuming it is managed.
+Repeat the preview until the new overlay link is planned without conflicts,
+then remove `--dry-run` to apply. Run
+`git config --show-origin --get user.name` afterward: the origin should be the
+overlay configuration and the value your chosen identity. Keep the overlay
+and backup available until verification succeeds.
 
 ## Select and preview
 

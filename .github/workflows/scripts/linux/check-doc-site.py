@@ -24,6 +24,7 @@ class Page(HTMLParser):
         self.icons = []
         self.robots = []
         self.canonicals = []
+        self.descriptions = []
         self.in_title = False
         self.in_nav = False
         self.nav_link = None
@@ -60,6 +61,8 @@ class Page(HTMLParser):
                 self.icons.append(attrs["href"])
         if tag == "meta" and attrs.get("name", "").lower() in {"robots", "googlebot"}:
             self.robots.append(attrs.get("content", ""))
+        if tag == "meta" and attrs.get("name", "").lower() == "description":
+            self.descriptions.append(attrs.get("content", ""))
 
     def handle_data(self, text):
         if self.in_title:
@@ -111,6 +114,21 @@ def sitemap_urls(output, origin, errors):
         return set()
 
 
+def frontmatter_fields(text, filename, errors):
+    header = re.match(r"\A---\r?\n(.*?)\r?\n---(?:\r?\n|$)", text, re.S)
+    fields = {}
+    for key in ("title", "description"):
+        matches = re.findall(rf"^{key}:[ \t]*(.*)$", header[1], re.M) if header else []
+        value = matches[0].strip() if len(matches) == 1 else ""
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1].strip()
+        if not value or value in {">", "|", ">-", "|-", ">+", "|+"}:
+            errors.append(f"{filename}: expected one nonempty single-line frontmatter {key}")
+        else:
+            fields[key] = value
+    return fields
+
+
 def check_site(root):
     output = root / "docs/dist"
     domain = (root / "docs/public/CNAME").read_text(encoding="utf-8").strip()
@@ -154,6 +172,9 @@ def check_site(root):
             continue
         page = pages[route]
         source_text = source.read_text(encoding="utf-8")
+        fields = frontmatter_fields(source_text, source.name, errors)
+        if source.stem != "404" and "description" in fields and page.descriptions != [fields["description"]]:
+            errors.append(f"{source.name}: rendered description does not match frontmatter")
         missing = (heading_anchors(source_text) - page.ids) if source.stem != "404" else set()
         if missing:
             errors.append(f"{route}: missing heading anchors {sorted(missing)}")
@@ -167,6 +188,8 @@ def check_site(root):
             source_title = re.search(r"^# (.+)$", source_text, re.MULTILINE)
             if source_title is None or source_title[1] != title:
                 errors.append(f"{source.name}: Markdown title does not match page title {title!r}")
+            if "title" in fields and fields["title"] != title:
+                errors.append(f"{source.name}: frontmatter title does not match page title {title!r}")
         if "/favicon.svg" not in page.icons:
             errors.append(f"{route}: missing site favicon")
         noindex = any(

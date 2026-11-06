@@ -119,7 +119,7 @@ With no stage names, the scripts run their default stages:
 | `test` | Full Rust test suite, not shell/PowerShell integration scripts |
 | `rustdoc` | Private-item documentation and configured rustdoc lints |
 | `config` | CLI configuration, source paths, and required config files |
-| `docs` | Markdown links, skill metadata/fixtures, task selectors, and the VitePress build, published links, and browser regressions; Linux entrypoint only |
+| `docs` | Markdown links, skill metadata/fixtures, Rust documentation contracts/selectors, and the VitePress build, published links, and browser regressions; Linux entrypoint only |
 | `ci` | Workflow contracts, path/release classification, aggregate gating, and actionlint; Linux entrypoint only |
 | `shell` | Shared ShellCheck discovery and rules |
 | `powershell` | PSScriptAnalyzer at Warning/Error severity |
@@ -142,7 +142,8 @@ downloads or additional tools; they do not run mutation tests or host integratio
 
 The Linux docs stage needs Python, Cargo, the Node version in `docs/.node-version`,
 and the [site dependencies and Chromium runtime](#documentation-site).
-Its selector check runs a Rust fixture.
+Its Rust fixtures check task selectors, documentation configuration examples,
+JSON Lines serialization, and native Unix state transitions.
 It also validates repository skill metadata and runs the validator's synthetic
 regressions without third-party Python dependencies. The
 [metadata validator](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/skill-maintenance/scripts/check-skills.py)
@@ -150,8 +151,11 @@ checks the supported frontmatter shape, names, and descriptions. These checks
 do not measure whether an agent follows the instructions effectively.
 
 The source link check inspects tracked and unignored new Markdown files,
-including unstaged moves. It checks local inline links, not external URLs,
-reference-style links, Mermaid rendering, or the truth of the prose. A quick
+including unstaged moves. It checks local inline links and resolves this
+repository's GitHub `blob/main` and `tree/main` destinations against the
+checkout, including Markdown anchors and source line ranges. It does not
+network-check upstream URLs, other repositories or revisions, reference-style
+links, Mermaid rendering, or the truth of the prose. A quick
 link-only check is:
 
 ```sh

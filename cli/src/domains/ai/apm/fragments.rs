@@ -298,6 +298,37 @@ mod tests {
     }
 
     #[test]
+    fn documented_agent_yaml_examples_use_the_real_fragment_merger() {
+        let document = include_str!("../../../../../docs/content/agent-configuration.md");
+        let examples: Vec<_> = document
+            .split("```yaml")
+            .skip(1)
+            .map(|block| {
+                let (_, body) = block.split_once('\n').expect("YAML fence header");
+                body.split_once("```").expect("closed YAML fence").0
+            })
+            .collect();
+        assert_eq!(
+            examples.len(),
+            2,
+            "base dependencies and retained empty fragment"
+        );
+        for (index, example) in examples.iter().enumerate() {
+            let merged = merge_test_fragments(&[example]).expect("merge documented fragment");
+            let value: Value = crate::infra::yaml::from_str(&merged).expect("generated YAML");
+            assert_eq!(value["name"], "dotfiles");
+            assert_eq!(value["targets"].as_array().expect("targets").len(), 2);
+            assert_eq!(
+                value["dependencies"]["apm"]
+                    .as_array()
+                    .expect("APM dependencies")
+                    .len(),
+                if index == 0 { 2 } else { 0 }
+            );
+        }
+    }
+
+    #[test]
     fn discover_fragment_files_returns_empty_when_dir_missing() {
         let dir = tempfile::tempdir().expect("create temp dir");
         assert!(

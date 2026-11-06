@@ -1132,10 +1132,10 @@ class GitRangeTests(unittest.TestCase):
         )
         fixture = {
             "docs/public/CNAME": "docs.example.invalid\n",
-            "docs/content/404.md": "The missing page has no Markdown title.\n",
-            "docs/content/index.md": "# About this project\n\n## Start here\n",
-            "docs/content/getting-started.md": "# Getting started\n\n## Setup\n",
-            "docs/content/commands-and-usage.md": "# Commands and usage\n\n## Commands\n",
+            "docs/content/404.md": "---\ntitle: Page not found\ndescription: Missing page.\n---\n",
+            "docs/content/index.md": "---\ntitle: About this project\ndescription: Project introduction.\n---\n# About this project\n\n## Start here\n",
+            "docs/content/getting-started.md": "---\ntitle: Getting started\ndescription: Set up a machine.\n---\n# Getting started\n\n## Setup\n",
+            "docs/content/commands-and-usage.md": "---\ntitle: Commands and usage\ndescription: Everyday commands.\n---\n# Commands and usage\n\n## Commands\n",
             "docs/dist/index.html": (
                 '<link rel="icon" href="/favicon.svg">'
                 '<link rel="canonical" href="https://docs.example.invalid/">'
@@ -1173,6 +1173,14 @@ class GitRangeTests(unittest.TestCase):
                 '</urlset>'
             ),
         }
+        descriptions = {
+            "index": "Project introduction.",
+            "getting-started": "Set up a machine.",
+            "commands-and-usage": "Everyday commands.",
+        }
+        for name, description in descriptions.items():
+            fixture[f"docs/dist/{name}.html"] += f'<meta name="description" content="{description}">'
+        homepage = fixture["docs/dist/getting-started.html"]
         for path, content in fixture.items():
             self.write(path, content)
         self.assertEqual(check_site(self.repo), [])
@@ -1198,6 +1206,9 @@ class GitRangeTests(unittest.TestCase):
             ("docs/dist/getting-started.html", homepage.replace("commands-and-usage.html", "commands-and-usage.md"), "broken destination"),
             ("docs/dist/getting-started.html", homepage.replace(">Getting started<", ">Welcome<"), "filename and URL do not match title"),
             ("docs/content/getting-started.md", "# Welcome\n\n## Setup\n", "Markdown title does not match page title"),
+            ("docs/content/getting-started.md", fixture["docs/content/getting-started.md"].replace("title: Getting started", "title: Welcome"), "frontmatter title does not match"),
+            ("docs/content/getting-started.md", fixture["docs/content/getting-started.md"].replace("description: Set up a machine.", "description: ''"), "nonempty single-line frontmatter description"),
+            ("docs/dist/getting-started.html", homepage.replace("Set up a machine.", "Outdated description."), "rendered description does not match"),
             ("docs/dist/getting-started.html", homepage.replace(">Commands and usage<", ">Wrong label<"), "navigation label"),
             ("docs/dist/favicon.svg", None, "broken destination /favicon.svg"),
             ("docs/dist/assets/example.svg", None, "broken destination /assets/example.svg"),

@@ -16,6 +16,20 @@ Review the configuration before applying changes.
 Already installed? See [Commands and usage](commands-and-usage.md) or
 [Troubleshooting](troubleshooting.md).
 
+## Choose your setup route
+
+| Configuration and binary | Before the first preview | Next step |
+|---|---|---|
+| This checkout and its released CLI | Git, a POSIX shell on Linux or PowerShell on Windows, and the download requirements below | [Choose a permanent checkout](#1-choose-a-permanent-checkout) |
+| Your fork and this project's released CLI | Deliberately select this project's release publisher | [Using a fork](#using-a-fork), then the setup walkthrough |
+| Your fork and its own released CLI | Publish compatible release assets in your fork | Review [download verification](security-and-trust.md#release-downloads), then the setup walkthrough |
+| Current source instead of a released CLI | The pinned Rust toolchain and native build prerequisites; keep `--build` in each wrapper invocation | [Source builds](contributing.md#source-builds), then the setup walkthrough |
+
+These routes change where the executable comes from, not which configuration
+is safe for your machine. All require reviewing the selected declarations and
+backing up existing configuration before applying. Use the Windows commands
+in the walkthrough for Windows; run the Linux commands inside each WSL distribution.
+
 ## Supported environments
 
 | Environment | What dotfiles manages |

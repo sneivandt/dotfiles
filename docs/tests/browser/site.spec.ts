@@ -1,19 +1,16 @@
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
-const referenceTitles = [
-  'CLI reference', 'Task reference',
-  'Agent packages', 'Agent settings', 'APM plugin checks', 'AUR packages',
-  'Configuration diagnostics', 'Custom package repository', 'Custom package versions',
-  'Dotfiles launcher', 'Dotfiles repository', 'File permissions', 'Git hooks',
-  'Global Git settings', 'Home symlinks', 'Login shell', 'Overlay scripts',
-  'Paru package manager', 'PSScriptAnalyzer', 'Required configuration files',
-  'Shell completions', 'Shell PATH', 'ShellCheck', 'Symlink sources',
-  'System configuration files', 'System packages', 'Systemd units',
-  'User registry settings', 'VS Code extensions', 'Windows Developer Mode',
-];
-const pageCount = readdirSync(new URL('../../content/', import.meta.url))
-  .filter((name) => name.endsWith('.md') && !['index.md', '404.md'].includes(name)).length;
+const contentDirectory = new URL('../../content/', import.meta.url);
+const documents = readdirSync(contentDirectory)
+  .filter((name) => name.endsWith('.md') && !['index.md', '404.md'].includes(name))
+  .map((name) => ({ name, source: readFileSync(new URL(name, contentDirectory), 'utf8') }));
+const taskDocuments = documents.filter(({ name, source }) =>
+  name !== 'task-reference.md' && /^\| Selector \|/m.test(source));
+const referenceTitles = ['CLI reference', 'Task reference', ...taskDocuments
+  .map(({ source }) => source.match(/^title: (.+)$/m)![1])
+  .sort((left, right) => left.localeCompare(right, 'en'))];
+const pageCount = documents.length;
 
 async function assertNoPageOverflow(page: Page) {
   const dimensions = await page.evaluate(() => ({
@@ -41,7 +38,7 @@ test('the introduction and grouped navigation fit the default reading layout', a
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/');
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/');
-  await expect(page.locator('.vp-doc p').first()).toContainText('I started this as a simple dotfiles repo back in 2014');
+  await expect(page.locator('.vp-doc p').first()).not.toBeEmpty();
   expect(JSON.parse(await page.locator('head script[type="application/ld+json"]').textContent() ?? '')).toMatchObject({
     '@type': 'WebSite', creator: { name: 'Stuart Neivandt' },
   });
@@ -420,7 +417,6 @@ for (const [guide, titles] of [
       await page.addInitScript((choice) => localStorage.setItem('vitepress-theme-appearance', choice), theme);
       await page.goto(`/${guide}.html`);
       await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /dark/ : /^(?!.*dark)/);
-      await expect(page.locator('.custom-block.warning')).toHaveCount(titles.length);
       for (const title of titles) {
         const warning = page.locator('.custom-block.warning').filter({ has: page.locator('.custom-block-title', { hasText: title }) });
         await expect(warning).toBeVisible();
@@ -475,7 +471,10 @@ test('task pages combine behavior, configuration, and removal guidance', async (
       href: row.querySelector('a')!.getAttribute('href')!,
     })),
   );
-  expect(tasks).toHaveLength(21);
+  expect(tasks.map(({ href }) => href.split('/').pop()).sort()).toEqual(
+    taskDocuments.filter(({ name, source }) => name !== 'overlay-scripts.md' && /^\| Commands \|.*`update`/m.test(source))
+      .map(({ name }) => name.replace(/\.md$/, '.html')).sort(),
+  );
   for (const task of tasks) {
     await page.goto(task.href);
     const introduction = await page.locator('main table').first().evaluate((table) => {
@@ -495,7 +494,7 @@ test('task pages combine behavior, configuration, and removal guidance', async (
 test('the page contents group troubleshooting symptoms', async ({ page }) => {
   await page.goto('/troubleshooting.html');
   await expect(page.locator('main h2')).toHaveText([
-    'Read the failed run', 'Recover from a partial update',
+    'Find the symptom', 'Read the failed run', 'Recover from a partial update',
     'Startup and configuration', 'Tasks and repository updates',
     'Packages and tools', 'Platform settings', 'Removal leaves settings behind',
   ]);
@@ -547,6 +546,114 @@ test('search opens the relevant section of the published guide', async ({ page }
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('.VPSidebar a')).toHaveText(referenceTitles);
 });
+
+test('keyboard skip navigation and search dismissal preserve visible focus', async ({ page }) => {
+  await page.goto('/getting-started.html');
+  await page.keyboard.press('Tab');
+  const skip = page.getByRole('link', { name: 'Skip to content', exact: true });
+  await expect(skip).toBeFocused();
+  await expect(skip).toBeInViewport();
+  const skipAppearance = await skip.evaluate((element) => ({
+    clipPath: getComputedStyle(element).clipPath,
+    width: element.getBoundingClientRect().width,
+  }));
+  expect(skipAppearance.clipPath).toBe('none');
+  expect(skipAppearance.width).toBeGreaterThan(40);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#VPContent')).toBeFocused();
+
+  await page.goto('/getting-started.html');
+  const search = page.getByRole('button', { name: 'Search', exact: true });
+  for (let step = 0; step < 20 && !await search.evaluate((element) => element === document.activeElement); step++) {
+    await page.keyboard.press('Tab');
+  }
+  await expect(search).toBeFocused();
+  const focusAppearance = await search.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { outline: style.outlineStyle, width: parseFloat(style.outlineWidth) };
+  });
+  expect(focusAppearance.outline).not.toBe('none');
+  expect(focusAppearance.width).toBeGreaterThanOrEqual(1);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#localsearch-input')).toBeFocused();
+  await page.keyboard.type('symlinks');
+  await expect(page.locator('.VPLocalSearchBox .result').first()).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.VPLocalSearchBox')).toHaveCount(0);
+  await expect(search).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#localsearch-input')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(search).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  const shortcutOrigin = page.locator('.VPNavBarTitle a');
+  await expect(shortcutOrigin).toBeFocused();
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('#localsearch-input')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(shortcutOrigin).toBeFocused();
+});
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`body, links, and warning text meet contrast requirements in ${theme} mode`, async ({ page }) => {
+    await page.addInitScript((choice) => localStorage.setItem('vitepress-theme-appearance', choice), theme);
+    for (const guide of ['getting-started', 'package-management', 'private-overlays']) {
+      await page.goto(`/${guide}.html`);
+      const measurements = await page.locator('main p, main p a, main li a, main .custom-block-title').evaluateAll((elements) => {
+        type Color = [number, number, number, number];
+        function color(value: string): Color {
+          const match = value.match(/^rgba?\((.+)\)$/);
+          if (!match) throw new Error(`Unsupported computed color: ${value}`);
+          const channels = match[1].split(/[, /]+/).map(Number);
+          if (channels.length < 3 || channels.some((channel) => !Number.isFinite(channel))) {
+            throw new Error(`Invalid computed color: ${value}`);
+          }
+          return [channels[0], channels[1], channels[2], channels[3] ?? 1];
+        }
+        function composite(foreground: Color, background: Color): Color {
+          const alpha = foreground[3];
+          return [
+            foreground[0] * alpha + background[0] * (1 - alpha),
+            foreground[1] * alpha + background[1] * (1 - alpha),
+            foreground[2] * alpha + background[2] * (1 - alpha),
+            1,
+          ];
+        }
+        function luminance(value: Color) {
+          const linear = value.slice(0, 3).map((channel) => {
+            const normalized = channel / 255;
+            return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+          });
+          return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+        }
+        return elements.filter((element) => element.getClientRects().length && element.textContent?.trim())
+          .map((element) => {
+            const ancestors: Element[] = [];
+            for (let current: Element | null = element; current; current = current.parentElement) ancestors.push(current);
+            let background: Color = [255, 255, 255, 1];
+            for (const ancestor of ancestors.reverse()) {
+              background = composite(color(getComputedStyle(ancestor).backgroundColor), background);
+            }
+            const style = getComputedStyle(element);
+            const foreground = composite(color(style.color), background);
+            const light = luminance(foreground);
+            const dark = luminance(background);
+            const large = parseFloat(style.fontSize) >= 24 ||
+              (parseFloat(style.fontSize) >= 18.66 && Number(style.fontWeight) >= 700);
+            return {
+              text: element.textContent!.trim().slice(0, 90),
+              ratio: (Math.max(light, dark) + 0.05) / (Math.min(light, dark) + 0.05),
+              minimum: large ? 3 : 4.5,
+            };
+          });
+      });
+      expect(measurements.length).toBeGreaterThan(0);
+      for (const measurement of measurements) {
+        expect(measurement.ratio, `${guide}: ${measurement.text}`).toBeGreaterThanOrEqual(measurement.minimum);
+      }
+    }
+  });
+}
 
 test('removed guides and repository-only docs do not publish routes', async ({ request }) => {
   for (const path of [

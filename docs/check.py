@@ -102,7 +102,7 @@ def main():
         check(root, env)
         print("Native documentation checks passed.", flush=True)
     print(
-        "Remaining CI coverage: Rust task-selector fixture, workflow checks, and publication. "
+        "Remaining CI coverage: Rust documentation contracts/selectors, workflow checks, and publication. "
         "Browser emulation does not prove native phone behavior.",
         flush=True,
     )

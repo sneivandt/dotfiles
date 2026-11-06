@@ -155,8 +155,15 @@ For a desktop-to-base transition, plan cleanup before changing the saved role:
 2. Decide which desktop links to keep. If detaching them, preview
    `dotfiles remove --profile desktop --only symlinks --dry-run`. This covers
    **all desktop-selected links, including base links**, replacing them with
-   current source copies. Review before applying, keep sources available until
-   it succeeds, then apply the base symlinks task to restore the shared links.
+   current source copies. Review before applying and keep sources available
+   until it succeeds.
+   Then preview `dotfiles update --profile base --only symlinks --dry-run`.
+   The materialized base files now block link installation: update preserves
+   ordinary files instead of overwriting them. Inspect each reported target,
+   preserve any edits, and move only the intended file or directory aside to
+   a backup location. Repeat the base preview until it proposes the intended
+   links without conflicts, then apply it. Keep desktop-only copies you still
+   need; do not delete a whole configuration directory to clear conflicts.
 3. Remove unwanted package declarations and deliberately uninstall packages
    with the native package manager. Review dependency removals. Registry,
    system-file, and other persistent settings need separate manual decisions.

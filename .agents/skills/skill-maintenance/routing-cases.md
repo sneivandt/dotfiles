@@ -30,6 +30,8 @@ Companions are needed only when the request changes their contract.
 | Enable dark mode and fix Mermaid on the published docs site | `docs-publishing` | No desktop-shell skill |
 | Move site-maintenance instructions into docs/README.md | `docs-publishing` | Add docs-writing for prose; keep the README outside published routes |
 | Audit the guides for accuracy, readability, and excessive detail | `docs-writing` | Verify claims against sources; add docs-publishing only for site or organization changes |
+| Explain switching an installed Git link to a private overlay | `docs-writing` | Review the starting state and link conflict, not just the declaration's merge behavior |
+| Improve instructions for retiring desktop links and returning to base | `docs-writing` | Materialized base copies must not be described as automatically replaceable by links |
 | Expand the Systemd units task page with domain context and upstream references | `task-reference-writing` | Verify the task, resource, and catalog; docs-writing supplies prose guidance |
 | Improve the Getting started walkthrough without changing task pages | `docs-writing` | No task-reference-writing skill for an ordinary workflow guide |
 | Add a task reference page and nest it beneath the task overview | `task-reference-writing` | Add docs-publishing for navigation and route coverage; do not add domain collapse groups |
@@ -49,3 +51,7 @@ For each new or revised trigger, add a matching request, a neighboring exclusion
 and a request crossing its real boundary. Check that the body points to current
 sources and useful fixture coverage. Record uncertainty rather than claiming
 these examples prove runtime routing quality.
+
+When reviewing documentation guidance, use the human guide's
+[acceptance scenarios](../../../docs/content/writing-documentation.md#acceptance-scenarios)
+as well. Check the explanation's essential facts, not a fixed wording.

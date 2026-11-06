@@ -54,3 +54,10 @@ A real install, package update, or desktop restart is not required merely to com
 
 ## Review Notes
 <!-- Call out risks, tradeoffs, follow-up work, or areas needing extra attention. -->
+<!--
+For meaningful documentation changes, briefly identify the reader's task and
+starting state, the implementation/test evidence for changed claims, and how
+the reader recognizes the result. For documentation guidance or skill changes,
+include one realistic acceptance walkthrough. Omit this for incidental wording
+changes; do not repeat the validation table.
+-->

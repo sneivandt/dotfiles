@@ -46,6 +46,11 @@ changes usually do not need engine changes.
 - Keep one clear explanation per topic, short commands using real defaults, and
   matching page titles, filenames, and URLs. Update references when moving content;
   do not add rename-compatibility routes.
+- Review consequential procedures from their actual starting state, including
+  already-installed configuration and partial failure. Use
+  [Writing documentation](docs/content/writing-documentation.md) for content
+  conventions and acceptance scenarios; skills route work rather than carrying
+  a second copy of human procedures.
 
 ## Before pushing
 
@@ -53,9 +58,9 @@ changes usually do not need engine changes.
   coverage once at the final committed gate, not again at every layer.
 - Choose coverage from [Testing](docs/content/testing.md#choosing-coverage), including
   affected script/application regressions. Use the pinned Rust toolchain.
-- Validate documentation once on the checkout's native platform, including mixed
-  patches. Do not repeat docs checks in WSL or on another OS; cross-platform
-  verification applies to the CLI and platform-sensitive behavior.
+- Use [docs/README.md](docs/README.md#checks) for focused documentation commands
+  and its final native gate. One native documentation result is enough,
+  including mixed patches; cross-platform parity applies to CLI behavior.
 - Validate the committed patch with the [pre-push checker](docs/content/testing.md#before-pushing).
   A successful commit hook or focused test alone is not push validation.
   On Windows, use its coordinated native Windows and WSL checks. Do not treat

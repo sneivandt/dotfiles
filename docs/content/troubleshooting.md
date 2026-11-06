@@ -20,16 +20,35 @@ Examples assume you are in the intended checkout with dotfiles on PATH.
 If the launcher is uncertain, substitute an existing `./bin/dotfiles` or
 `.\bin\dotfiles.exe`. A wrapper can download or build the CLI before showing help.
 
+## Find the symptom
+
+| Symptom | Start here | First evidence |
+|---|---|---|
+| No CLI starts or a download is rejected | [Wrapper download fails](#wrapper-download-fails) | Terminal error and selected binary publisher |
+| Wrong role or private configuration | [No profile selected](#no-profile-selected) or [Overlay is ignored](#overlay-is-ignored) | Flags, environment, and repository-local selection |
+| Existing content blocks a link | [Home symlink preview](home-symlinks.md#preview-and-apply) or [Windows symlink fails](#windows-symlink-fails) | Destination type, current link target, and proposed source |
+| A task is absent, skipped, or blocked | [Task is missing or skipped](#task-is-missing-or-skipped) | Failed run ID, reason, and selected graph |
+| Applications do not install | [Packages do not install](#packages-do-not-install) | Package task's diagnostics, exact ID, and provider |
+| Some changes applied before failure | [Recover from a partial update](#recover-from-a-partial-update) | Original run and linked child logs |
+| A service or WSL setting appears unchanged | [Service changes](#service-changes-are-not-visible) or [WSL settings](#wsl-settings-are-unchanged) | Unit scope/state or the environment where the CLI ran |
+
+Bootstrap and configuration-loading failures may occur before a persistent
+run log exists. Keep their terminal diagnostics; do not retry a full update
+just to generate a log.
+
 ## Read the failed run
+
+Copy the actual run ID from the failure message or history, replacing
+`<run-id>` below. Replace `symlinks` with the failed task's selector:
 
 ```bash
 dotfiles log --list
-dotfiles log --task symlinks --verbose
+dotfiles log --id <run-id> --task symlinks --verbose
 ```
 
-The second command examines the `symlinks` task in the newest run. Replace
-`symlinks` with the selector for the task that failed. For an older failure,
-pass its run ID from history to `--id`; IDs stay stable when new runs are added.
+IDs stay stable when new runs are added. For a deliberate newest-run shortcut,
+omit `--id <run-id>`; do not use that shortcut when another invocation has
+already replaced the failure as the newest run.
 
 Read the failed command's diagnostics, not just the task summary or an
 “update available” notice. If the run only reports a restart or elevation,

@@ -22,12 +22,13 @@ docs_links()
   python3 -B "$SCRIPT_DIR/check-doc-links.py" "$DIR"
 }
 
-# Compare documentation to the real public catalog in an isolated Rust fixture.
+# Check documented selectors, YAML fragments, and example contracts in fixtures.
 docs_task_selectors()
 {
   log_stage "Checking documented task selectors"
   (cd "$DIR/cli" && cargo test --locked --quiet --profile ci --lib \
-    app::commands::list::tests::documented_selectors_match_catalog -- --exact)
+    documented_ &&
+    cargo test --locked --quiet --profile ci --test docs_contracts)
 }
 
 docs_site()

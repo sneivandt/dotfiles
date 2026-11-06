@@ -147,11 +147,12 @@ selected by the previous profile.
 
 ## Logs and troubleshooting
 
-Start with the failing task's log:
+Start with the failing task's log. Replace `<run-id>` with the stable ID in the
+failure message or `dotfiles log --list`, and choose the relevant task:
 
 ```sh
-dotfiles log --task packages --verbose
-dotfiles log --task aur-packages --verbose
+dotfiles log --id <run-id> --task packages --verbose
+dotfiles log --id <run-id> --task aur-packages --verbose
 ```
 
 The second command is for Arch AUR and custom-package installation. Follow the

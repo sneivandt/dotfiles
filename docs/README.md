@@ -81,6 +81,29 @@ check rather than rebuilding and rerunning browsers after every change. Reserve
 one full documentation run for the committed gate unless diagnosing a failure
 needs an earlier full run.
 
+Choose the smallest check covering the edit. Commands below run from the
+repository root unless the directory column says otherwise; use native tools
+and `python3` where required. Node commands need the locked dependencies above.
+
+| Edit | Directory | Focused command |
+|---|---|---|
+| Markdown links or destinations | Root | `python -B .github/workflows/scripts/linux/check-doc-links.py .` |
+| Skill metadata or validator | Root | `python -B .agents/skills/skill-maintenance/scripts/check-skills.py .` and `python -B .agents/skills/skill-maintenance/scripts/test-check-skills.py` |
+| Link, frontmatter, or rendered metadata checker | Root | `python -B docs/tests/test_content.py` |
+| Native check coordinator | Root | `node --test docs/tests/check.test.mjs` |
+| TypeScript or Vue | `docs/` | `npm run check` |
+| Markdown rendering or Node fixtures | `docs/` | `npm test` |
+| Configuration examples or JSON Lines contract | `cli/` | `cargo test --locked --profile ci --test docs_contracts` |
+| APM YAML examples or selector inventory | `cli/` | `cargo test --locked --profile ci --lib documented_` |
+| Keyboard, focus, or contrast | `docs/` | `npm run build` then `npm run test:browser -- --grep "keyboard|contrast"` |
+| Other rendered behavior | `docs/` | `npm run build` then `npm run test:browser -- --grep "<test title>"` |
+
+Rust commands use the pinned toolchain and isolated fixtures, not the live home
+configuration. Unix-only path and symlink transitions run on native Linux;
+Windows runs the portable decoder and JSON serialization cases. Review the
+[documentation acceptance scenarios](content/writing-documentation.md#acceptance-scenarios)
+when changing authoring guidance: metadata checks cannot prove its usefulness.
+
 Use `python3` instead of `python` on systems that require it. The checker runs
 skill metadata and its fixtures, source links, Vue/TypeScript diagnostics, Markdown and
 checker fixtures, a production build, published links, and browser regressions.
@@ -114,16 +137,24 @@ use the coordinator's
 That records the gap without blocking a push or claiming documentation passed;
 all other selected checks and the exact commit's CI documentation job remain required.
 
-The Rust task-selector fixture and workflow checks remain in CI. The Linux
-`docs` stage also runs the selector fixture locally; it is not required just to
-validate a documentation patch on Windows.
+Rust example/serialization contracts, the task-selector fixture, and workflow
+checks remain in CI. The Linux `docs` stage also runs the Rust documentation
+contracts locally; the native site checker does not compile Rust. Changed
+decoder or transition fixtures still need the implementation checks for their
+applicable platforms.
 
-The site checks matching titles, navigation labels, filenames, published links,
-anchors, assets, canonicals, the sitemap, and indexing metadata.
+The site checks required title/description frontmatter against rendered
+metadata, navigation labels, filenames, published links, anchors, assets,
+canonicals, the sitemap, and indexing metadata. Source checks resolve
+current-repository GitHub `blob/main` and `tree/main` links locally, including
+Markdown headings and source line ranges; unrelated external URLs are not
+network-checked.
 Browser regressions exercise the homepage, topic navigation,
 search, theme persistence, warning callouts, and every Mermaid diagram at
 desktop and mobile sizes. They also check that task details appear in the page
 contents and that tables fit a narrow screen without shrinking their text.
+Keyboard regressions cover skip navigation, search dismissal and restored
+focus; text and safety-callout contrast is checked in both themes.
 Diagram labels must stay at least 14 CSS pixels.
 Mobile emulation is not a native phone/browser test.
 
@@ -134,6 +165,11 @@ keep that port free.
 
 The site uses VitePress's default theme. Dependencies are pinned in
 [package.json](package.json) and its lockfile.
+
+The theme layout restores the previous keyboard focus after Escape closes
+local search. VitePress 1.6's focus trap saves the already-focused modal input,
+which disappears on dismissal. Keep the keyboard regression when upgrading;
+remove this workaround when upstream restores the opener itself.
 
 Vite and esbuild are direct, pinned development dependencies with npm overrides
 so Dependabot can update them even while stable VitePress requires older

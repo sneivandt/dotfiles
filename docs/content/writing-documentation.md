@@ -37,6 +37,11 @@ contributor implementation contracts from instructions for using the feature. Li
 their full explanation instead of copying it into every reference page.
 Brief definitions and safety warnings may repeat where the reader acts.
 
+This guide owns reader-facing content conventions. The site README owns
+site implementation and checks. Agent skills route a change to those sources
+and add agent-specific safeguards; they should not carry a second copy of
+these procedures.
+
 ## Verify the behavior before explaining it
 
 Read the owning command or task, its resource, the decoder, and relevant
@@ -56,6 +61,23 @@ to inspect an implementation, with readable labels rather than raw URLs.
 Do not send readers to agent skills as substitutes for human documentation.
 Skills are instructions to agents; if a procedure matters to a person,
 explain it here or link its owning guide.
+
+## Review the starting state and transition
+
+A valid command is not a complete procedure. Identify whether the reader starts
+with a fresh machine, an installed setup, or a partially failed run. For a
+migration, describe the state before and after each consequential step.
+
+Check what happens to existing files, link targets, ownership records, saved
+selections, and prerequisites. A configuration override does not necessarily
+replace installed state. A copied file can block a later link installation.
+Changing selection does not undo an earlier update.
+
+Walk the common path and one relevant recovery path against the implementation
+or an isolated fixture. State what the reader should observe at each decision,
+what must remain available, and when it is safe to retire the old source or
+backup. Do not use a real home, deployment, package manager, or desktop restart
+as a substitute for a fixture.
 
 ## Make examples reusable
 
@@ -82,6 +104,16 @@ winget ID, systemd suffix, or configuration key cannot be made generic by
 changing it to an unsupported spelling. Repository inventories and
 platform-specific setup should still describe the actual supported content,
 clearly separated from examples of the declaration format.
+
+For an example covered by a regression, keep its language and source filename
+in the code fence accurate. The
+[documentation contracts](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/docs_contracts.rs)
+extract selected TOML examples and pass them through the real loader with
+synthetic sources and explicit profiles/platforms. APM's fragment tests check
+the YAML examples with its real merger. Add a case when introducing a
+consequential declaration or transition; do not copy the snippet into a test
+and let the two versions drift. These fixtures prove only the assertions they
+make, not a full installation or an upstream application's configuration.
 
 Use short commands with real defaults. State the working directory and shell
 when they matter; keep only flags needed for the purpose. Put consequences
@@ -119,7 +151,7 @@ requirements from ordering-only waits.
 
 ## Write and review the page
 
-Give each page frontmatter with a title and description, one matching H1,
+Give each page frontmatter with a nonempty single-line title and description, one matching H1,
 and a lowercase hyphenated filename matching the title. Use relative `.md`
 links between guides and full GitHub URLs for tracked sources outside them.
 Refer to pages by name, not by their position in navigation.
@@ -128,6 +160,15 @@ Lead with the common workflow. Prefer direct sentences and headings that name
 a task or decision. Reserve inline code for exact syntax and bold for a
 consequential distinction. Avoid decorative punctuation and competing emphasis.
 Use warning callouts for safety information and explain any highlighted code.
+
+Use readable link labels, including filenames when useful; do not put inline
+code inside a link label. Refer to tools and concepts in plain prose, reserving
+inline code for exact commands, keys, values, output, and paths.
+Use direct sentences and familiar verbs, without canned openings or claims
+such as "seamlessly". Avoid em dashes, decorative sentence breaks, heading
+ellipses, long semicolon chains, and stacked emphasis. Preserve literal syntax,
+quoted output, and meaningful symbols. Vary sentence length naturally instead
+of giving every section the same opening and closing formula.
 
 When adding or moving a page, update navigation and incoming links.
 Do not add old-name redirects or heading aliases. Register the page in
@@ -144,3 +185,20 @@ and three. Put exceptional recovery steps after the normal procedure, and
 make sure instructions after an exception have their own heading if they
 apply to everyone. Use consistent task-page sections without copying generic
 closing paragraphs from one page to the next.
+
+## Acceptance scenarios
+
+When changing the authoring guide or its agent skills, walk these cases through
+the revised guidance. Keep the exercise read-only or use isolated fixtures:
+
+| Reader task | Essential facts the resulting explanation must preserve |
+|---|---|
+| Switch an installed Git link to an overlay source | Exact-target declaration replacement differs from installed-link replacement; inspect and preserve the old destination, move only the intended link aside, repeat preview, and verify the new origin |
+| Retire desktop links and return to base | Removal uses the original selection and copies current sources; base copies block link installation; preserve edits before clearing only the intended conflicts |
+| Retry a partial service update | Select the failed run by stable ID, inspect predecessor failures, review dependency expansion, and explain that earlier changes remain |
+| Document a task with no removal action | State what stops being managed and what persists; give no fictional remove command or rollback promise |
+
+Judge whether a reader can complete the task and recognize its outcome, not
+whether the explanation matches a fixed sentence or section count.
+These cases supplement skill-routing review; neither is a benchmark of an
+agent model's effectiveness.

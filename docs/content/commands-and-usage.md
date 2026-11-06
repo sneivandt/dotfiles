@@ -233,8 +233,11 @@ the failed run with a stable `--id`, even after later runs.
 ```sh
 dotfiles log                          # newest run
 dotfiles log --list                   # history and stable run IDs
-dotfiles log --task symlinks --verbose # one task in the newest run
+dotfiles log --id <run-id> --task symlinks --verbose
 ```
+
+Replace `<run-id>` with the failed run's actual ID and `symlinks` with its task.
+Omit the ID only when you deliberately want the newest run.
 
 Read the failed command's diagnostics and the reason for each failed or
 skipped task.

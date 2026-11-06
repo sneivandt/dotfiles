@@ -203,7 +203,9 @@ dotfiles log --task symlinks --verbose # one task in the newest run
 dotfiles log --raw                    # original stored records
 ```
 
-Use the actual history ID with `--id`. To narrow the log, pass the task selector
+For a known failure, prefer
+`dotfiles log --id <run-id> --task symlinks --verbose`, replacing `<run-id>`
+with its actual history ID. To narrow the log, pass the task selector
 to `--task` (the example uses `symlinks`). Add `--verbose` for diagnostics or
 `--raw` for the original records. `--id` cannot be combined with an index, `--list`, or
 `--command`; verbose and raw are mutually exclusive.
@@ -258,6 +260,34 @@ Each stdout line is one object with `schema: 1`, `run_id`, `context`, and
 IDs, selectors, statuses, reasons, and action counts; finish records include
 outcome and exit code. Stored statuses use names such as `ok`, `dry_run`, and
 `not_applicable`, rather than the human display labels.
+
+This JSON Lines excerpt comes from an isolated successful configuration check.
+The regression normalizes run/task identities and elapsed time for comparison.
+Scope, context, duration, and diagnostic records between these lines are omitted:
+
+```json title="JSON Lines (fixture excerpt)"
+{"schema":1,"run_id":"fixture-run","context":"main","type":"run_start","command":"check","parent_run_id":null}
+{"schema":1,"run_id":"fixture-run","context":"fixture-task","type":"task_result","task_id":"fixture-task","selector":"config-diagnostics","name":"Configuration diagnostics","status":"passed","reason":null,"actions":{"applied":0,"planned":0,"skipped":0,"failed":0,"interrupted":0,"not_attempted":0}}
+{"schema":1,"run_id":"fixture-run","context":"main","type":"run_finish","outcome":"succeeded","elapsed_us":0,"exit_code":0}
+```
+
+| Field | Type and consumer contract |
+|---|---|
+| `schema` | Integer envelope version; this format uses `1` |
+| `run_id` | Opaque string identifying this started process; group records by it |
+| `context` | String identifying the emitting context, not a task selector |
+| `type` | String determining the record's remaining fields |
+| `parent_run_id` | String or `null` on a start record; links a restarted/elevated child to its parent |
+| `task_id`, `selector` | Opaque task identity and public selector; internal task records may omit `selector` |
+| `status`, `reason` | Stored status string and a string or `null` explaining the result |
+| `actions` | Object of integer item counts; these are not task totals |
+| `outcome`, `exit_code`, `elapsed_us` | Finish outcome string, integer process code, and integer elapsed microseconds |
+
+Use selectors for user-facing task matching, not internal task identities or
+context names. Parse only the fields needed for your record type, tolerate
+additional fields and unknown types, and report an unsupported schema version.
+The [documentation contract fixture](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/docs_contracts.rs)
+compares this excerpt with real CLI output, not separately invented records.
 
 JSON Lines disables prompts. Parse errors and logging warnings can still
 appear on stderr; detailed actions and subprocess diagnostics remain in logs.

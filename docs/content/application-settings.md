@@ -226,7 +226,8 @@ See [GNOME Keyring troubleshooting](troubleshooting.md#gnome-keyring-stays-locke
 for credential failures. Chroot setup defers extension installation until a
 graphical login; `dotfiles-first-login.service` retries until it succeeds.
 
-For failures, start with `dotfiles log --task vscode-extensions --verbose`.
+For failures, use `dotfiles log --id <run-id> --task vscode-extensions --verbose`,
+replacing `<run-id>` with the failure's stable ID.
 Check the selected CLI, profile, home, link destinations, and workspace overrides
 before reinstalling anything. Agent integrations have separate
 [configuration](agent-configuration.md).

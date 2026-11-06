@@ -1,4 +1,20 @@
+import { readdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+
+const referenceTitles = [
+  'CLI reference', 'Task reference', 'Configuration basics',
+  'Dotfiles repository', 'Dotfiles launcher', 'Shell PATH', 'Git hooks',
+  'Shell completions', 'Global Git settings', 'Login shell',
+  'Home symlinks', 'File permissions', 'System configuration files',
+  'Windows Developer Mode', 'User registry settings',
+  'System packages', 'Paru package manager', 'AUR packages',
+  'Custom package versions', 'Custom package repository', 'Systemd units', 'VS Code extensions',
+  'Agent settings', 'Agent packages', 'Overlay scripts',
+  'Configuration diagnostics', 'Symlink sources', 'Configuration files',
+  'APM plugin checks', 'ShellCheck', 'PSScriptAnalyzer',
+];
+const pageCount = readdirSync(new URL('../../content/', import.meta.url))
+  .filter((name) => name.endsWith('.md') && !['index.md', '404.md'].includes(name)).length;
 
 async function assertNoPageOverflow(page: Page) {
   const dimensions = await page.evaluate(() => ({
@@ -16,7 +32,7 @@ async function guideRoutes(page: Page) {
       (links) => links.map((link) => link.getAttribute('href')!),
     )) routes.add(href);
   }
-  expect(routes.size).toBe(18);
+  expect(routes.size).toBe(pageCount);
   return [...routes];
 }
 
@@ -58,7 +74,7 @@ test('the introduction and grouped navigation fit the default reading layout', a
 test('header sections replace the sidebar, including direct links and search destinations', async ({ page, isMobile }) => {
   await page.goto('/getting-started.html');
   for (const [label, entry, titles] of [
-    ['Reference', '/cli-reference.html', ['CLI reference', 'Task reference', 'Configuration reference']],
+    ['Reference', '/cli-reference.html', referenceTitles],
     ['Development', '/contributing.html', ['Contributing', 'Testing', 'Architecture', 'CI and releases']],
     ['Guides', '/getting-started.html', ['Getting started', 'Profiles and categories', 'Security and trust', 'Commands and usage', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Agent configuration', 'Application settings', 'Private overlays']],
   ] as const) {
@@ -68,9 +84,12 @@ test('header sections replace the sidebar, including direct links and search des
     await expect(page.locator('.VPSidebar a')).toHaveText([...titles]);
     if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText(label);
   }
-  await page.goto('/configuration-reference.html#symlinks');
-  await expect(page.locator('.VPSidebar a')).toHaveText(['CLI reference', 'Task reference', 'Configuration reference']);
-  await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
+  await page.goto('/home-symlinks.html#configuration');
+  await expect(page.locator('.VPSidebar a')).toHaveText(referenceTitles);
+  await expect(page.locator('.VPDocFooter .next')).toContainText('File permissions');
+  await expect(page.locator('.VPSidebar .group h2')).toHaveText([
+    'Reference', 'Checkout and shell', 'Files and Windows', 'Packages and services', 'Agents and overlays', 'Validation',
+  ]);
   await page.goto('/private-overlays.html');
   await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
   await page.goto('/package-management.html');
@@ -148,7 +167,7 @@ test('guides link to the owning command and application references', async ({ pa
 test('lookup and prerequisite information precedes advanced details', async ({ page }) => {
   for (const [guide, earlier, later] of [
     ['task-reference', 'catalog-overview', 'scheduling-model'],
-    ['configuration-reference', 'files', 'making-a-configuration-change'],
+    ['configuration-basics', 'files', 'making-a-configuration-change'],
     ['contributing', '2-find-the-owning-files', 'development-setup'],
     ['testing', 'before-pushing', 'specialized-checks'],
     ['agent-configuration', 'deployment-targets', 'validate-preview-and-apply'],
@@ -171,10 +190,10 @@ test('lookup and prerequisite information precedes advanced details', async ({ p
 });
 
 test('guide links use ordinary labels without boxed code', async ({ page }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(180_000);
   await page.goto('/');
   const routes = await guideRoutes(page);
-  expect(routes).toHaveLength(18);
+  expect(routes).toHaveLength(pageCount);
   for (const route of ['/', ...routes]) {
     await page.goto(route);
     await expect(page.locator('.vp-doc a code')).toHaveCount(0);
@@ -255,12 +274,12 @@ for (const [guide, titles] of [
   }
 }
 
-test('task catalog labels jump to details without horizontal overflow', async ({ page, isMobile }) => {
+test('task catalog labels open dedicated pages without horizontal overflow', async ({ page, isMobile }) => {
   if (isMobile) await page.setViewportSize({ width: 375, height: 667 });
   await page.goto('/task-reference.html');
   const catalog = page.locator('main table').filter({ hasText: 'agent-packages' });
   const detail = catalog.getByRole('link', { name: 'Agent packages', exact: true });
-  await expect(detail).toHaveAttribute('href', '#agent-packages');
+  await expect(detail).toHaveAttribute('href', /^(?:\.\/|\/)agent-packages\.html$/);
   if (isMobile) {
     const dimensions = await catalog.evaluate((element) => ({
       content: element.scrollWidth,
@@ -269,26 +288,33 @@ test('task catalog labels jump to details without horizontal overflow', async ({
     expect(dimensions.visible).toBeLessThanOrEqual(375);
   }
   await detail.click();
-  await expect(page).toHaveURL(/task-reference\.html#agent-packages$/);
-  await expect(page.locator('#agent-packages')).toBeVisible();
+  await expect(page).toHaveURL(/agent-packages\.html$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Agent packages');
+  await expect(page.locator('main #configuration')).toBeAttached();
 });
 
-test('the page contents expose task details and group troubleshooting symptoms', async ({ page, isMobile }) => {
+test('task pages combine behavior, configuration, and removal guidance', async ({ page }) => {
+  test.setTimeout(120_000);
   await page.goto('/task-reference.html');
-  const taskLinks = await page.locator('main table').first().locator('a').evaluateAll(
-    (links) => [...new Set(links.map((link) => link.getAttribute('href')!))],
+  const tasks = await page.locator('main table').first().locator('tbody tr').evaluateAll(
+    (rows) => rows.map((row) => ({
+      selector: row.querySelector('code')!.textContent,
+      href: row.querySelector('a')!.getAttribute('href')!,
+    })),
   );
-  expect(taskLinks.length).toBeGreaterThan(15);
-  for (const href of taskLinks) {
-    await expect(page.locator(`.VPDocAsideOutline a[href="${href}"]`)).toHaveCount(1);
-    await expect(page.locator(`main h3${href}`)).toHaveCount(1);
+  expect(tasks).toHaveLength(21);
+  for (const task of tasks) {
+    await page.goto(task.href);
+    await expect(page.locator('main table').first()).toContainText(task.selector!);
+    for (const anchor of ['what-it-does', 'configuration', 'preview-and-apply', 'removal']) {
+      await expect(page.locator(`main h2#${anchor}`)).toHaveCount(1);
+      await expect(page.locator(`.VPDocAsideOutline a[href="#${anchor}"]`)).toHaveCount(1);
+    }
+    await assertNoPageOverflow(page);
   }
-  if (!isMobile) {
-    await page.locator('.VPDocAsideOutline a[href="#home-symlinks"]').click();
-    await expect(page).toHaveURL(/#home-symlinks$/);
-    await expect(page.locator('#home-symlinks')).toBeInViewport();
-  }
+});
 
+test('the page contents group troubleshooting symptoms', async ({ page }) => {
   await page.goto('/troubleshooting.html');
   await expect(page.locator('main h2')).toHaveText([
     'Read the failed run', 'Recover from a partial update',
@@ -302,7 +328,7 @@ test('the page contents expose task details and group troubleshooting symptoms',
 
 for (const font of ['system', 'fallback']) {
   test(`reference tables remain readable at narrow widths with ${font} fonts`, async ({ page }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(180_000);
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
     const routes = await guideRoutes(page);
@@ -335,12 +361,13 @@ test('search opens the relevant section of the published guide', async ({ page }
   await page.goto('/');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await page.locator('#localsearch-input').fill('symlinks');
-  const result = page.locator('.VPLocalSearchBox a[href*="configuration-reference.html#symlinks"]').first();
+  const result = page.locator('.VPLocalSearchBox a[href*="home-symlinks.html"]').first();
   await expect(result).toBeVisible();
   await result.click();
-  await expect(page).toHaveURL(/configuration-reference\.html#symlinks$/);
-  await expect(page.locator('#symlinks')).toBeVisible();
-  await expect(page.locator('.VPSidebar a')).toHaveText(['CLI reference', 'Task reference', 'Configuration reference']);
+  await expect(page).toHaveURL(/home-symlinks\.html(?:#.*)?$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home symlinks');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('.VPSidebar a')).toHaveText(referenceTitles);
 });
 
 test('removed guides and repository-only docs do not publish routes', async ({ request }) => {
@@ -349,7 +376,7 @@ test('removed guides and repository-only docs do not publish routes', async ({ r
     '/local-package-recipes.html', '/ai-agent-configuration.html',
     '/git-configuration.html', '/documentation-site.html', '/README.html', '/README.md',
     '/update-lifecycle.html', '/visual-studio-code.html', '/vim-and-neovim.html',
-    '/git-hooks.html', '/agent-deployment-internals.html', '/arch-package-recipes.html',
+    '/configuration-reference.html', '/agent-deployment-internals.html', '/arch-package-recipes.html',
   ]) {
     expect((await request.get(path)).status()).toBe(404);
   }
@@ -382,7 +409,7 @@ test('a saved system theme follows operating-system appearance', async ({ page }
 });
 
 test('client navigation and theme changes rerender diagrams', async ({ page, isMobile }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(180_000);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/getting-started.html');
@@ -400,7 +427,7 @@ test('client navigation and theme changes rerender diagrams', async ({ page, isM
 for (const guide of ['profiles-and-categories', 'commands-and-usage', 'arch-desktop', 'architecture', 'agent-configuration', 'package-management', 'ci-and-releases']) {
   for (const theme of ['light', 'dark'] as const) {
     test(`${guide} has readable, accessible diagrams in ${theme} mode`, async ({ page }) => {
-      test.setTimeout(60_000);
+      test.setTimeout(180_000);
       const errors: string[] = [];
       page.on('pageerror', (error) => errors.push(error.message));
       page.on('console', (message) => {

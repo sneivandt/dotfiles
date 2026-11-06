@@ -33,7 +33,7 @@ configuration. A clean working tree does not make a live installation safe.
 | What is changing? | Start here |
 |---|---|
 | Application configuration | The application's directory under [symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/) |
-| Packages, links, settings, or services | The matching file under [conf/](https://github.com/sneivandt/dotfiles/tree/main/conf/); see [Configuration](configuration-reference.md) |
+| Packages, links, settings, or services | The matching file under [conf/](https://github.com/sneivandt/dotfiles/tree/main/conf/); see [Configuration](configuration-basics.md) |
 | Administrator-owned file content | [system/](https://github.com/sneivandt/dotfiles/tree/main/system/) and [conf/system-files.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml) |
 | CLI options or command selection | [app/cli.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/cli.rs) and [app/commands/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/app/commands/) |
 | Task membership or cross-domain dependencies | [app/catalog.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs) |
@@ -186,7 +186,8 @@ For a new configuration section:
 4. Implement the resource or operation, register its task, and add real
    configuration plus command/configuration tests.
 5. Keep conditional symlinks aligned with categories and document the format
-   in [Configuration](configuration-reference.md).
+   on its [task page](task-reference.md). Shared loading rules belong in
+   [Configuration basics](configuration-basics.md).
 
 ### Tasks and workflows
 
@@ -244,32 +245,9 @@ scanner maintenance, see [Staged hook checks](testing.md#staged-hook-checks).
 
 ### Installation and removal
 
-Inspect the hook destination before installing:
-
-```sh
-git config --show-origin --get core.hooksPath
-git rev-parse --git-common-dir
-dotfiles update --only git-hooks --dry-run
-```
-
-No output and status 1 from the first command means no override is configured.
-Dotfiles honors a repository-local `core.hooksPath`, resolving relative values
-from the repository root; otherwise it uses the common Git directory's `hooks/`,
-including worktrees. An inherited shared override blocks installation until you
-choose a repository-local destination.
-
-Installation preserves foreign or locally modified hooks and reports a conflict.
-Back them up and move them aside before retrying. Matching legacy copies can be
-adopted; subsequent updates use a sibling `.dotfiles-owned` hash record to check
-ownership. Keep that record with the installed hook. Extensionless entrypoints
-are copied, while `.sh` helpers and pattern files run from the checkout. Reinstall
-after changing the copied `pre-commit`; helper edits take effect immediately.
-
-To remove managed hooks, preview `dotfiles remove --only git-hooks --dry-run`,
-then apply only after review. Removal preserves modified or mismatched hooks.
-Install and removal leave a destination that aliases the source intact and do
-not reset `core.hooksPath`. Missing hooks sources or Git metadata makes the task
-inapplicable.
+The [Git hooks task](git-hooks.md) explains destination selection, ownership
+records, previewing installation, and removal. Preserve custom hooks before
+installing and keep the ownership record beside each managed hook.
 
 ### Diagnosing a rejected commit
 
@@ -299,7 +277,10 @@ Give each explanation one home. Everyday commands belong in
 [Commands and usage](commands-and-usage.md); exact syntax belongs in
 [CLI reference](cli-reference.md). Keep application, agent, and package guidance
 in their owning guides, with maintenance details after everyday workflows.
-Link to existing explanations instead of repeating them.
+Each [task page](task-reference.md) owns the task's behavior and configuration
+format. Shared loading, category, and path rules belong in
+[Configuration basics](configuration-basics.md). Link to those explanations
+instead of keeping another copy in a long reference page.
 
 Use relative `.md` links between guides and full GitHub URLs for tracked sources
 outside the guide collection. For new pages, match the title, filename, and

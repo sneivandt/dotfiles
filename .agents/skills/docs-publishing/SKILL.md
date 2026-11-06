@@ -80,9 +80,12 @@ examples, and the amount of detail.
   sidebar groups and native mobile navigation. Header links switch between
   Guides, Reference, and Development, each with its own sidebar and previous/next
   sequence. Guides has Introduction, Workflows, Platforms, and Customization.
-  Its groups start expanded with native right-hand collapse arrows. The small
-  Reference and Development sidebars list pages directly without redundant
-  headings.
+  Its groups start expanded with native right-hand collapse arrows. Reference
+  groups task pages by the work they manage, with CLI syntax and
+  shared configuration rules first. Each task page owns its behavior, declarations,
+  prerequisites, preview limits, and removal scope. Keep the task catalog as an
+  index rather than a second copy of those explanations. Development remains a
+  short direct list.
 - Use `::: warning Title` for safety callouts. Verify their title, body, and
   visible styling in the rendered site. The guide outline includes levels 2–3.
 - Mermaid is rendered by the local theme component and follows theme changes

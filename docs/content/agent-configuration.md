@@ -7,7 +7,7 @@ description: Set agent preferences, add reusable skills and packages, and choose
 
 Use this guide to change agent preferences, add reusable skills or integrations,
 and choose their deployment destinations. The `agent-settings` task manages
-Copilot/Codex preferences; `agent-packages` uses
+Copilot and Codex preferences; `agent-packages` uses
 [Microsoft APM](https://github.com/microsoft/apm), the Agent Package Manager,
 to update and deploy reusable content.
 
@@ -63,8 +63,9 @@ coordinate with dotfiles.
 Invalid existing documents are reported, not replaced.
 Removing a declaration stops managing the key; it does **not** delete the stored
 value. Conflicting declarations for the same harness/key fail before writes.
-This task does not run APM. With dotfiles installed and a profile selected,
-edit `conf/agent-settings.toml` and preview preference changes separately:
+This task does not run APM. The [Agent settings task](agent-settings.md) owns the declaration format and
+update behavior. With dotfiles installed and a profile selected, edit
+`conf/agent-settings.toml` and preview preference changes separately:
 
 ```sh
 dotfiles update --only agent-settings --dry-run
@@ -72,7 +73,7 @@ dotfiles update --only agent-settings --dry-run
 
 Review the changed keys, then remove `--dry-run` to apply.
 
-See [Agent harness settings](configuration-reference.md#agent-harness-settings) for the
+See [Agent harness settings](agent-settings.md#configuration) for the
 schema. Use the source file for current preferences, including declared
 Codex desktop settings; do not assume all settings apply to every agent surface.
 

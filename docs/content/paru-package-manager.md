@@ -1,0 +1,49 @@
+---
+title: Paru package manager
+description: Installation and health checks for the AUR helper.
+---
+
+# Paru package manager
+
+| Task | Selection |
+|---|---|
+| Selector | `paru` |
+| Commands | `update` |
+
+## What it does
+
+On pacman platforms, checks both a registered `paru` package and a working
+`/usr/bin/paru --version`. It can rebuild an installed helper broken by a library
+upgrade. Failed package queries or interrupted health probes fail rather than trigger a
+speculative rebuild.
+
+It waits for system packages without propagating unrelated failures. Rebuilding needs
+`git`, `makepkg`, `sudo` and a working `cargo --version`; an unconfigured rustup proxy
+is not enough. The rebuilt helper is checked again before dependent AUR installation.
+
+Arch provisioning probes the target chroot, not the live ISO. AUR work uses the
+validated `/usr/bin/paru`, not an arbitrary PATH copy.
+
+## Configuration
+
+There is no dedicated TOML declaration. The task manages the Paru helper itself; [AUR
+packages](aur-packages.md) selects the packages installed through it.
+
+## Preview and apply
+
+With an [installed launcher and saved profile](getting-started.md), preview this task:
+
+```sh
+dotfiles update --only paru --dry-run
+```
+
+Review the result before repeating the command without `--dry-run`. [Task
+selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
+[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
+preview can still have.
+
+## Removal
+
+This task is not part of `dotfiles remove`. Removing a declaration or changing profiles
+does not undo changes already applied. See [removal
+scope](task-reference.md#remove-tasks) before planning a cleanup.

@@ -127,7 +127,7 @@ dotfiles update --profile base --non-interactive --fail-on-skip
 This **applies** configuration. Add `--dry-run` to preview instead.
 Non-terminal stdin and JSON Lines output also disable prompts. Any present
 `CI` variable (even `CI=false`) disables prompts and enables strict skip handling.
-Tasks that are genuinely inapplicable are not failures.
+Tasks that do not apply to the selected platform or configuration are not failures.
 
 Only one update, remove, or check can run against a repository at a time.
 Previews count too; linked worktrees share the same lock. `list` and `log`
@@ -232,8 +232,8 @@ changed, pass the original `--profile` and `--overlay` explicitly.
 **Remove is not rollback.** The copies contain current configured content,
 not your pre-install files. Missing targets stay missing. Use
 `dotfiles remove --only symlinks --restore-missing` if you also want copies at
-missing paths. Existing files and links to other sources are preserved. Keep the checkout until copying succeeds. If removal reports a
-nested link that depends on the checkout, fix the reported link before retrying.
+missing paths. Existing files and links to other sources are preserved. Keep
+the checkout until copying succeeds. If removal reports a nested link that depends on the checkout, fix the reported link before retrying.
 If another process replaces a target during removal, keep the new entry and
 review the recovery path printed by dotfiles.
 

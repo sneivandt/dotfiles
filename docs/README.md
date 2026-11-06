@@ -118,7 +118,12 @@ destructuring for Safari 14.0. Other browser targets retain Vite 6 defaults.
 Run `npm audit` after dependency changes and the full site checks before pushing.
 CI audits the docs dependencies on docs changes and in the weekly dependency
 security workflow. Dependabot groups security fixes separately from routine
-version updates.
+version updates. Vite major updates stay on the tested Vite 6 line while stable
+VitePress uses Rollup hooks that break with Vite 8's Rolldown bundler.
+TypeScript major updates stay on hold while Vue's checker
+requires the TypeScript 6 compiler API. Node type definitions stay on the major
+version in `.node-version`. Revisit these restrictions when the related tools
+change.
 
 | Change | Source |
 |---|---|
@@ -142,12 +147,16 @@ own sidebar and previous/next sequence:
 - Guides: Introduction, Workflows, Platforms, and Customization. Platform
   guides cover environment-specific setup and behavior; Workflows covers
   everyday commands, packages, and troubleshooting.
-- Reference: exact CLI syntax, task catalog, and configuration declarations.
+- Reference: CLI syntax and shared configuration rules, followed by task pages
+  grouped into checkout and shell, files and Windows, packages and services,
+  agents and overlays, and validation. Each task page combines its behavior and
+  configuration.
 - Development: contributor workflow, testing, architecture, and CI/releases.
 
-Keep the Guides groups one level deep, starting expanded and collapsible with
-the native arrow controls. Reference and Development show their small page
-lists directly, without repeating the header labels as group headings. Page boundaries follow reader tasks rather than length.
+Keep sidebar groups one level deep, starting expanded and collapsible with
+the native arrow controls. Reference uses groups to keep its task pages easy
+to scan; Development remains a short direct list. Page boundaries follow reader
+tasks rather than length.
 The active header link follows the page, including direct links from another
 section and search results. Search covers all three sections.
 

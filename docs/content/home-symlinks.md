@@ -1,0 +1,149 @@
+---
+title: Home symlinks
+description: Live links from home to managed sources.
+---
+
+# Home symlinks
+
+| Task | Selection |
+|---|---|
+| Selector | `symlinks` |
+| Commands | `update`, `remove` |
+
+## What it does
+
+Links sources from the declaring repository's `symlinks/` into home. Overlay entries
+retain their origin.
+
+Existing files, directories, and unrelated links are left in place and reported as
+conflicts. Back up and move them aside before applying.
+
+Removal leaves a managed directory link in place if copying it would relocate a relative
+link that points outside the directory being copied.
+
+Linked sources stay live. On Windows, the task independently assesses elevation and
+rejects Git symlink placeholders checked out as ordinary files. See
+[Symlinks](#configuration) for path and glob rules.
+
+## Configuration
+
+Edit
+[conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml).
+Each declaration selects a source file and a destination. For example, both profiles
+select this entry from
+[conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml):
+
+```toml title="conf/symlinks.toml"
+[base]
+symlinks = ["config/git/config"]
+```
+
+| Part | In this example |
+|---|---|
+| Declaration | `"config/git/config"` in `conf/symlinks.toml` |
+| Source to review or edit | [symlinks/config/git/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config) |
+| Destination in your home | `~/.config/git/config` |
+| What applying does | Creates a link from the home destination to the source in this checkout |
+
+To change a Git preference, edit the source. To stop selecting this link, change the
+declaration; that does not remove an already-installed link.
+
+A string names a source and derives a dot-prefixed home target:
+
+```toml
+[base]
+symlinks = ["config/git/config", "ssh/config"]
+```
+
+The table form requires both `source` and `target`. It is useful for Windows locations
+or for sharing one source across several destinations:
+
+```toml title="conf/symlinks.toml (excerpt)"
+[linux]
+symlinks = [
+  "vim",
+  { source = "vim", target = ".config/nvim" },
+]
+```
+
+Paths must stay below their respective roots: sources inside the declaring repository's
+`symlinks/`, targets inside home. Absolute paths, `..`, and entries naming the root
+itself are invalid. `./bashrc` normalizes to the same target as `bashrc`.
+
+Two active entries within one repository cannot own the same target or overlapping
+parent/child targets. An overlay can replace an exact main target, but cannot turn a
+parent/child conflict into a valid pair. Target comparison normalizes separators and `.`
+components, and ignores case on Windows. Targets that alias their own source through
+existing directory links are rejected.
+
+If an existing parent link redirects the destination outside home, Dotfiles reports the
+resolved destination and skips the entry. To manage that location intentionally, set
+`allow_external_target = true` in the table entry. Keep `target` relative to home. The
+opt-in applies to installation and removal.
+
+See [Home symlinks](#what-it-does) and [Remove tasks](task-reference.md#remove-tasks)
+before taking over an existing application's configuration.
+
+### Glob patterns
+
+Use a complete `*` segment to link entries individually:
+
+```toml
+[base]
+symlinks = ["apm/plugins/*"]
+```
+
+This is intentionally smaller than shell glob syntax:
+
+- `*` matches one path segment, including dot-prefixed names.
+- Partial patterns such as `*.yml` and recursive `**` are invalid.
+- Expansion does not descend through symlinked directories.
+- No matches, or a matched filename that is not valid UTF-8, is an error.
+- Matches are sorted and checked for target conflicts after category filtering.
+
+An explicit target may contain captures. If it does, source and target must contain the
+same number of `*` segments, substituted in order:
+
+```toml
+[base]
+symlinks = [
+  { source = "skills/*", target = ".copilot/skills/*" },
+]
+```
+
+That example requires entries under `symlinks/skills/`. For this repository's agent
+content, prefer its existing [APM deployment](agent-configuration.md) rather than
+introducing another deployment route.
+
+## Preview and apply
+
+With an [installed launcher and saved profile](getting-started.md), preview this task:
+
+```sh
+dotfiles update --only symlinks --dry-run
+```
+
+Review the result before repeating the command without `--dry-run`. [Task
+selection](commands-and-usage.md#select-tasks) explains when to include dependencies;
+[preview scope](commands-and-usage.md#dry-run-scope) describes side effects that a
+preview can still have.
+
+## Removal
+
+Removal replaces matching managed links with local copies of their current source
+contents. Existing ordinary files and directories are preserved. Missing targets stay
+missing unless you add `--restore-missing`. Keep the original profile, overlay, sources,
+and declarations available until removal finishes.
+
+Nested symlinks are preserved. A directory link is left in place if copying it would
+relocate a relative link that points outside the copied tree. Ownership is checked again
+before replacement, so a link retargeted after inspection is preserved. File copies are
+staged privately on Unix and receive source permissions before publication.
+
+```sh
+dotfiles remove --only symlinks --dry-run
+```
+
+Review the preview before repeating the command without `--dry-run`. Add
+`--restore-missing` to the preview and apply only if you also want source copies at
+absent targets. This detaches live sources; it does not restore a backup.

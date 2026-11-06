@@ -47,8 +47,9 @@ packages = ["Git.Git"]
 Add entries to existing arrays rather than creating duplicate TOML sections.
 Use package identifiers rather than display names. A
 [private overlay](private-overlays.md) can add personal packages or replace a
-matching declaration; the [configuration reference](configuration-reference.md#packages)
-owns the complete format and merge identity.
+matching declaration; the [System packages reference](system-packages.md#configuration)
+explains the shared declaration format. [Private overlays](private-overlays.md#merge-rules)
+explains how matching entries are combined.
 
 Other Linux distributions can use shared configuration, but dotfiles does not
 install their system packages. Install the tools with that distribution's own

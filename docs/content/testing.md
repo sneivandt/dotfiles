@@ -5,8 +5,8 @@ description: Choose focused validation, run local checks, and understand isolati
 
 # Testing
 
-Start with the smallest check that can prove your change. Then verify the
-committed patch before pushing. A local pass is not proof of a complete machine
+Start with a focused check of the behavior you changed. Before pushing,
+validate the committed patch with the coverage selected below. A local pass is not proof of a complete machine
 installation, and a skipped check is not a pass.
 
 Use focused checks during editing, ordinary lightweight commit hooks, and one

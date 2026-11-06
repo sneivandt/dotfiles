@@ -25,7 +25,7 @@ dotfiles-private/
 ```
 
 Overlay configuration files are optional. They use the same
-[formats](configuration-reference.md) and
+[formats](configuration-basics.md) and
 [category rules](profiles-and-categories.md) as the main repository. For example,
 an overlay's `conf/git-config.toml` could contain:
 
@@ -165,51 +165,19 @@ Git values compare literally; registry values must agree in both type and
 data. Diagnostics use `git.conflicting-values` or `registry.conflicting-values`.
 Inactive Git categories and registry entries off Windows do not participate
 in these active-value checks. Agent settings also check
-[overlapping parent/child keys](configuration-reference.md#agent-harness-settings).
+[overlapping parent/child keys](agent-settings.md#configuration).
 
 ## Overlay scripts
 
-Use scripts only for work that declarative configuration cannot express.
-Only an overlay's `conf/scripts.toml` is loaded; the main repository cannot
-declare these tasks.
+Use a script only for work that the existing declarations cannot express.
+Declare it in the overlay's `conf/scripts.toml`; the main repository cannot
+define script tasks. Each active entry becomes a separate task for update
+and remove.
 
-```toml title="dotfiles-private/conf/scripts.toml (example)"
-[[linux.scripts]]
-name = "Configure private workstation"
-path = "scripts/configure-workstation.sh"
-description = "Apply workstation settings that are not already in place"
-```
-
-`name` and `path` are required; `description` is optional. Names must be nonempty
-and produce distinct selectors. This example becomes
-`script-configure-private-workstation`: ASCII alphanumeric words are lowercased
-and joined with hyphens. The `linux` category keeps this POSIX shell script off
-Windows; use `[[windows.scripts]]` and a `.ps1` file for a Windows-only task.
-
-Paths must stay inside the overlay, including after symlink resolution.
-Scripts run with the overlay root as their working directory. `.ps1` matching
-is case-insensitive and selects PowerShell (`pwsh`, or Windows PowerShell
-when available on Windows); other extensions need POSIX `sh` on the selected
-platform.
-
-Implement every protocol mode:
-
-| Invocation | Required behavior |
-|---|---|
-| `--check` | Inspect only. Exit 0 when configured, 1 when work is needed, or another nonzero value on failure. |
-| No flag | Apply needed changes; repeated runs must leave already-correct state alone. Fail with a nonzero exit on errors. |
-| `--dryrun` | Describe needed changes without applying them. Note the spelling. |
-| `--remove` | Conservatively remove the script's managed state. |
-
-Update checks first and applies or previews only when the check returns 1.
-Remove uses the same check: 0 means something to remove, 1 means nothing.
-A remove dry run checks and reports removal but invokes neither `--remove`
-nor `--dryrun`. Missing or unreadable scripts fail, including disappearance
-between inspection and execution.
-
-Keep private values out of output, which can enter the console and run log.
-See [Dynamic overlay tasks](task-reference.md#dynamic-overlay-tasks) for discovery
-and task selection.
+[Overlay scripts](overlay-scripts.md) contains the declaration format, selector
+rules, required check/apply/preview/remove modes, and failure behavior. Review
+the script before previewing: its check and preview flags are a cooperative
+contract, not a sandbox. Keep private values out of its output and logs.
 
 ## Change or stop using an overlay
 

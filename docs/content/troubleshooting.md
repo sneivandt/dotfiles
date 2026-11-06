@@ -18,7 +18,7 @@ are not rolled back when a later task fails.
 
 Examples assume you are in the intended checkout with dotfiles on PATH.
 If the launcher is uncertain, substitute an existing `./bin/dotfiles` or
-`.\bin\dotfiles.exe`. A wrapper may download/build even before showing help.
+`.\bin\dotfiles.exe`. A wrapper can download or build the CLI before showing help.
 
 ## Read the failed run
 
@@ -191,7 +191,7 @@ conflicting targets, unsafe path, or missing source.
 malformed package configuration. Inactive categories are not a safe place to
 leave invalid definitions.
 
-Use [Configuration validation](configuration-reference.md#validation) to interpret the
+Use [Configuration validation](configuration-basics.md#validation) to interpret the
 finding and [CLI validation](testing.md#cli-validation) to recheck it.
 `check` does not repair files, and `config-diagnostics` fails on warning-severity
 diagnostics too.

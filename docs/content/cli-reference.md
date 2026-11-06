@@ -52,6 +52,7 @@ These options apply to update, remove, check, list, and explain:
 | `--with-deps` | Include dependencies for update or an update graph |
 | `-n`, `--dry-run` | Preview update or remove |
 | `--no-repo-update` | Omit repository synchronization from update |
+| `--restore-missing` | With remove, also create source copies at missing configured home targets |
 
 Selectors can be comma-separated or supplied with repeated flags.
 Selecting `repository` with both `--only` and `--no-repo-update` is an error.

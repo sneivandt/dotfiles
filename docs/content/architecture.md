@@ -5,8 +5,8 @@ description: Understand the Rust CLI's layers, task scheduling, resources, opera
 
 # Architecture
 
-Dotfiles compares the machine with its configuration and changes what needs
-attention. A dependency graph decides when work can run. Each resource or
+Dotfiles compares the machine with its declarations and applies the changes
+needed to match them. A dependency graph decides when work can run. Each resource or
 operation defines how to inspect and update the state it manages.
 
 Here, convergence means bringing observed state into agreement with the
@@ -15,7 +15,7 @@ alone.
 
 This guide is for contributors choosing where a change belongs. For commands,
 read [Usage](commands-and-usage.md); for desired-state declarations, read
-[Configuration](configuration-reference.md).
+[Configuration](configuration-basics.md).
 
 ## System view
 

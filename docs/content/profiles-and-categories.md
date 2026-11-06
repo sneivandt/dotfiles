@@ -89,7 +89,7 @@ editing the file, extend its existing sections rather than duplicating them.
 
 Not every table is a category. For example, registry tables are named settings
 groups and are not filtered by role. See
-[Category sections](configuration-reference.md#category-sections) for the
+[Category sections](configuration-basics.md#category-sections) for the
 file-specific rules and overlay merging.
 
 Selecting desktop on Ubuntu can select shared application settings, but it

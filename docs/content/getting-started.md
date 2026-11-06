@@ -74,7 +74,7 @@ This links `~/.config/git/config` to the tracked
 [symlinks/config/git/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config).
 Review its Git identity, defaults, and included files. Edit the source to change
 a preference, or the declaration to stop selecting the link. See
-[Configuration reference](configuration-reference.md#symlinks) for the full example.
+[Home symlinks](home-symlinks.md#configuration) for the full example.
 Other files under
 [conf/](https://github.com/sneivandt/dotfiles/tree/main/conf/) declare packages,
 services, and settings rather than links.
@@ -84,7 +84,7 @@ editing its source changes what Git reads without another dotfiles update.
 Some applications reload changed files immediately.
 
 Use [Application settings](application-settings.md) to find other sources,
-[Configuration reference](configuration-reference.md) for declaration formats,
+[task pages](task-reference.md) for declaration formats,
 or a [private overlay](private-overlays.md) for changes you do not want in the
 public repository.
 
@@ -106,8 +106,8 @@ Before the first apply, check these defaults in particular:
   [~/screenshots cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service)
   after 31 days. These services delete old files, links, and empty directories.
 - **System settings:** both roles can select privileged changes. Inspect
-  [system files](configuration-reference.md#system-files),
-  [services](configuration-reference.md#systemd-units), and Windows
+  [system files](system-configuration-files.md#configuration),
+  [services](systemd-units.md#configuration), and Windows
   [registry settings](windows-and-wsl.md#registry-settings).
 - **Agent content:** packages can install executable integrations, and managed
   Copilot App workflows are enabled in autopilot mode. Review
@@ -227,7 +227,7 @@ their controls. With no command, `dotfiles` defaults to `update`.
 For day-to-day work, start with [Commands and usage](commands-and-usage.md).
 To make this setup your own, find the application in
 [Application settings](application-settings.md), then use
-[Configuration reference](configuration-reference.md) for declaration syntax.
+[task pages](task-reference.md) for declaration syntax.
 If something goes wrong,
 [Troubleshooting](troubleshooting.md) starts with the symptom.
 

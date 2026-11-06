@@ -13,7 +13,7 @@ immediately.
 
 Installing an application and configuring it are separate changes.
 [Package management](package-management.md) chooses applications;
-[symlink declarations](configuration-reference.md#symlinks) choose which
+[symlink declarations](home-symlinks.md#configuration) choose which
 settings files reach your home. The files themselves control application
 behavior. This guide helps you find the right source, then covers Git, shells,
 and editors.
@@ -54,8 +54,9 @@ then preview the link task:
 dotfiles update --only symlinks --dry-run
 ```
 
-This previews all active links, including your new entry. **Back up existing
-targets:** installing a managed link can replace a file without making a backup.
+This previews all active links, including your new entry. Existing files,
+directories, and unrelated links are reported as conflicts. Back them up and
+move them aside before applying; dotfiles does not make those backups for you.
 Remove `--dry-run` only after reviewing the result. The
 [first-run example](getting-started.md#2-review-the-configuration) shows how a
 declaration connects a source file to its installed location.
@@ -105,7 +106,7 @@ private identity or different defaults.
 
 To have dotfiles apply individual global Git settings, declare them in
 [conf/git-config.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml).
-The [Git settings format](configuration-reference.md#git-settings) explains
+The [Git settings format](global-git-settings.md#configuration) explains
 platform selection and Windows autocrlf cleanup. Avoid contradicting the linked
 files with a second declaration.
 
@@ -174,7 +175,7 @@ override to win.
 `config/shell/path.sh` puts user command directories ahead of inherited PATH
 entries and removes duplicates of those entries. It honors `CARGO_HOME`,
 `GOBIN`, and `GOPATH`. This shell startup behavior is separate from the CLI's
-[PATH task](task-reference.md#shell-path), which makes the dotfiles launcher
+[PATH task](shell-path.md), which makes the dotfiles launcher
 available persistently.
 
 ### Completion
@@ -183,7 +184,7 @@ Zsh uses normal completion on the first Tab. Repeat Tab to try approximate
 matches.
 
 Dotfiles command completion comes from the CLI's
-[Shell completions task](task-reference.md#shell-completions), not a separate
+[Shell completions task](shell-completions.md), not a separate
 hand-edited selector list.
 
 ## Visual Studio Code
@@ -211,24 +212,14 @@ settings can override user settings. The `base` profile does not select these li
 
 ### Extensions
 
-Edit [conf/vscode-extensions.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml)
-using Marketplace IDs in the appropriate profile category. See
-[Extension declarations](configuration-reference.md#vs-code-extensions) for syntax,
-or use an overlay for personal additions. On a configured machine, preview with:
+Use the [VS Code extensions task](vs-code-extensions.md) to declare Marketplace
+IDs and install missing extensions. Its page includes the configuration format,
+CLI selection, previews, and first-login behavior. Use a normal update for a
+first installation so package prerequisites are included.
 
-```sh
-dotfiles update --only vscode-extensions --dry-run
-```
-
-Remove `--dry-run` after review. Use a normal update for a first installation so
-the application and prerequisites are included. Installation prefers
-`code-insiders`, otherwise `code` (their `.cmd` launchers on Windows). It installs
-missing IDs, comparing names without case sensitivity. An unreadable installed
-list fails the task; no available CLI means a skip.
-
-The list is neither a version lockfile nor an uninstall list. Existing extensions
-remain, including after removing declarations or running `dotfiles remove`.
-Use the editor's Extensions view for updates and deliberate removal.
+The list does not pin extension versions or remove extensions. Use the editor's
+Extensions view for updates and deliberate removal. An overlay can add personal
+extensions without changing the shared declaration.
 
 On Arch, the managed Insiders launcher and URL handler use GNOME libsecret.
 See [GNOME Keyring troubleshooting](troubleshooting.md#gnome-keyring-stays-locked)

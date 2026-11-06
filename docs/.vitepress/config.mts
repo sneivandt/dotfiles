@@ -20,13 +20,20 @@ const guide = [
   group('Platforms', ['arch-desktop', 'windows-and-wsl']),
   group('Customization', ['agent-configuration', 'application-settings', 'private-overlays']),
 ];
-const reference = [group('Reference', ['cli-reference', 'task-reference', 'configuration-reference'])];
+const reference = [
+  group('Reference', ['cli-reference', 'task-reference', 'configuration-basics']),
+  group('Checkout and shell', ['dotfiles-repository', 'dotfiles-launcher', 'shell-path', 'git-hooks', 'shell-completions', 'global-git-settings', 'login-shell']),
+  group('Files and Windows', ['home-symlinks', 'file-permissions', 'system-configuration-files', 'windows-developer-mode', 'user-registry-settings']),
+  group('Packages and services', ['system-packages', 'paru-package-manager', 'aur-packages', 'custom-package-versions', 'custom-package-repository', 'systemd-units', 'vs-code-extensions']),
+  group('Agents and overlays', ['agent-settings', 'agent-packages', 'overlay-scripts']),
+  group('Validation', ['configuration-diagnostics', 'symlink-sources', 'configuration-files', 'apm-plugin-checks', 'shellcheck', 'psscriptanalyzer']),
+];
 const contribute = [group('Development', ['contributing', 'testing', 'architecture', 'ci-and-releases'])];
 const sectionMatch = (groups: ReturnType<typeof group>[]) =>
   `^/(${groups.flatMap((section) => section.items.map((item) => item.link.slice(1, -5))).join('|')})(\\.html)?$`;
-const sectionSidebars = (groups: ReturnType<typeof group>[]) => {
+const sectionSidebars = (groups: ReturnType<typeof group>[], grouped = false) => {
   const pages = groups.flatMap((section) => section.items);
-  return Object.fromEntries(pages.map((item) => [item.link.slice(0, -5), pages]));
+  return Object.fromEntries(pages.map((item) => [item.link.slice(0, -5), grouped ? groups : pages]));
 };
 
 export default defineConfig({
@@ -86,7 +93,7 @@ export default defineConfig({
       { text: 'Development', link: '/contributing.html', activeMatch: sectionMatch(contribute) },
     ],
     sidebar: {
-      ...sectionSidebars(reference),
+      ...sectionSidebars(reference, true),
       ...sectionSidebars(contribute),
       '/': guide,
     },
@@ -94,7 +101,7 @@ export default defineConfig({
     search: { provider: 'local' },
     socialLinks: [{ icon: 'github', link: 'https://github.com/sneivandt/dotfiles' }],
     editLink: { pattern: 'https://github.com/sneivandt/dotfiles/edit/main/docs/content/:path' },
-    docFooter: { prev: 'Previous guide', next: 'Next guide' },
+    docFooter: { prev: 'Previous page', next: 'Next page' },
     notFound: { title: 'Page not found', quote: 'The page may have moved, or the address may be incomplete.', linkText: 'Back to the docs' },
   },
 });

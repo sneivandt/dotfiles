@@ -197,7 +197,9 @@ Service selection lives in
 [conf/systemd-units.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml);
 custom units live under
 [config/systemd/user/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/systemd/user/).
-Keep their graphical-session lifetime and safety settings when customizing.
+The [Systemd units task](systemd-units.md) explains how declarations select
+services and how to disable one before removing its entry. Keep the units'
+graphical-session lifetime and safety settings when customizing.
 
 The desktop portal uses Hyprland for screen sharing and GTK for file choosers.
 That selection belongs in

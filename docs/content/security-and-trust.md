@@ -157,8 +157,8 @@ Coordinate any history cleanup separately.
 ## Dependency and CI controls
 
 [CI](ci-and-releases.md) runs selected build, test, and dependency checks. Its aggregate gate
-requires selected jobs to succeed; coverage and mutation reports are
-informational. The separate scheduled dependency workflow runs weekly and on
+requires selected jobs, including selected mutation shards, to succeed. Coverage
+reports are informational. The separate scheduled dependency workflow runs weekly and on
 manual dispatch. Enable failure notifications and GitHub's Dependabot features
 separately rather than assuming a workflow does that for you.
 

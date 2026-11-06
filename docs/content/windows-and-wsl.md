@@ -146,7 +146,7 @@ fallback, upgrades, and how installation failures are handled.
 .\dotfiles.ps1 update --only packages --dry-run
 ```
 
-If an installer genuinely needs Administrator rights and you authorize it,
+If an installer requires Administrator rights and you authorize it,
 use a package-only elevated rerun. Remember that `--only packages` selects
 **all active packages**, not an individual ID.
 
@@ -155,6 +155,8 @@ use a package-only elevated rerun. Remember that `--only packages` selects
 The `registry` task applies current-user (`HKCU`) values from
 `conf/registry.toml`, preserving undeclared values. Its tables are named
 settings groups, not profile categories: review them even for `base`.
+[User registry settings](user-registry-settings.md) explains the value types and
+declaration format.
 
 ```powershell
 .\dotfiles.ps1 update --only registry --dry-run

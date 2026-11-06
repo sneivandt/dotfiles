@@ -272,9 +272,12 @@ test('guide links use ordinary labels without boxed code', async ({ page }) => {
 
 test('site maintenance links point to the repository README, not a published guide', async ({ page }) => {
   await page.goto('/contributing.html');
-  const link = page.locator('.vp-doc')
+  const links = page.locator('.vp-doc')
     .getByRole('link', { name: 'site maintenance README', exact: true });
-  await expect(link).toHaveAttribute('href', 'https://github.com/sneivandt/dotfiles/blob/main/docs/README.md');
+  await expect(links.first()).toBeAttached();
+  for (const link of await links.all()) {
+    await expect(link).toHaveAttribute('href', 'https://github.com/sneivandt/dotfiles/blob/main/docs/README.md');
+  }
   await expect(page.locator('.VPSidebar a[href="/documentation-site.html"]')).toHaveCount(0);
   await assertNoPageOverflow(page);
 });

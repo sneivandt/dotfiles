@@ -16,10 +16,10 @@ const group = (text: string, pages: string[]): DefaultTheme.SidebarItem => ({
 });
 
 const guide = [
-  group('Introduction', ['getting-started', 'profiles-and-categories', 'configuration-basics', 'security-and-trust']),
-  group('Using dotfiles', ['commands-and-usage', 'package-management', 'troubleshooting']),
+  group('Introduction', ['getting-started']),
+  group('Using dotfiles', ['commands-and-usage', 'profiles-and-categories', 'configuration-basics', 'security-and-trust', 'package-management', 'troubleshooting']),
   group('Platforms', ['arch-desktop', 'windows-and-wsl']),
-  group('Customization', ['agent-configuration', 'application-settings', 'private-overlays']),
+  group('Customization', ['application-settings', 'agent-configuration', 'private-overlays']),
 ];
 const reference = [
   page('cli-reference'),
@@ -28,22 +28,21 @@ const reference = [
     text: 'Task details',
     collapsed: false,
     items: [
-      'dotfiles-repository', 'dotfiles-launcher', 'shell-path',
-      'global-git-settings', 'git-hooks', 'home-symlinks', 'file-permissions',
-      'shell-completions', 'login-shell', 'windows-developer-mode',
-      'user-registry-settings', 'system-configuration-files', 'systemd-units',
-      'system-packages', 'paru-package-manager', 'aur-packages',
-      'custom-package-versions', 'custom-package-repository', 'vs-code-extensions',
-      'agent-settings', 'agent-packages', 'overlay-scripts',
-      'configuration-diagnostics', 'symlink-sources', 'configuration-files',
-      'apm-plugin-checks', 'shellcheck', 'psscriptanalyzer',
+      'agent-packages', 'agent-settings', 'apm-plugin-checks', 'aur-packages',
+      'configuration-diagnostics', 'custom-package-repository', 'custom-package-versions',
+      'dotfiles-launcher', 'dotfiles-repository', 'file-permissions', 'git-hooks',
+      'global-git-settings', 'home-symlinks', 'login-shell', 'overlay-scripts',
+      'paru-package-manager', 'psscriptanalyzer', 'required-configuration-files',
+      'shell-completions', 'shell-path', 'shellcheck', 'symlink-sources',
+      'system-configuration-files', 'system-packages', 'systemd-units',
+      'user-registry-settings', 'vs-code-extensions', 'windows-developer-mode',
     ].map(page),
   },
 ];
 const contribute = [
   group('Workflows', ['contributing', 'writing-documentation']),
-  group('Implementation', ['architecture', 'adding-a-task', 'debugging']),
-  group('Verification', ['testing', 'writing-tests', 'ci-and-releases']),
+  group('Implementation', ['architecture', 'adding-a-task', 'debugging', 'agent-deployment-maintenance', 'arch-package-recipes']),
+  group('Verification', ['testing', 'writing-tests', 'mutation-testing', 'ci-and-releases']),
 ];
 const sectionPages = (items: DefaultTheme.SidebarItem[]): string[] =>
   items.flatMap((item) => [

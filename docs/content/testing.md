@@ -35,7 +35,7 @@ a `cd` command. Return to the root before following a separate example.
 | Wrappers or hooks | [Isolated wrapper/hook fixtures](#wrapper-and-hook-tests) |
 | Desktop or application content | [Desktop shell](#desktop-shell) or [Application configuration](#application-configuration) |
 | CI selection or workflows | Local `ci` stage and the changed job's command |
-| Arch package recipes | [Recipe validation](package-management.md#ci-and-validation) |
+| Arch package recipes | [Recipe validation](arch-package-recipes.md#ci-and-validation) |
 
 Broaden coverage when a shared loader, scheduler, adapter, or failure policy
 changes. Rust changes also need formatting and host Clippy; add Windows-target
@@ -222,35 +222,7 @@ checker. The Linux checker then omits npm setup and the docs stage, but keeps
 all selected CLI and platform checks. A different commit is rejected.
 Do not provision another OS just to repeat documentation validation.
 
-#### Local npm TLS failures
-
-If a local TLS failure prevents the committed snapshot from restoring npm
-dependencies, documentation coverage is unavailable, not failed validation.
-It need not block a push when the remaining selected local checks pass and
-the exact commit's documentation checks will run in GitHub CI.
-
-After confirming the TLS failure, record it explicitly with the coordinator.
-From PowerShell:
-
-```powershell
-$commit = git rev-parse HEAD
-python .github\workflows\scripts\linux\pre-push.py --npm-tls-unavailable $commit
-```
-
-The receipt must identify the exact commit being validated. The coordinator
-omits npm installation and documentation checks, prints `UNAVAILABLE` rather
-than a passing result, and preserves every other selected local check.
-Windows forwards that same unavailable status to WSL rather than pretending
-documentation passed or retrying it on another platform. This option also
-supports documentation-only changes without provisioning WSL.
-
-This is an explicit acknowledgement of an observed npm TLS failure, not an
-automatic exception for arbitrary install errors. Do not use it for missing
-package versions, authentication errors, build failures, or failing tests.
-Do not pass `--docs-checked` for an unavailable check, disable TLS validation,
-or weaken CI. Report the local coverage gap and follow the exact commit's
-CI and documentation publication through completion. GitHub's documentation
-job remains required; its failure still blocks completion.
+### Baseline and prerequisites
 
 Refresh `origin/main` before planning. By default, the checker uses authenticated
 `gh` reads to verify that tip's push CI. If it did not succeed, the checker selects
@@ -290,6 +262,36 @@ checks explicitly. A request to push includes monitoring the
 [exact commit's aggregate and informational results](ci-and-releases.md#reading-a-run)
 by default, unless explicitly declined. A successful Git push is not completion
 while CI is pending; report monitoring blockers instead of claiming success.
+
+### Local npm TLS failures
+
+If a local TLS failure prevents the committed snapshot from restoring npm
+dependencies, documentation coverage is unavailable, not failed validation.
+It need not block a push when the remaining selected local checks pass and
+the exact commit's documentation checks will run in GitHub CI.
+
+After confirming the TLS failure, record it explicitly with the coordinator.
+From PowerShell:
+
+```powershell
+$commit = git rev-parse HEAD
+python .github\workflows\scripts\linux\pre-push.py --npm-tls-unavailable $commit
+```
+
+The receipt must identify the exact commit being validated. The coordinator
+omits npm installation and documentation checks, prints `UNAVAILABLE` rather
+than a passing result, and preserves every other selected local check.
+Windows forwards that same unavailable status to WSL rather than pretending
+documentation passed or retrying it on another platform. This option also
+supports documentation-only changes without provisioning WSL.
+
+This is an explicit acknowledgement of an observed npm TLS failure, not an
+automatic exception for arbitrary install errors. Do not use it for missing
+package versions, authentication errors, build failures, or failing tests.
+Do not pass `--docs-checked` for an unavailable check, disable TLS validation,
+or weaken CI. Report the local coverage gap and follow the exact commit's
+CI and documentation publication through completion. GitHub's documentation
+job remains required; its failure still blocks completion.
 
 ## Specialized checks
 
@@ -333,7 +335,7 @@ checked, not installed or switched automatically.
 it omits config drift, cargo-deny, and wrapper tests. Neither invocation replaces
 the [committed-patch checker](#before-pushing).
 
-#### Sensitive-pattern scanning
+### Sensitive-pattern scanning
 
 [check-sensitive.sh](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-sensitive.sh)
 scans added lines from `HEAD` to the index (an empty tree for an initial commit).
@@ -386,7 +388,7 @@ Add `--overlay /path/to/private-dotfiles` to validate combined configuration.
 Keep its diagnostics private until sanitized: a public-only check cannot prove
 an overlay has no conflicts.
 
-#### Analyzer prerequisites
+### Analyzer prerequisites
 
 | Check | Required tools |
 |---|---|
@@ -405,7 +407,7 @@ skip fail too. Install the prerequisites for the checks you intend to run.
 
 ### Wrapper and hook tests
 
-#### Isolated regressions
+### Isolated wrapper and hook regressions
 
 These use fixture tools rather than bootstrapping or installing the real CLI:
 
@@ -431,7 +433,7 @@ Test-CargoArtifactPath
 Full wrapper suites can build/copy binaries or use `BINARY_PATH`. Read their
 setup before running all cases.
 
-#### Full commit-hook suite
+### Full commit-hook suite
 
 **Never run the full commit-hook suite in your developer checkout.**
 The `test-git-hooks.sh` script creates real
@@ -496,7 +498,7 @@ The `ci-success` gate checks that selected jobs succeeded and unselected jobs
 were intentionally skipped. See [CI and releases](ci-and-releases.md) for scheduling and
 informational jobs; do not interpret an omitted job as a pass.
 
-#### CI selection fixtures
+### CI selection fixtures
 
 ```sh
 python3 -B .github/workflows/scripts/linux/test-ci-changes.py
@@ -508,7 +510,7 @@ and mocked `gh` calls keep fixture commits and tags local; nothing is published.
 Use `ClassificationTests GateTests` as arguments for just those cases.
 Also run the local `ci` stage when workflow syntax or contracts change.
 
-#### Release selection
+### Release selection
 
 Publishing compares the exact tested commit to the last published release,
 not merely the previous push. See [Release selection](ci-and-releases.md#release-selection)
@@ -520,94 +522,10 @@ Mutation testing temporarily changes code to check whether tests notice a
 wrong branch, lost error, or incorrect preview. Run focused mutation tests for
 Rust behavior changes, especially failure handling, scheduling, and partial success.
 
-Run `cargo-mutants` in a disposable checkout, never the shared working copy.
-For a `MISSED` result, add an assertion that passes on the original code and
-fails with the mutation, or establish that the mutant is equivalent. Selected
-shards with survivors, timeouts, or tooling failures block CI. Ordinary tests
-and `--all` do not run mutation testing.
-
-### Prepare an isolated source snapshot
-
-Install `cargo-mutants` only if you intend to run this check. Use the pinned
-Rust toolchain and a native filesystem for the platform under test; Windows
-and Linux mutations cover different runtime contracts.
-
-Commit the source and tests you want to check first. From the primary checkout,
-run the [pre-push plan](#implementation-and-mixed-patches) and record the left
-SHA of its `Committed range: BASE..HEAD` line. The default planner verifies
-the upstream CI baseline and can recover to a successful ancestor. If you
-provided `--base`, you are responsible for that baseline's verification.
-
-In the commands below, replace `ORIGINAL_BASE_SHA` with that full SHA.
-Keep it with the mutation report and reuse it after test-only fixes. Do not
-replace it with a failed push's tip or a newly advanced upstream branch.
-
-From the primary repository root, create a detached worktree in the unused
-`.mutation-review` directory:
-
-```sh
-git worktree add --detach .mutation-review HEAD
-```
-
-Only committed files are copied. Uncommitted and untracked fixes in the primary
-checkout are not part of this test. Never stage the disposable directory or its
-reports as part of your patch.
-
-### Select and run the mutations
-
-Enter `.mutation-review/cli` in a POSIX shell, or
-`.mutation-review\cli` in PowerShell. Generate a source-only diff using the
-recorded baseline:
-
-```sh
-git diff --relative=cli --no-renames --unified=0 --output=mutants.diff ORIGINAL_BASE_SHA HEAD -- src
-cargo mutants --in-place --in-diff mutants.diff --cargo-arg=--profile=ci --cargo-arg=--locked
-```
-
-These two commands also work in PowerShell. Git writes the diff itself so
-shell redirection cannot change its encoding. Check that the diff contains the
-intended source changes before running the second command. A test-only recovery
-should still include the original source change. An empty diff supplies no
-changed-code coverage.
-
-`--in-place` confines source mutations to this disposable worktree. To test a
-specific module rather than the committed diff, substitute:
-
-```sh
-cargo mutants --in-place --file src/app/filter.rs --cargo-arg=--profile=ci --cargo-arg=--locked
-```
-
-Use `--re` to replay a specific mutant by its report description. Inspect
-`mutants.out` for survivors, timeouts, tool errors, and which tests actually ran.
-After adding and committing assertions in the primary checkout, preserve the
-old report, remove the disposable worktree, and repeat this procedure at the
-new commit with the same `ORIGINAL_BASE_SHA`.
-
-### Preserve evidence and remove the worktree
-
-Copy any reports you need to keep out of `.mutation-review`, along with the
-tested commit and original baseline SHA. Return to the primary repository root
-and inspect the disposable checkout:
-
-```sh
-git -C .mutation-review status --short
-git -C .mutation-review diff
-```
-
-Make sure no unique fix or interrupted source mutation needs recovering.
-After saving that work and the reports, remove only this disposable worktree:
-
-```sh
-git worktree remove --force .mutation-review
-```
-
-The force option also deletes its untracked and ignored reports and build
-artifacts. It is appropriate here only because this worktree was created for
-the check; never point it at the primary checkout.
-
-CI handles changed-code selection, shards, and native-code exclusions; see
-[Mutation coverage](ci-and-releases.md#platform-coverage) instead of copying that setup into
-each local command. Linux checks do not provide native Windows mutation coverage.
+Follow [Mutation testing](mutation-testing.md) to create a disposable worktree,
+select the original committed source range, inspect survivors, and preserve
+reports before cleanup. Selected mutation shards must pass CI; ordinary tests
+and the local checker's `--all` do not run them.
 
 ## Platform coverage parity
 

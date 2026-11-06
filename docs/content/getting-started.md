@@ -30,6 +30,45 @@ Published binaries support Linux x86-64/AArch64 and Windows x86-64. Use
 or [Windows and WSL](windows-and-wsl.md) for Windows requirements, elevation,
 and Linux integration.
 
+## Choose a checkout
+
+Use this repository directly if you want to follow its shared configuration.
+To maintain your own public changes, fork it and clone your fork instead.
+Either way, review the personal defaults before applying them. Private
+additions can stay in a [separate overlay](private-overlays.md).
+
+The wrapper scripts download and verify the CLI, so the normal setup needs no
+Rust toolchain. A fork needs one extra choice before its first download.
+
+### Using a fork
+
+**A new fork has no release binaries.** If you trust this project's released
+CLI and want to use it with your fork's configuration, select its publisher
+in the terminal you will use for setup:
+
+```sh
+export DOTFILES_RELEASE_REPO=sneivandt/dotfiles
+```
+
+In PowerShell:
+
+```powershell
+$env:DOTFILES_RELEASE_REPO = 'sneivandt/dotfiles'
+```
+
+This selects the binary, not the configuration repository. The downloaded
+binary also uses that publisher for self-updates. The setting lasts for this
+terminal; keep it in your shell configuration if future bootstrap downloads
+should use the same publisher. A fork with compatible releases can use its
+own default publisher.
+
+Alternatively, follow [Source builds](contributing.md#source-builds). With that
+route, add `--build` after the wrapper or installed launcher name in **every
+dotfiles command** below, including verification through the launcher.
+For example, `./dotfiles.sh --build --version` or
+`.\dotfiles.ps1 --build --version` builds and prints the version without
+applying configuration. Build mode is not remembered between invocations.
+
 ## Set up your machine
 
 Keep the checkout at a permanent path, review its configuration, and preview
@@ -55,11 +94,8 @@ Keep this directory: installed links and the launcher point back into it.
 Moving or deleting the checkout can break applications. If its location must
 change later, use [Move a checkout](commands-and-usage.md#move-a-checkout).
 
-The wrapper scripts, `dotfiles.sh` and `dotfiles.ps1`, download and verify the
-CLI when needed, so you do not need Rust installed. To maintain your own public
-changes, fork the repository and clone your fork instead. A new fork has no
-release binaries; follow [Using a fork](cli-reference.md#using-a-fork) before
-running its wrapper.
+If you chose a fork, substitute its clone URL and keep the publisher selection
+or source-build option described above.
 
 ### 2. Review the configuration
 
@@ -142,9 +178,6 @@ On Windows, start PowerShell as your normal user, not as Administrator:
 .\dotfiles.ps1 update --no-repo-update --dry-run
 ```
 
-If you chose the source-build route, include `--build` after the wrapper name.
-For example: `./dotfiles.sh --build update --no-repo-update --dry-run`.
-
 ::: warning A preview is not a sandbox
 The wrapper can download the CLI before the preview starts. Dry-run writes
 logs, may save your selections, and can execute overlay check/preview scripts.
@@ -164,6 +197,24 @@ or System packages. After selecting a profile, use `./dotfiles.sh list` (or
 [task selection](commands-and-usage.md#select-tasks) if you want a narrower
 preview; `--only symlinks` selects all active links, not just the Git example.
 
+With `--no-symbols`, the status labels appear as text. This excerpt was captured
+from an isolated Windows fixture with a missing Git link and no VS Code CLI:
+
+```text
+Update · dry run · base profile · Windows
+
+SKIPPED VS Code extensions · VS Code CLI not found
+
+PLANNED Home symlinks
+  link ~/.config/git/config → symlinks/config/git/config
+```
+
+The header identifies the selected role and platform. `PLANNED` names the task;
+the indented line shows the home destination and checkout source. `SKIPPED`
+means the editor extensions would not be installed. Resolve that prerequisite
+if you need the extensions. Your full preview can contain more tasks and show
+them in a different order.
+
 ### 4. Apply what you reviewed
 
 These commands **change your machine** using the current checkout. They keep
@@ -182,15 +233,13 @@ On Windows:
 .\dotfiles.ps1 update --no-repo-update
 ```
 
-Keep `--build` in these commands too if you chose source builds.
 Read the [Windows guide](windows-and-wsl.md) before accepting elevation prompts.
 Applications may reload changed files immediately. Read the final summary:
 a successful exit with skipped work is not necessarily a complete installation.
 
 ### 5. Verify the installation
 
-Open a new shell after the launcher and PATH tasks complete. Source-build
-users should add `--build` to launcher commands below. On Linux:
+Open a new shell after the launcher and PATH tasks complete. On Linux:
 
 ```sh
 command -v dotfiles

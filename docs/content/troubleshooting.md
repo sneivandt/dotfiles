@@ -83,7 +83,7 @@ running remove as a general failure repair.
 
 Forks do not silently fall back to this project's binaries. A fork without
 releases needs a deliberate publisher override or a source build; the
-[fork instructions](cli-reference.md#using-a-fork) show both choices.
+[fork instructions](getting-started.md#using-a-fork) show both choices.
 
 Bootstrap warns and continues if GitHub CLI is absent. If `gh` is present,
 verification failure blocks it; self-update also refuses unverifiable updates.

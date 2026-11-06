@@ -1,9 +1,9 @@
 ---
-title: Configuration files
+title: Required configuration files
 description: Checks that required main configuration files are present.
 ---
 
-# Configuration files
+# Required configuration files
 
 The main checkout has a required set of configuration files, even when a
 platform has no entries for some domains. Keeping that structure makes an
@@ -43,9 +43,5 @@ With an [installed launcher and saved profile](getting-started.md):
 dotfiles check --only config-files
 ```
 
-Read the result and fix reported declaration or source problems before applying
-configuration. This check reports problems; it does not repair them.
-
-This task has no separate TOML settings and belongs only to `check`; it does not run the
-update graph. See [CLI validation](testing.md#cli-validation) for a wider check of the
-selected checkout.
+Restore missing tracked files before retrying. To check their declarations
+and source paths too, use [CLI validation](testing.md#cli-validation).

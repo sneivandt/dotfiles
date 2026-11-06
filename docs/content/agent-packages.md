@@ -1,6 +1,6 @@
 ---
 title: Agent packages
-description: APM YAML fragments selected by symlinks.
+description: Install and update reusable agent content with APM.
 ---
 
 # Agent packages
@@ -30,7 +30,7 @@ proceed before those package tasks finish.
 See [Agent configuration](agent-configuration.md) for sources, targets, authentication,
 and cleanup, including [what a preview can
 show](agent-configuration.md#what-a-preview-can-show). The [implementation
-reference](agent-configuration.md#deployment-maintenance) explains the command
+reference](agent-deployment-maintenance.md) explains the command
 sequence and compatibility adapters.
 
 ## Configuration

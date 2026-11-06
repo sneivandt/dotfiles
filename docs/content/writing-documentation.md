@@ -29,8 +29,12 @@ the existing page is long.
 | What does one task manage, and how is it declared? | Its [task reference page](task-reference.md) |
 | Which checks should I run for a patch? | [Testing](testing.md) |
 | How do I construct a regression? | [Writing tests](writing-tests.md) |
+| How do I run focused mutations safely? | [Mutation testing](mutation-testing.md) |
+| How do I change agent deployment code? | [Agent deployment maintenance](agent-deployment-maintenance.md) |
+| How do I maintain a custom Arch recipe? | [Arch package recipes](arch-package-recipes.md) |
 
-Keep application, package, and agent workflows in their own guides. Link to
+Keep application, package, and agent workflows in their own guides. Separate
+contributor implementation contracts from instructions for using the feature. Link to
 their full explanation instead of copying it into every reference page.
 Brief definitions and safety warnings may repeat where the reader acts.
 
@@ -135,3 +139,9 @@ Run the [documentation checks](testing.md#documentation-site), then read the
 rendered page on desktop and a narrow screen. Follow links as a new reader:
 they should supply depth, not a missing essential step. Automated checks
 cannot establish factual accuracy or whether an example teaches the right thing.
+
+Keep important lookup headings within the site's outline depth, levels two
+and three. Put exceptional recovery steps after the normal procedure, and
+make sure instructions after an exception have their own heading if they
+apply to everyone. Use consistent task-page sections without copying generic
+closing paragraphs from one page to the next.

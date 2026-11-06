@@ -32,7 +32,7 @@ block installation.
 
 Use [Getting started](getting-started.md) to clone and review the configuration.
 If you use a fork without releases, choose its
-[binary publisher or source-build route](cli-reference.md#using-a-fork)
+[binary publisher or source-build route](getting-started.md#using-a-fork)
 before running the wrapper.
 
 The examples below assume downloaded release binaries. If you chose source

@@ -9,8 +9,8 @@ Find the task below, then open its page for configuration examples and the
 changes it makes. A selector chooses a kind of work, such as `symlinks` or
 `packages`, rather than one file or package inside that task.
 
-A task brings one domain of desired state into place, such as home links or
-service enablement. Its declarations choose the individual items. The task
+A task manages one area of setup, such as home links or services. Its
+declarations choose the individual items. The task
 page explains the underlying tool, what dotfiles manages on top of it, and
 what it deliberately leaves alone. `check` tasks inspect configuration or
 source instead of applying that desired state.
@@ -27,6 +27,21 @@ The default list hides tasks that cannot apply to your platform or
 configuration. `--all` shows the full public catalog. Listing does not check
 runtime prerequisites or apply changes. See [Getting started](getting-started.md)
 if the launcher or profile is not configured yet.
+
+## Find the right task
+
+| What do you want to do? | Task pages |
+|---|---|
+| Link application settings or inspect their permissions | [Home symlinks](home-symlinks.md), [File permissions](file-permissions.md) |
+| Install applications or editor extensions | [System packages](system-packages.md), [AUR packages](aur-packages.md), [VS Code extensions](vs-code-extensions.md) |
+| Configure services or administrator-owned files | [Systemd units](systemd-units.md), [System configuration files](system-configuration-files.md) |
+| Change Windows preferences or allow file links | [User registry settings](user-registry-settings.md), [Windows Developer Mode](windows-developer-mode.md) |
+| Change Git defaults or install contributor hooks | [Global Git settings](global-git-settings.md), [Git hooks](git-hooks.md) |
+| Set agent preferences or deploy reusable content | [Agent settings](agent-settings.md), [Agent packages](agent-packages.md) |
+| Make the dotfiles command available in a shell | [Dotfiles launcher](dotfiles-launcher.md), [Shell PATH](shell-path.md), [Shell completions](shell-completions.md) |
+| Diagnose configuration or source problems | [Validation tasks](#validation-tasks) |
+
+Use the selector index below for exact names, or search for a task page by title.
 
 ## Catalog overview
 
@@ -92,7 +107,7 @@ For file-copy details and links that removal must leave in place, see
 |---|---|
 | `config-diagnostics` | [Configuration diagnostics](configuration-diagnostics.md): Aggregated diagnostics; warning-severity findings also fail |
 | `symlink-sources` | [Symlink sources](symlink-sources.md): Symlink/glob and chmod sources, including inactive categories |
-| `config-files` | [Configuration files](configuration-files.md): Required main TOML files; warns if `hooks/` is absent |
+| `config-files` | [Required configuration files](required-configuration-files.md): Required main TOML files; warns if `hooks/` is absent |
 | `apm-plugins` | [APM plugin checks](apm-plugin-checks.md): Local plugins through `apm pack --dry-run --verbose` |
 | `shellcheck` | [ShellCheck](shellcheck.md): Shell scripts in the main repository |
 | `psscriptanalyzer` | [PSScriptAnalyzer](psscriptanalyzer.md): PowerShell scripts in the main repository |

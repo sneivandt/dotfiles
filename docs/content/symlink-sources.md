@@ -44,9 +44,6 @@ With an [installed launcher and saved profile](getting-started.md):
 dotfiles check --only symlink-sources
 ```
 
-Read the result and fix reported declaration or source problems before applying
-configuration. This check reports problems; it does not repair them.
-
-This task has no separate TOML settings and belongs only to `check`; it does not run the
-update graph. See [CLI validation](testing.md#cli-validation) for a wider check of the
-selected checkout.
+Correct missing paths in the declaration or source tree and rerun. Use
+[CLI validation](testing.md#cli-validation) to include declaration diagnostics
+and required-file checks.

@@ -44,7 +44,8 @@ and compatible categories. Keep credentials out of tracked fragments.
 Never edit the generated combined configuration, `~/.apm/apm.yml`, lock data,
 or deployed harness copies as a substitute for changing their sources.
 
-For implementation changes, see [Deployment maintenance](#deployment-maintenance).
+For implementation changes, see
+[Agent deployment maintenance](agent-deployment-maintenance.md).
 
 ## Agent preferences
 
@@ -55,11 +56,10 @@ The `agent-settings` task edits only declared keys in these documents:
 | `copilot` | `~/.copilot/settings.json` |
 | `codex` | `~/.codex/config.toml` |
 
-Unmanaged keys and TOML comments survive. Each document is updated as one
-transaction; an invalid key or incompatible parent value leaves that document
-unchanged. Detected concurrent edits stop publication; retry after resolving
-the conflict. This cannot exclude writes by an application that does not
-coordinate with dotfiles.
+Unmanaged keys and TOML comments survive. If a requested key is invalid or its
+parent has an incompatible value, that document is left unchanged. Detected
+concurrent edits stop the write; resolve the conflict before retrying.
+Applications that do not coordinate with dotfiles can still write at the same time.
 Invalid existing documents are reported, not replaced.
 Removing a declaration stops managing the key; it does **not** delete the stored
 value. Conflicting declarations for the same harness/key fail before writes.
@@ -199,8 +199,7 @@ generated manifest matches your source fragments:
 
 Neither path deploys content, writes the generated manifest, or changes the
 Copilot App or Cowork integrations. APM's preview may contact upstream services.
-The general [dry-run limits](commands-and-usage.md#dry-run-scope) still apply;
-see [Deployment maintenance](#deployment-maintenance) for contributor boundaries.
+The general [dry-run limits](commands-and-usage.md#dry-run-scope) still apply.
 
 ### Apply the reviewed changes
 
@@ -304,15 +303,16 @@ If a package restricts its targets, include `copilot-cowork` to send its skills
 here.
 
 Dotfiles records deployed file hashes and removes unchanged owned files that
-disappear from the source or leave the selected skill set. An existing file
-that matches the source can become managed. Dotfiles reports a conflict when
+disappear from the source or leave the selected skill set. Dotfiles can take
+ownership of an existing destination file if it matches the source. It reports a conflict when
 a destination file differs from both the source and its last deployed version,
 or when a stale file has local edits. Move the conflicting file aside before
 retrying. Unrelated skills and unowned files remain. Keep the destination's
 `.dotfiles-apm-skills.json` and `.dotfiles-apm-files.json` ownership records.
 For older deployments, Dotfiles removes a stale `SKILL.md` only when its
-recorded hash matches. Move unverified files aside to continue cleanup. For path-resolution failures or copy conflicts, see
-[Deployment maintenance](#deployment-maintenance).
+recorded hash matches. Move unverified files aside to continue cleanup. For
+path-resolution failures or copy conflicts, check the selected destination
+above and the reported ownership conflict before retrying.
 
 ## Removing packages and targets
 
@@ -370,48 +370,3 @@ failures fail the task. Keep tokens out of fragments and diagnostic excerpts.
 A failed run can already have changed the manifest or some targets. There is
 no automatic rollback. Correct the reported cause and rerun; deleting lockfiles,
 whole deployment trees, or App data is not a safe first response.
-
-## Deployment maintenance
-
-The implementation lives under
-[cli/src/domains/ai/apm/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/ai/apm/).
-Native APM owns dependency resolution, local-source verification, and stale
-deployment cleanup. Dotfiles owns fragment merging and the detected integrations.
-
-For a package or preference edit, use the
-[validation and preview steps](#validate-preview-and-apply) above. The
-contracts below apply when changing deployment implementation.
-
-The task atomically writes the generated manifest when needed, rejecting a
-symlink at that destination. It runs `apm update -g --yes`, then
-`apm install -g`, before the target adapters. Preserve the install pass even
-when refs are unchanged: local plugin edits or missing deployments can still
-need applying. Do not add separate prune commands, success fingerprints, or
-`apm outdated` decisions.
-
-Preview must not install, repair targets, clean legacy locks, or write Cowork
-inventories. Preserve authentication classification and attempt workflow-policy
-restoration even after an earlier deployment phase fails.
-
-| Owner | Maintenance boundary |
-|---|---|
-| [Fragment merging](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/fragments.rs) | Use effective source filenames and the [fragment merge rules](#fragment-merge-rules), including unmanaged home fragments |
-| [Copilot workflow repair](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/ai/apm/autopilot/) | Install with `apm install -g --target copilot-app --only apm`; repair only exact lockfile-owned workflow IDs, preserving foreign workflows |
-| [Cowork path selection](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/targets.rs) | A nonempty environment override wins; malformed persisted configuration fails rather than silently falling back |
-| [Cowork copying](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/cowork.rs) | Stage file updates without native Cowork deployment; preserve directory ACLs and foreign files, reject linked destination directories, and remove unchanged stale files recorded in the ownership inventory |
-
-Keep workflow scheduling and duplicate cleanup limited to owned IDs. Cowork
-updates must preserve directory permissions and foreign files, respect package
-target filters, and retain inventory-based cleanup. The linked implementations
-and tests own the detailed schedule, legacy-lock, and path-repair rules.
-
-Use isolated homes, synthetic App databases, controlled executors, and the
-[Testing guide](testing.md#choosing-coverage). Never deploy to the live home to
-test an implementation change. Dotfiles validates local source relationships;
-native `apm pack --dry-run --verbose` owns package shape validation. Packing
-does not prove deployment compatibility.
-
-Before replacing an adapter, prove target filtering, ACL-safe updates, owned
-stale cleanup, workflow-policy restoration, and preservation of foreign
-workflows on the relevant platforms. Include failures after partial deployment.
-A newer APM version alone does not prove that an adapter can be removed.

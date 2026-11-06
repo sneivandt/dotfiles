@@ -5,18 +5,15 @@ description: Look up command options, wrapper bootstrap, configuration paths, lo
 
 # CLI reference
 
-This page describes command syntax and output. For runnable tasks and their
-selectors, use [Task reference](task-reference.md).
-
-This is the syntax and behavior reference for the dotfiles command-line program.
-For a first installation, use [Getting started](getting-started.md); for common
-workflows, use [Commands and usage](commands-and-usage.md).
+Look up exact command syntax and output here. Use
+[Getting started](getting-started.md) for installation,
+[Commands and usage](commands-and-usage.md) for everyday procedures, and
+[Task reference](task-reference.md) for selectors and the state each task manages.
 
 Examples using the installed launcher assume a configured checkout and saved
 profile. Before installation, use that checkout's `./dotfiles.sh` on Linux or
 `.\dotfiles.ps1` on Windows. [Wrapper bootstrap](#wrapper-bootstrap) explains
-downloads and the source-build route. Task selectors and their managed state
-are listed in [Task reference](task-reference.md).
+downloads and the source-build route.
 
 ## Command summary
 
@@ -132,7 +129,7 @@ The publisher comes from the checkout's GitHub `origin` remote unless
 Unsupported/missing remotes fail instead of falling back to this project's
 releases. Forks without release assets need a deliberate publisher choice or
 a [source build](contributing.md#source-builds). The
-[fork instructions below](#using-a-fork) explain both routes. `--build` selects
+[fork setup](getting-started.md#using-a-fork) explains both routes. `--build` selects
 source compilation for that invocation only. Without it, the wrapper uses its
 download/cached-binary route.
 
@@ -143,38 +140,6 @@ binary's updates. Normal development builds do not self-update.
 After the `launcher` and `path` tasks succeed, open a new shell. The installed
 launcher in `~/.local/bin` delegates back to this checkout; it is not a
 standalone installation. Keep the checkout at a stable path.
-
-### Using a fork
-
-**A new fork does not have release binaries.** Choose one of these routes
-before running its wrapper:
-
-To use this project's released CLI with your fork's configuration, select
-its publisher in your current terminal, provided you trust these releases.
-On Linux:
-
-```sh
-export DOTFILES_RELEASE_REPO=sneivandt/dotfiles
-```
-
-In PowerShell:
-
-```powershell
-$env:DOTFILES_RELEASE_REPO = 'sneivandt/dotfiles'
-```
-
-This chooses the binary, not the configuration repository. The downloaded
-binary also uses that publisher for self-updates. The environment setting
-lasts only for this terminal; set it in your shell configuration if future
-bootstrap downloads should use the same publisher. If your fork publishes
-compatible releases, you can use its default publisher instead.
-
-To build the CLI from your fork, install the
-[source-build prerequisites](contributing.md#development-setup), then add
-`--build` after the wrapper name in each command. For example,
-`./dotfiles.sh --build --version` or `.\dotfiles.ps1 --build --version`
-builds and prints the version without applying configuration.
-Build mode is not remembered between runs.
 
 ## CLI self-update
 

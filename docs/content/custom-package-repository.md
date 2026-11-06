@@ -39,7 +39,7 @@ Preparation and installation have different effects. Applying preparation
 can execute PKGBUILD code to obtain metadata and writes snapshots and Paru
 configuration; it does not install the application. Preview does not execute
 recipes or write those outputs. Review the
-[recipe safety guidance](package-management.md#arch-package-recipes) first.
+[recipe safety guidance](arch-package-recipes.md#prepare-snapshots) first.
 
 ## Configuration
 
@@ -47,8 +47,8 @@ Recipes live under
 [packages/](https://github.com/sneivandt/dotfiles/tree/main/packages/). Version
 descriptors identify which recipes dotfiles owns. Package installation is requested
 separately through `aur = true` entries in [AUR
-packages](aur-packages.md#configuration). [Package
-management](package-management.md#arch-package-recipes) explains the snapshot format and
+packages](aur-packages.md#configuration). [Arch package
+recipes](arch-package-recipes.md) explains the snapshot format and
 Paru configuration.
 
 The editable Paru defaults are
@@ -93,4 +93,4 @@ code even for recipes whose applications are not selected for installation.
 
 This task is not selected by `dotfiles remove`. Retiring a recipe and uninstalling a
 package built from it are separate decisions. Review the [recipe and cache
-workflow](package-management.md#arch-package-recipes) before changing either.
+workflow](arch-package-recipes.md) before changing either.

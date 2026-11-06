@@ -37,7 +37,7 @@ packages](aur-packages.md) task installs selected packages.
 Each managed recipe has a `PKGBUILD` and release descriptor under
 [packages/](https://github.com/sneivandt/dotfiles/tree/main/packages/). The descriptor
 defines how to discover a stable upstream version. See [Arch package
-recipes](package-management.md#arch-package-recipes) for the fields and a contributor
+recipes](arch-package-recipes.md) for the fields and a contributor
 workflow. Adding a recipe makes it part of discovery and preparation; add an
 `aur = true` package declaration separately to request installation.
 

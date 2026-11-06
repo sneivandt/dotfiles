@@ -3,16 +3,14 @@ import { expect, test, type Page } from '@playwright/test';
 
 const referenceTitles = [
   'CLI reference', 'Task reference',
-  'Dotfiles repository', 'Dotfiles launcher', 'Shell PATH',
-  'Global Git settings', 'Git hooks', 'Home symlinks',
-  'File permissions', 'Shell completions', 'Login shell',
-  'Windows Developer Mode', 'User registry settings', 'System configuration files',
-  'Systemd units', 'System packages', 'Paru package manager',
-  'AUR packages', 'Custom package versions', 'Custom package repository',
-  'VS Code extensions', 'Agent settings', 'Agent packages',
-  'Overlay scripts', 'Configuration diagnostics', 'Symlink sources',
-  'Configuration files', 'APM plugin checks', 'ShellCheck',
-  'PSScriptAnalyzer',
+  'Agent packages', 'Agent settings', 'APM plugin checks', 'AUR packages',
+  'Configuration diagnostics', 'Custom package repository', 'Custom package versions',
+  'Dotfiles launcher', 'Dotfiles repository', 'File permissions', 'Git hooks',
+  'Global Git settings', 'Home symlinks', 'Login shell', 'Overlay scripts',
+  'Paru package manager', 'PSScriptAnalyzer', 'Required configuration files',
+  'Shell completions', 'Shell PATH', 'ShellCheck', 'Symlink sources',
+  'System configuration files', 'System packages', 'Systemd units',
+  'User registry settings', 'VS Code extensions', 'Windows Developer Mode',
 ];
 const pageCount = readdirSync(new URL('../../content/', import.meta.url))
   .filter((name) => name.endsWith('.md') && !['index.md', '404.md'].includes(name)).length;
@@ -56,16 +54,16 @@ test('the introduction and grouped navigation fit the default reading layout', a
   const groups = sidebar.locator('.group');
   await expect(groups.locator('h2')).toHaveText(['Introduction', 'Using dotfiles', 'Platforms', 'Customization']);
   for (const [label, titles] of [
-    ['Introduction', ['Getting started', 'Profiles and categories', 'Configuration basics', 'Security and trust']],
-    ['Using dotfiles', ['Commands and usage', 'Package management', 'Troubleshooting']],
+    ['Introduction', ['Getting started']],
+    ['Using dotfiles', ['Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting']],
     ['Platforms', ['Arch desktop', 'Windows and WSL']],
-    ['Customization', ['Agent configuration', 'Application settings', 'Private overlays']],
+    ['Customization', ['Application settings', 'Agent configuration', 'Private overlays']],
   ] as const) {
     await expect(groups.filter({ has: page.getByRole('heading', { name: label, exact: true }) }).getByRole('link')).toHaveText([...titles]);
   }
   await sidebar.getByRole('link', { name: 'Getting started', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
-  await expect(page.locator('.VPDocFooter .next')).toContainText('Profiles and categories');
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Commands and usage');
   await page.locator('.VPNavBarTitle a').click();
   await expect(page).toHaveURL('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
@@ -76,8 +74,8 @@ test('header sections replace the sidebar, including direct links and search des
   await page.goto('/getting-started.html');
   for (const [label, entry, titles] of [
     ['Reference', '/cli-reference.html', referenceTitles],
-    ['Development', '/contributing.html', ['Contributing', 'Writing documentation', 'Architecture', 'Adding a task', 'Debugging', 'Testing', 'Writing tests', 'CI and releases']],
-    ['Guides', '/getting-started.html', ['Getting started', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Commands and usage', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Agent configuration', 'Application settings', 'Private overlays']],
+    ['Development', '/contributing.html', ['Contributing', 'Writing documentation', 'Architecture', 'Adding a task', 'Debugging', 'Agent deployment maintenance', 'Arch package recipes', 'Testing', 'Writing tests', 'Mutation testing', 'CI and releases']],
+    ['Guides', '/getting-started.html', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Application settings', 'Agent configuration', 'Private overlays']],
   ] as const) {
     if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
     await page.locator(isMobile ? '.VPNavScreen' : '.VPNavBarMenu').getByRole('link', { name: label, exact: true }).click();
@@ -91,7 +89,7 @@ test('header sections replace the sidebar, including direct links and search des
   }
   await page.goto('/home-symlinks.html#configuration');
   await expect(page.locator('.VPSidebar a')).toHaveText(referenceTitles);
-  await expect(page.locator('.VPDocFooter .next')).toContainText('File permissions');
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Login shell');
   await expect(page.locator('.VPSidebar').getByRole('button', { name: 'toggle section', exact: true })).toHaveCount(1);
   await page.goto('/private-overlays.html');
   await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
@@ -122,16 +120,16 @@ test('task details collapse separately from the task reference overview', async 
   await sidebar.getByRole('link', { name: 'Task reference', exact: true }).click();
   await expect(page).toHaveURL('/task-reference.html');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Task reference');
-  await expect(page.locator('.VPDocFooter .next')).toContainText('Dotfiles repository');
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Agent packages');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await expect(tasks.getByRole('link', { name: 'Home symlinks', exact: true })).not.toBeVisible();
   await toggle.click();
   await expect(tasks.getByRole('link', { name: 'Home symlinks', exact: true })).toBeVisible();
-  const last = tasks.getByRole('link', { name: 'PSScriptAnalyzer', exact: true });
+  const last = tasks.getByRole('link', { name: 'Windows Developer Mode', exact: true });
   await last.scrollIntoViewIfNeeded();
   await expect(last).toBeInViewport();
   await last.click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('PSScriptAnalyzer');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Windows Developer Mode');
   await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
   await assertNoPageOverflow(page);
 });
@@ -159,6 +157,52 @@ test('configuration basics follows profiles in Guides, including search destinat
   await assertNoPageOverflow(page);
 });
 
+test('the first reading path leads from setup through usage to configuration', async ({ page }) => {
+  for (const [route, next] of [
+    ['getting-started', 'Commands and usage'],
+    ['commands-and-usage', 'Profiles and categories'],
+    ['profiles-and-categories', 'Configuration basics'],
+  ]) {
+    await page.goto(`/${route}.html`);
+    await expect(page.locator('.VPDocFooter .next')).toContainText(next);
+  }
+  await page.goto('/getting-started.html');
+  await expect(page.locator('main pre').filter({ hasText: 'PLANNED Home symlinks' }))
+    .toContainText('SKIPPED VS Code extensions');
+});
+
+test('task lookup starts with reader questions and task details use title order', async ({ page }) => {
+  expect(referenceTitles.slice(2)).toEqual(referenceTitles.slice(2).sort((a, b) => a.localeCompare(b, 'en')));
+  await page.goto('/task-reference.html');
+  const lookup = page.locator('main table').first();
+  await expect(lookup).toContainText('What do you want to do?');
+  await lookup.getByRole('link', { name: 'User registry settings', exact: true }).click();
+  await expect(page).toHaveURL('/user-registry-settings.html');
+});
+
+test('testing lookup exposes prerequisites and keeps general setup outside the TLS exception', async ({ page, isMobile }) => {
+  await page.goto('/testing.html');
+  for (const anchor of [
+    'baseline-and-prerequisites', 'local-npm-tls-failures', 'analyzer-prerequisites',
+    'sensitive-pattern-scanning', 'full-commit-hook-suite', 'ci-selection-fixtures',
+  ]) {
+    await expect(page.locator(`main h3#${anchor}`)).toHaveCount(1);
+    if (!isMobile) await expect(page.locator(`.VPDocAsideOutline a[href="#${anchor}"]`)).toHaveCount(1);
+  }
+  const general = await page.locator('main #baseline-and-prerequisites').evaluate((heading) => {
+    const paragraphs: string[] = [];
+    for (let node = heading.nextElementSibling; node && !/^H[23]$/.test(node.tagName); node = node.nextElementSibling) {
+      paragraphs.push(node.textContent ?? '');
+    }
+    return paragraphs.join('\n');
+  });
+  expect(general).toContain('Refresh origin/main before planning.');
+  expect(general).toContain('Provide the tools required by the printed plan');
+  await page.goto('/psscriptanalyzer.html');
+  await expect(page.locator('main table')).toContainText('PowerShell 7 (pwsh)');
+  await expect(page.locator('main')).toContainText('Windows PowerShell cannot substitute for it');
+});
+
 test('development guides connect implementation and isolated test authoring', async ({ page }) => {
   await page.goto('/contributing.html');
   await page.locator('main').getByRole('link', { name: 'Adding a task', exact: true }).first().click();
@@ -174,7 +218,7 @@ test('development guides connect implementation and isolated test authoring', as
   await expect(page.locator('main #a-complete-isolated-task-regression')).toHaveCount(1);
   await expect(page.locator('main #integration-test-suites')).toHaveCount(1);
   await expect(page.locator('main #dry-run-testing')).toHaveCount(1);
-  await expect(page.locator('.VPDocFooter .next')).toContainText('CI and releases');
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Mutation testing');
   await page.goto('/testing.html');
   for (const anchor of ['choosing-coverage', 'fast-local-sequence', 'before-pushing', 'focused-mutation-testing']) {
     await expect(page.locator(`main h2#${anchor}`)).toHaveCount(1);
@@ -183,13 +227,25 @@ test('development guides connect implementation and isolated test authoring', as
   await assertNoPageOverflow(page);
 });
 
-test('agent deployment contracts live with agent configuration, not general architecture', async ({ page }) => {
+test('maintenance procedures have their own contributor guides', async ({ page }) => {
   await page.goto('/architecture.html');
   await expect(page.locator('main #agent-deployment-implementation')).toHaveCount(0);
   await page.locator('main').getByRole('link', { name: 'Agent deployment maintenance', exact: true }).click();
-  await expect(page).toHaveURL('/agent-configuration.html#deployment-maintenance');
-  await expect(page.locator('main #deployment-maintenance')).toBeVisible();
+  await expect(page).toHaveURL('/agent-deployment-maintenance.html');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Agent deployment maintenance');
   await expect(page.locator('main').getByRole('link', { name: 'Copilot workflow repair', exact: true })).toBeVisible();
+  await page.goto('/agent-configuration.html');
+  await expect(page.locator('main #deployment-maintenance')).toHaveCount(0);
+  await page.goto('/package-management.html');
+  await expect(page.locator('main #arch-package-recipes')).toHaveCount(0);
+  await page.locator('main').getByRole('link', { name: 'Arch package recipes', exact: true }).click();
+  await expect(page).toHaveURL('/arch-package-recipes.html');
+  await expect(page.locator('main #recipe-inputs')).toBeVisible();
+  await page.goto('/testing.html');
+  await expect(page.locator('main #prepare-an-isolated-source-snapshot')).toHaveCount(0);
+  await page.locator('main').getByRole('link', { name: 'Mutation testing', exact: true }).click();
+  await expect(page).toHaveURL('/mutation-testing.html');
+  await expect(page.locator('main #prepare-an-isolated-source-snapshot')).toBeVisible();
   await assertNoPageOverflow(page);
 });
 
@@ -215,7 +271,7 @@ test('sidebar groups start expanded and collapse with their right-hand arrow', a
   await page.goto('/getting-started.html');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const group = page.locator('.VPSidebar .group').filter({ has: page.getByRole('heading', { name: 'Introduction', exact: true }) });
-  const link = group.getByRole('link', { name: 'Profiles and categories', exact: true });
+  const link = group.getByRole('link', { name: 'Getting started', exact: true });
   await expect(link).toBeVisible();
   const control = group.getByRole('button', { name: 'toggle section', exact: true });
   await expect(control).toBeVisible();
@@ -239,11 +295,8 @@ test('the terminal illustration dims every part of each live status line', async
 
 test('consolidated topics link to their sections after everyday guidance', async ({ page }) => {
   for (const [guide, anchor, title] of [
-    ['agent-configuration', 'deployment-maintenance', 'Deployment maintenance'],
-    ['package-management', 'arch-package-recipes', 'Arch package recipes'],
     ['application-settings', 'visual-studio-code', 'Visual Studio Code'],
     ['application-settings', 'vim-and-neovim', 'Vim and Neovim'],
-    ['commands-and-usage', 'update-lifecycle', 'Update lifecycle'],
     ['contributing', 'git-hooks', 'Git hooks'],
   ]) {
     await page.goto(`/${guide}.html`);
@@ -263,7 +316,12 @@ test('guides link to the owning command and application references', async ({ pa
   await reference.click();
   await expect(page).toHaveURL('/cli-reference.html');
   await expect(page.locator('#command-options')).toBeAttached();
-  await expect(page.locator('#using-a-fork')).toBeAttached();
+  await expect(page.locator('#using-a-fork')).toHaveCount(0);
+  await page.locator('main').getByRole('link', { name: 'fork setup', exact: true }).click();
+  await expect(page).toHaveURL('/getting-started.html#using-a-fork');
+  await expect(page.locator('#using-a-fork')).toBeVisible();
+
+  await page.goto('/cli-reference.html');
   await expect(page.locator('#log-locations')).toBeAttached();
   await expect(page.locator('#execution-output-for-scripts')).toBeAttached();
 
@@ -287,11 +345,11 @@ test('lookup and prerequisite information precedes advanced details', async ({ p
     ['testing', 'before-pushing', 'specialized-checks'],
     ['agent-configuration', 'deployment-targets', 'validate-preview-and-apply'],
     ['agent-configuration', 'what-a-preview-can-show', 'configuration-fragments'],
-    ['agent-configuration', 'troubleshoot-deployment', 'deployment-maintenance'],
-    ['package-management', 'install-and-upgrade', 'arch-package-recipes'],
     ['package-management', 'logs-and-troubleshooting', 'custom-arch-packages'],
     ['contributing', 'contribution-workflow', 'git-hooks'],
-    ['commands-and-usage', 'select-tasks', 'update-lifecycle'],
+    ['commands-and-usage', 'update-lifecycle', 'select-tasks'],
+    ['commands-and-usage', 'control-what-advances', 'move-a-checkout'],
+    ['testing', 'baseline-and-prerequisites', 'local-npm-tls-failures'],
   ]) {
     await page.goto(`/${guide}.html`);
     const order = await page.evaluate(({ earlier, later }) => {
@@ -354,7 +412,8 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 for (const [guide, titles] of [
-  ['package-management', ['Installing a missing package can upgrade the system', 'Review recipes before preparing packages', 'Preparation replaces Paru preferences']],
+  ['package-management', ['Installing a missing package can upgrade the system', 'Preparation executes recipes and replaces Paru preferences']],
+  ['arch-package-recipes', ['Review recipes before preparing packages', 'Preparation replaces Paru preferences']],
   ['agent-configuration', ['Packages can do more than provide text', 'Disabling a managed workflow in the App is temporary']],
   ['getting-started', ['Back up existing configuration first', 'A preview is not a sandbox']],
   ['profiles-and-categories', ['Profiles are roles, not safety levels']],
@@ -414,7 +473,7 @@ test('task catalog labels open dedicated pages without horizontal overflow', asy
 test('task pages combine behavior, configuration, and removal guidance', async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto('/task-reference.html');
-  const tasks = await page.locator('main table').first().locator('tbody tr').evaluateAll(
+  const tasks = await page.locator('main table').filter({ hasText: 'agent-packages' }).locator('tbody tr').evaluateAll(
     (rows) => rows.map((row) => ({
       selector: row.querySelector('code')!.textContent,
       href: row.querySelector('a')!.getAttribute('href')!,
@@ -499,7 +558,7 @@ test('removed guides and repository-only docs do not publish routes', async ({ r
     '/local-package-recipes.html', '/ai-agent-configuration.html',
     '/git-configuration.html', '/documentation-site.html', '/README.html', '/README.md',
     '/update-lifecycle.html', '/visual-studio-code.html', '/vim-and-neovim.html',
-    '/configuration-reference.html', '/agent-deployment-internals.html', '/arch-package-recipes.html',
+    '/configuration-reference.html', '/agent-deployment-internals.html', '/configuration-files.html',
   ]) {
     expect((await request.get(path)).status()).toBe(404);
   }

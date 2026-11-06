@@ -26,9 +26,8 @@ Linux, or the user PATH on Windows. Open a new shell to use the persisted change
 
 Existing PATH entries are preserved. Remove leaves the PATH addition in place.
 
-The persisted value and a running terminal's environment are different things.
-A terminal inherits its environment when it starts; changing the saved PATH
-does not rewrite that existing process. On Linux, loading also depends on the
+Open a new terminal to use the updated PATH. Existing processes keep the
+environment they inherited at startup. On Linux, loading also depends on the
 shell's startup files. The [Bash invocation reference](https://www.gnu.org/software/bash/manual/html_node/Invoking-Bash.html)
 explains login and interactive shell modes; the managed
 [shell configuration](application-settings.md#shell-configuration) supplies

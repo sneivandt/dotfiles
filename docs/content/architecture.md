@@ -374,6 +374,6 @@ Do not introduce a task just to split a function. Follow
 coverage from [Testing](testing.md).
 
 For a domain-specific workflow example, see
-[Agent deployment maintenance](agent-configuration.md#deployment-maintenance).
+[Agent deployment maintenance](agent-deployment-maintenance.md).
 It separates native dependency resolution from dotfiles-owned manifest
 composition and target adapters while preserving one task's outcome.

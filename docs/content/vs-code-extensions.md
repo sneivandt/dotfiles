@@ -1,6 +1,6 @@
 ---
 title: VS Code extensions
-description: Missing editor extensions.
+description: Install missing VS Code extensions for the selected profile.
 ---
 
 # VS Code extensions

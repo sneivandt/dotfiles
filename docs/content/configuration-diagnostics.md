@@ -46,9 +46,5 @@ With an [installed launcher and saved profile](getting-started.md):
 dotfiles check --only config-diagnostics
 ```
 
-Read the result and fix reported declaration or source problems before applying
-configuration. This check reports problems; it does not repair them.
-
-This task has no separate TOML settings and belongs only to `check`; it does not run the
-update graph. See [CLI validation](testing.md#cli-validation) for a wider check of the
-selected checkout.
+Fix each finding in its named source, then rerun the check. For source-file
+checks and analyzers too, use [CLI validation](testing.md#cli-validation).

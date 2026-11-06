@@ -52,7 +52,7 @@ configuration. A clean working tree does not make a live installation safe.
 | Task membership or cross-domain dependencies | [app/catalog.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs) |
 | How one kind of state is applied | Its module under [domains/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/) |
 | Process, filesystem, or output mechanics | [infra/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra/) |
-| Custom Arch package recipes | [packages/](https://github.com/sneivandt/dotfiles/tree/main/packages/) and [Arch package recipes](package-management.md#arch-package-recipes) |
+| Custom Arch package recipes | [packages/](https://github.com/sneivandt/dotfiles/tree/main/packages/) and [Arch package recipes](arch-package-recipes.md) |
 | Documentation content or site | [Documentation](#documentation), with website sources in the [site maintenance README](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md) |
 | Hooks or automation | [Git hooks](#git-hooks) and [CI and releases](ci-and-releases.md) |
 

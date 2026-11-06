@@ -1,6 +1,6 @@
 ---
 title: Package management
-description: Choose packages, preview installation, manage upgrades and removal, and maintain custom Arch recipes.
+description: Choose packages, preview installation, and manage upgrades and removal on Arch Linux and Windows.
 ---
 
 # Package management
@@ -209,66 +209,12 @@ their former packages. Review Paru's replacement prompt. PowerShell's lifecycle
 script also adds `/usr/bin/pwsh` to `/etc/shells` on install/upgrade and removes
 it on uninstall. Review lifecycle scripts as part of the package transaction.
 
-For maintenance, see [Arch package recipes](#arch-package-recipes) below.
-
-## Arch package recipes
-
-For maintainers, each recipe has a tracked `PKGBUILD` and `release.json`.
-Use an [existing recipe](https://github.com/sneivandt/dotfiles/tree/main/packages/)
-as the format reference. The descriptor identifies a stable GitHub release,
-package base/names, and assets with published SHA-256 digests for every configured
-architecture. The PKGBUILD sources generated `version.sh` pins; do not edit or
-commit those generated files. Bump tracked `pkgrel` for packaging-only revisions.
-
-Keep the descriptor's package base, names, and architectures consistent with
-makepkg. Supported snapshot inputs are `PKGBUILD`, `version.sh`, optional
-`package.install`, `LICENSE`, `NOTICE`, and generated `.SRCINFO`. Other local
-inputs require extending the snapshot implementation first.
-
-::: warning Review recipes before preparing packages
-PKGBUILDs execute shell code during metadata generation, even without building
-or installing. Temporary copies are not a sandbox. Review sources before
-applying preparation; Paru skips normal recipe review for these local repositories.
+::: warning Preparation executes recipes and replaces Paru preferences
+A normal Arch update prepares every managed recipe, not just selected packages.
+Metadata generation executes PKGBUILD code, and preparation replaces the whole
+Paru configuration without merging or backing up existing preferences.
+Review the recipes and preserve the Paru preferences you need before applying.
 :::
 
-::: warning Preparation replaces Paru preferences
-Preparation replaces the complete Paru configuration with a document
-generated from
-[paru.conf.base](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/paru/paru.conf.base).
-Back up existing Paru preferences and incorporate the ones you want into that
-tracked source before applying. Existing destination contents are not merged.
-The [Custom package repository reference](custom-package-repository.md)
-explains destination overrides and snapshot ownership.
-:::
-
-On an Arch machine with a configured checkout and selected profile, preview
-preparation without installing applications:
-
-```sh
-dotfiles update --only custom-package-versions,custom-package-repository --dry-run
-```
-
-Remove `--dry-run` after review to refresh pins and prepare snapshots. This scoped
-run needs GitHub metadata access and makepkg when applying; it does not bootstrap
-missing tools. Preview does not execute recipes or write pins, snapshots, caches,
-or Paru configuration.
-
-Snapshots are separate, owned Git repositories under Paru's build cache so
-`CleanAfter` cannot reset the source checkout. Keep `CloneDir`, repository `Path`,
-and the descriptor's package base aligned. Use the same environment for dotfiles
-and Paru. Edit tracked sources, not cached inputs or generated Paru sections.
-
-Implementation details and regression cases live in
-[arch_recipes.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes.rs),
-[snapshots.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes/snapshots.rs),
-and [tests.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes/tests.rs).
-For failures, use [Logs and troubleshooting](#logs-and-troubleshooting).
-
-### CI and validation
-
-Use [Choosing coverage](testing.md#choosing-coverage) and the pinned toolchain.
-Recipe changes select offline Linux checks, configuration validation/drift,
-and PKGBUILD/install-script ShellCheck. Tests cover descriptors, retained pins,
-previews, readiness, and safe snapshot cleanup; they do not prove current release
-availability or a native Arch build/install. Verify those in a disposable Arch
-home/cache. A successful docs check alone does not validate a recipe change.
+To add or change a recipe, prepare snapshots separately, or maintain the Paru
+defaults, use [Arch package recipes](arch-package-recipes.md).

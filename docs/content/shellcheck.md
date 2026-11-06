@@ -43,10 +43,7 @@ With an [installed launcher and saved profile](getting-started.md):
 dotfiles check --only shellcheck --fail-on-skip
 ```
 
-Missing optional tools produce a visible skip. `--fail-on-skip` makes that an
-unsuccessful check instead of allowing it to look like a pass. Fix failures and unmet
-prerequisites before applying configuration.
-
-This task has no separate TOML settings and belongs only to `check`; it does not run the
-update graph. See [CLI validation](testing.md#cli-validation) for a wider check of the
-selected checkout.
+Install ShellCheck and POSIX `sh` before running this check. With
+`--fail-on-skip`, a missing analyzer fails the command. Fix the named script
+and rerun; use the [shell fixtures](testing.md#application-configuration)
+when the change also affects startup behavior.

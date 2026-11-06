@@ -36,8 +36,9 @@ examples, and the amount of detail.
   Keep meaningful topic groups rather than adding a generic Reference group.
 - Keep Application settings focused on shared preferences and finding sources;
   Arch desktop behavior belongs in its own guide. Keep editor setup and source
-  references in Application settings, agent preferences and deployment maintenance
-  in Agent configuration, and recipe maintenance in Package management. Keep guides
+  references in Application settings and agent preferences/deployment workflows
+  in Agent configuration. Agent deployment maintenance and Arch package recipes
+  serve contributors separately from those user guides. Keep guides
   one level deep. Group related topics when separate headings fragment the
   navigation; a distinct page or maintenance guide does not require its own
   top-level section. Use the site configuration for current labels and order,
@@ -81,18 +82,20 @@ examples, and the amount of detail.
   Use the standard reading layout with outline and previous/next links disabled.
   Put platform setup and behavior in Platforms, package workflows in Using dotfiles,
   and exact CLI/task lookups in Reference. Configuration basics belongs in
-  Guides after Profiles and categories; task pages own declaration formats.
+  Guides after Profiles and categories, with Commands and usage immediately
+  after Getting started; task pages own declaration formats.
   Preserve native mobile navigation. Header links switch between
   Guides, Reference, and Development, each with its own sidebar and previous/next
   sequence. Guides has Introduction, Using dotfiles, Platforms, and Customization.
   Its groups start expanded with native right-hand collapse arrows. Reference
   has direct CLI reference and Task reference overview links above one unlinked,
-  collapsible Task details group, not separate domain groups. Keep the
+  collapsible Task details group in title order, not separate domain groups. Keep the
   overview outside the group so collapsing it never hides that link.
   Keep task URLs flat and include nested children when deriving section matching
   and sidebar route coverage. Development groups contributor workflows,
   implementation/debugging guidance, and verification. Testing owns coverage
-  selection and execution commands; Writing tests owns regression design,
+  selection and ordinary execution commands; Mutation testing owns its
+  disposable-worktree procedure. Writing tests owns regression design,
   fixture construction, and assertions. Writing documentation is the human
   authoring guide; do not substitute skill links in published prose. Use
   [task-reference-writing](../task-reference-writing/SKILL.md) for task-page

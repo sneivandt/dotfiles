@@ -172,15 +172,18 @@ own sidebar and previous/next sequence:
 
 - Guides: Introduction, Using dotfiles, Platforms, and Customization. Platform
   guides cover environment-specific setup and behavior; Using dotfiles covers
-  everyday commands, packages, and troubleshooting. Introduction follows setup
-  with Profiles and categories, Configuration basics, then Security and trust.
+  everyday commands, profiles, configuration, safety, packages, and troubleshooting.
+  Getting started leads directly to Commands and usage, then Profiles and
+  categories and Configuration basics.
 - Reference: direct CLI reference and Task reference overview links,
   followed by the Task details group. The overview explains task selection,
   scheduling, and removal scope; the individual pages cover each domain's
-  behavior and declarations, including validation tasks.
+  behavior and declarations, including validation tasks. Task details are
+  ordered by page title; the overview also offers a question-based lookup table.
 - Development: Workflows covers contributor workflow and documentation
   authoring; Implementation covers architecture, task implementation, and
-  debugging; Verification covers running checks, writing tests, and CI.
+  debugging, agent deployment maintenance, and Arch recipe maintenance;
+  Verification covers running checks, writing tests, mutation testing, and CI.
 
 Guide and Development groups start expanded with native collapse controls.
 Reference has one collapsible group, Task details, rather than a separate

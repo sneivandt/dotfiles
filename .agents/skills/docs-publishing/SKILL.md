@@ -75,11 +75,11 @@ examples, and the amount of detail.
   preserves repository anchors. Repository source links need GitHub URLs.
 - Keep the root introduction short, with a prominent Getting started link.
   Use the standard reading layout with outline and previous/next links disabled.
-  Put platform setup and behavior in Platforms, package workflows in Workflows,
+  Put platform setup and behavior in Platforms, package workflows in Using dotfiles,
   and exact CLI/task/configuration lookups in Reference. Preserve native
   mobile navigation. Header links switch between
   Guides, Reference, and Development, each with its own sidebar and previous/next
-  sequence. Guides has Introduction, Workflows, Platforms, and Customization.
+  sequence. Guides has Introduction, Using dotfiles, Platforms, and Customization.
   Its groups start expanded with native right-hand collapse arrows. Reference
   has direct CLI/configuration links and one linked Task reference parent with
   the individual task pages as children, not separate collapsible domain groups.

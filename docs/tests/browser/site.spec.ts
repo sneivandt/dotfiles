@@ -54,10 +54,10 @@ test('the introduction and grouped navigation fit the default reading layout', a
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const sidebar = page.locator('.VPSidebar');
   const groups = sidebar.locator('.group');
-  await expect(groups.locator('h2')).toHaveText(['Introduction', 'Workflows', 'Platforms', 'Customization']);
+  await expect(groups.locator('h2')).toHaveText(['Introduction', 'Using dotfiles', 'Platforms', 'Customization']);
   for (const [label, titles] of [
     ['Introduction', ['Getting started', 'Profiles and categories', 'Security and trust']],
-    ['Workflows', ['Commands and usage', 'Package management', 'Troubleshooting']],
+    ['Using dotfiles', ['Commands and usage', 'Package management', 'Troubleshooting']],
     ['Platforms', ['Arch desktop', 'Windows and WSL']],
     ['Customization', ['Agent configuration', 'Application settings', 'Private overlays']],
   ] as const) {
@@ -85,7 +85,7 @@ test('header sections replace the sidebar, including direct links and search des
     await expect(page.locator('.VPSidebar a')).toHaveText([...titles]);
     if (label === 'Development') {
       await expect(page.locator('.VPSidebar .group h2'))
-        .toHaveText(['Getting involved', 'Implementation', 'Verification']);
+        .toHaveText(['Workflows', 'Implementation', 'Verification']);
     }
     if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText(label);
   }

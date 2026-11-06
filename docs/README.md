@@ -157,14 +157,14 @@ the repository link checker. The root introduction publishes at `/`.
 The header switches between three documentation sections. Each section has its
 own sidebar and previous/next sequence:
 
-- Guides: Introduction, Workflows, Platforms, and Customization. Platform
-  guides cover environment-specific setup and behavior; Workflows covers
+- Guides: Introduction, Using dotfiles, Platforms, and Customization. Platform
+  guides cover environment-specific setup and behavior; Using dotfiles covers
   everyday commands, packages, and troubleshooting.
 - Reference: direct CLI and configuration links, followed by one linked
   Task reference parent containing the individual task pages. The parent
   explains task selection, scheduling, and removal scope; its children cover
   each domain's behavior and declarations, including validation tasks.
-- Development: Getting involved covers contributor workflow and documentation
+- Development: Workflows covers contributor workflow and documentation
   authoring; Implementation covers architecture, task implementation, and
   debugging; Verification covers running checks, writing tests, and CI.
 

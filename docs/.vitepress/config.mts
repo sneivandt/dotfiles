@@ -17,7 +17,7 @@ const group = (text: string, pages: string[]): DefaultTheme.SidebarItem => ({
 
 const guide = [
   group('Introduction', ['getting-started', 'profiles-and-categories', 'security-and-trust']),
-  group('Workflows', ['commands-and-usage', 'package-management', 'troubleshooting']),
+  group('Using dotfiles', ['commands-and-usage', 'package-management', 'troubleshooting']),
   group('Platforms', ['arch-desktop', 'windows-and-wsl']),
   group('Customization', ['agent-configuration', 'application-settings', 'private-overlays']),
 ];
@@ -41,7 +41,7 @@ const reference = [
   },
 ];
 const contribute = [
-  group('Getting involved', ['contributing', 'writing-documentation']),
+  group('Workflows', ['contributing', 'writing-documentation']),
   group('Implementation', ['architecture', 'adding-a-task', 'debugging']),
   group('Verification', ['testing', 'writing-tests', 'ci-and-releases']),
 ];

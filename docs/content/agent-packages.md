@@ -1,6 +1,6 @@
 ---
 title: Agent packages
-description: Install and update reusable agent content with APM.
+description: Install and update APM agent packages, merge dependency fragments, and deploy reusable skills and plugins to supported harnesses.
 ---
 
 # Agent packages

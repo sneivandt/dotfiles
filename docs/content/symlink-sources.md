@@ -1,6 +1,6 @@
 ---
 title: Symlink sources
-description: Checks declared symlink and permission sources across active and inactive categories.
+description: Check symlink sources and permission paths across active and inactive categories, expand supported globs, and diagnose missing tracked files.
 ---
 
 # Symlink sources

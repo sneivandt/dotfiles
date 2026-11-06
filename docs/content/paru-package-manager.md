@@ -1,6 +1,6 @@
 ---
 title: Paru package manager
-description: Installation and health checks for the AUR helper.
+description: Install and check Paru, the Arch User Repository helper, and understand its bootstrap tools, configuration, and removal limits.
 ---
 
 # Paru package manager

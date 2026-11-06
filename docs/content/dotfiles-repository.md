@@ -1,6 +1,6 @@
 ---
 title: Dotfiles repository
-description: Fast-forward updates of the checkout and overlay.
+description: Synchronize the dotfiles checkout and private overlay with fast-forward Git updates while preserving local changes and divergent branches.
 ---
 
 # Dotfiles repository

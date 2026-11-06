@@ -1,6 +1,6 @@
 ---
 title: PSScriptAnalyzer
-description: Analyzes PowerShell scripts in the main repository.
+description: Lint repository PowerShell scripts with PSScriptAnalyzer, review warning and error diagnostics, and identify analyzer prerequisites.
 ---
 
 # PSScriptAnalyzer

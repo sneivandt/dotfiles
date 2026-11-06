@@ -1,6 +1,6 @@
 ---
 title: Private overlays
-description: Keep private or machine-specific configuration separate, select an overlay, and understand merging, scripts, and cleanup.
+description: Keep private or machine-specific configuration outside the public repository, merge overlay declarations, replace installed links, and review script safety.
 ---
 
 # Private overlays

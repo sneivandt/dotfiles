@@ -1,6 +1,6 @@
 ---
 title: User registry settings
-description: Declared Windows current-user registry values.
+description: Manage Windows HKEY_CURRENT_USER registry preferences, choose DWORD or string types, preserve undeclared values, and plan manual restoration.
 ---
 
 # User registry settings

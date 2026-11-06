@@ -1,6 +1,6 @@
 ---
 title: Windows Developer Mode
-description: Machine policy for Windows development features.
+description: Enable Windows Developer Mode machine policy for file symlinks and understand Administrator requirements, junctions, and persistent settings.
 ---
 
 # Windows Developer Mode

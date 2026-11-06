@@ -1,6 +1,6 @@
 ---
 title: System configuration files
-description: Structured merges into files below /etc.
+description: Merge TOML, INI, and PAM fragments into administrator-owned Linux files below /etc while preserving unrelated settings and file ownership.
 ---
 
 # System configuration files

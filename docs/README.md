@@ -93,9 +93,10 @@ and `python3` where required. Node commands need the locked dependencies above.
 | Native check coordinator | Root | `node --test docs/tests/check.test.mjs` |
 | TypeScript or Vue | `docs/` | `npm run check` |
 | Markdown rendering or Node fixtures | `docs/` | `npm test` |
+| Search indexing or metadata renderer | `docs/` | `node --test tests/search.test.mjs` |
 | Configuration examples or JSON Lines contract | `cli/` | `cargo test --locked --profile ci --test docs_contracts` |
 | APM YAML examples or selector inventory | `cli/` | `cargo test --locked --profile ci --lib documented_` |
-| Keyboard, focus, or contrast | `docs/` | `npm run build` then `npm run test:browser -- --grep "keyboard|contrast"` |
+| Keyboard, focus, contrast, or topic discovery | `docs/` | `npm run build` then `npm run test:browser -- --grep "keyboard|contrast|topic discovery"` |
 | Other rendered behavior | `docs/` | `npm run build` then `npm run test:browser -- --grep "<test title>"` |
 
 Rust commands use the pinned toolchain and isolated fixtures, not the live home
@@ -229,6 +230,16 @@ Keep existing task URLs flat: the grouping is navigation, not a second set of ro
 Page boundaries follow reader tasks rather than length.
 The active header link follows the page, including direct links from another
 section and search results. Search covers all three sections.
+
+Local search indexes each page's description once in its introduction using
+VitePress's native `_render` hook, with HTML escaping and the existing
+`search: false` opt-out. It does not add visible duplicate paragraphs or
+repeat the summary in every section. Section headings and body content remain
+in the index, and results retain their native heading links. Frontmatter
+descriptions also feed HTML and Open Graph summaries; title, canonical, sitemap,
+and robots metadata continue to identify the public page. Write metadata using
+[Help readers find the topic](content/writing-documentation.md#help-readers-find-the-topic),
+and test representative reader queries rather than adding keyword meta tags.
 
 The site title returns to the short personal introduction. Getting started owns
 the setup walkthrough. The introduction uses the standard reading layout with

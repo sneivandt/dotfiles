@@ -1,6 +1,6 @@
 ---
 title: Profiles and categories
-description: Choose a base or desktop role and understand how platform categories select the configuration to apply.
+description: Choose base or desktop profiles, resolve platform categories and saved selections, and safely retire desktop links without losing configuration.
 ---
 
 # Profiles and categories

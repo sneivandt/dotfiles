@@ -1,6 +1,6 @@
 ---
 title: File permissions
-description: Unix modes for declared home paths.
+description: Declare Unix permission modes for home-directory paths, preview chmod changes, and understand symlink and removal limits.
 ---
 
 # File permissions

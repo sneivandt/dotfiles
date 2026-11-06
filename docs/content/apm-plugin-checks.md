@@ -1,6 +1,6 @@
 ---
 title: APM plugin checks
-description: Validates local APM plugins without deploying them.
+description: Validate local Agent Package Manager plugins with apm pack in dry-run mode without installing or deploying their content.
 ---
 
 # APM plugin checks

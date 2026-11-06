@@ -1,6 +1,6 @@
 ---
 title: ShellCheck
-description: Analyzes shell scripts in the main repository.
+description: Lint repository shell scripts with ShellCheck, understand file discovery and configuration, and interpret shell portability diagnostics.
 ---
 
 # ShellCheck

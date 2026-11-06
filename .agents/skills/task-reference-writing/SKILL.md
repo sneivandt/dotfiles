@@ -40,6 +40,9 @@ Use the human guide's task-page sections where they fit, without empty
 boilerplate. Explain the consequential domain distinction locally, such as
 enablement versus starting, package presence versus upgrades, or links versus
 copies. Upstream support can exceed dotfiles' supported subset.
+Write a useful description naming the task, tool/platform, and boundary, using
+the human guide's [findability conventions](../../../docs/content/writing-documentation.md#help-readers-find-the-topic).
+Verify a natural query reaches the page, not only an exact selector lookup.
 
 Review the procedure from both the relevant fresh and already-managed states.
 For replacement, removal, and partial-failure recovery, trace the state left

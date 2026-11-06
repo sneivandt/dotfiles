@@ -1,6 +1,6 @@
 ---
 title: Shell PATH
-description: The user PATH entry for the launcher.
+description: Add the dotfiles launcher directory to the user PATH on Linux or Windows and distinguish command discovery from launcher installation.
 ---
 
 # Shell PATH

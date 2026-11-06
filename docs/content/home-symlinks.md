@@ -1,6 +1,6 @@
 ---
 title: Home symlinks
-description: Live links from home to managed sources.
+description: Link home-directory configuration to tracked sources, resolve existing-file conflicts, and preserve current contents when removing managed symlinks.
 ---
 
 # Home symlinks

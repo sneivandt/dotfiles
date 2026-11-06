@@ -3,7 +3,7 @@ name: docs-writing
 description: >
   Use when drafting, auditing, or editing human-facing prose in README.md,
   docs/content/, or application READMEs: clarity, factual accuracy, natural
-  language, examples, and the right level of detail. Not for site navigation,
+  language, examples, search metadata, and the right level of detail. Not for site navigation,
   rendering, or publishing alone (docs-publishing), or internal agent
   instructions (skill-maintenance).
 ---
@@ -29,6 +29,8 @@ for a task page's implementation contract.
 4. Draft using the guide's example, language, punctuation, link, and emphasis
    conventions. Keep consequential warnings beside the action. Do not replace
    a safety explanation with a link or remove it merely to shorten a page.
+   Review its [findability guidance](../../../docs/content/writing-documentation.md#help-readers-find-the-topic)
+   when changing titles, descriptions, headings, or topic terminology.
 5. Read the result as a direct shared link. Its links should supply depth, not
    a missing essential step. Prefer the common workflow before internals and
    recovery cases.

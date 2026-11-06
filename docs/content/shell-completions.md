@@ -1,6 +1,6 @@
 ---
 title: Shell completions
-description: Completion registration for the current CLI.
+description: Generate dotfiles tab completion for zsh and PowerShell, load shell registration, and diagnose missing command or task-selector suggestions.
 ---
 
 # Shell completions

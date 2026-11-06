@@ -1,6 +1,6 @@
 ---
 title: Custom package repository
-description: Disposable snapshots of managed Arch recipes.
+description: Prepare disposable PKGBUILD snapshots for managed Arch packages, inspect recipe metadata, and replace Paru local repository preferences.
 ---
 
 # Custom package repository

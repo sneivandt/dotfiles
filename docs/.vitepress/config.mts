@@ -116,7 +116,22 @@ export default defineConfig({
       '/': guide,
     },
     outline: { level: [2, 3], label: 'On this page' },
-    search: { provider: 'local' },
+    search: {
+      provider: 'local',
+      options: {
+        _render(source, env, md) {
+          const html = md.render(source, env);
+          if (env.frontmatter?.search === false) return '';
+          const description = env.frontmatter?.description;
+          if (typeof description !== 'string' || !description.trim()) {
+            throw new Error(`${env.relativePath}: search requires a nonempty page description`);
+          }
+          // Index the page summary in its introduction, not in every section.
+          return html.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i,
+            (heading) => `${heading}\n<p>${md.utils.escapeHtml(description)}</p>`);
+        },
+      },
+    },
     socialLinks: [{ icon: 'github', link: 'https://github.com/sneivandt/dotfiles' }],
     editLink: { pattern: 'https://github.com/sneivandt/dotfiles/edit/main/docs/content/:path' },
     docFooter: { prev: 'Previous page', next: 'Next page' },

@@ -547,6 +547,32 @@ test('search opens the relevant section of the published guide', async ({ page }
   await expect(page.locator('.VPSidebar a')).toHaveText(referenceTitles);
 });
 
+test('topic discovery uses reader terminology and page descriptions', async ({ page }) => {
+  for (const [query, route, title] of [
+    ['tab completion', 'shell-completions', 'Shell completions'],
+    ['Copilot JSON', 'agent-settings', 'Agent settings'],
+    ['HKEY_CURRENT_USER', 'user-registry-settings', 'User registry settings'],
+    ['retire desktop', 'profiles-and-categories', 'Profiles and categories'],
+  ]) {
+    await page.goto('/getting-started.html');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await page.locator('#localsearch-input').fill(query);
+    const result = page.locator(`.VPLocalSearchBox .result[href*="/${route}.html"]`).first();
+    await expect(result, query).toBeVisible();
+    const topResults = await page.locator('.VPLocalSearchBox .result').evaluateAll(
+      (links) => links.slice(0, 5).map((link) => link.getAttribute('href')),
+    );
+    expect(topResults.some((href) => href?.includes(`/${route}.html`)), query).toBe(true);
+    await result.click();
+    await expect(page).toHaveURL(new RegExp(`${route}\\.html(?:#.*)?$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
+  }
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await page.locator('#localsearch-input').fill('Page not found');
+  await expect(page.locator('.VPLocalSearchBox')).toBeVisible();
+  await expect(page.locator('.VPLocalSearchBox .result[href*="/404.html"]')).toHaveCount(0);
+});
+
 test('keyboard skip navigation and search dismissal preserve visible focus', async ({ page }) => {
   await page.goto('/getting-started.html');
   await page.keyboard.press('Tab');

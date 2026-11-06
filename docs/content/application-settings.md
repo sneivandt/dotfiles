@@ -1,6 +1,6 @@
 ---
 title: Application settings
-description: Find the source for a common application change, understand when edits take effect, and customize Git, shells, and editors.
+description: Customize Git, shell prompts and completion, Vim, Neovim, and VS Code through tracked sources, and back up or restore existing application settings.
 ---
 
 # Application settings

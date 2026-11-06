@@ -1,6 +1,6 @@
 ---
 title: Custom package versions
-description: Release pins for managed Arch recipes.
+description: Refresh upstream release pins for managed Arch package recipes and keep release.json separate from generated PKGBUILD snapshots.
 ---
 
 # Custom package versions

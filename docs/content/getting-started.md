@@ -1,6 +1,6 @@
 ---
 title: Getting started
-description: Set up a machine, make the configuration your own, and understand what changes before applying them.
+description: Install dotfiles on Arch Linux, Windows, or WSL, choose a release or source build, back up existing configuration, and preview the first setup.
 outline: [2, 3]
 ---
 

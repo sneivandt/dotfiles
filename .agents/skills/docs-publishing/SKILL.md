@@ -21,7 +21,8 @@ for topic ownership and [docs-writing](../docs-writing/SKILL.md) for prose.
 
 | Change | Inspect and preserve |
 |---|---|
-| New or moved page | Topic ownership, title/filename/route alignment, incoming links, search, outline, and navigation coverage |
+| New or moved page | Topic ownership, title/filename/route alignment, useful descriptions, incoming links, representative search queries, outline, and navigation coverage |
+| Search metadata | Native local-search indexing, escaped introduction summaries, section destinations, canonical metadata, and 404 exclusion |
 | Navigation | Direct-link and search destinations, active section, mobile controls, and independent overview visibility |
 | Theme or diagrams | Native VitePress behavior, theme persistence, readable text, contained scrolling, keyboard focus, contrast, and diagram accessibility |
 | Domain or publication | CNAME, canonical/social/structured metadata, robots, sitemap, README URLs, browser expectations, and the same-run artifact contract |
@@ -31,6 +32,8 @@ Keep the landing page's first action prominent and its setup walkthrough in
 Getting started. Keep the root README brief. Split pages by reader task or
 audience, not length. Keep guide URLs flat and update references after moves;
 do not add rename-compatibility routes.
+Use the human guide's [findability conventions](../../../docs/content/writing-documentation.md#help-readers-find-the-topic);
+do not invent a separate keyword/tag taxonomy or copy the page inventory here.
 
 Prefer VitePress's native theme and controls. Preserve a reader's appearance
 choice, diagram titles/descriptions, warning information, and readable tables.

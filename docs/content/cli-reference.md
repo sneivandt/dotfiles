@@ -1,6 +1,6 @@
 ---
 title: CLI reference
-description: Look up command options, wrapper bootstrap, configuration paths, log syntax, and structured output.
+description: Look up dotfiles command flags, wrapper bootstrap, configuration paths, stable run IDs, and JSON Lines output for scripts.
 ---
 
 # CLI reference

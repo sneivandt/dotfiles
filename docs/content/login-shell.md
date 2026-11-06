@@ -1,6 +1,6 @@
 ---
 title: Login shell
-description: The account login shell on Linux.
+description: Set the Linux account's login shell to zsh, check shell availability and account state, and distinguish login settings from the current session.
 ---
 
 # Login shell

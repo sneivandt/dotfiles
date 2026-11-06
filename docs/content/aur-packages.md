@@ -1,6 +1,6 @@
 ---
 title: AUR packages
-description: Arch packages installed through Paru.
+description: Declare Arch User Repository packages, install missing AUR software through Paru, and understand build and upgrade risks.
 ---
 
 # AUR packages

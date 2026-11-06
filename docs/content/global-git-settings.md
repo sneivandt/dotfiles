@@ -1,6 +1,6 @@
 ---
 title: Global Git settings
-description: Global Git values and Windows autocrlf cleanup.
+description: Apply declared global Git configuration, resolve private overlay overrides, and clean up undeclared global core.autocrlf on Windows.
 ---
 
 # Global Git settings

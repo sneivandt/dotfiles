@@ -1,6 +1,6 @@
 ---
 title: Required configuration files
-description: Checks that required main configuration files are present.
+description: Check required conf TOML files in the main repository before updates and distinguish missing files from configuration parsing failures.
 ---
 
 # Required configuration files

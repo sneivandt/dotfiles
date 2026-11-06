@@ -1,6 +1,6 @@
 ---
 title: VS Code extensions
-description: Install missing VS Code extensions for the selected profile.
+description: Declare VS Code extension IDs, install missing extensions for the selected profile, and diagnose unavailable tools or failed installations.
 ---
 
 # VS Code extensions

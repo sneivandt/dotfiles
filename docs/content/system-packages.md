@@ -1,6 +1,6 @@
 ---
 title: System packages
-description: Arch pacman packages and Windows winget IDs.
+description: Declare and install missing Arch Linux pacman packages or Windows winget IDs, preview provider actions, and understand upgrade and removal behavior.
 ---
 
 # System packages

@@ -1,6 +1,6 @@
 ---
 title: Agent settings
-description: Copilot and Codex preferences.
+description: Manage Copilot JSON and Codex TOML preferences while preserving undeclared settings and applying private overlay overrides.
 ---
 
 # Agent settings

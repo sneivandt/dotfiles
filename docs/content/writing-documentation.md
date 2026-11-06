@@ -1,6 +1,6 @@
 ---
 title: Writing documentation
-description: Choose a guide's scope, write reusable examples, and maintain task references for human readers.
+description: Choose a guide's scope, verify procedures and examples, write searchable page metadata, and maintain task references for human readers.
 ---
 
 # Writing documentation
@@ -149,6 +149,35 @@ overview owns the selector index and shared scheduling terms; individual pages
 own domain details. Link prerequisites by name and distinguish success
 requirements from ordering-only waits.
 
+## Help readers find the topic
+
+Treat a page's title, description, and headings as reader-facing metadata,
+not administrative boilerplate. The title names the topic in navigation,
+browser tabs, and search results. Keep it specific and aligned with the H1,
+filename, and route rather than adding a different SEO title.
+
+Write a unique, plain-language description that identifies the reader's task,
+the relevant tool or platform, and the important boundary. Include a useful
+expanded term alongside an acronym where natural, such as Arch User Repository
+and AUR, or HKEY_CURRENT_USER and registry preferences. Avoid descriptions
+that merely repeat the title, unsupported promises, lists of unrelated
+keywords, or a fixed character count that forces awkward prose.
+
+The description becomes the page's HTML and social-preview summary. Local
+search also indexes it once with the page introduction. Section headings and
+body text remain searchable and supply direct section results. Use headings
+that match likely questions or symptoms; explain unfamiliar terms in the prose
+instead of hiding aliases in metadata. There is no separate tags or keywords
+catalog, and a `keywords` meta tag does not tune the site's local search.
+
+After changing metadata or topic organization, build the site and search using
+reader language as well as the exact title. Check that the intended page is a
+prominent result and opens the relevant explanation. Keep representative
+queries in the browser regressions without asserting a frozen full ranking.
+Canonical URLs and the sitemap identify public routes; the 404 page stays
+excluded with `search: false` and `noindex`. Do not exclude an ordinary guide
+merely to hide a weak or duplicate explanation.
+
 ## Write and review the page
 
 Give each page frontmatter with a nonempty single-line title and description, one matching H1,
@@ -197,6 +226,7 @@ the revised guidance. Keep the exercise read-only or use isolated fixtures:
 | Retire desktop links and return to base | Removal uses the original selection and copies current sources; base copies block link installation; preserve edits before clearing only the intended conflicts |
 | Retry a partial service update | Select the failed run by stable ID, inspect predecessor failures, review dependency expansion, and explain that earlier changes remain |
 | Document a task with no removal action | State what stops being managed and what persists; give no fictional remove command or rollback promise |
+| Make a reference page discoverable without knowing its selector | Use a unique task-focused description and recognizable tool/platform terms; verify a natural-language query reaches the intended page and section |
 
 Judge whether a reader can complete the task and recognize its outcome, not
 whether the explanation matches a fixed sentence or section count.

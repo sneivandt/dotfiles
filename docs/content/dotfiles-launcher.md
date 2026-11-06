@@ -1,6 +1,6 @@
 ---
 title: Dotfiles launcher
-description: A command that delegates to this checkout.
+description: Install the dotfiles command launcher on Linux or Windows, preserve its checkout path, and distinguish it from the CLI binary and PATH entry.
 ---
 
 # Dotfiles launcher

@@ -1,6 +1,6 @@
 ---
 title: Systemd units
-description: User and system service enablement and state.
+description: Enable, start, disable, or stop systemd user and system services, timers, and sockets while distinguishing running state from boot or login activation.
 ---
 
 # Systemd units

@@ -1,6 +1,6 @@
 ---
 title: Git hooks
-description: Repository commit and maintenance hooks.
+description: Install repository commit and maintenance hooks, honor core.hooksPath and linked worktrees, and preserve foreign or modified hooks.
 ---
 
 # Git hooks

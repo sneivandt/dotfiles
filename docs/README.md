@@ -160,19 +160,19 @@ own sidebar and previous/next sequence:
 - Guides: Introduction, Using dotfiles, Platforms, and Customization. Platform
   guides cover environment-specific setup and behavior; Using dotfiles covers
   everyday commands, packages, and troubleshooting.
-- Reference: direct CLI and configuration links, followed by one linked
-  Task reference parent containing the individual task pages. The parent
-  explains task selection, scheduling, and removal scope; its children cover
-  each domain's behavior and declarations, including validation tasks.
+- Reference: direct CLI, configuration, and Task reference overview links,
+  followed by the Individual tasks group. The overview explains task selection,
+  scheduling, and removal scope; the individual pages cover each domain's
+  behavior and declarations, including validation tasks.
 - Development: Workflows covers contributor workflow and documentation
   authoring; Implementation covers architecture, task implementation, and
   debugging; Verification covers running checks, writing tests, and CI.
 
 Guide and Development groups start expanded with native collapse controls.
-Reference has only one collapsible parent, Task reference, rather than a
-separate group for every domain. Its title is also a link, so collapsing the
-children must not prevent opening the overview. Keep existing task URLs flat:
-the parent/child relationship is navigation, not a second set of routes.
+Reference has one collapsible group, Individual tasks, rather than a separate
+group for every domain. Its heading only toggles the task links. The standalone
+Task reference overview stays visible above it when the group is collapsed.
+Keep existing task URLs flat: the grouping is navigation, not a second set of routes.
 Page boundaries follow reader tasks rather than length.
 The active header link follows the page, including direct links from another
 section and search results. Search covers all three sections.

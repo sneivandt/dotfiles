@@ -24,8 +24,9 @@ const guide = [
 const reference = [
   page('cli-reference'),
   page('configuration-basics'),
+  page('task-reference'),
   {
-    ...page('task-reference'),
+    text: 'Individual tasks',
     collapsed: false,
     items: [
       'dotfiles-repository', 'dotfiles-launcher', 'shell-path',

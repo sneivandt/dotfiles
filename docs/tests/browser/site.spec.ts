@@ -99,26 +99,35 @@ test('header sections replace the sidebar, including direct links and search des
   await expect(page.locator('.VPDocFooter .next')).toContainText('Troubleshooting');
 });
 
-test('one linked task parent contains every task page and collapses independently', async ({ page, isMobile }) => {
+test('individual tasks collapse separately from the task reference overview', async ({ page, isMobile }) => {
   await page.goto('/home-symlinks.html');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const sidebar = page.locator('.VPSidebar');
-  const parent = sidebar.locator('.VPSidebarItem.level-0')
+  const overviewGroup = sidebar.locator('.group')
     .filter({ has: page.getByRole('link', { name: 'Task reference', exact: true }) });
-  await expect(parent).toHaveCount(1);
-  await expect(parent.getByRole('link')).toHaveText(referenceTitles.slice(2));
-  const toggle = parent.getByRole('button', { name: 'toggle section', exact: true });
+  const tasks = sidebar.locator('.group')
+    .filter({ has: page.getByRole('heading', { name: 'Individual tasks', exact: true }) });
+  await expect(overviewGroup).toHaveCount(1);
+  await expect(overviewGroup.getByRole('link')).toHaveText(referenceTitles.slice(0, 3));
+  await expect(tasks).toHaveCount(1);
+  await expect(tasks.getByRole('link')).toHaveText(referenceTitles.slice(3));
+  await expect(sidebar.getByRole('link', { name: 'Individual tasks', exact: true })).toHaveCount(0);
+  const toggle = tasks.getByRole('button', { name: 'toggle section', exact: true });
   await toggle.click();
-  await expect(parent.getByRole('link', { name: 'Home symlinks', exact: true })).not.toBeVisible();
+  await expect(page).toHaveURL('/home-symlinks.html');
+  await expect(tasks.getByRole('link', { name: 'Home symlinks', exact: true })).not.toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'CLI reference', exact: true })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'Configuration basics', exact: true })).toBeVisible();
-  await parent.getByRole('link', { name: 'Task reference', exact: true }).click();
+  await expect(sidebar.getByRole('link', { name: 'Task reference', exact: true })).toBeVisible();
+  await sidebar.getByRole('link', { name: 'Task reference', exact: true }).click();
   await expect(page).toHaveURL('/task-reference.html');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Task reference');
   await expect(page.locator('.VPDocFooter .next')).toContainText('Dotfiles repository');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
-  await expect(parent.getByRole('link', { name: 'Home symlinks', exact: true })).toBeVisible();
-  const last = parent.getByRole('link', { name: 'PSScriptAnalyzer', exact: true });
+  await expect(tasks.getByRole('link', { name: 'Home symlinks', exact: true })).not.toBeVisible();
+  await toggle.click();
+  await expect(tasks.getByRole('link', { name: 'Home symlinks', exact: true })).toBeVisible();
+  const last = tasks.getByRole('link', { name: 'PSScriptAnalyzer', exact: true });
   await last.scrollIntoViewIfNeeded();
   await expect(last).toBeInViewport();
   await last.click();

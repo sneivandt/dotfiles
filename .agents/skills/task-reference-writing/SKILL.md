@@ -90,13 +90,14 @@ workflow rather than duplicating it.
 
 [Task reference](../../../docs/content/task-reference.md) owns the selector
 index, shared scheduling terms, check/update distinction, and overall removal
-limits. Keep domain explanations on the individual pages. Register children
-under its single linked navigation parent without inventing duplicate routes.
+limits. Keep domain explanations on the individual pages. Register them under
+the unlinked Individual tasks group, with the overview linked separately above
+it, without inventing duplicate routes.
 
 Review a page as a direct shared link: can a reader understand the domain,
 choose the right declaration, anticipate side effects, and recognize what
 success does not prove? Check incoming links after heading changes and select
 the native documentation checks from [docs/README.md](../../../docs/README.md#checks).
-Browser coverage should preserve task-child navigation, page outlines, search,
-and readable tables on narrow screens. Metadata and browser checks do not prove
+Browser coverage should preserve independent overview/group navigation, page
+outlines, search, and readable tables on narrow screens. Metadata and browser checks do not prove
 the behavioral claims or the effectiveness of these instructions.

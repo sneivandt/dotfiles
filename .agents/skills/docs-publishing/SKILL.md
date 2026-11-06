@@ -81,8 +81,9 @@ examples, and the amount of detail.
   Guides, Reference, and Development, each with its own sidebar and previous/next
   sequence. Guides has Introduction, Using dotfiles, Platforms, and Customization.
   Its groups start expanded with native right-hand collapse arrows. Reference
-  has direct CLI/configuration links and one linked Task reference parent with
-  the individual task pages as children, not separate collapsible domain groups.
+  has direct CLI/configuration/Task reference overview links above one unlinked,
+  collapsible Individual tasks group, not separate domain groups. Keep the
+  overview outside the group so collapsing it never hides that link.
   Keep task URLs flat and include nested children when deriving section matching
   and sidebar route coverage. Development groups contributor workflows,
   implementation/debugging guidance, and verification. Testing owns coverage

@@ -2,7 +2,7 @@ import { readdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
 const referenceTitles = [
-  'CLI reference', 'Configuration basics', 'Task reference',
+  'CLI reference', 'Task reference',
   'Dotfiles repository', 'Dotfiles launcher', 'Shell PATH',
   'Global Git settings', 'Git hooks', 'Home symlinks',
   'File permissions', 'Shell completions', 'Login shell',
@@ -56,7 +56,7 @@ test('the introduction and grouped navigation fit the default reading layout', a
   const groups = sidebar.locator('.group');
   await expect(groups.locator('h2')).toHaveText(['Introduction', 'Using dotfiles', 'Platforms', 'Customization']);
   for (const [label, titles] of [
-    ['Introduction', ['Getting started', 'Profiles and categories', 'Security and trust']],
+    ['Introduction', ['Getting started', 'Profiles and categories', 'Configuration basics', 'Security and trust']],
     ['Using dotfiles', ['Commands and usage', 'Package management', 'Troubleshooting']],
     ['Platforms', ['Arch desktop', 'Windows and WSL']],
     ['Customization', ['Agent configuration', 'Application settings', 'Private overlays']],
@@ -77,7 +77,7 @@ test('header sections replace the sidebar, including direct links and search des
   for (const [label, entry, titles] of [
     ['Reference', '/cli-reference.html', referenceTitles],
     ['Development', '/contributing.html', ['Contributing', 'Writing documentation', 'Architecture', 'Adding a task', 'Debugging', 'Testing', 'Writing tests', 'CI and releases']],
-    ['Guides', '/getting-started.html', ['Getting started', 'Profiles and categories', 'Security and trust', 'Commands and usage', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Agent configuration', 'Application settings', 'Private overlays']],
+    ['Guides', '/getting-started.html', ['Getting started', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Commands and usage', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Agent configuration', 'Application settings', 'Private overlays']],
   ] as const) {
     if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
     await page.locator(isMobile ? '.VPNavScreen' : '.VPNavBarMenu').getByRole('link', { name: label, exact: true }).click();
@@ -99,25 +99,25 @@ test('header sections replace the sidebar, including direct links and search des
   await expect(page.locator('.VPDocFooter .next')).toContainText('Troubleshooting');
 });
 
-test('individual tasks collapse separately from the task reference overview', async ({ page, isMobile }) => {
+test('task details collapse separately from the task reference overview', async ({ page, isMobile }) => {
   await page.goto('/home-symlinks.html');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const sidebar = page.locator('.VPSidebar');
   const overviewGroup = sidebar.locator('.group')
     .filter({ has: page.getByRole('link', { name: 'Task reference', exact: true }) });
   const tasks = sidebar.locator('.group')
-    .filter({ has: page.getByRole('heading', { name: 'Individual tasks', exact: true }) });
+    .filter({ has: page.getByRole('heading', { name: 'Task details', exact: true }) });
   await expect(overviewGroup).toHaveCount(1);
-  await expect(overviewGroup.getByRole('link')).toHaveText(referenceTitles.slice(0, 3));
+  await expect(overviewGroup.getByRole('link')).toHaveText(referenceTitles.slice(0, 2));
   await expect(tasks).toHaveCount(1);
-  await expect(tasks.getByRole('link')).toHaveText(referenceTitles.slice(3));
-  await expect(sidebar.getByRole('link', { name: 'Individual tasks', exact: true })).toHaveCount(0);
+  await expect(tasks.getByRole('link')).toHaveText(referenceTitles.slice(2));
+  await expect(sidebar.getByRole('link', { name: 'Task details', exact: true })).toHaveCount(0);
   const toggle = tasks.getByRole('button', { name: 'toggle section', exact: true });
   await toggle.click();
   await expect(page).toHaveURL('/home-symlinks.html');
   await expect(tasks.getByRole('link', { name: 'Home symlinks', exact: true })).not.toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'CLI reference', exact: true })).toBeVisible();
-  await expect(sidebar.getByRole('link', { name: 'Configuration basics', exact: true })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: 'Configuration basics', exact: true })).toHaveCount(0);
   await expect(sidebar.getByRole('link', { name: 'Task reference', exact: true })).toBeVisible();
   await sidebar.getByRole('link', { name: 'Task reference', exact: true }).click();
   await expect(page).toHaveURL('/task-reference.html');
@@ -133,6 +133,29 @@ test('individual tasks collapse separately from the task reference overview', as
   await last.click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('PSScriptAnalyzer');
   await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
+  await assertNoPageOverflow(page);
+});
+
+test('configuration basics follows profiles in Guides, including search destinations', async ({ page, isMobile }) => {
+  await page.goto('/profiles-and-categories.html');
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Configuration basics');
+  await page.locator('.VPDocFooter .next').click();
+  await expect(page).toHaveURL('/configuration-basics.html');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Configuration basics');
+  await expect(page.locator('.VPDocFooter .prev')).toContainText('Profiles and categories');
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Security and trust');
+  if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText('Guides');
+
+  await page.goto('/cli-reference.html');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await page.locator('#localsearch-input').fill('Configuration basics');
+  const result = page.locator('.VPLocalSearchBox a[href*="configuration-basics.html"]').first();
+  await expect(result).toBeVisible();
+  await result.click();
+  await expect(page).toHaveURL(/configuration-basics\.html(?:#.*)?$/);
+  await expect(page.locator('.VPSidebar').getByRole('link', { name: 'Profiles and categories', exact: true })).toHaveCount(1);
+  await expect(page.locator('.VPSidebar').getByRole('link', { name: 'CLI reference', exact: true })).toHaveCount(0);
+  if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText('Guides');
   await assertNoPageOverflow(page);
 });
 

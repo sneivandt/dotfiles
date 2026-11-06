@@ -5,12 +5,11 @@ description: Find configuration files and understand categories, paths, loading,
 
 # Configuration basics
 
-These rules apply across configuration files. Individual
-[task pages](task-reference.md) describe what runs and how to configure it.
-
-Declarations under `conf/` choose what dotfiles manages. Each [task
-page](task-reference.md) combines its behavior with the format of its declarations. This
-page covers the rules shared by those files.
+Declarations under `conf/` choose the packages, files, and settings that dotfiles
+manages. This guide explains how to find the owning file, make a change, and
+interpret the category and path rules shared by those files. Individual
+[task pages](task-reference.md) describe each declaration's exact format and
+what applying it changes.
 
 To change an application's own settings, edit its tracked source under
 [symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/), not the

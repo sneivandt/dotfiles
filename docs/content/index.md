@@ -31,5 +31,6 @@ and graphical setup target Arch Linux.
 
 Already using it? [Commands and usage](commands-and-usage.md) covers everyday
 tasks. Use the [CLI reference](cli-reference.md), the
-[task catalog](task-reference.md), and [configuration declarations](configuration-basics.md).
+[task catalog](task-reference.md), and [Configuration basics](configuration-basics.md)
+to understand commands, available tasks, and how to edit declarations.
 To change the project itself, start with [Contributing](contributing.md).

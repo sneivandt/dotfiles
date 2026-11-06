@@ -16,6 +16,13 @@ Windows checkout, Linux tools for a Linux checkout. Do not share `node_modules`
 between them or run routine Windows site checks through WSL's `/mnt/c` mount.
 Restore the locked dependencies with native `npm ci` after switching platforms.
 
+The project [.npmrc](.npmrc) selects the public npm registry for documentation
+dependencies, including `npm --prefix docs` commands and isolated committed
+checks. It overrides user/global registry settings without changing other
+projects. Command-line and environment registry overrides still take precedence.
+The machine must be able to reach the registry over HTTPS; this setting does not
+repair network or TLS failures.
+
 From the repository root:
 
 ```sh
@@ -159,9 +166,10 @@ own sidebar and previous/next sequence:
 
 - Guides: Introduction, Using dotfiles, Platforms, and Customization. Platform
   guides cover environment-specific setup and behavior; Using dotfiles covers
-  everyday commands, packages, and troubleshooting.
-- Reference: direct CLI, configuration, and Task reference overview links,
-  followed by the Individual tasks group. The overview explains task selection,
+  everyday commands, packages, and troubleshooting. Introduction follows setup
+  with Profiles and categories, Configuration basics, then Security and trust.
+- Reference: direct CLI reference and Task reference overview links,
+  followed by the Task details group. The overview explains task selection,
   scheduling, and removal scope; the individual pages cover each domain's
   behavior and declarations, including validation tasks.
 - Development: Workflows covers contributor workflow and documentation
@@ -169,7 +177,7 @@ own sidebar and previous/next sequence:
   debugging; Verification covers running checks, writing tests, and CI.
 
 Guide and Development groups start expanded with native collapse controls.
-Reference has one collapsible group, Individual tasks, rather than a separate
+Reference has one collapsible group, Task details, rather than a separate
 group for every domain. Its heading only toggles the task links. The standalone
 Task reference overview stays visible above it when the group is collapsed.
 Keep existing task URLs flat: the grouping is navigation, not a second set of routes.

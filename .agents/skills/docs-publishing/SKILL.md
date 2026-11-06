@@ -76,13 +76,14 @@ examples, and the amount of detail.
 - Keep the root introduction short, with a prominent Getting started link.
   Use the standard reading layout with outline and previous/next links disabled.
   Put platform setup and behavior in Platforms, package workflows in Using dotfiles,
-  and exact CLI/task/configuration lookups in Reference. Preserve native
-  mobile navigation. Header links switch between
+  and exact CLI/task lookups in Reference. Configuration basics belongs in
+  Guides after Profiles and categories; task pages own declaration formats.
+  Preserve native mobile navigation. Header links switch between
   Guides, Reference, and Development, each with its own sidebar and previous/next
   sequence. Guides has Introduction, Using dotfiles, Platforms, and Customization.
   Its groups start expanded with native right-hand collapse arrows. Reference
-  has direct CLI/configuration/Task reference overview links above one unlinked,
-  collapsible Individual tasks group, not separate domain groups. Keep the
+  has direct CLI reference and Task reference overview links above one unlinked,
+  collapsible Task details group, not separate domain groups. Keep the
   overview outside the group so collapsing it never hides that link.
   Keep task URLs flat and include nested children when deriving section matching
   and sidebar route coverage. Development groups contributor workflows,

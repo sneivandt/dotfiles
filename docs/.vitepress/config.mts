@@ -16,17 +16,16 @@ const group = (text: string, pages: string[]): DefaultTheme.SidebarItem => ({
 });
 
 const guide = [
-  group('Introduction', ['getting-started', 'profiles-and-categories', 'security-and-trust']),
+  group('Introduction', ['getting-started', 'profiles-and-categories', 'configuration-basics', 'security-and-trust']),
   group('Using dotfiles', ['commands-and-usage', 'package-management', 'troubleshooting']),
   group('Platforms', ['arch-desktop', 'windows-and-wsl']),
   group('Customization', ['agent-configuration', 'application-settings', 'private-overlays']),
 ];
 const reference = [
   page('cli-reference'),
-  page('configuration-basics'),
   page('task-reference'),
   {
-    text: 'Individual tasks',
+    text: 'Task details',
     collapsed: false,
     items: [
       'dotfiles-repository', 'dotfiles-launcher', 'shell-path',

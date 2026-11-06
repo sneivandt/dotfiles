@@ -78,7 +78,9 @@ a preference, or the declaration to stop selecting the link. See
 [Home symlinks](home-symlinks.md#configuration) for the full example.
 Other files under
 [conf/](https://github.com/sneivandt/dotfiles/tree/main/conf/) declare packages,
-services, and settings rather than links.
+services, and settings rather than links. [Configuration
+basics](configuration-basics.md) explains how to edit those declarations and
+interpret their paths.
 
 **Installed links are live, not copied snapshots.** Once this link is installed,
 editing its source changes what Git reads without another dotfiles update.

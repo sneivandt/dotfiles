@@ -8,7 +8,20 @@ description: Find the right place for a change, set up the pinned toolchain, and
 Most changes start with one application's files, not the CLI engine. This guide
 helps you find the right place, make a bounded change, and verify what you will
 push. Use [Architecture](architecture.md) for design details and
-[Testing](testing.md) for exact checks.
+[Testing](testing.md) for exact checks. For implementation work, use
+[Adding a task](adding-a-task.md) to follow a feature through configuration and
+scheduling, and [Writing tests](writing-tests.md) to build isolated regressions.
+
+| What do you need to do? | Guide |
+|---|---|
+| Find a change's owner and prepare the toolchain | This page |
+| Understand execution boundaries | [Architecture](architecture.md) |
+| Implement a new kind of managed state | [Adding a task](adding-a-task.md) |
+| Trace an unexpected result to its cause | [Debugging](debugging.md) |
+| Choose and run existing checks | [Testing](testing.md) |
+| Design a regression and its fixtures | [Writing tests](writing-tests.md) |
+| Explain a feature or maintain its reference | [Writing documentation](writing-documentation.md) |
+| Understand CI and publication | [CI and releases](ci-and-releases.md) |
 
 ## Contribution workflow
 
@@ -44,14 +57,11 @@ configuration. A clean working tree does not make a live installation safe.
 | Hooks or automation | [Git hooks](#git-hooks) and [CI and releases](ci-and-releases.md) |
 
 Read the closest existing implementation before adding a new abstraction.
-Repository [skills](https://github.com/sneivandt/dotfiles/tree/main/.agents/skills/) contain focused contributor procedures;
-they do not replace the source or these guides. For common configuration work,
-start with [shell configuration](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/shell-configuration/SKILL.md),
-[Hyprland sessions](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/hyprland-session/SKILL.md),
-[Quickshell](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/desktop-shell/SKILL.md), or
-[Vim/Neovim](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/editor-configuration/SKILL.md).
-[Self-update](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/self-update/SKILL.md) covers binary replacement;
-[Rust patterns](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/rust-patterns/SKILL.md) routes unfamiliar CLI work.
+For application preferences, start with [Application settings](application-settings.md);
+for session and desktop behavior, use [Arch desktop](arch-desktop.md).
+Those guides identify the editable sources and explain effects that can occur
+before the CLI runs. [Architecture](architecture.md#repository-layout) maps
+unfamiliar Rust work to its owning layer.
 
 ### 3. Make and test the change
 
@@ -77,8 +87,8 @@ It verifies the committed range, not unstaged fixes. Resolve local failures and
 record unavailable checks. Keep ordinary hooks lightweight rather than running
 the full gate at every commit. After pushing, follow the exact commit's
 [CI result](ci-and-releases.md#reading-a-run), including informational failures.
-A request to push includes that monitoring by default, not just uploading Git
-objects. Do not report completion while selected CI is pending.
+Wait for the selected checks and any required publication before treating the
+change as delivered. A successful upload is not evidence that CI passed.
 
 ## Development setup
 
@@ -174,38 +184,19 @@ prefer the direct Cargo commands above.
 ### Config-backed state
 
 For an existing field or category, change the data and its focused regression.
-For a new configuration section:
-
-1. Add its typed decoder and semantic validation in the owning domain, including
-   invalid-input tests.
-2. Add it to `config_section_inventory!` in
-   [app/config](https://github.com/sneivandt/dotfiles/tree/main/cli/src/app/config/). This provides its field, typed store
-   handle, summary count, and empty unit fixture.
-3. Wire any special loading, overlay behavior, provenance, and platform
-   filtering in `Config::load`, and validation in `Config::validate`.
-4. Implement the resource or operation, register its task, and add real
-   configuration plus command/configuration tests.
-5. Keep conditional symlinks aligned with categories and document the format
-   on its [task page](task-reference.md). Shared loading rules belong in
-   [Configuration basics](configuration-basics.md).
+Keep conditional symlinks aligned with categories. For a new section, follow
+[Adding configuration](adding-a-task.md#add-configuration-only-where-needed),
+including typed decoding, inventory registration, validation, and fixtures.
+Document the format on its [task page](task-reference.md); shared loading rules
+belong in [Configuration basics](configuration-basics.md).
 
 ### Tasks and workflows
 
-A resource manages independent items; an operation manages a workflow
-that converges as one unit. Reuse their lifecycle helpers rather than writing
-another preview/apply/result-accounting loop.
-
-Give a task a stable selector and explicit applicability, prerequisites,
-privilege requirements, and command membership. Static update/remove tasks go
-in the catalog; command-specific tasks belong to that command. Same-domain
-dependencies stay in the domain, and cross-domain dependencies belong in the
-app layer. List order does not schedule work.
-
-Use a failure-blocking dependency when success is required, and an ordering-only
-dependency when the task should wait and then recheck state itself. Preserve
-selection, `--with-deps`, and discovery behavior; update the
-[task reference](task-reference.md). [Architecture](architecture.md) explains the contracts
-and existing task helpers.
+Follow [Adding a task](adding-a-task.md) for the full implementation workflow:
+choose resource or operation ownership, define applicability and readiness,
+wire command membership and dependencies, and document the reader-facing
+contract. [Architecture](architecture.md) explains why those boundaries exist.
+Use [Writing tests](writing-tests.md) for lifecycle and scheduling regressions.
 
 ### Platform-specific changes
 
@@ -263,40 +254,13 @@ for reviewed recovery from a broken check, never known sensitive content.
 
 ## Documentation
 
-Write for the reader's task. Use direct language, short examples with verified
-commands, and safety information beside the action it affects. Keep private
-content, credentials, and unsanitized logs out of examples.
+Update the guide that owns the reader's workflow rather than adding a second
+explanation elsewhere. Everyday commands belong in
+[Commands and usage](commands-and-usage.md), shared declaration rules in
+[Configuration basics](configuration-basics.md), and each task's behavior and
+format on its [task page](task-reference.md).
 
-Keep only flags needed for the example's purpose. Use headings that name the
-reader's task or the setting they need to find, and inspect the generated
-"On this page" navigation. Prefer two-column tables when cells need explanation;
-keep wider tables for short comparisons. Highlight code lines only when the
-surrounding text explains why they matter.
-
-Give each explanation one home. Everyday commands belong in
-[Commands and usage](commands-and-usage.md); exact syntax belongs in
-[CLI reference](cli-reference.md). Keep application, agent, and package guidance
-in their owning guides, with maintenance details after everyday workflows.
-Each [task page](task-reference.md) owns the task's behavior and configuration
-format. Keep its summary table useful for selection: commands, availability,
-blocking dependencies, ordering-only dependencies, and the owning implementation.
-Verify dependencies in both the domain and app catalog; distinguish conditional
-waits and keep removal separate. Refer to other pages by name rather than by
-where they appear in navigation, so each page works as a shared link.
-Shared loading, category, and path rules belong in
-[Configuration basics](configuration-basics.md). Link to those explanations
-instead of keeping another copy in a long reference page.
-
-Use relative `.md` links between guides and full GitHub URLs for tracked sources
-outside the guide collection. For new pages, match the title, filename, and
-sidebar label, then register the guide in
-[docs/.vitepress/config.mts](https://github.com/sneivandt/dotfiles/blob/main/docs/.vitepress/config.mts).
-Update incoming links after moving pages or headings; do not add compatibility
-routes or heading aliases.
-
-Run the [documentation checks](testing.md#documentation-site) and review the
-rendered result. Site preview, configuration, and publishing instructions live in
-[docs/README.md](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md).
-For detailed guidance, use
-[Docs writing](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-writing/SKILL.md)
-and [Docs publishing](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-publishing/SKILL.md).
+[Writing documentation](writing-documentation.md) covers page structure,
+reusable examples, source verification, and task reference conventions.
+Site preview, checks, and publication mechanics live in the
+[site maintenance README](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md).

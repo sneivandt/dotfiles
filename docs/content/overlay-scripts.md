@@ -5,6 +5,11 @@ description: Declare private setup and removal scripts, understand their selecto
 
 # Overlay scripts
 
+Overlay scripts are the escape hatch for private setup that the built-in
+declarations cannot express. A script is executable code with its own
+inspection, application, preview, and removal behavior. Prefer an existing
+package, file, service, or settings declaration when it already owns the work.
+
 | Task detail | Value |
 |---|---|
 | Selector | `script-<normalized-name>` for each active declaration |
@@ -73,6 +78,13 @@ dotfiles remove --only script-configure-private-workstation --dry-run
 These commands execute the script's checks. An update preview can also execute its
 `--dryrun` mode; a removal preview does not. Review the script before either command.
 Its safety and completeness depend on its implementation.
+
+The Rust CLI cannot make a script's check read-only or undo a partially applied
+script. Test every protocol mode in an isolated fixture before selecting it
+for a real machine. A normal preview is not that fixture: it actually invokes
+the script. [Private overlays](private-overlays.md) explains the selection and
+trust boundary; [Writing tests](writing-tests.md#confine-every-writable-path)
+explains the isolation expected for contributor tests.
 
 Keep the original overlay, script, and profile available until removal finishes. Keep
 private values out of output, which can enter the console and run log.

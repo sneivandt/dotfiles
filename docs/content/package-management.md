@@ -38,7 +38,7 @@ the Windows Git package:
 packages = ["ripgrep"]
 
 [arch-desktop]
-packages = [{ name = "spotify", aur = true }]
+packages = [{ name = "visual-studio-code-bin", aur = true }]
 
 [windows]
 packages = ["Git.Git"]

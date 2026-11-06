@@ -5,6 +5,11 @@ description: Live links from home to managed sources.
 
 # Home symlinks
 
+A symbolic link makes a home-directory path refer to a source in the checkout
+instead of holding a separate copy. Editing that tracked source can change
+the application's configuration immediately. This task creates those links;
+it does not merge an existing application's settings into the source.
+
 | Task detail | Value |
 |---|---|
 | Selector | `symlinks` |
@@ -52,6 +57,14 @@ symlinks = ["config/git/config"]
 To change a Git preference, edit the source. To stop selecting this link, change the
 declaration; that does not remove an already-installed link.
 
+Linking an entire directory also exposes future files added beneath it.
+Linking individual files gives narrower ownership but needs declarations for
+new files. Choose that boundary deliberately when sharing a directory with
+files an application writes itself. Linux's
+[symbolic link reference](https://man.archlinux.org/man/symlink.7.en) explains
+link resolution; [Windows and WSL](windows-and-wsl.md#developer-mode-and-symlinks)
+explains Windows symlinks, junctions, and checkout requirements.
+
 A string names a source and derives a dot-prefixed home target:
 
 ```toml
@@ -90,12 +103,16 @@ before taking over an existing application's configuration.
 
 ### Glob patterns
 
-Use a complete `*` segment to link entries individually:
+Use a complete `*` segment to link entries individually. For example, suppose
+you maintain theme files under `symlinks/config/example-app/themes/`:
 
-```toml
+```toml title="conf/symlinks.toml (illustrative example)"
 [base]
-symlinks = ["apm/plugins/*"]
+symlinks = ["config/example-app/themes/*"]
 ```
+
+An entry named `dark.toml` becomes `~/.config/example-app/themes/dark.toml`.
+The application name is illustrative; the pattern requires real source entries.
 
 This is intentionally smaller than shell glob syntax:
 
@@ -108,16 +125,16 @@ This is intentionally smaller than shell glob syntax:
 An explicit target may contain captures. If it does, source and target must contain the
 same number of `*` segments, substituted in order:
 
-```toml
+```toml title="conf/symlinks.toml (alternative target)"
 [base]
 symlinks = [
-  { source = "skills/*", target = ".copilot/skills/*" },
+  { source = "config/example-app/themes/*", target = ".local/share/example-app/themes/*" },
 ]
 ```
 
-That example requires entries under `symlinks/skills/`. For this repository's agent
-content, prefer its existing [APM deployment](agent-configuration.md) rather than
-introducing another deployment route.
+This alternative sends the same source entries to
+`~/.local/share/example-app/themes/`. Choose the location the application
+actually reads; an explicit target does not get another leading dot.
 
 ## Preview and apply
 

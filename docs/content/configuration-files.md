@@ -5,6 +5,11 @@ description: Checks that required main configuration files are present.
 
 # Configuration files
 
+The main checkout has a required set of configuration files, even when a
+platform has no entries for some domains. Keeping that structure makes an
+empty declaration distinguishable from an incomplete checkout. Optional
+overlay files follow different loading rules.
+
 | Task detail | Value |
 |---|---|
 | Selector | `config-files` |
@@ -22,6 +27,13 @@ not use its task.
 The [configuration file index](configuration-basics.md#files) lists the required files.
 Parsing and field validation happen while loading configuration, before this task can
 run.
+
+If startup reports a required file missing, restore the tracked file before
+retrying; `--only config-files` cannot get past the loader. Do not copy a
+private overlay file into the public checkout as a workaround. A missing
+`hooks/` directory produces a warning in this task, unlike a missing required
+TOML file. File presence alone does not establish semantic correctness:
+use [Configuration diagnostics](configuration-diagnostics.md) for that.
 
 ## Run the check
 

@@ -5,6 +5,11 @@ description: A command that delegates to this checkout.
 
 # Dotfiles launcher
 
+The launcher makes `dotfiles` callable without typing the checkout's full path.
+It is a small entrypoint into the shell or PowerShell wrapper, not another
+installation of the Rust program. Binary download, source-build selection,
+and argument forwarding remain the wrapper's responsibility.
+
 | Task detail | Value |
 |---|---|
 | Selector | `launcher` |
@@ -24,6 +29,12 @@ Writes a small launcher script that calls this checkout's wrapper:
 
 It repairs stale content; it does not copy the Rust binary. Moving the checkout can
 invalidate the recorded path.
+
+Launcher installation and command discovery are separate: [Shell PATH](shell-path.md)
+adds the destination directory to the user's search path. If the launcher
+exists but the shell cannot find it, inspect PATH before reinstalling or
+moving the checkout. [Getting started](getting-started.md#5-verify-the-installation)
+shows how to check the resulting installation.
 
 ## Configuration
 

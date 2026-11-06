@@ -11,10 +11,12 @@ description: >
 # Documentation Writing
 
 Write for the person doing the work, not to sound like a documentation generator.
-Use [Contributing](../../../docs/content/contributing.md#documentation) for topic
+Use [Writing documentation](../../../docs/content/writing-documentation.md) for topic
 ownership and the [site README](../../../docs/README.md#checks) for
 checks. Load [docs-publishing](../docs-publishing/SKILL.md) when changing page
 organization, routes, navigation, rendering, or publication.
+Use [task-reference-writing](../task-reference-writing/SKILL.md) for the
+specific structure and source evidence needed by task reference pages.
 
 ## Establish what the reader needs
 
@@ -44,6 +46,10 @@ edge cases explained by the tool itself out unless they affect a reader's task.
 
 ## Choose links, code, and emphasis
 
+- Keep human-facing procedures in human documentation. Do not link a skill as
+  reading the user needs to follow; explain the procedure or link its owning
+  guide instead. Skill sources may be linked when the subject is editing or
+  understanding the skill itself.
 - Keep reader-facing prose independent of the site's navigation. Refer to other
   pages by name and link to them; do not describe where a page sits in a sidebar,
   header section, or navigation group. Navigation can change without changing
@@ -104,6 +110,10 @@ edge cases explained by the tool itself out unless they affect a reader's task.
   source files from installed links and generated output.
 - Use public, synthetic examples. Never include private overlay content,
   credentials, or unsanitized logs.
+- Prefer common tools or clearly labeled fictional applications when teaching
+  a format. Do not make a reader reverse-engineer a custom package, timer, or
+  personal preference just to understand a field. Keep actual repository
+  inventories distinct from illustrative examples and state required files.
 
 ## Review the finished text
 

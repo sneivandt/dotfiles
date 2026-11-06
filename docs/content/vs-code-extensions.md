@@ -5,6 +5,11 @@ description: Missing editor extensions.
 
 # VS Code extensions
 
+Extensions add editor functionality such as language support and formatting.
+They are installed through the editor CLI, separately from installing the
+editor package or linking its settings. This task ensures the selected IDs
+are present; it does not pin extension versions or configure their preferences.
+
 | Task detail | Value |
 |---|---|
 | Selector | `vscode-extensions` |
@@ -37,6 +42,14 @@ Use full `<publisher>.<extension>` strings. Repeated IDs, including case-only va
 are installed once using the first spelling. The task needs an available VS Code CLI and
 installs missing extensions; Arch chroot provisioning defers this to first login. See
 [VS Code extensions](#what-it-does).
+
+An extension ID is the publisher-qualified Marketplace identifier, not the
+display name shown in the editor. The
+[VS Code command-line reference](https://code.visualstudio.com/docs/configure/command-line)
+documents listing, installing, and uninstalling extensions. When installation
+appears to succeed in the wrong editor, check which editor CLI was selected
+and inspect that editor's Extensions view. Preferences belong in
+[Application settings](application-settings.md#visual-studio-code), not this list.
 
 ## Preview and apply
 

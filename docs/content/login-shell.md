@@ -5,6 +5,12 @@ description: The account login shell on Linux.
 
 # Login shell
 
+The login shell is an account setting that chooses the shell for future login
+sessions. It is distinct from a terminal application's command and from the
+shell process already running. Dotfiles chooses zsh on Linux; its prompt,
+plugins, and startup files are managed separately through
+[application settings](application-settings.md#shell-configuration).
+
 | Task detail | Value |
 |---|---|
 | Selector | `login-shell` |
@@ -24,6 +30,13 @@ State comes from the account database, not `$SHELL`. Apply uses `usermod` as roo
 -n usermod` when available without prompting, otherwise `chsh`. A matching shell name
 with a missing/unusable executable still needs repair. Your currently running terminal
 shell is not replaced.
+
+After applying, a new login session is the meaningful check, not the current
+value of `$SHELL`. If zsh cannot be found, resolve its package installation
+before retrying rather than pointing the account at an unavailable executable.
+The [chsh manual](https://man.archlinux.org/man/chsh.1.en) explains the
+underlying account operation and its permission restrictions; dotfiles may
+use `usermod` instead as described above.
 
 ## Configuration
 

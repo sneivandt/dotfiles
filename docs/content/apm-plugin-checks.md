@@ -5,6 +5,11 @@ description: Validates local APM plugins without deploying them.
 
 # APM plugin checks
 
+An APM plugin is a package of agent content with its own manifest and
+packaging rules. This task asks APM to validate local plugin packages before
+deployment. It checks package shape, not whether an instruction is useful,
+a tool is trustworthy, or every deployment target works.
+
 | Task detail | Value |
 |---|---|
 | Selector | `apm-plugins` |
@@ -22,6 +27,15 @@ private overlay script.
 Use [Agent packages](agent-packages.md) for deployment behavior and [Agent
 configuration](agent-configuration.md#validate-preview-and-apply) for the
 package-maintenance workflow.
+
+The local sources are beneath
+[symlinks/apm/plugins/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/).
+Fix a reported manifest or packaging error in that source plugin, not in an
+installed or generated copy. The
+[APM command reference](https://microsoft.github.io/apm/reference/) explains
+packaging commands. A successful local pack check does not resolve remote
+dependencies, establish authentication, or replace a reviewed deployment
+preview.
 
 ## Run the check
 

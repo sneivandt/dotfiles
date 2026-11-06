@@ -5,6 +5,12 @@ description: APM YAML fragments selected by symlinks.
 
 # Agent packages
 
+[Agent Package Manager](https://github.com/microsoft/apm) (APM) resolves and
+deploys reusable agent content such as skills, instructions, and plugins.
+Dotfiles selects and combines configuration fragments; APM owns dependency
+resolution and deployment. This is separate from application preferences in
+[Agent settings](agent-settings.md).
+
 | Task detail | Value |
 |---|---|
 | Selector | `agent-packages` |
@@ -50,6 +56,14 @@ for the fragment and any local plugins it requires. These paths point to
 plugin links installed in your home directory. See [Agent
 configuration](agent-configuration.md) for adding packages, choosing targets, generated
 files, and cleanup.
+
+Treat fragments as the editable input and the merged manifest as generated
+output. Editing the generated manifest loses the connection to profile and
+overlay selection and can be overwritten by the next run. The
+[APM reference](https://microsoft.github.io/apm/reference/) explains native
+commands; [Agent configuration](agent-configuration.md) explains this
+repository's user-scope targets, compatibility behavior, and trust boundary.
+Adding a dependency can introduce executable hooks or tools, not just text.
 
 ## Preview and apply
 

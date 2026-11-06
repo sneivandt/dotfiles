@@ -5,6 +5,11 @@ description: Declared Windows current-user registry values.
 
 # User registry settings
 
+The [Windows registry](https://learn.microsoft.com/en-us/windows/win32/sysinfo/registry)
+stores typed settings in named keys and values. This task manages only
+HKEY_CURRENT_USER (HKCU), the current user's hive. It is intended for declared
+user preferences, not arbitrary registry imports or machine policy.
+
 | Task detail | Value |
 |---|---|
 | Selector | `registry` |
@@ -25,14 +30,19 @@ read these settings only at startup. Remove does not restore former values.
 Edit
 [conf/registry.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/registry.toml).
 Registry sections are labels, **not categories**. Every record applies on Windows
-regardless of profile:
+regardless of profile.
 
-```toml title="conf/registry.toml (excerpt)"
-[explorer]
-path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer'
+The following illustrative key demonstrates a string and a DWORD value.
+Replace the path and value names with settings documented by the application;
+creating this example key alone does not configure a real application:
 
-[explorer.values]
-EnableAutoTray = 0
+```toml title="conf/registry.toml (example)"
+[example-app]
+path = 'HKCU:\Software\ExampleApp'
+
+[example-app.values]
+Theme = "dark"
+ShowStatusBar = 1
 ```
 
 Each record needs `path` and `values`; only `HKCU:\` is supported. Use TOML literal
@@ -50,6 +60,12 @@ desired value; DWORD `14` and string `"14"` do not.
 
 Fields and value types are checked on non-Windows systems too, but the settings are only
 applied on Windows. Existing undeclared values are preserved.
+
+Check the application's expected value type as well as its name: a numeric
+string is not interchangeable with a DWORD. Dotfiles writes the declaration
+you provide; it cannot establish that an undocumented application setting
+still has the same meaning on a newer Windows version. Keep a record of the
+original value before deliberately changing a preference you may want to undo.
 
 ## Preview and apply
 

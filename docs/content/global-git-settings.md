@@ -5,6 +5,11 @@ description: Global Git values and Windows autocrlf cleanup.
 
 # Global Git settings
 
+Git settings have system, user, and repository scopes. This task manages
+selected user-wide values, so a change can affect repositories other than
+dotfiles. It is separate from linking the shared Git configuration and from
+installing this repository's contributor hooks.
+
 | Task detail | Value |
 |---|---|
 | Selector | `git` |
@@ -50,6 +55,19 @@ values used to remember profiles and overlays.
 
 For Git aliases such as `git gr` and `git contributors`, see [Application
 settings](application-settings.md#git).
+
+To investigate a value that does not take effect, run this inside the affected
+repository:
+
+```sh
+git config --show-origin --show-scope --get-all core.autocrlf
+```
+
+Replace the key with the setting you are diagnosing. The output identifies
+included files and repository overrides as well as the managed global value;
+no output with exit status 1 means the key is absent. Git's
+[configuration reference](https://git-scm.com/docs/git-config) defines precedence,
+multivalue settings, and each supported key.
 
 ## Preview and apply
 

@@ -9,6 +9,12 @@ Find the task below, then open its page for configuration examples and the
 changes it makes. A selector chooses a kind of work, such as `symlinks` or
 `packages`, rather than one file or package inside that task.
 
+A task brings one domain of desired state into place, such as home links or
+service enablement. Its declarations choose the individual items. The task
+page explains the underlying tool, what dotfiles manages on top of it, and
+what it deliberately leaves alone. `check` tasks inspect configuration or
+source instead of applying that desired state.
+
 Start with the installed launcher and a selected profile:
 
 ```sh
@@ -91,7 +97,7 @@ For file-copy details and links that removal must leave in place, see
 | `shellcheck` | [ShellCheck](shellcheck.md): Shell scripts in the main repository |
 | `psscriptanalyzer` | [PSScriptAnalyzer](psscriptanalyzer.md): PowerShell scripts in the main repository |
 
-All commands load configuration before filtering. `--only` cannot bypass a
+The check command loads configuration before filtering. `--only` cannot bypass a
 malformed [required file](configuration-basics.md#files).
 
 Missing optional tools cause visible unmet skips; `--fail-on-skip` or CI makes
@@ -100,6 +106,28 @@ or private overlay script.
 
 Use [CLI validation](testing.md#cli-validation) for commands, then select
 additional integration/configuration-drift coverage as appropriate.
+
+## Read a task page
+
+Each task page starts with its purpose and a selection summary, followed by
+its behavior and relevant declaration format. Read availability separately
+from prerequisites: a task can be selected for your platform but remain unmet
+because a required tool, privilege, or input is absent.
+
+| Detail | How to use it |
+|---|---|
+| Selector and commands | Choose the task in the right update, remove, or check command |
+| Availability or scope | Understand which platforms, declarations, and sources it covers |
+| Requires success / Runs after | Decide whether to include predecessor tasks; see the scheduling model below |
+| Implementation | Find the owning code and its tests when changing behavior |
+| Configuration | Edit the declaration or source, not a generated output or installed copy |
+| Preview and removal | Review side effects and retained state before applying or retiring the feature |
+
+Tool references describe the underlying tool, not a promise that dotfiles
+supports every upstream option. For example, systemd supports more enablement
+relationships than dotfiles' offline user-unit preparation does. Prefer the
+task's documented scope when planning an update, and the linked upstream
+documentation when learning the tool itself.
 
 ## Scheduling model
 

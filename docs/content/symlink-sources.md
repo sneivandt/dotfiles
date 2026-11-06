@@ -5,6 +5,11 @@ description: Checks declared symlink and permission sources across active and in
 
 # Symlink sources
 
+A declaration names content that must exist in the source checkout. This task
+checks those link and permission inputs, including categories the current
+machine does not select. It helps catch a rename or incomplete commit before
+another platform uses the affected configuration.
+
 | Task detail | Value |
 |---|---|
 | Selector | `symlink-sources` |
@@ -22,6 +27,14 @@ profile or platform selects it.
 Review the declarations in [Home symlinks](home-symlinks.md#configuration) and [File
 permissions](file-permissions.md#configuration). A source check does not prove that
 existing home destinations can be replaced or that the selected applications work.
+
+When a path is reported missing, check both the declaration and its declaring
+repository's source tree. Fix the source spelling or include the missing
+tracked content; creating an installed home file is not a substitute for a
+missing symlink source. Permission entries can map through a declared link
+to its source, so moving a parent directory can affect more than one finding.
+Glob syntax is deliberately limited to complete `*` segments, as described in
+[Glob patterns](home-symlinks.md#glob-patterns).
 
 ## Run the check
 

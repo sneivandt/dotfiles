@@ -5,6 +5,11 @@ description: Analyzes PowerShell scripts in the main repository.
 
 # PSScriptAnalyzer
 
+[PSScriptAnalyzer](https://learn.microsoft.com/en-us/powershell/utility-modules/psscriptanalyzer/overview)
+is PowerShell's rule-based static analyzer. This task uses it to inspect
+repository scripts; it does not execute their configuration actions. Having
+PowerShell installed is not enough if the analyzer module is unavailable.
+
 | Task detail | Value |
 |---|---|
 | Selector | `psscriptanalyzer` |
@@ -22,6 +27,12 @@ overlay's scripts.
 Use the [testing guide](testing.md#choosing-coverage) to select native Windows and
 script-runtime checks when changing behavior. Static analysis is not a substitute for
 those tests.
+
+Use the reported filename, line, and rule name to locate a finding in the
+tracked source. Review the rule's intent before suppressing it, particularly
+for argument handling or compatibility with Windows PowerShell. A clean
+analysis result cannot prove Windows process quoting, UAC, or registry
+behavior. Those need the isolated runtime checks selected for the change.
 
 ## Run the check
 

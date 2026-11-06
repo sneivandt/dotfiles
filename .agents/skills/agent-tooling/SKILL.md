@@ -53,6 +53,6 @@ repository work must remain possible without it.
 
 Use [CLI validation](../../../docs/content/testing.md#cli-validation) and
 [Choosing coverage](../../../docs/content/testing.md#choosing-coverage).
-Preview reconciliation follows [Dry-run testing](../../../docs/content/testing.md#dry-run-testing).
+Preview reconciliation follows [Dry-run testing](../../../docs/content/writing-tests.md#dry-run-testing).
 Packing is not deployment proof. Do not deploy to the live home to test content
 or an adapter; use synthetic fragments, lockfiles, and target directories.

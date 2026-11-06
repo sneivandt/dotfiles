@@ -49,10 +49,9 @@ shards must pass before the aggregate gate succeeds. Inspect their artifacts
 for surviving mutants, timeouts, and tool errors. Coverage reports remain
 informational.
 
-Push requests include CI monitoring by default unless explicitly declined.
-Wait for the requested commit's run, inspect failures, and report its outcome.
-If access or connectivity prevents monitoring, report the exact SHA, run when
-known, and blocker; do not describe an unobserved result as passed.
+Wait for the pushed commit's run and inspect failures before relying on its
+result. When sharing a result, include the commit and run link so another
+contributor can distinguish that patch from a later successful push.
 
 ## Change-aware scheduling
 

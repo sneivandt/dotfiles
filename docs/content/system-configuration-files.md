@@ -5,6 +5,11 @@ description: Structured merges into files below /etc.
 
 # System configuration files
 
+Some settings belong to administrator-owned files rather than a user's home.
+This task merges selected fragments into those files while preserving unrelated
+settings. It is not a whole-file symlink or a text patch: the selected format
+determines which keys or rules the fragment owns.
+
 | Task detail | Value |
 |---|---|
 | Selector | `system-files` |
@@ -28,21 +33,25 @@ merge preserves the destination's owner, group, and permissions. New files use
 
 Edit
 [conf/system-files.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml).
-Use structured fragments for administrator-owned files, not home symlinks:
+Use structured fragments for administrator-owned files, not home symlinks.
+For an illustrative application that reads `/etc/example-app/settings.toml`,
+add this declaration:
 
-```toml
+```toml title="conf/system-files.toml (example)"
 [linux]
-files = [{ source = "codex/requirements.toml", merge = "toml" }]
-
-[arch]
-files = [{ source = "pacman.conf", merge = "ini" }]
-
-[arch-desktop]
-files = [{ source = "pam.d/login", merge = "pam" }]
-
-[wsl]
-files = [{ source = "wsl.conf", merge = "ini" }]
+files = [{ source = "example-app/settings.toml", merge = "toml" }]
 ```
+
+Create the corresponding fragment in the declaring repository:
+
+```toml title="system/example-app/settings.toml (example)"
+[logging]
+level = "warn"
+```
+
+Applying this example manages `logging.level`, preserving unrelated destination
+keys. The application and setting are illustrative, not files that dotfiles
+requires every machine to have. Use the real application's format and keys.
 
 `source` and `merge` are required. Sources belong under the declaring repository's
 `system/`. The optional `target` defaults to `/etc/<source>` and must be an absolute
@@ -72,6 +81,14 @@ cover detailed rule matching and placement.
 **These are privileged changes, not a reversible patch.** An overlay replaces the whole
 entry for a matching destination, including source and strategy. Removing a declaration
 does not restore previous content.
+
+Choose the strategy from the destination's actual format, not its filename
+alone. In particular, PAM (Pluggable Authentication Modules) rules control
+authentication and session behavior; their order is significant. Read the
+[PAM configuration manual](https://man.archlinux.org/man/pam.d.5.en) before
+changing those fragments, and keep a recovery path that does not depend on
+the login mechanism you are editing. For WSL's specific file and restart
+requirements, use [Windows and WSL](windows-and-wsl.md).
 
 ## Preview and apply
 

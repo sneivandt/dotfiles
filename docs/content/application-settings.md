@@ -277,7 +277,8 @@ plugin's locked revision. Do not delete the entire plugin tree as a general
 repair. If necessary, close the editor and move aside only the affected directory
 under the actual data path before retrying.
 
-Contributors changing bootstrap pins or plugin loading should use
-[Editor configuration](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/editor-configuration/SKILL.md)
-and the isolated [application configuration tests](testing.md#application-configuration).
-Do not verify first-launch behavior through the live installed profile.
+For bootstrap or plugin-loading changes, preserve the separate Vim and Neovim
+entry points and update the manager pin or lockfile only when that is the
+intended change. Use the isolated
+[application configuration tests](testing.md#application-configuration), not
+the live installed profile, to verify startup behavior.

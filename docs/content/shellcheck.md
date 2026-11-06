@@ -5,6 +5,11 @@ description: Analyzes shell scripts in the main repository.
 
 # ShellCheck
 
+[ShellCheck](https://www.shellcheck.net/wiki/) is a static analyzer for supported
+shell dialects. It finds source-level problems such as unsafe expansion and
+quoting mistakes without running the script's setup actions. It is not a
+general validator for every shell language or application configuration file.
+
 | Task detail | Value |
 |---|---|
 | Selector | `shellcheck` |
@@ -22,6 +27,13 @@ private overlay script.
 For changes to managed shell startup and helpers, also use the isolated [shell
 tests](testing.md#choosing-coverage). Passing static analysis alone does not verify
 startup, completion, or history behavior.
+
+Findings include an `SC` rule number. Follow that rule in the upstream wiki
+to understand the warning, then correct the script or make a narrowly
+justified suppression. The repository's shared discovery rules select
+supported shell inputs, not every file beneath the checkout; zsh-specific
+startup behavior needs its own tests. Keep the script's intended shell and
+shebang consistent rather than changing dialect just to silence an analyzer.
 
 ## Run the check
 

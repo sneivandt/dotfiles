@@ -15,7 +15,9 @@ alone.
 
 This guide is for contributors choosing where a change belongs. For commands,
 read [Usage](commands-and-usage.md); for desired-state declarations, read
-[Configuration](configuration-basics.md).
+[Configuration](configuration-basics.md). To implement a feature, follow
+[Adding a task](adding-a-task.md); for isolated regression fixtures, use
+[Writing tests](writing-tests.md).
 
 ## System view
 

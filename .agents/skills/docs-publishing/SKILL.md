@@ -26,7 +26,7 @@ examples, and the amount of detail.
   first action linking to Getting started; keep the setup walkthrough in that
   guide rather than duplicating it on the landing page. Do not bury the first
   action beneath a link directory or oversized hero.
-- Follow the [topic ownership rules](../../../docs/content/contributing.md#documentation)
+- Follow the [topic ownership rules](../../../docs/content/writing-documentation.md#choose-the-owning-page)
   when adding or moving material. Link to the owning guide rather than creating
   another explanation of the same workflow.
 - Keep everyday workflows before exhaustive reference, and source-finding
@@ -69,28 +69,29 @@ examples, and the amount of detail.
 - Guides belong in `docs/content/`, selected by `srcDir`. Match the front-matter
   title, Markdown H1, and sidebar label. Filenames and URLs use lowercase,
   hyphenated titles; `getting-started.md` publishes at `/getting-started.html`.
-  Keep a description and an explicit sidebar group for every guide.
+  Keep a description and an explicit sidebar entry for every guide.
 - Keep one Markdown H1 and relative `.md` guide links. VitePress handles the
   published link extensions; the configured GitHub-compatible heading slugger
   preserves repository anchors. Repository source links need GitHub URLs.
 - Keep the root introduction short, with a prominent Getting started link.
   Use the standard reading layout with outline and previous/next links disabled.
   Put platform setup and behavior in Platforms, package workflows in Workflows,
-  and exact CLI/task/configuration lookups in Reference. Preserve one-level
-  sidebar groups and native mobile navigation. Header links switch between
+  and exact CLI/task/configuration lookups in Reference. Preserve native
+  mobile navigation. Header links switch between
   Guides, Reference, and Development, each with its own sidebar and previous/next
   sequence. Guides has Introduction, Workflows, Platforms, and Customization.
   Its groups start expanded with native right-hand collapse arrows. Reference
-  labels task groups explicitly and follows the CLI's domain folders, with
-  app-owned validation tasks in their own group. Keep CLI syntax, the task index,
-  and shared configuration rules together outside task groups. Each task page
-  owns its behavior, declarations, prerequisites, preview limits, and removal
-  scope. Its summary table records commands, availability, dependency types,
-  and implementation sources. Verify domain dependencies plus app-catalog wiring;
-  distinguish success requirements, ordering-only and conditional waits, and
-  update versus removal graphs. Keep the task catalog as an
-  index rather than a second copy of those explanations. Development remains a
-  short direct list.
+  has direct CLI/configuration links and one linked Task reference parent with
+  the individual task pages as children, not separate collapsible domain groups.
+  Keep task URLs flat and include nested children when deriving section matching
+  and sidebar route coverage. Development groups contributor workflows,
+  implementation/debugging guidance, and verification. Testing owns coverage
+  selection and execution commands; Writing tests owns regression design,
+  fixture construction, and assertions. Writing documentation is the human
+  authoring guide; do not substitute skill links in published prose. Use
+  [task-reference-writing](../task-reference-writing/SKILL.md) for task-page
+  content and evidence requirements. Keep the catalog an index, not a second
+  copy of each task's explanation.
 - Use `::: warning Title` for safety callouts. Verify their title, body, and
   visible styling in the rendered site. The guide outline includes levels 2–3.
 - Mermaid is rendered by the local theme component and follows theme changes

@@ -4,7 +4,7 @@ This README is for maintaining the website at
 [dotfiles.stuartneivandt.com](https://dotfiles.stuartneivandt.com/).
 It stays in the repository, outside the published guide collection.
 For writing or reorganizing guide content, start with
-[Contributing](content/contributing.md#documentation). Repository-wide coverage
+[Writing documentation](content/writing-documentation.md). Repository-wide coverage
 selection lives in [Testing](content/testing.md); site-only checks are below.
 
 ## Preview locally
@@ -35,6 +35,19 @@ npm run preview
 The commands also work from PowerShell. Neither preview publishes the site or
 applies machine configuration. Inspect desktop and narrow-screen navigation,
 search, theme choices, diagrams, and source links before publishing.
+
+For a production preview restricted to this machine, build as above, then
+serve only the built directory from the repository root:
+
+```powershell
+python -m http.server 4321 --bind localhost --directory docs/dist
+```
+
+Open `http://localhost:4321/` and stop the server with Ctrl+C when finished.
+Use `python3` where required. The pinned VitePress preview server does not
+honor `--host` as a binding restriction; its printed localhost URL does not
+mean it listens only on loopback. The Python command explicitly binds loopback
+and serves the public build, not the checkout or a development server.
 
 ## Checks
 
@@ -147,17 +160,19 @@ own sidebar and previous/next sequence:
 - Guides: Introduction, Workflows, Platforms, and Customization. Platform
   guides cover environment-specific setup and behavior; Workflows covers
   everyday commands, packages, and troubleshooting.
-- Reference: a CLI and configuration group for shared lookups, followed by
-  explicitly labeled task groups matching the CLI's domain folders. Validation
-  has its own task group, matching `app/validation`. Each task page combines its
-  behavior and configuration, with a summary of selection, availability,
-  dependencies, and implementation sources.
-- Development: contributor workflow, testing, architecture, and CI/releases.
+- Reference: direct CLI and configuration links, followed by one linked
+  Task reference parent containing the individual task pages. The parent
+  explains task selection, scheduling, and removal scope; its children cover
+  each domain's behavior and declarations, including validation tasks.
+- Development: contributor workflow and documentation authoring; architecture,
+  task implementation and debugging; then running checks, writing tests, and CI.
 
-Keep sidebar groups one level deep, starting expanded and collapsible with
-the native arrow controls. Reference uses groups to keep its task pages easy
-to scan; Development remains a short direct list. Page boundaries follow reader
-tasks rather than length.
+Guide and Development groups start expanded with native collapse controls.
+Reference has only one collapsible parent, Task reference, rather than a
+separate group for every domain. Its title is also a link, so collapsing the
+children must not prevent opening the overview. Keep existing task URLs flat:
+the parent/child relationship is navigation, not a second set of routes.
+Page boundaries follow reader tasks rather than length.
 The active header link follows the page, including direct links from another
 section and search results. Search covers all three sections.
 

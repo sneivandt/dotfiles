@@ -5,6 +5,11 @@ description: Fast-forward updates of the checkout and overlay.
 
 # Dotfiles repository
 
+The checkout is both the source of your configuration and the live target of
+many home-directory links. Updating it can therefore change application
+behavior before any later task runs. This task advances an eligible Git branch
+to its upstream without discarding local work; it does not update the CLI binary.
+
 | Task detail | Value |
 |---|---|
 | Selector | `repository` |
@@ -42,6 +47,20 @@ For update, `--no-repo-update` removes this task even from dependency expansion.
 The task uses the current Git branch and its configured upstream. The main checkout and
 [private overlay](private-overlays.md) are selected through CLI options and saved
 selection settings, not a repository-update TOML file.
+
+To understand an unmet result, inspect each affected checkout:
+
+```sh
+git status --short --branch
+git branch -vv
+git remote -v
+```
+
+An upstream is the branch Git associates with your local branch. A fast-forward
+moves that branch to a descendant commit without creating a merge commit.
+Git's [pull reference](https://git-scm.com/docs/git-pull) explains upstreams and
+integration choices; dotfiles deliberately does not choose merge or rebase
+recovery for you.
 
 ## Preview and apply
 

@@ -5,6 +5,11 @@ description: Disposable snapshots of managed Arch recipes.
 
 # Custom package repository
 
+Paru can build from local Git recipe repositories as well as the public AUR.
+This task prepares that local input from reviewed dotfiles recipes and their
+version pins. Here, "repository" means a disposable recipe snapshot, not a
+published pacman binary repository and not the source checkout itself.
+
 | Task detail | Value |
 |---|---|
 | Selector | `custom-package-repository` |
@@ -28,6 +33,12 @@ must not silently fall back to the remote AUR.
 Paru's `CleanAfter` cleans its cache, not this checkout. See [Custom Arch
 packages](package-management.md#custom-arch-packages) for the available recipes.
 
+Preparation and installation have different effects. Applying preparation
+can execute PKGBUILD code to obtain metadata and writes snapshots and Paru
+configuration; it does not install the application. Preview does not execute
+recipes or write those outputs. Review the
+[recipe safety guidance](package-management.md#arch-package-recipes) first.
+
 ## Configuration
 
 Recipes live under
@@ -37,6 +48,13 @@ separately through `aur = true` entries in [AUR
 packages](aur-packages.md#configuration). [Package
 management](package-management.md#arch-package-recipes) explains the snapshot format and
 Paru configuration.
+
+For the underlying tools, use the
+[PKGBUILD format reference](https://man.archlinux.org/man/PKGBUILD.5.en) and
+[Paru documentation](https://github.com/Morganamilo/paru). Their formats do
+not replace dotfiles' ownership checks. When preparation rejects a cache
+directory, investigate its ownership instead of deleting unrelated content
+or pointing Paru directly at the source checkout.
 
 ## Preview and apply
 

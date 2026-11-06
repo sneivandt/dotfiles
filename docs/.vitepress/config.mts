@@ -1,17 +1,18 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { defineConfig } from 'vitepress';
+import { defineConfig, type DefaultTheme } from 'vitepress';
 import { slug } from 'github-slugger';
 
 const domain = readFileSync(new URL('../public/CNAME', import.meta.url), 'utf8').trim();
 const origin = `https://${domain}`;
-const group = (text: string, pages: string[]) => ({
+const page = (name: string): DefaultTheme.SidebarItem => ({
+  text: readFileSync(new URL(`../content/${name}.md`, import.meta.url), 'utf8').match(/^title: (.+)$/m)![1],
+  link: `/${name}.html`,
+});
+const group = (text: string, pages: string[]): DefaultTheme.SidebarItem => ({
   text,
   collapsed: false,
-  items: pages.map((name) => ({
-    text: readFileSync(new URL(`../content/${name}.md`, import.meta.url), 'utf8').match(/^title: (.+)$/m)![1],
-    link: `/${name}.html`,
-  })),
+  items: pages.map(page),
 });
 
 const guide = [
@@ -21,26 +22,38 @@ const guide = [
   group('Customization', ['agent-configuration', 'application-settings', 'private-overlays']),
 ];
 const reference = [
-  group('CLI and configuration', ['cli-reference', 'task-reference', 'configuration-basics']),
-  group('Repository tasks', ['dotfiles-repository']),
-  group('Dotfiles tasks', ['dotfiles-launcher', 'shell-path']),
-  group('Git tasks', ['global-git-settings', 'git-hooks']),
-  group('File tasks', ['home-symlinks', 'file-permissions']),
-  group('Shell tasks', ['shell-completions', 'login-shell']),
-  group('System tasks', ['windows-developer-mode', 'user-registry-settings', 'system-configuration-files', 'systemd-units']),
-  group('Package tasks', ['system-packages', 'paru-package-manager', 'aur-packages', 'custom-package-versions', 'custom-package-repository']),
-  group('Editor tasks', ['vs-code-extensions']),
-  group('AI tasks', ['agent-settings', 'agent-packages']),
-  group('Overlay tasks', ['overlay-scripts']),
-  group('Validation tasks', ['configuration-diagnostics', 'symlink-sources', 'configuration-files', 'apm-plugin-checks', 'shellcheck', 'psscriptanalyzer']),
+  page('cli-reference'),
+  page('configuration-basics'),
+  {
+    ...page('task-reference'),
+    collapsed: false,
+    items: [
+      'dotfiles-repository', 'dotfiles-launcher', 'shell-path',
+      'global-git-settings', 'git-hooks', 'home-symlinks', 'file-permissions',
+      'shell-completions', 'login-shell', 'windows-developer-mode',
+      'user-registry-settings', 'system-configuration-files', 'systemd-units',
+      'system-packages', 'paru-package-manager', 'aur-packages',
+      'custom-package-versions', 'custom-package-repository', 'vs-code-extensions',
+      'agent-settings', 'agent-packages', 'overlay-scripts',
+      'configuration-diagnostics', 'symlink-sources', 'configuration-files',
+      'apm-plugin-checks', 'shellcheck', 'psscriptanalyzer',
+    ].map(page),
+  },
 ];
-const contribute = [group('Development', ['contributing', 'testing', 'architecture', 'ci-and-releases'])];
-const sectionMatch = (groups: ReturnType<typeof group>[]) =>
-  `^/(${groups.flatMap((section) => section.items.map((item) => item.link.slice(1, -5))).join('|')})(\\.html)?$`;
-const sectionSidebars = (groups: ReturnType<typeof group>[], grouped = false) => {
-  const pages = groups.flatMap((section) => section.items);
-  return Object.fromEntries(pages.map((item) => [item.link.slice(0, -5), grouped ? groups : pages]));
-};
+const contribute = [
+  group('Contributing', ['contributing', 'writing-documentation']),
+  group('Implementation', ['architecture', 'adding-a-task', 'debugging']),
+  group('Verification', ['testing', 'writing-tests', 'ci-and-releases']),
+];
+const sectionPages = (items: DefaultTheme.SidebarItem[]): string[] =>
+  items.flatMap((item) => [
+    ...(item.link ? [item.link.slice(1, -5)] : []),
+    ...sectionPages(item.items ?? []),
+  ]);
+const sectionMatch = (items: DefaultTheme.SidebarItem[]) =>
+  `^/(${sectionPages(items).join('|')})(\\.html)?$`;
+const sectionSidebars = (items: DefaultTheme.SidebarItem[]) =>
+  Object.fromEntries(sectionPages(items).map((name) => [`/${name}`, items]));
 
 export default defineConfig({
   title: 'Dotfiles',
@@ -99,7 +112,7 @@ export default defineConfig({
       { text: 'Development', link: '/contributing.html', activeMatch: sectionMatch(contribute) },
     ],
     sidebar: {
-      ...sectionSidebars(reference, true),
+      ...sectionSidebars(reference),
       ...sectionSidebars(contribute),
       '/': guide,
     },

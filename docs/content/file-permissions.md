@@ -5,6 +5,11 @@ description: Unix modes for declared home paths.
 
 # File permissions
 
+Unix permission modes control owner, group, and other users' read, write, and
+execute access. For directories, execute grants traversal rather than running
+the directory as a program. This task applies declared modes to home content;
+it does not manage file ownership or Windows access-control lists.
+
 | Task detail | Value |
 |---|---|
 | Selector | `file-permissions` |
@@ -25,11 +30,14 @@ links can affect the checkout.
 
 Edit [conf/chmod.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml).
 
-```toml
+For example, restrict an existing SSH directory and its configuration. Extend
+the existing category's array:
+
+```toml title="conf/chmod.toml (example)"
 [linux]
 permissions = [
+  { mode = "700", path = "ssh" },
   { mode = "600", path = "ssh/config" },
-  { mode = "755", path = "config/zsh" },
 ]
 ```
 
@@ -41,6 +49,12 @@ Missing targets are not created. A directory entry applies recursively: director
 retain traversal access and ordinary files have execute bits cleared. Give executable
 files their own entries. Explicit descendant entries override recursive ancestors
 regardless of ordering or parallel execution.
+
+For example, `600` permits only the owner to read and write a file; `700`
+also permits the owner to traverse a directory but excludes other users.
+Dotfiles accepts octal strings, not symbolic expressions such as `u+rw`. The
+[chmod manual](https://man.archlinux.org/man/chmod.1.en) explains mode bits,
+including the special bits represented by a fourth octal digit.
 
 Permission changes through managed links can affect the source checkout. Other
 destinations outside home and the public or overlay `symlinks/` trees are blocked. Set

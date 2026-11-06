@@ -1,13 +1,18 @@
 ---
 title: Testing
-description: Choose focused validation, run local checks, and understand isolation, mutation testing, and platform coverage gaps.
+description: Select and run existing checks for a patch, from focused commands through committed verification and native-platform coverage.
 ---
 
 # Testing
 
+Use this page to choose and run existing checks. To create or improve a
+regression, use [Writing tests](writing-tests.md) for test ownership, fixtures,
+and assertions. [CI and releases](ci-and-releases.md) explains what runs after
+a push.
+
 Start with a focused check of the behavior you changed. Before pushing,
-validate the committed patch with the coverage selected below. A local pass is not proof of a complete machine
-installation, and a skipped check is not a pass.
+validate the committed patch with the coverage selected below. A local pass
+is not proof of a complete machine installation, and a skipped check is not a pass.
 
 Use focused checks during editing, ordinary lightweight commit hooks, and one
 broad committed pre-push gate. Full hook mode is optional troubleshooting
@@ -17,7 +22,6 @@ environment. Tests on native Linux and Windows cover different runtime behavior.
 
 Each example starts at the repository root unless it says otherwise or includes
 a `cd` command. Return to the root before following a separate example.
-[CI and releases](ci-and-releases.md) explains what runs after a push.
 
 ## Choosing coverage
 
@@ -58,6 +62,31 @@ belong in disposable homes/runners/VMs. The full commit-hook suite also creates
 commits; a clean developer checkout is **not** a safe fixture.
 
 ## Fast local sequence
+
+### Targeted Rust tests
+
+Run Cargo from `cli/` with the [pinned toolchain](contributing.md#selecting-the-pinned-toolchain).
+Combine related integration targets in one invocation:
+
+```sh
+cd cli
+cargo test --locked --profile ci --test config_drift --test check_command
+```
+
+For one failure, list the target's tests before choosing a name filter:
+
+```sh
+cd cli
+cargo test --locked --profile ci --test update_command -- --list
+cargo test --locked --profile ci --test update_command repository
+```
+
+The filter is a test-name substring. Check the test count: a misspelled filter
+can run zero tests and still exit successfully. Use the
+[suite inventory](writing-tests.md#integration-test-suites) to find the owning
+target, or [Debugging](debugging.md) to investigate an unexpected result.
+
+### Stage-based checks
 
 The canonical entrypoints are
 [check.sh](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/check.sh) and
@@ -115,10 +144,10 @@ The Linux docs stage needs Python, Cargo, the Node version in `docs/.node-versio
 and the [site dependencies and Chromium runtime](#documentation-site).
 Its selector check runs a Rust fixture.
 It also validates repository skill metadata and runs the validator's synthetic
-regressions without third-party Python dependencies. The supported frontmatter
-convention and manual routing cases live in
-[Skill maintenance](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/skill-maintenance/SKILL.md#check-the-result).
-Metadata checks do not measure agent instruction effectiveness.
+regressions without third-party Python dependencies. The
+[metadata validator](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/skill-maintenance/scripts/check-skills.py)
+checks the supported frontmatter shape, names, and descriptions. These checks
+do not measure whether an agent follows the instructions effectively.
 
 The source link check inspects tracked and unignored new Markdown files,
 including unstaged moves. It checks local inline links, not external URLs,
@@ -463,81 +492,7 @@ Publishing compares the exact tested commit to the last published release,
 not merely the previous push. See [Release selection](ci-and-releases.md#release-selection)
 for why a docs-only push can recover a previously failed release.
 
-## Writing regression tests
-
-Use this section when adding or changing tests, rather than just running
-existing coverage. Keep fixtures isolated from your real home and checkout.
-
-### Integration test suites
-
-Rust integration targets under [cli/tests/](https://github.com/sneivandt/dotfiles/tree/main/cli/tests/) use fixtures.
-They are different from CI's host-mutating integration jobs.
-
-| Target | Main responsibility |
-|---|---|
-| `config_drift` | Real configuration, source, and category invariants |
-| `domain_boundaries` | Architectural dependencies and platform/environment boundaries |
-| `update_command`, `remove_command`, `list_command`, `check_command` | Command membership, selection, loading, and outcomes |
-| `task_execution` | Task/resource convergence and dry-run |
-| `task_output` | Statuses, reasons, logs, and exit behavior |
-| `lifecycle_contracts` | Preview, apply/repeat, retry, and conservative removal across real tasks |
-| `e2e_apply` | CLI convergence against controlled state |
-| `behavioral_ci` | Cross-cutting regressions for CI assumptions |
-
-Combine related targets in one invocation:
-
-```sh
-cd cli
-cargo test --locked --profile ci --test config_drift --test check_command
-cargo test --locked --profile ci --test update_command -- --list
-cargo test --locked --profile ci --test update_command repository
-```
-
-The last command filters by a test-name substring. Check the test count:
-a misspelled filter can run zero tests and still exit successfully.
-
-### Test ownership
-
-Put a regression at the lowest boundary that proves the behavior. Use unit
-tests for parsing, state transitions, resource errors, and adapters; command
-tests for selection, dependency wiring, elevation policy, and exit status;
-lifecycle/end-to-end fixtures for state across runs.
-
-Shared sequential/parallel scheduler contracts live in
-[scheduler/conformance.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/scheduler/conformance.rs).
-Adjacent tests cover synchronization and output ordering;
-[batch_reports.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/batch_reports.rs) and
-[parallel.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/parallel.rs) cover partial failure,
-cancellation, and in-flight accounting.
-
-Use [common::cli_command](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/common/mod.rs) for CLI subprocess
-fixtures. It isolates home/config/cache/state/logs, clears inherited
-`DOTFILES_*` and `GIT_*` overrides, sets a fixture Git boundary, and disables
-self/repository updates. Use injected environments/executors and isolated
-loggers for in-process tests.
-
-[common/lifecycle.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/common/lifecycle.rs) provides real
-symlink, Git-hook, and Git-setting lifecycle fixtures. Assert exact changes,
-counts, preserved state, and behavior across fresh contexts, not only a success
-message. Named case tables help repeated input/rejection cases; keep separate
-cases where platform contracts differ.
-
-### Dry-run testing
-
-Run the affected task with dry-run enabled in an isolated fixture, then compare
-its files and recorded commands with their starting state. Use
-`common::cli_command` for subprocess tests so the fixture, not your real home,
-receives any logs or saved selection metadata.
-
-Assert that preview reports the expected plan without changing managed state
-or issuing apply commands. Cover removal previews separately where supported.
-A "dry run" message alone does not test non-mutation.
-
-Overlay scripts execute their own check/preview code, so fake scripts should
-record which protocol modes were invoked. Do not use a live overlay as a test
-fixture. See [Private overlays](security-and-trust.md#private-overlays).
-
-### Focused mutation testing
+## Focused mutation testing
 
 Mutation testing temporarily changes code to check whether tests notice a
 wrong branch, lost error, or incorrect preview. Run focused mutation tests for

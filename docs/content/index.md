@@ -30,7 +30,6 @@ applications, and services for different machines. Linux package management
 and graphical setup target Arch Linux.
 
 Already using it? [Commands and usage](commands-and-usage.md) covers everyday
-tasks. Use **Reference** for [CLI syntax](cli-reference.md), the
+tasks. Use the [CLI reference](cli-reference.md), the
 [task catalog](task-reference.md), and [configuration declarations](configuration-basics.md).
-To change the project itself, start with [Contributing](contributing.md) under
-**Development**.
+To change the project itself, start with [Contributing](contributing.md).

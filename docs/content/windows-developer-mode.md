@@ -5,6 +5,11 @@ description: Machine policy for Windows development features.
 
 # Windows Developer Mode
 
+[Developer Mode](https://learn.microsoft.com/en-us/windows/advanced-settings/developer-mode)
+is a Windows machine setting for development features. Dotfiles uses it to
+support file symlink creation without running every setup task as Administrator.
+It is not a switch for Windows Terminal, WSL, or the user's editor settings.
+
 | Task detail | Value |
 |---|---|
 | Selector | `developer-mode` |
@@ -30,6 +35,13 @@ elevation](windows-and-wsl.md#elevation).
 This task has no TOML settings. It manages the Windows Developer Mode policy as part of
 Windows setup. See [Windows and WSL](windows-and-wsl.md#developer-mode-and-symlinks) for
 symlink requirements.
+
+The managed value is `AllowDevelopmentWithoutDevLicense` under
+`HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock`, set to DWORD
+`1`. This is machine-wide policy, unlike the HKCU declarations in
+[User registry settings](user-registry-settings.md). Review organizational
+device restrictions before applying it; changing a user registry declaration
+cannot substitute for this machine-level setting.
 
 ## Preview and apply
 

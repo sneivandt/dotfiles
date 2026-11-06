@@ -30,6 +30,9 @@ Companions are needed only when the request changes their contract.
 | Enable dark mode and fix Mermaid on the published docs site | `docs-publishing` | No desktop-shell skill |
 | Move site-maintenance instructions into docs/README.md | `docs-publishing` | Add docs-writing for prose; keep the README outside published routes |
 | Audit the guides for accuracy, readability, and excessive detail | `docs-writing` | Verify claims against sources; add docs-publishing only for site or organization changes |
+| Expand the Systemd units task page with domain context and upstream references | `task-reference-writing` | Verify the task, resource, and catalog; docs-writing supplies prose guidance |
+| Improve the Getting started walkthrough without changing task pages | `docs-writing` | No task-reference-writing skill for an ordinary workflow guide |
+| Add a task reference page and nest it beneath the task overview | `task-reference-writing` | Add docs-publishing for navigation and route coverage; do not add domain collapse groups |
 | Simplify examples in Commands and usage | `docs-writing` | Verify defaults in the owning code; no engine changes just for prose |
 | Make each guide understandable when shared directly | `docs-writing` | Supply task-local context; add docs-publishing only for page or navigation changes |
 | Reduce boxed text and balance links versus bold in the guides | `docs-writing` | Preserve exact syntax and safety warnings; no CSS workaround |

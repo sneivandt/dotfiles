@@ -5,6 +5,10 @@ description: Completion registration for the current CLI.
 
 # Shell completions
 
+Completion lets the shell suggest dotfiles commands, flags, and task selectors
+when you press Tab. The registration connects the shell to the running CLI's
+candidates; it is not a second hand-maintained catalog of task names.
+
 | Task detail | Value |
 |---|---|
 | Selector | `completions` |
@@ -23,6 +27,14 @@ Writes completion registration after repository synchronization:
 
 Candidates come from the running CLI, including configuration-aware selectors. This task
 does not install the shell or all its profile links.
+
+Writing the registration is only half of setup: the shell must load it.
+If completion is absent after an update, start a new shell and check the
+managed profile's [completion setup](application-settings.md#completion).
+For zsh's loading and function-search rules, see the
+[completion system manual](https://man.archlinux.org/man/zshcompsys.1.en).
+Do not edit the generated registration to add a selector; fix CLI metadata or
+the selected configuration instead.
 
 ## Configuration
 

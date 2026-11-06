@@ -5,6 +5,12 @@ description: Arch pacman packages and Windows winget IDs.
 
 # System packages
 
+This task asks the platform's package manager to install declared applications
+that are missing. Arch uses [pacman](https://man.archlinux.org/man/pacman.8.en);
+Windows uses [WinGet](https://learn.microsoft.com/en-us/windows/package-manager/winget/).
+Their package names and installer policies differ. Dotfiles shares selection
+rules, not a universal package namespace.
+
 | Task detail | Value |
 |---|---|
 | Selector | `packages` |
@@ -37,13 +43,12 @@ retry.
 Edit
 [conf/packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml).
 
-```toml title="conf/packages.toml (excerpt)"
+For example, declare common command-line tools using each provider's IDs.
+Extend the existing arrays; this is not a replacement for the complete file:
+
+```toml title="conf/packages.toml (example)"
 [arch]
-packages = [
-  "git",
-  "ripgrep",
-  { name = "powershell-dotfiles", aur = true },
-]
+packages = ["git", "ripgrep"]
 
 [windows]
 packages = ["Git.Git", "Microsoft.PowerShell"]
@@ -53,10 +58,22 @@ A string is shorthand for `{ name = "...", aur = false }`. Package names are
 provider-specific, not portable aliases. Use Arch names in Arch categories and winget
 IDs in Windows categories.
 
+Keep platform-specific entries in the corresponding categories. A tool with
+the same command name on both systems may need two different package IDs.
+On Arch, use [AUR packages](aur-packages.md) for community or custom recipes;
+on other Linux distributions, install prerequisites with the distribution's
+own package manager rather than adding an Arch entry that cannot run there.
+
 Regular Arch entries use pacman. `aur = true` sends an entry through Paru; that includes
 configured [dotfiles-managed recipes](package-management.md#custom-arch-packages), not
 just remote AUR recipes. The host's package-manager repositories and policies, including
 `IgnorePkg`, remain in effect.
+
+Presence is the main contract here, not keeping every installed version at the
+latest release. For deliberate upgrades, provider-specific discovery, and
+uninstalling packages no longer wanted, follow
+[Package management](package-management.md). Removing a category is not an
+instruction to uninstall the packages it once selected.
 
 ## Preview and apply
 

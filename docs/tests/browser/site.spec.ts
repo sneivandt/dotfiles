@@ -2,7 +2,7 @@ import { readdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
 const referenceTitles = [
-  'CLI reference', 'Task reference', 'Configuration basics',
+  'CLI reference', 'Configuration basics', 'Task reference',
   'Dotfiles repository', 'Dotfiles launcher', 'Shell PATH',
   'Global Git settings', 'Git hooks', 'Home symlinks',
   'File permissions', 'Shell completions', 'Login shell',
@@ -76,7 +76,7 @@ test('header sections replace the sidebar, including direct links and search des
   await page.goto('/getting-started.html');
   for (const [label, entry, titles] of [
     ['Reference', '/cli-reference.html', referenceTitles],
-    ['Development', '/contributing.html', ['Contributing', 'Testing', 'Architecture', 'CI and releases']],
+    ['Development', '/contributing.html', ['Contributing', 'Writing documentation', 'Architecture', 'Adding a task', 'Debugging', 'Testing', 'Writing tests', 'CI and releases']],
     ['Guides', '/getting-started.html', ['Getting started', 'Profiles and categories', 'Security and trust', 'Commands and usage', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Agent configuration', 'Application settings', 'Private overlays']],
   ] as const) {
     if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
@@ -88,13 +88,79 @@ test('header sections replace the sidebar, including direct links and search des
   await page.goto('/home-symlinks.html#configuration');
   await expect(page.locator('.VPSidebar a')).toHaveText(referenceTitles);
   await expect(page.locator('.VPDocFooter .next')).toContainText('File permissions');
-  await expect(page.locator('.VPSidebar .group h2')).toHaveText([
-    'CLI and configuration', 'Repository tasks', 'Dotfiles tasks', 'Git tasks', 'File tasks', 'Shell tasks', 'System tasks', 'Package tasks', 'Editor tasks', 'AI tasks', 'Overlay tasks', 'Validation tasks',
-  ]);
+  await expect(page.locator('.VPSidebar').getByRole('button', { name: 'toggle section', exact: true })).toHaveCount(1);
   await page.goto('/private-overlays.html');
   await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
   await page.goto('/package-management.html');
   await expect(page.locator('.VPDocFooter .next')).toContainText('Troubleshooting');
+});
+
+test('one linked task parent contains every task page and collapses independently', async ({ page, isMobile }) => {
+  await page.goto('/home-symlinks.html');
+  if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
+  const sidebar = page.locator('.VPSidebar');
+  const parent = sidebar.locator('.VPSidebarItem.level-0')
+    .filter({ has: page.getByRole('link', { name: 'Task reference', exact: true }) });
+  await expect(parent).toHaveCount(1);
+  await expect(parent.getByRole('link')).toHaveText(referenceTitles.slice(2));
+  const toggle = parent.getByRole('button', { name: 'toggle section', exact: true });
+  await toggle.click();
+  await expect(parent.getByRole('link', { name: 'Home symlinks', exact: true })).not.toBeVisible();
+  await expect(sidebar.getByRole('link', { name: 'CLI reference', exact: true })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: 'Configuration basics', exact: true })).toBeVisible();
+  await parent.getByRole('link', { name: 'Task reference', exact: true }).click();
+  await expect(page).toHaveURL('/task-reference.html');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Task reference');
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Dotfiles repository');
+  if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
+  await expect(parent.getByRole('link', { name: 'Home symlinks', exact: true })).toBeVisible();
+  const last = parent.getByRole('link', { name: 'PSScriptAnalyzer', exact: true });
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+  await last.click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('PSScriptAnalyzer');
+  await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
+  await assertNoPageOverflow(page);
+});
+
+test('development guides connect implementation and isolated test authoring', async ({ page }) => {
+  await page.goto('/contributing.html');
+  await page.locator('main').getByRole('link', { name: 'Adding a task', exact: true }).first().click();
+  await expect(page).toHaveURL('/adding-a-task.html');
+  for (const anchor of ['choose-the-boundary', 'implement-inspection-and-application', 'wire-command-membership-and-dependencies']) {
+    await expect(page.locator(`main h2#${anchor}`)).toHaveCount(1);
+  }
+  await page.locator('main').getByRole('link', { name: 'Writing tests', exact: true }).first().click();
+  await expect(page).toHaveURL('/writing-tests.html');
+  await expect(page.locator('main #confine-every-writable-path')).toHaveCount(1);
+  await expect(page.locator('main #exercise-a-complete-state-transition')).toHaveCount(1);
+  await expect(page.locator('main #integration-test-suites')).toHaveCount(1);
+  await expect(page.locator('main #dry-run-testing')).toHaveCount(1);
+  await expect(page.locator('.VPDocFooter .next')).toContainText('CI and releases');
+  await page.goto('/testing.html');
+  for (const anchor of ['choosing-coverage', 'fast-local-sequence', 'before-pushing', 'focused-mutation-testing']) {
+    await expect(page.locator(`main h2#${anchor}`)).toHaveCount(1);
+  }
+  await expect(page.locator('main #integration-test-suites, main #dry-run-testing')).toHaveCount(0);
+  await assertNoPageOverflow(page);
+});
+
+test('developer guides cover debugging and documentation without assigning skills as reading', async ({ page }) => {
+  for (const [title, route, anchor] of [
+    ['Debugging', 'debugging', 'reproduce-the-behavior-in-a-test'],
+    ['Writing documentation', 'writing-documentation', 'task-reference-pages'],
+  ]) {
+    await page.goto('/contributing.html');
+    await page.locator('main').getByRole('link', { name: title, exact: true }).first().click();
+    await expect(page).toHaveURL(`/${route}.html`);
+    await expect(page.locator(`main h2#${anchor}`)).toHaveCount(1);
+    await assertNoPageOverflow(page);
+  }
+  for (const route of ['contributing', 'adding-a-task', 'application-settings', 'testing', 'writing-documentation']) {
+    await page.goto(`/${route}.html`);
+    await expect(page.locator('main a[href*="/.agents/skills/"][href*="/SKILL.md"]')).toHaveCount(0);
+  }
+  await assertNoPageOverflow(page);
 });
 
 test('sidebar groups start expanded and collapse with their right-hand arrow', async ({ page, isMobile }) => {
@@ -306,6 +372,11 @@ test('task pages combine behavior, configuration, and removal guidance', async (
   expect(tasks).toHaveLength(21);
   for (const task of tasks) {
     await page.goto(task.href);
+    const introduction = await page.locator('main table').first().evaluate((table) => {
+      const paragraph = table.previousElementSibling;
+      return paragraph?.tagName === 'P' ? paragraph.textContent : '';
+    });
+    expect(introduction?.trim(), task.href).toBeTruthy();
     await expect(page.locator('main table').first()).toContainText(task.selector!);
     for (const anchor of ['what-it-does', 'configuration', 'preview-and-apply', 'removal']) {
       await expect(page.locator(`main h2#${anchor}`)).toHaveCount(1);

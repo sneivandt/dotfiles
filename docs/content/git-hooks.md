@@ -5,6 +5,12 @@ description: Repository commit and maintenance hooks.
 
 # Git hooks
 
+[Git hooks](https://git-scm.com/docs/githooks) are programs Git invokes at
+events such as committing. This task installs the dotfiles repository's
+contributor entrypoints. It does not install hooks into every repository or
+manage the personal Git templates described in
+[Application settings](application-settings.md#git-templates).
+
 | Task detail | Value |
 |---|---|
 | Selector | `git-hooks` |
@@ -51,6 +57,12 @@ subsequent updates use a sibling `.dotfiles-owned` hash record to check ownershi
 that record with the installed hook. Extensionless entrypoints are copied, while `.sh`
 helpers and pattern files run from the checkout. Reinstall after changing the copied
 `pre-commit`; helper edits take effect immediately.
+
+Copying the entrypoint does not copy its toolchain. A hook can run while an
+optional analyzer is unavailable, so inspect its reported skips and use the
+documented pre-push checks for complete coverage. If a changed entrypoint
+seems not to run, compare the installed copy and ownership record with the
+tracked source before changing Git's hook configuration.
 
 ## Preview and apply
 

@@ -28,7 +28,7 @@ Already installed? See [Commands and usage](commands-and-usage.md) or
 Published binaries support Linux x86-64/AArch64 and Windows x86-64. Use
 [Arch desktop](arch-desktop.md) for the Hyprland session and desktop services,
 or [Windows and WSL](windows-and-wsl.md) for Windows requirements, elevation,
-and Linux integration. These guides are grouped under Platforms.
+and Linux integration.
 
 ## Set up your machine
 

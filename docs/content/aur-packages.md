@@ -5,6 +5,13 @@ description: Arch packages installed through Paru.
 
 # AUR packages
 
+The [Arch User Repository](https://wiki.archlinux.org/title/Arch_User_Repository)
+(AUR) distributes community-maintained build recipes, not the same reviewed
+binary packages as Arch's official repositories. Paru builds and installs
+selected recipes. In dotfiles, `aur = true` also selects locally managed
+recipes, so the flag identifies the installation route rather than proving
+the recipe came from the public AUR.
+
 | Task detail | Value |
 |---|---|
 | Selector | `aur-packages` |
@@ -28,17 +35,23 @@ this task builds and executes package-supplied code.
 
 Edit
 [conf/packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml).
-Use `aur = true` in
-[conf/packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml):
+Use `aur = true` for packages handled by Paru. This illustrative example
+selects the AUR build of VS Code; extend an existing category's package array
+rather than replacing the full file:
 
-```toml title="conf/packages.toml (excerpt)"
-[arch]
-packages = [{ name = "powershell-dotfiles", aur = true }]
+```toml title="conf/packages.toml (example)"
+[arch-desktop]
+packages = [{ name = "visual-studio-code-bin", aur = true }]
 ```
 
 This includes [dotfiles-managed recipes](custom-package-repository.md) as well as
 packages from the remote AUR. Use Arch package names, not winget IDs. [System
 packages](system-packages.md#configuration) describes the shared declaration format.
+
+Review the recipe and its sources before installation. Package scripts are
+code, and a declaration is not a trust or security review. This task installs
+missing packages; it does not refresh every already-installed AUR application.
+Use the [Arch upgrade workflow](package-management.md#arch-linux) for that.
 
 ## Preview and apply
 

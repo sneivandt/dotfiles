@@ -5,6 +5,11 @@ description: The user PATH entry for the launcher.
 
 # Shell PATH
 
+PATH is the list of directories a shell searches for commands. This task
+persists the directory containing the [Dotfiles launcher](dotfiles-launcher.md)
+so a future shell can find it. It does not install commands, choose the login
+shell, or repair every application's PATH configuration.
+
 | Task detail | Value |
 |---|---|
 | Selector | `path` |
@@ -20,6 +25,14 @@ Requires the launcher. Adds `~/.local/bin` through a managed export in `~/.profi
 Linux, or the user PATH on Windows. Open a new shell to use the persisted change.
 
 Existing PATH entries are preserved. Remove leaves the PATH addition in place.
+
+The persisted value and a running terminal's environment are different things.
+A terminal inherits its environment when it starts; changing the saved PATH
+does not rewrite that existing process. On Linux, loading also depends on the
+shell's startup files. The [Bash invocation reference](https://www.gnu.org/software/bash/manual/html_node/Invoking-Bash.html)
+explains login and interactive shell modes; the managed
+[shell configuration](application-settings.md#shell-configuration) supplies
+the repository-specific startup behavior.
 
 ## Configuration
 

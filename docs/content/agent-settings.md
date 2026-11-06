@@ -5,6 +5,11 @@ description: Copilot and Codex preferences.
 
 # Agent settings
 
+An agent harness is the application running the coding agent, such as Copilot
+or Codex. This task manages selected preferences in those applications'
+settings files. It does not choose plugin dependencies, authenticate an
+account, or deploy skills; those are separate concerns.
+
 | Task detail | Value |
 |---|---|
 | Selector | `agent-settings` |
@@ -56,6 +61,14 @@ An overlay replaces an exact, case-sensitive key for the same harness. Other key
 managed. Removing a declaration leaves the stored preference in place. Skills, plugins,
 hooks and MCP configuration belong to [Agent configuration](agent-configuration.md), not
 this file.
+
+Dotfiles validates the declaration and document shape, not whether the
+installed harness still supports every key. Use the harness's current
+settings reference when choosing a key, such as
+[Codex configuration](https://developers.openai.com/codex/config-basic/).
+Project or policy layers may also affect the effective preference. If a
+stored value seems ignored, check those layers before broadening the managed
+key to replace an entire settings table.
 
 ## Preview and apply
 

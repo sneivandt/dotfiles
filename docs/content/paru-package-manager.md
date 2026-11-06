@@ -5,6 +5,11 @@ description: Installation and health checks for the AUR helper.
 
 # Paru package manager
 
+[Paru](https://github.com/Morganamilo/paru) is the AUR helper used by this setup.
+It coordinates recipe retrieval, building, and installation with Arch's
+packaging tools. This task ensures the helper itself is usable; the
+[AUR packages](aur-packages.md) task uses it to install selected applications.
+
 | Task detail | Value |
 |---|---|
 | Selector | `paru` |
@@ -27,6 +32,12 @@ is not enough. The rebuilt helper is checked again before dependent AUR installa
 
 Arch provisioning probes the target chroot, not the live ISO. AUR work uses the
 validated `/usr/bin/paru`, not an arbitrary PATH copy.
+
+An executable appearing on PATH is not enough: Paru can remain installed but
+fail to start after the system libraries it links against change. That is why
+the task checks both package registration and execution. If bootstrap is
+unmet, resolve the reported build prerequisite before retrying instead of
+substituting an unverified helper binary.
 
 ## Configuration
 

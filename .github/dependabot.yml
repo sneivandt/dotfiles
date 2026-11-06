@@ -3,6 +3,18 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /docs
+    ignore:
+      # Stable VitePress uses Rollup hooks that break with Vite 8/Rolldown.
+      # Keep the tested Vite 6 line until VitePress supports a newer bundler.
+      - dependency-name: vite
+        update-types: ["version-update:semver-major"]
+      # vue-tsc embeds the TypeScript 6 compiler API; TS 7 removes it.
+      # Revisit when https://github.com/vuejs/language-tools/issues/6124 is supported.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # Keep Node API types aligned with docs/.node-version.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

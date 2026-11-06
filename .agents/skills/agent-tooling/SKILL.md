@@ -8,8 +8,10 @@ description: >
 
 # Agent Tooling
 
-Start with [Agent deployment maintenance](../../../docs/content/agent-deployment-maintenance.md) for deployment
-ownership, fragment merging, target compatibility, and adapter behavior.
+Start with [Agent configuration](../../../docs/content/agent-configuration.md)
+for sources, fragment merging, targets, and preview limits. For implementation
+changes, read [apm.rs](../../../cli/src/domains/ai/apm.rs) and its
+[modules and tests](../../../cli/src/domains/ai/apm/).
 
 ## Choose the owner
 
@@ -41,8 +43,9 @@ repository work must remain possible without it.
   failure classification and workflow-policy restoration. Do not reintroduce
   separate prune, fingerprints, or outdated-output parsing.
 - Before removing either compatibility adapter, inspect current upstream code
-  and prove the replacement against the
-  [deployment contracts](../../../docs/content/agent-deployment-maintenance.md)
+  and prove the replacement preserves
+  [Copilot workflow ownership](../../../cli/src/domains/ai/apm/autopilot/) and
+  [Cowork file ownership](../../../cli/src/domains/ai/apm/cowork.rs)
   in isolated fixtures on the relevant platforms. A version bump is insufficient.
 - Native APM owns syntax/schema validation; dotfiles owns cross-file local
   source relationships. Extend

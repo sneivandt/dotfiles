@@ -41,7 +41,7 @@ const reference = [
 ];
 const contribute = [
   group('Workflows', ['contributing', 'writing-documentation']),
-  group('Implementation', ['architecture', 'adding-a-task', 'debugging', 'agent-deployment-maintenance', 'arch-package-recipes']),
+  group('Implementation', ['architecture', 'adding-a-task', 'debugging', 'arch-package-recipes']),
   group('Verification', ['testing', 'writing-tests', 'mutation-testing', 'ci-and-releases']),
 ];
 const sectionPages = (items: DefaultTheme.SidebarItem[]): string[] =>

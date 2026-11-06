@@ -44,9 +44,6 @@ and compatible categories. Keep credentials out of tracked fragments.
 Never edit the generated combined configuration, `~/.apm/apm.yml`, lock data,
 or deployed harness copies as a substitute for changing their sources.
 
-For implementation changes, see
-[Agent deployment maintenance](agent-deployment-maintenance.md).
-
 ## Agent preferences
 
 The `agent-settings` task edits only declared keys in these documents:

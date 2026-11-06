@@ -181,8 +181,8 @@ own sidebar and previous/next sequence:
   behavior and declarations, including validation tasks. Task details are
   ordered by page title; the overview also offers a question-based lookup table.
 - Development: Workflows covers contributor workflow and documentation
-  authoring; Implementation covers architecture, task implementation, and
-  debugging, agent deployment maintenance, and Arch recipe maintenance;
+  authoring; Implementation covers architecture, task implementation,
+  debugging, and Arch recipe maintenance;
   Verification covers running checks, writing tests, mutation testing, and CI.
 
 Guide and Development groups start expanded with native collapse controls.

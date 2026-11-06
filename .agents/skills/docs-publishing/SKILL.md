@@ -37,8 +37,8 @@ examples, and the amount of detail.
 - Keep Application settings focused on shared preferences and finding sources;
   Arch desktop behavior belongs in its own guide. Keep editor setup and source
   references in Application settings and agent preferences/deployment workflows
-  in Agent configuration. Agent deployment maintenance and Arch package recipes
-  serve contributors separately from those user guides. Keep guides
+  in Agent configuration. Keep Arch recipe maintenance separate from the
+  package-management user guide. Keep guides
   one level deep. Group related topics when separate headings fragment the
   navigation; a distinct page or maintenance guide does not require its own
   top-level section. Use the site configuration for current labels and order,

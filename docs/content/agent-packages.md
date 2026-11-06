@@ -29,9 +29,7 @@ proceed before those package tasks finish.
 
 See [Agent configuration](agent-configuration.md) for sources, targets, authentication,
 and cleanup, including [what a preview can
-show](agent-configuration.md#what-a-preview-can-show). The [implementation
-reference](agent-deployment-maintenance.md) explains the command
-sequence and compatibility adapters.
+show](agent-configuration.md#what-a-preview-can-show).
 
 ## Configuration
 

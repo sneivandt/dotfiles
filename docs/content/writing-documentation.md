@@ -30,7 +30,6 @@ the existing page is long.
 | Which checks should I run for a patch? | [Testing](testing.md) |
 | How do I construct a regression? | [Writing tests](writing-tests.md) |
 | How do I run focused mutations safely? | [Mutation testing](mutation-testing.md) |
-| How do I change agent deployment code? | [Agent deployment maintenance](agent-deployment-maintenance.md) |
 | How do I maintain a custom Arch recipe? | [Arch package recipes](arch-package-recipes.md) |
 
 Keep application, package, and agent workflows in their own guides. Separate

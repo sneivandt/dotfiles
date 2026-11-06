@@ -74,7 +74,7 @@ test('header sections replace the sidebar, including direct links and search des
   await page.goto('/getting-started.html');
   for (const [label, entry, titles] of [
     ['Reference', '/cli-reference.html', referenceTitles],
-    ['Development', '/contributing.html', ['Contributing', 'Writing documentation', 'Architecture', 'Adding a task', 'Debugging', 'Agent deployment maintenance', 'Arch package recipes', 'Testing', 'Writing tests', 'Mutation testing', 'CI and releases']],
+    ['Development', '/contributing.html', ['Contributing', 'Writing documentation', 'Architecture', 'Adding a task', 'Debugging', 'Arch package recipes', 'Testing', 'Writing tests', 'Mutation testing', 'CI and releases']],
     ['Guides', '/getting-started.html', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Application settings', 'Agent configuration', 'Private overlays']],
   ] as const) {
     if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
@@ -230,10 +230,6 @@ test('development guides connect implementation and isolated test authoring', as
 test('maintenance procedures have their own contributor guides', async ({ page }) => {
   await page.goto('/architecture.html');
   await expect(page.locator('main #agent-deployment-implementation')).toHaveCount(0);
-  await page.locator('main').getByRole('link', { name: 'Agent deployment maintenance', exact: true }).click();
-  await expect(page).toHaveURL('/agent-deployment-maintenance.html');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Agent deployment maintenance');
-  await expect(page.locator('main').getByRole('link', { name: 'Copilot workflow repair', exact: true })).toBeVisible();
   await page.goto('/agent-configuration.html');
   await expect(page.locator('main #deployment-maintenance')).toHaveCount(0);
   await page.goto('/package-management.html');
@@ -558,7 +554,8 @@ test('removed guides and repository-only docs do not publish routes', async ({ r
     '/local-package-recipes.html', '/ai-agent-configuration.html',
     '/git-configuration.html', '/documentation-site.html', '/README.html', '/README.md',
     '/update-lifecycle.html', '/visual-studio-code.html', '/vim-and-neovim.html',
-    '/configuration-reference.html', '/agent-deployment-internals.html', '/configuration-files.html',
+    '/configuration-reference.html', '/agent-deployment-internals.html', '/agent-deployment-maintenance.html',
+    '/configuration-files.html',
   ]) {
     expect((await request.get(path)).status()).toBe(404);
   }

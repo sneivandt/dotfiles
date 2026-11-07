@@ -34,8 +34,20 @@ jobs:
         id: current
         env:
           GH_TOKEN: ${{ github.token }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
           BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          site_result="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID/jobs?filter=latest&per_page=100" \
+            --jq '.jobs[] | select(.name == "Docs: Content and site") | .conclusion')"
+          case "$site_result" in
+            skipped)
+              echo "CI selected no documentation site build."
+              echo "current=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+            success) ;;
+            *) echo "Cannot verify the CI documentation site job: $site_result" >&2; exit 1 ;;
+          esac
           current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
           if [ "$current_sha" = "$BUILD_SHA" ]; then
             echo "current=true" >> "$GITHUB_OUTPUT"

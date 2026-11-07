@@ -11,7 +11,8 @@ SCRIPTS = ".github/workflows/scripts/"
 LINUX = SCRIPTS + "linux/"
 WINDOWS = SCRIPTS + "windows/"
 FLAGS = (
-    "run_docs_checks", "run_rust_checks", "run_rust_fmt", "run_audit", "run_deny",
+    "run_docs_checks", "run_docs_site", "run_docs_contracts", "run_rust_checks",
+    "run_rust_fmt", "run_audit", "run_deny",
     "run_mutation", "run_build_linux", "run_build_windows", "run_validate_config",
     "run_config_drift", "run_profile_linux", "run_profile_windows",
     "run_roundtrip_linux", "run_roundtrip_windows", "run_app_tests",
@@ -45,6 +46,22 @@ def documentation(path: str) -> bool:
         path.endswith(".md") or path.startswith(("docs/", ".agents/"))
         or path == ".github/workflows/pages.yml"
     )
+
+
+def site_input(path: str) -> bool:
+    return path.startswith("docs/") or path in {
+        ".github/workflows/pages.yml", LINUX + "test-docs.sh",
+        LINUX + "check-doc-site.py", LINUX + "docs-publication-base.py",
+    }
+
+
+def contract_input(path: str) -> bool:
+    return (path.startswith("cli/") and not documentation(path)) or path.startswith((
+        ".cargo/", "docs/content/",
+    )) or path in {
+        "Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain", "rust-toolchain.toml",
+        LINUX + "test-docs.sh",
+    }
 
 
 def binary_input(path: str) -> bool:
@@ -91,6 +108,10 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
         enable("rust_checks", "rust_fmt", "build_linux", "build_windows")
 
     for path in paths:
+        if site_input(path):
+            enable("docs_site")
+        if contract_input(path):
+            enable("docs_contracts")
         if documentation(path):
             continue
         if binary_input(path):
@@ -115,7 +136,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("desktop_qml")
         elif path == LINUX + "test-workflows.sh":
             pass  # Always executed by classify-changes.
-        elif path in {LINUX + "test-docs.sh", LINUX + "check-doc-links.py", LINUX + "check-doc-site.py"}:
+        elif path in {LINUX + "test-docs.sh", LINUX + "check-doc-links.py", LINUX + "check-doc-site.py",
+                      LINUX + "docs-publication-base.py"}:
             pass
         elif path == LINUX + "test-static-analysis.sh":
             linters.update(LINTERS)
@@ -263,6 +285,13 @@ def main() -> None:
     paths = changed_paths(root, base, head) if base and head else []
     print("Full CI requested" if full else f"Classifying {len(paths)} changed paths")
     outputs = classify(paths, full=full)
+    if os.environ.get("GITHUB_EVENT_NAME") == "push":
+        # CI success does not imply Pages success. Carry unpublished site inputs
+        # forward even when the immediately preceding push already passed CI.
+        published = os.environ.get("DOCS_BASE_SHA")
+        outputs["run_docs_site"] = outputs["run_docs_site"] or not published or any(
+            site_input(path) for path in changed_paths(root, published, head or "HEAD")
+        )
     with output.open("a", encoding="utf-8") as stream:
         for name, value in outputs.items():
             stream.write(f"{name}={json.dumps(value, separators=(',', ':'))}\n")

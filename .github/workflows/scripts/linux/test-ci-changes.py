@@ -35,11 +35,11 @@ class ClassificationTests(unittest.TestCase):
         rust = {"rust_checks", "rust_fmt", "build_linux", "build_windows"}
         cases = [
             ("README.md", set()),
-            ("docs/content/testing.md", set()),
-            ("docs/.vitepress/config.mts", set()),
-            ("docs/package-lock.json", set()),
-            ("docs/.vitepress/theme/style.css", set()),
-            (".github/workflows/pages.yml", set()),
+            ("docs/content/testing.md", {"docs_site", "docs_contracts"}),
+            ("docs/.vitepress/config.mts", {"docs_site"}),
+            ("docs/package-lock.json", {"docs_site"}),
+            ("docs/.vitepress/theme/style.css", {"docs_site"}),
+            (".github/workflows/pages.yml", {"docs_site"}),
             (".agents/skills/ci-cd-patterns/SKILL.md", set()),
             ("cli/README.md", set()),
             ("symlinks/vim/README.md", set()),
@@ -103,9 +103,10 @@ class ClassificationTests(unittest.TestCase):
             ("hooks/pre-commit", {"lint", "git_hooks", "hook_inputs"}),
             ("hooks/sensitive-patterns.ini", {"git_hooks", "hook_inputs"}),
             (LINUX + "test-stocks.sh", {"stocks", "lint"}),
-            (LINUX + "test-docs.sh", {"lint"}),
+            (LINUX + "test-docs.sh", {"lint", "docs_site", "docs_contracts"}),
             (LINUX + "check-doc-links.py", set()),
-            (LINUX + "check-doc-site.py", set()),
+            (LINUX + "check-doc-site.py", {"docs_site"}),
+            (LINUX + "docs-publication-base.py", {"docs_site"}),
             (LINUX + "test-workflows.sh", {"lint"}),
             (LINUX + "test-desktop-qml.sh", {"lint", "desktop_qml"}),
             ("symlinks/config/quickshell/Bar.qml",
@@ -139,7 +140,28 @@ class ClassificationTests(unittest.TestCase):
             with self.subTest(path=path):
                 outputs = classify([path])
                 selected = {name.removeprefix("run_") for name in POLICY["FLAGS"] if outputs[name]}
+                if path.startswith("cli/") and not path.endswith(".md"):
+                    expected = expected | {"docs_contracts"}
                 self.assertEqual(selected, expected | {"docs_checks"})
+
+    def test_site_and_contract_inputs_are_independent(self):
+        for path, site, contracts in (
+            ("AGENTS.md", False, False),
+            (".agents/skills/example/scripts/check.py", False, False),
+            ("docs/content/task-reference.md", True, True),
+            ("docs/public/favicon.svg", True, False),
+            ("docs/tests/browser/site.spec.ts", True, False),
+            ("cli/src/embedded.md", False, True),
+            ("cli/tests/docs_contracts.rs", False, True),
+            (".cargo/config.toml", False, True),
+            ("rust-toolchain.toml", False, True),
+            ("conf/packages.toml", False, False),
+        ):
+            with self.subTest(path=path):
+                selected = classify([path])
+                self.assertEqual(selected["run_docs_site"], site)
+                self.assertEqual(selected["run_docs_contracts"], contracts)
+                self.assertTrue(selected["run_docs_checks"])
 
     def test_full_ci_and_empty_diff(self):
         for path in (".github/workflows/ci.yml", LINUX + "lib/test-helpers.sh",
@@ -656,7 +678,7 @@ class GateTests(unittest.TestCase):
             ("docs", "failure"), ("build-linux", "failure"), ("build-linux", "success"),
         ):
             with self.subTest(job=job, result=result):
-                needs = self.results(["README.md"])
+                needs = self.results(["docs/content/testing.md"])
                 needs[job]["result"] = result
                 with self.assertRaises(ValueError):
                     CONTRACT["check_results"](needs)
@@ -684,7 +706,7 @@ class GateTests(unittest.TestCase):
                         CONTRACT["check_results"](needs)
 
     def test_missing_jobs_and_malformed_selection_outputs_fail_closed(self):
-        baseline = self.results(["README.md"])
+        baseline = self.results(["docs/content/testing.md"])
         for job in baseline:
             with self.subTest(missing_job=job):
                 needs = self.results(["README.md"])
@@ -714,12 +736,16 @@ class GateTests(unittest.TestCase):
             pages.replace("github.event.workflow_run.event == 'push'", "true"),
             pages.replace("github.event.workflow_run.head_repository.full_name == github.repository", "true"),
             pages.replace("run-id: ${{ github.event.workflow_run.id }}", "run-id: 1"),
+            pages.replace('select(.name == "Docs: Content and site")', 'select(.name == "Other job")'),
             pages.replace("if: steps.current.outputs.current == 'true'", "if: always()", 1),
         ):
             with self.assertRaises(ValueError):
                 CONTRACT["check_pages"](broken, workflow)
         for broken in (
             workflow.replace("      - docs\n", ""),
+            workflow.replace("test-docs.sh docs_links", "true"),
+            workflow.replace("test-docs.sh docs_task_selectors", "true"),
+            workflow.replace("DOCS_BASE_SHA:", "UNUSED_BASE_SHA:"),
             workflow.replace("      - mutation\n", ""),
             workflow.replace("  mutation:\n", "  mutation:\n    continue-on-error: true\n"),
             workflow.replace("      - name: Test changed-code mutants\n",
@@ -1229,6 +1255,30 @@ class GitRangeTests(unittest.TestCase):
                 self.assertIn(message, "\n".join(check_site(self.repo)))
                 self.write(path, fixture[path])
 
+    def test_pending_site_publication_survives_a_successful_code_push(self):
+        self.write("docs/content/example.md", "# Unpublished guide\n")
+        previous = self.commit()
+        self.env["BASE_SHA"] = previous
+        self.write("cli/src/main.rs", "fn main() { println!(\"code-only push\"); }\n")
+        self.env["HEAD_SHA"] = self.commit()
+        self.env["DOCS_BASE_SHA"] = self.base
+        self.assertTrue(self.script()["run_docs_site"])
+        self.env["DOCS_BASE_SHA"] = previous
+        self.assertFalse(self.script()["run_docs_site"])
+        self.env.pop("DOCS_BASE_SHA")
+        self.assertTrue(self.script()["run_docs_site"])
+        self.env["DOCS_BASE_SHA"] = "invalid-baseline"
+        self.script(success=False)
+
+    def test_removed_and_renamed_site_inputs_select_a_build(self):
+        self.write("docs/content/old.md", "# Guide\n")
+        published = self.commit()
+        self.env.update(BASE_SHA=published, DOCS_BASE_SHA=published)
+        self.git("mv", "docs/content/old.md", "guide.md")
+        self.env["HEAD_SHA"] = self.commit()
+        self.assertTrue(self.script()["run_docs_site"])
+        self.assertTrue(self.script()["run_docs_contracts"])
+
     def test_empty_manual_missing_and_invalid_ranges(self):
         self.assertFalse(self.script()["run_build_linux"])
         self.env["GITHUB_EVENT_NAME"] = "workflow_dispatch"
@@ -1320,6 +1370,72 @@ class GitRangeTests(unittest.TestCase):
         self.env["HEAD_SHA"] = self.git("rev-parse", "HEAD")
         self.env["FIXTURE_RELEASE_TAG"] = "v2026.01.01-1"
         self.script("classify-release.sh", success=False)
+
+
+class DocumentationPublicationTests(unittest.TestCase):
+    def setUp(self):
+        self.policy = runpy.run_path(str(SCRIPTS / "docs-publication-base.py"))
+
+    def test_baseline_requires_a_successful_ancestor_deployment(self):
+        sha = "a" * 40
+        deployments = [{"id": 1, "sha": "b" * 40}, {"id": 2, "sha": sha}]
+        for ancestry, expected in ((0, sha), (1, "")):
+            with self.subTest(ancestry=ancestry), patch.dict(
+                self.policy["publication_base"].__globals__, api=Mock(side_effect=[
+                    deployments, [{"state": "failure"}],
+                    [{"state": "inactive"}, {"state": "success"}],
+                ]),
+            ), patch.object(subprocess, "run", return_value=Mock(returncode=ancestry)):
+                self.assertEqual(self.policy["publication_base"]("fixture/repo", "head"), expected)
+
+    def test_missing_or_unavailable_baseline_requests_a_build(self):
+        for response in ([], subprocess.CalledProcessError(1, "gh"), ValueError("bad json")):
+            with self.subTest(response=response), tempfile.TemporaryDirectory() as temporary:
+                output = Path(temporary) / "output"
+                api = Mock(side_effect=response) if isinstance(response, Exception) else Mock(return_value=response)
+                with patch.dict(self.policy["main"].__globals__, api=api), patch.dict(os.environ, {
+                    "GITHUB_REPOSITORY": "fixture/repo", "GITHUB_SHA": "head",
+                    "GITHUB_OUTPUT": str(output),
+                }), contextlib.redirect_stdout(io.StringIO()):
+                    self.policy["main"]()
+                self.assertEqual(output.read_text(), "base_sha=\n")
+
+    def test_pages_checks_the_exact_site_job_before_downloading(self):
+        pages = CONTRACT["WORKFLOW"].with_name("pages.yml").read_text()
+        script = pages.split("        run: |\n", 1)[1].split("      - name:", 1)[0]
+        script = "\n".join(line[10:] for line in script.splitlines())
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gh = root / "gh"
+            gh.write_text(
+                '#!/bin/sh\nset -eu\n'
+                'case "$*" in\n'
+                '  *actions/runs/123/jobs*) printf "%s\\n" "$SITE_RESULT"; exit "$API_STATUS" ;;\n'
+                '  *git/ref/heads/main*) printf "%s\\n" "$CURRENT_SHA" ;;\n'
+                '  *) exit 90 ;;\nesac\n'
+            )
+            gh.chmod(0o755)
+            for result, current, api_status, expected, exit_code in (
+                ("skipped", "head", "0", "false", 0),
+                ("success", "head", "0", "true", 0),
+                ("success", "newer", "0", "false", 0),
+                ("failure", "head", "0", None, 1),
+                ("cancelled", "head", "0", None, 1),
+                ("", "head", "0", None, 1),
+                ("success", "head", "1", None, 1),
+            ):
+                with self.subTest(result=result, current=current, api_status=api_status):
+                    output = root / "output"
+                    output.unlink(missing_ok=True)
+                    completed = subprocess.run(["sh", "-eu", "-c", script], env=os.environ | {
+                        "PATH": str(root) + os.pathsep + os.environ["PATH"],
+                        "SITE_RESULT": result, "CURRENT_SHA": current, "API_STATUS": api_status,
+                        "GITHUB_REPOSITORY": "fixture/repo", "CI_RUN_ID": "123",
+                        "BUILD_SHA": "head", "GITHUB_OUTPUT": str(output),
+                    }, capture_output=True, text=True)
+                    self.assertEqual(completed.returncode, exit_code, completed.stderr)
+                    self.assertEqual(output.read_text() if output.exists() else None,
+                                     f"current={expected}\n" if expected else None)
 
 
 class ReleaseTagTests(unittest.TestCase):

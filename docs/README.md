@@ -303,8 +303,17 @@ from another repository.
 The sitemap must match page canonicals: `/` for the introduction and `.html`
 URLs for guides. Guides allow indexing; the 404 page does not.
 
-The documentation job participates in `ci-success`, including on docs-only
-changes. It uploads the verified static site for a push to `main`.
+Documentation checks participate in `ci-success`, including on docs-only
+changes. Repository links and skill metadata are checked on every push. Site
+builds and browser tests run when `docs/` or site tooling changes; Rust
+example contracts run when CLI inputs or published guides change. Full CI
+requests select all three checks.
+
+The site job uploads the verified static site for a push to `main`. Pushes also
+compare site inputs against the last successful Pages deployment, so a failed
+or superseded publication is retried even by a later code-only push. An
+unavailable deployment baseline selects a build. When no site build is selected,
+publication skips the artifact download and deployment.
 The [publishing workflow](../.github/workflows/pages.yml) downloads that exact
 CI run's artifact after the aggregate succeeds, rather than rebuilding it.
 A completed build that no longer matches `main` is skipped rather than rolling

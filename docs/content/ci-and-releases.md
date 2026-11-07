@@ -37,11 +37,11 @@ flowchart TB
 The last step applies only to successful, same-repository **push** CI on `main`.
 Pull request CI cannot publish a release.
 
-Always-on work includes documentation consistency and the VitePress site build
-and browser regressions, actionlint, workflow
-contracts, and classification regressions. The `ci-success` job runs even after
-an earlier failure and verifies that every selected gating job succeeded and
-every unselected job was skipped. Missing outputs, cancellation, unexpected
+Always-on work includes repository links, skill metadata, actionlint, workflow
+contracts, and classification regressions. Site builds, browser regressions,
+and Rust documentation contracts are selected by their inputs. The `ci-success`
+job runs even after an earlier failure and verifies that every selected gating
+job succeeded and every unselected job was skipped. Missing outputs, cancellation, unexpected
 skips, and classification failure fail the gate.
 
 After a push, inspect the run for the **exact pushed SHA**. Selected mutation
@@ -63,8 +63,9 @@ runs full CI so earlier changes still receive coverage.
 
 | Changed input | Typical additional coverage |
 |---|---|
-| Docs, skills, known editor/repository metadata | Always-on checks only; the docs selector fixture still compiles Rust |
-| Rust source, embedded assets, Cargo/build/toolchain configuration | Both platform builds, Rust checks, profiles, round-trips, wrappers, and applications |
+| `docs/`, Pages workflow, or site tooling | Site build, npm audit, and browser regressions; published guides also select Rust documentation contracts |
+| Skills, Markdown outside the site, known editor/repository metadata | Always-on checks only |
+| Rust source, embedded assets, Cargo/build/toolchain configuration | Both platform builds, Rust checks, documentation contracts, profiles, round-trips, wrappers, and applications |
 | Standalone Rust integration tests/fixtures | Both platform builds and Rust checks, not unrelated application/wrapper jobs |
 | Cargo manifests/lockfiles | Dependency audit and deny in addition to Rust checks |
 | `cli/deny.toml` or formatting policy | Dependency-policy or formatting check respectively |
@@ -145,10 +146,12 @@ enabled; GitHub can disable schedules in inactive repositories.
 
 ## Documentation publishing
 
-The documentation job participates in `ci-success`, including on docs-only
+Selected documentation jobs participate in `ci-success`, including on docs-only
 changes. After successful push CI on `main`, the Pages workflow deploys that
-run's verified artifact. Site-specific checks, publication rules, and
-troubleshooting live in
+run's verified artifact when a site build was selected. A code-only push can
+skip the site build and deployment once the site inputs have been published;
+failed or superseded publications remain eligible on subsequent pushes.
+Site-specific checks, publication rules, and troubleshooting live in
 [docs/README.md](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#configure-publishing).
 
 ## Release selection

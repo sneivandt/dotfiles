@@ -14,7 +14,9 @@ JOB_CONDITIONS = {
     "rust-fmt": "run_rust_fmt",
     "lint": "run_lint",
     "managed-script-regressions": "run_managed_scripts",
-    "docs": "run_docs_checks",
+    "docs": "run_docs_site",
+    "docs-links": "run_docs_checks",
+    "docs-contracts": "run_docs_contracts",
     "desktop-qml": "run_desktop_qml",
     "validate-config": "run_validate_config",
     "audit": "run_audit",
@@ -134,6 +136,19 @@ def check(workflow: str) -> None:
     if "check-ci-contract.py --results" not in gate or "CI_NEEDS: ${{ toJSON(needs) }}" not in gate:
         raise ValueError("ci-success must verify selected jobs, not just absence of failures")
 
+    for job, command in {
+        "docs-links": "test-docs.sh docs_links",
+        "docs-contracts": "test-docs.sh docs_task_selectors",
+    }.items():
+        if command not in jobs[job]:
+            raise ValueError(f"{job} must execute its documentation checks")
+    for required in (
+        "deployments: read", "docs-publication-base.py",
+        "DOCS_BASE_SHA: ${{ steps.published-docs.outputs.base_sha }}",
+    ):
+        if required not in jobs["classify-changes"]:
+            raise ValueError(f"documentation selection is missing {required}")
+
     mutation = jobs["mutation"]
     if re.search(r"(?m)^\s+continue-on-error:", mutation):
         raise ValueError("mutation jobs and steps must propagate failures")
@@ -197,6 +212,12 @@ def check_pages(workflow: str, ci_workflow: str) -> None:
         'BUILD_SHA: ${{ github.event.workflow_run.head_sha }}',
         'if [ "$current_sha" = "$BUILD_SHA" ]; then',
         "name: docs-site",
+        'CI_RUN_ID: ${{ github.event.workflow_run.id }}',
+        'case "$site_result" in',
+        'select(.name == "Docs: Content and site") | .conclusion',
+        'skipped)',
+        'success) ;;',
+        '*) echo "Cannot verify the CI documentation site job: $site_result" >&2; exit 1 ;;',
     ):
         if guard not in deploy:
             raise ValueError(f"Pages deployment is missing {guard}")
@@ -206,7 +227,7 @@ def check_pages(workflow: str, ci_workflow: str) -> None:
         raise ValueError("all Pages artifact and deployment steps must reject superseded builds")
     docs = job_blocks(ci_workflow)["docs"]
     for required in (
-        "docs_links docs_task_selectors docs_site",
+        "test-docs.sh docs_site",
         "npx playwright install --with-deps chromium",
         "name: docs-site",
         "path: docs/dist/",

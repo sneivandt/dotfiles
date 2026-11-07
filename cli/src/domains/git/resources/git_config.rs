@@ -6,17 +6,27 @@ use std::path::PathBuf;
 fn stage_config(
     parent: &std::path::Path,
     contents: impl AsRef<[u8]>,
-) -> Result<crate::infra::fs::TempGuard> {
+) -> Result<(crate::infra::fs::TempGuard, PathBuf)> {
     use std::io::Write as _;
 
-    let (stage, mut file) = crate::infra::fs::TempGuard::create_unique_file_with_mode(
+    // libgit2 also creates its own lock file during edits. Keep every such
+    // intermediate copy inside a directory private from its first instant.
+    let directory = crate::infra::fs::TempGuard::create_unique_dir_with_mode(
         parent,
         ".dotfiles-git",
+        "tmp",
+        0o700,
+    )?;
+    let (mut stage, mut file) = crate::infra::fs::TempGuard::create_unique_file_with_mode(
+        directory.path(),
         "config",
+        "tmp",
         0o600,
     )?;
     file.write_all(contents.as_ref())?;
-    Ok(stage)
+    let path = stage.path().to_path_buf();
+    stage.persist();
+    Ok((directory, path))
 }
 
 fn open_file(path: &std::path::Path) -> Result<git2::Config> {
@@ -211,9 +221,9 @@ impl GitConfigResource {
         let path = crate::infra::fs::canonicalize(&configured)?;
         let before = std::fs::read(&path)?;
         let parent = path.parent().context("global Git config has no parent")?;
-        let stage = stage_config(parent, &before)?;
+        let (_stage, stage_path) = stage_config(parent, &before)?;
         {
-            let mut staged = open_file(stage.path())?;
+            let mut staged = open_file(&stage_path)?;
             let values = self.values_from_config(config)?;
             if values.iter().any(Option::is_none) {
                 anyhow::bail!(
@@ -225,17 +235,17 @@ impl GitConfigResource {
                 staged.remove_multivar(&self.key, ".*")?;
             }
         }
-        let mut replacement = std::fs::read(stage.path())?;
+        let mut replacement = std::fs::read(&stage_path)?;
         if let Some(desired) = &self.desired {
             // Let libgit2 validate and quote the key/value, then append its stanza
             // after every include so scalar Git precedence selects the desired value.
-            std::fs::write(stage.path(), [])?;
+            std::fs::write(&stage_path, [])?;
             {
-                let mut stanza = open_file(stage.path())?;
+                let mut stanza = open_file(&stage_path)?;
                 stanza.set_str(&self.key, desired)?;
             }
             replacement.push(b'\n');
-            replacement.extend(std::fs::read(stage.path())?);
+            replacement.extend(std::fs::read(&stage_path)?);
         }
         crate::infra::fs::write_atomic_checked(&path, replacement, || {
             anyhow::ensure!(
@@ -296,8 +306,18 @@ mod tests {
         impl AsRef<[u8]> for PrivateContent<'_> {
             fn as_ref(&self) -> &[u8] {
                 let entries = std::fs::read_dir(self.0).unwrap().collect::<Vec<_>>();
-                assert_eq!(entries.len(), 1, "exactly one staging file must exist");
-                let metadata = entries[0].as_ref().unwrap().metadata().unwrap();
+                assert_eq!(entries.len(), 1, "exactly one staging directory must exist");
+                let directory = entries[0].as_ref().unwrap();
+                assert!(directory.metadata().unwrap().is_dir());
+                assert_eq!(
+                    directory.metadata().unwrap().permissions().mode() & 0o077,
+                    0
+                );
+                let files = std::fs::read_dir(directory.path())
+                    .unwrap()
+                    .collect::<Vec<_>>();
+                assert_eq!(files.len(), 1, "exactly one staging file must exist");
+                let metadata = files[0].as_ref().unwrap().metadata().unwrap();
                 assert_eq!(metadata.permissions().mode() & 0o077, 0);
                 assert_eq!(metadata.len(), 0, "privacy must precede the first write");
                 b"[fixture]\n private = synthetic-value\n"
@@ -305,10 +325,26 @@ mod tests {
         }
 
         let directory = tempfile::tempdir().unwrap();
-        let staged = stage_config(directory.path(), PrivateContent(directory.path())).unwrap();
+        let (staged, path) =
+            stage_config(directory.path(), PrivateContent(directory.path())).unwrap();
         assert_eq!(
-            std::fs::read(staged.path()).unwrap(),
+            std::fs::read(&path).unwrap(),
             b"[fixture]\n private = synthetic-value\n"
+        );
+        open_file(&path)
+            .unwrap()
+            .set_str("fixture.extra", "value")
+            .unwrap();
+        assert_eq!(
+            staged.path().metadata().unwrap().permissions().mode() & 0o077,
+            0
+        );
+        assert_eq!(
+            open_file(&path)
+                .unwrap()
+                .get_string("fixture.extra")
+                .unwrap(),
+            "value"
         );
         drop(staged);
         assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);

@@ -128,9 +128,35 @@ impl TempGuard {
     ///
     /// Returns an error if no candidate can be created exclusively.
     pub fn create_unique_dir(dir: &Path, prefix: &str, suffix: &str) -> io::Result<Self> {
+        Self::create_unique_dir_with_mode(dir, prefix, suffix, 0o777)
+    }
+
+    /// Create and guard a unique directory with an explicit Unix creation mode.
+    ///
+    /// On non-Unix platforms, `mode` is ignored.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no candidate can be created exclusively.
+    pub fn create_unique_dir_with_mode(
+        dir: &Path,
+        prefix: &str,
+        suffix: &str,
+        mode: u32,
+    ) -> io::Result<Self> {
+        let builder = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        let builder = {
+            use std::os::unix::fs::DirBuilderExt as _;
+            let mut builder = builder;
+            builder.mode(mode);
+            builder
+        };
+        #[cfg(not(unix))]
+        let _ = mode;
         for _ in 0..1_024 {
             let path = unique_path(dir, prefix, suffix);
-            match std::fs::create_dir(&path) {
+            match builder.create(&path) {
                 Ok(()) => return Ok(Self::dir(path)),
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(error) => return Err(error),

@@ -37,6 +37,11 @@ fn shared_home_lock_blocks_other_checkouts_before_configuration_mutations() {
     let first = common::IntegrationTestContext::new();
     let second = common::IntegrationTestContext::new();
     let home = tempfile::tempdir().unwrap();
+    let launcher = home.path().join(".local/bin").join(if cfg!(windows) {
+        "dotfiles.cmd"
+    } else {
+        "dotfiles"
+    });
     let lock_path = if cfg!(windows) {
         home.path().join("AppData/Local/dotfiles/home-run.lock")
     } else {
@@ -55,7 +60,7 @@ fn shared_home_lock_blocks_other_checkouts_before_configuration_mutations() {
 
     for repo in [&first, &second] {
         for (verb, selector) in [
-            ("update", "path"),
+            ("update", "launcher"),
             ("remove", "launcher"),
             ("check", "config-files"),
         ] {
@@ -72,7 +77,10 @@ fn shared_home_lock_blocks_other_checkouts_before_configuration_mutations() {
             assert!(!result.status.success(), "{verb}: {output}");
             assert!(output.contains("another dotfiles run"), "{verb}: {output}");
             assert!(output.contains("home-run.lock"), "{verb}: {output}");
-            assert!(!home.path().join(".profile").exists());
+            assert!(
+                !launcher.exists(),
+                "a blocked command must not install the launcher"
+            );
         }
     }
     lock.rewind().unwrap();
@@ -84,7 +92,7 @@ fn shared_home_lock_blocks_other_checkouts_before_configuration_mutations() {
     lock.read_exact(&mut owner).unwrap();
     assert_eq!(owner, contents, "contenders must preserve lock metadata");
     drop(lock);
-    let result = common::cli_command(second.root_path(), home.path(), None, "update", "path")
+    let result = common::cli_command(second.root_path(), home.path(), None, "update", "launcher")
         .output()
         .unwrap();
     assert!(
@@ -94,9 +102,8 @@ fn shared_home_lock_blocks_other_checkouts_before_configuration_mutations() {
         String::from_utf8_lossy(&result.stderr)
     );
     assert!(
-        std::fs::read_to_string(home.path().join(".profile"))
-            .unwrap()
-            .contains("$HOME/.local/bin")
+        launcher.is_file(),
+        "retry must install the launcher after the lock is released"
     );
 }
 

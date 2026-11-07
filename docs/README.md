@@ -31,13 +31,17 @@ npm ci
 npm run dev
 ```
 
-The server prints its local URL. To inspect production rendering and the search
-index, build first, then preview:
+The development server uses `http://localhost:4321/` and fails if the port is
+already in use. To inspect production rendering and the search index, stop the
+development server, build first, then preview:
 
 ```sh
 npm run build
 npm run preview
 ```
+
+The production preview also uses `http://localhost:4321/`. Run one manual
+preview at a time; browser tests use port 4322 separately.
 
 The commands also work from PowerShell. Neither preview publishes the site or
 applies machine configuration. Inspect desktop and narrow-screen navigation,

@@ -1,5 +1,5 @@
 [browser_use]
-disable_auto_review = true
+disable_auto_review = false
 allow_global_persistent_approval = false
 
 [browser_use.default_origin_policy]
@@ -7,3 +7,16 @@ access = "allow"
 auto_review = "deny"
 persistent_approval = false
 access_approval_lifetime = "turn"
+
+# Docs: VitePress development/preview, local-only preview, and browser tests.
+[browser_use.origins."http://localhost:4321"]
+auto_review = "allow"
+persistent_approval = true
+
+[browser_use.origins."http://localhost:4322"]
+auto_review = "allow"
+persistent_approval = true
+
+[browser_use.origins."https://dotfiles.stuartneivandt.com"]
+auto_review = "allow"
+persistent_approval = true

@@ -152,40 +152,73 @@ fn release_context(root: &Path, fail: bool) -> Context {
 
 #[test]
 fn release_update_preview_failure_apply_and_repeat() {
+    use crate::infra::logging::MsgKind;
+    use crate::test_helpers::CapturingOutput;
+
     let dir = fixture();
-    let target = dir.path().join("packages/tool-bin/version.sh");
+    // Recipe labels must not depend on the package base or generated file name.
+    std::fs::rename(
+        dir.path().join("packages/tool-bin"),
+        dir.path().join("packages/tool"),
+    )
+    .unwrap();
+    let target = dir.path().join("packages/tool/version.sh");
+    let preview_log = Arc::new(CapturingOutput::default());
     let preview = task()
-        .run(&release_context(dir.path(), false).with_dry_run(true))
+        .run(
+            &release_context(dir.path(), false)
+                .with_dry_run(true)
+                .with_log(Arc::<CapturingOutput>::clone(&preview_log)),
+        )
         .unwrap();
     assert_eq!(task_batch(&preview).changed_count(), 1);
+    assert_eq!(preview_log.messages_of(MsgKind::DryRun), ["update tool"]);
+    assert_eq!(
+        preview_log.messages_of(MsgKind::Debug),
+        [format!("write {}", target.display())]
+    );
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "original pins\n");
-    let warnings = Arc::new(crate::test_helpers::CapturingOutput::default());
-    let failure_ctx = release_context(dir.path(), true).with_log(Arc::<
-        crate::test_helpers::CapturingOutput,
-    >::clone(&warnings));
+    let warnings = Arc::new(CapturingOutput::default());
+    let failure_ctx =
+        release_context(dir.path(), true).with_log(Arc::<CapturingOutput>::clone(&warnings));
     assert_eq!(
         task_batch(&task().run(&failure_ctx).unwrap()).failed_count(),
         1
     );
     assert!(
-        warnings
-            .messages_of(crate::infra::logging::MsgKind::Warn)
-            .iter()
-            .any(|message| {
-                message.contains("tool-bin release refresh failed; existing pins retained")
-                    && message.contains("fixture network failure")
-            }),
+        warnings.messages_of(MsgKind::Warn).iter().any(|message| {
+            message.contains("tool-bin release refresh failed; existing pins retained")
+                && message.contains("fixture network failure")
+        }),
         "a failed refresh must retain its recipe and cause in diagnostics"
     );
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "original pins\n");
-    let result = task().run(&release_context(dir.path(), false)).unwrap();
+    let applied_log = Arc::new(CapturingOutput::default());
+    let result = task()
+        .run(
+            &release_context(dir.path(), false)
+                .with_log(Arc::<CapturingOutput>::clone(&applied_log)),
+        )
+        .unwrap();
     assert_eq!(task_batch(&result).changed_count(), 1);
+    assert_eq!(applied_log.messages_of(MsgKind::Info), ["update tool"]);
+    assert_eq!(
+        applied_log.messages_of(MsgKind::Debug),
+        [format!("write {}", target.display())]
+    );
     assert_eq!(
         std::fs::read_to_string(&target).unwrap(),
         release_pins(&source(), &release()).unwrap()
     );
-    let repeated = task().run(&release_context(dir.path(), false)).unwrap();
+    let repeated_log = Arc::new(CapturingOutput::default());
+    let repeated = task()
+        .run(
+            &release_context(dir.path(), false)
+                .with_log(Arc::<CapturingOutput>::clone(&repeated_log)),
+        )
+        .unwrap();
     assert!(matches!(repeated, TaskResult::Ok));
+    assert!(repeated_log.messages_of(MsgKind::Info).is_empty());
 }
 
 #[test]
@@ -464,6 +497,11 @@ fn snapshot_context(root: &Path) -> Context {
 #[test]
 fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
     let dir = fixture();
+    std::fs::rename(
+        dir.path().join("packages/tool-bin"),
+        dir.path().join("packages/tool"),
+    )
+    .unwrap();
     let ctx = snapshot_context(dir.path());
     let cache = build_root(&ctx).unwrap().join("tool-bin");
     let preview_log = Arc::new(crate::test_helpers::CapturingOutput::default());
@@ -474,16 +512,36 @@ fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
             ));
     let preview = ConfigureParu.run(&preview_ctx).unwrap();
     assert_eq!(task_batch(&preview).changed_count(), 2);
-    assert!(
-        preview_log
-            .messages_of(crate::infra::logging::MsgKind::DryRun)
-            .iter()
-            .any(|message| message.contains("refresh custom package snapshot")),
-        "preview must describe a snapshot that needs preparation"
+    assert_eq!(
+        preview_log.messages_of(crate::infra::logging::MsgKind::DryRun),
+        ["refresh tool", "update paru configuration"],
+        "preview identifies the recipe and configuration without full paths"
+    );
+    assert_eq!(
+        preview_log.messages_of(crate::infra::logging::MsgKind::Debug),
+        [
+            format!("snapshot {}", cache.display()),
+            format!("write {}", paru_config_path(&ctx).unwrap().display()),
+        ]
     );
     assert!(!cache.exists());
-    let applied = ConfigureParu.run(&ctx).unwrap();
+    let applied_log = Arc::new(crate::test_helpers::CapturingOutput::default());
+    let applied = ConfigureParu
+        .run(
+            &ctx.with_log(Arc::<crate::test_helpers::CapturingOutput>::clone(
+                &applied_log,
+            )),
+        )
+        .unwrap();
     assert_eq!(task_batch(&applied).changed_count(), 2);
+    assert_eq!(
+        applied_log.messages_of(crate::infra::logging::MsgKind::Info),
+        ["refresh tool", "update paru configuration"]
+    );
+    assert_eq!(
+        applied_log.messages_of(crate::infra::logging::MsgKind::Debug),
+        preview_log.messages_of(crate::infra::logging::MsgKind::Debug)
+    );
     let repo = git2::Repository::open(&cache).unwrap();
     let head = repo.head().unwrap().peel_to_commit().unwrap();
     let tree = head.tree().unwrap();
@@ -514,7 +572,7 @@ fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
         "preview must not announce work for a prepared snapshot"
     );
 
-    let source = dir.path().join("packages/tool-bin/PKGBUILD");
+    let source = dir.path().join("packages/tool/PKGBUILD");
     std::fs::write(&source, "modified tracked source\n").unwrap();
     // Resetting the standalone cache cannot reset the source checkout.
     std::fs::write(cache.join("PKGBUILD"), "modified cache\n").unwrap();

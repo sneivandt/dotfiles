@@ -53,8 +53,10 @@ preparation without installing applications:
 dotfiles update --only custom-package-versions,custom-package-repository --dry-run
 ```
 
-Check the proposed release pins, snapshot paths, and Paru configuration
-destination. Remove `--dry-run` after review to refresh pins and prepare snapshots.
+Check the recipes listed as `update <recipe>` for release pins and
+`refresh <recipe>` for snapshots. `update paru configuration` identifies a
+configuration change; use `--verbose` to inspect file paths. Remove `--dry-run`
+after review to refresh pins and prepare snapshots.
 This scoped run needs GitHub metadata access and makepkg when applying; it
 does not install missing tools. Preview does not execute recipes or write pins,
 snapshots, caches, or Paru configuration. The shared

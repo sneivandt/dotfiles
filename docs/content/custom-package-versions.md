@@ -61,8 +61,10 @@ Preview release discovery with your configured launcher:
 dotfiles update --only custom-package-versions --dry-run
 ```
 
-Check which recipes propose new `version.sh` pins. A release-query failure is
-not proof that existing pins are current; resolve the reported metadata,
+Each `update <recipe>` line identifies changed `version.sh` pins by recipe
+directory name, for example `update openai-codex`. Preview and apply use the
+same action wording; `--verbose` adds the pin file paths. A release-query
+failure is not proof that existing pins are current; resolve the reported metadata,
 authentication, or network problem before retrying. Then [apply the reviewed
 change](task-reference.md#preview-and-apply). Refreshing pins alone does not
 prepare snapshots or install applications.

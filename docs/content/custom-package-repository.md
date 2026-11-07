@@ -83,7 +83,10 @@ Preview snapshot and configuration changes with your configured launcher:
 dotfiles update --only custom-package-repository --dry-run
 ```
 
-Check the proposed snapshot paths and Paru configuration destination. Resolve
+Each `refresh <recipe>` line identifies a changed snapshot by recipe directory
+name, for example `refresh openai-codex`. A configuration change appears as
+`update paru configuration`. Preview and apply use the same action wording;
+`--verbose` adds snapshot paths and the Paru configuration destination. Resolve
 ownership conflicts before retrying; do not delete an unfamiliar cache.
 Back up existing Paru preferences and review every recipe before [applying
 the change](task-reference.md#preview-and-apply), which can execute PKGBUILD

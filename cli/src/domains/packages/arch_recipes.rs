@@ -103,6 +103,7 @@ struct ParuPlan {
 }
 
 struct SnapshotPlan {
+    recipe: String,
     snapshot: Snapshot,
     source: ReleaseSource,
     changed: bool,
@@ -191,6 +192,11 @@ impl Operation for ParuConfig {
                 Ok((changed, snapshot)) => {
                     content.push_str(&repository_section(&source.package_base, &snapshot.path)?);
                     snapshots.push(SnapshotPlan {
+                        recipe: directory
+                            .file_name()
+                            .context("missing recipe name")?
+                            .to_string_lossy()
+                            .into_owned(),
                         snapshot,
                         source,
                         changed,
@@ -220,19 +226,28 @@ impl Operation for ParuConfig {
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         for prepared in &plan.snapshots {
-            let snapshot = &prepared.snapshot;
             if !prepared.changed {
                 continue;
             }
-            ctx.log().dry_run(format!(
-                "refresh custom package snapshot {}",
-                snapshot.path.display()
-            ));
+            ctx.log()
+                .debug(format!("snapshot {}", prepared.snapshot.path.display()));
+            ctx.log().action(
+                "refresh",
+                &prepared.recipe,
+                true,
+                &format!("refresh {}", prepared.recipe),
+            );
         }
         let config_changed = plan.previous_config.as_deref() != Some(&plan.config);
         if config_changed {
             ctx.log()
-                .dry_run(format!("write {}", plan.config_path.display()));
+                .debug(format!("write {}", plan.config_path.display()));
+            ctx.log().action(
+                "update",
+                "paru configuration",
+                true,
+                "update paru configuration",
+            );
         }
         report_failures(ctx, &plan.failures);
         Ok(TaskStats::from_counts(
@@ -272,10 +287,14 @@ impl Operation for ParuConfig {
                 Ok(snapshot_changed) => {
                     if snapshot_changed {
                         changed += 1;
-                        ctx.log().info(format!(
-                            "refresh custom package snapshot {}",
-                            snapshot.path.display()
-                        ));
+                        ctx.log()
+                            .debug(format!("snapshot {}", snapshot.path.display()));
+                        ctx.log().action(
+                            "refresh",
+                            &prepared.recipe,
+                            false,
+                            &format!("refresh {}", prepared.recipe),
+                        );
                     }
                 }
                 Err(error) => {
@@ -299,7 +318,13 @@ impl Operation for ParuConfig {
             let path = &plan.config_path;
             write_atomic(path, &content)?;
             changed += 1;
-            ctx.log().info(format!("write {}", path.display()));
+            ctx.log().debug(format!("write {}", path.display()));
+            ctx.log().action(
+                "update",
+                "paru configuration",
+                false,
+                "update paru configuration",
+            );
         }
         report_failures(ctx, &failures);
         if changed == 0 && failures.is_empty() {
@@ -435,8 +460,14 @@ struct Asset {
     digest: Option<String>,
 }
 
+struct ReleasePins {
+    recipe: String,
+    path: PathBuf,
+    content: String,
+}
+
 struct ReleasePlan {
-    files: Vec<(PathBuf, String)>,
+    files: Vec<ReleasePins>,
     failures: Vec<String>,
     cache: CacheWrites,
 }
@@ -462,7 +493,15 @@ impl Operation for ReleaseUpdates {
                     let path = directory.join("version.sh");
                     match read_optional(&path) {
                         Ok(existing) if existing.as_deref() == Some(&pins) => {}
-                        Ok(_) => files.push((path, pins)),
+                        Ok(_) => files.push(ReleasePins {
+                            recipe: directory
+                                .file_name()
+                                .context("missing recipe name")?
+                                .to_string_lossy()
+                                .into_owned(),
+                            path,
+                            content: pins,
+                        }),
                         Err(error) => failures.push(format!("{}: {error:#}", source.package_base)),
                     }
                 }
@@ -493,8 +532,14 @@ impl Operation for ReleaseUpdates {
     }
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
-        for (path, _) in &plan.files {
-            ctx.log().dry_run(format!("write {}", path.display()));
+        for pins in &plan.files {
+            ctx.log().debug(format!("write {}", pins.path.display()));
+            ctx.log().action(
+                "update",
+                &pins.recipe,
+                true,
+                &format!("update {}", pins.recipe),
+            );
         }
         report_failures(ctx, &plan.failures);
         Ok(TaskStats::from_counts(
@@ -510,11 +555,18 @@ impl Operation for ReleaseUpdates {
         plan.cache.persist();
         let mut failures = plan.failures.clone();
         let mut changed = 0;
-        for (path, content) in &plan.files {
-            match write_atomic(path, content) {
+        for pins in &plan.files {
+            let path = &pins.path;
+            match write_atomic(path, &pins.content) {
                 Ok(()) => {
                     changed += 1;
-                    ctx.log().info(format!("write {}", path.display()));
+                    ctx.log().debug(format!("write {}", path.display()));
+                    ctx.log().action(
+                        "update",
+                        &pins.recipe,
+                        false,
+                        &format!("update {}", pins.recipe),
+                    );
                 }
                 Err(error) => failures.push(format!("writing {}: {error:#}", path.display())),
             }

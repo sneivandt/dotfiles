@@ -32,6 +32,56 @@ async function guideRoutes(page: Page) {
   return [...routes];
 }
 
+for (const theme of ['light', 'dark'] as const) {
+  test(`header, search, and outline stay stable during startup in ${theme} mode`, async ({ page, isMobile }) => {
+    await page.addInitScript((choice) => localStorage.setItem('vitepress-theme-appearance', choice), theme);
+    let start!: () => void;
+    const scripts = new Promise<void>((resolve) => { start = resolve; });
+    await page.route(/\.js(?:\?|$)/, async (route) => {
+      await scripts;
+      await route.continue();
+    });
+    const errors: string[] = [];
+    page.on('console', (message) => {
+      if (/hydration/i.test(message.text())) errors.push(message.text());
+    });
+    const appearance = () => page.evaluate(() => {
+      const selectors = ['.VPNavBar', '.VPNavBar .title', '#local-search button', '.VPDocAsideOutline'];
+      return selectors.map((selector) => {
+        const element = document.querySelector(selector)!;
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+          background: style.backgroundColor, color: style.color };
+      });
+    });
+    try {
+      await page.goto('/getting-started.html', { waitUntil: 'commit' });
+      await expect(page.locator('.VPNavBar')).toHaveClass(/has-sidebar/);
+      await expect(page.locator('#local-search button')).toBeVisible();
+      await page.evaluate(async () => { await document.fonts.ready; });
+      const outline = page.locator('.VPDocAsideOutline .outline-link');
+      const headings = await outline.allTextContents();
+      expect(headings.length).toBeGreaterThan(0);
+      if (!isMobile) await expect(outline.first()).toBeVisible();
+      const before = await appearance();
+      start();
+      await page.waitForLoadState('networkidle');
+      expect(await appearance()).toEqual(before);
+      await expect(outline).toHaveText(headings);
+      expect(errors).toEqual([]);
+      await page.getByRole('button', { name: 'Search', exact: true }).click();
+      await expect(page.locator('.VPLocalSearchBox')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.VPLocalSearchBox')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeFocused();
+    } finally {
+      start();
+      await page.unrouteAll({ behavior: 'wait' });
+    }
+  });
+}
+
 test('the introduction and grouped navigation fit the default reading layout', async ({ page, isMobile }) => {
   await page.goto('/');
   await expect(page).toHaveTitle('Dotfiles by Stuart Neivandt');

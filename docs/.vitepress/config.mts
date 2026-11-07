@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig, type DefaultTheme } from 'vitepress';
 import { slug } from 'github-slugger';
+import { themeStartup } from './theme-startup.mts';
 
 const domain = readFileSync(new URL('../public/CNAME', import.meta.url), 'utf8').trim();
 const origin = `https://${domain}`;
@@ -61,6 +62,7 @@ export default defineConfig({
   srcDir: 'content',
   outDir: 'dist',
   vite: {
+    plugins: [themeStartup()],
     publicDir: resolve(import.meta.dirname, '../public'),
     // esbuild 0.28 cannot lower destructuring for Safari 14.0's implementation.
     build: { target: ['es2020', 'chrome87', 'edge88', 'firefox78', 'safari14.1'] },
@@ -91,6 +93,7 @@ export default defineConfig({
     ];
   },
   markdown: {
+    headers: { level: [2, 3] },
     anchor: { slugify: slug },
     config(md) {
       const fence = md.renderer.rules.fence!;

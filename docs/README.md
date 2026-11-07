@@ -179,6 +179,12 @@ keep that port free.
 The site uses VitePress's default theme. Dependencies are pinned in
 [package.json](package.json) and its lockfile.
 
+[theme-startup.mts](.vitepress/theme-startup.mts) makes the VitePress 1.6 header
+layout and page outline available in the initial HTML, preventing a jump when
+JavaScript starts. Heading collection matches the site's level-two/three outline.
+The guarded transforms fail if upstream components change; review and remove
+them when upgrading to a version that renders these values during SSR itself.
+
 The theme layout restores the previous keyboard focus after Escape closes
 local search. VitePress 1.6's focus trap saves the already-focused modal input,
 which disappears on dismissal. Keep the keyboard regression when upgrading;

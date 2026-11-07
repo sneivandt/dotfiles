@@ -3,14 +3,15 @@ import { expect, test, type Page } from '@playwright/test';
 
 const contentDirectory = new URL('../../content/', import.meta.url);
 const documents = readdirSync(contentDirectory)
-  .filter((name) => name.endsWith('.md') && !['index.md', '404.md'].includes(name))
+  .filter((name) => name.endsWith('.md') && name !== '404.md')
   .map((name) => ({ name, source: readFileSync(new URL(name, contentDirectory), 'utf8') }));
 const taskDocuments = documents.filter(({ name, source }) =>
   name !== 'task-reference.md' && /^\| Selector \|/m.test(source));
 const referenceTitles = ['CLI reference', 'Task reference', ...taskDocuments
   .map(({ source }) => source.match(/^title: (.+)$/m)![1])
   .sort((left, right) => left.localeCompare(right, 'en'))];
-const pageCount = documents.length;
+const documentRoutes = documents.map(({ name }) =>
+  name === 'index.md' ? '/' : `/${name.replace(/\.md$/, '.html')}`);
 
 async function assertNoPageOverflow(page: Page) {
   const dimensions = await page.evaluate(() => ({
@@ -28,7 +29,7 @@ async function guideRoutes(page: Page) {
       (links) => links.map((link) => link.getAttribute('href')!),
     )) routes.add(href);
   }
-  expect(routes.size).toBe(pageCount);
+  expect([...routes].sort()).toEqual([...documentRoutes].sort());
   return [...routes];
 }
 
@@ -412,8 +413,7 @@ test('guide links use ordinary labels without boxed code', async ({ page }) => {
   test.setTimeout(180_000);
   await page.goto('/');
   const routes = await guideRoutes(page);
-  expect(routes).toHaveLength(pageCount);
-  for (const route of ['/', ...routes]) {
+  for (const route of routes) {
     await page.goto(route);
     await expect(page.locator('.vp-doc a code')).toHaveCount(0);
   }

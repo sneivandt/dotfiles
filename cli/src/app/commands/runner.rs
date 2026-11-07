@@ -19,7 +19,7 @@ use crate::infra::logging::OutputExt as _;
 /// Shared orchestration helper that combines setup and task execution.
 #[derive(Debug)]
 pub struct CommandRunner {
-    _run_lock: Option<crate::infra::run_lock::RunLock>,
+    _run_lock: Option<crate::infra::run_lock::CommandLocks>,
     ctx: Context,
     log: Arc<Logger>,
     store: ConfigStore,
@@ -44,23 +44,31 @@ impl CommandRunner {
     pub(crate) fn acquire_run_lock(
         runtime: &RuntimePolicy<'_>,
         log: &Arc<Logger>,
-    ) -> Result<Option<crate::infra::run_lock::RunLock>> {
+    ) -> Result<Option<crate::infra::run_lock::CommandLocks>> {
         if runtime.execution.elevated_child {
             return Ok(None);
         }
 
         let platform = Platform::detect();
         let root = resolve_root(runtime)?;
+        let home = crate::engine::context::home_directory(runtime.env.as_ref(), platform)?;
         if let Some(marker) = runtime
             .env
             .var_os(super::reexec::REEXEC_GUARD_VAR)
             .filter(|marker| !marker.is_empty())
         {
-            crate::infra::run_lock::verify_restart(&root, runtime.env.as_ref(), platform, &marker)?;
-            return Ok(None);
+            return crate::infra::run_lock::CommandLocks::restart(
+                &root,
+                &home,
+                runtime.env.as_ref(),
+                platform,
+                &marker,
+                &log.command_title(),
+            );
         }
-        crate::infra::run_lock::RunLock::acquire(
+        crate::infra::run_lock::CommandLocks::acquire(
             &root,
+            &home,
             runtime.env.as_ref(),
             platform,
             &log.command_title(),
@@ -72,7 +80,7 @@ impl CommandRunner {
         runtime: &RuntimePolicy<'_>,
         log: &Arc<Logger>,
         token: &crate::engine::CancellationToken,
-        run_lock: Option<crate::infra::run_lock::RunLock>,
+        run_lock: Option<crate::infra::run_lock::CommandLocks>,
     ) -> Result<Self> {
         let platform = Platform::detect();
         let root = resolve_root(runtime)?;
@@ -411,6 +419,9 @@ mod root_tests {
                 } else {
                     MapEnv::new()
                 };
+                let env = env
+                    .with("HOME", root.path())
+                    .with("USERPROFILE", root.path());
                 let runtime = RuntimePolicy::new(&global, false, env.into_handle(), true, true);
                 let lock = CommandRunner::acquire_run_lock(&runtime, &log).unwrap();
                 assert_eq!(

@@ -101,9 +101,10 @@ Important distinctions:
 - Structured JSONL output disables prompts. Terminal-dependent Windows exit
   pauses and interrupt handling remain separate from task prompt policy.
 
-The [CommandRunner](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runner.rs) holds the run lock,
-configuration store and execution context. Static update/remove tasks come
-from [catalog.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs); `check` has a
+The [CommandRunner](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runner.rs) holds the repository and home locks,
+configuration store and execution context. The home lock also coordinates independent
+checkouts targeting the same home, regardless of state-directory environment overrides.
+Static update/remove tasks come from [catalog.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs); `check` has a
 [separate task set](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/check.rs). The
 [execution coordinator](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/execution/mod.rs) handles
 elevation, restart phases, progress and final command status.
@@ -145,8 +146,8 @@ repository task first. If that phase succeeds and changes content, it starts
 the **current binary** again with the original arguments and a restart guard.
 The child reloads configuration and constructs a fresh catalog.
 
-The parent keeps the run lock while waiting. The child selects tasks before
-removing repeated repository synchronization, and does not reacquire the lock
+The parent keeps both locks while waiting. The child selects tasks before
+removing repeated repository synchronization, and does not reacquire those locks
 or repeat the initial self-update preflight. Failure or cancellation prevents
 restart; no change means the existing snapshot remains usable. Filtering out
 repository work uses a single graph.

@@ -42,7 +42,9 @@ fn finish_reexec(log: &dyn Output, code: i32) -> i32 {
 }
 
 fn inherited_lease(marker: Option<std::ffi::OsString>) -> Option<std::ffi::OsString> {
-    marker.filter(|value| !value.is_empty() && value != "1")
+    // Upgrade a legacy repository-only lease after its child acquires the home
+    // lock, so subsequent children verify rather than reacquire that lock.
+    marker.filter(|value| crate::infra::run_lock::RestartLease::covers_home(value))
 }
 
 fn run_reexec(mut command: std::process::Command, root: &std::path::Path, log: &dyn Output) -> ! {
@@ -130,7 +132,7 @@ pub(super) const fn should_check_self_update(runtime: &RuntimePolicy<'_>) -> boo
 pub(crate) fn prepare_self_update(
     runtime: &RuntimePolicy<'_>,
     log: &std::sync::Arc<crate::infra::logging::Logger>,
-) -> Result<Option<crate::infra::run_lock::RunLock>> {
+) -> Result<Option<crate::infra::run_lock::CommandLocks>> {
     let run_lock = runner::CommandRunner::acquire_run_lock(runtime, log)?;
     if !should_check_self_update(runtime) {
         return Ok(run_lock);
@@ -171,9 +173,10 @@ mod tests {
             (None, None),
             (Some(""), None),
             (Some("1"), None),
+            (Some(".dotfiles-restart-123-0-lock"), None),
             (
-                Some(".dotfiles-restart-123-0-lock"),
-                Some(".dotfiles-restart-123-0-lock"),
+                Some(".dotfiles-restart-home-123-0-lock"),
+                Some(".dotfiles-restart-home-123-0-lock"),
             ),
         ] {
             assert_eq!(

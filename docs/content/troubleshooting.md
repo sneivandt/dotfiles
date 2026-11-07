@@ -274,8 +274,12 @@ installation, AUR setup, links, and permissions. It is not a narrower retry.
 
 ### Repository is locked
 
-Update, remove, and check share a lock, including previews. Linked worktrees
-use the same common Git directory. The error identifies the lock and, when
+Update, remove, and check hold repository and home locks, including previews.
+Linked worktrees share the repository lock through their common Git directory.
+Independent clones targeting the same home also share a home lock at
+`~/.local/state/dotfiles/home-run.lock` on Linux or
+`~/AppData/Local/dotfiles/home-run.lock` on Windows. State-directory environment
+overrides do not change the home lock. The error identifies the lock and, when
 available, the owner PID, command, and start time.
 
 Wait for the owner or inspect it. `list` and `log` remain usable.

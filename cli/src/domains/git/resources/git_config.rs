@@ -2,6 +2,23 @@
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
+/// Stage the complete user configuration privately before editing it with libgit2.
+fn stage_config(
+    parent: &std::path::Path,
+    contents: impl AsRef<[u8]>,
+) -> Result<crate::infra::fs::TempGuard> {
+    use std::io::Write as _;
+
+    let (stage, mut file) = crate::infra::fs::TempGuard::create_unique_file_with_mode(
+        parent,
+        ".dotfiles-git",
+        "config",
+        0o600,
+    )?;
+    file.write_all(contents.as_ref())?;
+    Ok(stage)
+}
+
 fn open_file(path: &std::path::Path) -> Result<git2::Config> {
     // libgit2's relative-include resolver recognizes '/' separators, including
     // on Windows. Native backslashes can otherwise make an include appear absent.
@@ -194,10 +211,7 @@ impl GitConfigResource {
         let path = crate::infra::fs::canonicalize(&configured)?;
         let before = std::fs::read(&path)?;
         let parent = path.parent().context("global Git config has no parent")?;
-        let (stage, file) =
-            crate::infra::fs::TempGuard::create_unique_file(parent, ".dotfiles-git", "config")?;
-        drop(file);
-        std::fs::write(stage.path(), &before)?;
+        let stage = stage_config(parent, &before)?;
         {
             let mut staged = open_file(stage.path())?;
             let values = self.values_from_config(config)?;
@@ -272,6 +286,33 @@ impl IntrinsicState for GitConfigResource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn git_config_is_private_before_staging_any_user_content() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        struct PrivateContent<'a>(&'a std::path::Path);
+        impl AsRef<[u8]> for PrivateContent<'_> {
+            fn as_ref(&self) -> &[u8] {
+                let entries = std::fs::read_dir(self.0).unwrap().collect::<Vec<_>>();
+                assert_eq!(entries.len(), 1, "exactly one staging file must exist");
+                let metadata = entries[0].as_ref().unwrap().metadata().unwrap();
+                assert_eq!(metadata.permissions().mode() & 0o077, 0);
+                assert_eq!(metadata.len(), 0, "privacy must precede the first write");
+                b"[fixture]\n private = synthetic-value\n"
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        let staged = stage_config(directory.path(), PrivateContent(directory.path())).unwrap();
+        assert_eq!(
+            std::fs::read(staged.path()).unwrap(),
+            b"[fixture]\n private = synthetic-value\n"
+        );
+        drop(staged);
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
+    }
 
     #[test]
     fn implicit_local_value_with_includes_fails_without_rewriting_either_file() {

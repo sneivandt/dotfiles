@@ -31,6 +31,76 @@ fn update_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>> {
 }
 
 #[test]
+fn shared_home_lock_blocks_other_checkouts_before_configuration_mutations() {
+    use std::io::{Read as _, Seek as _};
+
+    let first = common::IntegrationTestContext::new();
+    let second = common::IntegrationTestContext::new();
+    let home = tempfile::tempdir().unwrap();
+    let lock_path = if cfg!(windows) {
+        home.path().join("AppData/Local/dotfiles/home-run.lock")
+    } else {
+        home.path().join(".local/state/dotfiles/home-run.lock")
+    };
+    std::fs::create_dir_all(lock_path.parent().unwrap()).unwrap();
+    let mut lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .open(&lock_path)
+        .unwrap();
+    lock.try_lock().unwrap();
+    let contents = b"fixture owner";
+    std::io::Write::write_all(&mut lock, contents).unwrap();
+
+    for repo in [&first, &second] {
+        for (verb, selector) in [
+            ("update", "path"),
+            ("remove", "launcher"),
+            ("check", "config-files"),
+        ] {
+            let mut command =
+                common::cli_command(repo.root_path(), home.path(), None, verb, selector);
+            command.env("XDG_STATE_HOME", home.path().join("other-state"));
+            command.env("LOCALAPPDATA", home.path().join("other-local"));
+            let result = command.output().unwrap();
+            let output = format!(
+                "{}{}",
+                String::from_utf8_lossy(&result.stdout),
+                String::from_utf8_lossy(&result.stderr)
+            );
+            assert!(!result.status.success(), "{verb}: {output}");
+            assert!(output.contains("another dotfiles run"), "{verb}: {output}");
+            assert!(output.contains("home-run.lock"), "{verb}: {output}");
+            assert!(!home.path().join(".profile").exists());
+        }
+    }
+    lock.rewind().unwrap();
+    assert_eq!(
+        lock.metadata().unwrap().len(),
+        u64::try_from(contents.len()).unwrap()
+    );
+    let mut owner = vec![0; contents.len()];
+    lock.read_exact(&mut owner).unwrap();
+    assert_eq!(owner, contents, "contenders must preserve lock metadata");
+    drop(lock);
+    let result = common::cli_command(second.root_path(), home.path(), None, "update", "path")
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(
+        std::fs::read_to_string(home.path().join(".profile"))
+            .unwrap()
+            .contains("$HOME/.local/bin")
+    );
+}
+
+#[test]
 fn nested_cli_fixture_preserves_ancestor_settings_and_run_lock() {
     use std::io::{Read as _, Seek as _, Write as _};
 

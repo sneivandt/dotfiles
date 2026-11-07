@@ -54,27 +54,28 @@ changes usually do not need engine changes.
 
 ## Before pushing
 
-- Use focused checks while editing and lightweight commit hooks. Run broad
-  coverage once at the final committed gate, not again at every layer.
-- Choose coverage from [Testing](docs/content/testing.md#choosing-coverage), including
-  affected script/application regressions. Use the pinned Rust toolchain.
-- Use [docs/README.md](docs/README.md#checks) for focused documentation commands
-  and its final native gate. One native documentation result is enough,
-  including mixed patches; cross-platform parity applies to CLI behavior.
-- Validate the committed patch with the [pre-push checker](docs/content/testing.md#before-pushing).
-  A successful commit hook or focused test alone is not push validation.
-  On Windows, use its coordinated native Windows and WSL checks. Do not treat
-  cross-compilation as a substitute for available native runtime tests.
-- Fix selected local failures. Report unavailable checks and remaining Windows,
-  integration, and mutation coverage explicitly; a skip is not a pass.
-  A confirmed local npm TLS failure may use the
-  [explicit unavailable-coverage receipt](docs/content/testing.md#local-npm-tls-failures).
-  Continue the other local checks and require the exact commit's CI documentation
-  job to pass; do not disable TLS validation or report unavailable checks as passed.
-- Run [focused mutation testing](docs/content/testing.md#focused-mutation-testing)
-  for changed Rust behavior, especially safety checks, scheduling, previews, and
-  partial failures. When fixing a survivor, rerun the original source range
-  even if the fix changes only tests.
+- Inspect the full intended diff, including renames/deletions and pending changes
+  from failed pushes. Choose local checks by affected behavior and test inputs
+  using [Testing](docs/content/testing.md#choosing-coverage). The agent owns this
+  decision; briefly explain the selected coverage and what remains for CI.
+- Run the smallest useful checks with the pinned toolchain. Broaden for shared
+  behavior, uncertain impact, or failures. Do not run unrelated suites or repeat
+  passing checks unless relevant inputs changed. Keep commit hooks lightweight.
+- For skills and prose, check metadata and links as affected. Use
+  [docs/README.md](docs/README.md#checks) to decide whether a site build or browser
+  review adds evidence; neither is automatic for Markdown or mixed patches.
+- Validate the committed patch. Focused checks are sufficient when they cover
+  the affected behavior; the [pre-push coordinator](docs/content/testing.md#before-pushing)
+  is an optional conservative tool, not a mandatory second gate. Add cross-target
+  CLI compilation only when the diff can affect that target. Native runtime
+  checks cover behavior that cross-compilation cannot; remote CI can supply them.
+- Fix selected local failures. Distinguish intentionally deferred CI coverage
+  from checks that could not run; neither is a local pass. Do not provision a
+  second OS or build the docs site solely to duplicate remote CI.
+- Use [focused mutation testing](docs/content/testing.md#focused-mutation-testing)
+  locally when it helps verify changed safety or failure behavior, or investigate
+  a survivor; otherwise rely on the selected remote shards. When fixing a
+  survivor, rerun the original source range even for a test-only fix.
 - A request to push includes monitoring CI by default, without a separate
   request. After an authorized push, monitor the exact commit's aggregate CI and inspect
   selected mutation shard reports. Survivors, timeouts, and tool failures block

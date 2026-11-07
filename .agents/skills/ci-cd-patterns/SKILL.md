@@ -2,7 +2,8 @@
 name: ci-cd-patterns
 description: >
   Use for .github/workflows/, CI guard scripts, release tags/assets, action
-  pinning, or ci-success gating. Not for ordinary local test selection.
+  pinning, ci-success gating, or monitoring CI after a push. Not for ordinary
+  local test selection.
 ---
 
 # CI/CD Patterns
@@ -35,7 +36,15 @@ action-version inventories in guidance.
 
 - Treat a user request to push as including CI monitoring unless they explicitly
   opt out. Do not stop at a successful Git push or wait for another request.
-- Find the CI run for the exact pushed SHA and verify the aggregate gate.
+- Find the CI run for the exact pushed SHA and verify the aggregate gate and
+  other checks, including CodeQL when selected. Use run/job status to wait at
+  sensible intervals; fetch logs for failures and artifacts when needed, rather
+  than repeatedly downloading successful logs or rerunning local suites.
+- Follow selected Pages and release workflows after aggregate CI. Verify Pages
+  deployed that commit's tested artifact; for a release verify the tag's target,
+  expected assets, and checksums. A deliberate publication skip is valid; a
+  pending or failed publisher is not completion. Check deployed content when
+  the change affects it; routine wording does not need another browser audit.
 - Wait for completion, inspect failed job logs, and report actionable failures.
   If monitoring is unavailable, state the SHA, run, and blocker. A later push's
   green run does not establish that the requested commit passed.
@@ -76,6 +85,8 @@ Start with [CI](../../../.github/workflows/ci.yml) and
 (the `.sh` entry point delegates to it).
 Use [Testing](../../../docs/content/testing.md) for canonical commands and the current CI
 coverage matrix.
-Use one committed pre-push gate after focused edit-loop checks, not full checks
-at every layer. The checker coordinates native Windows and WSL fixtures on
-Windows and reuses documentation results for the same commit.
+Select local checks from the affected behavior, not the full remote job list.
+Focused checks can be sufficient; the committed coordinator is an optional
+conservative tool. Its broad CI selection is not a minimum local checklist.
+Do not run a docs build, cross-target compilation, or the full suite merely
+because CI does. Preserve remote gates and monitor them through completion.

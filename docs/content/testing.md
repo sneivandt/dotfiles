@@ -14,11 +14,13 @@ Start with a focused check of the behavior you changed. Before pushing,
 validate the committed patch with the coverage selected below. A local pass
 is not proof of a complete machine installation, and a skipped check is not a pass.
 
-Use focused checks during editing, ordinary lightweight commit hooks, and one
-broad committed pre-push gate. Full hook mode is optional troubleshooting
-coverage, not another required step before the same checks run at the final gate.
-Reuse results only for the same commit, platform, command, and relevant tool
-environment. Tests on native Linux and Windows cover different runtime behavior.
+Choose local coverage from the diff, then let remote CI provide its broader
+matrix. A focused check can be the final local check; there is no mandatory
+full-suite pass or second run through the coordinator. Keep commit hooks
+lightweight. Reuse a passing result while its tested inputs, platform, command,
+and tool environment remain unchanged. Before pushing, confirm those inputs
+match the committed patch; rerun after relevant changes or uncertain provenance.
+Native Linux and Windows tests cover different runtime behavior.
 
 Each example starts at the repository root unless it says otherwise or includes
 a `cd` command. Return to the root before following a separate example.
@@ -27,7 +29,8 @@ a `cd` command. Return to the root before following a separate example.
 
 | Change | Start with |
 |---|---|
-| Documentation or skills | Focused metadata/link fixtures while editing; [native docs checker](#documentation-site) and rendered-page review at the final gate |
+| Skills, agent instructions, or ordinary prose | Review accuracy; metadata and source-link checks as affected. No Rust, site build, or browser run by default |
+| Docs routes, headings, rendering, navigation, search, or dependencies | Select the affected [site checks](#documentation-site); build or browser checks only where they exercise the change |
 | TOML, categories, or source layout | `config_drift` and local `config` stage |
 | Task selection or dependencies | Affected command suite and `task_execution` |
 | A concrete resource | Domain unit tests and affected lifecycle/end-to-end cases |
@@ -37,15 +40,42 @@ a `cd` command. Return to the root before following a separate example.
 | CI selection or workflows | Local `ci` stage and the changed job's command |
 | Arch package recipes | [Recipe validation](arch-package-recipes.md#ci-and-validation) |
 
-Broaden coverage when a shared loader, scheduler, adapter, or failure policy
-changes. Rust changes also need formatting and host Clippy; add Windows-target
-Clippy for platform-sensitive code and the full Rust suite for shared
-configuration, catalog, or engine changes. Use the
-[pinned toolchain](contributing.md#selecting-the-pinned-toolchain).
+Read the changed code and the tests' inputs before choosing targets. A test can
+be affected through a shared helper, embedded file, real configuration, or
+snapshot even when its source did not change. Include deletions and both sides
+of renames. A Markdown file embedded in the CLI is a CLI input, not merely prose.
+When the dependency is unclear, inspect it or broaden the checks.
 
-Heading and path changes need incoming-link checks. Native process behavior
-needs testing on each affected OS. Desktop rendering and session behavior need
-native checks, while package builds and host-mutating integration belong in
+Rust source changes normally need formatting, host Clippy, and the owning unit
+or integration tests, using the [pinned toolchain](contributing.md#selecting-the-pinned-toolchain).
+Broaden to the full Rust suite for shared configuration, catalog, scheduler,
+execution, or lifecycle changes with wide impact. A test-only edit generally
+needs its affected target, not unrelated application integrations. Cargo/build
+changes need relevant compilation and dependency checks; minimum-Rust checks
+are useful when syntax, APIs, dependencies, or the supported version can change.
+
+Use [platform coverage parity](#platform-coverage-parity) to decide whether to
+add target compilation or native runtime tests. Cross-target Clippy is useful
+for changed platform gates, imports, types, dependencies, or shared APIs consumed
+by Windows. An isolated Linux-only implementation edit does not automatically
+need Windows compilation. Cross-compilation cannot verify Windows paths,
+registry, elevation, process behavior, or symlinks; let exact-commit native CI
+supply that coverage when it is unavailable locally. Do not provision another
+OS merely to repeat the matrix. Shared code can affect both platforms without
+an explicit platform gate.
+
+For prose and skills, metadata/link checks and source review are usually enough.
+Heading and path changes need incoming-link checks. Build the site when changed
+Markdown syntax, routes, metadata generation, assets, or dependencies need
+rendering evidence. Run focused browser checks for changed layout, navigation,
+search, diagrams, or interaction. Ordinary wording and internal skills do not
+need a running docs site. See the [site check table](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#checks).
+
+Before running checks, briefly state the affected behavior, selected checks,
+and material coverage deferred to CI. This is a short explanation, not another
+report or approval step. Broaden after failures or newly discovered impact;
+once the selected checks pass, proceed to commit, push, and monitor CI.
+Desktop session behavior and package builds still need suitable native or
 disposable environments.
 
 ### Isolation and side effects
@@ -108,7 +138,7 @@ pwsh -File .github\workflows\scripts\windows\Check.ps1 -Strict fmt clippy test c
 ```
 
 The examples select Rust and configuration checks. For documentation changes,
-use the [native docs checker](#documentation-site) on the checkout's OS.
+select the affected [documentation checks](#documentation-site).
 
 With no stage names, the scripts run their default stages:
 
@@ -167,29 +197,31 @@ need to be staged to check their links.
 
 ## Before pushing
 
-Commit the intended patch, refresh its comparison base, and check the committed
-snapshot rather than relying on working-tree or commit-hook results.
+Review the complete intended range against the refreshed destination branch.
+If a previous push failed, keep its pending source changes in scope by comparing
+against the last successful ancestor. Validate the committed inputs with the
+checks selected under [Choosing coverage](#choosing-coverage). A focused result
+from before the commit remains useful when those exact inputs were committed
+unchanged; unstaged fixes do not validate committed code.
 
 ### Documentation and skills
 
-Validate documentation once on the checkout's native platform, including mixed
-patches. From the repository root, run:
-
-```powershell
-python docs/check.py --committed
-```
-
-Use `python3` where required. The
-[site maintenance README](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#checks)
-owns prerequisites, comparison-range selection, snapshot behavior, and remaining
-coverage. Uncommitted fixes cannot satisfy this gate. Mixed patches also need
-the implementation checks below; the coordinator can run documentation once
-as part of that gate.
+Use the affected checks from the
+[site maintenance README](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#checks).
+Skill wording and ordinary prose usually need no npm installation, build,
+browser suite, or Rust compilation. A mixed patch adds only the checks needed
+for its documentation changes. The full `python docs/check.py --committed`
+checker is available for broad site changes or uncertain impact, once on a
+native platform; it is not required for every Markdown edit.
 
 ### Implementation and mixed patches
 
-For implementation and mixed patches, run the coordinated pre-push checker
-with Python 3.11 or newer. From Windows:
+The coordinated pre-push checker is an optional conservative alternative to
+manually selecting checks. It uses CI's broad path policy, so its plan can
+include unrelated local work, including a full docs build on a CLI-only patch.
+Inspect the plan first; choose focused commands instead when their coverage is
+clear. This does not change what remote CI requires. To use the coordinator,
+with Python 3.11 or newer, run from Windows:
 
 ```powershell
 python .github\workflows\scripts\linux\pre-push.py --plan
@@ -336,8 +368,9 @@ working tree, so review their changes separately. The staged compiler pin is
 checked, not installed or switched automatically.
 
 `sh hooks/check-ci-guards.sh` runs targeted guards directly. Without full mode
-it omits config drift, cargo-deny, and wrapper tests. Neither invocation replaces
-the [committed-patch checker](#before-pushing).
+it omits config drift, cargo-deny, and wrapper tests. Neither invocation alone
+establishes coverage of the full committed diff;
+choose any additional checks under [Before pushing](#before-pushing).
 
 ### Sensitive-pattern scanning
 
@@ -523,8 +556,11 @@ for why a docs-only push can recover a previously failed release.
 ## Focused mutation testing
 
 Mutation testing temporarily changes code to check whether tests notice a
-wrong branch, lost error, or incorrect preview. Run focused mutation tests for
-Rust behavior changes, especially failure handling, scheduling, and partial success.
+wrong branch, lost error, or incorrect preview. Use local mutation testing
+when it adds evidence for changed safety guards, failure handling, scheduling,
+or partial success, or to diagnose a surviving mutant. It is not an automatic
+local gate for every Rust edit. The selected remote mutation shards remain
+required, and their reports must be inspected after pushing.
 
 Follow [Mutation testing](mutation-testing.md) to create a disposable worktree,
 select the original committed source range, inspect survivors, and preserve
@@ -548,7 +584,8 @@ cargo clippy --locked --profile ci --target x86_64-pc-windows-gnu \
 ```
 
 It does **not** exercise Windows registry, UAC, symlink/junction, path, or
-process behavior. Native Windows tests are still required. The
+process behavior. Affected native Windows tests still need to pass, locally or
+in exact-commit CI. The
 [CI coverage matrix](ci-and-releases.md#platform-coverage) lists those boundaries.
 
 Executor tests launch their ignored child-process fixture themselves; do not

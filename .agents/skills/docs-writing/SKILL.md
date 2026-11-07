@@ -40,10 +40,13 @@ for a task page's implementation contract.
 - For consequential examples, reuse or extend the isolated
   [documentation contracts](../../../cli/tests/docs_contracts.rs).
   Distinguish decoder, transition, serialization, and rendered-site evidence.
-- Select focused checks and the final native gate from
-  [docs/README.md](../../../docs/README.md#checks). Commands live there, not here.
-- Inspect changed rendered content at desktop and narrow widths. Structural
-  checks do not prove accuracy or usability.
+- Select checks from [docs/README.md](../../../docs/README.md#checks) based on
+  changed behavior. Ordinary prose needs source review and affected links or
+  metadata checks; a site build, browser run, and Rust compilation are not
+  automatic gates. Run example contracts when their inputs or claims change.
+- Inspect rendered content when layout, Markdown syntax, tables, diagrams, or
+  interaction can change. Use desktop and narrow widths where relevant. Plain
+  wording can be reviewed in source; structural checks never prove accuracy.
 - Apply the [documentation acceptance scenarios](../../../docs/content/writing-documentation.md#acceptance-scenarios)
   when changing authoring guidance. They are manual acceptance cases, not a
   model-effectiveness benchmark.

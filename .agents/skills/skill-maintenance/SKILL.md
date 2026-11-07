@@ -61,20 +61,19 @@ For documentation guidance, also walk the
 through the revised body. Routing to the right skill does not prove that its
 instructions produce a correct procedure for an already-managed machine.
 
-Review frontmatter, paths, and contradictions with neighboring skills, then use
-the [native documentation check](../../../docs/README.md#checks). Run it with
-Windows tools for a Windows checkout, not through WSL on the mounted Windows
-filesystem. One native docs check is enough, including mixed patches. Use its
-committed-snapshot mode before pushing; mixed implementation changes also need
-the broader checks in
-[Testing](../../../docs/content/testing.md#choosing-coverage).
-Reuse the exact commit's docs result instead of repeating it in WSL.
-Its link check covers tracked and unignored new Markdown, including unstaged
-moves; generated and ignored files are excluded.
+Review frontmatter, paths, and contradictions with neighboring skills. Select
+checks from [docs/README.md](../../../docs/README.md#checks): skill wording normally
+needs source-link and metadata validation, not npm, Rust, a site build, or browser
+tests. Run validator regression fixtures when changing its implementation or
+metadata convention. Review instructions manually with the routing cases above;
+site tests cannot prove that an agent will choose useful checks.
 
-During editing, prefer focused metadata/link fixtures. Run the full native docs
-suite once at the final gate unless an earlier full run is needed to diagnose
-a failure. A working-tree pass cannot satisfy a later committed snapshot.
+Validate the committed inputs without repeating passing checks whose relevant
+inputs are unchanged. For mixed patches, select implementation coverage from
+[Testing](../../../docs/content/testing.md#choosing-coverage). A full native docs
+run is available for affected site behavior or uncertain impact, not required
+merely because a skill is Markdown. Source-link checks cover tracked and
+unignored new Markdown, including unstaged moves; generated files are excluded.
 
 The native checker and Linux docs stage run [metadata validation](scripts/check-skills.py) and its
 [regression fixtures](scripts/test-check-skills.py). Repository frontmatter uses

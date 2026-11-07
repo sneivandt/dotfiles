@@ -42,15 +42,18 @@ not incidental sentences or hardcoded inventory counts.
 
 ## Verify and publish within scope
 
-Use the focused commands and final native checker in
-[docs/README.md](../../../docs/README.md#checks). One native platform is enough
-for documentation, including mixed patches; never share node_modules across
-Windows and Linux. The
+Select affected checks from [docs/README.md](../../../docs/README.md#checks).
+Build for changed routes, rendering, generated metadata, assets, or dependencies;
+use focused browser tests for affected search, navigation, layout, or interaction.
+Use the full native checker for broad site changes or uncertain impact. Neither
+it nor a running site is required for ordinary prose or internal skills. One
+native platform is enough, including mixed patches; never share node_modules
+across Windows and Linux. The
 [npm TLS exception](../../../docs/content/testing.md#local-npm-tls-failures)
 records unavailable coverage, not a pass.
 
-Review the changed reader path on desktop and narrow screens, including
-keyboard navigation, search dismissal, focus, links, warnings, and diagrams
+When rendered behavior changes, review the affected path on desktop and narrow
+screens, including keyboard navigation, search dismissal, focus, links, warnings, and diagrams
 where affected. Browser emulation is not native phone or screen-reader proof.
 Repository source URLs can be checked locally; upstream destinations require
 separate review and must not receive private content.

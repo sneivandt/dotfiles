@@ -204,10 +204,13 @@ Do not add old-name redirects or heading aliases. Register the page in
 [site configuration](https://github.com/sneivandt/dotfiles/blob/main/docs/.vitepress/config.mts)
 and review its generated outline, previous/next links, and search result.
 
-Run the [documentation checks](testing.md#documentation-site), then read the
-rendered page on desktop and a narrow screen. Follow links as a new reader:
-they should supply depth, not a missing essential step. Automated checks
-cannot establish factual accuracy or whether an example teaches the right thing.
+Choose [documentation checks](testing.md#documentation-site) for the changed
+content. Ordinary wording can be reviewed in source with affected link and
+metadata checks. Inspect rendered output when syntax, layout, navigation, or
+interaction can change, using desktop and narrow widths where relevant.
+Follow links as a new reader: they should supply depth, not a missing essential
+step. Automated checks cannot establish factual accuracy or whether an example
+teaches the right thing.
 
 Keep important lookup headings within the site's outline depth, levels two
 and three. Put exceptional recovery steps after the normal procedure, and

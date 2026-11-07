@@ -82,10 +82,11 @@ stale examples. Stage explicit paths or hunks and inspect `git diff --cached`.
 The [commit hooks](#git-hooks) inspect the index, which may differ from your
 working files.
 
-After committing, run the [pre-push checker](testing.md#before-pushing).
-It verifies the committed range, not unstaged fixes. Resolve local failures and
-record unavailable checks. Keep ordinary hooks lightweight rather than running
-the full gate at every commit. After pushing, follow the exact commit's
+Confirm the selected checks cover the [committed inputs](testing.md#before-pushing),
+not unstaged fixes. Reuse passing results when their inputs are unchanged; the
+pre-push coordinator is available for conservative coverage, not a required
+second gate. Resolve local failures and record deferred or unavailable checks.
+Keep ordinary hooks lightweight. After pushing, follow the exact commit's
 [CI result](ci-and-releases.md#reading-a-run), including informational failures.
 Wait for the selected checks and any required publication before treating the
 change as delivered. A successful upload is not evidence that CI passed.

@@ -26,6 +26,8 @@ Companions are needed only when the request changes their contract.
 | Add an ordinary conf/packages.toml entry | `package-management` | No arch-package-recipes skill unless packaging changes |
 | Change APM fragment target deployment | `agent-tooling` | No arch-package-recipes skill unless the APM executable recipe changes |
 | Change an optional overlay section's generic TOML loader | `toml-configuration` | Add overlay-scripts only for resolution or execution changes |
+| Monitor checks after pushing a skill wording change | `ci-cd-patterns` | Follow exact-SHA CI and Pages; do not rerun local suites while waiting |
+| Select tests before committing an isolated Rust resource change | `cross-platform-verification` | Affected targets and host checks; CI skill only for monitoring or automation edits |
 | Choose Windows coverage after a Rust path-handling change | `cross-platform-verification` | windows-specific-patterns owns implementation choices |
 | Enable dark mode and fix Mermaid on the published docs site | `docs-publishing` | No desktop-shell skill |
 | Move site-maintenance instructions into docs/README.md | `docs-publishing` | Add docs-writing for prose; keep the README outside published routes |
@@ -55,3 +57,23 @@ these examples prove runtime routing quality.
 When reviewing documentation guidance, use the human guide's
 [acceptance scenarios](../../../docs/content/writing-documentation.md#acceptance-scenarios)
 as well. Check the explanation's essential facts, not a fixed wording.
+
+## Local coverage review cases
+
+Walk these diffs through the verification guidance without executing unrelated
+suites. The result should explain why a check can exercise the change.
+
+| Diff | Expected local choice | Remote follow-through |
+|---|---|---|
+| Skill wording and ordinary guide prose | Source review, affected links and skill metadata; no npm, site, or Rust | Exact-SHA aggregate, docs, and selected publication |
+| Heading rename or moved page | Incoming links; build for moved routes and generated navigation | Full docs job and Pages |
+| Search hook, theme CSS, or Mermaid renderer | Affected Node/type checks, build, focused browser cases | Full docs/browser suite and Pages |
+| Linux-only resource implementation | fmt, host Clippy, owning tests; no automatic Windows compile | Selected native platform and mutation jobs |
+| Shared path helper or platform gates | Owning tests plus affected-target compilation; native runtime where available | Native Windows path behavior and selected mutation reports |
+| Shared scheduler or loader | Broader Rust suite and affected command contracts | Full selected platform/integration matrix |
+| One integration-test assertion | Its target; verify the filter ran tests | Selected CI tests, retaining pending source range after a failed push |
+
+A passing focused check need not be repeated merely because a commit was
+created. Verify the committed inputs match; rerun after relevant edits or
+uncertain provenance. A local failure still needs resolution. CI deferral is
+not a local pass, and a successful push does not end the task while CI is pending.

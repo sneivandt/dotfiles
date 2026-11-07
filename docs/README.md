@@ -44,8 +44,8 @@ The production preview also uses `http://localhost:4321/`. Run one manual
 preview at a time; browser tests use port 4322 separately.
 
 The commands also work from PowerShell. Neither preview publishes the site or
-applies machine configuration. Inspect desktop and narrow-screen navigation,
-search, theme choices, diagrams, and source links before publishing.
+applies machine configuration. For affected rendered behavior, inspect desktop
+and narrow-screen navigation, search, theme choices, diagrams, and source links.
 
 For a production preview restricted to this machine, build as above, then
 serve only the built directory from the repository root:
@@ -62,8 +62,15 @@ and serves the public build, not the checkout or a development server.
 
 ## Checks
 
-After installing the locked dependencies above, run this from `docs/` to
-install the browser runtime:
+Choose checks from the diff. Skills and ordinary prose usually need source
+review and affected metadata/link checks, with no npm install, site build,
+browser suite, or Rust compilation. Build when routes, rendering, generated
+metadata, assets, or dependencies change; run focused browser tests for affected
+layout, navigation, search, diagrams, or interaction. Use the full checker for
+broad site changes or uncertain impact.
+
+When running browser tests or the full checker, install the locked dependencies
+above, then run this from `docs/` to install the browser runtime:
 
 ```sh
 npx playwright install chromium
@@ -74,16 +81,15 @@ Its `install --with-deps chromium` command can install those libraries, but that
 is a host package change: use an authorized environment or a disposable runner.
 CI uses that option on its disposable Ubuntu runner.
 
-Run the native documentation checker from the repository root:
+To run the full native documentation checker from the repository root:
 
 ```powershell
 python docs/check.py
 ```
 
-For the edit loop, prefer the affected Markdown/checker fixtures or source-link
-check rather than rebuilding and rerunning browsers after every change. Reserve
-one full documentation run for the committed gate unless diagnosing a failure
-needs an earlier full run.
+Focused checks can also be the final local validation. Confirm their tested
+inputs match the committed patch and reuse passing results until relevant
+inputs change. Remote CI still runs its complete documentation job.
 
 Choose the smallest check covering the edit. Commands below run from the
 repository root unless the directory column says otherwise; use native tools
@@ -92,7 +98,8 @@ and `python3` where required. Node commands need the locked dependencies above.
 | Edit | Directory | Focused command |
 |---|---|---|
 | Markdown links or destinations | Root | `python -B .github/workflows/scripts/linux/check-doc-links.py .` |
-| Skill metadata or validator | Root | `python -B .agents/skills/skill-maintenance/scripts/check-skills.py .` and `python -B .agents/skills/skill-maintenance/scripts/test-check-skills.py` |
+| Skill metadata | Root | `python -B .agents/skills/skill-maintenance/scripts/check-skills.py .` |
+| Skill validator or metadata convention | Root | `python -B .agents/skills/skill-maintenance/scripts/test-check-skills.py` |
 | Link, frontmatter, or rendered metadata checker | Root | `python -B docs/tests/test_content.py` |
 | Native check coordinator | Root | `node --test docs/tests/check.test.mjs` |
 | TypeScript or Vue | `docs/` | `npm run check` |
@@ -115,8 +122,8 @@ checker fixtures, a production build, published links, and browser regressions.
 It stops at the first failure. It does not install dependencies, run the Rust
 compiler, or apply machine configuration.
 
-Before pushing, commit the patch, refresh the comparison
-base with `git fetch origin`, then run:
+For a full check of the committed snapshot, commit the patch, refresh the
+comparison base with `git fetch origin`, then run:
 
 ```powershell
 python docs/check.py --committed
@@ -127,6 +134,7 @@ code in a temporary native checkout. It restores locked npm
 dependencies there and runs the committed checker, ignoring staged, unstaged,
 and untracked work. Use `--base <ref>` with `--committed` for another comparison.
 This also works for mixed patches, but validates only their documentation.
+It is optional when focused checks cover the affected behavior.
 One successful platform is enough. For mixed patches, the coordinated
 [implementation checker](content/testing.md#implementation-and-mixed-patches)
 can run documentation itself, once on the native platform, alongside the

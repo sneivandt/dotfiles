@@ -6,9 +6,11 @@ description: Check whether tests detect incorrect Rust behavior using a committe
 # Mutation testing
 
 Mutation testing temporarily changes code to check whether tests notice a
-wrong branch, lost error, or incorrect preview. Run focused mutation tests for
-Rust behavior changes, especially failure handling, scheduling, and partial success.
-Use [Testing](testing.md#choosing-coverage) to select the other checks for your patch.
+wrong branch, lost error, or incorrect preview. Select local mutation checks
+when they add evidence for safety or failure behavior, or when investigating a
+survivor. They are not a required local gate for every Rust edit; selected remote
+shards remain required. Use [Testing](testing.md#choosing-coverage) to choose
+coverage for the diff.
 
 Run `cargo-mutants` in a disposable checkout, never the shared working copy.
 For a `MISSED` result, add an assertion that passes on the original code and

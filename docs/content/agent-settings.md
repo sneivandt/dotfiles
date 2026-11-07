@@ -9,6 +9,8 @@ An agent harness is the application running the coding agent, such as Copilot
 or Codex. This task manages selected preferences in those applications'
 settings files. It does not choose plugin dependencies, authenticate an
 account, or deploy skills; those are separate concerns.
+[Agent configuration](agent-configuration.md#how-the-setup-fits-together) explains
+how preferences, APM packages, and repository guidance fit together.
 
 | Task detail | Value |
 |---|---|

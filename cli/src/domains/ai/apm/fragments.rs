@@ -311,7 +311,7 @@ mod tests {
         assert_eq!(
             examples.len(),
             2,
-            "base dependencies and retained empty fragment"
+            "example plugin dependency and retained empty fragment"
         );
         for (index, example) in examples.iter().enumerate() {
             let merged = merge_test_fragments(&[example]).expect("merge documented fragment");
@@ -323,7 +323,7 @@ mod tests {
                     .as_array()
                     .expect("APM dependencies")
                     .len(),
-                if index == 0 { 2 } else { 0 }
+                usize::from(index == 0)
             );
         }
     }

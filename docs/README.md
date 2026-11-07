@@ -225,7 +225,8 @@ the repository link checker. The root introduction publishes at `/`.
 The header switches between three documentation sections. Each section has its
 own sidebar and previous/next sequence:
 
-- Guides: Introduction, Using dotfiles, Platforms, and Customization. Platform
+- Guides: Introduction (About this project, then Getting started), Using dotfiles,
+  Platforms, and Customization. Platform
   guides cover environment-specific setup and behavior; Using dotfiles covers
   everyday commands, profiles, configuration, safety, packages, and troubleshooting.
   Getting started leads directly to Commands and usage, then Profiles and
@@ -259,7 +260,9 @@ and robots metadata continue to identify the public page. Write metadata using
 [Help readers find the topic](content/writing-documentation.md#help-readers-find-the-topic),
 and test representative reader queries rather than adding keyword meta tags.
 
-The site title returns to the short personal introduction. Getting started owns
+The site title and About this project sidebar link return to the short personal
+introduction at `/`. The introduction belongs to Guides; the Guides header link
+opens Getting started. Getting started owns
 the setup walkthrough. The introduction uses the standard reading layout with
 its outline and previous/next links disabled. Guides have a heading outline
 through level three, source edit links, and previous/next navigation within the

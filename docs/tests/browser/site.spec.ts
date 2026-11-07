@@ -101,17 +101,20 @@ test('the introduction and grouped navigation fit the default reading layout', a
   const groups = sidebar.locator('.group');
   await expect(groups.locator('h2')).toHaveText(['Introduction', 'Using dotfiles', 'Platforms', 'Customization']);
   for (const [label, titles] of [
-    ['Introduction', ['Getting started']],
+    ['Introduction', ['About this project', 'Getting started']],
     ['Using dotfiles', ['Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting']],
     ['Platforms', ['Arch desktop', 'Windows and WSL']],
     ['Customization', ['Application settings', 'Agent configuration', 'Private overlays']],
   ] as const) {
     await expect(groups.filter({ has: page.getByRole('heading', { name: label, exact: true }) }).getByRole('link')).toHaveText([...titles]);
   }
+  await expect(sidebar.getByRole('link', { name: 'About this project', exact: true })).toHaveAttribute('href', '/');
+  if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText('Guides');
   await sidebar.getByRole('link', { name: 'Getting started', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
   await expect(page.locator('.VPDocFooter .next')).toContainText('Commands and usage');
-  await page.locator('.VPNavBarTitle a').click();
+  if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
+  await sidebar.getByRole('link', { name: 'About this project', exact: true }).click();
   await expect(page).toHaveURL('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
   await assertNoPageOverflow(page);
@@ -122,7 +125,7 @@ test('header sections replace the sidebar, including direct links and search des
   for (const [label, entry, titles] of [
     ['Reference', '/cli-reference.html', referenceTitles],
     ['Development', '/contributing.html', ['Contributing', 'Writing documentation', 'Architecture', 'Adding a task', 'Debugging', 'Arch package recipes', 'Testing', 'Writing tests', 'Mutation testing', 'CI and releases']],
-    ['Guides', '/getting-started.html', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Application settings', 'Agent configuration', 'Private overlays']],
+    ['Guides', '/getting-started.html', ['About this project', 'Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Application settings', 'Agent configuration', 'Private overlays']],
   ] as const) {
     if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
     await page.locator(isMobile ? '.VPNavScreen' : '.VPNavBarMenu').getByRole('link', { name: label, exact: true }).click();

@@ -8,7 +8,7 @@ const domain = readFileSync(new URL('../public/CNAME', import.meta.url), 'utf8')
 const origin = `https://${domain}`;
 const page = (name: string): DefaultTheme.SidebarItem => ({
   text: readFileSync(new URL(`../content/${name}.md`, import.meta.url), 'utf8').match(/^title: (.+)$/m)![1],
-  link: `/${name}.html`,
+  link: name === 'index' ? '/' : `/${name}.html`,
 });
 const group = (text: string, pages: string[]): DefaultTheme.SidebarItem => ({
   text,
@@ -17,7 +17,7 @@ const group = (text: string, pages: string[]): DefaultTheme.SidebarItem => ({
 });
 
 const guide = [
-  group('Introduction', ['getting-started']),
+  group('Introduction', ['index', 'getting-started']),
   group('Using dotfiles', ['commands-and-usage', 'profiles-and-categories', 'configuration-basics', 'security-and-trust', 'package-management', 'troubleshooting']),
   group('Platforms', ['arch-desktop', 'windows-and-wsl']),
   group('Customization', ['application-settings', 'agent-configuration', 'private-overlays']),
@@ -51,7 +51,7 @@ const sectionPages = (items: DefaultTheme.SidebarItem[]): string[] =>
     ...sectionPages(item.items ?? []),
   ]);
 const sectionMatch = (items: DefaultTheme.SidebarItem[]) =>
-  `^/(${sectionPages(items).join('|')})(\\.html)?$`;
+  `^/(${sectionPages(items).filter(Boolean).join('|')})(\\.html)?$`;
 const sectionSidebars = (items: DefaultTheme.SidebarItem[]) =>
   Object.fromEntries(sectionPages(items).map((name) => [`/${name}`, items]));
 
@@ -109,7 +109,7 @@ export default defineConfig({
   themeConfig: {
     logo: '/favicon.svg',
     nav: [
-      { text: 'Guides', link: '/getting-started.html', activeMatch: sectionMatch(guide) },
+      { text: 'Guides', link: '/getting-started.html', activeMatch: `^/$|${sectionMatch(guide)}` },
       { text: 'Reference', link: '/cli-reference.html', activeMatch: sectionMatch(reference) },
       { text: 'Development', link: '/contributing.html', activeMatch: sectionMatch(contribute) },
     ],

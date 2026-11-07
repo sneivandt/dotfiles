@@ -42,6 +42,22 @@ const LINUX: Platform = Platform {
     is_wsl: false,
 };
 
+#[cfg(unix)]
+fn assert_batch(result: test_api::tasks::TaskResult, changed: u32, correct: u32, failed: u32) {
+    let test_api::tasks::TaskResult::Batch(stats) = result else {
+        panic!("expected batch result, got {result:?}");
+    };
+    assert_eq!(
+        (
+            stats.changed_count(),
+            stats.already_ok_count(),
+            stats.skipped_count(),
+            stats.failed_count(),
+        ),
+        (changed, correct, 0, failed),
+    );
+}
+
 #[test]
 fn documented_symlink_examples_use_real_sources_and_category_selection() {
     let document = include_str!("../../docs/content/home-symlinks.md");
@@ -181,28 +197,28 @@ fn documented_desktop_to_base_transition_preserves_copies_until_moved_aside() {
         .build();
     let ec = repo.make_context("desktop");
     let install = InstallSymlinks::new(ec.store.symlinks.clone());
-    assert!(!install.run(&ec.ctx).unwrap().is_failure());
+    assert_batch(install.run(&ec.ctx).unwrap(), 2, 0, 0);
     let remove = UninstallSymlinks::new(ec.store.symlinks.clone());
     let base_path = ec.ctx.home().join(".base");
     let desktop_path = ec.ctx.home().join(".desktop");
-    assert!(!remove.run(&ec.ctx.with_dry_run(true)).unwrap().is_failure());
+    assert_batch(remove.run(&ec.ctx.with_dry_run(true)).unwrap(), 2, 0, 0);
     assert!(base_path.symlink_metadata().unwrap().is_symlink());
-    assert!(!remove.run(&ec.ctx).unwrap().is_failure());
+    assert_batch(remove.run(&ec.ctx).unwrap(), 2, 0, 0);
     assert!(!base_path.symlink_metadata().unwrap().is_symlink());
 
     let config = repo.load_config_for_platform("base", LINUX);
     let base = InstallSymlinks::new(test_api::config::ConfigHandle::new(config.symlinks));
-    assert!(base.run(&ec.ctx).unwrap().is_failure());
+    assert_batch(base.run(&ec.ctx).unwrap(), 0, 0, 1);
     assert_eq!(
         std::fs::read_to_string(&base_path).unwrap(),
         "shared preferences"
     );
     let backup = ec.ctx.home().join("preserved-base");
     std::fs::rename(&base_path, &backup).unwrap();
-    assert!(!base.run(&ec.ctx.with_dry_run(true)).unwrap().is_failure());
+    assert_batch(base.run(&ec.ctx.with_dry_run(true)).unwrap(), 1, 0, 0);
     assert!(!base_path.exists(), "preview must not recreate the link");
-    for _ in 0..2 {
-        assert!(!base.run(&ec.ctx).unwrap().is_failure());
+    for (changed, correct) in [(1, 0), (0, 1)] {
+        assert_batch(base.run(&ec.ctx).unwrap(), changed, correct, 0);
         assert!(base_path.symlink_metadata().unwrap().is_symlink());
         assert_eq!(
             std::fs::read_to_string(&backup).unwrap(),
@@ -218,8 +234,9 @@ fn documented_desktop_to_base_transition_preserves_copies_until_moved_aside() {
 #[cfg(unix)]
 #[test]
 fn documented_overlay_switch_preserves_the_old_link_until_moved_aside() {
+    use test_api::engine::{ProcessOpts, process_resources};
     use test_api::resources::symlink::SymlinkResource;
-    use test_api::resources::{IntrinsicState as _, Resource as _, ResourceChange, ResourceState};
+    use test_api::resources::{IntrinsicState as _, ResourceState};
     use test_api::tasks::Task as _;
     use test_api::tasks::files::symlinks::InstallSymlinks;
 
@@ -231,11 +248,13 @@ fn documented_overlay_switch_preserves_the_old_link_until_moved_aside() {
         .with_symlink_source_content("config/git/config", "base identity")
         .build();
     let ec = repo.make_context("base");
-    assert!(
-        !InstallSymlinks::new(ec.store.symlinks.clone())
+    assert_batch(
+        InstallSymlinks::new(ec.store.symlinks.clone())
             .run(&ec.ctx)
-            .unwrap()
-            .is_failure()
+            .unwrap(),
+        1,
+        0,
+        0,
     );
     let overlay = tempfile::tempdir().unwrap();
     let source = overlay.path().join("config");
@@ -249,7 +268,13 @@ fn documented_overlay_switch_preserves_the_old_link_until_moved_aside() {
         resource.current_state().unwrap(),
         ResourceState::Invalid { .. }
     ));
-    assert!(resource.apply().is_err());
+    let options = ProcessOpts::strict("link");
+    assert_batch(
+        process_resources(&ec.ctx, [resource.clone()], &options).unwrap(),
+        0,
+        0,
+        1,
+    );
     assert_eq!(std::fs::read_link(&target).unwrap(), old_source);
     let preserved = ec.ctx.home().join("old-git-link");
     std::fs::rename(&target, &preserved).unwrap();
@@ -258,8 +283,25 @@ fn documented_overlay_switch_preserves_the_old_link_until_moved_aside() {
         std::fs::read_to_string(&preserved).unwrap(),
         "base identity"
     );
-    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
-    assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+    assert_batch(
+        process_resources(&ec.ctx.with_dry_run(true), [resource.clone()], &options).unwrap(),
+        1,
+        0,
+        0,
+    );
+    assert!(!target.exists(), "preview must not create the overlay link");
+    assert_batch(
+        process_resources(&ec.ctx, [resource.clone()], &options).unwrap(),
+        1,
+        0,
+        0,
+    );
+    assert_batch(
+        process_resources(&ec.ctx, [resource.clone()], &options).unwrap(),
+        0,
+        1,
+        0,
+    );
     assert!(matches!(
         resource.current_state().unwrap(),
         ResourceState::Correct

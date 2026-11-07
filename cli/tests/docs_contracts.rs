@@ -43,6 +43,10 @@ const LINUX: Platform = Platform {
 };
 
 #[cfg(unix)]
+#[allow(
+    clippy::panic,
+    reason = "asserting the documentation fixture result variant"
+)]
 fn assert_batch(result: test_api::tasks::TaskResult, changed: u32, correct: u32, failed: u32) {
     let test_api::tasks::TaskResult::Batch(stats) = result else {
         panic!("expected batch result, got {result:?}");
@@ -55,6 +59,7 @@ fn assert_batch(result: test_api::tasks::TaskResult, changed: u32, correct: u32,
             stats.failed_count(),
         ),
         (changed, correct, 0, failed),
+        "documentation transition must preserve the expected batch outcomes",
     );
 }
 

@@ -162,7 +162,7 @@ fn release_update_preview_failure_apply_and_repeat() {
         dir.path().join("packages/tool"),
     )
     .unwrap();
-    let target = dir.path().join("packages/tool/version.sh");
+    let target = dir.path().join("packages").join("tool").join("version.sh");
     let preview_log = Arc::new(CapturingOutput::default());
     let preview = task()
         .run(

@@ -189,7 +189,7 @@ pub fn log_thread_name() -> String {
 #[derive(Debug)]
 pub struct RunLog {
     file: Mutex<fs::File>,
-    _lease: fs::File,
+    lease: fs::File,
     path: PathBuf,
     start: Instant,
     sequence: AtomicU64,
@@ -235,7 +235,7 @@ impl RunLog {
         prune_run_logs(log_dir, keep);
         Some(Self {
             file: Mutex::new(file),
-            _lease: lease,
+            lease,
             path,
             start,
             sequence: AtomicU64::new(0),
@@ -371,6 +371,16 @@ impl RunLog {
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
+    }
+}
+
+impl Drop for RunLog {
+    fn drop(&mut self) {
+        // Closing only this handle can leave an inherited/duplicated open-file
+        // description locked. The logger owns the lease, not its subprocesses.
+        if let Err(error) = self.lease.unlock() {
+            tracing::debug!("could not release finished run-log lease: {error}");
+        }
     }
 }
 
@@ -634,6 +644,23 @@ mod tests {
             1,
             "released leases must be pruneable"
         );
+    }
+
+    #[test]
+    fn finished_run_releases_its_lease_even_when_another_handle_keeps_the_file_open() {
+        let fixture = tempfile::tempdir().unwrap();
+        let run = RunLog::new_retaining("check", fixture.path(), Instant::now(), 1).unwrap();
+        let path = run.path().to_path_buf();
+        let inherited = run.lease.try_clone().unwrap();
+        prune_run_logs(fixture.path(), 0);
+        assert!(path.exists(), "a live logger must retain its lease");
+        drop(run);
+        prune_run_logs(fixture.path(), 0);
+        assert!(
+            !path.exists(),
+            "a duplicated handle must not keep a finished run leased"
+        );
+        drop(inherited);
     }
 
     fn isolated_run_log() -> (RunLog, tempfile::TempDir) {

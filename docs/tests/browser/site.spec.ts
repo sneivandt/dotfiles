@@ -21,6 +21,14 @@ async function assertNoPageOverflow(page: Page) {
   expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport + 1);
 }
 
+async function openSearch(page: Page) {
+  // The server-rendered button is visible before Vue attaches its listener.
+  // These search tests exercise the hydrated control; startup layout is tested separately.
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.locator('#localsearch-input')).toBeVisible();
+}
+
 async function guideRoutes(page: Page) {
   const routes = new Set<string>();
   for (const section of ['/getting-started.html', '/cli-reference.html', '/contributing.html']) {
@@ -71,7 +79,7 @@ for (const theme of ['light', 'dark'] as const) {
       expect(await appearance()).toEqual(before);
       await expect(outline).toHaveText(headings);
       expect(errors).toEqual([]);
-      await page.getByRole('button', { name: 'Search', exact: true }).click();
+      await openSearch(page);
       await expect(page.locator('.VPLocalSearchBox')).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(page.locator('.VPLocalSearchBox')).toHaveCount(0);
@@ -196,7 +204,7 @@ test('configuration basics follows profiles in Guides, including search destinat
   if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText('Guides');
 
   await page.goto('/cli-reference.html');
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await openSearch(page);
   await page.locator('#localsearch-input').fill('Configuration basics');
   const result = page.locator('.VPLocalSearchBox a[href*="configuration-basics.html"]').first();
   await expect(result).toBeVisible({ timeout: 30_000 });
@@ -589,7 +597,7 @@ for (const font of ['system', 'fallback']) {
 
 test('search opens the relevant section of the published guide', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await openSearch(page);
   await page.locator('#localsearch-input').fill('symlinks');
   const result = page.locator('.VPLocalSearchBox a[href*="home-symlinks.html"]').first();
   await expect(result).toBeVisible();
@@ -608,7 +616,7 @@ test('topic discovery uses reader terminology and page descriptions', async ({ p
     ['retire desktop', 'profiles-and-categories', 'Profiles and categories'],
   ]) {
     await page.goto('/getting-started.html');
-    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await openSearch(page);
     await page.locator('#localsearch-input').fill(query);
     const result = page.locator(`.VPLocalSearchBox .result[href*="/${route}.html"]`).first();
     await expect(result, query).toBeVisible();
@@ -620,7 +628,7 @@ test('topic discovery uses reader terminology and page descriptions', async ({ p
     await expect(page).toHaveURL(new RegExp(`${route}\\.html(?:#.*)?$`));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
   }
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await openSearch(page);
   await page.locator('#localsearch-input').fill('Page not found');
   await expect(page.locator('.VPLocalSearchBox')).toBeVisible();
   await expect(page.locator('.VPLocalSearchBox .result[href*="/404.html"]')).toHaveCount(0);

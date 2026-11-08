@@ -25,8 +25,8 @@ Applies `conf/git-config.toml` values to **global** Git configuration. Repeated
 occurrences of managed keys are handled without altering unrelated keys. Profile/overlay
 persistence instead uses repository-local configuration.
 
-Updates use private staging and preserve the existing file's Unix access mode.
-New configuration files are owner-only. Dotfiles respects Git's `.lock` file;
+On Unix, updates stage content privately and preserve the existing file's access
+mode; new configuration files are owner-only. Dotfiles respects Git's `.lock` file;
 if another writer holds it, let that operation finish and retry. Investigate
 a stale lock before removing it.
 

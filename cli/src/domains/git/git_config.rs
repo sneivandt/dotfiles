@@ -57,13 +57,7 @@ impl Task for ConfigureGit {
             return Ok(TaskResult::NotApplicable("no Git settings".into()));
         }
         let config_path = self.config_path.clone().map_or_else(
-            || match git2::Config::find_global() {
-                Ok(path) => Ok(path),
-                Err(error) if error.code() == git2::ErrorCode::NotFound => {
-                    Ok(ctx.home().join(".gitconfig"))
-                }
-                Err(error) => Err(error),
-            },
+            || global_config_path(git2::Config::find_global(), ctx.home()),
             Ok,
         )?;
         let resources = settings
@@ -73,5 +67,47 @@ impl Task for ConfigureGit {
             .map(|resource| resource.using_config_path(config_path.clone()))
             .collect();
         run_resource_task(ctx, resources, &ProcessOpts::strict("configure"))
+    }
+}
+
+fn global_config_path(
+    found: Result<PathBuf, git2::Error>,
+    home: &std::path::Path,
+) -> Result<PathBuf, git2::Error> {
+    match found {
+        Ok(path) => Ok(path),
+        Err(error) if error.code() == git2::ErrorCode::NotFound => Ok(home.join(".gitconfig")),
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn global_config_lookup_preserves_operational_errors_instead_of_using_fallback() {
+        let home = std::path::Path::new("fixture-home");
+        let existing = PathBuf::from("existing-config");
+        assert_eq!(
+            global_config_path(Ok(existing.clone()), home).unwrap(),
+            existing
+        );
+        for code in [
+            git2::ErrorCode::NotFound,
+            git2::ErrorCode::Locked,
+            git2::ErrorCode::GenericError,
+        ] {
+            let failure =
+                git2::Error::new(code, git2::ErrorClass::Config, "fixture lookup failure");
+            let result = global_config_path(Err(failure), home);
+            if code == git2::ErrorCode::NotFound {
+                assert_eq!(result.unwrap(), home.join(".gitconfig"));
+            } else {
+                let error = result.unwrap_err();
+                assert_eq!(error.code(), code);
+                assert!(error.message().contains("fixture lookup failure"));
+            }
+        }
     }
 }

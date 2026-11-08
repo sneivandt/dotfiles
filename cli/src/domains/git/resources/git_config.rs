@@ -336,6 +336,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn config_reads_distinguish_absence_from_other_io_failures() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing");
+        assert_eq!(read_config_bytes(&missing).unwrap(), None);
+        std::fs::write(&missing, "fixture").unwrap();
+        assert_eq!(
+            read_config_bytes(&missing).unwrap(),
+            Some(b"fixture".to_vec())
+        );
+        let expected = std::fs::read(dir.path()).unwrap_err().kind();
+        let error = read_config_bytes(dir.path()).unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<std::io::Error>().unwrap().kind(),
+            expected
+        );
+        assert!(format!("{error:#}").contains("reading Git config"));
+    }
+
+    #[test]
     fn transactions_respect_git_locks_and_retry_with_new_desired_values() {
         for include in [false, true] {
             let dir = tempfile::tempdir().unwrap();

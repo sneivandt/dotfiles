@@ -582,6 +582,38 @@ mod tests {
     }
 
     #[test]
+    fn foreground_blocks_have_one_separator_and_respect_output_mode() {
+        for mode in [
+            super::super::OutputMode::Human,
+            super::super::OutputMode::Quiet,
+            super::super::OutputMode::Jsonl,
+        ] {
+            let mut log = Logger::build("update", None, Instant::now(), false);
+            log.set_output_mode(mode);
+            log.startup("Update · fixture");
+            log.separate_from_startup();
+            log.separate_console_block();
+            log.startup("sudo required · System configuration files");
+            log.separate_console_block();
+            log.separate_console_block();
+            log.always("task result");
+
+            let expected = if mode == super::super::OutputMode::Human {
+                vec![
+                    "Update · fixture",
+                    "",
+                    "sudo required · System configuration files",
+                    "",
+                    "task result",
+                ]
+            } else {
+                vec![]
+            };
+            assert_eq!(log.captured_lines(), expected, "{mode:?}");
+        }
+    }
+
+    #[test]
     fn consecutive_startup_lines_defer_the_separator() {
         let (log, _tmp, _guard) = isolated_logger();
 

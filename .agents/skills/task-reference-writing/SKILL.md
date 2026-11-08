@@ -1,7 +1,7 @@
 ---
 name: task-reference-writing
 description: >
-  Use when drafting, expanding, or reviewing docs/content/task-reference.md
+  Use when drafting, expanding, or reviewing docs/content/reference/task-reference.md
   or individual task reference pages: domain context, summary tables,
   configuration examples, dependencies, preview limits, removal, and upstream
   tool links. Not for general guide prose (docs-writing), contributor workflow
@@ -10,9 +10,9 @@ description: >
 
 # Task Reference Writing
 
-[Writing documentation](../../../docs/content/writing-documentation.md#task-reference-pages)
+[Writing documentation](../../../docs/content/development/writing-documentation.md#task-reference-pages)
 owns the reader-facing page structure, examples, and language.
-[Task reference](../../../docs/content/task-reference.md) owns the selector
+[Task reference](../../../docs/content/reference/task-reference.md) owns the selector
 index and shared selection/scheduling terms. Do not duplicate those procedures
 here or send human readers to a skill as required reading.
 
@@ -41,7 +41,7 @@ boilerplate. Explain the consequential domain distinction locally, such as
 enablement versus starting, package presence versus upgrades, or links versus
 copies. Upstream support can exceed dotfiles' supported subset.
 Write a useful description naming the task, tool/platform, and boundary, using
-the human guide's [findability conventions](../../../docs/content/writing-documentation.md#help-readers-find-the-topic).
+the human guide's [findability conventions](../../../docs/content/development/writing-documentation.md#help-readers-find-the-topic).
 Verify a natural query reaches the page, not only an exact selector lookup.
 
 Review the procedure from both the relevant fresh and already-managed states.

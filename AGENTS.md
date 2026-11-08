@@ -48,7 +48,7 @@ changes usually do not need engine changes.
   do not add rename-compatibility routes.
 - Review consequential procedures from their actual starting state, including
   already-installed configuration and partial failure. Use
-  [Writing documentation](docs/content/writing-documentation.md) for content
+  [Writing documentation](docs/content/development/writing-documentation.md) for content
   conventions and acceptance scenarios; skills route work rather than carrying
   a second copy of human procedures.
 
@@ -56,7 +56,7 @@ changes usually do not need engine changes.
 
 - Inspect the full intended diff, including renames/deletions and pending changes
   from failed pushes. Choose local checks by affected behavior and test inputs
-  using [Testing](docs/content/testing.md#choosing-coverage). The agent owns this
+  using [Testing](docs/content/development/testing.md#choosing-coverage). The agent owns this
   decision; briefly explain the selected coverage and what remains for CI.
 - Run the smallest useful checks with the pinned toolchain. Broaden for shared
   behavior, uncertain impact, or failures. Do not run unrelated suites or repeat
@@ -65,14 +65,14 @@ changes usually do not need engine changes.
   [docs/README.md](docs/README.md#checks) to decide whether a site build or browser
   review adds evidence; neither is automatic for Markdown or mixed patches.
 - Validate the committed patch. Focused checks are sufficient when they cover
-  the affected behavior; the [pre-push coordinator](docs/content/testing.md#before-pushing)
+  the affected behavior; the [pre-push coordinator](docs/content/development/testing.md#before-pushing)
   is an optional conservative tool, not a mandatory second gate. Add cross-target
   CLI compilation only when the diff can affect that target. Native runtime
   checks cover behavior that cross-compilation cannot; remote CI can supply them.
 - Fix selected local failures. Distinguish intentionally deferred CI coverage
   from checks that could not run; neither is a local pass. Do not provision a
   second OS or build the docs site solely to duplicate remote CI.
-- Use [focused mutation testing](docs/content/testing.md#focused-mutation-testing)
+- Use [focused mutation testing](docs/content/development/testing.md#focused-mutation-testing)
   locally when it helps verify changed safety or failure behavior, or investigate
   a survivor; otherwise rely on the selected remote shards. When fixing a
   survivor, rerun the original source range even for a test-only fix.

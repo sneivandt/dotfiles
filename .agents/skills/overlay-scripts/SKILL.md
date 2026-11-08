@@ -10,7 +10,7 @@ description: >
 
 Never copy private overlay content into this repository or its skills.
 The user-facing setup, precedence, and protocol live in
-[Private overlays](../../../docs/content/private-overlays.md).
+[Private overlays](../../../docs/content/guides/private-overlays.md).
 
 ## Overlay resolution
 

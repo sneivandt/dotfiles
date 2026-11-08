@@ -27,7 +27,7 @@ action-version inventories in guidance.
   distinguish intended skips from failures/cancellation in the success gate.
 - Keep local `check.sh` and `Check.ps1` stages aligned with gating concerns.
 - A confirmed local npm TLS failure need not block a push. Use the pre-push
-  checker's [unavailable-coverage receipt](../../../docs/content/testing.md#local-npm-tls-failures)
+  checker's [unavailable-coverage receipt](../../../docs/content/development/testing.md#local-npm-tls-failures)
   for the exact commit, run the remaining selected checks, and report docs as
   unavailable, not passed. Other failures remain blocking, TLS validation stays
   enabled, and the exact commit's CI documentation job must still pass.
@@ -83,7 +83,7 @@ action-version inventories in guidance.
 Start with [CI](../../../.github/workflows/ci.yml) and
 [change classification](../../../.github/workflows/scripts/linux/classify-ci-changes.py)
 (the `.sh` entry point delegates to it).
-Use [Testing](../../../docs/content/testing.md) for canonical commands and the current CI
+Use [Testing](../../../docs/content/development/testing.md) for canonical commands and the current CI
 coverage matrix.
 Select local checks from the affected behavior, not the full remote job list.
 Focused checks can be sufficient; the committed coordinator is an optional

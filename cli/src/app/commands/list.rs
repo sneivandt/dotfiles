@@ -565,23 +565,24 @@ mod tests {
             .into_iter()
             .map(|listing| listing.selector)
             .collect();
-        let documented: HashSet<_> = include_str!("../../../../docs/content/task-reference.md")
-            .lines()
-            .filter_map(|line| {
-                line.strip_prefix("| `")?
-                    .split_once("` |")
-                    .map(|(selector, _)| selector)
-                    .filter(|selector| {
-                        selector.bytes().all(|byte| {
-                            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
+        let documented: HashSet<_> =
+            include_str!("../../../../docs/content/reference/task-reference.md")
+                .lines()
+                .filter_map(|line| {
+                    line.strip_prefix("| `")?
+                        .split_once("` |")
+                        .map(|(selector, _)| selector)
+                        .filter(|selector| {
+                            selector.bytes().all(|byte| {
+                                byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
+                            })
                         })
-                    })
-                    .map(str::to_owned)
-            })
-            .collect();
+                        .map(str::to_owned)
+                })
+                .collect();
         assert_eq!(
             documented, actual,
-            "docs/content/task-reference.md must list exactly the public catalog selectors"
+            "docs/content/reference/task-reference.md must list exactly the public catalog selectors"
         );
     }
 

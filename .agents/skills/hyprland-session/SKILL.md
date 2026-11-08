@@ -9,7 +9,7 @@ description: >
 # Hyprland Session
 
 The user-facing session, services, shortcuts, and reload behavior live in
-[Arch desktop](../../../docs/content/arch-desktop.md).
+[Arch desktop](../../../docs/content/guides/arch-desktop.md).
 
 ## Find the owner
 
@@ -44,7 +44,7 @@ another Hyprland configuration format.
 ## Verify without disrupting the session
 
 Use the affected [helper tests](../../../symlinks/config/hypr/scripts/tests/)
-and the commands in [Application configuration](../../../docs/content/testing.md#application-configuration).
+and the commands in [Application configuration](../../../docs/content/development/testing.md#application-configuration).
 Inspect affected unit dependencies and conditions for service changes.
 Fixture tests cannot prove native rendering, focus, locking, portals, or suspend.
 Report that limit; live lock/suspend, workspace changes, service restarts, and

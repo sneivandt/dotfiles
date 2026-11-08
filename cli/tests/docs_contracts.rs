@@ -65,7 +65,7 @@ fn assert_batch(result: test_api::tasks::TaskResult, changed: u32, correct: u32,
 
 #[test]
 fn documented_symlink_examples_use_real_sources_and_category_selection() {
-    let document = include_str!("../../docs/content/home-symlinks.md");
+    let document = include_str!("../../docs/content/reference/home-symlinks.md");
     for example in code_blocks(document, "toml") {
         let repo = common::TestContextBuilder::new()
             .with_config_file("symlinks.toml", &example)
@@ -102,12 +102,12 @@ fn documented_systemd_and_agent_settings_examples_decode_on_both_platforms() {
     ] {
         for (document, filename, count) in [
             (
-                include_str!("../../docs/content/systemd-units.md"),
+                include_str!("../../docs/content/reference/systemd-units.md"),
                 "systemd-units.toml",
                 if platform.is_linux() { 3 } else { 0 },
             ),
             (
-                include_str!("../../docs/content/agent-settings.md"),
+                include_str!("../../docs/content/reference/agent-settings.md"),
                 "agent-settings.toml",
                 2,
             ),
@@ -133,7 +133,7 @@ fn documented_systemd_and_agent_settings_examples_decode_on_both_platforms() {
 #[test]
 fn documented_system_file_example_includes_its_required_fragment() {
     let examples = code_blocks(
-        include_str!("../../docs/content/system-configuration-files.md"),
+        include_str!("../../docs/content/reference/system-configuration-files.md"),
         "toml",
     );
     assert_eq!(examples.len(), 2, "declaration and fragment");
@@ -151,7 +151,7 @@ fn documented_system_file_example_includes_its_required_fragment() {
 #[test]
 fn documented_overlay_declarations_keep_origin_and_replace_exact_targets() {
     let examples = code_blocks(
-        include_str!("../../docs/content/private-overlays.md"),
+        include_str!("../../docs/content/guides/private-overlays.md"),
         "toml",
     );
     assert_eq!(
@@ -341,7 +341,10 @@ fn documented_json_lines_excerpt_matches_real_serialization() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    let examples = code_blocks(include_str!("../../docs/content/cli-reference.md"), "json");
+    let examples = code_blocks(
+        include_str!("../../docs/content/reference/cli-reference.md"),
+        "json",
+    );
     for line in examples.iter().flat_map(|block| block.lines()) {
         let expected: serde_json::Value = serde_json::from_str(line).unwrap();
         let mut actual = records

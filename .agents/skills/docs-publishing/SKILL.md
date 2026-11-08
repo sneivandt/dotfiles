@@ -14,7 +14,7 @@ Start with [docs/README.md](../../../docs/README.md), which owns preview,
 checks, site implementation, navigation, and publication procedures.
 [Site configuration](../../../docs/.vitepress/config.mts) owns the current
 navigation inventory and order; do not reproduce that taxonomy in this skill.
-Use [Writing documentation](../../../docs/content/writing-documentation.md#choose-the-owning-page)
+Use [Writing documentation](../../../docs/content/development/writing-documentation.md#choose-the-owning-page)
 for topic ownership and [docs-writing](../docs-writing/SKILL.md) for prose.
 
 ## Choose the affected surface
@@ -32,7 +32,7 @@ Keep the landing page's first action prominent and its setup walkthrough in
 Getting started. Keep the root README brief. Split pages by reader task or
 audience, not length. Keep guide URLs flat and update references after moves;
 do not add rename-compatibility routes.
-Use the human guide's [findability conventions](../../../docs/content/writing-documentation.md#help-readers-find-the-topic);
+Use the human guide's [findability conventions](../../../docs/content/development/writing-documentation.md#help-readers-find-the-topic);
 do not invent a separate keyword/tag taxonomy or copy the page inventory here.
 
 Prefer VitePress's native theme and controls. Preserve a reader's appearance
@@ -49,7 +49,7 @@ Use the full native checker for broad site changes or uncertain impact. Neither
 it nor a running site is required for ordinary prose or internal skills. One
 native platform is enough, including mixed patches; never share node_modules
 across Windows and Linux. The
-[npm TLS exception](../../../docs/content/testing.md#local-npm-tls-failures)
+[npm TLS exception](../../../docs/content/development/testing.md#local-npm-tls-failures)
 records unavailable coverage, not a pass.
 
 When rendered behavior changes, review the affected path on desktop and narrow

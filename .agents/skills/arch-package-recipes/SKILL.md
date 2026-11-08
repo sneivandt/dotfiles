@@ -9,8 +9,10 @@ description: >
 
 # Arch Package Recipes
 
-Read [Arch package recipes](../../../docs/content/arch-package-recipes.md) for the lifecycle,
-descriptor format, cache ownership, Paru paths, and adding recipes.
+Read [Custom package versions](../../../docs/content/reference/custom-package-versions.md)
+for release discovery and descriptors, and
+[Custom package repository](../../../docs/content/reference/custom-package-repository.md)
+for snapshots, cache ownership, and Paru configuration.
 
 ## Find the owner
 
@@ -51,8 +53,7 @@ descriptor format, cache ownership, Paru paths, and adding recipes.
 
 ## Verify the changed contract
 
-Use [Testing](../../../docs/content/testing.md), the
-[CI coverage](../../../docs/content/arch-package-recipes.md#ci-and-validation), and focused
+Use [Choosing coverage](../../../docs/content/development/testing.md#choosing-coverage) and focused
 [regressions](../../../cli/src/domains/packages/arch_recipes/tests.rs).
 Recipe-only changes must select offline Linux checks and PKGBUILD ShellCheck
 without releasing the CLI solely because a recipe changed; use `ci-cd-patterns`

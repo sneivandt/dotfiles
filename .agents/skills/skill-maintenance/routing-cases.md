@@ -55,7 +55,7 @@ sources and useful fixture coverage. Record uncertainty rather than claiming
 these examples prove runtime routing quality.
 
 When reviewing documentation guidance, use the human guide's
-[acceptance scenarios](../../../docs/content/writing-documentation.md#acceptance-scenarios)
+[acceptance scenarios](../../../docs/content/development/writing-documentation.md#acceptance-scenarios)
 as well. Check the explanation's essential facts, not a fixed wording.
 
 ## Local coverage review cases

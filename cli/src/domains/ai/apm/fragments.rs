@@ -299,7 +299,7 @@ mod tests {
 
     #[test]
     fn documented_agent_yaml_examples_use_the_real_fragment_merger() {
-        let document = include_str!("../../../../../docs/content/agent-configuration.md");
+        let document = include_str!("../../../../../docs/content/guides/agent-configuration.md");
         let examples: Vec<_> = document
             .split("```yaml")
             .skip(1)

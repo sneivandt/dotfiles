@@ -11,7 +11,7 @@ description: >
 # Documentation Writing
 
 The human-facing convention lives in
-[Writing documentation](../../../docs/content/writing-documentation.md).
+[Writing documentation](../../../docs/content/development/writing-documentation.md).
 Read the relevant sections rather than carrying a separate style policy here.
 Use [docs-publishing](../docs-publishing/SKILL.md) for organization or site
 behavior, and [task-reference-writing](../task-reference-writing/SKILL.md)
@@ -29,7 +29,7 @@ for a task page's implementation contract.
 4. Draft using the guide's example, language, punctuation, link, and emphasis
    conventions. Keep consequential warnings beside the action. Do not replace
    a safety explanation with a link or remove it merely to shorten a page.
-   Review its [findability guidance](../../../docs/content/writing-documentation.md#help-readers-find-the-topic)
+   Review its [findability guidance](../../../docs/content/development/writing-documentation.md#help-readers-find-the-topic)
    when changing titles, descriptions, headings, or topic terminology.
 5. Read the result as a direct shared link. Its links should supply depth, not
    a missing essential step. Prefer the common workflow before internals and
@@ -47,7 +47,7 @@ for a task page's implementation contract.
 - Inspect rendered content when layout, Markdown syntax, tables, diagrams, or
   interaction can change. Use desktop and narrow widths where relevant. Plain
   wording can be reviewed in source; structural checks never prove accuracy.
-- Apply the [documentation acceptance scenarios](../../../docs/content/writing-documentation.md#acceptance-scenarios)
+- Apply the [documentation acceptance scenarios](../../../docs/content/development/writing-documentation.md#acceptance-scenarios)
   when changing authoring guidance. They are manual acceptance cases, not a
   model-effectiveness benchmark.
 - Examples are not authorization to apply host configuration, deploy content,

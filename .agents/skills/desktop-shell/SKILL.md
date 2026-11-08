@@ -10,7 +10,7 @@ description: >
 # Desktop Shell
 
 Keep user-facing bar, menu, appearance, and reload guidance in
-[Arch desktop](../../../docs/content/arch-desktop.md), not Application settings.
+[Arch desktop](../../../docs/content/guides/arch-desktop.md), not Application settings.
 
 ## Find the owner
 
@@ -63,7 +63,7 @@ Paths below are relative to
 ## Validate without disrupting the session
 
 Use the offscreen QML and mocked Python commands in
-[Desktop shell testing](../../../docs/content/testing.md#desktop-shell), choosing only
+[Desktop shell testing](../../../docs/content/development/testing.md#desktop-shell), choosing only
 the affected suite. Cover long/empty labels, narrow screens, multi-monitor and
 out-of-order model updates for layout changes.
 

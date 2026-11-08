@@ -79,7 +79,7 @@ failure disappear.
   for paths the mutant might disable.
 - Verify the original code passes and the mutant is caught in a disposable
   checkout using the original source range. A test-only patch diff can select
-  zero mutations. See [Focused mutation testing](../../../docs/content/testing.md#focused-mutation-testing).
+  zero mutations. See [Focused mutation testing](../../../docs/content/development/testing.md#focused-mutation-testing).
 - Treat a timeout or tool error as a failed check. An unviable mutant could not
   compile. For an equivalent mutant, explain the equivalence and prefer
   simplifying the code or using a narrowly scoped, reviewed exclusion.
@@ -87,4 +87,4 @@ failure disappear.
 ## Scope validation
 
 Test target selection and commands live in
-[Testing](../../../docs/content/testing.md). CI topology belongs in `ci-cd-patterns`.
+[Testing](../../../docs/content/development/testing.md). CI topology belongs in `ci-cd-patterns`.

@@ -274,7 +274,7 @@ def main():
     if linux:
         print("LOCAL Linux checks via WSL: " + subprocess.list2cmdline(linux), flush=True)
     print("REMAINING CI: " + (", ".join(deferred) or "always-on workflow checks"), flush=True)
-    print("Mutation testing is separate; see docs/content/testing.md#focused-mutation-testing.\n"
+    print("Mutation testing is separate; see docs/content/development/testing.md#focused-mutation-testing.\n"
           "Local success does not prove host installation, publishing, or live desktop behavior.", flush=True)
     if sys.platform == "linux" and not args.windows_checked:
         print("Native Windows runtime checks remain unavailable in this Linux-only invocation.", flush=True)

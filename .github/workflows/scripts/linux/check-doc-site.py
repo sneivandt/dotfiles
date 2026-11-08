@@ -140,8 +140,8 @@ def check_site(root):
     errors = []
     if "/index.html" not in pages:
         return ["Missing built homepage; run npm --prefix docs run build first"]
-    if not (root / "docs/content/index.md").is_file():
-        errors.append("Missing Markdown homepage docs/content/index.md")
+    if not (root / "docs/content/guides/index.md").is_file():
+        errors.append("Missing Markdown homepage docs/content/guides/index.md")
     sidebar_routes = {
         urlsplit(urljoin(origin + route, href)).path
         for route, page in pages.items()
@@ -163,7 +163,16 @@ def check_site(root):
         errors.append("Published robots.txt does not declare the canonical sitemap")
     expected_urls = set()
     heading_anchors = runpy.run_path(str(Path(__file__).with_name("check-doc-links.py")))["markdown_anchors"]
-    for source in sorted((root / "docs/content").glob("*.md")):
+    sources = sorted((root / "docs/content").rglob("*.md"))
+    if len({source.stem for source in sources}) != len(sources):
+        errors.append("Documentation source filenames must be unique across sections")
+    expected_routes = {"/" + source.stem + ".html" for source in sources}
+    if set(pages) != expected_routes:
+        errors.append(
+            f"Published routes differ from flat source routes: "
+            f"missing={sorted(expected_routes - set(pages))}, extra={sorted(set(pages) - expected_routes)}"
+        )
+    for source in sources:
         route = "/" + source.stem + ".html"
         if source.stem not in {"404", "index"} and route not in sidebar_routes:
             errors.append(f"{source.name}: missing from sidebar navigation")

@@ -10,7 +10,7 @@ description: >
 
 1. Inspect the complete diff and affected consumers, tests, fixtures, embedded
    inputs, and platform gates. Select the smallest useful checks from
-   [Choosing coverage](../../../docs/content/testing.md#choosing-coverage).
+   [Choosing coverage](../../../docs/content/development/testing.md#choosing-coverage).
    Briefly explain local coverage and what native CI will establish.
 2. Rust source changes normally need fmt, host Clippy, and affected test targets.
    Group targets in one invocation. Broaden for shared engine, catalog, loader,
@@ -20,7 +20,7 @@ description: >
 3. Add cross-target compilation when changed gates, imports, types, dependencies,
    or shared APIs can affect the other target. An isolated Linux implementation
    edit need not compile Windows. Shared portable code can affect both platforms.
-   Use [Platform coverage parity](../../../docs/content/testing.md#platform-coverage-parity)
+   Use [Platform coverage parity](../../../docs/content/development/testing.md#platform-coverage-parity)
    for native-runtime limits: cross-compilation cannot verify Windows paths,
    registry, elevation, process, or symlink behavior. Native exact-commit CI can
    supply this coverage; do not provision another OS just to duplicate it.

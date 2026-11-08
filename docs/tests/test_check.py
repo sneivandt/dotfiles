@@ -46,7 +46,7 @@ class CheckTests(unittest.TestCase):
             self.assertEqual(run.call_count, 7)
 
     def test_documentation_scope_excludes_embedded_docs_and_workflows(self):
-        for path in ("README.md", "docs/check.py", "docs/content/testing.md", ".agents/skills/example/SKILL.md"):
+        for path in ("README.md", "docs/check.py", "docs/content/development/testing.md", ".agents/skills/example/SKILL.md"):
             self.assertTrue(CHECKER.documentation_path(path), path)
         for path in ("cli/src/README.md", "conf/packages.toml", "docs-build/input", ".github/workflows/pages.yml"):
             self.assertFalse(CHECKER.documentation_path(path), path)

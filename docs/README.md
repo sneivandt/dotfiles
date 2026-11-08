@@ -4,8 +4,8 @@ This README is for maintaining the website at
 [dotfiles.stuartneivandt.com](https://dotfiles.stuartneivandt.com/).
 It stays in the repository, outside the published guide collection.
 For writing or reorganizing guide content, start with
-[Writing documentation](content/writing-documentation.md). Repository-wide coverage
-selection lives in [Testing](content/testing.md); site-only checks are below.
+[Writing documentation](content/development/writing-documentation.md). Repository-wide coverage
+selection lives in [Testing](content/development/testing.md); site-only checks are below.
 
 ## Preview locally
 
@@ -113,7 +113,7 @@ and `python3` where required. Node commands need the locked dependencies above.
 Rust commands use the pinned toolchain and isolated fixtures, not the live home
 configuration. Unix-only path and symlink transitions run on native Linux;
 Windows runs the portable decoder and JSON serialization cases. Review the
-[documentation acceptance scenarios](content/writing-documentation.md#acceptance-scenarios)
+[documentation acceptance scenarios](content/development/writing-documentation.md#acceptance-scenarios)
 when changing authoring guidance: metadata checks cannot prove its usefulness.
 
 Use `python3` instead of `python` on systems that require it. The checker runs
@@ -136,7 +136,7 @@ and untracked work. Use `--base <ref>` with `--committed` for another comparison
 This also works for mixed patches, but validates only their documentation.
 It is optional when focused checks cover the affected behavior.
 One successful platform is enough. For mixed patches, the coordinated
-[implementation checker](content/testing.md#implementation-and-mixed-patches)
+[implementation checker](content/development/testing.md#implementation-and-mixed-patches)
 can run documentation itself, once on the native platform, alongside the
 selected implementation checks. If you already ran the committed docs checker,
 reuse that exact commit's result with
@@ -146,7 +146,7 @@ instead of repeating site checks in WSL.
 
 If a local npm TLS failure prevents restoring the committed dependencies,
 use the coordinator's
-[explicit unavailable-coverage receipt](content/testing.md#local-npm-tls-failures).
+[explicit unavailable-coverage receipt](content/development/testing.md#local-npm-tls-failures).
 That records the gap without blocking a push or claiming documentation passed;
 all other selected checks and the exact commit's CI documentation job remain required.
 
@@ -215,10 +215,16 @@ change.
 | Diagram containment | [.vitepress/theme/style.css](.vitepress/theme/style.css) |
 | Domain and static assets | [public/](public/) |
 
-VitePress reads only `content/` and copies assets from `public/`. Guides keep
-one Markdown H1 and relative `.md` links; VitePress produces the corresponding
-`.html` destinations. Heading slugs use the same GitHub-compatible algorithm as
-the repository link checker. The root introduction publishes at `/`.
+VitePress reads only `content/` and copies assets from `public/`. Pages live in
+`content/guides/`, `content/reference/`, or `content/development/`, matching
+the three navigation sections; the unlisted `404.md` stays at the content root.
+Keep filenames unique across sections. VitePress rewrites the source paths to
+the existing flat `.html` URLs, with the introduction at `/`.
+Pages keep one Markdown H1 and source-relative `.md` links, including
+`../reference/` or `../guides/` when crossing sections. The Markdown renderer
+maps those cross-section links to the flat public routes. Edit links use the
+original source path. Heading slugs use the same GitHub-compatible algorithm as
+the repository link checker.
 
 ## Navigation and appearance
 
@@ -238,7 +244,7 @@ own sidebar and previous/next sequence:
   ordered by page title; the overview also offers a question-based lookup table.
 - Development: Workflows covers contributor workflow and documentation
   authoring; Implementation covers architecture, task implementation,
-  debugging, and Arch recipe maintenance;
+  and debugging;
   Verification covers running checks, writing tests, mutation testing, and CI.
 
 Guide and Development groups start expanded with native collapse controls.
@@ -257,7 +263,7 @@ repeat the summary in every section. Section headings and body content remain
 in the index, and results retain their native heading links. Frontmatter
 descriptions also feed HTML and Open Graph summaries; title, canonical, sitemap,
 and robots metadata continue to identify the public page. Write metadata using
-[Help readers find the topic](content/writing-documentation.md#help-readers-find-the-topic),
+[Help readers find the topic](content/development/writing-documentation.md#help-readers-find-the-topic),
 and test representative reader queries rather than adding keyword meta tags.
 
 The site title and About this project sidebar link return to the short personal
@@ -295,7 +301,7 @@ When changing the domain, update these together:
 
 - `public/CNAME`, which contains the hostname, not a full URL.
 - The canonical and social URLs generated by [.vitepress/config.mts](.vitepress/config.mts), and the structured-data URL in
-  [content/index.md](content/index.md).
+  [content/guides/index.md](content/guides/index.md).
 - The sitemap URL in
   [public/robots.txt](public/robots.txt)
   and the published-site links in the root README.
@@ -328,7 +334,7 @@ CI run's artifact after the aggregate succeeds, rather than rebuilding it.
 A completed build that no longer matches `main` is skipped rather than rolling
 the site backward.
 
-Before pushing, use the [committed-patch checker](content/testing.md#before-pushing).
+Before pushing, use the [committed-patch checker](content/development/testing.md#before-pushing).
 After pushing, follow CI and **Publish documentation** for the exact commit.
 
 ## Diagnose publishing and indexing

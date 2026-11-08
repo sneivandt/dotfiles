@@ -8,7 +8,7 @@ description: >
 
 # Agent Tooling
 
-Start with [Agent configuration](../../../docs/content/agent-configuration.md)
+Start with [Agent configuration](../../../docs/content/guides/agent-configuration.md)
 for sources, fragment merging, targets, and preview limits. For implementation
 changes, read [apm.rs](../../../cli/src/domains/ai/apm.rs) and its
 [modules and tests](../../../cli/src/domains/ai/apm/).
@@ -54,8 +54,8 @@ repository work must remain possible without it.
 
 ## Validate the changed contract
 
-Use [CLI validation](../../../docs/content/testing.md#cli-validation) and
-[Choosing coverage](../../../docs/content/testing.md#choosing-coverage).
-Preview reconciliation follows [Dry-run testing](../../../docs/content/writing-tests.md#dry-run-testing).
+Use [CLI validation](../../../docs/content/development/testing.md#cli-validation) and
+[Choosing coverage](../../../docs/content/development/testing.md#choosing-coverage).
+Preview reconciliation follows [Dry-run testing](../../../docs/content/development/writing-tests.md#dry-run-testing).
 Packing is not deployment proof. Do not deploy to the live home to test content
 or an adapter; use synthetic fragments, lockfiles, and target directories.

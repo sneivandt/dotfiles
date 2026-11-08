@@ -29,9 +29,9 @@ description: >
 
 ## Output contract
 
-Use [Console output](../../../docs/content/commands-and-usage.md#console-output) for status words,
+Use [Console output](../../../docs/content/guides/commands-and-usage.md#console-output) for status words,
 styles, spacing, visibility, and summary order. Use
-[Execution output for scripts](../../../docs/content/cli-reference.md#execution-output-for-scripts)
+[Execution output for scripts](../../../docs/content/reference/cli-reference.md#execution-output-for-scripts)
 for quiet/JSON Lines behavior. The summary and subscriber test matrices specify
 exact plain/ANSI rendering. Preserve these implementation constraints:
 

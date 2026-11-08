@@ -1,10 +1,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
 const contentDirectory = new URL('../../content/', import.meta.url);
-const documents = readdirSync(contentDirectory)
-  .filter((name) => name.endsWith('.md') && name !== '404.md')
-  .map((name) => ({ name, source: readFileSync(new URL(name, contentDirectory), 'utf8') }));
+const documents = readdirSync(contentDirectory, { recursive: true })
+  .filter((path): path is string => typeof path === 'string' && path.endsWith('.md') && basename(path) !== '404.md')
+  .map((path) => ({ name: basename(path), path, source: readFileSync(new URL(path.replaceAll('\\', '/'), contentDirectory), 'utf8') }));
 const taskDocuments = documents.filter(({ name, source }) =>
   name !== 'task-reference.md' && /^\| Selector \|/m.test(source));
 const referenceTitles = ['CLI reference', 'Task reference', ...taskDocuments
@@ -133,7 +134,7 @@ test('header sections replace the sidebar, including direct links and search des
   await page.goto('/getting-started.html');
   for (const [label, entry, titles] of [
     ['Reference', '/cli-reference.html', referenceTitles],
-    ['Development', '/contributing.html', ['Contributing', 'Writing documentation', 'Architecture', 'Adding a task', 'Debugging', 'Arch package recipes', 'Testing', 'Writing tests', 'Mutation testing', 'CI and releases']],
+    ['Development', '/contributing.html', ['Contributing', 'Writing documentation', 'Architecture', 'Adding a task', 'Debugging', 'Testing', 'Writing tests', 'Mutation testing', 'CI and releases']],
     ['Guides', '/getting-started.html', ['About this project', 'Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Application settings', 'Agent configuration', 'Private overlays']],
   ] as const) {
     if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
@@ -154,6 +155,21 @@ test('header sections replace the sidebar, including direct links and search des
   await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
   await page.goto('/package-management.html');
   await expect(page.locator('.VPDocFooter .next')).toContainText('Troubleshooting');
+});
+
+test('flat routes keep original section source edit links and removed pages are absent', async ({ page }) => {
+  for (const [route, source] of [
+    ['/', 'guides/index.md'],
+    ['/cli-reference.html', 'reference/cli-reference.md'],
+    ['/contributing.html', 'development/contributing.md'],
+  ]) {
+    await page.goto(route);
+    await expect(page.locator('.edit-link a')).toHaveAttribute(
+      'href', `https://github.com/sneivandt/dotfiles/edit/main/docs/content/${source}`,
+    );
+  }
+  await page.goto('/arch-package-recipes.html');
+  await expect(page.getByRole('heading', { name: 'Page not found', exact: true })).toBeVisible();
 });
 
 test('task details collapse separately from the task reference overview', async ({ page, isMobile }) => {
@@ -286,16 +302,15 @@ test('development guides connect implementation and isolated test authoring', as
   await assertNoPageOverflow(page);
 });
 
-test('maintenance procedures have their own contributor guides', async ({ page }) => {
+test('maintenance procedures link to task references and contributor guides', async ({ page }) => {
   await page.goto('/architecture.html');
   await expect(page.locator('main #agent-deployment-implementation')).toHaveCount(0);
   await page.goto('/agent-configuration.html');
   await expect(page.locator('main #deployment-maintenance')).toHaveCount(0);
   await page.goto('/package-management.html');
-  await expect(page.locator('main #arch-package-recipes')).toHaveCount(0);
-  await page.locator('main').getByRole('link', { name: 'Arch package recipes', exact: true }).click();
-  await expect(page).toHaveURL('/arch-package-recipes.html');
-  await expect(page.locator('main #recipe-inputs')).toBeVisible();
+  await page.locator('main').getByRole('link', { name: 'Custom package repository', exact: true }).click();
+  await expect(page).toHaveURL('/custom-package-repository.html');
+  await expect(page.locator('main #configuration')).toBeVisible();
   await page.goto('/testing.html');
   await expect(page.locator('main #prepare-an-isolated-source-snapshot')).toHaveCount(0);
   await page.locator('main').getByRole('link', { name: 'Mutation testing', exact: true }).click();
@@ -467,7 +482,7 @@ for (const theme of ['light', 'dark'] as const) {
 
 for (const [guide, titles] of [
   ['package-management', ['Installing a missing package can upgrade the system', 'Preparation executes recipes and replaces Paru preferences']],
-  ['arch-package-recipes', ['Review recipes before preparing packages', 'Preparation replaces Paru preferences']],
+  ['custom-package-repository', ['Review recipes before preparing packages', 'Existing Paru configuration is replaced']],
   ['agent-configuration', ['Packages can do more than provide text', 'Disabling a managed workflow in the App is temporary']],
   ['getting-started', ['Back up existing configuration first', 'A preview is not a sandbox']],
   ['profiles-and-categories', ['Profiles are roles, not safety levels']],

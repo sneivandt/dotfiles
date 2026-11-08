@@ -36,7 +36,7 @@ class ClassificationTests(unittest.TestCase):
         cases = [
             ("README.md", set()),
             (LINUX + "test-desktop-session.py", {"desktop_qml"}),
-            ("docs/content/testing.md", {"docs_site", "docs_contracts"}),
+            ("docs/content/development/testing.md", {"docs_site", "docs_contracts"}),
             ("docs/.vitepress/config.mts", {"docs_site"}),
             ("docs/package-lock.json", {"docs_site"}),
             ("docs/.vitepress/theme/style.css", {"docs_site"}),
@@ -149,7 +149,7 @@ class ClassificationTests(unittest.TestCase):
         for path, site, contracts in (
             ("AGENTS.md", False, False),
             (".agents/skills/example/scripts/check.py", False, False),
-            ("docs/content/task-reference.md", True, True),
+            ("docs/content/reference/task-reference.md", True, True),
             ("docs/public/favicon.svg", True, False),
             ("docs/tests/browser/site.spec.ts", True, False),
             ("cli/src/embedded.md", False, True),
@@ -202,8 +202,8 @@ class ClassificationTests(unittest.TestCase):
                 self.assertEqual([item["application"] for item in outputs["app_matrix"]["include"]], apps)
                 self.assertEqual(outputs["run_lint"], bool(linters))
                 self.assertEqual(outputs["run_app_tests"], bool(apps))
-        self.assertFalse(classify(["docs/content/getting-started.md", "dotfiles.sh"])["docs_only"])
-        self.assertTrue(classify(["docs/content/getting-started.md", "AGENTS.md"])["docs_only"])
+        self.assertFalse(classify(["docs/content/guides/getting-started.md", "dotfiles.sh"])["docs_only"])
+        self.assertTrue(classify(["docs/content/guides/getting-started.md", "AGENTS.md"])["docs_only"])
 
     def test_editor_matrices_include_plugin_free_regressions(self):
         matrix = classify(["symlinks/vim/vimrc"])["app_matrix"]["include"]
@@ -679,7 +679,7 @@ class GateTests(unittest.TestCase):
             ("docs", "failure"), ("build-linux", "failure"), ("build-linux", "success"),
         ):
             with self.subTest(job=job, result=result):
-                needs = self.results(["docs/content/testing.md"])
+                needs = self.results(["docs/content/development/testing.md"])
                 needs[job]["result"] = result
                 with self.assertRaises(ValueError):
                     CONTRACT["check_results"](needs)
@@ -707,7 +707,7 @@ class GateTests(unittest.TestCase):
                         CONTRACT["check_results"](needs)
 
     def test_missing_jobs_and_malformed_selection_outputs_fail_closed(self):
-        baseline = self.results(["docs/content/testing.md"])
+        baseline = self.results(["docs/content/development/testing.md"])
         for job in baseline:
             with self.subTest(missing_job=job):
                 needs = self.results(["README.md"])
@@ -1160,9 +1160,9 @@ class GitRangeTests(unittest.TestCase):
         fixture = {
             "docs/public/CNAME": "docs.example.invalid\n",
             "docs/content/404.md": "---\ntitle: Page not found\ndescription: Missing page.\n---\n",
-            "docs/content/index.md": "---\ntitle: About this project\ndescription: Project introduction.\n---\n# About this project\n\n## Start here\n",
-            "docs/content/getting-started.md": "---\ntitle: Getting started\ndescription: Set up a machine.\n---\n# Getting started\n\n## Setup\n",
-            "docs/content/commands-and-usage.md": "---\ntitle: Commands and usage\ndescription: Everyday commands.\n---\n# Commands and usage\n\n## Commands\n",
+            "docs/content/guides/index.md": "---\ntitle: About this project\ndescription: Project introduction.\n---\n# About this project\n\n## Start here\n",
+            "docs/content/guides/getting-started.md": "---\ntitle: Getting started\ndescription: Set up a machine.\n---\n# Getting started\n\n## Setup\n",
+            "docs/content/guides/commands-and-usage.md": "---\ntitle: Commands and usage\ndescription: Everyday commands.\n---\n# Commands and usage\n\n## Commands\n",
             "docs/dist/index.html": (
                 '<link rel="icon" href="/favicon.svg">'
                 '<link rel="canonical" href="https://docs.example.invalid/">'
@@ -1213,7 +1213,7 @@ class GitRangeTests(unittest.TestCase):
         self.assertEqual(check_site(self.repo), [])
         cases = [
             ("docs/dist/index.html", None, "Missing built homepage"),
-            ("docs/content/index.md", None, "Missing Markdown homepage"),
+            ("docs/content/guides/index.md", None, "Missing Markdown homepage"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('id="about-this-project"', 'id="wrong"'), "missing heading anchors"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<h1 id="about-this-project">About this project</h1>', '<h1 id="about-this-project">Welcome</h1>'), "Markdown title does not match page title"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('class="title"', 'class="other"'), "Homepage header must link"),
@@ -1232,9 +1232,9 @@ class GitRangeTests(unittest.TestCase):
             ("docs/dist/getting-started.html", homepage.replace("#commands", "#absent"), "broken anchor"),
             ("docs/dist/getting-started.html", homepage.replace("commands-and-usage.html", "commands-and-usage.md"), "broken destination"),
             ("docs/dist/getting-started.html", homepage.replace(">Getting started<", ">Welcome<"), "filename and URL do not match title"),
-            ("docs/content/getting-started.md", "# Welcome\n\n## Setup\n", "Markdown title does not match page title"),
-            ("docs/content/getting-started.md", fixture["docs/content/getting-started.md"].replace("title: Getting started", "title: Welcome"), "frontmatter title does not match"),
-            ("docs/content/getting-started.md", fixture["docs/content/getting-started.md"].replace("description: Set up a machine.", "description: ''"), "nonempty single-line frontmatter description"),
+            ("docs/content/guides/getting-started.md", "# Welcome\n\n## Setup\n", "Markdown title does not match page title"),
+            ("docs/content/guides/getting-started.md", fixture["docs/content/guides/getting-started.md"].replace("title: Getting started", "title: Welcome"), "frontmatter title does not match"),
+            ("docs/content/guides/getting-started.md", fixture["docs/content/guides/getting-started.md"].replace("description: Set up a machine.", "description: ''"), "nonempty single-line frontmatter description"),
             ("docs/dist/getting-started.html", homepage.replace("Set up a machine.", "Outdated description."), "rendered description does not match"),
             ("docs/dist/getting-started.html", homepage.replace(">Commands and usage<", ">Wrong label<"), "navigation label"),
             ("docs/dist/favicon.svg", None, "broken destination /favicon.svg"),
@@ -1255,6 +1255,12 @@ class GitRangeTests(unittest.TestCase):
                     self.write(path, content)
                 self.assertIn(message, "\n".join(check_site(self.repo)))
                 self.write(path, fixture[path])
+        self.write("docs/content/reference/commands-and-usage.md",
+                   fixture["docs/content/guides/commands-and-usage.md"])
+        self.assertIn("source filenames must be unique", "\n".join(check_site(self.repo)))
+        (self.repo / "docs/content/reference/commands-and-usage.md").unlink()
+        self.write("docs/dist/guides/getting-started.html", homepage)
+        self.assertIn("Published routes differ from flat source routes", "\n".join(check_site(self.repo)))
 
     def test_pending_site_publication_survives_a_successful_code_push(self):
         self.write("docs/content/example.md", "# Unpublished guide\n")

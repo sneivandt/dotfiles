@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig, type DefaultTheme } from 'vitepress';
 import { slug } from 'github-slugger';
@@ -6,8 +6,15 @@ import { themeStartup } from './theme-startup.mts';
 
 const domain = readFileSync(new URL('../public/CNAME', import.meta.url), 'utf8').trim();
 const origin = `https://${domain}`;
+const pageSources = Object.fromEntries(
+  ['guides', 'reference', 'development'].flatMap((section) =>
+    readdirSync(new URL(`../content/${section}/`, import.meta.url))
+      .filter((name) => name.endsWith('.md'))
+      .map((name) => [name.slice(0, -3), `${section}/${name}`]),
+  ),
+);
 const page = (name: string): DefaultTheme.SidebarItem => ({
-  text: readFileSync(new URL(`../content/${name}.md`, import.meta.url), 'utf8').match(/^title: (.+)$/m)![1],
+  text: readFileSync(new URL(`../content/${pageSources[name]}`, import.meta.url), 'utf8').match(/^title: (.+)$/m)![1],
   link: name === 'index' ? '/' : `/${name}.html`,
 });
 const group = (text: string, pages: string[]): DefaultTheme.SidebarItem => ({
@@ -42,7 +49,7 @@ const reference = [
 ];
 const contribute = [
   group('Workflows', ['contributing', 'writing-documentation']),
-  group('Implementation', ['architecture', 'adding-a-task', 'debugging', 'arch-package-recipes']),
+  group('Implementation', ['architecture', 'adding-a-task', 'debugging']),
   group('Verification', ['testing', 'writing-tests', 'mutation-testing', 'ci-and-releases']),
 ];
 const sectionPages = (items: DefaultTheme.SidebarItem[]): string[] =>
@@ -60,6 +67,7 @@ export default defineConfig({
   description: 'Set up, customize, and maintain an Arch Linux or Windows machine with declarative configuration and a Rust CLI.',
   lang: 'en-US',
   srcDir: 'content',
+  rewrites: Object.fromEntries(Object.entries(pageSources).map(([name, source]) => [source, `${name}.md`])),
   outDir: 'dist',
   vite: {
     plugins: [themeStartup()],
@@ -96,6 +104,19 @@ export default defineConfig({
     headers: { level: [2, 3] },
     anchor: { slugify: slug },
     config(md) {
+      const linkOpen = md.renderer.rules.link_open!;
+      md.renderer.rules.link_open = (tokens, index, options, env, self) => {
+        const token = tokens[index];
+        const href = token.attrGet('href');
+        // Source links cross section folders; published routes remain flat.
+        if (href) {
+          token.attrSet('href', href.replace(
+            /^(?:\.\.\/|\/)?(?:guides|reference|development)\/([^/?#]+\.md)([?#].*)?$/,
+            '/$1$2',
+          ));
+        }
+        return linkOpen(tokens, index, options, env, self);
+      };
       const fence = md.renderer.rules.fence!;
       md.renderer.rules.fence = (tokens, index, options, env, self) => {
         const token = tokens[index];
@@ -136,7 +157,9 @@ export default defineConfig({
       },
     },
     socialLinks: [{ icon: 'github', link: 'https://github.com/sneivandt/dotfiles' }],
-    editLink: { pattern: 'https://github.com/sneivandt/dotfiles/edit/main/docs/content/:path' },
+    editLink: {
+      pattern: ({ filePath }) => `https://github.com/sneivandt/dotfiles/edit/main/docs/content/${filePath}`,
+    },
     docFooter: { prev: 'Previous page', next: 'Next page' },
     notFound: { title: 'Page not found', quote: 'The page may have moved, or the address may be incomplete.', linkText: 'Back to the docs' },
   },

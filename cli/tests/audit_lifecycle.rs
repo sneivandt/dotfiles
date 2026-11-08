@@ -66,6 +66,7 @@ fn checks_reject_hard_linked_locks_without_overwriting_user_data() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn pam_conflicts_are_reported_by_configuration_diagnostics() {
     let repo = common::TestContextBuilder::new()

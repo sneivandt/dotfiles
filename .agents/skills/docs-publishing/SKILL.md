@@ -45,12 +45,8 @@ not incidental sentences or hardcoded inventory counts.
 Select affected checks from [docs/README.md](../../../docs/README.md#checks).
 Build for changed routes, rendering, generated metadata, assets, or dependencies;
 use focused browser tests for affected search, navigation, layout, or interaction.
-Use the full native checker for broad site changes or uncertain impact. Neither
-it nor a running site is required for ordinary prose or internal skills. One
-native platform is enough, including mixed patches; never share node_modules
-across Windows and Linux. The
-[npm TLS exception](../../../docs/content/development/testing.md#local-npm-tls-failures)
-records unavailable coverage, not a pass.
+Use the full native checker for broad site changes or uncertain impact.
+Never share node_modules across Windows and Linux.
 
 When rendered behavior changes, review the affected path on desktop and narrow
 screens, including keyboard navigation, search dismissal, focus, links, warnings, and diagrams
@@ -58,9 +54,9 @@ where affected. Browser emulation is not native phone or screen-reader proof.
 Repository source URLs can be checked locally; upstream destinations require
 separate review and must not receive private content.
 
-After an authorized push, follow the exact commit's CI and publication using
+For publication monitoring, use
 [ci-cd-patterns](../ci-cd-patterns/SKILL.md#after-pushing). Pages must deploy
 the verified artifact from a successful same-repository push on main, reject
 superseded runs, and avoid executing a checkout with deployment credentials.
-Verify the deployed content, HTTPS, and HTTP redirect separately.
+For domain changes, verify HTTPS and the HTTP redirect separately.
 Site edits do not authorize DNS, account settings, deployment, or host changes.

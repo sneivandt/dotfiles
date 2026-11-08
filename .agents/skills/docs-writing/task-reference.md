@@ -1,14 +1,4 @@
----
-name: task-reference-writing
-description: >
-  Use when drafting, expanding, or reviewing docs/content/reference/task-reference.md
-  or individual task reference pages: domain context, summary tables,
-  configuration examples, dependencies, preview limits, removal, and upstream
-  tool links. Not for general guide prose (docs-writing), contributor workflow
-  guides, or site navigation/rendering alone (docs-publishing).
----
-
-# Task Reference Writing
+# Task reference implementation checklist
 
 [Writing documentation](../../../docs/content/development/writing-documentation.md#task-reference-pages)
 owns the reader-facing page structure, examples, and language.
@@ -34,28 +24,18 @@ Verify these distinctions before writing:
 - Editable declarations and sources versus installed or generated output.
 - A task's proposed work versus startup, network, bookkeeping, and script effects.
 
-## Explain and exercise the reader's workflow
+## Explain the domain contract
 
 Use the human guide's task-page sections where they fit, without empty
 boilerplate. Explain the consequential domain distinction locally, such as
 enablement versus starting, package presence versus upgrades, or links versus
 copies. Upstream support can exceed dotfiles' supported subset.
-Write a useful description naming the task, tool/platform, and boundary, using
-the human guide's [findability conventions](../../../docs/content/development/writing-documentation.md#help-readers-find-the-topic).
-Verify a natural query reaches the page, not only an exact selector lookup.
 
 Review the procedure from both the relevant fresh and already-managed states.
 For replacement, removal, and partial-failure recovery, trace the state left
 after each step and what can block the next one. Show how to recognize the
 result, including ordinary nonzero inspection statuses.
 
-Use [docs-writing](../docs-writing/SKILL.md) for prose and
-[docs-publishing](../docs-publishing/SKILL.md) for route/navigation changes.
-Register task pages without duplicating routes or the overview.
-
 Extend the isolated [documentation contracts](../../../cli/tests/docs_contracts.rs)
-for consequential examples and transitions. Choose focused and final native
-documentation coverage from [docs/README.md](../../../docs/README.md#checks).
-Decoder and browser checks do not prove an upstream integration or a full
-machine installation. Examples never authorize host updates, removals,
-package preparation, overlay execution, or deployment.
+for consequential examples and transitions. Decoder and browser checks do not
+prove an upstream integration or a full machine installation.

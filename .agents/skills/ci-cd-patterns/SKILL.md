@@ -85,8 +85,3 @@ Start with [CI](../../../.github/workflows/ci.yml) and
 (the `.sh` entry point delegates to it).
 Use [Testing](../../../docs/content/development/testing.md) for canonical commands and the current CI
 coverage matrix.
-Select local checks from the affected behavior, not the full remote job list.
-Focused checks can be sufficient; the committed coordinator is an optional
-conservative tool. Its broad CI selection is not a minimum local checklist.
-Do not run a docs build, cross-target compilation, or the full suite merely
-because CI does. Preserve remote gates and monitor them through completion.

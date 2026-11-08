@@ -3,7 +3,8 @@ name: docs-writing
 description: >
   Use when drafting, auditing, or editing human-facing prose in README.md,
   docs/content/, or application READMEs: clarity, factual accuracy, natural
-  language, examples, search metadata, and the right level of detail. Not for site navigation,
+  language, examples, task reference pages, search metadata, and the right level
+  of detail. Not for site navigation,
   rendering, or publishing alone (docs-publishing), or internal agent
   instructions (skill-maintenance).
 ---
@@ -14,8 +15,8 @@ The human-facing convention lives in
 [Writing documentation](../../../docs/content/development/writing-documentation.md).
 Read the relevant sections rather than carrying a separate style policy here.
 Use [docs-publishing](../docs-publishing/SKILL.md) for organization or site
-behavior, and [task-reference-writing](../task-reference-writing/SKILL.md)
-for a task page's implementation contract.
+behavior. For task reference pages, use the supporting
+[implementation checklist](task-reference.md).
 
 ## Follow the reader's task
 
@@ -40,15 +41,11 @@ for a task page's implementation contract.
 - For consequential examples, reuse or extend the isolated
   [documentation contracts](../../../cli/tests/docs_contracts.rs).
   Distinguish decoder, transition, serialization, and rendered-site evidence.
-- Select checks from [docs/README.md](../../../docs/README.md#checks) based on
-  changed behavior. Ordinary prose needs source review and affected links or
-  metadata checks; a site build, browser run, and Rust compilation are not
-  automatic gates. Run example contracts when their inputs or claims change.
+- Select checks from [docs/README.md](../../../docs/README.md#checks).
+  Run example contracts when their inputs or claims change.
 - Inspect rendered content when layout, Markdown syntax, tables, diagrams, or
   interaction can change. Use desktop and narrow widths where relevant. Plain
   wording can be reviewed in source; structural checks never prove accuracy.
 - Apply the [documentation acceptance scenarios](../../../docs/content/development/writing-documentation.md#acceptance-scenarios)
   when changing authoring guidance. They are manual acceptance cases, not a
   model-effectiveness benchmark.
-- Examples are not authorization to apply host configuration, deploy content,
-  change Git history, or disclose private data.

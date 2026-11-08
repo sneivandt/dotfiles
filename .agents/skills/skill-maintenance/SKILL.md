@@ -62,24 +62,7 @@ through the revised body. Routing to the right skill does not prove that its
 instructions produce a correct procedure for an already-managed machine.
 
 Review frontmatter, paths, and contradictions with neighboring skills. Select
-checks from [docs/README.md](../../../docs/README.md#checks): skill wording normally
-needs source-link and metadata validation, not npm, Rust, a site build, or browser
-tests. Run validator regression fixtures when changing its implementation or
-metadata convention. Review instructions manually with the routing cases above;
-site tests cannot prove that an agent will choose useful checks.
-
-Validate the committed inputs without repeating passing checks whose relevant
-inputs are unchanged. For mixed patches, select implementation coverage from
-[Testing](../../../docs/content/development/testing.md#choosing-coverage). A full native docs
-run is available for affected site behavior or uncertain impact, not required
-merely because a skill is Markdown. Source-link checks cover tracked and
-unignored new Markdown, including unstaged moves; generated files are excluded.
-
-The native checker and Linux docs stage run [metadata validation](scripts/check-skills.py) and its
-[regression fixtures](scripts/test-check-skills.py). Repository frontmatter uses
-only a plain lowercase hyphenated `name` and a two-space-indented YAML block
-`description` (`>` or `|`, optionally with chomping). The validator rejects
-unsupported forms, missing/duplicate keys, empty descriptions, directory/name
-mismatches, and duplicate names; it is not a general YAML parser. Extend the
-convention and fixtures deliberately if new metadata is needed. Neither metadata
-validation nor the manual routing cases prove instruction effectiveness.
+metadata and source-link checks from [docs/README.md](../../../docs/README.md#checks).
+Use the [validator notes](scripts/README.md) when changing metadata conventions
+or the checker itself. Manual routing cases and structural checks do not prove
+instruction effectiveness.

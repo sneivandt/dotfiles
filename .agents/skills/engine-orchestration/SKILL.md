@@ -9,6 +9,14 @@ description: >
 
 # Engine Orchestration
 
+Read the nearest implementation and tests first. Domain tasks live in
+`domains/<domain>/<feature>.rs`, with shared `config/`, `resources/`, and `tests/`
+directories. A feature support directory needs its matching root entry point,
+not a generic `tasks/` folder. Preserve the layer boundaries enforced by
+[domain_boundaries](../../../cli/tests/domain_boundaries.rs); use
+[Architecture](../../../docs/content/development/architecture.md#repository-layout)
+when the owning layer is unclear.
+
 ## Choose the boundary
 
 | Need | Owner |

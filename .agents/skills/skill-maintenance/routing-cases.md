@@ -27,16 +27,16 @@ Companions are needed only when the request changes their contract.
 | Change APM fragment target deployment | `agent-tooling` | No arch-package-recipes skill unless the APM executable recipe changes |
 | Change an optional overlay section's generic TOML loader | `toml-configuration` | Add overlay-scripts only for resolution or execution changes |
 | Monitor checks after pushing a skill wording change | `ci-cd-patterns` | Follow exact-SHA CI and Pages; do not rerun local suites while waiting |
-| Select tests before committing an isolated Rust resource change | `cross-platform-verification` | Affected targets and host checks; CI skill only for monitoring or automation edits |
-| Choose Windows coverage after a Rust path-handling change | `cross-platform-verification` | windows-specific-patterns owns implementation choices |
+| Select tests before committing an isolated Rust resource change | [Testing guide](../../../docs/content/development/testing.md#choosing-coverage) | Affected targets and host checks; no separate verification skill |
+| Choose Windows coverage after a Rust path-handling change | [Testing guide](../../../docs/content/development/testing.md#platform-coverage-parity) | Platform coverage parity; windows-specific-patterns only for implementation choices |
 | Enable dark mode and fix Mermaid on the published docs site | `docs-publishing` | No desktop-shell skill |
 | Move site-maintenance instructions into docs/README.md | `docs-publishing` | Add docs-writing for prose; keep the README outside published routes |
 | Audit the guides for accuracy, readability, and excessive detail | `docs-writing` | Verify claims against sources; add docs-publishing only for site or organization changes |
 | Explain switching an installed Git link to a private overlay | `docs-writing` | Review the starting state and link conflict, not just the declaration's merge behavior |
 | Improve instructions for retiring desktop links and returning to base | `docs-writing` | Materialized base copies must not be described as automatically replaceable by links |
-| Expand the Systemd units task page with domain context and upstream references | `task-reference-writing` | Verify the task, resource, and catalog; docs-writing supplies prose guidance |
-| Improve the Getting started walkthrough without changing task pages | `docs-writing` | No task-reference-writing skill for an ordinary workflow guide |
-| Add a task reference page and nest it beneath the task overview | `task-reference-writing` | Add docs-publishing for navigation and route coverage; do not add domain collapse groups |
+| Expand the Systemd units task page with domain context and upstream references | `docs-writing` | Load its task-reference checklist to verify the task, resource, and catalog |
+| Improve the Getting started walkthrough without changing task pages | `docs-writing` | No task-reference checklist for an ordinary workflow guide |
+| Add a task reference page and nest it beneath the task overview | `docs-writing` | Load its task-reference checklist; add docs-publishing for navigation and route coverage |
 | Simplify examples in Commands and usage | `docs-writing` | Verify defaults in the owning code; no engine changes just for prose |
 | Make each guide understandable when shared directly | `docs-writing` | Supply task-local context; add docs-publishing only for page or navigation changes |
 | Reduce boxed text and balance links versus bold in the guides | `docs-writing` | Preserve exact syntax and safety warnings; no CSS workaround |
@@ -57,6 +57,14 @@ these examples prove runtime routing quality.
 When reviewing documentation guidance, use the human guide's
 [acceptance scenarios](../../../docs/content/development/writing-documentation.md#acceptance-scenarios)
 as well. Check the explanation's essential facts, not a fixed wording.
+
+## Rust ownership review cases
+
+| Request | Primary skill | Boundary or companion |
+|---|---|---|
+| Change shared scheduler failure propagation | `engine-orchestration` | Inspect affected command contracts; no preliminary Rust router |
+| Add a VS Code extension resource | `resource-implementation` | Engine guidance only if scheduling changes |
+| Add a TOML field with a semantic diagnostic | `toml-configuration` | Add config-validation for the diagnostic contract |
 
 ## Local coverage review cases
 

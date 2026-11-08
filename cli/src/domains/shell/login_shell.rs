@@ -31,11 +31,14 @@ impl Task for ConfigureShell {
             |()| {
                 run_resource_task(
                     ctx,
-                    vec![DefaultShellResource::new(
-                        "zsh".to_string(),
-                        ctx.executor_arc(),
-                        std::sync::Arc::clone(ctx.env()),
-                    )],
+                    vec![
+                        DefaultShellResource::new(
+                            "zsh".to_string(),
+                            ctx.executor_arc(),
+                            std::sync::Arc::clone(ctx.env()),
+                        )
+                        .with_interaction(!ctx.non_interactive()),
+                    ],
                     &ProcessOpts::strict("configure"),
                 )
             },

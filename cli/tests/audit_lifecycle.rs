@@ -19,6 +19,125 @@ fn output(command: &mut std::process::Command, success: bool) -> String {
 }
 
 #[test]
+fn checks_reject_hard_linked_locks_without_overwriting_user_data() {
+    let repo = common::IntegrationTestContext::new();
+    let home = tempfile::tempdir().unwrap();
+    let unrelated = home.path().join("unrelated");
+    std::fs::write(&unrelated, "valuable user data").unwrap();
+    // Initialize the fixture repository before installing the conflicting lock.
+    let _command = common::cli_command(
+        repo.root_path(),
+        home.path(),
+        None,
+        "check",
+        "config-diagnostics",
+    );
+    let lock = repo.root_path().join(".git/dotfiles-run.lock");
+    std::fs::hard_link(&unrelated, &lock).unwrap();
+    let text = output(
+        &mut common::cli_command(
+            repo.root_path(),
+            home.path(),
+            None,
+            "check",
+            "config-diagnostics",
+        ),
+        false,
+    );
+    assert!(text.contains("multiply linked"), "{text}");
+    assert_eq!(
+        std::fs::read_to_string(&unrelated).unwrap(),
+        "valuable user data"
+    );
+    std::fs::remove_file(lock).unwrap();
+    output(
+        &mut common::cli_command(
+            repo.root_path(),
+            home.path(),
+            None,
+            "check",
+            "config-diagnostics",
+        ),
+        true,
+    );
+    assert_eq!(
+        std::fs::read_to_string(unrelated).unwrap(),
+        "valuable user data"
+    );
+}
+
+#[test]
+fn pam_conflicts_are_reported_by_configuration_diagnostics() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "system-files.toml",
+            "[base]\nfiles=[{source='pam.d/test',merge='pam'}]\n",
+        )
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let source = repo.root_path().join("system/pam.d/test");
+    std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+    std::fs::write(
+        source,
+        "auth optional pam_example.so first\n-auth required pam_example.so second\n",
+    )
+    .unwrap();
+    let text = output(
+        &mut common::cli_command(
+            repo.root_path(),
+            home.path(),
+            None,
+            "check",
+            "config-diagnostics",
+        ),
+        false,
+    );
+    assert!(text.contains("conflicting rules"), "{text}");
+}
+
+#[cfg(unix)]
+#[test]
+fn non_interactive_login_shell_never_calls_an_authentication_prompt() {
+    use std::os::unix::fs::PermissionsExt as _;
+    if nix::unistd::Uid::effective().is_root() {
+        return;
+    }
+    let repo = common::IntegrationTestContext::new();
+    let home = tempfile::tempdir().unwrap();
+    let bin = home.path().join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    let prompt_marker = home.path().join("unexpected-prompt");
+    for (name, script) in [
+        ("zsh", "exit 0".to_string()),
+        (
+            "getent",
+            "printf 'fixture:x:1000:1000::/fixture:/bin/bash\\n'".to_string(),
+        ),
+        ("sudo", "exit 1".to_string()),
+        (
+            "chsh",
+            format!("printf prompt > '{}'; exit 0", prompt_marker.display()),
+        ),
+    ] {
+        let path = bin.join(name);
+        std::fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let mut command =
+        common::cli_command(repo.root_path(), home.path(), None, "update", "login-shell");
+    command
+        .env("PATH", &bin)
+        .env("USER", "fixture")
+        .arg("--fail-on-skip");
+    let text = output(&mut command, false);
+    assert!(text.contains("authentication"), "{text}");
+    assert!(
+        !prompt_marker.exists(),
+        "non-interactive execution must not invoke chsh"
+    );
+}
+
+#[test]
 fn launcher_preserves_user_files_and_modified_installations() {
     let repo = common::IntegrationTestContext::new();
     let home = tempfile::tempdir().unwrap();

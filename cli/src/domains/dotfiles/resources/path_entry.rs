@@ -110,11 +110,43 @@ impl PathEntryResource {
     }
 
     fn shell_profile_contains_managed_line(path: &Path, line: &str) -> Result<bool> {
-        match std::fs::read_to_string(path) {
-            Ok(content) => Ok(content.lines().any(|existing| existing.trim() == line)),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-            Err(error) => Err(error).with_context(|| format!("read {}", path.display())),
+        Ok(Self::shell_profile_contents(path)?
+            .1
+            .is_some_and(|content| content.lines().any(|existing| existing.trim() == line)))
+    }
+
+    #[allow(
+        clippy::verbose_file_reads,
+        reason = "read through the validated handle instead of reopening an unchecked path"
+    )]
+    fn shell_profile_contents(path: &Path) -> Result<(PathBuf, Option<String>)> {
+        use std::io::Read as _;
+        if crate::infra::fs::symlink_metadata_optional(path, "inspect shell profile")?.is_none() {
+            return Ok((crate::infra::fs::resolve_target_entry(path)?, None));
         }
+        let target = crate::infra::fs::canonicalize(path)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+        let mut file = crate::infra::fs::open_in_place(&target, &mut options)?;
+        let mut content = String::new();
+        file.read_to_string(&mut content)
+            .with_context(|| format!("read {}", path.display()))?;
+        Ok((target, Some(content)))
+    }
+
+    fn publish_shell_profile(
+        path: &Path,
+        before: &(PathBuf, Option<String>),
+        content: String,
+    ) -> Result<()> {
+        crate::infra::fs::write_atomic_checked(&before.0, content, || {
+            anyhow::ensure!(
+                Self::shell_profile_contents(path)? == *before,
+                "shell profile {} changed during update; retry",
+                path.display()
+            );
+            Ok(())
+        })
     }
 }
 
@@ -124,23 +156,21 @@ impl Resource for PathEntryResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        use std::io::Write;
-
         match &self.strategy {
             PathStrategy::ShellProfile { path, line } => {
-                if Self::shell_profile_contains_managed_line(path, line)? {
+                let before = Self::shell_profile_contents(path)?;
+                if before
+                    .1
+                    .as_ref()
+                    .is_some_and(|content| content.lines().any(|existing| existing.trim() == line))
+                {
                     return Ok(ResourceChange::AlreadyCorrect);
                 }
-
-                let mut file = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(path)
-                    .with_context(|| format!("open {}", path.display()))?;
-                writeln!(file)?;
-                writeln!(file, "# Added by dotfiles")?;
-                writeln!(file, "{line}")?;
-                Ok(ResourceChange::Applied)
+                let content = format!(
+                    "{}\n# Added by dotfiles\n{line}\n",
+                    before.1.as_deref().unwrap_or_default()
+                );
+                Self::publish_shell_profile(path, &before, content)?;
             }
             PathStrategy::WindowsRegistry {
                 dir,
@@ -159,9 +189,9 @@ impl Resource for PathEntryResource {
                 if let Err(e) = broadcast_environment_change(&**executor) {
                     tracing::debug!("best-effort PATH broadcast failed: {e}");
                 }
-                Ok(ResourceChange::Applied)
             }
         }
+        Ok(ResourceChange::Applied)
     }
 }
 
@@ -430,6 +460,31 @@ mod tests {
     use crate::infra::env::MapEnv;
     use crate::infra::exec::MockExecutor;
     use crate::infra::platform::{Os, Platform};
+
+    #[test]
+    fn profile_publication_preserves_intervening_edits_and_new_files() {
+        for existing in [false, true] {
+            let fixture = tempfile::tempdir().unwrap();
+            let path = fixture.path().join(".profile");
+            if existing {
+                std::fs::write(&path, "initial\n").unwrap();
+            }
+            let before = PathEntryResource::shell_profile_contents(&path).unwrap();
+            std::fs::write(&path, "external edit\n").unwrap();
+            let error = PathEntryResource::publish_shell_profile(
+                &path,
+                &before,
+                "stale replacement".into(),
+            )
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("changed during update"),
+                "{error:#}"
+            );
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "external edit\n");
+            assert_eq!(std::fs::read_dir(fixture.path()).unwrap().count(), 1);
+        }
+    }
 
     #[cfg(windows)]
     #[test]

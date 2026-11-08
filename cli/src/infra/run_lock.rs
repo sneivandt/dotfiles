@@ -222,25 +222,13 @@ impl RunLock {
 
         let mut options = OpenOptions::new();
         options.create(true).read(true).write(true).truncate(false);
+        let mut file = crate::infra::fs::open_in_place(path, &mut options)
+            .with_context(|| format!("opening run lock {}", path.display()))?;
         #[cfg(unix)]
         {
-            use std::os::unix::fs::OpenOptionsExt as _;
-            options.custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
+            check_owner(&file.metadata()?, nix::unistd::Uid::effective().as_raw())
+                .with_context(|| format!("validating run lock {}", path.display()))?;
         }
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt as _;
-            use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
-            options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
-        }
-        let mut file = options
-            .open(path)
-            .with_context(|| format!("opening run lock {}", path.display()))?;
-        anyhow::ensure!(
-            file.metadata()?.is_file(),
-            "run lock is not a regular file: {}",
-            path.display()
-        );
 
         file.try_lock().map_err(|error| lock_error(path, error))?;
 
@@ -265,6 +253,16 @@ impl RunLock {
 
         Ok(Self { file })
     }
+}
+
+#[cfg(unix)]
+fn check_owner(metadata: &std::fs::Metadata, expected_uid: u32) -> Result<()> {
+    use std::os::unix::fs::MetadataExt as _;
+    anyhow::ensure!(
+        metadata.uid() == expected_uid,
+        "run lock is not owned by the current user"
+    );
+    Ok(())
 }
 
 fn lock_error(path: &Path, error: TryLockError) -> anyhow::Error {
@@ -341,6 +339,49 @@ mod tests {
     use crate::infra::env::MapEnv;
     use crate::infra::platform::{Os, Platform};
     use std::io::Read as _;
+
+    #[cfg(unix)]
+    #[test]
+    fn lock_owner_validation_rejects_another_users_file_without_writing() {
+        let fixture = tempfile::tempdir().unwrap();
+        let target = fixture.path().join("lock");
+        std::fs::write(&target, "foreign owner data").unwrap();
+        let metadata = target.metadata().unwrap();
+        let uid = nix::unistd::Uid::effective().as_raw();
+        check_owner(&metadata, uid).unwrap();
+        assert!(check_owner(&metadata, uid.wrapping_add(1)).is_err());
+        assert_eq!(
+            std::fs::read_to_string(target).unwrap(),
+            "foreign owner data"
+        );
+    }
+
+    #[test]
+    fn lock_rejects_hard_links_and_retries_after_the_alias_is_removed() {
+        let fixture = tempfile::tempdir().unwrap();
+        let target = fixture.path().join("unrelated");
+        let lock = fixture.path().join("run.lock");
+        std::fs::write(&target, "unrelated user data").unwrap();
+        std::fs::hard_link(&target, &lock).unwrap();
+        let error = RunLock::acquire_path(&lock, "check").unwrap_err();
+        assert!(
+            format!("{error:#}").contains("multiply linked"),
+            "{error:#}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "unrelated user data"
+        );
+        std::fs::remove_file(&lock).unwrap();
+        let holder = RunLock::acquire_path(&lock, "check").unwrap();
+        assert!(RunLock::acquire_path(&lock, "update").is_err());
+        drop(holder);
+        drop(RunLock::acquire_path(&lock, "update").unwrap());
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "unrelated user data"
+        );
+    }
 
     #[test]
     fn independent_checkouts_share_home_locks_even_with_different_state_overrides() {

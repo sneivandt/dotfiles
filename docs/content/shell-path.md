@@ -25,6 +25,10 @@ Requires the launcher. Adds `~/.local/bin` through a managed export in `~/.profi
 Linux, or the user PATH on Windows. Open a new shell to use the persisted change.
 
 Existing PATH entries are preserved. Remove leaves the PATH addition in place.
+On Linux, an existing working `~/.profile` symlink is preserved and its destination
+is updated. Dangling links, non-regular files, and files with multiple hard links
+are refused; resolve those destinations before retrying. Updates preserve existing
+file permissions and replace the content atomically.
 
 Open a new terminal to use the updated PATH. Existing processes keep the
 environment they inherited at startup. On Linux, loading also depends on the

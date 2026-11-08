@@ -515,6 +515,18 @@ compositor/network session. Helpers mock desktop actions and market requests.
 On Windows use `python -B`; Linux-only cases skip. Record native manual
 coverage separately.
 
+CI also runs the real Quickshell configuration under a software-rendered Sway
+session in a disposable Arch container. It checks bar space reservations,
+workspace activation, output addition, resizing and disabling, and acquisition
+of a native Wayland session lock with Swaylock.
+
+The same container script accepts `--native-hyprland` to require nested Hyprland
+and the tracked Hyprlock configuration. Use a disposable runner with GPU-backed
+buffer allocation; the software-only CI runner cannot start that backend.
+Unavailable prerequisites fail this mode rather than producing a passing skip.
+Neither mode tests password authentication, the systemd user service, physical
+displays, or suspend/resume.
+
 ### Application configuration
 
 These use isolated homes and mock commands:

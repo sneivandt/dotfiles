@@ -132,7 +132,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             pass  # Always executed by classify-changes.
         elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh", LINUX + "release-tag.sh"}:
             pass  # Publishing builds are selected independently of CI builds.
-        elif path in {LINUX + "test-desktop-qml.sh", LINUX + "test-desktop-session.sh"}:
+        elif path in {LINUX + "test-desktop-qml.sh", LINUX + "test-desktop-session.sh",
+                      LINUX + "test-desktop-session.py"}:
             enable("desktop_qml")
         elif path == LINUX + "test-workflows.sh":
             pass  # Always executed by classify-changes.

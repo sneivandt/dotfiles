@@ -35,6 +35,7 @@ class ClassificationTests(unittest.TestCase):
         rust = {"rust_checks", "rust_fmt", "build_linux", "build_windows"}
         cases = [
             ("README.md", set()),
+            (LINUX + "test-desktop-session.py", {"desktop_qml"}),
             ("docs/content/testing.md", {"docs_site", "docs_contracts"}),
             ("docs/.vitepress/config.mts", {"docs_site"}),
             ("docs/package-lock.json", {"docs_site"}),

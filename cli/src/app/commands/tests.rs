@@ -42,13 +42,13 @@ mod reexec_tests {
                 ["update", "--only", "repository"],
             ),
         ] {
-            let args = args.map(str::to_string);
+            let args = args.map(std::ffi::OsString::from);
             let command = build_reexec_command(Path::new("/repo/bin/dotfiles"), &args, guard);
             assert_eq!(command.get_program(), "/repo/bin/dotfiles");
             assert_eq!(
                 command
                     .get_args()
-                    .map(|arg| arg.to_string_lossy().into_owned())
+                    .map(std::ffi::OsStr::to_os_string)
                     .collect::<Vec<_>>(),
                 args,
                 "{guard}"

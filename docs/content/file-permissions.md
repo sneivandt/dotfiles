@@ -52,6 +52,10 @@ regardless of ordering or parallel execution.
 This also applies when a parent directory is reached through a symlink.
 Declarations requesting different modes for the same resolved destination fail
 before the task changes any permissions. Keep one mode for that destination.
+Files with multiple hard links are refused, including within recursive trees:
+changing their mode would also change every other name for the same file.
+Give the managed file an independent copy before retrying. The external-target
+opt-in does not bypass this check.
 
 For example, `600` permits only the owner to read and write a file; `700`
 also permits the owner to traverse a directory but excludes other users.

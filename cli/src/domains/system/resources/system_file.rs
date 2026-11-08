@@ -514,7 +514,7 @@ pub(crate) fn validate_fragment(merge: MergeStrategy, fragment: &str) -> anyhow:
     match merge {
         MergeStrategy::Toml => parse_toml(fragment).map(drop),
         MergeStrategy::Ini => ini_settings(fragment, true).map(drop),
-        MergeStrategy::Pam => pam_rules(fragment).try_for_each(|rule| rule.map(drop)),
+        MergeStrategy::Pam => validate_pam_rules(fragment),
     }
 }
 
@@ -527,6 +527,7 @@ fn pam_rules(fragment: &str) -> impl Iterator<Item = anyhow::Result<(&str, &str,
 }
 
 fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
+    validate_pam_rules(fragment)?;
     let mut lines = current.lines().map(str::to_string).collect::<Vec<_>>();
     for rule in pam_rules(fragment) {
         let (rule, facility, module) = rule?;
@@ -566,9 +567,51 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
     Ok(rendered)
 }
 
+fn validate_pam_rules(fragment: &str) -> anyhow::Result<()> {
+    let mut identities = std::collections::BTreeMap::new();
+    for rule in pam_rules(fragment) {
+        let (rule, facility, module) = rule?;
+        let facility = facility
+            .strip_prefix('-')
+            .unwrap_or(facility)
+            .to_ascii_lowercase();
+        if let Some(previous) = identities.insert((facility, module), rule) {
+            anyhow::ensure!(
+                previous == rule,
+                "PAM fragment contains conflicting rules for module {module}: {previous}; {rule}"
+            );
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pam_conflicts_fail_validation_and_merge_without_silently_dropping_rules() {
+        let original = "auth required pam_unix.so\n";
+        for facility in ["auth", "AUTH", "-auth"] {
+            let fragment = format!(
+                "auth optional pam_example.so first\n{facility} required pam_example.so second\n"
+            );
+            assert!(
+                validate_fragment(MergeStrategy::Pam, &fragment)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("conflicting rules")
+            );
+            assert!(merge_pam(original, &fragment).is_err());
+        }
+        let rule = "auth optional pam_example.so first\n";
+        let duplicate = format!("{rule}{rule}");
+        validate_fragment(MergeStrategy::Pam, &duplicate).unwrap();
+        let merged = merge_pam(original, &duplicate).unwrap();
+        assert!(merged.contains(original));
+        assert_eq!(merged.matches("pam_example.so").count(), 1);
+        assert_eq!(merge_pam(&merged, &duplicate).unwrap(), merged);
+    }
     use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
     use std::path::Path;
 

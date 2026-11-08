@@ -27,7 +27,9 @@ task, not configurable in TOML. It waits for packages and reports missing zsh as
 work.
 
 State comes from the account database, not `$SHELL`. Apply uses `usermod` as root, `sudo
--n usermod` when available without prompting, otherwise `chsh`. A matching shell name
+-n usermod` when available without prompting, or `chsh` in an interactive run.
+Non-interactive runs report unmet work when authentication would require a prompt.
+A matching shell name
 with a missing/unusable executable still needs repair. Your currently running terminal
 shell is not replaced.
 

@@ -941,6 +941,65 @@ fn git(root: &std::path::Path, args: &[&str]) -> String {
     String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
 
+#[cfg(unix)]
+#[test]
+fn repository_restart_preserves_non_unicode_paths_and_loads_new_configuration() {
+    use std::os::unix::ffi::OsStringExt as _;
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture
+        .path()
+        .join(std::ffi::OsString::from_vec(b"checkout-\xff".to_vec()));
+    let home = fixture.path().join("home");
+    let remote = fixture.path().join("upstream");
+    std::fs::create_dir(&home).unwrap();
+    common::setup_minimal_repo(&root);
+    git(
+        fixture.path(),
+        &["init", "--bare", "-b", "main", remote.to_str().unwrap()],
+    );
+    git(&root, &["init", "-q", "-b", "main"]);
+    git(&root, &["add", "."]);
+    git(&root, &["commit", "-m", "initial"]);
+    let initial = git(&root, &["rev-parse", "HEAD"]);
+    git(
+        &root,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    git(&root, &["push", "-u", "origin", "main"]);
+    std::fs::write(
+        root.join("conf/symlinks.toml"),
+        "[base]\nsymlinks = [\"fresh\"]\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("symlinks/fresh"), "new configuration\n").unwrap();
+    git(&root, &["add", "."]);
+    git(&root, &["commit", "-m", "new configuration"]);
+    let updated = git(&root, &["rev-parse", "HEAD"]);
+    git(&root, &["push", "origin", "main"]);
+    git(&root, &["reset", "--hard", &initial]);
+    let result =
+        common::isolated_cli_command(&root, &home, None, "update", "repository,symlinks", true)
+            .output()
+            .unwrap();
+    assert!(result.status.success(), "{result:?}");
+    assert_eq!(git(&root, &["rev-parse", "HEAD"]), updated);
+    assert_eq!(
+        std::fs::read_to_string(home.join(".fresh")).unwrap(),
+        "new configuration\n"
+    );
+    assert_eq!(
+        std::fs::read_link(home.join(".fresh")).unwrap(),
+        root.join("symlinks/fresh")
+    );
+    let logs = common::retained_logs(&home.join("logs"));
+    assert_eq!(logs.len(), 2, "restart must create a linked child run");
+    let child = logs
+        .iter()
+        .map(|log| std::fs::read_to_string(log).unwrap())
+        .any(|log| log.contains("\"parent_run_id\":\""));
+    assert!(child, "restart must retain parent-run linkage");
+}
+
 #[test]
 fn repository_only_update_recovers_bad_config_and_refuses_a_deleted_upstream() {
     let fixture = tempfile::tempdir().unwrap();

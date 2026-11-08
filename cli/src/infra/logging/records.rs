@@ -7,7 +7,10 @@ use super::{ActionCounts, TaskStatus};
 pub(crate) const PARENT_RUN_ARG: &str = "--parent-run-id";
 
 /// Replace any inherited parent marker with this process's stable identity.
-pub(crate) fn child_args(args: &[String], parent: &str) -> Vec<String> {
+pub(crate) fn child_args<T: AsRef<std::ffi::OsStr> + From<String> + Clone>(
+    args: &[T],
+    parent: &str,
+) -> Vec<T> {
     let mut out = Vec::new();
     let mut skip = false;
     for arg in args {
@@ -15,16 +18,20 @@ pub(crate) fn child_args(args: &[String], parent: &str) -> Vec<String> {
             skip = false;
             continue;
         }
-        if arg == PARENT_RUN_ARG {
+        if arg.as_ref() == PARENT_RUN_ARG {
             skip = true;
             continue;
         }
-        if arg.starts_with("--parent-run-id=") {
+        if arg
+            .as_ref()
+            .as_encoded_bytes()
+            .starts_with(b"--parent-run-id=")
+        {
             continue;
         }
         out.push(arg.clone());
     }
-    out.extend([PARENT_RUN_ARG.into(), parent.into()]);
+    out.extend([PARENT_RUN_ARG.to_string().into(), parent.to_string().into()]);
     out
 }
 

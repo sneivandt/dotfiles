@@ -74,7 +74,9 @@ PAM needs an existing service file and a stack of the same type as each fragment
 rule with the same module path in that stack is replaced. If the same module name
 appears under different paths in the stack, review the installed rule and make the
 fragment use the intended path before retrying. Blank lines and full-line comments in
-PAM fragments are not inserted. The [PAM merge implementation and
+PAM fragments are not inserted. A fragment cannot declare different rules for the
+same facility and module path; identical repeated rules are deduplicated.
+The [PAM merge implementation and
 tests](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/system_file.rs)
 cover detailed rule matching and placement.
 

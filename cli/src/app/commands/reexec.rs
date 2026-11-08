@@ -28,8 +28,8 @@ pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
     run_reexec(command, root, log)
 }
 
-fn reexec_args(log: &dyn Output) -> Vec<String> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+fn reexec_args(log: &dyn Output) -> Vec<std::ffi::OsString> {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
     if let Some(id) = log.run_id() {
         crate::infra::logging::records::child_args(&args, &id)
     } else {
@@ -89,7 +89,7 @@ fn run_reexec(mut command: std::process::Command, root: &std::path::Path, log: &
 /// Build the replacement process while preserving the original CLI arguments.
 pub(super) fn build_reexec_command(
     exe: &std::path::Path,
-    args: &[String],
+    args: &[std::ffi::OsString],
     guard: &str,
 ) -> std::process::Command {
     let mut command = std::process::Command::new(exe);

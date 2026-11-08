@@ -111,6 +111,13 @@ impl ChmodResource {
                 )));
             }
         }
+        #[cfg(unix)]
+        if self.target.try_exists()? {
+            return permission_tree_reason(
+                &crate::infra::fs::canonicalize(&self.target)?,
+                &self.excluded_targets,
+            );
+        }
         Ok(None)
     }
 }
@@ -313,6 +320,13 @@ fn apply_recursive(
 fn set_permissions(path: &std::path::Path, mode: u32) -> ResourceResult<()> {
     use std::os::unix::fs::PermissionsExt;
 
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.is_file() {
+        crate::infra::fs::require_single_link(&metadata)?;
+    }
+    if metadata.is_symlink() {
+        return Err(anyhow::anyhow!("chmod target became a symlink: {}", path.display()).into());
+    }
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).map_err(|error| {
         if error.kind() == std::io::ErrorKind::PermissionDenied {
             ResourceError::permission_denied(path.display().to_string())
@@ -322,6 +336,32 @@ fn set_permissions(path: &std::path::Path, mode: u32) -> ResourceResult<()> {
                 .into()
         }
     })
+}
+
+#[cfg(unix)]
+fn permission_tree_reason(
+    path: &std::path::Path,
+    excluded_targets: &[PathBuf],
+) -> ResourceResult<Option<String>> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.is_file() {
+        return Ok(crate::infra::fs::require_single_link(&metadata)
+            .err()
+            .map(|error| format!("{}: {error}", path.display())));
+    }
+    if metadata.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let child = entry.path();
+            if excluded_targets.contains(&child) {
+                continue;
+            }
+            if let Some(reason) = permission_tree_reason(&child, excluded_targets)? {
+                return Ok(Some(reason));
+            }
+        }
+    }
+    Ok(None)
 }
 
 /// Add execute bits to a mode for each permission triplet that has read access.
@@ -339,4 +379,37 @@ pub(super) const fn ensure_dir_execute_bits(mode: u32) -> u32 {
 #[cfg(unix)]
 pub(super) const fn strip_file_execute_bits(mode: u32) -> u32 {
     mode & !0o111
+}
+
+#[cfg(all(test, unix))]
+mod mutation_tests {
+    use super::*;
+
+    #[test]
+    fn changed_final_entries_are_rejected_at_the_permission_write() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let fixture = tempfile::tempdir().unwrap();
+        let file = fixture.path().join("private");
+        let alias = fixture.path().join("alias");
+        std::fs::write(&file, "private").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::hard_link(&file, &alias).unwrap();
+        assert!(
+            permission_tree_reason(fixture.path(), &[])
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            permission_tree_reason(fixture.path(), &[file.clone(), alias.clone()])
+                .unwrap()
+                .is_none()
+        );
+        assert!(set_permissions(&file, 0o644).is_err());
+        std::fs::remove_file(&alias).unwrap();
+        std::os::unix::fs::symlink(&file, &alias).unwrap();
+        assert!(set_permissions(&alias, 0o644).is_err());
+        assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+        set_permissions(&file, 0o640).unwrap();
+        assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o640);
+    }
 }

@@ -36,6 +36,60 @@ mod tests {
     use crate::infra::env::MapEnv;
     use crate::test_helpers::{make_linux_context, task_batch};
 
+    #[cfg(unix)]
+    #[test]
+    fn profile_link_matrix_preserves_unresolved_and_shared_destinations() {
+        for preview in [false, true] {
+            for case in ["dangling", "hardlink", "directory", "working-symlink"] {
+                let fixture = tempfile::tempdir().unwrap();
+                let home = fixture.path().join("home");
+                std::fs::create_dir(&home).unwrap();
+                let profile = home.join(".profile");
+                let outside = fixture.path().join("outside");
+                match case {
+                    "dangling" => std::os::unix::fs::symlink(&outside, &profile).unwrap(),
+                    "hardlink" => {
+                        std::fs::write(&outside, "# user content\n").unwrap();
+                        std::fs::hard_link(&outside, &profile).unwrap();
+                    }
+                    "directory" => std::fs::create_dir(&profile).unwrap(),
+                    "working-symlink" => {
+                        std::fs::write(&outside, "# user content\n").unwrap();
+                        std::os::unix::fs::symlink(&outside, &profile).unwrap();
+                    }
+                    _ => panic!("unknown profile fixture"),
+                }
+                let ctx = make_linux_context(fixture.path().to_path_buf(), None)
+                    .with_home(home)
+                    .with_dry_run(preview);
+                let result = ConfigurePath.run(&ctx);
+                if case == "working-symlink" {
+                    let _result = result.unwrap();
+                    assert!(profile.is_symlink());
+                    let content = std::fs::read_to_string(&outside).unwrap();
+                    assert!(content.starts_with("# user content\n"));
+                    assert_eq!(content.contains("export PATH="), !preview);
+                    if !preview {
+                        assert_eq!(
+                            task_batch(&ConfigurePath.run(&ctx).unwrap()).changed_count(),
+                            0
+                        );
+                    }
+                } else {
+                    assert!(result.is_err(), "{case}, preview={preview}");
+                    if case == "hardlink" {
+                        assert_eq!(
+                            std::fs::read_to_string(&outside).unwrap(),
+                            "# user content\n"
+                        );
+                    } else {
+                        assert!(!outside.exists(), "{case}: must not create a referent");
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn profile_preview_apply_and_repeat_preserve_user_content() {
         let export = "export PATH=\"$HOME/.local/bin:$PATH\"";

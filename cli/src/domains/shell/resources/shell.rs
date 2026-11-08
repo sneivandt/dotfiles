@@ -12,6 +12,7 @@ pub struct DefaultShellResource {
     executor: Arc<dyn Executor>,
     env: Arc<dyn Env>,
     running_as_root: bool,
+    allow_prompt: bool,
 }
 
 impl DefaultShellResource {
@@ -23,7 +24,15 @@ impl DefaultShellResource {
             executor,
             env,
             running_as_root: process_is_root(),
+            allow_prompt: false,
         }
+    }
+
+    /// Apply the command's resolved policy for authentication prompts.
+    #[must_use]
+    pub const fn with_interaction(mut self, allow_prompt: bool) -> Self {
+        self.allow_prompt = allow_prompt;
+        self
     }
 
     #[cfg(test)]
@@ -150,11 +159,15 @@ impl Resource for DefaultShellResource {
                 shell_str,
                 user.as_str(),
             ]))?;
-        } else {
+        } else if self.allow_prompt {
             // Preserve the normal installed-system path when passwordless or
             // cached sudo is unavailable: chsh authenticates through the TTY.
             self.executor
                 .execute(CommandSpec::new("chsh").args(&["-s", shell_str]))?;
+        } else {
+            return Ok(ResourceChange::unusable(
+                "changing the login shell requires authentication; run interactively or configure passwordless sudo for usermod",
+            ));
         }
         Ok(ResourceChange::Applied)
     }
@@ -173,6 +186,33 @@ mod tests {
     use crate::infra::env::MapEnv;
     use crate::infra::exec::{ExecError, MockExecutor};
     use std::path::PathBuf;
+
+    #[test]
+    fn non_interactive_authentication_never_invokes_chsh() {
+        for sudo_present in [false, true] {
+            let mut mock = MockExecutor::new();
+            mock.expect_which_path()
+                .once()
+                .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
+            mock.expect_which()
+                .once()
+                .withf(|program| program == "sudo")
+                .return_const(sudo_present);
+            if sudo_present {
+                mock.expect_execute()
+                    .once()
+                    .withf(|spec| spec.program() == "sudo" && spec.arguments() == ["-n", "true"])
+                    .returning(|_| Ok(ExecResult::failure("", "password required", Some(1))));
+            }
+            let resource =
+                DefaultShellResource::new("zsh".into(), Arc::new(mock), env_for("stuart"))
+                    .with_root(false)
+                    .with_interaction(false);
+            assert!(
+                matches!(resource.apply().unwrap(), ResourceChange::Skipped { kind: crate::engine::SkipKind::UnmetWork, reason } if reason.contains("authentication"))
+            );
+        }
+    }
 
     fn env_for(user: &str) -> Arc<dyn Env> {
         MapEnv::new().with("USER", user).into_handle()
@@ -346,7 +386,8 @@ mod tests {
                         Arc::clone(&executor),
                         env_for("stuart"),
                     )
-                    .with_root(false)],
+                    .with_root(false)
+                    .with_interaction(true)],
                     &ProcessOpts::strict("configure"),
                 )
                 .unwrap()
@@ -571,7 +612,8 @@ mod tests {
             .returning(|_| Ok(ExecResult::success("")));
         let resource =
             DefaultShellResource::new("zsh".to_string(), Arc::new(mock), env_for("stuart"))
-                .with_root(false);
+                .with_root(false)
+                .with_interaction(true);
 
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
@@ -597,7 +639,8 @@ mod tests {
             .returning(|_| Ok(ExecResult::success("")));
         let resource =
             DefaultShellResource::new("zsh".to_string(), Arc::new(mock), env_for("stuart"))
-                .with_root(false);
+                .with_root(false)
+                .with_interaction(true);
 
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }

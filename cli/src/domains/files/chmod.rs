@@ -73,6 +73,57 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn hard_linked_targets_are_rejected_before_recursive_permissions_change() {
+        use std::os::unix::fs::PermissionsExt as _;
+        for parallel in [false, true] {
+            for preview in [false, true] {
+                let fixture = tempfile::tempdir().unwrap();
+                let directory = fixture.path().join(".tools");
+                std::fs::create_dir(&directory).unwrap();
+                std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+                    .unwrap();
+                let outside = fixture.path().join("outside");
+                std::fs::write(&outside, "private").unwrap();
+                std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o600)).unwrap();
+                let alias = directory.join("alias");
+                std::fs::hard_link(&outside, &alias).unwrap();
+                let ctx = make_linux_context(fixture.path().to_path_buf(), None)
+                    .with_home(fixture.path().to_path_buf())
+                    .with_parallel(parallel)
+                    .with_dry_run(preview);
+                for entries in [
+                    vec![ChmodEntry::new("755", "tools")],
+                    vec![
+                        ChmodEntry::new("644", "tools/alias"),
+                        ChmodEntry::new("600", "outside"),
+                    ],
+                ] {
+                    let result = ApplyFilePermissions::new(ConfigHandle::new(entries))
+                        .run(&ctx)
+                        .unwrap();
+                    assert!(crate::test_helpers::task_batch(&result).failed_count() > 0);
+                    assert_eq!(
+                        outside.metadata().unwrap().permissions().mode() & 0o777,
+                        0o600
+                    );
+                    assert_eq!(
+                        directory.metadata().unwrap().permissions().mode() & 0o777,
+                        0o700
+                    );
+                }
+                std::fs::remove_file(&alias).unwrap();
+                let result = ApplyFilePermissions::new(ConfigHandle::new(vec![ChmodEntry::new(
+                    "755", "tools",
+                )]))
+                .run(&ctx)
+                .unwrap();
+                assert_eq!(crate::test_helpers::task_batch(&result).failed_count(), 0);
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn conflicting_alias_modes_fail_before_any_preview_or_apply_mutation() {
         use std::os::unix::fs::PermissionsExt as _;
         for parallel in [false, true] {

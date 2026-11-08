@@ -528,7 +528,8 @@ jobs:
           cargo mutants --in-place --no-shuffle --in-diff mutants.diff
           --shard "$MUTATION_SHARD/8"
           --exclude 'src/infra/run_lock/windows.rs'
-          --exclude-re '^src/infra/run_lock\.rs:[0-9]+:[0-9]+: replace \| with \^ in RunLock::acquire_path$'
+          --exclude 'src/infra/fs/mutation/windows.rs'
+          --exclude-re '^src/infra/fs/mutation\.rs:[0-9]+:[0-9]+: replace \| with \^ in open_in_place$'
           --exclude-re '^src/domains/files/resources/symlink/platform\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported)\b'
           --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b'
           --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|append_user_path|user_path_contains)\b'
@@ -580,7 +581,8 @@ jobs:
           --file src/domains/dotfiles/resources/path_entry.rs
           --file src/domains/system/resources/registry.rs
           --file src/infra/elevation.rs
-          --re '(decode_reg_string|encode_reg_string|native::raw_value_to_string|native::raw_value_type|run_elevated_child)'
+          --file src/infra/fs/mutation/windows.rs
+          --re '(decode_reg_string|encode_reg_string|native::raw_value_to_string|native::raw_value_type|run_elevated_child|ensure_single_link)'
           --cargo-arg=--profile=ci --cargo-arg=--locked --cargo-arg=--lib
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

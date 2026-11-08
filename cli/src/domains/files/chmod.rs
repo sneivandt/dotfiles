@@ -35,10 +35,25 @@ impl Task for ApplyFilePermissions {
             .iter()
             .map(|entry| ChmodResource::from_entry(entry, ctx.home()).with_source_roots(&roots))
             .collect();
-        let targets: Vec<_> = resources
+        let targets = resources
             .iter()
-            .map(|resource| resource.target.clone())
-            .collect();
+            .map(ChmodResource::resolved_target)
+            .collect::<Result<Vec<_>>>()?;
+        let mut seen = std::collections::HashMap::new();
+        for ((resource, target), entry) in resources.iter().zip(&targets).zip(self.config.get()) {
+            if let Ok(mode) = entry.parsed_mode()
+                && let Some((previous_mode, previous_path)) =
+                    seen.insert(target, (mode.as_u32(), &resource.target))
+            {
+                anyhow::ensure!(
+                    previous_mode == mode.as_u32(),
+                    "conflicting permission modes for {} and {} resolving to {}; keep one mode for this destination",
+                    previous_path.display(),
+                    resource.target.display(),
+                    target.display()
+                );
+            }
+        }
         let resources = resources
             .into_iter()
             .map(|resource| resource.excluding(&targets))
@@ -55,6 +70,74 @@ mod tests {
     use crate::infra::ConfigHandle;
     use crate::test_helpers::{empty_config, make_linux_context, make_windows_context};
     use std::path::PathBuf;
+
+    #[cfg(unix)]
+    #[test]
+    fn conflicting_alias_modes_fail_before_any_preview_or_apply_mutation() {
+        use std::os::unix::fs::PermissionsExt as _;
+        for parallel in [false, true] {
+            for preview in [false, true] {
+                let home = tempfile::tempdir().unwrap();
+                let private = home.path().join(".private");
+                let unrelated = home.path().join(".unrelated");
+                std::fs::write(&private, "private fixture").unwrap();
+                std::fs::write(&unrelated, "unrelated fixture").unwrap();
+                std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o600)).unwrap();
+                std::fs::set_permissions(&unrelated, std::fs::Permissions::from_mode(0o644))
+                    .unwrap();
+                std::os::unix::fs::symlink(&private, home.path().join(".alias")).unwrap();
+                let ctx = make_linux_context(home.path().to_path_buf(), None)
+                    .with_home(home.path().to_path_buf())
+                    .with_parallel(parallel)
+                    .with_dry_run(preview);
+                let task = ApplyFilePermissions::new(ConfigHandle::new(vec![
+                    ChmodEntry::new("600", "unrelated"),
+                    ChmodEntry::new("600", "private"),
+                    ChmodEntry::new("644", "alias"),
+                ]));
+                assert!(
+                    format!("{:#}", task.run(&ctx).unwrap_err())
+                        .contains("conflicting permission modes")
+                );
+                assert_eq!(
+                    private.metadata().unwrap().permissions().mode() & 0o777,
+                    0o600
+                );
+                assert_eq!(
+                    unrelated.metadata().unwrap().permissions().mode() & 0o777,
+                    0o644
+                );
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn descendant_modes_override_aliased_recursive_ancestors_and_repeat_converges() {
+        use crate::test_helpers::task_batch;
+        use std::os::unix::fs::PermissionsExt as _;
+        for parallel in [false, true] {
+            let home = tempfile::tempdir().unwrap();
+            let directory = home.path().join(".real");
+            std::fs::create_dir(&directory).unwrap();
+            let executable = directory.join("tool");
+            std::fs::write(&executable, "fixture").unwrap();
+            std::os::unix::fs::symlink(&directory, home.path().join(".alias")).unwrap();
+            let ctx = make_linux_context(home.path().to_path_buf(), None)
+                .with_home(home.path().to_path_buf())
+                .with_parallel(parallel);
+            let task = ApplyFilePermissions::new(ConfigHandle::new(vec![
+                ChmodEntry::new("600", "alias"),
+                ChmodEntry::new("755", "real/tool"),
+            ]));
+            let _result = task.run(&ctx).unwrap();
+            assert_eq!(
+                executable.metadata().unwrap().permissions().mode() & 0o777,
+                0o755
+            );
+            assert_eq!(task_batch(&task.run(&ctx).unwrap()).changed_count(), 0);
+        }
+    }
 
     #[test]
     fn should_run_false_on_windows() {

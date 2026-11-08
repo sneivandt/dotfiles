@@ -1007,6 +1007,11 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
         .in_sequence(&mut seq)
         .withf(is_native_git_install)
         .returning(|_| Ok(ExecResult::success("")));
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut seq)
+        .withf(is_native_inventory)
+        .returning(|_| Ok(ExecResult::success("vim 9.0\ngit 2.0\n")));
     let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     let stats = task_batch(&result);

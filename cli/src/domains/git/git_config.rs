@@ -53,17 +53,24 @@ impl Task for ConfigureGit {
             .any(|setting| setting.key.eq_ignore_ascii_case("core.autocrlf"));
         let autocrlf_cleanup = (ctx.platform().is_windows() && !manages_autocrlf)
             .then(|| GitConfigResource::absent("core.autocrlf".to_string()));
+        if settings.is_empty() && autocrlf_cleanup.is_none() {
+            return Ok(TaskResult::NotApplicable("no Git settings".into()));
+        }
+        let config_path = self.config_path.clone().map_or_else(
+            || match git2::Config::find_global() {
+                Ok(path) => Ok(path),
+                Err(error) if error.code() == git2::ErrorCode::NotFound => {
+                    Ok(ctx.home().join(".gitconfig"))
+                }
+                Err(error) => Err(error),
+            },
+            Ok,
+        )?;
         let resources = settings
             .iter()
             .map(|setting| GitConfigResource::new(setting.key.clone(), setting.value.clone()))
             .chain(autocrlf_cleanup)
-            .map(|resource| {
-                if let Some(path) = &self.config_path {
-                    resource.using_config_path(path.clone())
-                } else {
-                    resource
-                }
-            })
+            .map(|resource| resource.using_config_path(config_path.clone()))
             .collect();
         run_resource_task(ctx, resources, &ProcessOpts::strict("configure"))
     }

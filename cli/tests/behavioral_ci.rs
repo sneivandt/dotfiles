@@ -554,6 +554,12 @@ fn pacman_task_uses_host_config_and_installs_only_missing_packages_in_one_batch(
                 &["pacman", "-Syu", "--needed", "--noconfirm", "ripgrep"],
                 ok(""),
             ),
+            expect(
+                CallKind::Run,
+                "pacman",
+                &["-Q"],
+                ok("git 2.51.0\nripgrep 15.0\n"),
+            ),
         ],
     ));
     let ec = make_context(
@@ -575,8 +581,8 @@ fn pacman_task_uses_host_config_and_installs_only_missing_packages_in_one_batch(
     executor.assert_complete();
     assert_eq!(
         executor.calls().len(),
-        2,
-        "package state should be queried once"
+        3,
+        "one inventory plans work and another verifies the transaction"
     );
 }
 
@@ -610,6 +616,12 @@ fn paru_task_uses_host_config_and_installs_only_missing_aur_packages_without_sud
                 "/usr/bin/paru",
                 &["-S", "--needed", "--noconfirm", "powershell-bin"],
                 ok(""),
+            ),
+            expect(
+                CallKind::Run,
+                "pacman",
+                &["-Q"],
+                ok("apm-bin 1.0.0\npowershell-bin 7.5\n"),
             ),
         ],
     ));

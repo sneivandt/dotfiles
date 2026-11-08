@@ -121,12 +121,22 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
                 }
                 Err(error) => return Err(error.into()),
             }
-            return Ok(PackageInstallReport::applied(
-                resources
-                    .iter()
-                    .map(|resource| resource.name.clone())
-                    .collect(),
-            ));
+            let installed = self
+                .query_installed(executor)
+                .context("verifying installed packages after successful batch")?;
+            let mut report = PackageInstallReport::new();
+            for resource in resources {
+                if resource.state_from_installed(&installed) == ResourceState::Correct {
+                    report.record_applied(resource.name.clone());
+                } else {
+                    report.record_failure(
+                        resource.name.clone(),
+                        "package manager succeeded but the requested package is still absent"
+                            .into(),
+                    );
+                }
+            }
+            return Ok(report);
         }
 
         let mut report = PackageInstallReport::new();

@@ -352,3 +352,66 @@ fn permission_source_checks_accept_home_public_and_overlay_sources() {
         );
     }
 }
+
+#[test]
+fn git_update_lock_contention_retry_and_fresh_home_converge() {
+    for include in [false, true] {
+        let repo = common::TestContextBuilder::new()
+            .with_config_file(
+                "git-config.toml",
+                "[base]\nsettings = [{ key = 'core.editor', value = 'fixture-editor' }]\n",
+            )
+            .build();
+        let home = tempfile::tempdir().unwrap();
+        let path = home.path().join(".gitconfig");
+        let lock = home.path().join(".gitconfig.lock");
+        if include {
+            std::fs::write(&path, "[include]\n path = included\n").unwrap();
+            std::fs::write(
+                home.path().join("included"),
+                "[core]\n editor = inherited\n",
+            )
+            .unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt as _;
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+            }
+        }
+        std::fs::write(&lock, "foreign writer").unwrap();
+        output(
+            &mut common::cli_command(repo.root_path(), home.path(), None, "update", "git"),
+            false,
+        );
+        assert_eq!(std::fs::read_to_string(&lock).unwrap(), "foreign writer");
+        assert_eq!(
+            path.exists(),
+            include,
+            "a failed first install must leave the config absent"
+        );
+        std::fs::remove_file(&lock).unwrap();
+        output(
+            &mut common::cli_command(repo.root_path(), home.path(), None, "update", "git"),
+            true,
+        );
+        let after = std::fs::read(&path).unwrap();
+        assert_eq!(
+            git2::Config::open(&path)
+                .unwrap()
+                .get_string("core.editor")
+                .unwrap(),
+            "fixture-editor"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        output(
+            &mut common::cli_command(repo.root_path(), home.path(), None, "update", "git"),
+            true,
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), after);
+        assert!(!lock.exists());
+    }
+}

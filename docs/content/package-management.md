@@ -67,6 +67,10 @@ Check the selected profile, package names, and planned actions before removing
 `--dry-run`. The `packages` task handles native Arch or Windows packages;
 `aur-packages` handles Arch entries marked `aur = true`. If querying the installed
 package list fails, the task fails rather than assuming everything is missing.
+After a pacman or Paru batch finishes successfully, dotfiles checks the installed
+list again. Requested packages still absent count as failures; a successful
+package-manager exit alone does not mark them installed. If that verification
+query fails, the task fails and the next run inspects the installed state again.
 
 On an already configured machine, preview just the native package task:
 

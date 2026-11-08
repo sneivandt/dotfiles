@@ -31,16 +31,6 @@ impl PackageInstallReport {
         }
     }
 
-    /// Create a report for a successful batch operation.
-    #[must_use]
-    pub const fn applied(packages: Vec<String>) -> Self {
-        Self {
-            applied: packages,
-            already_correct: Vec::new(),
-            failures: Vec::new(),
-        }
-    }
-
     /// Number of packages successfully applied.
     #[must_use]
     pub const fn applied_count(&self) -> usize {

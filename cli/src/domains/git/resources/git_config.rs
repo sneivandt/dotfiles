@@ -213,44 +213,78 @@ impl GitConfigResource {
         Ok(false)
     }
 
-    fn apply_with_includes(&self, config: &git2::Config) -> Result<ResourceChange> {
+    fn apply_transaction(&self) -> Result<ResourceChange> {
         let configured = self
             .config_path
             .clone()
             .map_or_else(git2::Config::find_global, Ok)?;
-        let path = crate::infra::fs::canonicalize(&configured)?;
-        let before = std::fs::read(&path)?;
-        let parent = path.parent().context("global Git config has no parent")?;
-        let (_stage, stage_path) = stage_config(parent, &before)?;
-        {
-            let mut staged = open_file(&stage_path)?;
-            let values = self.values_from_config(config)?;
-            if values.iter().any(Option::is_none) {
-                anyhow::bail!(
-                    "cannot safely replace repeated implicit values for git config {}; give each entry an explicit value first",
-                    self.key
-                );
-            }
-            if !values.is_empty() {
-                staged.remove_multivar(&self.key, ".*")?;
-            }
-        }
-        let mut replacement = std::fs::read(&stage_path)?;
-        if let Some(desired) = &self.desired {
-            // Let libgit2 validate and quote the key/value, then append its stanza
-            // after every include so scalar Git precedence selects the desired value.
-            std::fs::write(&stage_path, [])?;
+        let resolve = || -> Result<PathBuf> {
+            if crate::infra::fs::symlink_metadata_optional(&configured, "inspect Git config")?
+                .is_some()
             {
-                let mut stanza = open_file(&stage_path)?;
-                stanza.set_str(&self.key, desired)?;
+                crate::infra::fs::canonicalize(&configured)
+            } else {
+                crate::infra::fs::resolve_target_entry(&configured)
             }
-            replacement.push(b'\n');
-            replacement.extend(std::fs::read(&stage_path)?);
+        };
+        let path = resolve()?;
+        crate::infra::fs::ensure_parent_dir(&path)?;
+        // Git uses exclusive creation of this path, not an advisory file lock.
+        // Keep it empty and private; libgit2 edits only the private staging copy.
+        let mut lock_path = path.as_os_str().to_os_string();
+        lock_path.push(".lock");
+        let lock_path = PathBuf::from(lock_path);
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            options.mode(0o600);
         }
+        let lock_file = options.open(&lock_path)
+            .with_context(|| format!("acquiring Git config lock {}; wait for the other Git writer or inspect a stale lock before retrying", lock_path.display()))?;
+        let _lock = crate::infra::fs::TempGuard::file(lock_path);
+        drop(lock_file);
+        let before = read_config_bytes(&path)?;
+        let config = open_file(&path)?;
+        let parent = path.parent().context("global Git config has no parent")?;
+        let (_stage, stage_path) = stage_config(parent, before.as_deref().unwrap_or_default())?;
+        let replacement = if self.has_includes(&config)? {
+            {
+                let mut staged = open_file(&stage_path)?;
+                let values = self.values_from_config(&config)?;
+                if values.iter().any(Option::is_none) {
+                    anyhow::bail!(
+                        "cannot safely replace repeated implicit values for git config {}; give each entry an explicit value first",
+                        self.key
+                    );
+                }
+                if !values.is_empty() {
+                    staged.remove_multivar(&self.key, ".*")?;
+                }
+            }
+            let mut replacement = std::fs::read(&stage_path)?;
+            if let Some(desired) = &self.desired {
+                // Let libgit2 validate and quote the key/value, then append its stanza
+                // after every include so scalar Git precedence selects the desired value.
+                std::fs::write(&stage_path, [])?;
+                {
+                    let mut stanza = open_file(&stage_path)?;
+                    stanza.set_str(&self.key, desired)?;
+                }
+                replacement.push(b'\n');
+                replacement.extend(std::fs::read(&stage_path)?);
+            }
+            replacement
+        } else {
+            let mut staged = open_file(&stage_path)?;
+            self.apply_to_config(&mut staged)?;
+            drop(staged);
+            std::fs::read(&stage_path)?
+        };
         crate::infra::fs::write_atomic_checked(&path, replacement, || {
             anyhow::ensure!(
-                crate::infra::fs::canonicalize(&configured)? == path
-                    && std::fs::read(&path)? == before,
+                resolve()? == path && read_config_bytes(&path)? == before,
                 "global Git config changed during update; retry"
             );
             Ok(())
@@ -274,13 +308,17 @@ impl Resource for GitConfigResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        let mut config = self
-            .open_config()
-            .with_context(|| format!("setting git config {}", self.key))?;
-        if self.has_includes(&config)? {
-            return Ok(self.apply_with_includes(&config)?);
-        }
-        Ok(self.apply_to_config(&mut config)?)
+        Ok(self
+            .apply_transaction()
+            .with_context(|| format!("setting git config {}", self.key))?)
+    }
+}
+
+fn read_config_bytes(path: &std::path::Path) -> Result<Option<Vec<u8>>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("reading Git config {}", path.display())),
     }
 }
 
@@ -296,6 +334,114 @@ impl IntrinsicState for GitConfigResource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transactions_respect_git_locks_and_retry_with_new_desired_values() {
+        for include in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("config");
+            let lock = dir.path().join("config.lock");
+            let before = if include {
+                "[include]\n path = included\n"
+            } else {
+                "[core]\n editor = before\n"
+            };
+            std::fs::write(&path, before).unwrap();
+            std::fs::write(dir.path().join("included"), "[core]\n editor = inherited\n").unwrap();
+            std::fs::write(&lock, "foreign writer").unwrap();
+            let blocked = GitConfigResource::with_config_path(
+                "core.editor".into(),
+                "first".into(),
+                path.clone(),
+            );
+            assert!(format!("{:#}", blocked.apply().unwrap_err()).contains("Git config lock"));
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+            assert_eq!(std::fs::read_to_string(&lock).unwrap(), "foreign writer");
+            std::fs::remove_file(&lock).unwrap();
+            for value in ["first", "second"] {
+                let resource = GitConfigResource::with_config_path(
+                    "core.editor".into(),
+                    value.into(),
+                    path.clone(),
+                );
+                resource.apply().unwrap();
+                assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+                assert!(
+                    !lock.exists(),
+                    "completed transactions release their Git lock"
+                );
+            }
+            assert_eq!(
+                std::fs::read_to_string(dir.path().join("included")).unwrap(),
+                "[core]\n editor = inherited\n"
+            );
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+        }
+    }
+
+    #[test]
+    fn failed_transactions_preserve_content_and_release_lock_before_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let before = "[core]\n editor = before\n";
+        std::fs::write(&path, before).unwrap();
+        let invalid =
+            GitConfigResource::with_config_path("invalid-key".into(), "value".into(), path.clone());
+        assert!(invalid.apply().is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        let valid = GitConfigResource::with_config_path("core.editor".into(), "after".into(), path);
+        valid.apply().unwrap();
+        assert_eq!(valid.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn every_git_write_preserves_existing_modes_and_new_files_are_private() {
+        use std::os::unix::fs::PermissionsExt as _;
+        for include in [false, true] {
+            for mode in [None, Some(0o600), Some(0o640)] {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join("config");
+                if let Some(mode) = mode {
+                    std::fs::write(
+                        &path,
+                        if include {
+                            "[include]\n path = included\n"
+                        } else {
+                            "[core]\n editor = before\n"
+                        },
+                    )
+                    .unwrap();
+                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+                }
+                std::fs::write(dir.path().join("included"), "[core]\n editor = inherited\n")
+                    .unwrap();
+                let alias = dir.path().join("alias");
+                if mode.is_some() {
+                    std::os::unix::fs::symlink(&path, &alias).unwrap();
+                }
+                let resource = GitConfigResource::with_config_path(
+                    "core.editor".into(),
+                    "after".into(),
+                    if mode.is_some() {
+                        alias.clone()
+                    } else {
+                        path.clone()
+                    },
+                );
+                resource.apply().unwrap();
+                assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+                assert_eq!(
+                    path.metadata().unwrap().permissions().mode() & 0o777,
+                    mode.unwrap_or(0o600)
+                );
+                if mode.is_some() {
+                    assert!(alias.is_symlink());
+                }
+            }
+        }
+    }
 
     #[cfg(unix)]
     #[test]

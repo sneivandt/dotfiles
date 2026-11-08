@@ -69,12 +69,18 @@ impl ChmodResource {
     /// Leave explicitly configured descendants to their own permission resources.
     #[must_use]
     pub fn excluding(mut self, targets: &[PathBuf]) -> Self {
-        self.excluded_targets = targets
-            .iter()
-            .filter(|target| **target != self.target && target.starts_with(&self.target))
-            .cloned()
-            .collect();
+        // Traversal checks only child entries. The root itself and unrelated
+        // configured destinations cannot match those entries.
+        self.excluded_targets = targets.to_vec();
         self
+    }
+
+    pub(crate) fn resolved_target(&self) -> Result<PathBuf> {
+        if self.target.try_exists()? {
+            crate::infra::fs::canonicalize(&self.target)
+        } else {
+            crate::infra::fs::resolve_target_entry(&self.target)
+        }
     }
 
     fn invalid_path_reason(&self) -> ResourceResult<Option<String>> {
@@ -147,18 +153,12 @@ impl Resource for ChmodResource {
             })?;
             let mode = mode.as_u32();
             let target = crate::infra::fs::canonicalize(&self.target)?;
-            let excluded = self
-                .excluded_targets
-                .iter()
-                .map(|path| crate::infra::fs::resolve_target_entry(path))
-                .collect::<Result<Vec<_>>>()?;
-
             if target.is_dir() {
                 apply_recursive(
                     &target,
                     ensure_dir_execute_bits(mode),
                     strip_file_execute_bits(mode),
-                    &excluded,
+                    &self.excluded_targets,
                 )?;
             } else {
                 set_permissions(&target, mode)?;
@@ -200,7 +200,11 @@ impl IntrinsicState for ChmodResource {
                 .map_err(|reason| anyhow::anyhow!("{reason}"))?;
             let desired_mode = mode.as_u32();
             if self.target.is_dir() {
-                check_dir_recursive(&self.target, desired_mode, &self.excluded_targets)
+                check_dir_recursive(
+                    &crate::infra::fs::canonicalize(&self.target)?,
+                    desired_mode,
+                    &self.excluded_targets,
+                )
             } else {
                 let current_mode =
                     std::fs::metadata(&self.target)?.permissions().mode() & MODE_BITS_MASK;

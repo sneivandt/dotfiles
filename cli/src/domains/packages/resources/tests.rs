@@ -352,21 +352,34 @@ fn batch_install_announces_each_package_before_execution() {
             if manager == PackageManager::Pacman {
                 expect_sudo_lookup_if_needed(&mut mock);
             }
-            mock.expect_execute().once().returning(move |_| {
-                assert_eq!(
-                    *announced_at_execute.lock().unwrap(),
-                    ["first", "second"],
-                    "all package names must be announced before the batch starts"
-                );
-                if fails {
-                    Err(ExecError::spawn(
-                        "package-manager",
-                        std::io::Error::other("simulated failure"),
-                    ))
-                } else {
-                    Ok(ExecResult::success(""))
-                }
-            });
+            mock.expect_execute()
+                .once()
+                .withf(|spec| spec.arguments() != ["-Q"])
+                .returning(move |_| {
+                    assert_eq!(
+                        *announced_at_execute.lock().unwrap(),
+                        ["first", "second"],
+                        "all package names must be announced before the batch starts"
+                    );
+                    if fails {
+                        Err(ExecError::spawn(
+                            "package-manager",
+                            std::io::Error::other("simulated failure"),
+                        ))
+                    } else {
+                        Ok(ExecResult::success(""))
+                    }
+                });
+            if !fails {
+                mock.expect_execute()
+                    .once()
+                    .withf(|spec| {
+                        spec.program() == "pacman"
+                            && spec.arguments() == ["-Q"]
+                            && spec.is_checked()
+                    })
+                    .returning(|_| Ok(ExecResult::success("first 1.0\nsecond 1.0\n")));
+            }
             let executor: Arc<dyn Executor> = Arc::new(mock);
             let first = PackageResource::new("first".to_string(), manager, Arc::clone(&executor));
             let second = PackageResource::new("second".to_string(), manager, Arc::clone(&executor));
@@ -390,7 +403,7 @@ fn batch_install_announces_each_package_before_execution() {
 }
 
 #[test]
-fn native_batch_install_uses_one_checked_command() {
+fn native_batch_install_verifies_one_checked_transaction_with_one_inventory() {
     let (pacman_program, pacman_args) = if running_as_root() {
         ("pacman", vec!["-Syu", "--needed", "--noconfirm"])
     } else {
@@ -425,6 +438,17 @@ fn native_batch_install_uses_one_checked_command() {
                     && spec.working_dir().is_none()
             })
             .returning(|_| Ok(ExecResult::success("")));
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "pacman" && spec.arguments() == ["-Q"] && spec.is_checked()
+            })
+            .returning(move |_| {
+                Ok(ExecResult::success(format!(
+                    "{} 1.0\n{} 1.0\n",
+                    names[0], names[1]
+                )))
+            });
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resources = names
             .map(|name| PackageResource::new(name.to_string(), manager, Arc::clone(&executor)));
@@ -434,6 +458,66 @@ fn native_batch_install_uses_one_checked_command() {
 
         assert_eq!(report.applied_count(), 2, "{manager}");
         assert!(!report.has_failures(), "{manager}");
+    }
+}
+
+#[test]
+fn successful_native_batches_report_observed_presence_and_propagate_inventory_errors() {
+    for manager in [PackageManager::Pacman, PackageManager::Paru] {
+        for installed in [
+            Some(""),
+            Some("first 1.0\n"),
+            Some("first 1.0\nsecond 2.0\n"),
+            None,
+        ] {
+            let mut mock = MockExecutor::new();
+            if manager == PackageManager::Pacman {
+                expect_sudo_lookup_if_needed(&mut mock);
+            }
+            let mut sequence = mockall::Sequence::new();
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .withf(|spec| spec.is_checked() && spec.arguments() != ["-Q"])
+                .returning(|_| Ok(ExecResult::success("")));
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .withf(|spec| {
+                    spec.program() == "pacman" && spec.arguments() == ["-Q"] && spec.is_checked()
+                })
+                .returning(move |_| {
+                    installed.map_or_else(
+                        || {
+                            Err(ExecError::Cancelled {
+                                command: "pacman -Q".into(),
+                                result: ExecResult::failure("partial", "cancelled fixture", None),
+                            })
+                        },
+                        |output| Ok(ExecResult::success(output)),
+                    )
+                });
+            let executor: Arc<dyn Executor> = Arc::new(mock);
+            let first = PackageResource::new("first".into(), manager, Arc::clone(&executor));
+            let second = PackageResource::new("second".into(), manager, Arc::clone(&executor));
+            let result = install_missing_packages(manager, &[&first, &second], &*executor, &|_| {});
+            if let Some(installed) = installed {
+                let report = result.unwrap();
+                let expected = installed.lines().count();
+                assert_eq!(report.applied_count(), expected);
+                assert_eq!(report.failures().len(), 2 - expected);
+                assert!(
+                    report
+                        .failures()
+                        .iter()
+                        .all(|failure| failure.reason.contains("still absent"))
+                );
+            } else {
+                let error = result.unwrap_err();
+                assert!(error.downcast_ref::<ExecError>().unwrap().is_cancelled());
+                assert!(format!("{error:#}").contains("verifying installed packages"));
+            }
+        }
     }
 }
 

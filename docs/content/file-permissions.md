@@ -49,6 +49,9 @@ Missing targets are not created. A directory entry applies recursively: director
 retain traversal access and ordinary files have execute bits cleared. Give executable
 files their own entries. Explicit descendant entries override recursive ancestors
 regardless of ordering or parallel execution.
+This also applies when a parent directory is reached through a symlink.
+Declarations requesting different modes for the same resolved destination fail
+before the task changes any permissions. Keep one mode for that destination.
 
 For example, `600` permits only the owner to read and write a file; `700`
 also permits the owner to traverse a directory but excludes other users.

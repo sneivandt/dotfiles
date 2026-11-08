@@ -223,6 +223,12 @@ impl ConsoleState {
         }
     }
 
+    pub(super) fn separate_block(&mut self) {
+        if !self.ends_with_blank_line {
+            self.line(false, "");
+        }
+    }
+
     pub(super) const fn should_separate_task_blocks(&self, expanded: bool, spaced: bool) -> bool {
         self.task_output_emitted && (spaced || self.last_task_block_had_details || expanded)
     }

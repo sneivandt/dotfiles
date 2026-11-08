@@ -210,10 +210,14 @@ fn prepare_sudo_elevation(
     }
 
     log.separate_from_startup();
-    log.always(format!("sudo is required for: {}", names.join(", ")));
+    log.separate_console_block();
+    log.startup(format!("sudo required · {}", names.join(", ")));
     drop(std::io::Write::flush(&mut std::io::stdout()));
 
-    match prime_credentials() {
+    let result = prime_credentials();
+    log.separate_console_block();
+
+    match result {
         Ok(true) => ElevationPlan::Ready,
         Ok(false) => {
             log.separate_from_startup();

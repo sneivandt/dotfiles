@@ -430,6 +430,12 @@ impl Logger {
     pub fn separate_from_startup(&self) {
         self.console.lock().separate_from_startup();
     }
+
+    /// Separate a foreground interaction from surrounding console output.
+    /// Reuse an existing blank line and keep presentation out of stored records.
+    pub fn separate_console_block(&self) {
+        self.console.lock().separate_block();
+    }
 }
 
 impl Output for Logger {

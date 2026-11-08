@@ -6,10 +6,10 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "vitepress dev --port 4321 --strictPort",
+    "dev": "vitepress dev --port 3000 --strictPort",
     "check": "vue-tsc --noEmit",
     "build": "vitepress build",
-    "preview": "vitepress preview --port 4321",
+    "preview": "vitepress preview --port 3000",
     "test": "node --test tests/*.test.mjs",
     "test:browser": "playwright test"
   },

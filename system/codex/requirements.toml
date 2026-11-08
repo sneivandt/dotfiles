@@ -8,12 +8,11 @@ auto_review = "deny"
 persistent_approval = false
 access_approval_lifetime = "turn"
 
-# Docs: VitePress development/preview, local-only preview, and browser tests.
-[browser_use.origins."http://localhost:4321"]
+[browser_use.origins."http://localhost:3000"]
 auto_review = "allow"
 persistent_approval = true
 
-[browser_use.origins."http://localhost:4322"]
+[browser_use.origins."http://localhost:8000"]
 auto_review = "allow"
 persistent_approval = true
 

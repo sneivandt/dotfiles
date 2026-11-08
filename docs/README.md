@@ -31,7 +31,7 @@ npm ci
 npm run dev
 ```
 
-The development server uses `http://localhost:4321/` and fails if the port is
+The development server uses `http://localhost:3000/` and fails if the port is
 already in use. To inspect production rendering and the search index, stop the
 development server, build first, then preview:
 
@@ -40,8 +40,8 @@ npm run build
 npm run preview
 ```
 
-The production preview also uses `http://localhost:4321/`. Run one manual
-preview at a time; browser tests use port 4322 separately.
+The production preview also uses `http://localhost:3000/`. Run one manual
+preview at a time; browser tests use port 8000 separately.
 
 The commands also work from PowerShell. Neither preview publishes the site or
 applies machine configuration. For affected rendered behavior, inspect desktop
@@ -51,10 +51,10 @@ For a production preview restricted to this machine, build as above, then
 serve only the built directory from the repository root:
 
 ```powershell
-python -m http.server 4321 --bind localhost --directory docs/dist
+python -m http.server 3000 --bind localhost --directory docs/dist
 ```
 
-Open `http://localhost:4321/` and stop the server with Ctrl+C when finished.
+Open `http://localhost:3000/` and stop the server with Ctrl+C when finished.
 Use `python3` where required. The pinned VitePress preview server does not
 honor `--host` as a binding restriction; its printed localhost URL does not
 mean it listens only on loopback. The Python command explicitly binds loopback
@@ -171,7 +171,7 @@ focus; text and safety-callout contrast is checked in both themes.
 Diagram labels must stay at least 14 CSS pixels.
 Mobile emulation is not a native phone/browser test.
 
-The browser suite starts and stops its own local preview on port 4322;
+The browser suite starts and stops its own local preview on port 8000;
 keep that port free.
 
 ## Find the owning source

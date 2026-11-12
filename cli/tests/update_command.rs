@@ -1031,8 +1031,22 @@ fn repository_only_update_recovers_bad_config_and_refuses_a_deleted_upstream() {
     git(&root, &["reset", "--hard", &broken]);
 
     let update = || common::isolated_cli_command(&root, &home, None, "update", "repository", true);
+    let config_file = std::fs::File::options().write(true).open(&config).unwrap();
+    config_file
+        .set_times(std::fs::FileTimes::new().set_modified(
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000),
+        ))
+        .unwrap();
+    drop(config_file);
+    let index = root.join(".git/index");
+    let index_before = std::fs::read(&index).unwrap();
     let preview = update().arg("--dry-run").output().unwrap();
     assert!(preview.status.success(), "{preview:?}");
+    assert_eq!(
+        std::fs::read(&index).unwrap(),
+        index_before,
+        "repository preview must leave the Git index unchanged"
+    );
     assert!(
         String::from_utf8_lossy(&preview.stdout).contains("local merge eligibility not checked"),
         "repository-only preview must reach Git despite the invalid config: {preview:?}"

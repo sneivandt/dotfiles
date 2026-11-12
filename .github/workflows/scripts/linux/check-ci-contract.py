@@ -203,16 +203,16 @@ def check_release(workflow: str) -> None:
             raise ValueError(f"release {name} must use the checked remote tag helper")
 
 def check_pages(workflow: str, ci_workflow: str) -> None:
-    deploy = job_blocks(workflow)["deploy"]
+    jobs = job_blocks(workflow)
+    select, deploy = jobs["select-build"], jobs["deploy"]
     for guard in (
         "github.event.workflow_run.conclusion == 'success'",
         "github.event.workflow_run.event == 'push'",
         "github.event.workflow_run.head_branch == 'main'",
         "github.event.workflow_run.head_repository.full_name == github.repository",
-        "run-id: ${{ github.event.workflow_run.id }}",
+        "current: ${{ steps.current.outputs.current }}",
         'BUILD_SHA: ${{ github.event.workflow_run.head_sha }}',
-        'if [ "$current_sha" = "$BUILD_SHA" ]; then',
-        "name: docs-site",
+        'if [ "$current_sha" = "$BUILD_SHA" ] && [ "$GITHUB_SHA" = "$BUILD_SHA" ]; then',
         'CI_RUN_ID: ${{ github.event.workflow_run.id }}',
         'case "$site_result" in',
         'select(.name == "Docs: Content and site") | .conclusion',
@@ -220,12 +220,21 @@ def check_pages(workflow: str, ci_workflow: str) -> None:
         'success) ;;',
         '*) echo "Cannot verify the CI documentation site job: $site_result" >&2; exit 1 ;;',
     ):
+        if guard not in select:
+            raise ValueError(f"Pages build selection is missing {guard}")
+    if "environment:" in select:
+        raise ValueError("Pages build selection must run before entering the deployment environment")
+    for guard in (
+        "needs: select-build",
+        "if: needs.select-build.outputs.current == 'true'",
+        "run-id: ${{ github.event.workflow_run.id }}",
+        "name: docs-site",
+        "url: ${{ steps.deployment.outputs.page_url }}",
+    ):
         if guard not in deploy:
             raise ValueError(f"Pages deployment is missing {guard}")
     if "actions/checkout@" in deploy:
         raise ValueError("Pages deployment must use the verified artifact, not execute a checkout")
-    if deploy.count("if: steps.current.outputs.current == 'true'") != 4:
-        raise ValueError("all Pages artifact and deployment steps must reject superseded builds")
     docs = job_blocks(ci_workflow)["docs"]
     for required in (
         "test-docs.sh docs_site",

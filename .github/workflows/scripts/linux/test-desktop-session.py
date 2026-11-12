@@ -14,6 +14,20 @@ import time
 SOURCE = Path(__file__).resolve().parents[4]
 
 
+def check_hypr_configuration(env):
+    config = SOURCE / 'symlinks/config/hypr'
+    subprocess.run(['Hyprland', '--verify-config', '--config', str(config / 'hyprland.lua')],
+                   env=env, check=True, timeout=25)
+    # Hyprlock reads its configuration before attempting the Wayland connection.
+    result = subprocess.run(
+        ['hyprlock', '--config', str(config / 'hyprlock.conf'), '--display', 'dotfiles-config-test'],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=25,
+    )
+    if (result.returncode == 0 or "Couldn't connect to a wayland compositor" not in result.stdout
+            or 'Config has errors' in result.stdout):
+        raise RuntimeError(f'Hyprlock configuration check failed ({result.returncode}):\n{result.stdout}')
+
+
 def main():
     if not Path('/.dockerenv').exists() or os.geteuid() == 0:
         raise RuntimeError('run as the fixture user inside the desktop CI container')
@@ -26,13 +40,14 @@ def main():
         runtime = root / 'r'
         runtime.mkdir(mode=0o700)
         env = dict(os.environ)
-        for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE'):
+        for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'HYPRLAND_INSTANCE_SIGNATURE'):
             env.pop(key, None)
         env.update(XDG_RUNTIME_DIR=str(runtime), XDG_CONFIG_HOME=str(root / 'config'),
                    XDG_CACHE_HOME=str(root / 'cache'), WLR_BACKENDS='headless',
                    WLR_RENDERER='gles2' if native else 'pixman', WLR_LIBINPUT_NO_DEVICES='1',
                    LIBGL_ALWAYS_SOFTWARE='0' if native else '1', QT_QUICK_BACKEND='software',
                    HYPRLAND_TRACE='1', HYPRLAND_LOG_WLR='1', HYPRLAND_NO_SD_NOTIFY='1', HYPRLAND_NO_SD_VARS='1')
+        check_hypr_configuration(env)
         processes = []
         logs = []
 

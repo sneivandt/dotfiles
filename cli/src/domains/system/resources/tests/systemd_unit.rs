@@ -294,43 +294,39 @@ fn current_state_incorrect_when_disabled_unit_is_enabled() {
 }
 
 #[test]
-fn static_enablement_still_checks_the_requested_runtime_state() {
-    for (enabled, active, correct) in [
-        (false, "inactive", true),
-        (false, "failed", true),
-        (false, "active", false),
-        (false, "activating", false),
-        (true, "active", true),
-        (true, "inactive", false),
-    ] {
-        let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .withf(|spec| {
-                spec.program() == "systemctl"
-                    && spec.arguments() == ["is-enabled", "static.service"]
-                    && !spec.is_checked()
-            })
-            .returning(|_| Ok(ExecResult::success("static\n")));
-        expect_runtime(
-            &mut mock,
-            "static.service",
-            UnitScope::System,
-            &format!("ActiveState={active}\n"),
-        );
-        let mut resource =
-            SystemdUnitResource::new("static.service", UnitScope::System, Arc::new(mock));
-        resource.enabled = enabled;
+fn static_units_cannot_satisfy_persistent_enablement() {
+    let resource = queried_unit(
+        "fixture.service",
+        UnitScope::User,
+        true,
+        ExecResult::success("static\n"),
+        None,
+    );
+    assert!(matches!(
+        resource.current_state().unwrap(),
+        ResourceState::Invalid { reason } if reason.contains("persistent enablement")
+    ));
+}
 
-        let state = resource.current_state().unwrap();
-        assert_eq!(
-            matches!(state, ResourceState::Correct),
-            correct,
-            "enabled={enabled}, active={active}: {state:?}"
+#[test]
+fn disabled_static_units_still_check_runtime_state() {
+    for (active, correct) in [
+        ("inactive", true),
+        ("failed", true),
+        ("active", false),
+        ("activating", false),
+    ] {
+        let resource = queried_unit(
+            "fixture.service",
+            UnitScope::System,
+            false,
+            ExecResult::success("static\n"),
+            Some(&format!("ActiveState={active}\n")),
         );
-        if !correct {
-            assert!(matches!(state, ResourceState::Incorrect { .. }));
-        }
+        assert_eq!(
+            resource.current_state().unwrap() == ResourceState::Correct,
+            correct
+        );
     }
 }
 

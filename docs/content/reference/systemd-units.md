@@ -63,7 +63,8 @@ A string means an enabled user unit. A table requires `name` and `scope`; `scope
 With a live manager:
 
 - `enabled = true` means persistently enabled and started. Runtime-only
-  enablement is not sufficient.
+  enablement is not sufficient. Static units have no install instructions and
+  cannot satisfy this declaration.
 - `enabled = false` means disabled and stopped, including stopping a static
   unit that has no enablement links.
 - Disabling is not masking: another unit may start it later.

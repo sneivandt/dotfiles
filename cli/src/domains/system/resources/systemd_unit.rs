@@ -98,9 +98,15 @@ impl SystemdUnitResource {
             };
         }
         if result.success {
-            // Static units have no enablement links to disable. Their runtime
-            // state still needs checking, even though is-enabled exits zero.
-            return if self.enabled || result.stdout.trim() == "static" {
+            let state = result.stdout.trim();
+            // A static unit has no installation instructions, but it can still be stopped.
+            if self.enabled && state == "static" {
+                return ResourceState::Invalid {
+                    reason: "static unit has no [Install] instructions for persistent enablement"
+                        .into(),
+                };
+            }
+            return if self.enabled || state == "static" {
                 ResourceState::Correct
             } else {
                 ResourceState::Incorrect {

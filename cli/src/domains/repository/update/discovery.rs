@@ -237,11 +237,14 @@ pub(super) fn upstream(
 /// Return `true` when tracked files in the worktree have uncommitted
 /// modifications. Untracked files are intentionally ignored.
 pub(super) fn worktree_has_local_changes(ctx: &Context, root: &Path) -> Result<bool> {
-    let status = ctx.executor().execute(git_command(
-        ctx,
-        root,
-        &["status", "--porcelain", "--untracked-files=no"],
-    ))?;
+    let status = ctx.executor().execute(
+        git_command(
+            ctx,
+            root,
+            &["status", "--porcelain", "--untracked-files=no"],
+        )
+        .env("GIT_OPTIONAL_LOCKS", "0"),
+    )?;
 
     Ok(!status.stdout.trim().is_empty())
 }

@@ -219,6 +219,10 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 or path == "symlinks/config/hypr/hypridle.conf"
             ):
                 enable("lock")
+            if path.startswith("symlinks/config/hypr/conf/") or path in {
+                "symlinks/config/hypr/hyprland.lua", "symlinks/config/hypr/hyprlock.conf",
+            }:
+                enable("desktop_qml")
             if path.startswith("symlinks/config/quickshell/"):
                 enable("desktop_python", "desktop_qml")
             if path in {

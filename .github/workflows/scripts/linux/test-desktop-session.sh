@@ -5,10 +5,9 @@ test -e /.dockerenv
 test "$(id -u)" = 0
 test -e /etc/arch-release
 
-pacman -Syu --noconfirm --needed sway swaylock quickshell qt6-wayland mesa dbus python
-if [ "${1:-}" = --native-hyprland ]; then
-  pacman -S --noconfirm --needed hyprland hyprlock
-fi
+pacman -Syu --noconfirm --needed sway swaylock quickshell qt6-wayland mesa dbus python hyprland hyprlock
+# The headless Hyprlock parser check deliberately stops at the missing display.
+ulimit -c 0
 # The headless parent needs no real-time scheduling capability.
 sway_binary=$(command -v sway)
 if [ -n "$(getcap "$sway_binary")" ]; then setcap -r "$sway_binary"; fi

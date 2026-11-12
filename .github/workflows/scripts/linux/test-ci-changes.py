@@ -78,9 +78,12 @@ class ClassificationTests(unittest.TestCase):
             ("symlinks/bash_profile", config | {"app_tests"}),
             ("symlinks/bashrc", config | {"app_tests"}),
             ("symlinks/config/wgetrc", config | {"app_tests"}),
-            ("symlinks/config/hypr/conf/appearance.lua", config | {"managed_scripts", "lock"}),
+            ("symlinks/config/hypr/conf/appearance.lua",
+             config | {"managed_scripts", "lock", "desktop_qml"}),
             ("symlinks/config/hypr/conf/resize-on-border.lua",
-             config | {"managed_scripts", "lock"}),
+             config | {"managed_scripts", "lock", "desktop_qml"}),
+            ("symlinks/config/hypr/hyprland.lua", config | {"desktop_qml"}),
+            ("symlinks/config/hypr/hyprlock.conf", config | {"desktop_qml"}),
             ("symlinks/config/powershell/tests/Test-Prompt.ps1",
              config | {"lint", "managed_scripts", "prompt"}),
             ("symlinks/config/hypr/scripts/lock-screen.sh",
@@ -738,7 +741,7 @@ class GateTests(unittest.TestCase):
             pages.replace("github.event.workflow_run.head_repository.full_name == github.repository", "true"),
             pages.replace("run-id: ${{ github.event.workflow_run.id }}", "run-id: 1"),
             pages.replace('select(.name == "Docs: Content and site")', 'select(.name == "Other job")'),
-            pages.replace("if: steps.current.outputs.current == 'true'", "if: always()", 1),
+            pages.replace("if: needs.select-build.outputs.current == 'true'", "if: always()", 1),
         ):
             with self.assertRaises(ValueError):
                 CONTRACT["check_pages"](broken, workflow)
@@ -1385,12 +1388,18 @@ class DocumentationPublicationTests(unittest.TestCase):
 
     def test_baseline_requires_a_successful_ancestor_deployment(self):
         sha = "a" * 40
-        deployments = [{"id": 1, "sha": "b" * 40}, {"id": 2, "sha": sha}]
+        deployments = [
+            {"id": 1, "sha": "b" * 40},
+            {"id": 2, "sha": "c" * 40},
+            {"id": 3, "sha": sha},
+        ]
         for ancestry, expected in ((0, sha), (1, "")):
             with self.subTest(ancestry=ancestry), patch.dict(
                 self.policy["publication_base"].__globals__, api=Mock(side_effect=[
                     deployments, [{"state": "failure"}],
-                    [{"state": "inactive"}, {"state": "success"}],
+                    [{"state": "success", "environment_url": ""}],
+                    [{"state": "inactive"},
+                     {"state": "success", "environment_url": "https://example.invalid"}],
                 ]),
             ), patch.object(subprocess, "run", return_value=Mock(returncode=ancestry)):
                 self.assertEqual(self.policy["publication_base"]("fixture/repo", "head"), expected)
@@ -1409,7 +1418,8 @@ class DocumentationPublicationTests(unittest.TestCase):
 
     def test_pages_checks_the_exact_site_job_before_downloading(self):
         pages = CONTRACT["WORKFLOW"].with_name("pages.yml").read_text()
-        script = pages.split("        run: |\n", 1)[1].split("      - name:", 1)[0]
+        selection = CONTRACT["job_blocks"](pages)["select-build"]
+        script = selection.split("        run: |\n", 1)[1]
         script = "\n".join(line[10:] for line in script.splitlines())
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -1422,23 +1432,25 @@ class DocumentationPublicationTests(unittest.TestCase):
                 '  *) exit 90 ;;\nesac\n'
             )
             gh.chmod(0o755)
-            for result, current, api_status, expected, exit_code in (
-                ("skipped", "head", "0", "false", 0),
-                ("success", "head", "0", "true", 0),
-                ("success", "newer", "0", "false", 0),
-                ("failure", "head", "0", None, 1),
-                ("cancelled", "head", "0", None, 1),
-                ("", "head", "0", None, 1),
-                ("success", "head", "1", None, 1),
+            for result, current, workflow_sha, api_status, expected, exit_code in (
+                ("skipped", "head", "head", "0", "false", 0),
+                ("success", "head", "head", "0", "true", 0),
+                ("success", "newer", "head", "0", "false", 0),
+                ("success", "head", "newer", "0", "false", 0),
+                ("failure", "head", "head", "0", None, 1),
+                ("cancelled", "head", "head", "0", None, 1),
+                ("", "head", "head", "0", None, 1),
+                ("success", "head", "head", "1", None, 1),
             ):
-                with self.subTest(result=result, current=current, api_status=api_status):
+                with self.subTest(result=result, current=current, workflow_sha=workflow_sha,
+                                  api_status=api_status):
                     output = root / "output"
                     output.unlink(missing_ok=True)
                     completed = subprocess.run(["sh", "-eu", "-c", script], env=os.environ | {
                         "PATH": str(root) + os.pathsep + os.environ["PATH"],
                         "SITE_RESULT": result, "CURRENT_SHA": current, "API_STATUS": api_status,
                         "GITHUB_REPOSITORY": "fixture/repo", "CI_RUN_ID": "123",
-                        "BUILD_SHA": "head", "GITHUB_OUTPUT": str(output),
+                        "BUILD_SHA": "head", "GITHUB_SHA": workflow_sha, "GITHUB_OUTPUT": str(output),
                     }, capture_output=True, text=True)
                     self.assertEqual(completed.returncode, exit_code, completed.stderr)
                     self.assertEqual(output.read_text() if output.exists() else None,

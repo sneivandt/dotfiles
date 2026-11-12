@@ -16,7 +16,10 @@ def publication_base(repository, head):
     deployments = api(f"repos/{repository}/deployments?environment=github-pages&per_page=100")
     for deployment in deployments:
         statuses = api(f"repos/{repository}/deployments/{int(deployment['id'])}/statuses?per_page=100")
-        if not any(status["state"] == "success" for status in statuses):
+        # Older workflows could finish the environment job without deploying.
+        # Only the actual Pages deploy step sets the environment URL.
+        if not any(status["state"] == "success" and status.get("environment_url")
+                   for status in statuses):
             continue
         sha = deployment["sha"]
         if not re.fullmatch(r"[0-9a-f]{40}", sha):

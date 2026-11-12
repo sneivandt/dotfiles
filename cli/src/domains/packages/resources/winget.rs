@@ -88,7 +88,9 @@ pub(super) fn parse_winget_ids(stdout: &str) -> Result<HashSet<String>> {
             }
         } else {
             let cols = header_columns(line);
-            if let Some(pos) = cols.iter().position(|(_, name)| name == "Id")
+            if let Some(pos) = cols
+                .iter()
+                .position(|(_, name)| name.eq_ignore_ascii_case("Id"))
                 && let Some(&(id_start, _)) = cols.get(pos)
             {
                 let next_start = cols
@@ -356,6 +358,17 @@ mod tests {
 
         assert!(ids.contains("Microsoft.APM"));
         assert_eq!(ids.len(), 1);
+    }
+
+    #[test]
+    fn parse_winget_ids_accepts_japanese_inventory() {
+        let ids = parse_winget_ids(concat!(
+            "名前      ID                  バージョン\n",
+            "------------------------------------------\n",
+            "端末      Microsoft.Terminal  1.0\n",
+        ))
+        .unwrap();
+        assert_eq!(ids, HashSet::from(["Microsoft.Terminal".to_string()]));
     }
 
     #[test]

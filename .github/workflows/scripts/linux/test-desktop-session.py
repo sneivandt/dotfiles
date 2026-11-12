@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import resource
 import select
 import os
 from pathlib import Path
@@ -31,6 +32,8 @@ def check_hypr_configuration(env):
 def main():
     if not Path('/.dockerenv').exists() or os.geteuid() == 0:
         raise RuntimeError('run as the fixture user inside the desktop CI container')
+    # The headless Hyprlock parser check deliberately stops at the missing display.
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--native-hyprland', action='store_true',
                         help='require nested Hyprland and the tracked Hyprlock config; needs GPU-backed buffer allocation')

@@ -438,6 +438,7 @@ pub trait OutputExt: Output {
         /// Log de-emphasised run context. Always visible, rendered dim.
         startup => Startup,
         /// Announce the tasks requiring an interactive sudo prompt.
+        #[cfg(any(unix, test))]
         sudo_required => SudoRequired,
     }
 }

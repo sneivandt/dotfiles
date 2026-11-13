@@ -82,6 +82,7 @@ packages = [
   "qt5-wayland",
   "qt6-wayland",
   "slurp",
+  "thunar",
   "uwsm",
   "quickshell",
   "wireplumber",

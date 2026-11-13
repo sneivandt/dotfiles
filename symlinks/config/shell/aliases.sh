@@ -12,6 +12,8 @@ alias df="df -h -T"
 
 alias dot="dotfiles"
 
+alias du1="du -h --max-depth=1"
+
 alias g="git"
 
 alias grep="grep --color=auto"
@@ -36,8 +38,8 @@ alias ip="ip -c"
 if command -v eza >/dev/null 2>&1; then
   alias l="eza"
   alias ls="eza"
-  alias ll="eza -l"
-  alias la="eza -la"
+  alias ll="eza -l --group-directories-first"
+  alias la="eza -la --group-directories-first"
   alias tree="eza --tree"
 elif command -v exa >/dev/null 2>&1; then
   alias l="exa"

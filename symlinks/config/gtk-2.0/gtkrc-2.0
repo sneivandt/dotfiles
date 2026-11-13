@@ -11,10 +11,10 @@ gtk-button-images=0
 
 style "user-font"
 {
-  font_name = "Cantarell 11"
+  font_name = "Noto Sans 11"
 }
 widget_class "*" style "user-font"
-gtk-font-name="Cantarell 11"
+gtk-font-name="Noto Sans 11"
 
 style "vimfix"
 {

@@ -35,7 +35,7 @@ settings = [
   { target = "copilot", key = "footer.showQuota",         value = false },
   { target = "copilot", key = "footer.showAiUsed",        value = false },
   { target = "copilot", key = "footer.showAgent",         value = true  },
-  { target = "copilot", key = "footer.showCodeChanges",   value = false },
+  { target = "copilot", key = "footer.showCodeChanges",   value = true  },
   { target = "copilot", key = "footer.showUsername",      value = false },
   { target = "copilot", key = "footer.showSandbox",       value = false },
   { target = "copilot", key = "footer.showCustom",        value = true  },
@@ -59,8 +59,8 @@ settings = [
   # Keep the default exclusions when passing environment variables to tools.
   { target = "codex", key = "shell_environment_policy.ignore_default_excludes", value = false },
 
-  # Codex CLI: show directory and branch, and preserve terminal scrollback.
-  { target = "codex", key = "tui.status_line",      value = ["current-dir", "git-branch"] },
+  # Codex CLI: show directory, branch, and remaining context. Preserve terminal scrollback.
+  { target = "codex", key = "tui.status_line",      value = ["current-dir", "git-branch", "context-remaining"] },
   { target = "codex", key = "tui.alternate_screen", value = "never" },
   { target = "codex", key = "tui.show_tooltips",    value = false   },
 

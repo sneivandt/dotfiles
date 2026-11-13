@@ -37,6 +37,7 @@ second set of autostart commands to work around a failed service.
 | Shortcut | Action |
 |---|---|
 | Super + Return | Open Alacritty |
+| Super + E | Open your home folder in Thunar |
 | Super + P | Open the application launcher |
 | Super + O / V | Choose a browser / editor |
 | Super + G / C | Open GitHub Copilot / ChatGPT |
@@ -56,6 +57,11 @@ keep elsewhere: the desktop's
 [cleanup timer](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service)
 runs daily and deletes files and links after 31 complete days since their last
 modification (`find -mtime +30`), along with old empty directories.
+
+Thunar is the default app for opening folders. GTK apps use Noto Sans, Adwaita
+Dark, and Papirus Dark icons. Thunar and the GTK file chooser use Tokyo Night
+colors for selected files. Apps that use the desktop portal get this chooser
+for their Open and Save dialogs.
 
 ### Media keys
 

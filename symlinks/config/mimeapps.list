@@ -1,6 +1,7 @@
 # Default handlers for applications installed by the Arch desktop profile.
-# Leave directory, image and other associations to their installed applications.
+# Leave other associations to their installed applications.
 [Default Applications]
+inode/directory=thunar.desktop;
 text/html=chromium.desktop;
 application/xhtml+xml=chromium.desktop;
 application/pdf=chromium.desktop;

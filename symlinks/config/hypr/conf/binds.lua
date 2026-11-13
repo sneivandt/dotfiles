@@ -3,6 +3,7 @@ local resizeOnBorder = require("conf.resize-on-border")
 
 -- Launch
 hl.bind(mod .. " + Return", hl.dsp.exec_cmd("alacritty"))
+hl.bind(mod .. " + e", hl.dsp.exec_cmd('thunar "$HOME"'))
 hl.bind(mod .. " + c", hl.dsp.exec_cmd("chatgpt"))
 hl.bind(mod .. " + p", hl.dsp.exec_cmd("fuzzel"))
 hl.bind(mod .. " + o", hl.dsp.exec_cmd("~/.config/hypr/scripts/choose-browser.sh"))

@@ -1,0 +1,12 @@
+/* Match Hyprland's Tokyo Night palette in file views. */
+window.thunar .standard-view .view:selected,
+filechooser .view:selected {
+  background-color: #414868;
+  color: #c0caf5;
+}
+
+window.thunar .standard-view .view:selected:focus,
+filechooser .view:selected:focus {
+  background-color: #7aa2f7;
+  color: #1a1b26;
+}

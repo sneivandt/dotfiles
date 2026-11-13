@@ -54,7 +54,7 @@ impl Console {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    pub(super) fn emit(&self, kind: MsgKind, message: &str) {
+    pub(super) fn emit(&self, kind: MsgKind, message: &str, symbols: bool) {
         let error = matches!(kind, MsgKind::Warn | MsgKind::Error);
         let style = if error {
             self.stderr_style
@@ -71,7 +71,7 @@ impl Console {
             );
         }
         let mut state = self.lock();
-        if let Some(line) = ui_line_with_style(kind, message, style, state.verbose) {
+        if let Some(line) = ui_line_with_style(kind, message, style, state.verbose, symbols) {
             state.line(error, &line);
         }
     }
@@ -263,6 +263,7 @@ pub(in crate::infra::logging) fn ui_line_with_style(
     msg: &str,
     style: StyleChoice,
     verbose: bool,
+    symbols: bool,
 ) -> Option<String> {
     let msg = style.clean(msg);
     match kind {
@@ -282,6 +283,14 @@ pub(in crate::infra::logging) fn ui_line_with_style(
         MsgKind::DryRun => Some(format!("  {msg}")),
         MsgKind::Always => Some(msg),
         MsgKind::Startup => Some(startup_line_with_style(&msg, style)),
+        MsgKind::SudoRequired => {
+            let notice = startup_line_with_style(&msg, style);
+            Some(if symbols {
+                format!("{} {notice}", style.paint(TextStyle::Yellow, "⊙"))
+            } else {
+                notice
+            })
+        }
     }
 }
 

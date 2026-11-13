@@ -331,7 +331,7 @@ impl Logger {
 
     /// Render a message without recording it again.
     pub(in crate::infra::logging) fn emit_console(&self, kind: MsgKind, msg: &str) {
-        self.console.emit(kind, msg);
+        self.console.emit(kind, msg, self.symbols);
     }
 
     #[cfg(test)]
@@ -593,7 +593,7 @@ mod tests {
             log.startup("Update · fixture");
             log.separate_from_startup();
             log.separate_console_block();
-            log.startup("sudo required · System configuration files");
+            log.sudo_required("sudo required · System configuration files");
             log.separate_console_block();
             log.separate_console_block();
             log.always("task result");
@@ -602,7 +602,7 @@ mod tests {
                 vec![
                     "Update · fixture",
                     "",
-                    "sudo required · System configuration files",
+                    "⊙ sudo required · System configuration files",
                     "",
                     "task result",
                 ]

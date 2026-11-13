@@ -211,7 +211,7 @@ fn prepare_sudo_elevation(
 
     log.separate_from_startup();
     log.separate_console_block();
-    log.startup(format!("sudo required · {}", names.join(", ")));
+    log.sudo_required(format!("sudo required · {}", names.join(", ")));
     drop(std::io::Write::flush(&mut std::io::stdout()));
 
     let result = prime_credentials();

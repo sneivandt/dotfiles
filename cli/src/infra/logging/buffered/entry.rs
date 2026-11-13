@@ -115,6 +115,7 @@ impl LogEntry {
             | MsgKind::Trace
             | MsgKind::Summary
             | MsgKind::Startup
+            | MsgKind::SudoRequired
             | MsgKind::Warn
             | MsgKind::Error => None,
         }

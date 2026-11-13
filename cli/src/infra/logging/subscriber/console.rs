@@ -33,7 +33,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for ConsoleLayer {
         if let Some(kind) = message_kind(*event.metadata().level()) {
             let mut extractor = MessageExtractor::default();
             event.record(&mut extractor);
-            self.console.emit(kind, &extractor.message);
+            self.console.emit(kind, &extractor.message, true);
         }
     }
 }
@@ -46,5 +46,11 @@ pub(super) fn console_line_with_style(
     style: crate::infra::logging::style::StyleChoice,
     verbose: bool,
 ) -> Option<String> {
-    crate::infra::logging::console::ui_line_with_style(message_kind(level)?, msg, style, verbose)
+    crate::infra::logging::console::ui_line_with_style(
+        message_kind(level)?,
+        msg,
+        style,
+        verbose,
+        true,
+    )
 }

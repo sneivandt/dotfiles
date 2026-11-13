@@ -149,6 +149,7 @@ fn message_presentation_golden_matrix() {
                         "detail",
                         StyleChoice::auto(terminal, no_color),
                         verbose,
+                        true,
                     )
                     .as_deref(),
                     expected,
@@ -167,6 +168,7 @@ fn structured_startup_line_emphasizes_its_label_only() {
             "Install · desktop profile · Arch Linux",
             StyleChoice::auto(true, false),
             false,
+            true,
         )
         .as_deref(),
         Some("\x1b[1mInstall\x1b[0m\x1b[2m · desktop profile · Arch Linux\x1b[0m")
@@ -181,10 +183,38 @@ fn cli_upgrade_remains_a_startup_notice_with_a_dim_version_transition() {
             "CLI upgraded · old → new",
             StyleChoice::auto(true, false),
             false,
+            true,
         )
         .as_deref(),
         Some("\x1b[1mCLI upgraded\x1b[0m\x1b[2m · old → new\x1b[0m")
     );
+}
+
+#[test]
+fn sudo_notice_matches_status_row_spacing_and_respects_no_symbols() {
+    let message = "sudo required · System configuration files";
+    for (symbols, expected) in [
+        (
+            true,
+            "\x1b[33m⊙\x1b[0m \x1b[1msudo required\x1b[0m\x1b[2m · System configuration files\x1b[0m",
+        ),
+        (
+            false,
+            "\x1b[1msudo required\x1b[0m\x1b[2m · System configuration files\x1b[0m",
+        ),
+    ] {
+        assert_eq!(
+            crate::infra::logging::console::ui_line_with_style(
+                MsgKind::SudoRequired,
+                message,
+                StyleChoice::auto(true, false),
+                false,
+                symbols,
+            )
+            .as_deref(),
+            Some(expected),
+        );
+    }
 }
 
 #[test]
@@ -327,6 +357,7 @@ fn dry_run_header_highlights_mode_and_recovery_hint_keeps_contrast() {
                     message,
                     StyleChoice::auto(terminal, no_color),
                     false,
+                    true,
                 )
                 .as_deref(),
                 Some(expected),

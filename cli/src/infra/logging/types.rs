@@ -208,6 +208,8 @@ pub enum MsgKind {
     /// Structured notices have a bold label and dim metadata, with dry-run
     /// mode in magenta. Unstructured recovery hints use normal contrast.
     Startup,
+    /// Foreground notice before an interactive sudo prompt.
+    SudoRequired,
 }
 
 impl MsgKind {
@@ -216,7 +218,7 @@ impl MsgKind {
     pub(in crate::infra::logging) const fn log_event(self) -> LogEvent {
         match self {
             Self::Stage => LogEvent::Stage,
-            Self::Info | Self::Always | Self::Startup => LogEvent::Info,
+            Self::Info | Self::Always | Self::Startup | Self::SudoRequired => LogEvent::Info,
             Self::Summary => LogEvent::Summary,
             Self::Debug | Self::Context | Self::Trace => LogEvent::Debug,
             Self::Warn => LogEvent::Warn,
@@ -435,6 +437,8 @@ pub trait OutputExt: Output {
         always => Always,
         /// Log de-emphasised run context. Always visible, rendered dim.
         startup => Startup,
+        /// Announce the tasks requiring an interactive sudo prompt.
+        sudo_required => SudoRequired,
     }
 }
 

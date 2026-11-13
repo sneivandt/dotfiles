@@ -54,6 +54,10 @@ changes usually do not need engine changes.
 
 ## Before pushing
 
+- An unqualified request to push from a `main` checkout means a direct push to
+  `origin/main`. Follow any explicitly requested branch or pull request workflow.
+  Refresh the destination and verify that every outgoing commit belongs to the
+  task before pushing.
 - Inspect the full intended diff, including renames/deletions and pending changes
   from failed pushes. Choose local checks by affected behavior and test inputs
   using [Testing](docs/content/development/testing.md#choosing-coverage). The agent owns this

@@ -46,8 +46,11 @@ action-version inventories in guidance.
   pending or failed publisher is not completion. Check deployed content when
   the change affects it; routine wording does not need another browser audit.
 - Wait for completion, inspect failed job logs, and report actionable failures.
-  If monitoring is unavailable, state the SHA, run, and blocker. A later push's
-  green run does not establish that the requested commit passed.
+  If monitoring is unavailable, state the SHA, run, and blocker.
+- If a newer push cancels the requested SHA's run, report the original run as
+  cancelled and verify whether the newer SHA contains the requested commits.
+  If it does, follow that SHA's checks and any applicable publication, and
+  report those results under the newer SHA.
 - Mutation shards are required when selected. Inspect every shard report for
   survivors, timeouts, and tooling errors, and fix the cause before reporting
   success. Keep the exact matrix and use narrowly justified exclusions for

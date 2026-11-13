@@ -27,3 +27,10 @@ hl.window_rule({
     no_shadow = true,
     animation = "popin",
 })
+
+-- The project picker draws its own frame inside the transparent window margins.
+hl.window_rule({
+    name = "project-root-picker-frame",
+    match = { title = "^Select Project Root$", float = true },
+    decorate = false,
+})

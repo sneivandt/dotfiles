@@ -16,12 +16,8 @@ filechooser treeview.view {
   color: @files_text;
 }
 
-window.thunar menubar,
-window.thunar toolbar,
-window.thunar statusbar,
 window.filechooser headerbar,
 window.filechooser .dialog-action-box,
-window.thunar .standard-view treeview header button,
 filechooser treeview header button {
   background-image: none;
   background-color: @files_chrome;
@@ -30,13 +26,10 @@ filechooser treeview header button {
   color: @files_secondary;
 }
 
-window.thunar toolbar,
 window.filechooser headerbar {
   padding: 4px 8px;
 }
 
-window.thunar menubar > menuitem:hover,
-window.thunar .standard-view treeview header button:hover,
 filechooser treeview header button:hover {
   background-color: @files_edge;
   color: @files_text;
@@ -72,8 +65,6 @@ filechooser placessidebar row:selected {
   color: @files_text;
 }
 
-window.thunar .standard-view .view:selected:focus,
-window.thunar .sidebar .view:selected:focus,
 filechooser treeview.view:selected:focus,
 filechooser placessidebar row:selected:focus {
   background-color: @files_accent;
@@ -87,4 +78,64 @@ window.filechooser.csd decoration {
 
 window.filechooser.csd headerbar {
   border-radius: 10px 10px 0 0;
+}
+
+/* Thunar navigation, tabs, and file views. */
+window.thunar menubar,
+window.thunar toolbar,
+window.thunar statusbar,
+window.thunar notebook > header {
+  background-image: none;
+  background-color: @files_panel;
+  border-color: alpha(@files_edge, 0.6);
+  box-shadow: none;
+  color: @files_secondary;
+}
+
+window.thunar toolbar {
+  padding: 6px 8px;
+  border-bottom: 1px solid alpha(@files_edge, 0.6);
+}
+
+window.thunar toolbar button:not(:disabled):hover,
+window.thunar menubar > menuitem:hover,
+window.thunar notebook > header tab:hover {
+  background-image: none;
+  background-color: alpha(@files_accent, 0.13);
+  color: @files_text;
+}
+
+window.thunar toolbar button:checked,
+window.thunar toolbar button:active {
+  background-image: none;
+  background-color: @files_selection;
+  color: @files_text;
+}
+
+window.thunar notebook > header tab:checked {
+  background-image: none;
+  background-color: @files_canvas;
+  box-shadow: inset 0 -2px @files_accent;
+  color: @files_text;
+}
+
+window.thunar .standard-view treeview header button {
+  padding: 5px 8px;
+  background-image: none;
+  background-color: @files_panel;
+  border: 0;
+  border-bottom: 1px solid alpha(@files_edge, 0.6);
+  box-shadow: none;
+  color: @files_secondary;
+}
+
+window.thunar .standard-view treeview header button:hover {
+  background-color: @files_chrome;
+  color: @files_text;
+}
+
+window.thunar .standard-view .view:selected:focus,
+window.thunar .sidebar .view:selected:focus {
+  background-color: mix(@files_selection, @files_accent, 0.24);
+  color: @files_text;
 }

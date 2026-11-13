@@ -1,0 +1,12 @@
+[Icon Theme]
+Name=Tokyo Night
+Comment=Slate-blue folder icons with Papirus Dark fallback
+Inherits=Papirus-Dark,Adwaita,hicolor
+Directories=scalable/places
+
+[scalable/places]
+Context=Places
+Size=48
+Type=Scalable
+MinSize=16
+MaxSize=512

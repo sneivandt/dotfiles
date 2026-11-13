@@ -101,6 +101,7 @@ symlinks = [
   "config/xdg-desktop-portal/hyprland-portals.conf",
   "config/quickshell",
   "local/bin/code-insiders",
+  "local/share/icons/Tokyo-Night",
 ]
 
 [desktop]

@@ -1,12 +1,90 @@
-/* Match Hyprland's Tokyo Night palette in file views. */
+/* Tokyo Night surfaces for Thunar and GTK 3 file choosers. */
+@define-color files_canvas #1a1b26;
+@define-color files_panel #1f2333;
+@define-color files_chrome #24283b;
+@define-color files_edge #414868;
+@define-color files_text #c0caf5;
+@define-color files_secondary #a9b1d6;
+@define-color files_accent #7aa2f7;
+@define-color files_selection #293d60;
+
+window.thunar,
+window.filechooser,
+window.thunar .standard-view .view,
+filechooser treeview.view {
+  background-color: @files_canvas;
+  color: @files_text;
+}
+
+window.thunar menubar,
+window.thunar toolbar,
+window.thunar statusbar,
+window.filechooser headerbar,
+window.filechooser .dialog-action-box,
+window.thunar .standard-view treeview header button,
+filechooser treeview header button {
+  background-image: none;
+  background-color: @files_chrome;
+  border-color: @files_edge;
+  box-shadow: none;
+  color: @files_secondary;
+}
+
+window.thunar toolbar,
+window.filechooser headerbar {
+  padding: 4px 8px;
+}
+
+window.thunar menubar > menuitem:hover,
+window.thunar .standard-view treeview header button:hover,
+filechooser treeview header button:hover {
+  background-color: @files_edge;
+  color: @files_text;
+}
+
+window.thunar toolbar entry,
+filechooser entry {
+  background-image: none;
+  background-color: @files_canvas;
+  border: 1px solid @files_edge;
+  border-radius: 6px;
+  box-shadow: none;
+  color: @files_text;
+}
+
+window.thunar toolbar entry:focus,
+filechooser entry:focus {
+  border-color: @files_accent;
+  box-shadow: inset 0 0 0 1px @files_accent;
+}
+
+window.thunar .sidebar .view,
+filechooser placessidebar list {
+  background-color: @files_panel;
+  color: @files_secondary;
+}
+
 window.thunar .standard-view .view:selected,
-filechooser .view:selected {
-  background-color: #414868;
-  color: #c0caf5;
+window.thunar .sidebar .view:selected,
+filechooser treeview.view:selected,
+filechooser placessidebar row:selected {
+  background-color: @files_selection;
+  color: @files_text;
 }
 
 window.thunar .standard-view .view:selected:focus,
-filechooser .view:selected:focus {
-  background-color: #7aa2f7;
-  color: #1a1b26;
+window.thunar .sidebar .view:selected:focus,
+filechooser treeview.view:selected:focus,
+filechooser placessidebar row:selected:focus {
+  background-color: @files_accent;
+  color: @files_canvas;
+}
+
+window.filechooser.csd decoration {
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px @files_edge, 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+window.filechooser.csd headerbar {
+  border-radius: 10px 10px 0 0;
 }

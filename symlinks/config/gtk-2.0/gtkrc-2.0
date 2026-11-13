@@ -1,7 +1,7 @@
 include "/usr/share/themes/Adwaita-dark/gtk-2.0/gtkrc"
 
 gtk-theme-name="Adwaita-dark"
-gtk-icon-theme-name="Papirus-Dark"
+gtk-icon-theme-name="Tokyo-Night"
 gtk-fallback-icon-theme="gnome"
 gtk-cursor-theme-name="Adwaita"
 gtk-cursor-theme-size=24

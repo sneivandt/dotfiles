@@ -332,7 +332,7 @@ jobs:
         with:
           workspaces: "cli -> target"
       - name: Install cargo-audit
-        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: cargo-audit
       - run: cargo audit
@@ -354,7 +354,7 @@ jobs:
         with:
           workspaces: "cli -> target"
       - name: Install cargo-deny
-        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: cargo-deny
       - run: cargo deny check all
@@ -464,7 +464,7 @@ jobs:
           workspaces: "cli -> target"
           cache-on-failure: true
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: cargo-llvm-cov
       - name: Generate coverage report
@@ -519,7 +519,7 @@ jobs:
           workspaces: "cli -> target"
           cache-on-failure: true
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: cargo-mutants@27.1.0
       - name: Test changed-code mutants
@@ -574,7 +574,7 @@ jobs:
         with:
           workspaces: "cli -> target"
           cache-on-failure: true
-      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: cargo-mutants@27.1.0
       - name: Check native registry, PATH and elevation contracts

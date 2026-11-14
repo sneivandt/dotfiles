@@ -110,7 +110,7 @@ fn chmod_apply_repeat_and_dry_run_preserve_permissions() {
         std::fs::write(&target, "Host *\n").unwrap();
         std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-        let task = ApplyFilePermissions::new(ec.store.chmod.clone());
+        let task = ApplyFilePermissions::new(ec.store.chmod);
         let result = task.run(&ctx).unwrap();
         assert!(batch_changed(&result), "{case}: {result:?}");
         let mode = || std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;

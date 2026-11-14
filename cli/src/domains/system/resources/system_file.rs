@@ -872,7 +872,7 @@ mod tests {
     #[test]
     fn unsafe_configured_targets_cannot_be_assessed_or_delegated_after_permission_failures() {
         let fixture = tempfile::tempdir_in(".").unwrap();
-        let root = fixture.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(fixture.path()).unwrap();
         fs::create_dir(root.join("system")).unwrap();
         fs::write(root.join("system/fragment"), "managed = true\n").unwrap();
         for target in [

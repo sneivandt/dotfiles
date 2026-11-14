@@ -251,7 +251,7 @@ mod tests {
                 let ctx = make_linux_context(fixture.path().to_path_buf(), None)
                     .with_home(home)
                     .with_parallel(parallel);
-                let preview = task.run(&ctx.clone().with_dry_run(true)).unwrap();
+                let preview = task.run(&ctx.with_dry_run(true)).unwrap();
                 assert_eq!(crate::test_helpers::task_batch(&preview).changed_count(), 3);
                 assert_eq!(
                     executable.metadata().unwrap().permissions().mode() & 0o777,

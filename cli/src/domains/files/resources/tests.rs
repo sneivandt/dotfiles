@@ -1110,7 +1110,7 @@ mod symlink {
                     target.clone(),
                     Arc::new(crate::infra::exec::MockExecutor::new()),
                 );
-                let ctx = ContextBuilder::new(root.clone())
+                let ctx = ContextBuilder::new(root)
                     .overlay(None)
                     .build()
                     .with_dry_run(true);

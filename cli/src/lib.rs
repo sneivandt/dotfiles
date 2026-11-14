@@ -49,7 +49,7 @@ pub(crate) use app::test_helpers;
 /// This is the only supported public entry point for the library crate.  The
 /// binary target delegates here so argument parsing, logging setup, graceful
 /// cancellation, elevation handling, and command dispatch live in one place.
-#[must_use]
+#[must_use = "return the CLI exit code from main"]
 pub fn run() -> ExitCode {
     app::run::run()
 }

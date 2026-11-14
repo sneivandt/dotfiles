@@ -44,13 +44,12 @@ impl Task for ConfigureSystemFiles {
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        !ctx.is_elevated()
-            && self.resources(ctx).iter().any(|resource| {
-                !matches!(
-                    resource.current_state(),
-                    Ok(ResourceState::Correct | ResourceState::Invalid { .. })
-                )
-            })
+        self.resources(ctx).iter().any(|resource| {
+            !matches!(
+                resource.current_state(),
+                Ok(ResourceState::Correct | ResourceState::Invalid { .. })
+            )
+        })
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -82,6 +81,7 @@ mod tests {
     use crate::domains::system::config::system_files::MergeStrategy;
     use crate::infra::platform::Os;
     use crate::test_helpers::ContextBuilder;
+    use std::fs;
     use std::path::PathBuf;
 
     fn configured() -> ConfigHandle<Vec<SystemFile>> {
@@ -129,5 +129,26 @@ mod tests {
                 .iter()
                 .all(|resource| resource.current_state().is_err())
         );
+    }
+
+    #[test]
+    fn elevation_planning_does_not_prompt_for_empty_or_invalid_configuration() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let ctx = ContextBuilder::new(fixture.path().to_path_buf())
+            .overlay(None)
+            .build();
+        assert!(!ConfigureSystemFiles::new(ConfigHandle::new(Vec::new())).needs_elevation(&ctx));
+        fs::create_dir(fixture.path().join("system")).unwrap();
+        fs::write(fixture.path().join("system/example"), "managed = [\n").unwrap();
+        let mut files = configured().get().clone();
+        for entry in &mut files {
+            entry.origin = Some(fixture.path().to_path_buf());
+        }
+        let task = ConfigureSystemFiles::new(ConfigHandle::new(files));
+        assert!(!task.needs_elevation(&ctx));
+        assert!(task.resources(&ctx).iter().all(|resource| matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Invalid { .. }
+        )));
     }
 }

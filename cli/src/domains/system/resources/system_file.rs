@@ -153,6 +153,53 @@ impl SystemFileResource {
         Ok(target)
     }
 
+    fn validate_installation_target(&self) -> anyhow::Result<()> {
+        let target = &self.entry.target;
+        // The private boundary is absolute, so this also excludes relative targets.
+        anyhow::ensure!(
+            target.starts_with(&self.target_root),
+            "unsafe system file target"
+        );
+        anyhow::ensure!(target != &self.target_root, "unsafe system file target");
+        anyhow::ensure!(
+            !target.components().any(|component| matches!(
+                component,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )),
+            "unsafe system file target"
+        );
+        Ok(())
+    }
+
+    fn assessment_with_target(
+        &self,
+        fragment: &str,
+        resolved: anyhow::Result<PathBuf>,
+    ) -> ResourceResult<(ResourceState, PathBuf)> {
+        self.validate_installation_target()?;
+        let target = match resolved {
+            Ok(target) => target,
+            Err(error) if permission_denied(&error) => {
+                return Ok((
+                    ResourceState::Unknown {
+                        reason: "requires privileged assessment; destination was not read"
+                            .to_string(),
+                    },
+                    self.entry.target.clone(),
+                ));
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let state = match Self::current_content(&target).map_err(anyhow::Error::from) {
+            Ok(current) => self.state_for(&current, fragment),
+            Err(error) if permission_denied(&error) => ResourceState::Unknown {
+                reason: "requires privileged assessment; destination was not read".to_string(),
+            },
+            Err(error) => return Err(error.into()),
+        };
+        Ok((state, target))
+    }
+
     fn current_content(target: &std::path::Path) -> ResourceResult<CurrentFile> {
         let metadata = match fs::symlink_metadata(target) {
             Ok(metadata) => metadata,
@@ -226,7 +273,15 @@ impl Resource for SystemFileResource {
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
         let fragment = self.fragment()?;
-        match self.current_state()? {
+        if let Err(error) = validate_fragment(self.entry.merge, &fragment) {
+            return Err(crate::engine::resource::ResourceError::conflicting_state(
+                self.entry.target.display().to_string(),
+                "a valid system file and fragment",
+                error.to_string(),
+            ));
+        }
+        let (state, target) = self.assessment_with_target(&fragment, self.checked_target())?;
+        match state {
             ResourceState::Correct => return Ok(ResourceChange::AlreadyCorrect),
             ResourceState::Invalid { reason } => {
                 return Err(crate::engine::resource::ResourceError::conflicting_state(
@@ -238,23 +293,6 @@ impl Resource for SystemFileResource {
             ResourceState::Missing
             | ResourceState::Incorrect { .. }
             | ResourceState::Unknown { .. } => {}
-        }
-        let target = match self.checked_target() {
-            Ok(target) => target,
-            Err(error) if permission_denied(&error) => self.entry.target.clone(),
-            Err(error) => return Err(error.into()),
-        };
-        if !(target.is_absolute()
-            && target.starts_with(&self.target_root)
-            && target != self.target_root
-            && !target.components().any(|component| {
-                matches!(
-                    component,
-                    std::path::Component::ParentDir | std::path::Component::CurDir
-                )
-            }))
-        {
-            return Err(anyhow!("unsafe system file target").into());
         }
         let result = self
             .executor
@@ -298,17 +336,8 @@ impl IntrinsicState for SystemFileResource {
                 reason: error.to_string(),
             });
         }
-        let observed = (|| -> anyhow::Result<_> {
-            let target = self.checked_target()?;
-            Ok(self.state_for(&Self::current_content(&target)?, &fragment))
-        })();
-        match observed {
-            Ok(state) => Ok(state),
-            Err(error) if permission_denied(&error) => Ok(ResourceState::Unknown {
-                reason: "requires privileged assessment; destination was not read".to_string(),
-            }),
-            Err(error) => Err(error.into()),
-        }
+        self.assessment_with_target(&fragment, self.checked_target())
+            .map(|(state, _)| state)
     }
 }
 
@@ -807,6 +836,124 @@ mod tests {
         assert!(error.to_string().contains(reason), "{error}");
     }
 
+    #[test]
+    fn assessment_defers_only_permission_failures_without_reading_unresolved_targets() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let target = root.join("unresolved");
+        let resource = fixture_resource(
+            entry(&root, &target, "fragment", MergeStrategy::Toml),
+            Arc::new(MockExecutor::new()),
+        );
+        for kind in [
+            ErrorKind::PermissionDenied,
+            ErrorKind::NotFound,
+            ErrorKind::Other,
+        ] {
+            let failure = anyhow!(std::io::Error::new(kind, "fixture resolution failed"))
+                .context("resolve target parent");
+            let result = resource.assessment_with_target("managed = true\n", Err(failure));
+            if kind == ErrorKind::PermissionDenied {
+                let (state, pending_target) = result.unwrap();
+                assert!(matches!(state, ResourceState::Unknown { .. }), "{state:?}");
+                assert_eq!(pending_target, target);
+            } else {
+                let error = result.unwrap_err();
+                assert!(
+                    format!("{error:#}").contains("fixture resolution failed"),
+                    "{error}"
+                );
+            }
+            assert!(!target.exists());
+            assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
+        }
+    }
+
+    #[test]
+    fn unsafe_configured_targets_cannot_be_assessed_or_delegated_after_permission_failures() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        fs::create_dir(root.join("system")).unwrap();
+        fs::write(root.join("system/fragment"), "managed = true\n").unwrap();
+        for target in [
+            PathBuf::from("relative/target"),
+            root.clone(),
+            root.parent().unwrap().join("outside"),
+            root.join("missing/../target"),
+        ] {
+            let resource = fixture_resource(
+                entry(&root, &target, "fragment", MergeStrategy::Toml),
+                Arc::new(MockExecutor::new()),
+            );
+            let denied = anyhow!(std::io::Error::from(ErrorKind::PermissionDenied));
+            assert!(
+                resource
+                    .assessment_with_target("managed = true\n", Err(denied))
+                    .is_err(),
+                "{target:?}"
+            );
+            assert!(resource.apply().is_err(), "{target:?}");
+            assert!(!root.join("target").exists());
+            assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_preparation_merges_ini_and_pam_then_converges_without_new_staged_contents() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+        for (strategy, original, fragment, expected) in [
+            (
+                "ini",
+                "# retained\n[options]\nkeep=private\nmanaged=no\n",
+                "[options]\nmanaged=yes\n",
+                "# retained\n[options]\nkeep=private\nmanaged=yes\n",
+            ),
+            (
+                "pam",
+                "# retained\nauth include system-auth\nsession include system-login\n",
+                "auth optional fixture.so\n",
+                "# retained\nauth include system-auth\nauth optional fixture.so\nsession include system-login\n",
+            ),
+        ] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let root = fixture.path().canonicalize().unwrap();
+            let target = root.join("target");
+            let stage = root.join("stage");
+            fs::write(&target, original).unwrap();
+            fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
+            fs::create_dir(&stage).unwrap();
+            fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
+            let owner = fs::metadata(&root).unwrap().uid();
+            assert_eq!(
+                prepare_in_private_stage(&target, fragment, strategy, &stage, owner).unwrap(),
+                "prepared",
+                "{strategy}"
+            );
+            assert_eq!(
+                fs::read_to_string(stage.join("input")).unwrap(),
+                expected,
+                "{strategy}"
+            );
+            assert_eq!(
+                fs::read_to_string(stage.join("original")).unwrap(),
+                original,
+                "{strategy}"
+            );
+            assert_eq!(fs::read_to_string(&target).unwrap(), original, "{strategy}");
+            fs::write(&target, expected).unwrap();
+            fs::remove_file(stage.join("input")).unwrap();
+            fs::remove_file(stage.join("original")).unwrap();
+            assert_eq!(
+                prepare_in_private_stage(&target, fragment, strategy, &stage, owner).unwrap(),
+                "already-correct",
+                "{strategy}"
+            );
+            assert_eq!(fs::read_dir(&stage).unwrap().count(), 0, "{strategy}");
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn protected_targets_and_parents_remain_unknown_without_executor_calls_or_preview_writes() {
@@ -824,8 +971,10 @@ mod tests {
             fs::write(root.join("system/fragment"), "managed = true\n").unwrap();
             let parent = root.join("protected");
             fs::create_dir(&parent).unwrap();
-            let target = parent.join("target");
-            let original = "private = 'fixture secret'\n";
+            let nested = parent.join("nested");
+            fs::create_dir(&nested).unwrap();
+            let target = nested.join("target");
+            let original = "private = 'fixture secret'\nmanaged = true\n";
             fs::write(&target, original).unwrap();
             let restricted = if protect_parent { &parent } else { &target };
             let permissions = fs::metadata(restricted).unwrap().permissions();
@@ -1987,6 +2136,8 @@ esac
         let mut sequence = mockall::Sequence::new();
         for fail in [true, false] {
             let expected_target = crate::infra::fs::resolve_target_entry(&target).unwrap();
+            let expected_fragment =
+                dunce::canonicalize(root.path().join("system/fragment.toml")).unwrap();
             let expected_staging = staging.clone();
             executor
                 .expect_execute()
@@ -2007,14 +2158,7 @@ esac
                         ]
                     );
                     assert_eq!(spec.arguments()[7], expected_target.as_os_str());
-                    assert_eq!(
-                        spec.arguments()[8],
-                        expected_target
-                            .parent()
-                            .unwrap()
-                            .join("system/fragment.toml")
-                            .as_os_str()
-                    );
+                    assert_eq!(spec.arguments()[8], expected_fragment.as_os_str());
                     assert_eq!(spec.arguments()[10], "toml");
                     assert_eq!(
                         spec.arguments()[11],

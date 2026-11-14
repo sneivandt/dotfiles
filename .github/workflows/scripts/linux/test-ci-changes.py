@@ -786,6 +786,7 @@ class GateTests(unittest.TestCase):
 
         windows_only = {
             "infra/elevation": ("run_elevated_child", "wait_if_elevated"),
+            "app/commands/execution/elevation": ("prepare_windows_elevation",),
             "domains/dotfiles/resources/path_entry": (
                 "decode_reg_string", "append_user_path", "user_path_contains",
             ),
@@ -807,6 +808,10 @@ class GateTests(unittest.TestCase):
 
         portable = {
             "infra/elevation": ("should_pause", "wait_if_elevated_policy"),
+            "app/commands/execution/elevation": (
+                "prepare_elevation", "prepare_sudo_elevation",
+                "elevation_plan_disposition", "build_elevated_child_args",
+            ),
             "domains/dotfiles/resources/path_entry": (
                 "PathSource::is_on_path", "PathEntryResource::new",
                 "decode_reg_string_shared", "path_contains_entry", "expand_env_vars",
@@ -841,6 +846,23 @@ class GateTests(unittest.TestCase):
         ):
             with self.subTest(path=path, description=description):
                 self.assertFalse(excluded(path, description))
+
+    def test_windows_elevation_broker_mutations_stay_in_native_shards(self):
+        workflow = CONTRACT["WORKFLOW"].read_text(encoding="utf-8")
+        native = CONTRACT["job_blocks"](workflow)["mutation-windows"]
+        selected = re.search(r"--re '([^']+)'", native).group(1)
+        self.assertRegex(
+            "src/app/commands/execution/elevation.rs:306:5: replace "
+            "prepare_windows_elevation -> ElevationPlan with Default::default()",
+            selected,
+        )
+        for omitted in (
+            "--file src/app/commands/execution/elevation.rs",
+            "|prepare_windows_elevation",
+        ):
+            with self.subTest(omitted=omitted):
+                with self.assertRaisesRegex(ValueError, "native Windows mutation coverage"):
+                    CONTRACT["check"](workflow.replace(omitted, ""))
 
 
 class GitRangeTests(unittest.TestCase):

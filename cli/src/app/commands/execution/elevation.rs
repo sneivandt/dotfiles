@@ -8,6 +8,9 @@ use crate::engine::scheduler::ExecutionSummary;
 use crate::engine::{Context, Task, TaskAssessment, TaskId, TaskOutcome};
 use crate::infra::logging::{ActionCounts, Logger, OutputExt as _, TaskStatus};
 
+#[cfg(windows)]
+use self::prepare_windows_elevation as prepare_elevation;
+
 /// UAC may authenticate a different account; only machine-scoped work is safe.
 fn machine_scoped_selector(selector: &str) -> bool {
     selector == "developer-mode"
@@ -297,7 +300,7 @@ fn prepare_sudo_elevation(
 /// machine-scoped tasks that declared `needs_elevation` hold an administrator token; this
 /// process keeps running unelevated in the user's own terminal.
 #[cfg(windows)]
-fn prepare_elevation(
+fn prepare_windows_elevation(
     ctx: &Context,
     log: &Arc<Logger>,
     names: &[&str],
@@ -447,6 +450,23 @@ pub(super) fn build_elevated_child_args(
 mod tests {
     use super::*;
     use crate::test_helpers::make_static_context;
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_elevation_only_prompts_for_interactive_pending_work() {
+        let (ctx, log) = make_static_context("fixture-root".into(), None);
+        let ctx = ctx.with_non_interactive(true);
+        assert_eq!(
+            prepare_windows_elevation(&ctx, &log, &[], &[]),
+            ElevationPlan::Ready
+        );
+        assert_eq!(
+            prepare_windows_elevation(&ctx, &log, &["Windows Developer Mode"], &["developer-mode"]),
+            ElevationPlan::Unavailable {
+                reason: "elevation unavailable in a non-interactive session",
+            }
+        );
+    }
 
     fn elevated_child_scope_result(command_args: &[&str], marker: bool) -> anyhow::Result<()> {
         use crate::app::cli::{Cli, Command, EngineCommand};

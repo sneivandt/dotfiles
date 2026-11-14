@@ -540,6 +540,36 @@ fn serve_once(wire: String) -> (String, std::thread::JoinHandle<String>) {
 }
 
 #[test]
+fn native_asset_reader_accepts_only_success_and_preserves_typed_status_errors() {
+    let http = UreqClient::new(Duration::from_secs(5));
+    for (status, body) in [
+        (200, "release asset"),
+        (404, "missing"),
+        (503, "unavailable"),
+    ] {
+        let (url, server) = serve_once(format!(
+            "HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        ));
+        let result = http.reader(&url, &[]);
+        if status == 200 {
+            let mut content = String::new();
+            result.unwrap().read_to_string(&mut content).unwrap();
+            assert_eq!(content, body);
+        } else {
+            let error = result
+                .err()
+                .expect("non-success status must reject the asset");
+            assert!(
+                matches!(error.downcast_ref::<ureq::Error>(), Some(ureq::Error::StatusCode(code)) if *code == status),
+                "status {status} lost its typed error: {error:#}"
+            );
+        }
+        server.join().unwrap();
+    }
+}
+
+#[test]
 fn native_transport_preserves_status_and_headers_and_bounds_metadata() {
     let http = UreqClient::new(Duration::from_secs(5));
     let (url, server) = serve_once(format!(

@@ -310,6 +310,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn default_binary_limit_is_128_mib_for_streamed_assets() {
+        #[derive(Debug)]
+        struct SizedClient(u64);
+        impl HttpClient for SizedClient {
+            fn get(&self, _: &str, _: &[(&str, &str)]) -> Result<Box<dyn Read>> {
+                Ok(Box::new(std::io::repeat(0).take(self.0)))
+            }
+        }
+        let expected_limit = 128_u64 * 1024 * 1024;
+        for length in [expected_limit, expected_limit + 1] {
+            let mut file = tempfile::NamedTempFile::new().unwrap();
+            let result = download_to_file(
+                &SizedClient(length),
+                "https://example.invalid/asset",
+                file.as_file_mut(),
+            );
+            assert_eq!(result.is_ok(), length == expected_limit, "length={length}");
+            assert_eq!(file.as_file().metadata().unwrap().len(), expected_limit);
+        }
+    }
+
+    #[test]
     fn binary_limit_accepts_exact_size_and_rejects_oversized_streams_without_retry() {
         for length in [0, 15, 16, 17, 32] {
             let client = MockHttpClient::new(vec![Ok(vec![b'x'; length])]);

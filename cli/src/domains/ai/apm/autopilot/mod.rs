@@ -141,6 +141,11 @@ pub(super) fn apply_workflow_autopilot_fixup(
     let Some(ids) = fixup_workflow_ids(ctx)? else {
         return Ok(WorkflowRepair::NotApplicable);
     };
+    if ctx.env().var("DOTFILES_COPILOT_APP_CLOSED").as_deref() != Some("1") {
+        return Ok(WorkflowRepair::Unmet(
+            "close the Copilot App and set DOTFILES_COPILOT_APP_CLOSED=1 in a separate terminal before repairing workflows; reopen the App afterward".into(),
+        ));
+    }
     let (python, db_str) = match probe_workflow_db(ctx) {
         WorkflowDbProbe::Ready { python, db_str } => (python, db_str),
         WorkflowDbProbe::DbMissing { path } => {

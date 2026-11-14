@@ -117,8 +117,8 @@ The repository wrappers obtain the CLI and forward its arguments:
 These commands print the CLI version without needing a profile selection.
 If a usable cached binary is absent, the wrapper downloads a release into
 `bin/` and verifies its SHA-256 checksum. It also verifies build provenance
-when GitHub CLI is available. A missing GitHub CLI produces a warning; failed
-verification with the tool present blocks bootstrap. See
+using GitHub CLI. Missing GitHub CLI or failed verification blocks bootstrap
+unless `DOTFILES_SKIP_ATTESTATION=1` explicitly bypasses provenance. See
 [Build provenance verification](../guides/security-and-trust.md#build-provenance-verification).
 
 **Even wrapper help, list, and dry-run can download files.** Use an existing

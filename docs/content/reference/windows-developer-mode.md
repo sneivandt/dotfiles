@@ -26,8 +26,9 @@ rights. The Home symlinks task waits for this task, then checks its own needs.
 Unavailable Developer Mode does not block links that are already correct or directory
 junctions that can be created without it.
 
-Pending file symlinks may still need their own elevation. The CLI normally stays
-unelevated and delegates only affected tasks. See [Windows
+Home symlinks remain in the original user's process and recheck capability after
+this task. If file links are still unavailable, they are skipped rather than
+delegated to a potentially different Administrator account. See [Windows
 elevation](../guides/windows-and-wsl.md#elevation).
 
 ## Configuration

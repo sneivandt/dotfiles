@@ -14,6 +14,7 @@ mod phase;
 
 #[cfg(test)]
 use elevation::build_elevated_child_args;
+pub(crate) use elevation::validate_elevated_child_command;
 use phase::PreparedPhase;
 
 type RestartCondition<'a> = Box<dyn FnOnce() -> bool + 'a>;
@@ -85,6 +86,7 @@ impl<'a> RunCoordinator<'a> {
     ///
     /// Returns an error if graph validation fails, tasks fail, or work is interrupted.
     pub(crate) fn execute(&self, mut plan: ExecutionPlan<'_>) -> Result<()> {
+        elevation::validate_elevated_tasks(self.ctx, &plan.tasks)?;
         self.log
             .add_task_total(visible_count(plan.tasks.iter().copied()));
 

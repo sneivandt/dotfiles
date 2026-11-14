@@ -30,6 +30,20 @@ pub fn run() -> ExitCode {
     // elevation, and task engine are initialised. Narrowing to `EngineCommand`
     // here keeps the engine dispatch in `run_engine` total.
     let command = match args.command {
+        cli::Command::SystemFileHelper(opts) => {
+            return standalone(
+                crate::domains::system::resources::system_file::privileged_prepare(
+                    &opts.target,
+                    &opts.fragment,
+                    &opts.fragment_hash,
+                    &opts.merge,
+                    &opts.stage,
+                )
+                .and_then(|result| {
+                    writeln!(std::io::stdout().lock(), "{result}").map_err(Into::into)
+                }),
+            );
+        }
         cli::Command::Completions(opts) => {
             return standalone(write_completions(opts.shell, &mut std::io::stdout().lock()));
         }
@@ -115,6 +129,9 @@ fn standalone(result: anyhow::Result<()>) -> ExitCode {
 fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> ExitCode {
     let global = command.global();
     let runtime = commands::RuntimePolicy::detect(global, command.verbose());
+    if let Err(error) = commands::validate_elevated_child_command(command, &runtime) {
+        return standalone(Err(error));
+    }
     if runtime.execution.elevated_child {
         elevation::mark_elevated_child();
     }
@@ -263,6 +280,7 @@ mod tests {
                 | cli::Command::List(_)
                 | cli::Command::Explain(_)
                 | cli::Command::Log(_)
+                | cli::Command::SystemFileHelper(_)
                 | cli::Command::Completions(_) => panic!("expected update"),
             };
             assert_eq!(command.name(), "update");

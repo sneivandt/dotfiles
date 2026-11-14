@@ -144,6 +144,7 @@ if ($Build)
 
 function Resolve-ReleaseTag
 {
+    param([Parameter(Mandatory = $true)][string]$Repo)
     $url = "https://api.github.com/repos/$Repo/releases/latest"
     try
     {
@@ -190,12 +191,14 @@ function Test-Attestation
     .SYNOPSIS
         Verify GitHub build provenance for a downloaded asset.
     .DESCRIPTION
-        Verification runs by default when gh is available. Set
+        Verification requires gh by default. Set
         DOTFILES_SKIP_ATTESTATION=1 to skip the check explicitly.
     #>
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Path
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Repo
     )
 
     if ($env:DOTFILES_SKIP_ATTESTATION -eq '1')
@@ -205,8 +208,8 @@ function Test-Attestation
 
     if (-not (Get-Command gh -ErrorAction SilentlyContinue))
     {
-        Write-Warning "gh not found. Skipping build provenance verification."
-        return $true
+        Write-Warning "gh not found. Install GitHub CLI or use --build; DOTFILES_SKIP_ATTESTATION=1 explicitly bypasses provenance, not checksums."
+        return $false
     }
 
     $previousPromptDisabled = $env:GH_PROMPT_DISABLED
@@ -260,7 +263,7 @@ function Resolve-ReleaseRepo
 function Get-Binary
 {
     $Repo = Resolve-ReleaseRepo
-    $tag = Resolve-ReleaseTag
+    $tag = Resolve-ReleaseTag -Repo $Repo
     if (-not $tag)
     {
         Write-Error "Failed to resolve latest release tag. Check your internet connection or use --build to build from source."
@@ -329,7 +332,7 @@ function Get-Binary
             exit 1
         }
 
-        if (-not (Test-Attestation -Path $stagedBinary))
+        if (-not (Test-Attestation -Path $stagedBinary -Repo $Repo))
         {
             Write-Error "Build provenance verification failed for $assetName."
             exit 1
@@ -365,7 +368,13 @@ function Get-Binary
 }
 
 # Bootstrap: download the latest binary only if no binary is present.
-if (-not (Test-Path -LiteralPath $Binary))
+$binaryReady = Test-Path -LiteralPath $Binary -PathType Leaf
+if ($binaryReady -and ($IsLinux -or $IsMacOS))
+{
+    & test -x $Binary
+    $binaryReady = $LASTEXITCODE -eq 0
+}
+if (-not $binaryReady)
 {
     Get-Binary
 }

@@ -31,6 +31,64 @@ fn update_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>> {
 }
 
 #[test]
+fn unsafe_elevated_child_scope_is_rejected_before_startup_writes() {
+    for (verb, selector, inherited_marker) in [
+        ("update", "symlinks", false),
+        ("update", "registry", false),
+        ("remove", "symlinks", false),
+        ("update", "launcher", true),
+        ("check", "config-files", true),
+    ] {
+        let fixture = common::IntegrationTestContext::new();
+        let home = tempfile::tempdir().unwrap();
+        // If the startup guard regresses, configuration loading must still
+        // prevent native registry or other task mutations in this fixture.
+        std::fs::write(
+            fixture.root_path().join("conf/symlinks.toml"),
+            "invalid = [",
+        )
+        .unwrap();
+        let mut command =
+            common::cli_command(fixture.root_path(), home.path(), None, verb, selector);
+        if inherited_marker {
+            command.env("DOTFILES_ELEVATED_CHILD", "1");
+        } else {
+            command.arg("--elevated-child");
+        }
+        let repository = git2::Repository::open(fixture.root_path()).unwrap();
+        repository
+            .config()
+            .unwrap()
+            .set_str("dotfiles.profile", "original-profile")
+            .unwrap();
+        let config_path = repository.path().join("config");
+        let original_config = std::fs::read(&config_path).unwrap();
+
+        let result = command.output().unwrap();
+        let output = format!(
+            "{}{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(!result.status.success(), "{verb}/{selector}: {output}");
+        assert!(
+            output.contains("elevated children"),
+            "{verb}/{selector}: {output}"
+        );
+        assert_eq!(
+            std::fs::read(config_path).unwrap(),
+            original_config,
+            "rejected scope must not persist a different profile"
+        );
+        assert_eq!(
+            std::fs::read_dir(home.path()).unwrap().count(),
+            0,
+            "rejected scope must not create user settings, logs, or run locks"
+        );
+    }
+}
+
+#[test]
 fn shared_home_lock_blocks_other_checkouts_before_configuration_mutations() {
     use std::io::{Read as _, Seek as _};
 

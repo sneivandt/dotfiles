@@ -564,7 +564,7 @@ fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
                 &unchanged_log,
             ));
     let unchanged = ConfigureParu.run(&unchanged_ctx).unwrap();
-    assert_eq!(task_batch(&unchanged).changed_count(), 0);
+    assert!(matches!(unchanged, TaskResult::Ok));
     assert!(
         unchanged_log
             .messages_of(crate::infra::logging::MsgKind::DryRun)
@@ -1699,6 +1699,10 @@ fn successful_metadata_validation_is_reused_only_for_identical_intact_inputs() {
     let stamp = snapshot.join(".git/dotfiles-validated-metadata");
     let modified = std::fs::metadata(&stamp).unwrap().modified().unwrap();
     let _repeat = ConfigureParu.run(&ctx).unwrap();
+    assert!(matches!(
+        ParuConfig.current_state(&ctx).unwrap(),
+        OperationState::Complete
+    ));
     let _preview = ConfigureParu.run(&ctx.with_dry_run(true)).unwrap();
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(
@@ -1730,6 +1734,10 @@ fn successful_metadata_validation_is_reused_only_for_identical_intact_inputs() {
     let _descriptor = ConfigureParu.run(&ctx).unwrap();
     assert_eq!(calls.load(Ordering::SeqCst), 5);
     std::fs::remove_file(stamp).unwrap();
+    assert!(matches!(
+        ParuConfig.current_state(&ctx).unwrap(),
+        OperationState::NeedsRun { .. }
+    ));
     let _missing_stamp = ConfigureParu.run(&ctx).unwrap();
     assert_eq!(calls.load(Ordering::SeqCst), 6);
 }
@@ -1745,32 +1753,31 @@ fn recipe_workers_are_bounded_ordered_and_respect_sequential_mode() {
             let dir = fixture();
             let ctx = snapshot_context(dir.path()).with_parallel(parallel);
             let caller = std::thread::current().id();
-            let gate = (Mutex::new((0_usize, 0_usize)), Condvar::new());
+            let gate = (Mutex::new(std::collections::HashSet::new()), Condvar::new());
             let active = AtomicUsize::new(0);
             let peak = AtomicUsize::new(0);
+            let workers = length.min(4).min(rayon::current_num_threads());
             let results = map_recipes(&ctx, &(0..length).collect::<Vec<_>>(), |item| {
                 let now = active.fetch_add(1, Ordering::SeqCst) + 1;
                 peak.fetch_max(now, Ordering::SeqCst);
-                if parallel && length >= 2 {
-                    // A bounded cyclic gate proves overlap, but a broken
+                if parallel && workers >= 2 {
+                    // A first-visit gate proves overlap, but a broken
                     // dispatch policy fails instead of hanging the test suite.
-                    let mut state = gate.0.lock().unwrap();
-                    let generation = state.1;
-                    state.0 += 1;
-                    if state.0 == length.min(4) {
-                        state.0 = 0;
-                        state.1 += 1;
-                        gate.1.notify_all();
-                    } else {
-                        let (_state, timeout) = gate
-                            .1
-                            .wait_timeout_while(state, Duration::from_secs(10), |state| {
-                                state.1 == generation
-                            })
-                            .unwrap();
-                        assert!(!timeout.timed_out(), "parallel recipes must overlap");
+                    let mut threads = gate.0.lock().unwrap();
+                    if threads.insert(std::thread::current().id()) {
+                        if threads.len() == workers {
+                            gate.1.notify_all();
+                        } else {
+                            let (_threads, timeout) = gate
+                                .1
+                                .wait_timeout_while(threads, Duration::from_secs(10), |threads| {
+                                    threads.len() < workers
+                                })
+                                .unwrap();
+                            assert!(!timeout.timed_out(), "parallel recipes must overlap");
+                        }
                     }
-                } else {
+                } else if !parallel || length < 2 {
                     assert_eq!(
                         std::thread::current().id(),
                         caller,
@@ -1779,8 +1786,7 @@ fn recipe_workers_are_bounded_ordered_and_respect_sequential_mode() {
                 }
                 active.fetch_sub(1, Ordering::SeqCst);
                 Ok(item * 2)
-            })
-            .unwrap();
+            });
             assert_eq!(
                 results.into_iter().collect::<Result<Vec<_>>>().unwrap(),
                 (0..length).map(|n| n * 2).collect::<Vec<_>>()
@@ -1788,7 +1794,7 @@ fn recipe_workers_are_bounded_ordered_and_respect_sequential_mode() {
             let expected_peak = if length == 0 {
                 0
             } else if parallel {
-                length.min(4)
+                workers
             } else {
                 1
             };
@@ -1855,8 +1861,7 @@ fn cancelled_recipe_stops_later_sequential_dispatch_without_caching_failure() {
             result: ExecResult::failure("", "", None),
         }
         .into())
-    })
-    .unwrap();
+    });
     for result in results {
         assert!(
             result

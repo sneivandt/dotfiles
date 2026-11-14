@@ -164,6 +164,30 @@ JSON Lines output disables prompts."
     /// Generate shell completions for the given shell
     #[command(hide = true)]
     Completions(CompletionsOpts),
+
+    /// Prepare a system file inside the scoped privileged installer.
+    #[command(hide = true)]
+    SystemFileHelper(SystemFileHelperOpts),
+}
+
+/// Internal arguments for the scoped system-file installer.
+#[derive(Args, Debug)]
+pub struct SystemFileHelperOpts {
+    /// Verified destination entry.
+    #[arg(long)]
+    pub target: std::path::PathBuf,
+    /// Fragment path read by the unelevated caller.
+    #[arg(long)]
+    pub fragment: std::path::PathBuf,
+    /// SHA-256 fingerprint of the caller's fragment snapshot.
+    #[arg(long)]
+    pub fragment_hash: String,
+    /// Configured merge strategy.
+    #[arg(long)]
+    pub merge: String,
+    /// Private directory created beside the destination.
+    #[arg(long)]
+    pub stage: std::path::PathBuf,
 }
 
 /// Repository and profile options used by configuration-aware commands.
@@ -989,6 +1013,7 @@ mod tests {
                 Command::List(_)
                 | Command::Explain(_)
                 | Command::Log(_)
+                | Command::SystemFileHelper(_)
                 | Command::Completions(_) => {
                     panic!("expected execution command")
                 }
@@ -1237,6 +1262,7 @@ mod tests {
                     Command::List(_)
                     | Command::Explain(_)
                     | Command::Log(_)
+                    | Command::SystemFileHelper(_)
                     | Command::Completions(_) => {
                         panic!("expected engine command")
                     }
@@ -1355,6 +1381,29 @@ mod tests {
     }
 
     #[test]
+    fn system_file_helper_keeps_snapshot_and_paths_as_data() {
+        let cli = Cli::parse_from([
+            "dotfiles",
+            "system-file-helper",
+            "--target",
+            "/etc/example ' $(false)",
+            "--fragment",
+            "/repo/system/example",
+            "--fragment-hash=-snapshot",
+            "--merge",
+            "toml",
+            "--stage",
+            "/etc/private-stage",
+        ]);
+        let Command::SystemFileHelper(opts) = cli.command else {
+            panic!("expected standalone system-file helper");
+        };
+        assert_eq!(opts.target, std::path::Path::new("/etc/example ' $(false)"));
+        assert_eq!(opts.fragment_hash, "-snapshot");
+        assert_eq!(opts.merge, "toml");
+    }
+
+    #[test]
     fn engine_option_conversion_preserves_command_and_output_flags() {
         for name in ["update", "remove", "check"] {
             let mut args = vec![
@@ -1398,6 +1447,7 @@ mod tests {
                 Command::List(_)
                 | Command::Explain(_)
                 | Command::Log(_)
+                | Command::SystemFileHelper(_)
                 | Command::Completions(_) => {
                     panic!("expected engine command")
                 }

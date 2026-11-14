@@ -19,6 +19,75 @@ fn repair_changed(ctx: &Context, pre: &DesiredApmWorkflows) -> bool {
         .expect("workflow repair must complete")
         .changed()
 }
+
+#[test]
+fn cron_skips_calendar_fields_and_bounds_impossible_schedules() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    let (helpers, _) = WORKFLOW_AUTOPILOT_SCRIPT
+        .split_once("\ncon = sqlite3.connect")
+        .unwrap();
+    let loop_line = helpers
+        .lines()
+        .position(|line| line.trim() == "if candidate.month not in months:")
+        .unwrap()
+        + 1;
+    let script = format!("{helpers}\nloop_line = {loop_line}\n");
+    let script = script
+        + r#"
+cases = [
+    ("0 0 29 2 *", datetime(2026, 3, 1), datetime(2028, 2, 29)),
+    ("0 0 1 1 *", datetime(2026, 12, 31, 23, 59), datetime(2027, 1, 1)),
+    ("15 7,11,15 * * 1-5", datetime(2026, 11, 13, 15, 15), datetime(2026, 11, 16, 7, 15)),
+    ("0 0 31 2 1", datetime(2026, 2, 1), datetime(2026, 2, 2)),
+    ("* * * * *", datetime(2026, 11, 14, 12, 34, 59), datetime(2026, 11, 14, 12, 35)),
+]
+for expression, now, expected in cases:
+    assert compute_next_cron(expression, now) == expected, expression
+iterations = 0
+def trace(frame, event, arg):
+    global iterations
+    if event == "line" and frame.f_code.co_name == "compute_next_cron" and frame.f_lineno == loop_line:
+        iterations += 1
+    return trace
+sys.settrace(trace)
+try:
+    compute_next_cron("0 0 31 2 *", datetime(2026, 1, 1))
+except ValueError as error:
+    assert "no occurrence" in str(error)
+else:
+    raise AssertionError("February 31 must not be scheduled")
+finally:
+    sys.settrace(None)
+assert iterations < 3000, iterations
+"#;
+    run_python_script(python, &script, &[]);
+}
+
+#[test]
+fn workflow_updates_require_offline_acknowledgement_before_any_deployment() {
+    let home = tempfile::tempdir().unwrap();
+    write_autopilot_fixture(home.path(), &["apm--fixture"]);
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    mock.expect_execute().never();
+    let ctx = make_home_context_with_executor(home.path(), mock)
+        .with_env(crate::infra::env::MapEnv::new().into_handle());
+    let result = update_task().run(&ctx).unwrap();
+    assert!(matches!(
+        result,
+        crate::engine::TaskResult::Skipped {
+            kind: crate::engine::SkipKind::UnmetWork,
+            ..
+        }
+    ));
+    assert!(!home.path().join(".apm/apm.yml").exists());
+    assert!(matches!(
+        super::apply_workflow_autopilot_fixup(&ctx, &DesiredApmWorkflows::FirstInstall).unwrap(),
+        super::WorkflowRepair::Unmet(_)
+    ));
+}
 use super::lockfile::parse_deployed_workflow_ids;
 use super::outcome::{
     FixupExecution, FixupFailure, FixupOutcome, decide_fixup_outcome, interpret_fixup_result,

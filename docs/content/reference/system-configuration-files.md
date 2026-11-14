@@ -27,7 +27,11 @@ format](#configuration) before editing.
 
 Malformed or non-regular destinations fail. Missing PAM service files are not created. A
 merge preserves the destination's owner, group, and permissions. New files use
-`root:root` and mode `0644`. Dry-run leaves destinations unchanged.
+`root:root` and mode `0644`. Assessment and dry-run never elevate to read protected
+destinations. If permissions prevent inspection, preview reports that privileged
+assessment is required; apply assesses and merges inside a scoped root process.
+Original and merged contents stay in its private staging directory beside the
+destination, not in user-owned temporary files or command output.
 
 ## Configuration
 
@@ -65,8 +69,9 @@ root. Duplicate active destinations within a repository are errors.
 | `ini` | Assigned keys and bare flags within sections, including Pacman options |
 | `pam` | Module rules, placed at the end of their existing authentication, account, password, or session stack |
 
-Unrelated settings are preserved. A TOML update can remove comments and change
-formatting. TOML and INI fragments are validated even when the destination is absent.
+Unrelated settings are preserved. TOML updates preserve comments and formatting
+around existing keys; managed values and new keys can change formatting.
+TOML and INI fragments are validated even when the destination is absent.
 INI cannot assign different values to the same key within one section. Identical
 repeated assignments are allowed.
 

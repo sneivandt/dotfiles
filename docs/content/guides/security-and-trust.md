@@ -62,22 +62,19 @@ gh attestation verify bin/dotfiles --repo sneivandt/dotfiles
 Use `bin/dotfiles.exe` for Windows. For a fork's release, use that fork's
 repository rather than the upstream name.
 
-Both download paths verify the checksum. When `gh` is available, failed
-attestation or authentication rejects the download; self-update preserves the
-installed binary.
+Both download paths require GitHub CLI and verify the checksum and provenance.
+Missing `gh`, failed attestation, or failed authentication rejects the download;
+an existing binary remains unchanged. Install GitHub CLI before bootstrapping,
+or use `--build` to compile the reviewed checkout.
 
-The difference is what happens when `gh` is missing:
-
-| Download path | Without GitHub CLI |
-|---|---|
-| Wrapper bootstrap | Warns and accepts checksum verification alone, allowing first setup |
-| CLI self-update | Rejects the update |
-
-The bootstrap exception is weaker verification, not a successful attestation
-check. `DOTFILES_SKIP_ATTESTATION=1` explicitly skips provenance in both paths;
+`DOTFILES_SKIP_ATTESTATION=1` explicitly skips provenance in both paths;
 the CLI's `--skip-attestation` flag affects only self-update, not bootstrap.
 Neither bypasses checksums. Do not enable a bypass to silence an unexplained
 failure.
+
+Self-update fetches the asset's checksum before its binary and rejects binary
+responses larger than 128 MiB. Transport retries do not retry local staging
+failures.
 
 Automatic GitHub CLI calls disable prompts and Linux desktop-keyring access to
 avoid hidden authentication dialogs, including under WSL. If credentials exist
@@ -92,8 +89,10 @@ Start the CLI as your normal user. It arranges privileges for selected work
 rather than requiring the whole session to run as root or Administrator.
 
 On Linux, it uses cached sudo credentials or, in an interactive session,
-primes them in the foreground. On Windows, tasks needing elevation run in
-one short-lived UAC-elevated child restricted to their selectors.
+primes them in the foreground. On Windows, machine-scoped Developer Mode work
+runs in one short-lived UAC-elevated child. Home symlinks and user registry
+settings stay in the original user's process even if UAC authenticates a
+different Administrator account.
 Non-interactive/CI sessions do not prompt for fresh sudo credentials or UAC
 consent.
 

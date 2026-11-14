@@ -8,6 +8,59 @@ use crate::engine::scheduler::ExecutionSummary;
 use crate::engine::{Context, Task, TaskAssessment, TaskId, TaskOutcome};
 use crate::infra::logging::{ActionCounts, Logger, OutputExt as _, TaskStatus};
 
+/// UAC may authenticate a different account; only machine-scoped work is safe.
+fn machine_scoped_selector(selector: &str) -> bool {
+    selector == "developer-mode"
+}
+
+/// Reject manually requested or inherited elevated-child scopes before startup
+/// can select a profile, write configuration, or run user-scoped tasks.
+pub(crate) fn validate_elevated_child_command(
+    command: &crate::app::cli::EngineCommand,
+    runtime: &super::super::RuntimePolicy<'_>,
+) -> anyhow::Result<()> {
+    if !runtime.execution.elevated_child {
+        return Ok(());
+    }
+    let crate::app::cli::EngineCommand::Update { opts, global, .. } = command else {
+        anyhow::bail!("elevated children may only update machine-scoped tasks");
+    };
+    anyhow::ensure!(
+        !opts.filters.only.is_empty()
+            && opts
+                .filters
+                .only
+                .iter()
+                .all(|selector| machine_scoped_selector(selector))
+            && opts.filters.skip.is_empty()
+            && !opts.with_deps,
+        "elevated children require an exact --only developer-mode scope without --skip or --with-deps"
+    );
+    anyhow::ensure!(
+        global
+            .root
+            .as_deref()
+            .is_some_and(std::path::Path::is_absolute)
+            && global
+                .overlay
+                .as_deref()
+                .is_none_or(std::path::Path::is_absolute),
+        "elevated children require an absolute --root and, when selected, absolute --overlay"
+    );
+    Ok(())
+}
+
+pub(super) fn validate_elevated_tasks(ctx: &Context, tasks: &[&dyn Task]) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !ctx.execution_policy().elevated_child
+            || tasks
+                .iter()
+                .all(|task| machine_scoped_selector(task.selector())),
+        "elevated children cannot run user-scoped tasks"
+    );
+    Ok(())
+}
+
 /// Outcome of arranging privilege for the tasks that declared they need it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ElevationPlan {
@@ -59,9 +112,10 @@ impl<'a> ElevationBroker<'a> {
             tasks
                 .iter()
                 .filter(|task| {
-                    assessments
-                        .get(&task.task_id())
-                        .is_some_and(TaskAssessment::requires_elevation)
+                    (!self.ctx.platform().is_windows() || machine_scoped_selector(task.selector()))
+                        && assessments
+                            .get(&task.task_id())
+                            .is_some_and(TaskAssessment::requires_elevation)
                 })
                 .copied()
                 .collect()
@@ -240,7 +294,7 @@ fn prepare_sudo_elevation(
 ///
 /// Windows has no per-command `sudo`, so the alternative to one scoped child is
 /// elevating the whole run. The child is restricted to `selectors`, so only the
-/// tasks that declared `needs_elevation` ever hold an administrator token; this
+/// machine-scoped tasks that declared `needs_elevation` hold an administrator token; this
 /// process keeps running unelevated in the user's own terminal.
 #[cfg(windows)]
 fn prepare_elevation(
@@ -270,7 +324,22 @@ fn prepare_elevation(
     }
 
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let child_args = build_elevated_child_args(&args, selectors);
+    let resolved_paths = std::path::absolute(ctx.root()).and_then(|root| {
+        ctx.overlay()
+            .map(std::path::absolute)
+            .transpose()
+            .map(|overlay| (root, overlay))
+    });
+    let (root, overlay) = match resolved_paths {
+        Ok(paths) => paths,
+        Err(error) => {
+            log.error(format!("failed to resolve elevated child paths: {error}"));
+            return ElevationPlan::Unavailable {
+                reason: "elevated child paths unavailable",
+            };
+        }
+    };
+    let child_args = build_elevated_child_args(&args, selectors, &root, overlay.as_deref());
 
     log.separate_from_startup();
     log.always(format!(
@@ -325,14 +394,19 @@ const fn prepare_elevation(
 /// Existing `--only` / `--skip` filters and `--with-deps` are dropped because the
 /// parent has already resolved the child's exact scope. `--no-parallel` is
 /// forced so output stays readable in the separate console `Start-Process`
-/// opens. Every other flag is preserved.
+/// opens. Repository paths are replaced with the parent's resolved paths.
 #[cfg_attr(
     not(any(windows, test)),
     allow(dead_code, reason = "used by the Windows elevation broker")
 )]
-pub(super) fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> Vec<String> {
+pub(super) fn build_elevated_child_args(
+    args: &[String],
+    selectors: &[&str],
+    root: &std::path::Path,
+    overlay: Option<&std::path::Path>,
+) -> Vec<String> {
     /// Filters whose values the child must not inherit.
-    const DROPPED_WITH_VALUE: [&str; 2] = ["--only", "--skip"];
+    const DROPPED_WITH_VALUE: [&str; 4] = ["--only", "--skip", "--root", "--overlay"];
 
     let mut out: Vec<String> = Vec::with_capacity(args.len().saturating_add(4));
     let mut args = args.iter();
@@ -360,6 +434,12 @@ pub(super) fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> 
     out.push(selectors.join(","));
     out.push("--no-parallel".to_string());
     out.push("--elevated-child".to_string());
+    out.push("--root".to_string());
+    out.push(root.display().to_string());
+    if let Some(overlay) = overlay {
+        out.push("--overlay".to_string());
+        out.push(overlay.display().to_string());
+    }
     out
 }
 
@@ -367,6 +447,200 @@ pub(super) fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> 
 mod tests {
     use super::*;
     use crate::test_helpers::make_static_context;
+
+    fn elevated_child_scope_result(command_args: &[&str], marker: bool) -> anyhow::Result<()> {
+        use crate::app::cli::{Cli, Command, EngineCommand};
+
+        let root = std::path::absolute("fixture-root").unwrap();
+        let parsed = Cli::try_parse_from(
+            std::iter::once("dotfiles")
+                .chain(command_args.iter().copied())
+                .map(str::to_string)
+                .chain(["--root".to_string(), root.display().to_string()]),
+        )
+        .unwrap();
+        let command = match parsed.command {
+            Command::Update(opts) => {
+                let (global, opts, verbose) = opts.into_engine_parts();
+                EngineCommand::Update {
+                    global,
+                    opts,
+                    verbose,
+                }
+            }
+            Command::Remove(opts) => {
+                let (global, opts, verbose) = opts.into_engine_parts();
+                EngineCommand::Remove {
+                    global,
+                    opts,
+                    verbose,
+                }
+            }
+            Command::Check(opts) => {
+                let (global, opts, verbose) = opts.into_engine_parts();
+                EngineCommand::Check {
+                    global,
+                    opts,
+                    verbose,
+                }
+            }
+            Command::List(_)
+            | Command::Explain(_)
+            | Command::Log(_)
+            | Command::Completions(_)
+            | Command::SystemFileHelper(_) => panic!("scope fixture must use an engine command"),
+        };
+        let mut env = crate::infra::env::MapEnv::new();
+        if marker {
+            env = env.with(crate::infra::elevation::ELEVATED_CHILD_VAR, "1");
+        }
+        let runtime = super::super::super::RuntimePolicy::new(
+            command.global(),
+            false,
+            env.into_handle(),
+            false,
+            false,
+        );
+        validate_elevated_child_command(&command, &runtime)
+    }
+
+    #[test]
+    fn elevated_child_scope_accepts_machine_children_and_normal_user_runs() {
+        for command_args in [
+            vec!["update", "--elevated-child", "--only", "developer-mode"],
+            vec!["update", "--only", "symlinks"],
+        ] {
+            elevated_child_scope_result(&command_args, false).unwrap();
+        }
+    }
+
+    #[test]
+    fn elevated_child_scope_rejects_user_work_before_startup() {
+        for (name, command_args, marker) in [
+            ("unscoped child", vec!["update", "--elevated-child"], false),
+            (
+                "home child",
+                vec!["update", "--elevated-child", "--only", "symlinks"],
+                false,
+            ),
+            (
+                "HKCU child",
+                vec!["update", "--elevated-child", "--only", "registry"],
+                false,
+            ),
+            (
+                "mixed child",
+                vec![
+                    "update",
+                    "--elevated-child",
+                    "--only",
+                    "developer-mode,symlinks",
+                ],
+                false,
+            ),
+            (
+                "dependency expansion",
+                vec![
+                    "update",
+                    "--elevated-child",
+                    "--only",
+                    "developer-mode",
+                    "--with-deps",
+                ],
+                false,
+            ),
+            (
+                "skip filter",
+                vec![
+                    "update",
+                    "--elevated-child",
+                    "--only",
+                    "developer-mode",
+                    "--skip",
+                    "symlinks",
+                ],
+                false,
+            ),
+            (
+                "remove child",
+                vec!["remove", "--elevated-child", "--only", "symlinks"],
+                false,
+            ),
+            (
+                "inherited marker",
+                vec!["update", "--only", "registry"],
+                true,
+            ),
+            ("inherited marker on check", vec!["check"], true),
+        ] {
+            assert!(
+                elevated_child_scope_result(&command_args, marker).is_err(),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn elevated_child_scope_requires_resolved_absolute_paths() {
+        use crate::app::cli::{Cli, Command, EngineCommand};
+
+        let root = std::path::absolute("fixture-root")
+            .unwrap()
+            .display()
+            .to_string();
+        let overlay = std::path::absolute("fixture-overlay")
+            .unwrap()
+            .display()
+            .to_string();
+        for (paths, allowed) in [
+            (vec![], false),
+            (vec!["--root", "relative-root"], false),
+            (vec!["--root", root.as_str()], true),
+            (
+                vec!["--root", root.as_str(), "--overlay", "relative-overlay"],
+                false,
+            ),
+            (
+                vec!["--root", root.as_str(), "--overlay", overlay.as_str()],
+                true,
+            ),
+        ] {
+            let Command::Update(opts) = Cli::try_parse_from(
+                [
+                    "dotfiles",
+                    "update",
+                    "--elevated-child",
+                    "--only",
+                    "developer-mode",
+                ]
+                .into_iter()
+                .chain(paths),
+            )
+            .unwrap()
+            .command
+            else {
+                panic!("path fixture must use update")
+            };
+            let (global, opts, verbose) = opts.into_engine_parts();
+            let command = EngineCommand::Update {
+                global,
+                opts,
+                verbose,
+            };
+            let runtime = super::super::super::RuntimePolicy::new(
+                command.global(),
+                false,
+                crate::infra::env::MapEnv::new().into_handle(),
+                false,
+                false,
+            );
+            assert_eq!(
+                validate_elevated_child_command(&command, &runtime).is_ok(),
+                allowed,
+                "{command:?}"
+            );
+        }
+    }
 
     #[test]
     fn sudo_primes_foreground_credentials_for_single_and_sequential_tasks() {

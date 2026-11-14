@@ -58,11 +58,9 @@ keep elsewhere: the desktop's
 runs daily and deletes files and links after 31 complete days since their last
 modification (`find -mtime +30`), along with old empty directories.
 
-Thunar is the default app for opening folders. GTK apps use Noto Sans, Adwaita
-Dark, and the Tokyo Night icon theme. It supplies slate-blue folder icons and
-inherits the rest from Papirus Dark. Thunar and the GTK file chooser use Tokyo
-Night colors for selected files. Apps that use the desktop portal get this
-chooser for their Open and Save dialogs.
+Thunar is the default file manager. Some view settings reset at graphical
+login. Use the toolbar menu to change the view or press **Ctrl+H** to toggle
+hidden files. Thunar and the GTK file chooser use Tokyo Night styling.
 
 ### Media keys
 

@@ -197,7 +197,7 @@ _verify_checksum() {
 
 # Verify GitHub build provenance for a downloaded asset.
 #
-# Verification runs by default when gh is available. Set
+# Verification requires gh by default. Set
 # DOTFILES_SKIP_ATTESTATION=1 to skip the check explicitly.
 _verify_attestation() {
   _va_binary="$1"
@@ -207,8 +207,8 @@ _verify_attestation() {
   fi
 
   if ! command -v gh >/dev/null 2>&1; then
-    echo "WARNING: gh not found. Skipping build provenance verification." >&2
-    return 0
+    echo "ERROR: gh not found. Install GitHub CLI or use --build; DOTFILES_SKIP_ATTESTATION=1 explicitly bypasses provenance, not checksums." >&2
+    return 1
   fi
 
   # GH_PROMPT_DISABLED does not suppress the Linux keyring's GUI prompts.

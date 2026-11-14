@@ -124,11 +124,19 @@ awk -v content="$content" -v linenos="$linenos" -v filenames="$filenames" '
 ' "$diff_file"
 
 if [ -n "$ALLOWLIST_RE" ]; then
-  # Use a control character so patterns can contain unescaped '/'. Also
-  # validate the allowlist on empty input: broken exceptions must fail closed.
-  sed_delim=$(printf '\001')
-  if ! sed -E "s${sed_delim}${ALLOWLIST_RE}${sed_delim}<allowlisted>${sed_delim}gI" \
-    "$content" > "$content.redacted"; then
+  # Detection is case-insensitive too, so lowercasing both sides preserves
+  # matching without relying on sed's non-POSIX case-insensitive flag.
+  if ! DOTFILES_ALLOWLIST_RE="$ALLOWLIST_RE" awk '
+    BEGIN {
+      pattern = tolower(ENVIRON["DOTFILES_ALLOWLIST_RE"])
+      if (match("", pattern)) exit 1
+    }
+    {
+      line = tolower($0)
+      gsub(pattern, "<allowlisted>", line)
+      print line
+    }
+  ' "$content" > "$content.redacted"; then
     printf 'ERROR: Cannot apply sensitive-data allowlist.\n' >&2
     exit 1
   fi

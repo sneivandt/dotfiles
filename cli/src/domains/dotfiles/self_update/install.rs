@@ -8,7 +8,7 @@ use anyhow::{Context as _, Result, bail};
 
 use super::attestation::{GhCli, Policy, SystemGh, policy, verify_provenance};
 use super::cache::write_cache_best_effort;
-use super::http::{HttpClient, download_to_file, verify_checksum};
+use super::http::{HttpClient, download_to_file, expected_checksum};
 use super::paths::{asset_name, binary_path, old_binary_name, old_binary_path};
 
 fn remove_stale_backup(path: &Path) -> Result<()> {
@@ -203,9 +203,13 @@ fn download_and_install_with_gh(
         0o600,
     )
     .context("creating staged download")?;
+    let expected = expected_checksum(client, tag, asset)?;
     let actual = download_to_file(client, &url, &mut file)?;
     drop(file);
-    verify_checksum(client, tag, asset, &actual)?;
+    anyhow::ensure!(
+        actual.eq_ignore_ascii_case(&expected),
+        "checksum mismatch for {asset}: expected {expected}, got {actual}"
+    );
     verify_provenance(gh, policy, asset, staged.path())?;
 
     replace_binary(&bin, staged.path())?;
@@ -510,7 +514,7 @@ mod tests {
         let hash = super::super::hex_encode(&hasher.finalize());
         let checksums = format!("{hash}  {}\n", asset_name());
 
-        let client = MockHttpClient::new(vec![Ok(binary_data.clone()), Ok(checksums.into_bytes())]);
+        let client = MockHttpClient::new(vec![Ok(checksums.into_bytes()), Ok(binary_data.clone())]);
         let gh = RecordingGh {
             directory: bin_dir.clone(),
             bytes: binary_data.clone(),
@@ -537,13 +541,13 @@ mod tests {
             client.request_urls(),
             [
                 format!(
+                    "https://github.com/{}/releases/download/v1.0.0/checksums.sha256",
+                    super::super::REPO
+                ),
+                format!(
                     "https://github.com/{}/releases/download/v1.0.0/{}",
                     super::super::REPO,
                     asset_name()
-                ),
-                format!(
-                    "https://github.com/{}/releases/download/v1.0.0/checksums.sha256",
-                    super::super::REPO
                 ),
             ]
         );
@@ -554,7 +558,7 @@ mod tests {
         #[derive(Debug)]
         struct FailingHttp;
         impl HttpClient for FailingHttp {
-            fn get(&self, _: &str, _: &[(&str, &str)]) -> Result<Box<dyn std::io::Read>> {
+            fn get(&self, url: &str, _: &[(&str, &str)]) -> Result<Box<dyn std::io::Read>> {
                 struct BrokenBody {
                     failed: bool,
                 }
@@ -570,6 +574,13 @@ mod tests {
                             "fixture body failure",
                         ))
                     }
+                }
+                if url.ends_with("/checksums.sha256") {
+                    return Ok(Box::new(std::io::Cursor::new(format!(
+                        "{}  {}\n",
+                        "0".repeat(64),
+                        asset_name()
+                    ))));
                 }
                 Ok(Box::new(BrokenBody { failed: false }))
             }
@@ -601,7 +612,7 @@ mod tests {
         let data = version_capable_binary();
         let hash = super::super::hex_encode(&Sha256::digest(&data));
         let checksums = format!("{hash}  {}\n", asset_name());
-        let client = MockHttpClient::new(vec![Ok(data.clone()), Ok(checksums.into_bytes())]);
+        let client = MockHttpClient::new(vec![Ok(checksums.into_bytes()), Ok(data.clone())]);
 
         download_and_install_with_gh(
             dir.path(),
@@ -643,8 +654,8 @@ mod tests {
         let cache = cache_path(root.path());
         fs::write(&cache, "existing cache").unwrap();
         let client = MockHttpClient::new(vec![
-            Ok(b"untrusted binary".to_vec()),
             Ok(format!("{}  {}\n", "0".repeat(64), asset_name()).into_bytes()),
+            Ok(b"untrusted binary".to_vec()),
         ]);
 
         let error = download_and_install_with_gh(
@@ -685,7 +696,7 @@ mod tests {
         let hash = super::super::hex_encode(&hasher.finalize());
         let checksums = format!("{hash}  {}\n", asset_name());
         let client =
-            MockHttpClient::new(vec![Ok(binary_data.to_vec()), Ok(checksums.into_bytes())]);
+            MockHttpClient::new(vec![Ok(checksums.into_bytes()), Ok(binary_data.to_vec())]);
 
         let error = download_and_install_with_gh(
             dir.path(),
@@ -809,7 +820,7 @@ mod tests {
         let hash = super::super::hex_encode(&hasher.finalize());
         let checksums = format!("{hash}  {}\n", asset_name());
 
-        let client = MockHttpClient::new(vec![Ok(bad_binary.to_vec()), Ok(checksums.into_bytes())]);
+        let client = MockHttpClient::new(vec![Ok(checksums.into_bytes()), Ok(bad_binary.to_vec())]);
 
         let result = download_and_install_with_gh(
             dir.path(),

@@ -92,8 +92,8 @@ the changes before applying them.
 
 You need Git and a POSIX shell on Linux, or Git and PowerShell on Windows.
 On Linux, downloading the CLI also needs `curl` or `wget`. Install GitHub CLI
-(`gh`) to verify where release binaries were built. The first download warns
-and continues without it, but later CLI self-updates require it. See
+(`gh`) before downloading to verify where release binaries were built.
+Bootstrap and CLI self-update both reject downloads without it. See
 [download verification](security-and-trust.md#build-provenance-verification)
 or the [Windows requirements](windows-and-wsl.md#requirements) for details.
 
@@ -155,7 +155,9 @@ Before the first apply, check these defaults in particular:
   SSH pushes need your own authentication.
 - **Automatic cleanup:** both Linux profiles select daily
   [~/tmp cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service)
-  after 8 complete days since modification. Arch desktops also select
+  after 8 complete days since modification, metadata change, and access.
+  Freshly extracted files are retained even when their archived modification
+  times are old. Arch desktops also select
   [~/screenshots cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service)
   after 31 days. These services delete old files, links, and empty directories.
 - **System settings:** both roles can select privileged changes. Inspect

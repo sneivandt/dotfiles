@@ -421,12 +421,13 @@ fail on unmet skips; filtering a check out is not evidence it passed.
 
 Check permission, target conflicts, and source checkout separately:
 
-- File links need Developer Mode or suitable elevation. Directory links can
-  fall back to junctions.
+- Enable Developer Mode, then retry file links from your normal user's
+  terminal. Home links are never UAC-delegated. Directory links can fall back
+  to junctions.
 - Back up and move aside existing files, directories, or unrelated links
   that block installation.
 - A Git symlink checked out as ordinary text must be repaired in the source
-  checkout. Elevating the home-link task does not fix it.
+  checkout. Enabling Developer Mode does not repair an existing placeholder.
 
 See [Developer Mode and symlinks](windows-and-wsl.md#developer-mode-and-symlinks) for
 inspection commands and a preview including Developer Mode.

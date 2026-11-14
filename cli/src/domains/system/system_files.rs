@@ -5,8 +5,8 @@ use anyhow::Result;
 use crate::domains::system::config::system_files::SystemFile;
 use crate::domains::system::resources::system_file::SystemFileResource;
 use crate::engine::{
-    Context, IntrinsicState, ProcessOpts, ResourceState, Task, TaskResult, process_resources,
-    task_metadata,
+    Context, IntrinsicState, ProcessOpts, ResourceState, Task, TaskResult,
+    process_resources_with_cache, task_metadata,
 };
 use crate::infra::ConfigHandle;
 
@@ -46,17 +46,31 @@ impl Task for ConfigureSystemFiles {
     fn needs_elevation(&self, ctx: &Context) -> bool {
         !ctx.is_elevated()
             && self.resources(ctx).iter().any(|resource| {
-                matches!(
+                !matches!(
                     resource.current_state(),
-                    Ok(ResourceState::Missing | ResourceState::Incorrect { .. })
+                    Ok(ResourceState::Correct | ResourceState::Invalid { .. })
                 )
             })
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        process_resources(
+        process_resources_with_cache(
             ctx,
             self.resources(ctx),
+            &(),
+            |resource, ()| {
+                resource.current_state().map(|state| match state {
+                    // Discovery cannot read protected destinations. Plan the scoped
+                    // assessment/merge, not a claim that their contents are incorrect.
+                    ResourceState::Unknown { reason } => {
+                        ResourceState::Incorrect { current: reason }
+                    }
+                    unchanged @ (ResourceState::Missing
+                    | ResourceState::Correct
+                    | ResourceState::Incorrect { .. }
+                    | ResourceState::Invalid { .. }) => unchanged,
+                })
+            },
             &ProcessOpts::strict("configure").sequential(),
         )
     }
@@ -81,14 +95,14 @@ mod tests {
 
     #[test]
     fn runs_only_for_nonempty_linux_configuration_outside_ci() {
-        let linux = ContextBuilder::new(PathBuf::from("/tmp"))
+        let linux = ContextBuilder::new(PathBuf::from("."))
             .overlay(None)
             .build();
-        let windows = ContextBuilder::new(PathBuf::from("/tmp"))
+        let windows = ContextBuilder::new(PathBuf::from("."))
             .overlay(None)
             .os(Os::Windows)
             .build();
-        let ci = ContextBuilder::new(PathBuf::from("/tmp"))
+        let ci = ContextBuilder::new(PathBuf::from("."))
             .overlay(None)
             .ci(true)
             .build();
@@ -96,5 +110,24 @@ mod tests {
         assert!(!ConfigureSystemFiles::new(configured()).should_run(&windows));
         assert!(!ConfigureSystemFiles::new(configured()).should_run(&ci));
         assert!(!ConfigureSystemFiles::new(ConfigHandle::new(Vec::new())).should_run(&linux));
+    }
+
+    #[test]
+    fn elevation_planning_does_not_swallow_failed_discovery_or_execute_sudo() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let ctx = ContextBuilder::new(fixture.path().to_path_buf())
+            .overlay(None)
+            .build();
+        let mut files = configured().get().clone();
+        for entry in &mut files {
+            entry.origin = Some(fixture.path().to_path_buf());
+        }
+        let task = ConfigureSystemFiles::new(ConfigHandle::new(files));
+        assert!(task.needs_elevation(&ctx));
+        assert!(
+            task.resources(&ctx)
+                .iter()
+                .all(|resource| resource.current_state().is_err())
+        );
     }
 }

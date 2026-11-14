@@ -45,7 +45,7 @@ fn map_recipes<T: Sync, R: Send>(
     ctx: &Context,
     items: &[T],
     work: impl Fn(&T) -> Result<R> + Sync + Send,
-) -> Result<Vec<Result<R>>> {
+) -> Vec<Result<R>> {
     use rayon::prelude::*;
     use std::sync::atomic::{AtomicBool, Ordering};
     let cancelled = AtomicBool::new(false);
@@ -74,19 +74,19 @@ fn map_recipes<T: Sync, R: Send>(
         result
     };
     if !ctx.parallel() || items.len() < 2 {
-        return Ok(items.iter().map(evaluate).collect());
+        return items.iter().map(evaluate).collect();
     }
     let task_name = crate::infra::logging::log_thread_name();
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build()?;
-    Ok(pool.install(|| {
-        items
-            .par_iter()
-            .map(|item| {
-                crate::infra::logging::set_log_thread_name(&task_name);
-                evaluate(item)
-            })
-            .collect()
-    }))
+    items
+        .par_chunks(items.len().div_ceil(4))
+        .map(|chunk| {
+            crate::infra::logging::set_log_thread_name(&task_name);
+            chunk.iter().map(evaluate).collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .flatten()
+        .collect()
 }
 
 mod snapshots;
@@ -209,9 +209,19 @@ impl Operation for ParuConfig {
         }
         let config_path = paru_config_path(ctx)?;
         let previous_config = read_optional(&config_path)?;
-        if previous_config.as_deref() == Some(&content)
-            && snapshots.is_empty()
-            && failures.is_empty()
+        let mut snapshots_current = true;
+        for prepared in &snapshots {
+            if prepared.changed
+                || prepared
+                    .snapshot
+                    .validated_metadata(&prepared.source)?
+                    .is_none()
+            {
+                snapshots_current = false;
+                break;
+            }
+        }
+        if previous_config.as_deref() == Some(&content) && snapshots_current && failures.is_empty()
         {
             return Ok(OperationState::Complete);
         }
@@ -272,7 +282,7 @@ impl Operation for ParuConfig {
         let mut failures = plan.failures.clone();
         let validations = map_recipes(ctx, &plan.snapshots, |prepared| {
             prepared.snapshot.validate_metadata(ctx, &prepared.source)
-        })?;
+        });
         for (prepared, validation) in plan.snapshots.iter().zip(validations) {
             let snapshot = &prepared.snapshot;
             let result = validation.and_then(|srcinfo| {

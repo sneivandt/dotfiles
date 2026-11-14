@@ -145,14 +145,17 @@ pub fn prime_sudo_credentials() -> std::io::Result<bool> {
 /// The script maps a declined UAC prompt onto [`ELEVATION_DECLINED_EXIT_CODE`]
 /// so the caller can distinguish "user said no" from "the child run failed".
 #[cfg(any(windows, test))]
-pub(crate) fn build_elevated_child_script(exe: &str, args: &[String]) -> String {
+pub(crate) fn build_elevated_child_script(exe: &str, args: &[String], cwd: &str) -> String {
     let exe_quoted = powershell_single_quote(exe);
+    let cwd_quoted = powershell_single_quote(cwd);
     let start = if args.is_empty() {
-        format!("Start-Process -FilePath {exe_quoted} -Verb RunAs -Wait -PassThru")
+        format!(
+            "Start-Process -FilePath {exe_quoted} -WorkingDirectory {cwd_quoted} -Verb RunAs -Wait -PassThru"
+        )
     } else {
         let arg_list = powershell_argument_line(args);
         format!(
-            "Start-Process -FilePath {exe_quoted} -ArgumentList {arg_list} -Verb RunAs -Wait -PassThru"
+            "Start-Process -FilePath {exe_quoted} -ArgumentList {arg_list} -WorkingDirectory {cwd_quoted} -Verb RunAs -Wait -PassThru"
         )
     };
 
@@ -210,11 +213,17 @@ pub(crate) fn run_elevated_child(
     use anyhow::Context as _;
 
     let exe = std::env::current_exe().context("failed to determine current executable path")?;
+    let cwd =
+        std::env::current_dir().context("failed to determine elevated child working directory")?;
     let child_args = log.run_id().map_or_else(
         || args.to_vec(),
         |id| crate::infra::logging::records::child_args(args, &id),
     );
-    let script = build_elevated_child_script(&exe.display().to_string(), &child_args);
+    let script = build_elevated_child_script(
+        &exe.display().to_string(),
+        &child_args,
+        &cwd.display().to_string(),
+    );
 
     let ps_exe = if executor.which("pwsh") {
         "pwsh"
@@ -370,19 +379,19 @@ mod delegation_tests {
                 (Some(17), ElevationOutcome::Failed(17)),
                 (None, ElevationOutcome::Failed(-1)),
             ] {
-                let (log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("install");
+                let (log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("update");
                 let args = [
-                    "install",
+                    "update",
                     "--only",
-                    "registry",
+                    "developer-mode",
                     "--elevated-child",
                     "--parent-run-id=ancestor",
                 ]
                 .map(str::to_string);
                 let expected_args = [
-                    "install",
+                    "update",
                     "--only",
-                    "registry",
+                    "developer-mode",
                     "--elevated-child",
                     "--parent-run-id",
                     &log.run_log().unwrap().id(),
@@ -392,6 +401,7 @@ mod delegation_tests {
                 let encoded = powershell_encode_command(&build_elevated_child_script(
                     &exe.display().to_string(),
                     &expected_args,
+                    &std::env::current_dir().unwrap().display().to_string(),
                 ));
                 let mut executor = MockExecutor::new();
                 executor
@@ -469,6 +479,7 @@ mod escaping_tests {
         let script = build_elevated_child_script(
             r"C:\dotfiles\dotfiles.exe",
             &["install".to_string(), "--only".to_string()],
+            r"C:\dotfiles",
         );
 
         assert!(
@@ -487,11 +498,32 @@ mod escaping_tests {
             script.contains("-ArgumentList 'install --only'"),
             "arguments must be passed as one Windows command line: {script}"
         );
+        assert!(
+            script.contains(r"-WorkingDirectory 'C:\dotfiles'"),
+            "UAC must not substitute its own default working directory: {script}"
+        );
+    }
+
+    #[test]
+    fn elevated_child_working_directory_preserves_windows_path_forms() {
+        for cwd in [
+            r"C:\",
+            r"C:\Path With Spaces",
+            r"\\server\share\checkout",
+            r"\\?\C:\long path\checkout",
+            r"c:\mixedCase",
+        ] {
+            let script = build_elevated_child_script("dotfiles.exe", &[], cwd);
+            assert!(
+                script.contains(&format!("-WorkingDirectory '{cwd}'")),
+                "working directory must retain its native path spelling: {script}"
+            );
+        }
     }
 
     #[test]
     fn elevated_child_script_maps_a_declined_prompt_to_a_distinct_code() {
-        let script = build_elevated_child_script("dotfiles.exe", &[]);
+        let script = build_elevated_child_script("dotfiles.exe", &[], r"C:\dotfiles");
 
         assert!(
             script.contains(&format!(
@@ -546,7 +578,7 @@ mod escaping_tests {
         ] {
             let script = format!(
                 "function Start-Process {{ {behavior} }}\n{}",
-                build_elevated_child_script("unused-fixture-executable", &[])
+                build_elevated_child_script("unused-fixture-executable", &[], ".")
             );
             let result = executor
                 .execute(
@@ -575,7 +607,7 @@ mod escaping_tests {
 
     #[test]
     fn elevated_child_script_omits_the_argument_list_when_there_are_no_arguments() {
-        let script = build_elevated_child_script("dotfiles.exe", &[]);
+        let script = build_elevated_child_script("dotfiles.exe", &[], r"C:\dotfiles");
 
         assert!(
             !script.contains("-ArgumentList"),
@@ -585,11 +617,16 @@ mod escaping_tests {
 
     #[test]
     fn elevated_child_script_escapes_quotes_in_arguments() {
-        let script = build_elevated_child_script("dotfiles.exe", &["O'Brien".to_string()]);
+        let script =
+            build_elevated_child_script("dotfiles.exe", &["O'Brien".to_string()], r"C:\O'Brien");
 
         assert!(
             script.contains("'O''Brien'"),
             "single quotes must be doubled inside the argument list: {script}"
+        );
+        assert!(
+            script.contains(r"-WorkingDirectory 'C:\O''Brien'"),
+            "the child's explicit working directory must be escaped: {script}"
         );
     }
 

@@ -9,6 +9,7 @@ use crate::engine::{
     Context, IntrinsicState as _, ProcessOpts, Resource as _, ResourceState, Task, TaskMeta,
     TaskResult, process_resources_remove, run_resource_task, task_metadata,
 };
+use crate::infra::logging::OutputExt as _;
 
 /// Build a single [`SymlinkResource`] from a config entry.
 fn build_resource(
@@ -96,29 +97,46 @@ impl Task for InstallSymlinks {
         selector: "symlinks",
     }
 
-    /// Windows file symlinks require Developer Mode or an administrator token.
-    ///
-    /// Directory links already degrade to `mklink /J` junctions, which need no
-    /// privilege, so only pending *file* links can justify elevation. Returns
-    /// `false` once they all exist, so a converged machine plans none.
-    fn needs_elevation(&self, ctx: &Context) -> bool {
-        if !ctx.platform().is_windows() || ctx.can_create_symlinks() {
-            return false;
-        }
-
-        let symlinks = self.config.get();
-        build_resources(ctx, symlinks).iter().any(|resource| {
-            resource.source.is_file()
-                && matches!(resource.current_state(), Ok(ResourceState::Missing))
-        })
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let symlinks = self.config.get();
         let resources = build_resources(ctx, symlinks);
         validate_resolved_targets(&resources)?;
-        run_resource_task(ctx, resources, &ProcessOpts::strict("link"))
+        // UAC can switch accounts. Home mutations stay in the parent, and the
+        // capability is re-probed after the ordering-only Developer Mode task.
+        install_resources(ctx, resources, ctx.can_create_symlinks())
     }
+}
+
+fn install_resources(
+    ctx: &Context,
+    resources: Vec<SymlinkResource>,
+    can_create_symlinks: bool,
+) -> Result<TaskResult> {
+    if ctx.dry_run() || can_create_symlinks {
+        return run_resource_task(ctx, resources, &ProcessOpts::strict("link"));
+    }
+
+    let (unavailable, runnable): (Vec<_>, Vec<_>) = resources.into_iter().partition(|resource| {
+        resource.source.is_file() && matches!(resource.current_state(), Ok(ResourceState::Missing))
+    });
+    let result = run_resource_task(ctx, runnable, &ProcessOpts::strict("link"))?;
+    if unavailable.is_empty() {
+        return Ok(result);
+    }
+    let reason = format!(
+        "{} file link(s) require Developer Mode in the original user's session; home symlinks are never delegated through UAC",
+        unavailable.len()
+    );
+    ctx.log().warn(&reason);
+    if matches!(&result, TaskResult::Batch(stats) if stats.failed_count() > 0) {
+        return Ok(result);
+    }
+    let detail = if let TaskResult::Batch(stats) = result {
+        format!("{}; {reason}", stats.summary(false))
+    } else {
+        reason
+    };
+    Ok(TaskResult::unmet(detail))
 }
 
 /// Materialize installed symlinks into real files and directories.
@@ -223,6 +241,102 @@ mod tests {
 
     fn handle(symlinks: Vec<Symlink>) -> ConfigHandle<Vec<Symlink>> {
         ConfigHandle::new(symlinks)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_capability_is_checked_at_execution_without_delegating_home_links() {
+        use crate::engine::SkipKind;
+        use crate::test_helpers::make_windows_context;
+
+        for (name, capability, dry_run, file_created) in [
+            ("Developer Mode enabled by predecessor", true, false, true),
+            ("Developer Mode unavailable", false, false, false),
+            ("preview without Developer Mode", false, true, false),
+        ] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let root = crate::infra::fs::canonicalize(fixture.path()).unwrap();
+            let home = root.join("original-user");
+            let admin_home = root.join("administrator");
+            std::fs::create_dir_all(root.join("symlinks/directory")).unwrap();
+            std::fs::create_dir(&home).unwrap();
+            std::fs::create_dir(&admin_home).unwrap();
+            std::fs::write(root.join("symlinks/file"), "file").unwrap();
+            let config = handle(
+                ["file", "directory"]
+                    .map(|source| Symlink {
+                        source: source.into(),
+                        target: None,
+                        allow_external_target: false,
+                        origin: None,
+                    })
+                    .to_vec(),
+            );
+            let task = InstallSymlinks::new(config);
+            let ctx = make_windows_context(root, None)
+                .with_home(home.clone())
+                .with_dry_run(dry_run);
+            assert!(!task.needs_elevation(&ctx), "{name}");
+            assert!(
+                !task.assess(&ctx).requires_elevation(),
+                "{name}: phase assessment must not cache missing file capability"
+            );
+            let result =
+                install_resources(&ctx, build_resources(&ctx, task.config.get()), capability)
+                    .unwrap();
+            assert_eq!(home.join(".file").exists(), file_created, "{name}");
+            assert_eq!(home.join(".directory").exists(), !dry_run, "{name}");
+            assert_eq!(
+                std::fs::read_dir(admin_home).unwrap().count(),
+                0,
+                "{name}: a different administrator's home must remain untouched"
+            );
+            if !capability && !dry_run {
+                assert!(
+                    matches!(
+                        result,
+                        TaskResult::Skipped {
+                            kind: SkipKind::UnmetWork,
+                            ..
+                        }
+                    ),
+                    "{name}: pending file work must block dependents"
+                );
+            } else {
+                assert!(matches!(result, TaskResult::Batch(_)), "{name}");
+            }
+            if file_created {
+                let repeated =
+                    install_resources(&ctx, build_resources(&ctx, task.config.get()), false)
+                        .unwrap();
+                let TaskResult::Batch(stats) = repeated else {
+                    panic!("converged links must remain runnable")
+                };
+                assert_eq!(stats.already_ok_count(), 2);
+                assert_eq!(stats.changed_count(), 0);
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unavailable_file_links_do_not_hide_other_resource_failures() {
+        use crate::test_helpers::make_windows_context;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = crate::infra::fs::canonicalize(fixture.path()).unwrap();
+        let home = root.join("home");
+        std::fs::create_dir_all(root.join("symlinks")).unwrap();
+        std::fs::create_dir(&home).unwrap();
+        std::fs::write(root.join("symlinks/file"), "managed file").unwrap();
+        let ctx = make_windows_context(root, None).with_home(home.clone());
+        let config = [symlink("file", None), symlink("absent", None)];
+        let result = install_resources(&ctx, build_resources(&ctx, &config), false).unwrap();
+        let TaskResult::Batch(stats) = result else {
+            panic!("an invalid source must remain a failed batch, not an elevation skip");
+        };
+        assert_eq!(stats.failed_count(), 1);
+        assert!(!home.join(".file").exists());
     }
 
     // ------------------------------------------------------------------

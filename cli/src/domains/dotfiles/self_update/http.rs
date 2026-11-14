@@ -10,32 +10,25 @@ use super::REPO;
 /// Number of attempts made for a single GET before the failure is reported.
 const MAX_GET_ATTEMPTS: u32 = 3;
 const MAX_CHECKSUM_BYTES: usize = 64 * 1024;
+const MAX_BINARY_BYTES: u64 = 128 * 1024 * 1024;
 
-/// Failure fragments that indicate a retryable network or server condition.
-///
-/// Matching on the rendered error keeps the classification independent of the
-/// concrete [`HttpClient`], so injected clients exercise the same code path as
-/// [`UreqClient`].
-const TRANSIENT_HTTP_ERROR_MARKERS: &[&str] = &[
-    "broken pipe",
-    "connection closed",
-    "connection refused",
-    "connection reset",
-    "connection timed out",
-    "dns",
-    "failed to lookup address",
-    "http status: 408",
-    "http status: 425",
-    "http status: 500",
-    "http status: 502",
-    "http status: 503",
-    "http status: 504",
-    "network is unreachable",
-    "operation timed out",
-    "temporary failure in name resolution",
-    "timed out",
-    "unexpected eof",
-];
+#[derive(Debug, thiserror::Error)]
+#[error("{0:#}")]
+struct RetryableTransportError(#[source] anyhow::Error);
+
+struct TransportReader<'a>(&'a mut dyn Read);
+
+impl Read for TransportReader<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        self.0.read(buffer).map_err(|error| {
+            if is_transient_io_error(&error) {
+                std::io::Error::other(RetryableTransportError(error.into()))
+            } else {
+                error
+            }
+        })
+    }
+}
 
 /// Trait for making HTTP GET requests, enabling test injection.
 ///
@@ -78,11 +71,21 @@ fn get_with_retry<T>(
 ) -> Result<T> {
     let mut attempt = 1_u32;
     loop {
-        match client.get(url, headers).and_then(|mut reader| {
-            read_body(&mut *reader).with_context(|| format!("reading response from {url}"))
-        }) {
+        match client
+            .get(url, headers)
+            .map_err(|error| {
+                if is_transient_http_error(&error) {
+                    RetryableTransportError(error).into()
+                } else {
+                    error
+                }
+            })
+            .and_then(|mut reader| {
+                read_body(&mut TransportReader(&mut *reader))
+                    .with_context(|| format!("reading response from {url}"))
+            }) {
             Ok(body) => return Ok(body),
-            Err(error) if attempt < MAX_GET_ATTEMPTS && is_transient_http_error(&error) => {
+            Err(error) if attempt < MAX_GET_ATTEMPTS && is_retryable_transport_failure(&error) => {
                 tracing::warn!(
                     "transient failure for GET {url} (attempt {attempt}/{MAX_GET_ATTEMPTS}), retrying: {error:#}"
                 );
@@ -108,10 +111,57 @@ fn read_limited(reader: &mut dyn Read, limit: usize) -> Result<Vec<u8>> {
 
 /// Report whether `error` describes a condition worth retrying.
 fn is_transient_http_error(error: &anyhow::Error) -> bool {
-    let message = format!("{error:#}").to_ascii_lowercase();
-    TRANSIENT_HTTP_ERROR_MARKERS
-        .iter()
-        .any(|marker| message.contains(marker))
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<ureq::Error>()
+            .is_some_and(is_transient_ureq_error)
+            || cause
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(is_transient_io_error)
+    })
+}
+
+fn is_transient_ureq_error(error: &ureq::Error) -> bool {
+    if let ureq::Error::Io(io_error) = error {
+        return is_transient_io_error(io_error);
+    }
+    matches!(
+        error,
+        ureq::Error::StatusCode(408 | 425 | 500 | 502 | 503 | 504)
+            | ureq::Error::HostNotFound
+            | ureq::Error::Timeout(_)
+            | ureq::Error::ConnectionFailed
+    )
+}
+
+fn is_transient_io_error(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::ConnectionRefused
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::TimedOut
+            | std::io::ErrorKind::UnexpectedEof
+            | std::io::ErrorKind::NetworkUnreachable
+            | std::io::ErrorKind::HostUnreachable
+    ) || error
+        .get_ref()
+        .and_then(|inner| inner.downcast_ref::<ureq::Error>())
+        .is_some_and(is_transient_ureq_error)
+}
+
+fn is_retryable_transport_failure(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause.is::<RetryableTransportError>()
+            || cause
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|io_error| {
+                    io_error.get_ref().is_some_and(
+                        <dyn std::error::Error + Send + Sync>::is::<RetryableTransportError>,
+                    )
+                })
+    })
 }
 
 #[cfg(not(test))]
@@ -132,10 +182,21 @@ pub(super) fn download_to_file(
     url: &str,
     file: &mut std::fs::File,
 ) -> Result<String> {
+    download_to_file_with_limit(client, url, file, MAX_BINARY_BYTES)
+}
+
+fn download_to_file_with_limit(
+    client: &dyn HttpClient,
+    url: &str,
+    file: &mut std::fs::File,
+    limit: u64,
+) -> Result<String> {
     get_with_retry(client, url, &[("User-Agent", "dotfiles-cli")], |reader| {
         file.set_len(0).context("clearing staged download")?;
         file.rewind().context("rewinding staged download")?;
         let mut hasher = Sha256::new();
+        let mut reader = reader.take(limit.saturating_add(1));
+        let mut downloaded = 0_u64;
         let mut buffer = vec![0_u8; 64 * 1024].into_boxed_slice();
         loop {
             let count = match reader.read(&mut buffer) {
@@ -145,6 +206,11 @@ pub(super) fn download_to_file(
                 Err(error) => return Err(error.into()),
             };
             let bytes = buffer.split_at(count).0;
+            downloaded += u64::try_from(count)?;
+            anyhow::ensure!(
+                downloaded <= limit,
+                "binary HTTP response exceeds the {limit}-byte limit"
+            );
             file.write_all(bytes).context("writing staged download")?;
             hasher.update(bytes);
         }
@@ -154,14 +220,8 @@ pub(super) fn download_to_file(
     .with_context(|| format!("downloading {url}"))
 }
 
-/// Verify the streamed SHA-256 digest against the checksums file for the
-/// given release tag.
-pub(super) fn verify_checksum(
-    client: &dyn HttpClient,
-    tag: &str,
-    asset: &str,
-    actual: &str,
-) -> Result<()> {
+/// Fetch and validate the expected SHA-256 checksum for a release asset.
+pub(super) fn expected_checksum(client: &dyn HttpClient, tag: &str, asset: &str) -> Result<String> {
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/checksums.sha256");
     let checksums = get_with_retry(client, &url, &[("User-Agent", "dotfiles-cli")], |reader| {
         read_limited(reader, MAX_CHECKSUM_BYTES)
@@ -184,10 +244,7 @@ pub(super) fn verify_checksum(
         bail!("invalid checksum format for {asset}: expected 64 hex chars, got '{expected}'");
     }
 
-    if !actual.eq_ignore_ascii_case(&expected) {
-        bail!("checksum mismatch for {asset}: expected {expected}, got {actual}");
-    }
-    Ok(())
+    Ok(expected)
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +309,44 @@ mod tests {
     use super::test_support::MockHttpClient;
     use super::*;
 
+    #[test]
+    fn binary_limit_accepts_exact_size_and_rejects_oversized_streams_without_retry() {
+        for length in [0, 15, 16, 17, 32] {
+            let client = MockHttpClient::new(vec![Ok(vec![b'x'; length])]);
+            let mut file = tempfile::NamedTempFile::new().unwrap();
+            let result = download_to_file_with_limit(
+                &client,
+                "https://example.invalid/asset",
+                file.as_file_mut(),
+                16,
+            );
+            assert_eq!(result.is_ok(), length <= 16, "length={length}");
+            assert!(file.as_file().metadata().unwrap().len() <= 16);
+            assert_eq!(client.request_urls().len(), 1);
+        }
+    }
+
+    #[test]
+    fn local_failures_and_network_words_are_not_transport_retries() {
+        for error in [
+            std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "/home/dns/staging: timed out",
+            ),
+            std::io::Error::from(std::io::ErrorKind::ConnectionReset),
+        ] {
+            let client = MockHttpClient::new(vec![Ok(b"body".to_vec())]);
+            let result: Result<()> =
+                get_with_retry(&client, "https://example.invalid/asset", &[], |_| {
+                    Err(std::io::Error::new(error.kind(), error.to_string()).into())
+                });
+            assert!(result.is_err());
+            assert_eq!(client.request_urls().len(), 1);
+        }
+        let client = MockHttpClient::new(vec![Err(anyhow::anyhow!("dns: connection reset"))]);
+        assert!(download_bytes(&client, "https://example.invalid/asset").is_err());
+        assert_eq!(client.request_urls().len(), 1);
+    }
     fn download_bytes(client: &dyn HttpClient, url: &str) -> Result<Vec<u8>> {
         let mut file = tempfile::NamedTempFile::new()?;
         let digest = download_to_file(client, url, file.as_file_mut())?;
@@ -266,12 +361,13 @@ mod tests {
         asset: &str,
         bytes: &[u8],
     ) -> Result<()> {
-        super::verify_checksum(
-            client,
-            tag,
-            asset,
-            &super::super::hex_encode(&Sha256::digest(bytes)),
-        )
+        let expected = expected_checksum(client, tag, asset)?;
+        let actual = super::super::hex_encode(&Sha256::digest(bytes));
+        anyhow::ensure!(
+            actual.eq_ignore_ascii_case(&expected),
+            "checksum mismatch for {asset}: expected {expected}, got {actual}"
+        );
+        Ok(())
     }
 
     #[test]
@@ -395,7 +491,7 @@ mod tests {
     #[test]
     fn download_bytes_retries_transient_failure_then_succeeds() {
         let client = MockHttpClient::new(vec![
-            Err(anyhow::anyhow!("connection reset by peer")),
+            Err(std::io::Error::from(std::io::ErrorKind::ConnectionReset).into()),
             Ok(b"binary data".to_vec()),
         ]);
         let result = download_bytes(&client, "https://example.com/file").unwrap();
@@ -409,7 +505,7 @@ mod tests {
     #[test]
     fn download_bytes_gives_up_after_the_attempt_limit() {
         let responses = (0..MAX_GET_ATTEMPTS)
-            .map(|_| Err(anyhow::anyhow!("http status: 503")))
+            .map(|_| Err(ureq::Error::StatusCode(503).into()))
             .collect();
         let client = MockHttpClient::new(responses);
         let error = download_bytes(&client, "https://example.com/file").unwrap_err();
@@ -427,7 +523,7 @@ mod tests {
     #[test]
     fn download_bytes_does_not_retry_permanent_failures() {
         let client = MockHttpClient::new(vec![
-            Err(anyhow::anyhow!("http status: 404")),
+            Err(ureq::Error::StatusCode(404).into()),
             Ok(b"never reached".to_vec()),
         ]);
         let error = download_bytes(&client, "https://example.com/file").unwrap_err();

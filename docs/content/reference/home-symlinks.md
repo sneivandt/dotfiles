@@ -30,8 +30,10 @@ conflicts. Back up and move them aside before applying.
 Removal leaves a managed directory link in place if copying it would relocate a relative
 link that points outside the directory being copied.
 
-Linked sources stay live. On Windows, the task independently assesses elevation and
-rejects Git symlink placeholders checked out as ordinary files. See
+Linked sources stay live. On Windows, home links stay in the original user's process.
+The task checks file-link capability after Developer Mode; unavailable file links
+are skipped without preventing directory links or already-correct links from running.
+It also rejects Git symlink placeholders checked out as ordinary files. See
 [Symlinks](#configuration) for path and glob rules.
 
 ## Configuration

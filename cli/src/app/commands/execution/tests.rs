@@ -29,16 +29,23 @@ fn blocked_dependents<'task>(
 
 #[test]
 fn elevated_child_args_scope_the_run_to_the_elevating_selectors() {
-    let built = build_elevated_child_args(&args(&["update"]), &["developer-mode", "symlinks"]);
+    let built = build_elevated_child_args(
+        &args(&["update"]),
+        &["developer-mode"],
+        std::path::Path::new("fixture-root"),
+        None,
+    );
 
     assert_eq!(
         built,
         args(&[
             "update",
             "--only",
-            "developer-mode,symlinks",
+            "developer-mode",
             "--no-parallel",
             "--elevated-child",
+            "--root",
+            "fixture-root",
         ]),
     );
 }
@@ -51,39 +58,62 @@ fn elevated_child_args_preserve_configuration_flags() {
             "--profile",
             "desktop",
             "--root",
-            "C:\\repo",
-            "--overlay",
-            "C:\\overlay",
+            "relative-repo",
+            "--overlay=relative-overlay",
         ]),
         &["developer-mode"],
+        std::path::Path::new(r"C:\resolved repo"),
+        Some(std::path::Path::new(r"\\server\resolved overlay")),
     );
 
-    assert_eq!(
-        &built[..7],
-        &args(&[
-            "update",
-            "--profile",
-            "desktop",
-            "--root",
-            "C:\\repo",
-            "--overlay",
-            "C:\\overlay",
-        ])[..]
-    );
+    assert_eq!(&built[..3], &args(&["update", "--profile", "desktop",])[..]);
     assert!(built.contains(&"--only".to_string()));
+    assert_eq!(
+        &built[built.len() - 4..],
+        &args(&[
+            "--root",
+            r"C:\resolved repo",
+            "--overlay",
+            r"\\server\resolved overlay"
+        ])
+    );
+    assert!(!built.iter().any(|arg| arg.contains("relative-")));
 }
 
 #[test]
 fn elevated_child_args_drop_inherited_task_filters() {
     for filters in [
-        args(&["update", "--only", "packages", "--skip", "registry"]),
-        args(&["update", "--only=packages", "--skip=registry"]),
+        args(&[
+            "update",
+            "--only",
+            "packages",
+            "--skip",
+            "registry",
+            "--root",
+            "relative-root",
+            "--overlay",
+            "relative-overlay",
+        ]),
+        args(&[
+            "update",
+            "--only=packages",
+            "--skip=registry",
+            "--root=relative-root",
+            "--overlay=relative-overlay",
+        ]),
     ] {
-        let built = build_elevated_child_args(&filters, &["developer-mode"]);
+        let built = build_elevated_child_args(
+            &filters,
+            &["developer-mode"],
+            std::path::Path::new("fixture-root"),
+            None,
+        );
 
         assert_eq!(built.iter().filter(|arg| *arg == "--only").count(), 1);
         assert!(!built.iter().any(|arg| arg.contains("packages")));
         assert!(!built.iter().any(|arg| arg.contains("registry")));
+        assert!(!built.iter().any(|arg| arg.contains("relative-")));
+        assert!(!built.iter().any(|arg| arg == "--overlay"));
     }
 }
 
@@ -93,12 +123,14 @@ fn elevated_child_selection_does_not_expand_the_parents_dependency_closure() {
         &args(&[
             "update",
             "--only",
-            "symlinks",
+            "developer-mode",
             "--with-deps",
             "--skip",
-            "developer-mode",
+            "symlinks",
         ]),
-        &["symlinks"],
+        &["developer-mode"],
+        std::path::Path::new("fixture-root"),
+        None,
     );
     let parsed =
         crate::app::cli::Cli::try_parse_from(std::iter::once("dotfiles".to_string()).chain(built))
@@ -106,6 +138,10 @@ fn elevated_child_selection_does_not_expand_the_parents_dependency_closure() {
     let crate::app::cli::Command::Update(opts) = parsed.command else {
         panic!("elevation must preserve the install command");
     };
+    assert!(
+        !opts.tasks.with_deps,
+        "a child must not rediscover or expand the parent's resolved scope"
+    );
     let store = crate::app::config::store::ConfigStore::from_config(empty_config(
         std::path::PathBuf::from("fixture-root"),
     ));
@@ -126,7 +162,7 @@ fn elevated_child_selection_does_not_expand_the_parents_dependency_closure() {
             .iter()
             .map(|task| task.selector())
             .collect::<Vec<_>>(),
-        ["symlinks"],
+        ["developer-mode"],
         "only the parent's exact delegated tasks may run elevated"
     );
 }
@@ -136,6 +172,8 @@ fn elevated_child_args_do_not_duplicate_repeated_flags() {
     let built = build_elevated_child_args(
         &args(&["update", "--no-parallel", "--elevated-child"]),
         &["developer-mode"],
+        std::path::Path::new("fixture-root"),
+        None,
     );
 
     assert_eq!(
@@ -198,11 +236,10 @@ fn unavailable_developer_mode_does_not_block_unprivileged_symlink_work() {
                 .iter()
                 .find(|task| task.selector() == "symlinks")
                 .unwrap();
-            let needs_elevation = is_file && !existing;
-            assert_eq!(
-                symlinks.needs_elevation(&ctx),
-                needs_elevation,
-                "only pending file links need elevation"
+            let unavailable = is_file && !existing;
+            assert!(
+                !symlinks.needs_elevation(&ctx),
+                "home links must never run under a potentially different UAC account"
             );
 
             run_tasks_to_completion(selected, &ctx, &log).unwrap();
@@ -214,7 +251,7 @@ fn unavailable_developer_mode_does_not_block_unprivileged_symlink_work() {
                 .unwrap();
             assert_eq!(
                 symlink_entry.status,
-                if needs_elevation {
+                if unavailable {
                     TaskStatus::Skipped
                 } else if existing {
                     TaskStatus::Ok
@@ -225,7 +262,7 @@ fn unavailable_developer_mode_does_not_block_unprivileged_symlink_work() {
             );
             assert_eq!(
                 home.join(".example").exists(),
-                !needs_elevation,
+                !unavailable,
                 "unprivileged links must converge; pending privileged links must remain skipped"
             );
         }
@@ -411,6 +448,101 @@ fn elevated_child_does_not_request_elevation_again() {
         None,
         "no delegation or unmet result"
     );
+}
+
+#[test]
+fn elevated_child_rejects_user_scoped_graphs_before_any_task_runs() {
+    struct ScopedTask {
+        selector: &'static str,
+        ran: Arc<AtomicUsize>,
+    }
+    impl Task for ScopedTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new(self.selector).with_selector(self.selector)
+        }
+        fn task_id(&self) -> TaskId {
+            TaskId::dynamic::<Self>(self.selector)
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.fetch_add(1, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    for parallel in [false, true] {
+        for selector in ["developer-mode", "symlinks", "registry"] {
+            let ran = Arc::new(AtomicUsize::new(0));
+            let machine = ScopedTask {
+                selector: "developer-mode",
+                ran: Arc::clone(&ran),
+            };
+            let selected = ScopedTask {
+                selector,
+                ran: Arc::clone(&ran),
+            };
+            let global = super::super::tests::global(&["--elevated-child", "--non-interactive"]);
+            let runtime = crate::app::commands::RuntimePolicy::new(
+                &global,
+                false,
+                crate::infra::env::MapEnv::new()
+                    .with("HOME", "/fixture-home")
+                    .into_handle(),
+                false,
+                false,
+            );
+            let (base, log) = sequential_context();
+            let ctx = Context::new_with_policy(
+                base.root().to_path_buf(),
+                None,
+                base.platform(),
+                Arc::<Logger>::clone(&log),
+                base.executor_arc(),
+                Arc::clone(&runtime.env),
+                runtime.execution,
+            )
+            .unwrap()
+            .with_parallel(parallel);
+            let tasks: Vec<&dyn Task> = if selector == "developer-mode" {
+                vec![&machine]
+            } else {
+                vec![&machine, &selected]
+            };
+            let result = run_tasks_to_completion(tasks, &ctx, &log);
+            assert_eq!(result.is_ok(), selector == "developer-mode", "{selector}");
+            assert_eq!(
+                ran.load(Ordering::SeqCst),
+                usize::from(selector == "developer-mode")
+            );
+            if selector != "developer-mode" {
+                assert!(
+                    log.task_entries().is_empty(),
+                    "reject the whole graph before scheduling"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn windows_broker_does_not_delegate_user_scoped_assessments() {
+    let trace = trace();
+    let task = ProbeTask::new("Home symlinks", 1, &trace);
+    let mut tasks: Vec<&dyn Task> = vec![&task];
+    let assessments = HashMap::from([(
+        task.task_id(),
+        TaskAssessment::applicable().with_elevation(true),
+    )]);
+    let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).unwrap();
+    let (base, log) = sequential_context();
+    let ctx = crate::test_helpers::make_windows_context(base.root().to_path_buf(), None)
+        .with_non_interactive(true);
+    let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
+    assert_eq!(
+        tasks.len(),
+        1,
+        "user-scoped tasks must remain in the parent"
+    );
+    assert_eq!(summary.outcome(&task.task_id()), None);
 }
 
 #[test]

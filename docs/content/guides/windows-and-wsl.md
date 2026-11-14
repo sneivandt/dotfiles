@@ -20,7 +20,7 @@ Windows setup, permissions, packages, and the changes that need a new session.
 | PowerShell | Runs `dotfiles.ps1`; Windows PowerShell and `pwsh` are supported by the wrapper |
 | Git | Checkout, repository synchronization, hooks, and saved selections |
 | winget | Installs configured Windows packages |
-| GitHub CLI (`gh`) | Verifies release build provenance; bootstrap warns if it is absent |
+| GitHub CLI (`gh`) | Required for release build provenance verification during bootstrap and self-update |
 | Rust/Cargo and native build prerequisites | Only needed for a [source build](../development/contributing.md) |
 
 Keep the checkout at a stable path: home links and the installed launcher refer
@@ -86,7 +86,7 @@ If linking fails, distinguish these causes:
 
 | Problem | What to do |
 |---|---|
-| File-link creation is not permitted | Resolve Developer Mode or the requested elevation |
+| File-link creation is not permitted | Enable Developer Mode, then retry from your normal user's terminal |
 | A home target conflicts | Back it up and move it aside before retrying |
 | Git checked out a source symlink as plain text | Repair the source checkout, not the home target |
 
@@ -112,11 +112,21 @@ tasks and starts a short-lived Administrator child for that scope:
 | Task | When it needs Administrator rights |
 |---|---|
 | `developer-mode` | The machine setting is not enabled |
-| `symlinks` | File links need changing and unprivileged creation is unavailable |
 
 The child has its own console and log, linked from the parent run.
 Already-current work does not need a prompt. Dry-run does not request elevation
 to apply changes.
+
+Only machine-scoped Developer Mode work is delegated. UAC can authenticate a
+different Administrator account, so home symlinks and user registry settings
+always stay in the original process. After the Developer Mode step, home
+symlinks recheck file-link capability. If it remains unavailable, pending file
+links are skipped; directory links and already-correct links still run.
+
+The child receives the parent's working directory and resolved absolute
+repository paths. The internal `--elevated-child` flag is not a way to run
+user-scoped tasks as Administrator: broader selectors and dependency expansion
+are rejected before command setup.
 
 - Declined consent or unavailable prompting leaves affected work skipped.
   Blocking dependents cannot run, but independent tasks continue.

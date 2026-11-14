@@ -105,11 +105,9 @@ impl UreqClient {
         headers: &[(&str, &str)],
     ) -> Result<Box<dyn std::io::Read>> {
         let response = self.request(url, headers)?;
-        ensure!(
-            response.status() == 200,
-            "GET {url}: http status: {}",
-            response.status().as_u16()
-        );
+        if response.status() != 200 {
+            return Err(ureq::Error::StatusCode(response.status().as_u16()).into());
+        }
         Ok(Box::new(response.into_body().into_reader()))
     }
 }

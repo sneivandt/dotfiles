@@ -27,19 +27,24 @@ other target. Preserve the boundaries enforced by
 - Use `infra::fs::is_dir_like()` for classification and
   `create_native_symlink()` for native dispatch.
 - Resource code may fall back to junctions for directory links.
-- Check capability before mutation. Developer Mode permits unprivileged native
-  links. Without that capability, only missing/incorrect file links justify
-  elevation; directory links can fall back to junctions.
+- Home links must never be UAC-delegated: over-the-shoulder authentication can
+  change `USERPROFILE` and HKCU. Recheck capability in `run()` after the
+  ordering-only Developer Mode task. Without capability, skip pending file
+  links as unmet work while processing directory links and already-correct links.
+  Directory links can fall back to junctions.
 - Dry-run never requests elevation.
 
 ## Elevation
 
 - Keep the parent process unprivileged.
-- Delegate only tasks whose current state reports `needs_elevation()`.
-- Check current task metadata and assessments rather than maintaining a second
-  inventory of elevation-capable tasks. Developer Mode and symlink tasks must
-  not prompt once their desired state is already satisfied.
-- The child uses explicit selectors and cannot recurse.
+- Delegate only machine-scoped tasks whose current state reports
+  `needs_elevation()`. The application allowlist currently permits only
+  `developer-mode`; user-profile tasks, including HKCU registry work, must
+  remain in the parent. Desired state already satisfied must not prompt.
+- The child uses exact selectors, resolved absolute root/overlay paths and an
+  explicit working directory, and cannot recurse. Validate explicit or inherited
+  elevated-child scope before startup and again before task execution; do not
+  allow dependency expansion to introduce user-scoped work.
 - Never prompt in CI or a non-interactive session.
 - If elevation is unavailable, skip elevating tasks and their transitive
   dependents. If the child ran successfully, continue dependents normally.

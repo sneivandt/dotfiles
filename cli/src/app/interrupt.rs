@@ -29,6 +29,9 @@ const STAGE_CANCELLING: u8 = 1;
 const STAGE_CONFIRMING: u8 = 2;
 /// A force quit has been decided and cannot be taken back.
 const STAGE_QUITTING: u8 = 3;
+/// The waiting parent no longer owns terminal interrupts or stdin.
+const STAGE_RESTART_PARENT: u8 = 4;
+static HANDLER_STATE: std::sync::OnceLock<Arc<Escalation>> = std::sync::OnceLock::new();
 
 /// Reported once, when cancellation is first requested.
 const CANCEL_MESSAGE: &str =
@@ -43,6 +46,8 @@ const PROMPT: &str = "Force quit? in-flight operations will be abandoned [y/N]: 
 /// What a single interrupt should do, given the ones before it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InterruptAction {
+    /// The replacement child owns terminal interrupts and stdin.
+    Ignore,
     /// Request cooperative cancellation and say so once.
     Cancel,
     /// Ask whether to abandon the run.
@@ -60,34 +65,33 @@ struct Escalation {
 impl Escalation {
     /// Record an interrupt and return the action it should take.
     fn advance(&self) -> InterruptAction {
-        if self
-            .stage
+        loop {
+            let current = self.stage.load(Ordering::Acquire);
+            let (next, action) = match current {
+                STAGE_RESTART_PARENT => return InterruptAction::Ignore,
+                STAGE_RUNNING => (STAGE_CANCELLING, InterruptAction::Cancel),
+                STAGE_CANCELLING => (STAGE_CONFIRMING, InterruptAction::Confirm),
+                _ => (STAGE_QUITTING, InterruptAction::ForceQuit),
+            };
+            if self
+                .stage
+                .compare_exchange(current, next, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                return action;
+            }
+        }
+    }
+
+    fn suspend_for_restart(&self) -> bool {
+        self.stage
             .compare_exchange(
                 STAGE_RUNNING,
-                STAGE_CANCELLING,
+                STAGE_RESTART_PARENT,
                 Ordering::AcqRel,
                 Ordering::Acquire,
             )
             .is_ok()
-        {
-            return InterruptAction::Cancel;
-        }
-        if self
-            .stage
-            .compare_exchange(
-                STAGE_CANCELLING,
-                STAGE_CONFIRMING,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            )
-            .is_ok()
-        {
-            return InterruptAction::Confirm;
-        }
-        // Latched so a confirmation answered concurrently cannot roll the
-        // decision back.
-        self.stage.store(STAGE_QUITTING, Ordering::Release);
-        InterruptAction::ForceQuit
     }
 
     /// Record that a declined confirmation is no longer pending.
@@ -116,6 +120,10 @@ pub fn install<L: Output + 'static>(
     non_interactive: bool,
 ) {
     let state = Arc::new(Escalation::default());
+    if HANDLER_STATE.set(Arc::clone(&state)).is_err() {
+        log.warn("signal handler state was already initialized");
+        return;
+    }
     let handler_token = token.clone();
     let handler_log = Arc::clone(log);
     if ctrlc::set_handler(move || {
@@ -125,6 +133,13 @@ pub fn install<L: Output + 'static>(
     {
         log.warn("failed to register signal handler");
     }
+}
+
+/// Hand terminal ownership to a replacement child, never to a cancelled run.
+pub(crate) fn suspend_for_restart() -> bool {
+    HANDLER_STATE
+        .get()
+        .is_none_or(|state| state.suspend_for_restart())
 }
 
 /// Handle one interrupt.
@@ -138,6 +153,7 @@ fn handle_interrupt<L: Output + 'static>(
     non_interactive: bool,
 ) {
     match state.advance() {
+        InterruptAction::Ignore => {}
         InterruptAction::Cancel => {
             token.cancel();
             log.warn(CANCEL_MESSAGE);
@@ -239,6 +255,22 @@ mod tests {
     use crate::infra::exec::{CommandSpec, Executor as _, ProcessExecutor};
     use crate::infra::logging::records::{Record, RunOutcome, StoredRecord};
 
+    #[test]
+    fn restart_parent_ignores_interrupts_and_cannot_suspend_a_pending_prompt() {
+        let parent = Escalation::default();
+        assert!(parent.suspend_for_restart());
+        for _ in 0..4 {
+            assert_eq!(parent.advance(), InterruptAction::Ignore);
+        }
+        for count in 1..=3 {
+            let state = Escalation::default();
+            for _ in 0..count {
+                state.advance();
+            }
+            assert!(!state.suspend_for_restart());
+            assert_ne!(state.advance(), InterruptAction::Ignore);
+        }
+    }
     const CHILD_TEST: &str = "app::interrupt::tests::interrupt_child";
     const CHILD_ROOT: &str = "DOTFILES_INTERRUPT_TEST_ROOT";
 

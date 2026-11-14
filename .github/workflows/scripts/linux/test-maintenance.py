@@ -143,7 +143,8 @@ class CleanupTests(unittest.TestCase):
                 self.assertTrue(target.is_dir())
                 self.assertTrue((outside / "keep").is_file())
                 for kind in ["file", "directory", "link"]:
-                    self.assertFalse(os.path.lexists(target / f"old-{kind}"))
+                    # An old archive timestamp is not an old extraction.
+                    self.assertEqual(os.path.lexists(target / f"old-{kind}"), name == "home-tmp")
                     self.assertTrue(os.path.lexists(target / f"new-{kind}"))
 
 

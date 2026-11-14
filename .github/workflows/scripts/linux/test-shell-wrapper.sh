@@ -596,24 +596,21 @@ EOF
   [ ! -e "$tmpdir/gh-env" ] || log_error "Skip policy invoked gh"
   log_verbose "✓ DOTFILES_SKIP_ATTESTATION=1 bypasses provenance verification"
 
-  # Missing gh: warn and continue so a fresh bootstrap can install it.
+  # Missing gh: fail closed, unless provenance is explicitly bypassed.
   rm -rf "${tmpdir:?}/bin"
   rm -f "$tmpdir/fake-bin/gh"
   for command_name in awk cat chmod dirname mkdir mv readlink rm rmdir sha256sum uname grep; do
     ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
   done
-  output=$(PATH="$tmpdir/fake-bin" GH_PROMPT_DISABLED=caller DBUS_SESSION_BUS_ADDRESS=caller \
-    "$tmpdir/dotfiles.sh" --version 2>&1)
-  if [ ! -x "$tmpdir/bin/dotfiles" ]; then
-    printf "%sERROR: Missing gh prevented bootstrap%s\n" "${RED}" "${NC}" >&2
-    return 1
+  if PATH="$tmpdir/fake-bin" DOTFILES_SKIP_ATTESTATION=0 \
+    "$tmpdir/dotfiles.sh" --version > "$tmpdir/stdout" 2> "$tmpdir/stderr"; then
+    log_error "Missing gh accepted an unattested binary"
   fi
-  if ! printf '%s\n' "$output" | grep -q \
-    "WARNING: gh not found. Skipping build provenance verification."; then
-    printf "%sERROR: Missing gh did not produce the expected warning%s\n" "${RED}" "${NC}" >&2
-    return 1
-  fi
-  log_verbose "✓ Missing gh warns without blocking bootstrap"
+  [ ! -e "$tmpdir/bin/dotfiles" ] || log_error "Missing gh published an unattested binary"
+  grep -q 'ERROR: gh not found' "$tmpdir/stderr" || log_error "Missing gh was not explained"
+  PATH="$tmpdir/fake-bin" DOTFILES_SKIP_ATTESTATION=1 \
+    "$tmpdir/dotfiles.sh" --version >/dev/null 2>&1
+  [ -x "$tmpdir/bin/dotfiles" ] || log_error "Explicit bypass did not work without gh"
 )}
 
 test_wrapper_failed_bootstrap_preserves_cached_binary()

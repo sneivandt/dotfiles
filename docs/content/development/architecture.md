@@ -312,7 +312,8 @@ home path is not a missing environment variable.
 
 The [elevation broker](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/execution/elevation.rs) keeps
 normal work unelevated. Linux primes sudo credentials for privileged commands;
-Windows delegates selected tasks to an elevated child. Unavailable elevation
+Windows delegates only selected machine-scoped Developer Mode work to an elevated
+child; home links and HKCU settings stay in the original process. Unavailable elevation
 leaves unmet work and blocks blocking dependents, not independent work.
 See [Elevation](../guides/security-and-trust.md#elevation).
 

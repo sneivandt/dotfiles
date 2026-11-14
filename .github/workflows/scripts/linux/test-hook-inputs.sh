@@ -411,6 +411,55 @@ test_pkgbuild_checksum_allowlist()
   done
 )}
 
+test_sensitive_posix_patterns()
+{(
+  log_stage "Checking portable ERE rules and case-insensitive safe-span redaction"
+  fixture=$(mktemp -d)
+  trap 'rm -rf "$fixture"' EXIT
+  mkdir "$fixture/repo" "$fixture/bin"
+  cd "$fixture/repo"
+  init_fixture_repository
+  mkdir hooks
+  cp "$DIR/hooks/check-sensitive.sh" "$DIR/hooks/sensitive-patterns.ini" \
+    "$DIR/hooks/sensitive-allowlist.ini" hooks/
+  real_grep=$(command -v grep)
+  real_sed=$(command -v sed)
+  cat > "$fixture/bin/grep" <<'EOF'
+#!/bin/sh
+for arg do
+  case "$arg" in *'\s'*|*'\b'*) exit 2 ;; esac
+done
+exec "$STRICT_GREP" "$@"
+EOF
+  cat > "$fixture/bin/sed" <<'EOF'
+#!/bin/sh
+for arg do
+  case "$arg" in *gI*) exit 2 ;; esac
+done
+exec "$STRICT_SED" "$@"
+EOF
+  chmod +x "$fixture/bin/grep" "$fixture/bin/sed"
+  STRICT_GREP="$real_grep" STRICT_SED="$real_sed"
+  PATH="$fixture/bin:$PATH"
+  export STRICT_GREP STRICT_SED PATH
+  printf 'uses: OWNER/REPO@%040d\n' 0 > fixture.txt
+  git add fixture.txt
+  sh hooks/check-sensitive.sh > "$fixture/output" 2>&1 ||
+    log_error "Portable scanner rejected a mixed-case allowlisted span"
+  for field in client_secret key; do
+    length=24
+    [ "$field" != key ] || length=40
+    value=$(printf "%${length}s" x | tr ' ' x)
+    printf 'uses: OWNER/REPO@%040d; %s \t= \t"%s"\n' 0 "$field" "$value" > fixture.txt
+    git add fixture.txt
+    if sh hooks/check-sensitive.sh > "$fixture/output" 2>&1; then
+      log_error "Portable $field rule missed a secret beside an allowlisted span"
+    fi
+    grep -q 'Potential sensitive information' "$fixture/output" ||
+      log_error "Portable scanner failed instead of detecting $field"
+  done
+)}
+
 test_build_version_ref_triggers()
 {(
   log_stage "Checking build-version inputs for attached, detached, and linked-worktree HEAD"
@@ -671,5 +720,6 @@ test_staged_ci_guard_deletions
 test_build_version_ref_triggers
 test_github_ssh_allowlist
 test_pkgbuild_checksum_allowlist
+test_sensitive_posix_patterns
 test_staged_quoted_shell
 test_staged_quoted_powershell

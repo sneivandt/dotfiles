@@ -70,6 +70,12 @@ fn run_reexec(mut command: std::process::Command, root: &std::path::Path, log: &
             std::process::exit(finish_reexec(log, 1));
         }
     };
+    if !crate::app::interrupt::suspend_for_restart() {
+        log.warn("restart cancelled by interrupt");
+        std::process::exit(finish_reexec(log, 130));
+    }
+    // Clearing the active footer also prevents the ticker from reviving it.
+    log.clear_status_line();
     let code = match command.status() {
         Ok(status) => {
             if status.code().is_none() {
@@ -204,7 +210,37 @@ mod tests {
         }
 
         let root = std::path::PathBuf::from(std::env::var_os(CHILD_ROOT).unwrap());
-        let log = crate::infra::logging::Logger::new_in("update", &root);
+        #[cfg(unix)]
+        if role == "interrupt" {
+            let log = std::sync::Arc::new(crate::infra::logging::Logger::new_in(
+                "update",
+                &root.join("child"),
+            ));
+            let token = crate::engine::CancellationToken::new();
+            crate::app::interrupt::install(&token, &log, true);
+            for index in 0..2 {
+                nix::sys::signal::kill(nix::unistd::getppid(), nix::sys::signal::Signal::SIGINT)
+                    .unwrap();
+                nix::sys::signal::raise(nix::sys::signal::Signal::SIGINT).unwrap();
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                if index == 0 {
+                    while !token.is_cancelled() {
+                        assert!(std::time::Instant::now() < deadline);
+                        std::thread::yield_now();
+                    }
+                    std::fs::write(root.join("child-completed-work"), "preserved").unwrap();
+                } else {
+                    while std::time::Instant::now() < deadline {
+                        std::thread::yield_now();
+                    }
+                    panic!("child must handle its second interrupt");
+                }
+            }
+        }
+        let log = std::sync::Arc::new(crate::infra::logging::Logger::new_in("update", &root));
+        if role == "parent-interrupt" {
+            crate::app::interrupt::install(&crate::engine::CancellationToken::new(), &log, true);
+        }
         let run = log.run_log().unwrap();
         run.start_run("update", None);
         std::fs::write(root.join("run-path"), run.path().to_str().unwrap()).unwrap();
@@ -219,7 +255,7 @@ mod tests {
         };
         command.stdin(std::process::Stdio::null());
         git2::Repository::init(&root).unwrap();
-        run_reexec(command, &root, &log);
+        run_reexec(command, &root, &*log);
     }
 
     #[test]
@@ -239,6 +275,7 @@ mod tests {
                 RunOutcome::Failed,
                 Some("child process terminated by signal"),
             ));
+            cases.push(("parent-interrupt", 130, RunOutcome::Interrupted, None));
             cases
         };
         for (role, code, expected_outcome, diagnostic) in cases {
@@ -273,6 +310,14 @@ mod tests {
             assert_eq!(finishes, [(expected_outcome, code)], "{role}: {contents}");
             if let Some(diagnostic) = diagnostic {
                 assert!(contents.contains(diagnostic), "{role}: {contents}");
+            }
+            if role == "parent-interrupt" {
+                assert!(!contents.contains("interrupt received"), "{contents}");
+                assert!(!contents.contains("force quit"), "{contents}");
+                assert_eq!(
+                    std::fs::read_to_string(fixture.path().join("child-completed-work")).unwrap(),
+                    "preserved"
+                );
             }
         }
     }

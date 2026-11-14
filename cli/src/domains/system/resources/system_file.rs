@@ -1,7 +1,9 @@
 //! Privileged system-file convergence driven by `conf/system-files.toml`.
 
 use std::fs;
-use std::io::{ErrorKind, Write as _};
+use std::io::ErrorKind;
+#[cfg(unix)]
+use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -15,10 +17,12 @@ use crate::infra::exec::{CommandSpec, Executor, OutputLog};
 // publishes it. A private directory prevents another user from replacing the
 // staged file; the exit trap also removes a partial copy on command failure.
 const ATOMIC_INSTALL: &str = r#"set -eu
-input=$1
-expected_input=$3
-case "$input" in /*) ;; *) input="$PWD/$input" ;; esac
-case "$expected_input" in ''|/*) ;; *) expected_input="$PWD/$expected_input" ;; esac
+helper=$1
+fragment=$3
+strategy=$5
+fragment_hash=$6
+case "$helper" in /*) ;; *) helper="$PWD/$helper" ;; esac
+case "$fragment" in /*) ;; *) fragment="$PWD/$fragment" ;; esac
 owner=$(id -u)
 check_directory() {
     if [ "$(find . -maxdepth 0 -uid "$owner" ! -perm /022 -print)" != . ]; then
@@ -57,10 +61,19 @@ while [ -n "$remaining" ]; do
     case "$remaining" in */*) remaining=${remaining#*/} ;; *) remaining= ;; esac
 done
 test "$(pwd -P)" = "$parent"
-set -- "$input" "./${2##*/}" "$expected_input"
+target="./${2##*/}"
 stage_dir=$(mktemp -d -- ./.dotfiles-system-file.XXXXXXXXXX)
 trap 'rm -rf -- "$stage_dir"' EXIT
 trap 'exit 1' HUP INT TERM
+result=$("$helper" system-file-helper --target "$PWD/${target#./}" \
+    --fragment "$fragment" "--fragment-hash=$fragment_hash" \
+    --merge "$strategy" --stage "$PWD/${stage_dir#./}")
+case "$result" in
+    already-correct) printf 'already-correct\n'; exit 0 ;;
+    prepared) ;;
+    *) printf 'Invalid system file helper response\n' >&2; exit 1 ;;
+esac
+set -- "$stage_dir/input" "$target" "$stage_dir/original"
 replacement="$stage_dir/replacement"
 install -D --owner=root --group=root --mode=0644 -- "$1" "$replacement"
 if [ -L "$2" ] || { [ -e "$2" ] && [ ! -f "$2" ]; }; then
@@ -70,7 +83,7 @@ fi
 if [ -f "$2" ]; then
     cp --attributes-only --preserve=mode,ownership,xattr -- "$2" "$replacement"
 fi
-if [ -n "$3" ]; then
+if [ -f "$3" ]; then
     expected=$(sha256sum < "$3")
     if [ -L "$2" ] || [ ! -f "$2" ] ||
         ! actual=$(sha256sum < "$2") || [ "$actual" != "$expected" ]; then
@@ -84,12 +97,12 @@ else
     test "$(pwd -P)" = "$parent"
     ln -T -- "$replacement" "$2"
 fi
+printf 'applied\n'
 "#;
 
 /// Converges one system file from a tracked source fragment.
 pub struct SystemFileResource {
     entry: SystemFile,
-    temp_dir: PathBuf,
     target_root: PathBuf,
     executor: Arc<dyn Executor>,
 }
@@ -116,7 +129,6 @@ impl SystemFileResource {
     pub fn new(entry: SystemFile, executor: Arc<dyn Executor>) -> Self {
         Self {
             entry,
-            temp_dir: std::env::temp_dir(),
             target_root: PathBuf::from("/etc"),
             executor,
         }
@@ -141,7 +153,7 @@ impl SystemFileResource {
         Ok(target)
     }
 
-    fn current_content(&self, target: &std::path::Path) -> ResourceResult<CurrentFile> {
+    fn current_content(target: &std::path::Path) -> ResourceResult<CurrentFile> {
         let metadata = match fs::symlink_metadata(target) {
             Ok(metadata) => metadata,
             Err(error) if error.kind() == ErrorKind::NotFound => return Ok(CurrentFile::Missing),
@@ -154,29 +166,12 @@ impl SystemFileResource {
         if !metadata.is_file() {
             return Ok(CurrentFile::NonRegular);
         }
-        let content = match fs::read_to_string(target) {
-            Ok(content) => content,
-            Err(error) if error.kind() == ErrorKind::PermissionDenied => {
-                self.executor
-                    .execute(
-                        CommandSpec::new("sudo")
-                            .arg("cat")
-                            .arg("--")
-                            .arg(target)
-                            .output_log(OutputLog::Omit),
-                    )
-                    .with_context(|| format!("reading {}", target.display()))?
-                    .stdout
-            }
-            Err(error) => {
-                return Err(anyhow!(error)
-                    .context(format!("reading {}", target.display()))
-                    .into());
-            }
-        };
+        let content =
+            fs::read_to_string(target).with_context(|| format!("reading {}", target.display()))?;
         Ok(CurrentFile::Present(content))
     }
 
+    #[cfg(unix)]
     fn desired_content(&self, current: &str, fragment: &str) -> anyhow::Result<String> {
         match self.entry.merge {
             MergeStrategy::Toml => merge_toml(current, fragment),
@@ -231,9 +226,7 @@ impl Resource for SystemFileResource {
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
         let fragment = self.fragment()?;
-        let target = self.checked_target()?;
-        let current = self.current_content(&target)?;
-        match self.state_for(&current, &fragment) {
+        match self.current_state()? {
             ResourceState::Correct => return Ok(ResourceChange::AlreadyCorrect),
             ResourceState::Invalid { reason } => {
                 return Err(crate::engine::resource::ResourceError::conflicting_state(
@@ -246,60 +239,209 @@ impl Resource for SystemFileResource {
             | ResourceState::Incorrect { .. }
             | ResourceState::Unknown { .. } => {}
         }
-        let current = match current {
-            CurrentFile::Missing => None,
-            CurrentFile::Present(text) => Some(text),
-            CurrentFile::NonRegular => {
-                return Err(
-                    anyhow!("{} is not a regular file", self.entry.target.display()).into(),
-                );
-            }
+        let target = match self.checked_target() {
+            Ok(target) => target,
+            Err(error) if permission_denied(&error) => self.entry.target.clone(),
+            Err(error) => return Err(error.into()),
         };
-        let desired = self.desired_content(current.as_deref().unwrap_or_default(), &fragment)?;
-        let expected = current
-            .map(|content| -> anyhow::Result<_> {
-                let (guard, mut file) = crate::infra::fs::TempGuard::create_unique_file_with_mode(
-                    &self.temp_dir,
-                    ".dotfiles-system-file-original",
-                    "tmp",
-                    0o600,
-                )?;
-                file.write_all(content.as_bytes())?;
-                Ok(guard)
-            })
-            .transpose()?;
-        let (temporary, mut file) = crate::infra::fs::TempGuard::create_unique_file_with_mode(
-            &self.temp_dir,
-            ".dotfiles-system-file",
-            "tmp",
-            0o600,
-        )?;
-        file.write_all(desired.as_bytes())?;
-        file.sync_all()?;
-        drop(file);
-        self.executor
+        if !(target.is_absolute()
+            && target.starts_with(&self.target_root)
+            && target != self.target_root
+            && !target.components().any(|component| {
+                matches!(
+                    component,
+                    std::path::Component::ParentDir | std::path::Component::CurDir
+                )
+            }))
+        {
+            return Err(anyhow!("unsafe system file target").into());
+        }
+        let result = self
+            .executor
             .execute(
                 CommandSpec::new("sudo")
-                    .args(&["sh", "-c", ATOMIC_INSTALL, "dotfiles-system-file"])
-                    .arg(temporary.path())
+                    .args(&[
+                        "-n",
+                        "--",
+                        "sh",
+                        "-c",
+                        ATOMIC_INSTALL,
+                        "dotfiles-system-file",
+                    ])
+                    .arg(std::env::current_exe()?)
                     .arg(&target)
-                    .arg(expected.as_ref().map_or_else(
-                        || std::path::Path::new(""),
-                        crate::infra::fs::TempGuard::path,
-                    ))
-                    .arg(&self.target_root),
+                    .arg(dunce::canonicalize(self.entry.source_path())?)
+                    .arg(&self.target_root)
+                    .arg(match self.entry.merge {
+                        MergeStrategy::Toml => "toml",
+                        MergeStrategy::Ini => "ini",
+                        MergeStrategy::Pam => "pam",
+                    })
+                    .arg(crate::infra::fs::content_hash(fragment.as_bytes()))
+                    .redact_arguments()
+                    .output_log(OutputLog::Omit),
             )
             .with_context(|| format!("installing {}", self.entry.target.display()))?;
-        Ok(ResourceChange::Applied)
+        match result.stdout.trim() {
+            "applied" => Ok(ResourceChange::Applied),
+            "already-correct" => Ok(ResourceChange::AlreadyCorrect),
+            _ => Err(anyhow!("invalid system file installation response").into()),
+        }
     }
 }
 
 impl IntrinsicState for SystemFileResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
         let fragment = self.fragment()?;
-        let target = self.checked_target()?;
-        Ok(self.state_for(&self.current_content(&target)?, &fragment))
+        if let Err(error) = validate_fragment(self.entry.merge, &fragment) {
+            return Ok(ResourceState::Invalid {
+                reason: error.to_string(),
+            });
+        }
+        let observed = (|| -> anyhow::Result<_> {
+            let target = self.checked_target()?;
+            Ok(self.state_for(&Self::current_content(&target)?, &fragment))
+        })();
+        match observed {
+            Ok(state) => Ok(state),
+            Err(error) if permission_denied(&error) => Ok(ResourceState::Unknown {
+                reason: "requires privileged assessment; destination was not read".to_string(),
+            }),
+            Err(error) => Err(error.into()),
+        }
     }
+}
+
+fn permission_denied(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|io_error| io_error.kind() == ErrorKind::PermissionDenied)
+    })
+}
+
+/// Run only in the scoped installer, without exposing destination content or diagnostics.
+pub(crate) fn privileged_prepare(
+    target: &std::path::Path,
+    fragment_path: &std::path::Path,
+    fragment_hash: &str,
+    merge: &str,
+    stage: &std::path::Path,
+) -> anyhow::Result<&'static str> {
+    #[cfg(unix)]
+    {
+        anyhow::ensure!(
+            nix::unistd::Uid::effective().is_root(),
+            "system file helper requires root"
+        );
+        anyhow::ensure!(
+            target.starts_with("/etc"),
+            "system file helper target must be below /etc"
+        );
+        let fragment = verified_fragment(fragment_path, fragment_hash)?;
+        prepare_in_private_stage(target, &fragment, merge, stage, 0)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (target, fragment_path, fragment_hash, merge, stage);
+        bail!("system file helper requires Unix");
+    }
+}
+
+#[cfg(unix)]
+fn verified_fragment(path: &std::path::Path, expected_hash: &str) -> anyhow::Result<String> {
+    let bytes = fs::read(path).map_err(|_| anyhow!("could not read system file fragment"))?;
+    anyhow::ensure!(
+        crate::infra::fs::content_hash(&bytes) == expected_hash,
+        "system file fragment changed while preparing update; retry the update"
+    );
+    String::from_utf8(bytes).map_err(|_| anyhow!("system file fragment is not UTF-8"))
+}
+
+#[cfg(unix)]
+fn prepare_in_private_stage(
+    target: &std::path::Path,
+    fragment: &str,
+    merge: &str,
+    stage: &std::path::Path,
+    owner: u32,
+) -> anyhow::Result<&'static str> {
+    prepare_contents(target, fragment, merge, stage, owner)
+        .map_err(|_| anyhow!("system file preparation failed; destination was not published"))
+}
+
+#[cfg(unix)]
+fn prepare_contents(
+    target: &std::path::Path,
+    fragment: &str,
+    merge: &str,
+    stage: &std::path::Path,
+    owner: u32,
+) -> anyhow::Result<&'static str> {
+    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
+
+    let parent = target.parent().context("target has no parent")?;
+    anyhow::ensure!(
+        target.is_absolute()
+            && dunce::canonicalize(parent)? == parent
+            && stage.parent() == Some(parent),
+        "unsafe helper paths"
+    );
+    for (path, private) in [(parent, false), (stage, true)] {
+        let metadata = fs::symlink_metadata(path)?;
+        anyhow::ensure!(
+            metadata.is_dir()
+                && metadata.uid() == owner
+                && metadata.mode() & if private { 0o077 } else { 0o022 } == 0,
+            "unsafe staging directory"
+        );
+    }
+    let merge = match merge {
+        "toml" => MergeStrategy::Toml,
+        "ini" => MergeStrategy::Ini,
+        "pam" => MergeStrategy::Pam,
+        _ => bail!("unknown merge strategy"),
+    };
+    let resource = SystemFileResource::new(
+        SystemFile {
+            target: target.to_path_buf(),
+            source: PathBuf::new(),
+            merge,
+            origin: None,
+        },
+        Arc::new(crate::infra::exec::ProcessExecutor::system()),
+    );
+    let current = SystemFileResource::current_content(target)?;
+    match resource.state_for(&current, fragment) {
+        ResourceState::Correct => return Ok("already-correct"),
+        ResourceState::Invalid { reason } => bail!("{reason}"),
+        ResourceState::Missing | ResourceState::Incorrect { .. } => {}
+        ResourceState::Unknown { .. } => bail!("unknown system file state"),
+    }
+    let text = match &current {
+        CurrentFile::Missing => "",
+        CurrentFile::Present(text) => text,
+        CurrentFile::NonRegular => bail!("not a regular file"),
+    };
+    let desired = resource.desired_content(text, fragment)?;
+    for (name, content) in [
+        ("input", Some(desired.as_str())),
+        (
+            "original",
+            matches!(current, CurrentFile::Present(_)).then_some(text),
+        ),
+    ] {
+        if let Some(content) = content {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(stage.join(name))?;
+            file.write_all(content.as_bytes())?;
+            file.sync_all()?;
+        }
+    }
+    Ok("prepared")
 }
 
 fn parse_toml(content: &str) -> anyhow::Result<toml::Table> {
@@ -310,14 +452,28 @@ fn parse_toml(content: &str) -> anyhow::Result<toml::Table> {
     }
 }
 
-fn merge_table(current: &mut toml::Table, desired: &toml::Table) {
-    for (key, desired_value) in desired {
-        match (current.get_mut(key), desired_value) {
-            (Some(toml::Value::Table(current_table)), toml::Value::Table(desired_table)) => {
-                merge_table(current_table, desired_table);
+#[cfg(any(unix, test))]
+fn merge_table(current: &mut dyn toml_edit::TableLike, desired: &dyn toml_edit::TableLike) {
+    for (key, desired_value) in desired.iter() {
+        if let (Some(current_table), Some(desired_table)) = (
+            current
+                .get_mut(key)
+                .and_then(toml_edit::Item::as_table_like_mut),
+            desired_value.as_table_like(),
+        ) {
+            merge_table(current_table, desired_table);
+        } else {
+            let mut replacement = desired_value.clone();
+            if let (Some(existing), Some(value)) = (
+                current.get(key).and_then(toml_edit::Item::as_value),
+                replacement.as_value_mut(),
+            ) {
+                *value.decor_mut() = existing.decor().clone();
             }
-            _ => {
-                current.insert(key.clone(), desired_value.clone());
+            if let Some(existing) = current.get_mut(key) {
+                *existing = replacement;
+            } else {
+                current.insert(key, replacement);
             }
         }
     }
@@ -342,10 +498,16 @@ fn contains_toml(current: &str, fragment: &str) -> anyhow::Result<bool> {
     ))
 }
 
+#[cfg(any(unix, test))]
 fn merge_toml(current: &str, fragment: &str) -> anyhow::Result<String> {
-    let mut current = parse_toml(current)?;
-    merge_table(&mut current, &parse_toml(fragment)?);
-    let mut rendered = toml::to_string_pretty(&current)?;
+    let mut current = current
+        .parse::<toml_edit::DocumentMut>()
+        .context("parsing TOML system file")?;
+    let fragment = fragment
+        .parse::<toml_edit::DocumentMut>()
+        .context("parsing TOML system file")?;
+    merge_table(current.as_table_mut(), fragment.as_table());
+    let mut rendered = current.to_string();
     if !rendered.ends_with('\n') {
         rendered.push('\n');
     }
@@ -404,6 +566,7 @@ fn contains_ini(current: &str, fragment: &str) -> anyhow::Result<bool> {
     }))
 }
 
+#[cfg(any(unix, test))]
 fn merge_ini(current: &str, fragment: &str) -> anyhow::Result<String> {
     let mut lines = current.lines().map(str::to_string).collect::<Vec<_>>();
     for (section, key, value) in ini_settings(fragment, true)? {
@@ -432,10 +595,12 @@ fn ini_setting(line: &str) -> Option<(&str, Option<&str>)> {
     (line.split_whitespace().count() == 1).then_some((line, None))
 }
 
+#[cfg(any(unix, test))]
 fn ini_line_key(line: &str) -> Option<&str> {
     ini_setting(line).map(|(key, _)| key)
 }
 
+#[cfg(any(unix, test))]
 fn ensure_ini_key(lines: &mut Vec<String>, section: &str, key: &str, value: Option<&str>) {
     let setting = value.map_or_else(|| key.to_string(), |value| format!("{key}={value}"));
     let Some(first) = lines.iter().position(|line| line.trim() == section) else {
@@ -590,6 +755,237 @@ mod tests {
     use super::*;
 
     #[test]
+    fn toml_merge_preserves_comments_and_layout_for_changed_and_unmanaged_keys() {
+        let original = "# administrator heading\n\
+            unmanaged = 'keep' # secret description\n\
+            managed  = false # why this setting exists\n\n\
+            # nested settings\n[service]\n\
+            keep = { value = 1, other = 'retained' } # inline comment\n";
+        let fragment = "managed = true\n[service]\nkeep = { value = 2 }\nnew = 'added'\n";
+        let merged = merge_toml(original, fragment).unwrap();
+        assert!(merged.starts_with("# administrator heading\n"));
+        assert!(merged.contains("unmanaged = 'keep' # secret description\n"));
+        assert!(merged.contains("managed  = true # why this setting exists\n"));
+        assert!(merged.contains("# nested settings\n[service]\n"));
+        assert!(merged.contains("other = 'retained'"));
+        assert!(merged.contains("# inline comment"));
+        assert!(contains_toml(&merged, fragment).unwrap());
+        assert_eq!(merge_toml(&merged, fragment).unwrap(), merged);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn privileged_fragment_read_rejects_changed_content_without_exposing_it() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let path = fixture.path().join("fragment");
+        let fragment = "managed = true\n";
+        let fingerprint = crate::infra::fs::content_hash(fragment);
+        fs::write(&path, fragment).unwrap();
+        assert_eq!(verified_fragment(&path, &fingerprint).unwrap(), fragment);
+        fs::write(&path, "private = 'substituted fixture secret'\n").unwrap();
+        let error = verified_fragment(&path, &fingerprint).unwrap_err();
+        assert!(error.to_string().contains("fragment changed"));
+        assert!(!format!("{error:#}").contains("substituted fixture secret"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn standalone_helper_rejects_unprivileged_calls_and_out_of_scope_targets_before_reading() {
+        let error = privileged_prepare(
+            Path::new("/outside/etc/target"),
+            Path::new("source-must-not-be-read"),
+            "fingerprint",
+            "toml",
+            Path::new("stage-must-not-be-created"),
+        )
+        .unwrap_err();
+        let reason = if nix::unistd::Uid::effective().is_root() {
+            "target must be below /etc"
+        } else {
+            "helper requires root"
+        };
+        assert!(error.to_string().contains(reason), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn protected_targets_and_parents_remain_unknown_without_executor_calls_or_preview_writes() {
+        use crate::engine::{ProcessOpts, process_resources_with_cache};
+        use crate::test_helpers::{ContextBuilder, task_batch};
+        use std::os::unix::fs::PermissionsExt as _;
+
+        if nix::unistd::Uid::effective().is_root() {
+            return; // Root is not constrained by Unix file permission bits.
+        }
+        for protect_parent in [false, true] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let root = fixture.path().canonicalize().unwrap();
+            fs::create_dir(root.join("system")).unwrap();
+            fs::write(root.join("system/fragment"), "managed = true\n").unwrap();
+            let parent = root.join("protected");
+            fs::create_dir(&parent).unwrap();
+            let target = parent.join("target");
+            let original = "private = 'fixture secret'\n";
+            fs::write(&target, original).unwrap();
+            let restricted = if protect_parent { &parent } else { &target };
+            let permissions = fs::metadata(restricted).unwrap().permissions();
+            fs::set_permissions(restricted, fs::Permissions::from_mode(0o0)).unwrap();
+            let resource = fixture_resource(
+                entry(&root, &target, "fragment", MergeStrategy::Toml),
+                Arc::new(MockExecutor::new()),
+            );
+            let observed = resource.current_state().unwrap();
+            assert!(
+                matches!(observed, ResourceState::Unknown { .. }),
+                "{observed:?}"
+            );
+            let ctx = ContextBuilder::new(root.clone())
+                .overlay(None)
+                .build()
+                .with_dry_run(true);
+            let result = process_resources_with_cache(
+                &ctx,
+                [resource],
+                &(),
+                |resource, ()| {
+                    resource.current_state().map(|state| match state {
+                        ResourceState::Unknown { reason } => {
+                            ResourceState::Incorrect { current: reason }
+                        }
+                        unchanged @ (ResourceState::Missing
+                        | ResourceState::Correct
+                        | ResourceState::Incorrect { .. }
+                        | ResourceState::Invalid { .. }) => unchanged,
+                    })
+                },
+                &ProcessOpts::strict("configure"),
+            )
+            .unwrap();
+            assert_eq!(task_batch(&result).changed_count(), 1);
+            let mut executor = MockExecutor::new();
+            executor.expect_execute().once().returning(|spec| {
+                assert_eq!(spec.program(), "sudo");
+                assert_eq!(spec.arguments()[0], "-n");
+                assert!(spec.is_checked());
+                Ok(ExecResult::success("already-correct\n"))
+            });
+            let pending = fixture_resource(
+                entry(&root, &target, "fragment", MergeStrategy::Toml),
+                Arc::new(executor),
+            );
+            assert_eq!(pending.apply().unwrap(), ResourceChange::AlreadyCorrect);
+            fs::set_permissions(restricted, permissions).unwrap();
+            assert_eq!(fs::read_to_string(&target).unwrap(), original);
+            assert_eq!(fs::read_dir(&parent).unwrap().count(), 1);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preparation_keeps_original_and_merged_contents_in_verified_private_stage() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let target = root.join("target");
+        let stage = root.join("private-stage");
+        fs::create_dir(&stage).unwrap();
+        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
+        let original = "# confidential\nprivate = 'fixture secret'\nmanaged = false\n";
+        fs::write(&target, original).unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
+        let owner = fs::metadata(&root).unwrap().uid();
+        assert_eq!(
+            prepare_in_private_stage(&target, "managed = true\n", "toml", &stage, owner).unwrap(),
+            "prepared"
+        );
+        assert_eq!(
+            fs::read_to_string(stage.join("original")).unwrap(),
+            original
+        );
+        let merged = fs::read_to_string(stage.join("input")).unwrap();
+        assert!(merged.contains("private = 'fixture secret'"));
+        assert!(merged.contains("# confidential"));
+        for name in ["input", "original"] {
+            let metadata = fs::metadata(stage.join(name)).unwrap();
+            assert_eq!(metadata.uid(), owner);
+            assert_eq!(metadata.mode() & 0o777, 0o600);
+            fs::remove_file(stage.join(name)).unwrap();
+        }
+        assert_eq!(fs::read_to_string(&target).unwrap(), original);
+        fs::write(&target, merged).unwrap();
+        assert_eq!(
+            prepare_in_private_stage(&target, "managed = true\n", "toml", &stage, owner).unwrap(),
+            "already-correct"
+        );
+        assert_eq!(fs::read_dir(stage).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preparation_refuses_public_or_linked_staging_and_sanitizes_target_parse_errors() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let target = root.join("target");
+        let stage = root.join("stage");
+        fs::create_dir(&stage).unwrap();
+        fs::write(&target, "private = 'fixture secret'\nmanaged = false\n").unwrap();
+        let owner = fs::metadata(&root).unwrap().uid();
+        fs::set_permissions(&stage, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(
+            prepare_in_private_stage(&target, "managed = true\n", "toml", &stage, owner).is_err()
+        );
+        assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&stage, &link).unwrap();
+        assert!(
+            prepare_in_private_stage(&target, "managed = true\n", "toml", &link, owner).is_err()
+        );
+        let invalid = "private = [fixture secret\n";
+        fs::write(&target, invalid).unwrap();
+        let error = prepare_in_private_stage(&target, "managed = true\n", "toml", &stage, owner)
+            .unwrap_err();
+        assert!(!format!("{error:#}").contains("fixture secret"));
+        assert_eq!(fs::read_to_string(&target).unwrap(), invalid);
+        assert_eq!(fs::read_dir(stage).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn privileged_assessment_refuses_missing_pam_and_nonregular_targets_without_staging_contents() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let target = root.join("target");
+        let stage = root.join("stage");
+        fs::create_dir(&stage).unwrap();
+        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
+        let owner = fs::metadata(&root).unwrap().uid();
+        assert!(
+            prepare_in_private_stage(&target, "auth optional fixture.so\n", "pam", &stage, owner,)
+                .is_err()
+        );
+        assert!(!target.exists());
+        assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+        let unmanaged = root.join("unmanaged");
+        fs::write(&unmanaged, "private = 'fixture secret'\n").unwrap();
+        std::os::unix::fs::symlink(&unmanaged, &target).unwrap();
+        assert!(
+            prepare_in_private_stage(&target, "managed = true\n", "toml", &stage, owner).is_err()
+        );
+        assert!(fs::symlink_metadata(&target).unwrap().is_symlink());
+        assert_eq!(
+            fs::read_to_string(&unmanaged).unwrap(),
+            "private = 'fixture secret'\n"
+        );
+        assert_eq!(fs::read_dir(stage).unwrap().count(), 0);
+    }
+
+    #[test]
     fn pam_conflicts_fail_validation_and_merge_without_silently_dropping_rules() {
         let original = "auth required pam_unix.so\n";
         for facility in ["auth", "AUTH", "-auth"] {
@@ -633,7 +1029,7 @@ mod tests {
 
     #[test]
     fn description_is_the_target_path() {
-        let root = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir_in(".").unwrap();
         let target = Path::new("/etc/pacman.conf");
         let resource = fixture_resource(
             entry(root.path(), target, "pacman.conf", MergeStrategy::Ini),
@@ -695,11 +1091,10 @@ mod tests {
             fs::create_dir(root.path().join("system")).unwrap();
             fs::write(root.path().join("system/login"), fragment).unwrap();
             let target = root.path().join("missing-login");
-            let mut resource = fixture_resource(
+            let resource = fixture_resource(
                 entry(root.path(), &target, "login", MergeStrategy::Pam),
                 Arc::new(MockExecutor::new()),
             );
-            resource.temp_dir = root.path().join("staging-must-not-be-created");
 
             assert!(matches!(
                 resource.current_state().unwrap(),
@@ -709,7 +1104,7 @@ mod tests {
 
             assert!(error.to_string().contains("is missing"), "{error}");
             assert!(!target.exists(), "{fragment:?}");
-            assert!(!resource.temp_dir.exists());
+            assert!(!root.path().join("staging-must-not-be-created").exists());
         }
     }
 
@@ -1046,11 +1441,10 @@ mod tests {
                 if existing {
                     fs::write(&target, original).unwrap();
                 }
-                let mut resource = fixture_resource(
+                let resource = fixture_resource(
                     entry(root.path(), &target, "fragment", merge),
                     Arc::new(MockExecutor::new()),
                 );
-                resource.temp_dir = root.path().join("staging-must-not-be-created");
 
                 assert!(
                     matches!(
@@ -1061,7 +1455,7 @@ mod tests {
                 );
                 let error = resource.apply().unwrap_err();
                 assert!(error.to_string().contains(reason), "{error}");
-                assert!(!resource.temp_dir.exists());
+                assert!(!root.path().join("staging-must-not-be-created").exists());
                 if existing {
                     assert_eq!(fs::read_to_string(&target).unwrap(), original);
                 } else {
@@ -1111,11 +1505,10 @@ mod tests {
             }
             let original_metadata = fs::metadata(&target).ok();
             let staging = root.path().join("staging-must-not-be-created");
-            let mut resource = fixture_resource(
+            let resource = fixture_resource(
                 entry(root.path(), &target, "fragment", merge),
                 Arc::new(MockExecutor::new()),
             );
-            resource.temp_dir = staging.clone();
             let initial_state = resource.current_state().unwrap();
             if current.is_some() {
                 assert!(
@@ -1191,11 +1584,10 @@ mod tests {
                 _ => panic!("unexpected target kind: {kind}"),
             }
             let original_link = fs::read_link(&target).ok();
-            let mut resource = fixture_resource(
+            let resource = fixture_resource(
                 entry(&root, &target, "fragment", MergeStrategy::Toml),
                 Arc::new(MockExecutor::new()),
             );
-            resource.temp_dir = root.join("staging-must-not-be-created");
 
             assert!(
                 matches!(
@@ -1220,7 +1612,7 @@ mod tests {
                 assert!(target.symlink_metadata().unwrap().is_symlink(), "{kind}");
             }
             assert_eq!(fs::read_to_string(&user_file).unwrap(), "user content");
-            assert!(!resource.temp_dir.exists());
+            assert!(!root.join("staging-must-not-be-created").exists());
             assert_eq!(fs::read_dir(&root).unwrap().count(), 3);
         }
     }
@@ -1256,7 +1648,7 @@ mod tests {
             } else {
                 target.clone()
             };
-            let mut resource = fixture_resource(
+            let resource = fixture_resource(
                 entry(
                     root.path(),
                     &resource_target,
@@ -1265,7 +1657,6 @@ mod tests {
                 ),
                 Arc::new(MockExecutor::new()),
             );
-            resource.temp_dir = root.path().join("staging-must-not-be-created");
 
             for error in [
                 resource.current_state().unwrap_err(),
@@ -1290,7 +1681,7 @@ mod tests {
             } else {
                 assert_eq!(fs::read(&source).unwrap(), fragment, "{failure}");
             }
-            assert!(!resource.temp_dir.exists());
+            assert!(!root.path().join("staging-must-not-be-created").exists());
             assert_eq!(fs::read_dir(root.path()).unwrap().count(), 2);
         }
     }
@@ -1345,7 +1736,7 @@ mod tests {
 
     #[test]
     fn malformed_target_is_invalid_without_being_replaced() {
-        let root = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir_in(".").unwrap();
         fs::create_dir(root.path().join("system")).unwrap();
         fs::write(root.path().join("system/fragment.toml"), "managed = true\n").unwrap();
         let target = root.path().join("target.toml");
@@ -1365,6 +1756,21 @@ mod tests {
         );
         assert_eq!(fs::read_to_string(target).unwrap(), "not = [valid\n");
     }
+
+    #[cfg(target_os = "linux")]
+    const PREPARE_FIXTURE: &str = r#"#!/bin/sh
+set -eu
+test "$1" = system-file-helper && test "$2" = --target
+target=$3
+test "$4" = --fragment
+case "$6" in --fragment-hash=*) ;; *) exit 1 ;; esac
+test "$7" = --merge && test "$8" = toml && test "$9" = --stage
+stage=${10}
+test "$(stat -c %a -- "$stage")" = 700
+printf 'replacement content\n' > "$stage/input"
+if [ -f "$target" ]; then cp -- "$target" "$stage/original"; fi
+printf 'prepared\n'
+"#;
 
     #[cfg(target_os = "linux")]
     const INSTALL_FIXTURE: &str = r#"#!/bin/sh
@@ -1408,19 +1814,19 @@ esac
 
         for existing in [false, true] {
             for failure in ["copy", "publish", "conflict", "none"] {
-                let root = tempfile::tempdir().unwrap();
+                let root = tempfile::tempdir_in(".").unwrap();
+                let root_path = root.path().canonicalize().unwrap();
                 let tools = root.path().join("tools");
                 fs::create_dir(&tools).unwrap();
                 // Quotes and shell syntax must be passed as data, even through sudo sh.
-                let parent = root.path().join("parent ' $(false)");
+                let parent = root_path.join("parent ' $(false)");
                 let target = parent.join("target ' $(false).toml");
-                let source = root.path().join("source ' $(false).toml");
-                let expected = root.path().join("original ' $(false).toml");
-                fs::write(&source, "replacement content\n").unwrap();
+                let helper = root_path.join("helper ' $(false)");
+                fs::write(&helper, PREPARE_FIXTURE).unwrap();
+                fs::set_permissions(&helper, fs::Permissions::from_mode(0o755)).unwrap();
                 if existing {
                     fs::create_dir(&parent).unwrap();
                     fs::write(&target, "original content\n").unwrap();
-                    fs::copy(&target, &expected).unwrap();
                     rustix::fs::setxattr(
                         &target,
                         "user.dotfiles-fixture",
@@ -1446,14 +1852,12 @@ esac
                 .unwrap();
                 let result = std::process::Command::new("sh")
                     .args(["-c", ATOMIC_INSTALL, "dotfiles-system-file"])
-                    .arg(&source)
+                    .arg(&helper)
                     .arg(&target)
-                    .arg(if existing {
-                        expected.as_path()
-                    } else {
-                        Path::new("")
-                    })
-                    .arg(root.path())
+                    .arg("public fragment")
+                    .arg(&root_path)
+                    .arg("toml")
+                    .arg("fragment snapshot")
                     .env("PATH", path)
                     .env("FAILURE", failure)
                     .env("TARGET", &target)
@@ -1516,9 +1920,10 @@ esac
     #[test]
     #[cfg(target_os = "linux")]
     fn system_file_publication_refuses_escaping_and_changed_parents() {
-        let fixture = tempfile::tempdir().unwrap();
-        let root = fixture.path().join("etc");
-        let outside = fixture.path().join("outside");
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let fixture_path = fixture.path().canonicalize().unwrap();
+        let root = fixture_path.join("etc");
+        let outside = fixture_path.join("outside");
         let actual = root.join("actual");
         for directory in [&root, &outside, &actual] {
             fs::create_dir(directory).unwrap();
@@ -1551,6 +1956,8 @@ esac
             .arg(&resolved)
             .arg("")
             .arg(&root)
+            .arg("toml")
+            .arg("fragment snapshot")
             .output()
             .unwrap();
         assert!(!result.status.success(), "{result:?}");
@@ -1559,7 +1966,7 @@ esac
     }
 
     #[test]
-    fn failed_install_cleans_staging_preserves_target_and_can_be_retried() {
+    fn failed_install_preserves_target_without_user_staging_and_can_be_retried() {
         #[cfg(unix)]
         use std::os::unix::fs::PermissionsExt as _;
 
@@ -1587,50 +1994,61 @@ esac
                 .in_sequence(&mut sequence)
                 .returning(move |spec| {
                     assert_eq!(spec.program(), "sudo");
-                    assert_eq!(spec.arguments().len(), 8);
+                    assert_eq!(spec.arguments().len(), 12);
                     assert_eq!(
-                        &spec.arguments()[..4],
-                        ["sh", "-c", ATOMIC_INSTALL, "dotfiles-system-file"]
+                        &spec.arguments()[..6],
+                        [
+                            "-n",
+                            "--",
+                            "sh",
+                            "-c",
+                            ATOMIC_INSTALL,
+                            "dotfiles-system-file"
+                        ]
                     );
-                    assert_eq!(spec.arguments()[5], expected_target.as_os_str());
-                    let original = Path::new(&spec.arguments()[6]);
-                    assert_eq!(original.parent(), Some(expected_staging.as_path()));
+                    assert_eq!(spec.arguments()[7], expected_target.as_os_str());
                     assert_eq!(
-                        fs::read_to_string(original).unwrap(),
-                        "unmanaged = 'keep'\n"
+                        spec.arguments()[8],
+                        expected_target
+                            .parent()
+                            .unwrap()
+                            .join("system/fragment.toml")
+                            .as_os_str()
                     );
+                    assert_eq!(spec.arguments()[10], "toml");
+                    assert_eq!(
+                        spec.arguments()[11],
+                        crate::infra::fs::content_hash("[managed]\nenabled = true\n").as_str()
+                    );
+                    assert_eq!(
+                        Path::new(&spec.arguments()[6]),
+                        std::env::current_exe().unwrap()
+                    );
+                    assert_eq!(fs::read_dir(&expected_staging).unwrap().count(), 0);
                     assert_eq!(spec.working_dir(), None);
                     assert!(spec.is_checked());
-                    let staged = Path::new(&spec.arguments()[4]);
-                    assert_eq!(staged.parent(), Some(expected_staging.as_path()));
-                    let content = fs::read_to_string(staged).unwrap();
-                    let table: toml::Table = toml::from_str(&content).unwrap();
-                    assert_eq!(table["unmanaged"].as_str(), Some("keep"));
-                    assert_eq!(table["managed"]["enabled"].as_bool(), Some(true));
-                    #[cfg(unix)]
-                    assert_eq!(
-                        fs::metadata(staged).unwrap().permissions().mode() & 0o777,
-                        0o600
-                    );
                     if fail {
                         Err(ExecError::non_zero(
                             "sudo sh",
                             ExecResult::failure("", "fixture install denied", Some(1)),
                         ))
                     } else {
-                        fs::copy(staged, &expected_target).unwrap();
+                        fs::write(
+                            &expected_target,
+                            "unmanaged = 'keep'\n[managed]\nenabled = true\n",
+                        )
+                        .unwrap();
                         #[cfg(unix)]
                         fs::set_permissions(&expected_target, fs::Permissions::from_mode(0o644))
                             .unwrap();
-                        Ok(ExecResult::success(""))
+                        Ok(ExecResult::success("applied\n"))
                     }
                 });
         }
-        let mut resource = fixture_resource(
+        let resource = fixture_resource(
             entry(root.path(), &target, "fragment.toml", MergeStrategy::Toml),
             Arc::new(executor),
         );
-        resource.temp_dir = staging.clone();
 
         let error = resource.apply().unwrap_err();
         assert!(
@@ -1648,7 +2066,7 @@ esac
         assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
         assert_eq!(fs::read_dir(&staging).unwrap().count(), 0);
         let content = fs::read_to_string(target).unwrap();
-        assert!(content.contains("unmanaged = \"keep\""));
+        assert!(content.contains("unmanaged = 'keep'"));
         assert!(content.contains("enabled = true"));
     }
 }

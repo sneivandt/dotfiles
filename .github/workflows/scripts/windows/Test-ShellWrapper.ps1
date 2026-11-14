@@ -244,14 +244,14 @@ function Test-AttestationVerification {
         -not $content.Contains('function Test-Attestation') -or
         -not $content.Contains('gh attestation verify') -or
         -not $content.Contains('DOTFILES_SKIP_ATTESTATION') -or
-        -not $content.Contains('Write-Warning "gh not found. Skipping build provenance verification."')
+        -not $content.Contains('Write-Warning "gh not found. Install GitHub CLI')
     ) {
         Write-TestFail "Wrapper does not verify build provenance for downloaded binaries"
         return $false
     }
 
-    if ($content -notmatch '(?s)if \(-not \(Get-Command gh.*?\)\).*?Write-Warning "gh not found.*?return \$true') {
-        Write-TestFail "Wrapper does not allow bootstrap to continue when gh is unavailable"
+    if ($content -notmatch '(?s)if \(-not \(Get-Command gh.*?\)\).*?Write-Warning "gh not found.*?return \$false') {
+        Write-TestFail "Wrapper does not reject unattested bootstrap when gh is unavailable"
         return $false
     }
 
@@ -269,7 +269,47 @@ function Test-AttestationVerification {
         return $false
     }
 
-    Write-TestPass "Wrapper verifies provenance when available and tolerates missing gh"
+    $tokens = $null
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($wrapper, [ref]$tokens, [ref]$errors)
+    if ($errors.Count) { throw "Wrapper parse failed: $errors" }
+    $verifier = $ast.Find({ param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Test-Attestation'
+    }, $true)
+    . ([scriptblock]::Create($verifier.Extent.Text))
+    $savedSkip = $env:DOTFILES_SKIP_ATTESTATION
+    $probe = @{ Available = $false; Arguments = $null }
+    Set-Item Function:Get-Command -Value {
+        if ($probe.Available) { return @{ Name = 'gh' } }
+        return $null
+    }
+    function gh {
+        $probe.Arguments = @($args)
+        $global:LASTEXITCODE = 0
+    }
+    try {
+        $env:DOTFILES_SKIP_ATTESTATION = '0'
+        if (Test-Attestation -Path 'fixture asset' -Repo 'fixture/releases') {
+            throw 'Missing gh accepted an unattested asset'
+        }
+        $env:DOTFILES_SKIP_ATTESTATION = '1'
+        if (-not (Test-Attestation -Path 'fixture asset' -Repo 'fixture/releases')) {
+            throw 'Explicit bypass did not accept the asset'
+        }
+        if ($null -ne $probe.Arguments) { throw 'Bypass invoked gh' }
+        $env:DOTFILES_SKIP_ATTESTATION = '0'
+        $probe.Available = $true
+        if (-not (Test-Attestation -Path 'fixture asset' -Repo 'fixture/releases')) {
+            throw 'Verified asset was rejected'
+        }
+        if (($probe.Arguments -join '|') -cne 'attestation|verify|fixture asset|--repo|fixture/releases') {
+            throw 'Verification did not receive the explicit release repository'
+        }
+    } finally {
+        $env:DOTFILES_SKIP_ATTESTATION = $savedSkip
+    }
+    Write-TestPass "Wrapper requires provenance unless explicitly bypassed"
     return $true
 }
 
@@ -339,8 +379,16 @@ function Test-IsolatedWrapperPath {
         [void][System.IO.Directory]::CreateDirectory((Split-Path $buildBinary))
         [void][System.IO.Directory]::CreateDirectory($caller)
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\..\..\..\dotfiles.ps1') -Destination $wrapper
-        [System.IO.File]::WriteAllText($binary, 'fixture')
-        [System.IO.File]::WriteAllText($buildBinary, 'fixture')
+        $nativeFixture = if ($IsLinux) {
+            @'
+#!/usr/bin/env python3
+import json, os, sys
+print(json.dumps({"Cwd": os.getcwd(), "Arguments": sys.argv[1:], "Root": os.environ["DOTFILES_ROOT"], "Wrapper": os.environ["DOTFILES_WRAPPER"], "Guard": os.environ["DOTFILES_REEXEC_GUARD"]}))
+sys.exit(7)
+'@
+        } else { 'fixture' }
+        [System.IO.File]::WriteAllText($binary, $nativeFixture)
+        [System.IO.File]::WriteAllText($buildBinary, $nativeFixture)
         $child = {
             [pscustomobject]@{
                 Cwd = (Get-Location).Path
@@ -352,8 +400,13 @@ function Test-IsolatedWrapperPath {
                 ConvertTo-Json -Compress
             $global:LASTEXITCODE = 7
         }
-        Set-Item -LiteralPath "Function:$binary" -Value $child
-        Set-Item -LiteralPath "Function:$buildBinary" -Value $child
+        if ($IsLinux) {
+            & chmod +x $binary $buildBinary
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot make native fixture executable' }
+        } else {
+            Set-Item -LiteralPath "Function:$binary" -Value $child
+            Set-Item -LiteralPath "Function:$buildBinary" -Value $child
+        }
         Set-Item Function:cargo -Value {
             [System.IO.File]::WriteAllText(
                 (Join-Path $env:DOTFILES_ROOT 'cargo-cwd'), (Get-Location).Path)
@@ -375,6 +428,7 @@ function Test-IsolatedWrapperPath {
             }
             $global:LASTEXITCODE = [int]$env:WRAPPER_TEST_GH_EXIT
         }
+        $downloadCapture = @{ Count = 0 }
         Set-Item Function:Invoke-WebRequest -Value {
             param([string]$Uri, [string]$OutFile)
             if ($Uri.EndsWith('/releases/latest')) {
@@ -387,7 +441,8 @@ function Test-IsolatedWrapperPath {
                 return @{ Content = "$hash  $(Get-TargetAssetName)" }
             }
             if ($OutFile) {
-                [System.IO.File]::WriteAllText($OutFile, 'fixture')
+                $downloadCapture.Count++
+                [System.IO.File]::WriteAllText($OutFile, $nativeFixture)
                 return
             }
             throw "Unexpected fixture request: $Uri"
@@ -402,10 +457,14 @@ function Test-IsolatedWrapperPath {
         $env:DBUS_SESSION_BUS_ADDRESS = 'caller'
         Set-Location -LiteralPath $caller
         $arguments = @('update', '--dry-run', '--root', '.', '--overlay', '../overlay dir', '', '--BUILD', '--', 'literal value', '--build', '')
-        foreach ($mode in @('cached', 'build', 'bootstrap')) {
+        $modes = @('cached', 'build', 'bootstrap')
+        if ($IsLinux) { $modes += 'non-executable' }
+        foreach ($mode in $modes) {
+            $beforeDownloads = $downloadCapture.Count
             $wrapperArguments = $arguments
             if ($mode -eq 'build') { $wrapperArguments = @('--build') + $arguments }
             if ($mode -eq 'bootstrap') { Remove-Item -LiteralPath $binary }
+            if ($mode -eq 'non-executable') { & chmod a-x $binary }
             $output = @(& $wrapper @wrapperArguments)
             if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
                 throw "$mode changed the caller's credential environment"
@@ -420,6 +479,8 @@ function Test-IsolatedWrapperPath {
                 throw "$mode changed the forwarded arguments"
             }
             if (-not (Test-Path -LiteralPath $binary)) { throw "$mode did not preserve the cached binary" }
+            $expectedDownloads = $beforeDownloads + [int]($mode -in @('bootstrap', 'non-executable'))
+            if ($downloadCapture.Count -ne $expectedDownloads) { throw "$mode used the wrong bootstrap path" }
         }
         if ([System.IO.File]::ReadAllText((Join-Path $repo 'cargo-cwd')) -ne (Join-Path $repo 'cli')) {
             throw 'Cargo did not run from cli/'

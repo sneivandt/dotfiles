@@ -87,14 +87,26 @@ window.thunar statusbar,
 window.thunar notebook > header {
   background-image: none;
   background-color: @files_panel;
-  border-color: alpha(@files_edge, 0.6);
+  border-color: alpha(@files_edge, 0.4);
   box-shadow: none;
   color: @files_secondary;
 }
 
 window.thunar toolbar {
   padding: 6px 8px;
-  border-bottom: 1px solid alpha(@files_edge, 0.6);
+  border-bottom: 1px solid alpha(@files_edge, 0.4);
+}
+
+window.thunar toolbar button {
+  background-image: none;
+  background-color: transparent;
+  border-color: transparent;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+window.thunar toolbar button:focus-visible {
+  border-color: @files_accent;
 }
 
 window.thunar toolbar button:not(:disabled):hover,
@@ -115,16 +127,16 @@ window.thunar toolbar button:active {
 window.thunar notebook > header tab:checked {
   background-image: none;
   background-color: @files_canvas;
-  box-shadow: inset 0 -2px @files_accent;
+  box-shadow: inset 0 -2px alpha(@files_accent, 0.6);
   color: @files_text;
 }
 
 window.thunar .standard-view treeview header button {
   padding: 5px 8px;
   background-image: none;
-  background-color: @files_panel;
+  background-color: @files_canvas;
   border: 0;
-  border-bottom: 1px solid alpha(@files_edge, 0.6);
+  border-bottom: 1px solid alpha(@files_edge, 0.4);
   box-shadow: none;
   color: @files_secondary;
 }

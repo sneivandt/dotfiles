@@ -128,10 +128,9 @@ fn run_workflow_script(
 /// quietly.
 ///
 /// This also runs after failed convergence because APM may have already reset the
-/// workflows before a later deployment failed. The most common failure is a
-/// locked database, which means the Copilot App is currently open and holding the
-/// lock; we surface that loudly so the user knows to close the App (or just
-/// toggle the workflows by hand).  The update runs through Python's stdlib
+/// workflows before a later deployment failed. If another connection holds a
+/// database lock past SQLite's timeout, the repair reports the lock failure.
+/// The update runs through Python's stdlib
 /// `sqlite3` module so we do not need a `SQLite` binary on PATH or a Rust
 /// `SQLite` dependency.
 pub(super) fn apply_workflow_autopilot_fixup(
@@ -141,11 +140,6 @@ pub(super) fn apply_workflow_autopilot_fixup(
     let Some(ids) = fixup_workflow_ids(ctx)? else {
         return Ok(WorkflowRepair::NotApplicable);
     };
-    if ctx.env().var("DOTFILES_COPILOT_APP_CLOSED").as_deref() != Some("1") {
-        return Ok(WorkflowRepair::Unmet(
-            "close the Copilot App and set DOTFILES_COPILOT_APP_CLOSED=1 in a separate terminal before repairing workflows; reopen the App afterward".into(),
-        ));
-    }
     let (python, db_str) = match probe_workflow_db(ctx) {
         WorkflowDbProbe::Ready { python, db_str } => (python, db_str),
         WorkflowDbProbe::DbMissing { path } => {

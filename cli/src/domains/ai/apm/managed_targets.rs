@@ -28,13 +28,6 @@ pub(super) struct ManagedTargets {
 }
 
 impl ManagedTargets {
-    /// APM and its repair adapter cannot refresh an open App's scheduler.
-    pub(super) fn offline_app_requirement(self, ctx: &Context) -> Option<String> {
-        (self.includes(CopilotTarget::CopilotApp)
-            && ctx.env().var("DOTFILES_COPILOT_APP_CLOSED").as_deref() != Some("1"))
-            .then(|| "close the Copilot App, run from a separate terminal with DOTFILES_COPILOT_APP_CLOSED=1, then reopen the App to reload workflow schedules".to_string())
-    }
-
     /// Detect the managed Copilot targets available on this machine.
     ///
     /// # Errors

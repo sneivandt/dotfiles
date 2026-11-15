@@ -49,11 +49,7 @@ pub fn write_copilot_app_db(home: &Path) -> PathBuf {
 pub fn make_context_with_home(home: &Path, platform: Platform, executor: MockExecutor) -> Context {
     make_context(home.to_path_buf(), None, platform, Arc::new(executor))
         .with_home(home.to_path_buf())
-        .with_env(
-            MapEnv::new()
-                .with("DOTFILES_COPILOT_APP_CLOSED", "1")
-                .into_handle(),
-        )
+        .with_env(MapEnv::new().into_handle())
 }
 
 pub fn make_windows_cowork_context(home: &Path, executor: MockExecutor) -> Context {
@@ -62,7 +58,6 @@ pub fn make_windows_cowork_context(home: &Path, executor: MockExecutor) -> Conte
     let onedrive = home.join("OneDrive - Test");
     make_context_with_home(home, Platform::new(Os::Windows, false), executor).with_env(
         MapEnv::new()
-            .with("DOTFILES_COPILOT_APP_CLOSED", "1")
             .with("USERPROFILE", home)
             .with("ONEDRIVECOMMERCIAL", &onedrive)
             .into_handle(),

@@ -176,9 +176,6 @@ impl ApmInstallPlan {
     }
 
     fn apply(&self, ctx: &Context) -> Result<TaskResult> {
-        if let Some(reason) = self.targets.offline_app_requirement(ctx) {
-            return Ok(TaskResult::unmet(reason));
-        }
         let lock_before = read_lock_snapshot(&self.lock_path)?;
         let target_snapshot = self.targets.snapshot(ctx);
 

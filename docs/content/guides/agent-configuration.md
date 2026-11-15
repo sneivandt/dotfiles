@@ -315,19 +315,9 @@ When the App database exists, dotfiles enables APM's experimental `copilot-app`
 support and installs workflow packages after the primary deployment. It does
 not send manifest-wide MCP dependencies to this workflow-only integration.
 
-Close the Copilot App before applying agent-package changes, then run from a
-separate terminal:
-
-```sh
-DOTFILES_COPILOT_APP_CLOSED=1 dotfiles update --only agent-packages
-```
-
-In PowerShell, set `$env:DOTFILES_COPILOT_APP_CLOSED = '1'` for that invocation
-and remove it afterward. Reopen the App after deployment to reload its scheduler.
-The variable acknowledges that you closed the App; it does not detect or close
-running processes. Without it, a run selecting this integration reports unmet
-work before writing the manifest or invoking APM. Previews remain available.
-Do not persist the acknowledgement in shell startup files.
+You can update agent packages while the Copilot App is open. If the App still
+shows an old schedule after the update, reopen it to reload the scheduler.
+If the update reports a database lock, close the App and retry the update.
 
 ::: warning Disabling a managed workflow in the App is temporary
 Dotfiles restores its managed workflows to **enabled, autopilot** state and

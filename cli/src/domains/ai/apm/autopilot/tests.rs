@@ -65,29 +65,6 @@ assert iterations < 3000, iterations
     run_python_script(python, &script, &[]);
 }
 
-#[test]
-fn workflow_updates_require_offline_acknowledgement_before_any_deployment() {
-    let home = tempfile::tempdir().unwrap();
-    write_autopilot_fixture(home.path(), &["apm--fixture"]);
-    let mut mock = MockExecutor::new();
-    expect_which_apm(&mut mock, true);
-    mock.expect_execute().never();
-    let ctx = make_home_context_with_executor(home.path(), mock)
-        .with_env(crate::infra::env::MapEnv::new().into_handle());
-    let result = update_task().run(&ctx).unwrap();
-    assert!(matches!(
-        result,
-        crate::engine::TaskResult::Skipped {
-            kind: crate::engine::SkipKind::UnmetWork,
-            ..
-        }
-    ));
-    assert!(!home.path().join(".apm/apm.yml").exists());
-    assert!(matches!(
-        super::apply_workflow_autopilot_fixup(&ctx, &DesiredApmWorkflows::FirstInstall).unwrap(),
-        super::WorkflowRepair::Unmet(_)
-    ));
-}
 use super::lockfile::parse_deployed_workflow_ids;
 use super::outcome::{
     FixupExecution, FixupFailure, FixupOutcome, decide_fixup_outcome, interpret_fixup_result,

@@ -136,13 +136,13 @@ Relative paths resolve from the **directory where you run the command**. A
 path passed with `--overlay` to update, remove, or check is saved
 as an absolute path. Environment selections are not saved. Existing saved
 relative paths retain their working-directory meaning until replaced.
-Read-only listing never saves a selection. Check for a persistence warning if a
+List and explain use the selection for that invocation only. Check for a persistence warning if a
 later run does not remember the path.
 
 Passing a linked Git worktree (`.git` is a file) with `--overlay` requires
 confirmation, defaulting to no. Update, remove, and check decline it in
-non-interactive mode, including CI. `list` can ask when both input and error
-output are terminals. The prompt applies to the explicit flag, not every use
+non-interactive mode, including CI. List and explain can ask when both input
+and error output are terminals. The prompt applies to the explicit flag, not every use
 of a saved overlay. Prefer a stable primary checkout for an unattended overlay;
 an ordinary `.git` directory does not need that confirmation.
 

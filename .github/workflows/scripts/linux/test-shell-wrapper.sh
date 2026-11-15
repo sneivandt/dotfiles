@@ -156,6 +156,7 @@ case "$url" in
 printf '%s\n' "$DOTFILES_ROOT" > "$DOTFILES_ROOT/root.txt"
 printf '%s\n' "$DOTFILES_WRAPPER" > "$DOTFILES_ROOT/wrapper.txt"
 printf '%s\n' "$@" > "$DOTFILES_ROOT/args.txt"
+printf '%s\n' '{"type":"fixture"}'
 BIN
     ;;
   *)
@@ -186,6 +187,10 @@ EOF
     return 0
   fi
   [ "$status" -eq 0 ] || log_error "Bootstrap failed: $(cat "$tmpdir/stderr")"
+  [ "$(cat "$tmpdir/stdout")" = '{"type":"fixture"}' ] ||
+    log_error "Bootstrap mixed progress into child stdout"
+  grep -q '^Bootstrap ·' "$tmpdir/stderr" || log_error "Bootstrap start was missing from stderr"
+  grep -q '^Downloaded ·' "$tmpdir/stderr" || log_error "Bootstrap completion was missing from stderr"
 
   expected=$(cat <<'EOF'
 update

@@ -18,13 +18,23 @@ crate::engine::config_task! {
     pub struct ConfigureSystemd(Vec<SystemdUnit>);
 }
 
+impl ConfigureSystemd {
+    pub(crate) const fn is_applicable(
+        platform: crate::infra::platform::Platform,
+        has_declarations: bool,
+        is_ci: bool,
+    ) -> bool {
+        platform.supports_systemd() && has_declarations && !is_ci
+    }
+}
+
 impl Task for ConfigureSystemd {
     fn meta(&self) -> TaskMeta<'_> {
         TaskMeta::new("Systemd units").with_selector("systemd")
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform().supports_systemd() && !self.config.get().is_empty() && !ctx.is_ci()
+        Self::is_applicable(ctx.platform(), !self.config.get().is_empty(), ctx.is_ci())
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {

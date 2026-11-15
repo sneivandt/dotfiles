@@ -9,7 +9,9 @@ use crate::app::config::Config;
 use crate::app::config::store::ConfigStore;
 use crate::app::filter::{selected_task_ids, task_matches_filter};
 use crate::domains::ai::apm::ApmPackageMode;
+use crate::domains::files::chmod::ApplyFilePermissions;
 use crate::domains::repository::update::RepositoryUpdateSignal;
+use crate::domains::system::{system_files::ConfigureSystemFiles, systemd_units::ConfigureSystemd};
 use crate::engine::graph::ResolvedTaskGraph;
 use crate::engine::{Task, TaskId, TaskVisibility};
 use crate::infra::platform::Platform;
@@ -74,8 +76,9 @@ pub fn run(opts: &ListOpts) -> Result<()> {
     } else {
         let mut listings = collect_listings(&store, overlay.as_deref())?;
         if !opts.all {
+            let is_ci = env.var_os("CI").is_some();
             listings.retain(|listing| {
-                potentially_applicable(&listing.selector, store.aggregate.get(), platform)
+                potentially_applicable(&listing.selector, store.aggregate.get(), platform, is_ci)
             });
         }
         write_listings(&listings, opts.format, &mut stdout.lock())
@@ -104,19 +107,28 @@ pub(super) fn load_discovery_config(
 
 /// Only reject tasks whose platform or immutable configuration proves there
 /// is no work. Keep unknown tasks and filesystem/runtime-dependent cases.
-fn potentially_applicable(selector: &str, config: &Config, platform: Platform) -> bool {
+fn potentially_applicable(
+    selector: &str,
+    config: &Config,
+    platform: Platform,
+    is_ci: bool,
+) -> bool {
     match selector {
         "developer-mode" => platform.is_windows(),
         "registry" => platform.has_registry() && !config.registry.is_empty(),
-        "file-permissions" => platform.supports_chmod() && !config.chmod.is_empty(),
+        "file-permissions" => {
+            ApplyFilePermissions::is_applicable(platform, !config.chmod.is_empty())
+        }
         "packages" => config.packages.iter().any(|package| !package.is_aur),
         "aur-packages" => {
             platform.supports_aur() && config.packages.iter().any(|package| package.is_aur)
         }
         "paru" => platform.uses_pacman(),
         "custom-package-repository" | "custom-package-versions" => platform.supports_aur(),
-        "system-files" => platform.is_linux() && !config.system_files.is_empty(),
-        "systemd" => platform.supports_systemd() && !config.units.is_empty(),
+        "system-files" => {
+            ConfigureSystemFiles::is_applicable(platform, !config.system_files.is_empty(), is_ci)
+        }
+        "systemd" => ConfigureSystemd::is_applicable(platform, !config.units.is_empty(), is_ci),
         "login-shell" => platform.is_linux(),
         "vscode-extensions" => !config.vscode_extensions.is_empty(),
         "agent-settings" => !config.agent_settings.is_empty(),
@@ -438,7 +450,7 @@ mod tests {
                 "symlink-sources",
             ] {
                 assert!(
-                    !potentially_applicable(selector, &config, platform),
+                    !potentially_applicable(selector, &config, platform, false),
                     "{selector} on {platform}"
                 );
             }
@@ -457,31 +469,31 @@ mod tests {
                 "unknown",
             ] {
                 assert!(
-                    potentially_applicable(selector, &config, platform),
+                    potentially_applicable(selector, &config, platform, false),
                     "uncertain or unconditional {selector} on {platform}"
                 );
             }
             assert_eq!(
-                potentially_applicable("developer-mode", &config, platform),
+                potentially_applicable("developer-mode", &config, platform, false),
                 platform.is_windows()
             );
             assert_eq!(
-                potentially_applicable("login-shell", &config, platform),
+                potentially_applicable("login-shell", &config, platform, false),
                 platform.is_linux()
             );
             assert_eq!(
-                potentially_applicable("paru", &config, platform),
+                potentially_applicable("paru", &config, platform, false),
                 platform.uses_pacman()
             );
             for selector in ["custom-package-repository", "custom-package-versions"] {
                 assert_eq!(
-                    potentially_applicable(selector, &config, platform),
+                    potentially_applicable(selector, &config, platform, false),
                     platform.supports_aur(),
                     "{selector} requires AUR support on {platform}"
                 );
             }
             assert_eq!(
-                potentially_applicable("git", &config, platform),
+                potentially_applicable("git", &config, platform, false),
                 platform.is_windows(),
                 "Windows git cleanup applies with empty configuration"
             );
@@ -500,15 +512,20 @@ mod tests {
         }];
         let arch = Platform::new(Os::Linux, true);
         let windows = Platform::new(Os::Windows, false);
-        assert!(potentially_applicable("aur-packages", &config, arch));
-        assert!(!potentially_applicable("aur-packages", &config, windows));
-        assert!(!potentially_applicable("packages", &config, arch));
+        assert!(potentially_applicable("aur-packages", &config, arch, false));
+        assert!(!potentially_applicable(
+            "aur-packages",
+            &config,
+            windows,
+            false
+        ));
+        assert!(!potentially_applicable("packages", &config, arch, false));
         config.packages.push(Package {
             name: "native-example".into(),
             is_aur: false,
         });
-        assert!(potentially_applicable("packages", &config, arch));
-        assert!(potentially_applicable("packages", &config, windows));
+        assert!(potentially_applicable("packages", &config, arch, false));
+        assert!(potentially_applicable("packages", &config, windows, false));
     }
 
     impl Task for VisibleTask {

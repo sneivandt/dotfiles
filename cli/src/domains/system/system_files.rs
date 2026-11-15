@@ -31,6 +31,14 @@ impl ConfigureSystemFiles {
             .map(|entry| SystemFileResource::new(entry, ctx.executor_arc()))
             .collect()
     }
+
+    pub(crate) const fn is_applicable(
+        platform: crate::infra::platform::Platform,
+        has_declarations: bool,
+        is_ci: bool,
+    ) -> bool {
+        platform.is_linux() && has_declarations && !is_ci
+    }
 }
 
 impl Task for ConfigureSystemFiles {
@@ -40,7 +48,7 @@ impl Task for ConfigureSystemFiles {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform().is_linux() && !ctx.is_ci() && !self.files.get().is_empty()
+        Self::is_applicable(ctx.platform(), !self.files.get().is_empty(), ctx.is_ci())
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {

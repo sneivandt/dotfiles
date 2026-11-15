@@ -251,6 +251,60 @@ fn config_loads_registry_entries_only_on_windows() {
     }
 }
 
+#[test]
+fn registry_field_and_dword_diagnostics_apply_on_both_platforms() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file(
+            "registry.toml",
+            r#"
+[valid]
+path = 'HKCU:\Console'
+[valid.values]
+Signed = -1
+Unsigned = 4_294_967_295
+Hex = "0xFFFFFFFF"
+Text = "14"
+
+[overflow]
+path = 'HKCU:\Console'
+[overflow.values]
+DecimalOverflow = 4_294_967_296
+SignedUnderflow = -2_147_483_649
+HexOverflow = "0xFFFFFFFFF"
+
+[wrong_hive]
+path = 'HKLM:\Fixture'
+[wrong_hive.values]
+WrongHive = 1
+"#,
+        )
+        .build();
+
+    for os in [Os::Windows, Os::Linux] {
+        let platform = Platform {
+            os,
+            is_arch: false,
+            is_wsl: false,
+        };
+        let mut actual: Vec<_> = ctx
+            .load_config_for_platform("base", platform)
+            .validate(platform)
+            .into_iter()
+            .filter(|item| item.source == "registry.toml")
+            .map(|item| (item.item, item.code.to_string(), item.severity.label()))
+            .collect();
+        actual.sort();
+        let expected = [
+            ("DecimalOverflow", "registry.invalid-dword", "err"),
+            ("HexOverflow", "registry.invalid-dword", "err"),
+            ("SignedUnderflow", "registry.invalid-dword", "err"),
+            ("WrongHive", "registry.unsupported-hive", "err"),
+        ]
+        .map(|(item, code, severity)| (item.to_owned(), code.to_owned(), severity));
+        assert_eq!(actual, expected, "{os:?}");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Config loading: parse errors identify the offending file and unknown key
 // ---------------------------------------------------------------------------

@@ -13,6 +13,15 @@ crate::engine::config_task! {
 
 const NAME: &str = "File permissions";
 
+impl ApplyFilePermissions {
+    pub(crate) const fn is_applicable(
+        platform: crate::infra::platform::Platform,
+        has_declarations: bool,
+    ) -> bool {
+        platform.supports_chmod() && has_declarations
+    }
+}
+
 impl Task for ApplyFilePermissions {
     task_metadata! {
         name: NAME,
@@ -21,7 +30,7 @@ impl Task for ApplyFilePermissions {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform().supports_chmod()
+        Self::is_applicable(ctx.platform(), !self.config.get().is_empty())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -193,13 +202,17 @@ mod tests {
     #[test]
     fn should_run_false_on_windows() {
         let ctx = make_windows_context(PathBuf::from("/tmp"), None);
-        assert!(!ApplyFilePermissions::new(ConfigHandle::new(vec![])).should_run(&ctx));
+        let task = ApplyFilePermissions::new(ConfigHandle::new(vec![ChmodEntry::new(
+            "600",
+            "ssh/config",
+        )]));
+        assert!(!task.should_run(&ctx));
     }
 
     #[test]
-    fn should_run_true_on_linux_when_guard_passes() {
+    fn should_run_false_without_entries_on_linux() {
         let ctx = make_linux_context(PathBuf::from("/tmp"), None);
-        assert!(ApplyFilePermissions::new(ConfigHandle::new(vec![])).should_run(&ctx));
+        assert!(!ApplyFilePermissions::new(ConfigHandle::new(vec![])).should_run(&ctx));
     }
 
     #[test]

@@ -303,6 +303,8 @@ macro_rules! define_config {
             pub validation_system_files: Vec<system_files::SystemFile>,
             /// Main and overlay chmod definitions before category filtering.
             pub validation_chmod: Vec<chmod::ChmodEntry>,
+            /// Registry declarations retained for diagnostics on non-Windows hosts.
+            validation_registry: Vec<registry::RegistryEntry>,
             $(#[doc = $doc] pub $field: $ty,)+
         }
 
@@ -317,6 +319,7 @@ macro_rules! define_config {
                     validation_symlinks: Vec::new(),
                     validation_system_files: Vec::new(),
                     validation_chmod: Vec::new(),
+                    validation_registry: Vec::new(),
                     $($field: Vec::new(),)+
                 }
             }
@@ -354,6 +357,17 @@ impl Config {
             sections.collect_views(chmod::CHMOD_TOML, chmod::decode, |_, _| {})?;
         let (main_registry, overlay_registry) =
             sections.collect(registry::REGISTRY_TOML, registry::decode, |_, _| {})?;
+        let (registry, validation_registry) = if platform.has_registry() {
+            (
+                sections.merge(registry::REGISTRY_TOML, main_registry, overlay_registry)?,
+                Vec::new(),
+            )
+        } else {
+            (
+                Vec::new(),
+                main_registry.into_iter().chain(overlay_registry).collect(),
+            )
+        };
         let units =
             sections.collect_filtered(systemd_units::SYSTEMD_UNITS_TOML, systemd_units::decode)?;
         let (system_files, validation_system_files) = sections.collect_views(
@@ -375,11 +389,7 @@ impl Config {
                 system_files
             };
             (registry, [$file:path], []) => {
-                if platform.has_registry() {
-                    sections.merge(registry::REGISTRY_TOML, main_registry, overlay_registry)?
-                } else {
-                    Vec::new()
-                }
+                registry
             };
             (units, [$file:path], []) => {
                 if platform.supports_systemd() {
@@ -402,6 +412,7 @@ impl Config {
                     validation_symlinks,
                     validation_system_files,
                     validation_chmod,
+                    validation_registry,
                     $($field: load_section!($field, [$($file)?], [$($decode)?]),)+
                 }
             };
@@ -428,7 +439,8 @@ impl Config {
         let mut diagnostics = symlinks::validate(&self.symlinks, &self.root);
         diagnostics.extend(apm::validate(&self.root, self.overlay.as_deref()));
         diagnostics.extend(packages::validate(&self.packages, platform));
-        diagnostics.extend(registry::validate(&self.registry, platform));
+        diagnostics.extend(registry::validate(&self.registry));
+        diagnostics.extend(registry::validate(&self.validation_registry));
         diagnostics.extend(chmod::validate(&self.chmod, platform));
         diagnostics.extend(systemd_units::validate(&self.units, platform));
         diagnostics.extend(system_files::validate(&self.validation_system_files));

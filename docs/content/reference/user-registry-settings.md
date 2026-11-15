@@ -54,12 +54,14 @@ strings, as above, to avoid escaping backslashes.
 | Parseable hexadecimal string, such as `"0x0E"` | `REG_DWORD` |
 | Ordinary string, including `"14"` | `REG_SZ` |
 
-Use DWORD values in the unsigned 32-bit range. Other TOML types are serialized as
-strings; explicit strings are clearer. DWORD `14` and `"0x0E"` represent the same
-desired value; DWORD `14` and string `"14"` do not.
+DWORD values accept unsigned 32-bit integers and signed 32-bit integers. Negative
+integers retain their two's-complement bit pattern, so `-1` stores `0xFFFFFFFF`.
+Hexadecimal DWORD strings must fit the unsigned 32-bit range. Other TOML types
+are serialized as strings. DWORD `14` and `"0x0E"` represent the same desired value; DWORD `14` and string `"14"` do not.
 
-Fields and value types are checked on non-Windows systems too, but the settings are only
-applied on Windows. Existing undeclared values are preserved.
+Configuration diagnostics check registry paths and DWORD ranges on every platform.
+On Windows, registry previews and updates reject invalid paths or DWORD values
+before processing entries. Updates preserve existing undeclared values.
 
 Check the application's expected value type as well as its name: a numeric
 string is not interchangeable with a DWORD. Dotfiles writes the declaration

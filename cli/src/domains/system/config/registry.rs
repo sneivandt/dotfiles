@@ -13,7 +13,7 @@ crate::infra::config::diagnostic_codes! {
     "registry";
     REGISTRY_EMPTY_KEY_PATH => "empty-key-path",
     REGISTRY_EMPTY_VALUE_NAME => "empty-value-name",
-    REGISTRY_PLATFORM_UNSUPPORTED => "platform-unsupported",
+    REGISTRY_INVALID_DWORD => "invalid-dword",
     REGISTRY_UNSUPPORTED_HIVE => "unsupported-hive",
     REGISTRY_CONFLICTING_VALUES => "conflicting-values",
 }
@@ -231,21 +231,12 @@ pub(crate) fn validate_conflicts(entries: &[RegistryEntry]) -> Vec<Diagnostic> {
         .finish()
 }
 
-/// Validate registry entries and return any warnings.
+/// Validate the fields and values of each registry declaration.
 #[must_use]
-pub fn validate(
-    entries: &[RegistryEntry],
-    platform: crate::infra::platform::Platform,
-) -> Vec<Diagnostic> {
+pub fn validate(entries: &[RegistryEntry]) -> Vec<Diagnostic> {
     use crate::infra::config::validation::{check, check_error};
 
-    let mut diagnostics = Validator::new(REGISTRY_TOML)
-        .warn_if(
-            !entries.is_empty() && !platform.has_registry(),
-            REGISTRY_PLATFORM_UNSUPPORTED,
-            "registry entries",
-            "registry entries defined but platform does not support the Windows registry",
-        )
+    Validator::new(REGISTRY_TOML)
         .check_each(entries, |e| &e.value_name, |e| {
             [
                 check(e.key_path.trim().is_empty(), REGISTRY_EMPTY_KEY_PATH, "registry key path is empty"),
@@ -255,11 +246,14 @@ pub fn validate(
                     REGISTRY_UNSUPPORTED_HIVE,
                     r"registry key path must start with HKCU:\; other registry hives are not supported",
                 ),
+                check_error(
+                    e.value_type == RegistryValueType::Dword && parse_dword(&e.value_data).is_err(),
+                    REGISTRY_INVALID_DWORD,
+                    "DWORD must fit an unsigned 32-bit integer or a signed 32-bit bit pattern",
+                ),
             ]
         })
-        .finish();
-    diagnostics.extend(validate_conflicts(entries));
-    diagnostics
+        .finish()
 }
 
 /// TOML filename that backs this config section.
@@ -404,10 +398,7 @@ mod tests {
                  [second]\npath = 'hkcu:\\console\\'\n[second.values]\nfontsize = {second}\n"
             ));
             let entries = load(&path).expect("load registry declarations");
-            let diagnostics = validate(
-                &entries,
-                crate::infra::platform::Platform::new(crate::infra::platform::Os::Windows, false),
-            );
+            let diagnostics = validate_conflicts(&entries);
             assert_eq!(
                 diagnostics.len(),
                 usize::from(conflict),
@@ -498,8 +489,6 @@ bar = 5
 
     #[test]
     fn validate_rejects_invalid_hive() {
-        use crate::infra::platform::{Os, Platform};
-
         let entries = vec![RegistryEntry {
             key_path: "INVALID:\\Key".to_string(),
             value_name: "Test".to_string(),
@@ -507,15 +496,13 @@ bar = 5
             value_type: RegistryValueType::Dword,
             origin: None,
         }];
-        let warnings = validate(&entries, Platform::new(Os::Windows, false));
+        let warnings = validate(&entries);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("must start with HKCU"));
     }
 
     #[test]
     fn validate_detects_empty_key_path() {
-        use crate::infra::platform::{Os, Platform};
-
         let entries = vec![RegistryEntry {
             key_path: "  ".to_string(),
             value_name: "Test".to_string(),
@@ -523,7 +510,7 @@ bar = 5
             value_type: RegistryValueType::Dword,
             origin: None,
         }];
-        let warnings = validate(&entries, Platform::new(Os::Windows, false));
+        let warnings = validate(&entries);
         assert!(
             warnings.iter().any(|w| w.message.contains("path is empty")),
             "should warn about empty key path: {warnings:?}"
@@ -532,8 +519,6 @@ bar = 5
 
     #[test]
     fn validate_detects_empty_value_name() {
-        use crate::infra::platform::{Os, Platform};
-
         let entries = vec![RegistryEntry {
             key_path: "HKCU:\\Console".to_string(),
             value_name: "  ".to_string(),
@@ -541,7 +526,7 @@ bar = 5
             value_type: RegistryValueType::Dword,
             origin: None,
         }];
-        let warnings = validate(&entries, Platform::new(Os::Windows, false));
+        let warnings = validate(&entries);
         assert!(
             warnings
                 .iter()
@@ -552,8 +537,6 @@ bar = 5
 
     #[test]
     fn validate_rejects_non_hkcu_hive() {
-        use crate::infra::platform::{Os, Platform};
-
         let entries = vec![RegistryEntry {
             key_path: "HKLM:\\Software\\Test".to_string(),
             value_name: "Setting".to_string(),
@@ -561,7 +544,7 @@ bar = 5
             value_type: RegistryValueType::Dword,
             origin: None,
         }];
-        let warnings = validate(&entries, Platform::new(Os::Windows, false));
+        let warnings = validate(&entries);
         assert!(
             warnings
                 .iter()
@@ -571,29 +554,7 @@ bar = 5
     }
 
     #[test]
-    fn validate_warns_registry_on_non_windows() {
-        use crate::infra::platform::{Os, Platform};
-
-        let entries = vec![RegistryEntry {
-            key_path: "HKCU:\\Console".to_string(),
-            value_name: "FontSize".to_string(),
-            value_data: "14".to_string(),
-            value_type: RegistryValueType::Dword,
-            origin: None,
-        }];
-        let warnings = validate(&entries, Platform::new(Os::Linux, false));
-        assert!(
-            warnings
-                .iter()
-                .any(|w| w.message.contains("does not support")),
-            "should warn about registry on non-Windows: {warnings:?}"
-        );
-    }
-
-    #[test]
     fn validate_valid_hkcu_entry_produces_no_warnings() {
-        use crate::infra::platform::{Os, Platform};
-
         let entries = vec![RegistryEntry {
             key_path: "HKCU:\\Console".to_string(),
             value_name: "FontSize".to_string(),
@@ -601,7 +562,7 @@ bar = 5
             value_type: RegistryValueType::Dword,
             origin: None,
         }];
-        let warnings = validate(&entries, Platform::new(Os::Windows, false));
+        let warnings = validate(&entries);
         assert!(
             warnings.is_empty(),
             "valid HKCU entry should produce no warnings: {warnings:?}"
@@ -610,9 +571,7 @@ bar = 5
 
     #[test]
     fn validate_empty_entries_produces_no_warnings() {
-        use crate::infra::platform::{Os, Platform};
-
-        let warnings = validate(&[], Platform::new(Os::Windows, false));
+        let warnings = validate(&[]);
         assert!(
             warnings.is_empty(),
             "empty entries should produce no warnings"
@@ -621,8 +580,6 @@ bar = 5
 
     #[test]
     fn validate_case_insensitive_hive_prefix() {
-        use crate::infra::platform::{Os, Platform};
-
         let entries = vec![RegistryEntry {
             key_path: "hkcu:\\Console".to_string(),
             value_name: "FontSize".to_string(),
@@ -630,7 +587,7 @@ bar = 5
             value_type: RegistryValueType::Dword,
             origin: None,
         }];
-        let warnings = validate(&entries, Platform::new(Os::Windows, false));
+        let warnings = validate(&entries);
         assert!(
             warnings.is_empty(),
             "lowercase hive prefix should be accepted: {warnings:?}"

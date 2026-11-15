@@ -97,10 +97,11 @@ current directory. Wrappers set `DOTFILES_ROOT` to their own checkout.
 can still obtain a binary from another checkout. Use the intended checkout's
 wrapper or built binary when that distinction matters.
 
-Use `--overlay <PATH>` for private or machine-specific additions. Unlike
-`--profile`, an explicit overlay is saved for future runs, including during
-check or dry-run; `list` does not save it. See [Private overlays](../guides/private-overlays.md)
-for setup, path precedence, linked-worktree confirmation, merging, and scripts.
+Use `--overlay <PATH>` for private or machine-specific additions. Update,
+remove, and check save an explicit overlay for future runs, including during
+dry-run. List and explain use the overlay for that invocation only.
+See [Private overlays](../guides/private-overlays.md) for setup, path precedence,
+linked-worktree confirmation, merging, and scripts.
 
 ## Wrapper bootstrap
 
@@ -254,8 +255,8 @@ For a focused, non-interactive diagnostic stream, use JSON Lines:
 dotfiles check --profile base --only config-diagnostics --format jsonl
 ```
 
-Each stdout line is one object with `schema: 1`, `run_id`, `context`, and
-`type`. Record types include `run_start`, `run_scope`, `run_context`,
+Wrapper bootstrap progress goes to stderr. Each stdout line is one object
+with `schema: 1`, `run_id`, `context`, and `type`. Record types include `run_start`, `run_scope`, `run_context`,
 `task_result`, `task_duration`, `message`, and `run_finish`. Task results carry
 IDs, selectors, statuses, reasons, and action counts; finish records include
 outcome and exit code. Stored statuses use names such as `ok`, `dry_run`, and

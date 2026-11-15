@@ -251,7 +251,7 @@ download_binary() {(
   trap 'rm -f "$staged_binary" "$staged_binary.sha256"; rmdir "$bootstrap_dir"' EXIT
   trap 'exit 1' HUP INT TERM
 
-  echo "Bootstrap · dotfiles $tag · ${asset#dotfiles-}"
+  echo "Bootstrap · dotfiles $tag · ${asset#dotfiles-}" >&2
   if ! download_file "$url" "$staged_binary"; then
     echo "ERROR: Failed to download dotfiles binary." >&2
     echo "Check your internet connection or use --build to build from source." >&2
@@ -273,10 +273,10 @@ download_binary() {(
   chmod +x "$staged_binary"
   mv -f "$staged_binary" "$BINARY"
 
-  echo "Downloaded · checksum verified · $BINARY"
+  echo "Downloaded · checksum verified · $BINARY" >&2
 )}
 
-# Bootstrap: download the latest binary only if no binary is present.
+# Bootstrap when no usable binary is cached.
 # Subsequent updates are handled by the binary itself.
 if [ ! -x "$BINARY" ]; then
   download_binary

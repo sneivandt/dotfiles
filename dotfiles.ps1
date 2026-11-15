@@ -208,7 +208,7 @@ function Test-Attestation
 
     if (-not (Get-Command gh -ErrorAction SilentlyContinue))
     {
-        Write-Warning "gh not found. Install GitHub CLI or use --build; DOTFILES_SKIP_ATTESTATION=1 explicitly bypasses provenance, not checksums."
+        [Console]::Error.WriteLine("WARNING: gh not found. Install GitHub CLI or use --build; DOTFILES_SKIP_ATTESTATION=1 explicitly bypasses provenance, not checksums.")
         return $false
     }
 
@@ -230,8 +230,8 @@ function Test-Attestation
         return $true
     }
 
-    Write-Warning "Build provenance verification failed for $Path."
-    Write-Warning "Check GitHub access and GH_TOKEN/GITHUB_TOKEN; automatic verification disables desktop keyring access to prevent hidden credential prompts."
+    [Console]::Error.WriteLine("WARNING: Build provenance verification failed for $Path.")
+    [Console]::Error.WriteLine("WARNING: Check GitHub access and GH_TOKEN/GITHUB_TOKEN; automatic verification disables desktop keyring access to prevent hidden credential prompts.")
     return $false
 }
 
@@ -283,7 +283,7 @@ function Get-Binary
 
     try
     {
-        Write-Output "Bootstrap · dotfiles $tag · $($assetName -replace '^dotfiles-', '' -replace '\.exe$', '')"
+        [Console]::Error.WriteLine("Bootstrap · dotfiles $tag · $($assetName -replace '^dotfiles-', '' -replace '\.exe$', '')")
         try
         {
             Invoke-WebRequest -Uri $url -Method Get -OutFile $stagedBinary -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
@@ -359,7 +359,7 @@ function Get-Binary
             exit 1
         }
 
-        Write-Output "Downloaded · checksum verified · $Binary"
+        [Console]::Error.WriteLine("Downloaded · checksum verified · $Binary")
     }
     finally
     {
@@ -367,7 +367,7 @@ function Get-Binary
     }
 }
 
-# Bootstrap: download the latest binary only if no binary is present.
+# Bootstrap when no usable binary is cached.
 $binaryReady = Test-Path -LiteralPath $Binary -PathType Leaf
 if ($binaryReady -and ($IsLinux -or $IsMacOS))
 {

@@ -102,6 +102,47 @@ fn list_hides_empty_configuration_and_all_restores_the_catalog() {
     }
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn list_hides_system_tasks_in_ci_unless_all_is_requested() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "systemd-units.toml",
+            "[linux]\nunits = ['fixture.service']\n",
+        )
+        .with_config_file(
+            "system-files.toml",
+            "[linux]\nfiles = [{ source = 'fixture.toml', merge = 'toml' }]\n",
+        )
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    for (is_ci, all) in [(false, false), (true, false), (true, true)] {
+        let mut command = common::cli_command(repo.root_path(), home.path(), None, "list", "");
+        if is_ci {
+            command.env("CI", "");
+        } else {
+            command.env_remove("CI");
+        }
+        if all {
+            command.arg("--all");
+        }
+        let output = command.args(["--format", "json"]).output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let rows: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+        for selector in ["systemd", "system-files"] {
+            assert_eq!(
+                rows.iter().any(|row| row["selector"] == selector),
+                !is_ci || all,
+                "{selector}: CI={is_ci}, all={all}"
+            );
+        }
+    }
+}
+
 #[test]
 fn list_displays_custom_packages_with_canonical_selectors_and_labels() {
     let repo = common::IntegrationTestContext::new();

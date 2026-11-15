@@ -470,7 +470,8 @@ sys.exit(7)
                 throw "$mode changed the caller's credential environment"
             }
             if ($LASTEXITCODE -ne 7) { throw "$mode lost the child exit code" }
-            $actual = $output[-1] | ConvertFrom-Json
+            if ($output.Count -ne 1) { throw "$mode mixed wrapper messages into child stdout" }
+            $actual = $output[0] | ConvertFrom-Json
             if ($actual.Cwd -ne $caller) { throw "$mode changed the child working directory" }
             if ($actual.Root -ne $repo -or $actual.Wrapper -cne 'pwsh' -or $actual.Guard -cne '1') {
                 throw "$mode changed runtime context"

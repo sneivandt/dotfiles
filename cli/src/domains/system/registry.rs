@@ -2,11 +2,12 @@
 
 use anyhow::Result;
 
-use crate::domains::system::config::registry::RegistryEntry;
+use crate::domains::system::config::registry::{RegistryEntry, validate};
 use crate::domains::system::resources::registry::{RegistryResource, batch_check_values};
 use crate::engine::{
     Context, ProcessOpts, Task, TaskResult, run_batch_resource_task, task_metadata,
 };
+use crate::infra::config::Severity;
 
 crate::engine::config_task! {
     /// Apply Windows registry settings.
@@ -26,12 +27,19 @@ impl Task for ApplyRegistry {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources = self
-            .config
-            .get()
-            .iter()
-            .map(RegistryResource::from_entry)
-            .collect();
+        let entries = self.config.get();
+        if let Some(diagnostic) = validate(entries)
+            .into_iter()
+            .find(|item| item.severity == Severity::Error)
+        {
+            anyhow::bail!(
+                "{} [{}]: {}",
+                diagnostic.source,
+                diagnostic.item,
+                diagnostic.message
+            );
+        }
+        let resources = entries.iter().map(RegistryResource::from_entry).collect();
         run_batch_resource_task(
             ctx,
             resources,
@@ -95,6 +103,21 @@ mod tests {
             .run(&ctx)
             .unwrap();
         assert!(matches!(result, TaskResult::NotApplicable(_)));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn invalid_dword_rejects_registry_task_before_inventory() {
+        let ctx = make_windows_context(PathBuf::from("/tmp"), None);
+        let invalid = RegistryEntry {
+            value_name: "Overflow".to_owned(),
+            value_data: (u64::from(u32::MAX) + 1).to_string(),
+            ..entry()
+        };
+        let error = ApplyRegistry::new(ConfigHandle::new(vec![entry(), invalid]))
+            .run(&ctx)
+            .unwrap_err();
+        assert!(error.to_string().contains("[Overflow]: DWORD must fit"));
     }
 
     #[cfg(not(windows))]

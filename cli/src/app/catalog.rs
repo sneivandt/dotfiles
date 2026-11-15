@@ -24,6 +24,7 @@ use crate::domains::packages::install::{InstallAurPackages, InstallPackages, Ins
 use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::domains::shell::completions::GenerateCompletions;
 use crate::domains::shell::login_shell::ConfigureShell;
+use crate::domains::system::config::systemd_units::UnitScope;
 use crate::domains::system::developer_mode::EnableDeveloperMode;
 use crate::domains::system::registry::ApplyRegistry;
 use crate::domains::system::system_files::ConfigureSystemFiles;
@@ -103,6 +104,16 @@ pub(crate) fn update_tasks_for_run(
         };
     let zsh_completions = generate_zsh_completions();
     let powershell_completions = generate_powershell_completions();
+    let mut systemd_ordering = vec![
+        id::<InstallPackages>(),
+        id::<InstallAurPackages>(),
+        id::<InstallSymlinks>(),
+    ];
+    if store.units.get().iter().any(|unit| {
+        unit.enabled && unit.scope == UnitScope::User && unit.name == "dotfiles-first-login.service"
+    }) {
+        systemd_ordering.push(id::<InstallWrapper>());
+    }
 
     vec![
         Box::new(EnableDeveloperMode),
@@ -132,12 +143,7 @@ pub(crate) fn update_tasks_for_run(
         conditional_packages(
             Box::new(ConfigureSystemd::new(store.units.clone())),
             &[],
-            &[
-                id::<InstallPackages>(),
-                id::<InstallAurPackages>(),
-                id::<InstallSymlinks>(),
-                id::<ApplyFilePermissions>(),
-            ],
+            &systemd_ordering,
         ),
         Box::new(ApplyRegistry::new(store.registry.clone())),
         conditional_packages(
@@ -164,6 +170,7 @@ pub(crate) fn update_tasks_for_run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::system::config::systemd_units::SystemdUnit;
     use crate::test_helpers::empty_config;
     use std::path::PathBuf;
 
@@ -181,7 +188,7 @@ mod tests {
                 .expect("task present")
         };
         assert!(
-            find("Systemd units")
+            !find("Systemd units")
                 .ordering_dependencies()
                 .contains(&id::<ApplyFilePermissions>())
         );
@@ -255,6 +262,45 @@ mod tests {
                 .contains(&id::<InstallPackages>()),
             "APM should recheck its CLI after package installation without being blocked by unrelated package failures"
         );
+    }
+
+    #[test]
+    fn systemd_waits_for_launcher_only_to_enable_the_first_login_user_service() {
+        for (scope, enabled, name, waits) in [
+            (UnitScope::User, true, "dotfiles-first-login.service", true),
+            (
+                UnitScope::User,
+                false,
+                "dotfiles-first-login.service",
+                false,
+            ),
+            (
+                UnitScope::System,
+                true,
+                "dotfiles-first-login.service",
+                false,
+            ),
+            (UnitScope::User, true, "other.service", false),
+        ] {
+            let mut config = empty_config(PathBuf::from("/tmp"));
+            config.units = vec![SystemdUnit {
+                name: name.into(),
+                scope: scope.clone(),
+                enabled,
+            }];
+            let tasks = all_update_tasks(&ConfigStore::from_config(config));
+            let systemd = tasks
+                .iter()
+                .find(|task| task.selector() == "systemd")
+                .unwrap();
+            let launcher = id::<InstallWrapper>();
+            assert_eq!(
+                systemd.ordering_dependencies().contains(&launcher),
+                waits,
+                "{name} ({scope:?}, enabled={enabled})"
+            );
+            assert!(!systemd.dependencies().contains(&launcher));
+        }
     }
 
     #[test]

@@ -16,15 +16,16 @@ current running state, not the contents of the unit files themselves.
 | Commands | `update` |
 | Availability | Supported systemd platform with configured units, outside CI |
 | [Requires success](task-reference.md#scheduling-model) | None |
-| [Runs after](task-reference.md#scheduling-model) | [System packages](system-packages.md), [AUR packages](aur-packages.md), [Home symlinks](home-symlinks.md), [File permissions](file-permissions.md). Package waits are conditional on readiness. |
+| [Runs after](task-reference.md#scheduling-model) | [Home symlinks](home-symlinks.md). Waits for [system packages](system-packages.md) and [AUR packages](aur-packages.md) when unit readiness requires it. Waits for the [dotfiles launcher](dotfiles-launcher.md) when enabling the first-login user service. |
 | Implementation | [system/systemd_units.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/systemd_units.rs) |
 
 ## What it does
 
-Enables/starts enabled declarations and disables/stops disabled ones. It waits for
-system packages, AUR packages, symlinks, and permissions, then inspects the actual unit
-state. Failures in that earlier work do not automatically block services that are
-already available. This task never installs packages itself.
+The task starts and enables units marked enabled and stops and disables units
+marked disabled. It inspects unit state after its ordering dependencies finish,
+even if one failed. The first-login user service runs the launcher at
+`~/.local/bin/dotfiles`, so enabling that service waits for launcher installation
+when both tasks are selected.
 
 It needs systemctl, is excluded in CI, and inside WSL requires systemd already running
 or degraded. System units can require sudo. Without a user manager, including Arch

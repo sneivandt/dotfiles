@@ -186,7 +186,8 @@ remain available while a run is active.
 Check the header's profile, platform, overlay, and dry-run indicator first.
 The command is bold; metadata is dim, with dry-run mode in magenta.
 Overlay paths inside your home use `~`. CLI upgrades and repository restarts
-use a cyan `↻` transition notice rather than another bold run header.
+use a normal-weight notice with dim metadata and a blank line after it,
+rather than a symbol or another bold run header.
 Tasks print as they finish, so output order is not configuration order.
 In an interactive terminal, the release check has a transient spinner.
 During task execution, the spinner shows a compact remaining count first,

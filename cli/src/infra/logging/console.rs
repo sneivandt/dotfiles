@@ -80,6 +80,9 @@ impl Console {
                 state.separate_block();
             }
             state.line(error, &line);
+            if kind == MsgKind::Transition {
+                state.separate_block();
+            }
         }
     }
 
@@ -313,17 +316,12 @@ pub(in crate::infra::logging) fn ui_line_with_style(
         MsgKind::Startup => Some(startup_line_with_style(&msg, style)),
         MsgKind::Transition => {
             let (label, metadata) = msg.split_once(" · ").unwrap_or((&msg, ""));
-            let prefix = if symbols {
-                format!("{} ", style.paint(TextStyle::Cyan, "↻"))
-            } else {
-                String::new()
-            };
             let metadata = if metadata.is_empty() {
                 String::new()
             } else {
                 style.paint(TextStyle::Dim, &format!(" · {metadata}"))
             };
-            Some(format!("{prefix}{label}{metadata}"))
+            Some(format!("{label}{metadata}"))
         }
         MsgKind::RecoveryHint => {
             let command = msg

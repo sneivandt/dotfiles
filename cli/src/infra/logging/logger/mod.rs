@@ -619,21 +619,57 @@ mod tests {
     }
 
     #[test]
-    fn consecutive_startup_lines_defer_the_separator() {
+    fn transition_separates_the_notice_from_the_header_and_preserves_task_spacing() {
+        for verbose in [false, true] {
+            for symbols in [false, true] {
+                let (mut log, _tmp, _guard) = isolated_logger();
+                log.set_verbose(verbose);
+                log.set_symbols(symbols);
+                log.transition("CLI upgraded · old → new");
+                assert_eq!(log.captured_lines(), ["CLI upgraded · old → new", ""]);
+                log.startup("Update · desktop profile · Arch Linux");
+
+                assert!(
+                    !log.console.lock().startup_separator_emitted,
+                    "the notice separator must not replace the separator after the header"
+                );
+                log.separate_from_startup();
+                log.separate_console_block();
+                log.always("task result");
+                assert_eq!(
+                    log.captured_lines(),
+                    [
+                        "CLI upgraded · old → new",
+                        "",
+                        "Update · desktop profile · Arch Linux",
+                        "",
+                        "task result"
+                    ],
+                    "verbose={verbose}, symbols={symbols}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn transition_after_task_output_has_one_separator_on_each_side() {
         let (log, _tmp, _guard) = isolated_logger();
-
-        log.transition("CLI upgraded · old → new");
-        log.startup("Install · desktop profile · Arch Linux");
-
-        assert!(
-            !log.console.lock().startup_separator_emitted,
-            "startup lines should remain contiguous until details begin"
-        );
+        log.startup("Update · fixture");
+        log.separate_from_startup();
+        log.always("task result");
+        log.transition("Repository synced · restarting");
+        log.separate_console_block();
+        log.always("next output");
         assert_eq!(
             log.captured_lines(),
             [
-                "↻ CLI upgraded · old → new",
-                "Install · desktop profile · Arch Linux"
+                "Update · fixture",
+                "",
+                "task result",
+                "",
+                "Repository synced · restarting",
+                "",
+                "next output",
             ]
         );
     }
@@ -652,7 +688,8 @@ mod tests {
             log.recovery_hint("dotfiles log --id fixture -v");
             let expected = if mode == super::super::OutputMode::Human {
                 vec![
-                    "↻ Repository synced · restarting",
+                    "Repository synced · restarting",
+                    "",
                     "  Run 'dotfiles log --id fixture -v' for details.",
                 ]
             } else {

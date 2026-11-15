@@ -166,28 +166,23 @@ fn structured_startup_line_emphasizes_its_label_only() {
     assert_eq!(
         crate::infra::logging::console::ui_line_with_style(
             MsgKind::Startup,
-            "Install · desktop profile · Arch Linux",
+            "Update · desktop profile · Arch Linux",
             StyleChoice::auto(true, false),
             false,
             true,
         )
         .as_deref(),
-        Some("\x1b[1mInstall\x1b[0m\x1b[2m · desktop profile · Arch Linux\x1b[0m")
+        Some("\x1b[1mUpdate\x1b[0m\x1b[2m · desktop profile · Arch Linux\x1b[0m")
     );
 }
 
 #[test]
-fn lifecycle_transitions_use_an_accent_without_bold_or_a_words_only_glyph() {
+fn lifecycle_transitions_use_normal_weight_without_a_glyph() {
     for message in ["CLI upgraded · old → new", "Repository synced · restarting"] {
         for symbols in [false, true] {
             for (terminal, no_color) in [(true, false), (true, true), (false, false)] {
                 let (label, metadata) = message.split_once(" · ").unwrap();
                 let ansi = terminal && !no_color;
-                let prefix = if symbols {
-                    if ansi { "\x1b[36m↻\x1b[0m " } else { "↻ " }
-                } else {
-                    ""
-                };
                 let metadata = if ansi {
                     format!("\x1b[2m · {metadata}\x1b[0m")
                 } else {
@@ -201,7 +196,7 @@ fn lifecycle_transitions_use_an_accent_without_bold_or_a_words_only_glyph() {
                         false,
                         symbols,
                     ),
-                    Some(format!("{prefix}{label}{metadata}")),
+                    Some(format!("{label}{metadata}")),
                 );
             }
         }

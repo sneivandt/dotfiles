@@ -86,7 +86,7 @@ exact plain/ANSI rendering. Preserve these implementation constraints:
 | `dry_run` | planned mutation |
 | `always` | output that must be visible |
 | `startup` | bold run-command header |
-| `transition` | normal-weight lifecycle notice with accented glyph and dim metadata |
+| `transition` | normal-weight lifecycle notice with dim metadata, no glyph, and a following blank line |
 | `recovery_hint` | copyable command for a healthy retained log, with dim surrounding instructions |
 
 ## Persistent records

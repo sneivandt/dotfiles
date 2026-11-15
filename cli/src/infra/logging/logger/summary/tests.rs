@@ -1002,6 +1002,120 @@ fn final_summary_uses_explicit_disposition_before_visible_counts_and_preview() {
 }
 
 #[test]
+fn completed_blocks_preserve_typed_action_style_and_verbose_message_presentation() {
+    for verbose in [false, true] {
+        let opts = RowOpts {
+            verbose,
+            diagnostic_style: StyleChoice::plain(),
+            ..colored_opts()
+        };
+        for planned in [false, true] {
+            let task = task_entry(
+                "task",
+                if planned {
+                    TaskStatus::DryRun
+                } else {
+                    TaskStatus::Changed
+                },
+                None,
+            );
+            let block = task_block(
+                &task,
+                &[LogEntry::action(
+                    "write",
+                    "item → source",
+                    planned,
+                    "write item → source (extra detail)",
+                )],
+                opts,
+            );
+            let color = if planned { "35" } else { "36" };
+            assert_eq!(
+                block.details[0].line,
+                format!("  \x1b[{color}mwrite\x1b[0m item → source\x1b[2m (extra detail)\x1b[0m"),
+                "verbose={verbose}, planned={planned}",
+            );
+        }
+        let block = task_block(
+            &task_entry("task", TaskStatus::Changed, None),
+            &[LogEntry::Message {
+                kind: MsgKind::Always,
+                msg: "notice".into(),
+            }],
+            opts,
+        );
+        assert_eq!(
+            block.details[0].line,
+            if verbose { "notice" } else { "  notice" }
+        );
+    }
+}
+
+#[test]
+fn incomplete_summary_glyphs_cover_each_outcome_without_duplicate_disposition_text() {
+    for (counts, incomplete_disposition, text) in [
+        (
+            SummaryCounts {
+                failed: 1,
+                ..SummaryCounts::default()
+            },
+            CompletionDisposition::Failed,
+            "1 task failed",
+        ),
+        (
+            SummaryCounts {
+                interrupted: 1,
+                ..SummaryCounts::default()
+            },
+            CompletionDisposition::Interrupted,
+            "1 task interrupted",
+        ),
+        (
+            SummaryCounts {
+                blocked: 1,
+                ..SummaryCounts::default()
+            },
+            CompletionDisposition::Succeeded,
+            "1 task blocked",
+        ),
+        (
+            SummaryCounts {
+                skipped: 1,
+                ..SummaryCounts::default()
+            },
+            CompletionDisposition::Succeeded,
+            "1 task skipped",
+        ),
+    ] {
+        for mode in [SummaryMode::Standard, SummaryMode::Check] {
+            for disposition in [CompletionDisposition::Succeeded, incomplete_disposition] {
+                let lines = super::totals::format_summary_lines(
+                    counts,
+                    mode,
+                    "1.0s",
+                    StyleChoice::plain(),
+                    SummaryPresentation {
+                        disposition,
+                        dry_run: true,
+                        symbols: true,
+                    },
+                );
+                let glyph = if disposition == CompletionDisposition::Failed {
+                    "✗"
+                } else {
+                    "⊘"
+                };
+                assert_eq!(
+                    lines,
+                    [format!("{glyph} {text} · 1.0s")],
+                    "{mode:?}, {disposition:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn a_warning_does_not_hide_a_changed_tasks_custom_reason_or_use_stdout_styling() {
     let task = task_entry("task", TaskStatus::Changed, Some("custom outcome"));
     let entries = [LogEntry::Message {

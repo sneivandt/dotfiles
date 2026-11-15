@@ -1,6 +1,7 @@
 use super::*;
 use std::sync::Arc;
 
+use crate::engine::scheduler::run_tasks;
 use crate::infra::exec::{ExecResult, MockExecutor};
 use crate::infra::github::tests::MockHttpClient;
 use crate::infra::platform::{Os, Platform};
@@ -1225,12 +1226,7 @@ fn failed_release_does_not_block_other_updates_or_aur_installs() {
                 .iter()
                 .map(|task| (task.task_id(), TaskAssessment::applicable()))
                 .collect::<HashMap<_, _>>();
-            let run = if parallel {
-                crate::engine::scheduler::run_tasks_parallel
-            } else {
-                crate::engine::scheduler::run_tasks_sequential
-            };
-            let summary = run(&tasks, &graph, &assessments, &ctx, &logger);
+            let summary = run_tasks(&tasks, &graph, &assessments, &ctx, &logger, None);
             assert!(
                 summary.failure_count() > 0,
                 "refresh failure must remain a failed run"

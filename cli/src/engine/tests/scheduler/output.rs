@@ -326,3 +326,26 @@ fn full_error_chain_remains_in_diagnostics_after_outcome_deduplication() {
         summary
     });
 }
+
+#[test]
+fn dependency_wait_diagnostics_describe_the_resolved_graph() {
+    conformance("dependency wait diagnostics", |mode, ctx, log| {
+        let root = TestTask::new("root");
+        let dependent = TestTask::new("dependent").after(&[&root]);
+        let summary = mode.run(&[&dependent, &root], ctx, log, None);
+        let contents = std::fs::read_to_string(log.log_path().expect("run log")).unwrap();
+        let waits: Vec<_> = contents
+            .lines()
+            .filter(|line| line.contains("[task_wait] "))
+            .collect();
+        match mode {
+            Mode::Parallel => {
+                assert_eq!(waits.len(), 2);
+                assert!(waits[0].ends_with("[dependent] [task_wait] waiting for: root"));
+                assert!(waits[1].ends_with("[root] [task_wait] no deps, ready"));
+            }
+            Mode::Sequential => assert!(waits.is_empty()),
+        }
+        summary
+    });
+}

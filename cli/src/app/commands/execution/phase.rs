@@ -63,24 +63,13 @@ impl<'a> PreparedPhase<'a> {
         log: &Arc<Logger>,
         prior: &ExecutionSummary,
     ) -> ExecutionSummary {
-        if ctx.parallel() {
-            scheduler::run_tasks_parallel_with_prior(
-                &self.tasks,
-                &self.graph,
-                &self.assessments,
-                ctx,
-                log,
-                Some(prior),
-            )
-        } else {
-            scheduler::run_tasks_sequential_with_prior(
-                &self.tasks,
-                &self.graph,
-                &self.assessments,
-                ctx,
-                log,
-                Some(prior),
-            )
-        }
+        scheduler::run_tasks(
+            &self.tasks,
+            &self.graph,
+            &self.assessments,
+            ctx,
+            log,
+            Some(prior),
+        )
     }
 }

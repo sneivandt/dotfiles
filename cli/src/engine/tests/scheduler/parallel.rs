@@ -198,7 +198,10 @@ impl Task for SlowTask {
     }
 }
 
-struct FastTask(Mutex<mpsc::Receiver<()>>);
+struct FastTask {
+    slow_started: Mutex<mpsc::Receiver<()>>,
+    worker: mpsc::Sender<std::thread::ThreadId>,
+}
 
 impl Task for FastTask {
     fn meta(&self) -> TaskMeta<'_> {
@@ -206,15 +209,19 @@ impl Task for FastTask {
     }
 
     fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.0
+        self.slow_started
             .lock()
             .unwrap()
             .recv_timeout(Duration::from_secs(5))?;
+        self.worker.send(std::thread::current().id())?;
         Ok(TaskResult::Ok)
     }
 }
 
-struct ReleaseTask(mpsc::Sender<()>);
+struct ReleaseTask {
+    release: mpsc::Sender<()>,
+    fast_worker: Mutex<mpsc::Receiver<std::thread::ThreadId>>,
+}
 
 impl Task for ReleaseTask {
     fn meta(&self) -> TaskMeta<'_> {
@@ -224,13 +231,21 @@ impl Task for ReleaseTask {
     crate::engine::task_deps![FastTask];
 
     fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.0.send(())?;
+        assert_eq!(
+            self.fast_worker
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(5))?,
+            std::thread::current().id(),
+            "the dependent must use the worker freed by fast while slow still holds the other slot"
+        );
+        self.release.send(())?;
         Ok(TaskResult::Ok)
     }
 }
 
 #[test]
-fn ready_dependents_run_without_waiting_for_unrelated_in_flight_tasks() {
+fn ready_dependents_reuse_a_free_worker_without_waiting_for_the_phase() {
     let (ctx, log, _root, _guard) = fixture(Mode::Parallel, false);
     let (started_tx, started_rx) = mpsc::channel();
     let (release_tx, release_rx) = mpsc::channel();
@@ -238,10 +253,23 @@ fn ready_dependents_run_without_waiting_for_unrelated_in_flight_tasks() {
         started: started_tx,
         release: Mutex::new(release_rx),
     };
-    let fast = FastTask(Mutex::new(started_rx));
-    let release = ReleaseTask(release_tx);
+    let (worker_tx, worker_rx) = mpsc::channel();
+    let fast = FastTask {
+        slow_started: Mutex::new(started_rx),
+        worker: worker_tx,
+    };
+    let release = ReleaseTask {
+        release: release_tx,
+        fast_worker: Mutex::new(worker_rx),
+    };
+    let tasks: [&dyn Task; 3] = [&release, &slow, &fast];
+    let assessments = tasks
+        .iter()
+        .map(|task| (task.task_id(), task.assess(&ctx)))
+        .collect();
+    let graph = ResolvedTaskGraph::resolve_assessed(&tasks, &assessments).unwrap();
 
-    let summary = Mode::Parallel.run(&[&slow, &fast, &release], &ctx, &log, None);
+    let summary = run_tasks_with_limit(&tasks, &graph, &assessments, &ctx, &log, None, 2);
 
     assert_eq!(
         summary.failure_count(),
@@ -266,4 +294,64 @@ fn ready_dependents_run_without_waiting_for_unrelated_in_flight_tasks() {
         fast_pos < slow_pos,
         "records retain completion order, not catalog order"
     );
+}
+
+#[test]
+fn no_parallel_uses_one_worker_for_independent_tasks() {
+    let (ctx, log, _root, _guard) = fixture(Mode::Sequential, false);
+    let execution = Arc::new(Mutex::new(Vec::new()));
+    let tasks: Vec<_> = ["first", "second", "third"]
+        .into_iter()
+        .map(|key| {
+            let execution = Arc::clone(&execution);
+            ClaimedTask {
+                key,
+                claims: Vec::new(),
+                body: Box::new(move |_| {
+                    execution
+                        .lock()
+                        .unwrap()
+                        .push((key, std::thread::current().id()));
+                    Ok(TaskResult::Ok)
+                }),
+            }
+        })
+        .collect();
+    let refs: Vec<&dyn Task> = tasks.iter().map(|task| -> &dyn Task { task }).collect();
+    assert_eq!(
+        Mode::Sequential
+            .run(&refs, &ctx, &log, None)
+            .failure_count(),
+        0
+    );
+    let execution = execution.lock().unwrap();
+    let worker = execution.first().expect("first task ran").1;
+    assert_eq!(
+        *execution,
+        [("first", worker), ("second", worker), ("third", worker)]
+    );
+}
+
+#[test]
+#[should_panic(expected = "fixture dispatch panic")]
+fn a_dispatch_panic_reaches_the_scheduler_caller() {
+    struct PanickingLogKey;
+
+    impl Task for PanickingLogKey {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("panicking-log-key")
+        }
+
+        #[allow(clippy::panic, reason = "exercise the scheduler's worker unwind path")]
+        fn log_key(&self) -> String {
+            panic!("fixture dispatch panic");
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    let (ctx, log, _root, _guard) = fixture(Mode::Sequential, false);
+    Mode::Sequential.run(&[&PanickingLogKey], &ctx, &log, None);
 }

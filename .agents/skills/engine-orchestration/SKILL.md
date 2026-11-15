@@ -95,9 +95,10 @@ the resolved non-interactive policy; window detection remains in elevation.
 - `ConfigHandle::get()` borrows the immutable snapshot; clone the handle when
   sharing ownership. Give domain tasks only their typed slice; do not introduce
   mutable shared configuration or unnecessary deep config copies.
-- Task parallelism uses scoped threads; resource parallelism uses Rayon.
-  `ctx.parallel()` gates both. Use `AccessClaim` for shared-state exclusion, not
-  graph edges invented only to prevent overlap. Task claims cover the body after
+- One ready-queue scheduler dispatches tasks to bounded scoped workers, with one
+  worker in sequential mode. Resource parallelism uses a separate Rayon pool.
+  `ctx.parallel()` gates both. Use `AccessClaim` for shared-state exclusion.
+  Task claims cover the body after
   dependency waits; resource claims cover discovery through mutation. Declare a
   claimed task's full nested claim set up front; nested resources must be subsets.
   Claim waits stay on the caller, never Rayon workers. `.sequential()` remains

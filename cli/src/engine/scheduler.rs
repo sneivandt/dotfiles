@@ -1,9 +1,6 @@
-//! Dependency-driven parallel task scheduling.
-//!
-//! Provides `run_tasks_parallel` for executing tasks concurrently using OS
-//! threads.
+//! Dependency-driven scheduling with a bounded pool of scoped task workers.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, mpsc};
 
 use super::graph::ResolvedTaskGraph;
@@ -167,61 +164,6 @@ impl DependencySignal {
     }
 }
 
-#[derive(Debug)]
-struct TaskRuntime {
-    dependency_receiver: Option<mpsc::Receiver<DependencySignal>>,
-    dependency_sender: Option<mpsc::Sender<DependencySignal>>,
-    dependent_senders: Vec<(mpsc::Sender<DependencySignal>, bool)>,
-}
-
-impl TaskRuntime {
-    fn new(has_dependencies: bool) -> Self {
-        let (dependency_sender, dependency_receiver) = if has_dependencies {
-            let (tx, rx) = mpsc::channel();
-            (Some(tx), Some(rx))
-        } else {
-            (None, None)
-        };
-
-        Self {
-            dependency_receiver,
-            dependency_sender,
-            dependent_senders: Vec::new(),
-        }
-    }
-}
-
-fn signal_dependents(
-    task_name: &str,
-    senders: Vec<(mpsc::Sender<DependencySignal>, bool)>,
-    signal: &DependencySignal,
-) {
-    for (tx, blocks_on_failure) in senders {
-        let delivered = signal.clone().for_edge(blocks_on_failure);
-        if tx.send(delivered).is_err() {
-            tracing::debug!(
-                "dependent task channel closed before {task_name} signalled completion"
-            );
-        }
-    }
-}
-
-fn dependency_outcome(
-    receiver: Option<mpsc::Receiver<DependencySignal>>,
-    dependency_count: usize,
-) -> DependencySignal {
-    let Some(receiver) = receiver else {
-        return DependencySignal::Satisfied;
-    };
-
-    (0..dependency_count).fold(DependencySignal::Satisfied, |outcome, _| {
-        let signal = receiver.recv().unwrap_or_else(|_| {
-            DependencySignal::blocked("dependency task", BlockingOutcome::Blocked)
-        });
-        outcome.combine(signal)
-    })
-}
-
 fn record_scheduler_skip(task: &dyn Task, log: &dyn Log, reason: &str, status: TaskStatus) {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
@@ -292,9 +234,7 @@ fn run_task_buffered(
 /// Resolve one task against its dependency outcome, running it only when the
 /// dependencies were satisfied and the run has not been cancelled.
 ///
-/// Shared by both schedulers so the parallel and sequential paths cannot drift:
-/// they differ only in whether a task start notification is emitted, which the
-/// sequential path does not need because it never interleaves output.
+/// Parallel runs announce task starts because output can interleave.
 fn dispatch_task(
     task: &dyn Task,
     assessments: &HashMap<TaskId, TaskAssessment>,
@@ -342,27 +282,9 @@ fn dispatch_task(
     (signal, TaskExecution { status, outcome })
 }
 
-/// Run tasks in parallel using a dependency graph.
-///
-/// Each task is spawned into an OS thread (via `std::thread::scope`) and waits
-/// for its dependencies to complete before executing.  OS threads are used
-/// deliberately — blocking on an `mpsc` channel inside a Rayon worker would
-/// exhaust Rayon's fixed-size thread pool and deadlock when the pool is smaller
-/// than the number of tasks with unsatisfied dependencies (common on 2-vCPU CI
-/// runners).  Output is buffered per-task and flushed to the console
-/// immediately on completion.
-#[cfg(test)]
-pub(crate) fn run_tasks_parallel(
-    tasks: &[&dyn Task],
-    graph: &ResolvedTaskGraph,
-    assessments: &HashMap<TaskId, TaskAssessment>,
-    ctx: &Context,
-    log: &Arc<Logger>,
-) -> ExecutionSummary {
-    run_tasks_parallel_with_prior(tasks, graph, assessments, ctx, log, None)
-}
-
-pub(crate) fn run_tasks_parallel_with_prior(
+/// Run a resolved graph with one worker in sequential mode and a bounded
+/// pool in parallel mode. Task workers stay separate from Rayon's resource pool.
+pub(crate) fn run_tasks(
     tasks: &[&dyn Task],
     graph: &ResolvedTaskGraph,
     assessments: &HashMap<TaskId, TaskAssessment>,
@@ -370,140 +292,128 @@ pub(crate) fn run_tasks_parallel_with_prior(
     log: &Arc<Logger>,
     prior: Option<&ExecutionSummary>,
 ) -> ExecutionSummary {
-    let mut runtimes: Vec<TaskRuntime> = (0..tasks.len())
-        .map(|task_idx| TaskRuntime::new(!graph.dependencies(task_idx).is_empty()))
+    let worker_limit = if ctx.parallel() {
+        std::thread::available_parallelism().map_or(2, |cpus| cpus.get().max(2))
+    } else {
+        1
+    };
+    run_tasks_with_limit(tasks, graph, assessments, ctx, log, prior, worker_limit)
+}
+
+struct PendingTask {
+    remaining_dependencies: usize,
+    signal: DependencySignal,
+}
+
+#[allow(
+    clippy::expect_used,
+    reason = "scoped workers report every dispatched task, including unwinds"
+)]
+#[allow(
+    clippy::indexing_slicing,
+    reason = "the resolved graph and scheduler queues share indices into the task slice"
+)]
+fn run_tasks_with_limit(
+    tasks: &[&dyn Task],
+    graph: &ResolvedTaskGraph,
+    assessments: &HashMap<TaskId, TaskAssessment>,
+    ctx: &Context,
+    log: &Arc<Logger>,
+    prior: Option<&ExecutionSummary>,
+    worker_limit: usize,
+) -> ExecutionSummary {
+    let mut ready = VecDeque::new();
+    let mut pending: Vec<_> = tasks
+        .iter()
+        .enumerate()
+        .map(|(idx, task)| {
+            let dependencies = graph.dependencies(idx);
+            if dependencies.is_empty() {
+                ready.push_back(idx);
+            }
+            if ctx.parallel()
+                && let Some(diag) = log.run_log()
+            {
+                let message = if dependencies.is_empty() {
+                    "no deps, ready".to_owned()
+                } else {
+                    let names: Vec<_> = dependencies.iter().map(|&dep| tasks[dep].name()).collect();
+                    format!("waiting for: {}", names.join(", "))
+                };
+                diag.emit_task(LogEvent::TaskWait, task.name(), &message);
+            }
+            PendingTask {
+                remaining_dependencies: dependencies.len(),
+                signal: prior_dependency_signal(*task, assessments.get(&task.task_id()), prior),
+            }
+        })
         .collect();
 
-    for dep_idx in 0..tasks.len() {
-        for &dependent_idx in graph.dependents(dep_idx) {
-            let dependency_sender = runtimes
-                .get(dependent_idx)
-                .and_then(|runtime| runtime.dependency_sender.as_ref())
-                .cloned();
-            if let Some(tx) = dependency_sender
-                && let Some(runtime) = runtimes.get_mut(dep_idx)
-            {
-                runtime
-                    .dependent_senders
-                    .push((tx, graph.blocks_on_failure(dependent_idx, dep_idx)));
-            }
-        }
-    }
-
-    // Drop the original senders so an unexpected panic before signalling closes
-    // dependent receivers instead of leaving them blocked forever.
-    for runtime in &mut runtimes {
-        runtime.dependency_sender = None;
-    }
-
-    let summary = std::sync::Mutex::new(ExecutionSummary::default());
-    std::thread::scope(|s| {
-        for (idx, (task, runtime)) in tasks.iter().zip(runtimes).enumerate() {
-            let task = *task;
-            let dependency_receiver = runtime.dependency_receiver;
-            let dependent_senders = runtime.dependent_senders;
-            let dep_names: Vec<&str> = graph
-                .dependencies(idx)
-                .iter()
-                .filter_map(|&dep_idx| tasks.get(dep_idx).map(|dep_task| dep_task.name()))
-                .collect();
-            let dep_count = dep_names.len();
-            let summary = &summary;
-            let prior_signal =
-                prior_dependency_signal(task, assessments.get(&task.task_id()), prior);
-
-            s.spawn(move || {
-                logging::set_log_thread_name(&task.log_key());
-
-                if let Some(diag) = log.run_log() {
-                    if dep_names.is_empty() {
-                        diag.emit_task(LogEvent::TaskWait, task.name(), "no deps, ready");
-                    } else {
-                        diag.emit_task(
-                            LogEvent::TaskWait,
-                            task.name(),
-                            &format!("waiting for: {}", dep_names.join(", ")),
-                        );
+    let worker_count = worker_limit.min(tasks.len());
+    let mut summary = ExecutionSummary::default();
+    std::thread::scope(|scope| {
+        let mut workers = Vec::with_capacity(worker_count);
+        let (done, completed) = mpsc::channel();
+        for worker in 0..worker_count {
+            let (jobs, queue) = mpsc::channel::<(usize, DependencySignal)>();
+            workers.push(jobs);
+            let done = done.clone();
+            scope.spawn(move || {
+                for (idx, signal) in queue {
+                    let task = tasks[idx];
+                    // Report even a panic outside the task body's own panic handler,
+                    // so the coordinator never waits for work the worker abandoned.
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        logging::set_log_thread_name(&task.log_key());
+                        dispatch_task(task, assessments, ctx, log, &signal, ctx.parallel())
+                    }));
+                    if done.send((worker, idx, result)).is_err() {
+                        break;
                     }
                 }
-
-                // Wait for all deps: receive one outcome per dependency.
-                // Receive every signal so failure takes precedence over
-                // cancellation when dependency outcomes are mixed.
-                let dependency_signal =
-                    dependency_outcome(dependency_receiver, dep_count).combine(prior_signal);
-                let (signal, execution) =
-                    dispatch_task(task, assessments, ctx, log, &dependency_signal, true);
-                summary
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .record_completion(task, execution);
-
-                signal_dependents(task.name(), dependent_senders, &signal);
             });
         }
-    });
-    summary
-        .into_inner()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
+        drop(done);
 
-/// Run tasks sequentially in dependency-safe order.
-///
-/// Normal task failures block dependent tasks just like the parallel scheduler;
-/// deliberate skips and not-applicable outcomes still satisfy dependencies.
-#[cfg(test)]
-pub(crate) fn run_tasks_sequential(
-    tasks: &[&dyn Task],
-    graph: &ResolvedTaskGraph,
-    assessments: &HashMap<TaskId, TaskAssessment>,
-    ctx: &Context,
-    log: &Arc<Logger>,
-) -> ExecutionSummary {
-    run_tasks_sequential_with_prior(tasks, graph, assessments, ctx, log, None)
-}
+        let mut idle: Vec<_> = (0..worker_count).collect();
+        for _ in tasks {
+            // An idle slot represents a worker with no queued or running task.
+            let dispatch_count = ready.len().min(idle.len());
+            for worker in idle.drain(..dispatch_count) {
+                let idx = ready.pop_front().expect("ready task was counted");
+                let signal =
+                    std::mem::replace(&mut pending[idx].signal, DependencySignal::Satisfied);
+                workers[worker]
+                    .send((idx, signal))
+                    .expect("idle task worker is running");
+            }
 
-pub(crate) fn run_tasks_sequential_with_prior(
-    tasks: &[&dyn Task],
-    graph: &ResolvedTaskGraph,
-    assessments: &HashMap<TaskId, TaskAssessment>,
-    ctx: &Context,
-    log: &Arc<Logger>,
-    prior: Option<&ExecutionSummary>,
-) -> ExecutionSummary {
-    let mut signals: Vec<Option<DependencySignal>> = vec![None; tasks.len()];
-    let mut summary = ExecutionSummary::default();
-
-    for idx in graph.execution_order() {
-        let Some(task) = tasks.get(idx) else {
-            continue;
-        };
-        let dependency_signal = graph.dependencies(idx).iter().fold(
-            prior_dependency_signal(*task, assessments.get(&task.task_id()), prior),
-            |outcome, &dep_idx| {
-                outcome.combine(
-                    signals
-                        .get(dep_idx)
-                        .cloned()
-                        .flatten()
-                        .unwrap_or_else(|| {
-                            DependencySignal::blocked(
-                                "missing dependency",
-                                BlockingOutcome::Blocked,
-                            )
-                        })
-                        .for_edge(graph.blocks_on_failure(idx, dep_idx)),
-                )
-            },
-        );
-
-        let (signal, execution) =
-            dispatch_task(*task, assessments, ctx, log, &dependency_signal, false);
-        if let Some(slot) = signals.get_mut(idx) {
-            *slot = Some(signal);
+            assert_ne!(
+                idle.len(),
+                worker_count,
+                "a resolved graph must have runnable work"
+            );
+            let (worker, idx, result) = completed
+                .recv()
+                .expect("dispatched task must report completion");
+            idle.push(worker);
+            let (signal, execution) =
+                result.unwrap_or_else(|payload| std::panic::resume_unwind(payload));
+            summary.record_completion(tasks[idx], execution);
+            for &dependent in graph.dependents(idx) {
+                let state = &mut pending[dependent];
+                let incoming = signal
+                    .clone()
+                    .for_edge(graph.blocks_on_failure(dependent, idx));
+                let previous = std::mem::replace(&mut state.signal, DependencySignal::Satisfied);
+                state.signal = previous.combine(incoming);
+                state.remaining_dependencies -= 1;
+                if state.remaining_dependencies == 0 {
+                    ready.push_back(dependent);
+                }
+            }
         }
-        summary.record_completion(*task, execution);
-    }
+    });
     summary
 }
 

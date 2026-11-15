@@ -833,8 +833,14 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
         .map(|task| (task.task_id(), TaskAssessment::applicable()))
         .collect::<HashMap<_, _>>();
 
-    let summary =
-        crate::engine::scheduler::run_tasks_sequential(&tasks, &graph, &assessments, &ctx, &log);
+    let summary = crate::engine::scheduler::run_tasks(
+        &tasks,
+        &graph,
+        &assessments,
+        &ctx.with_parallel(false),
+        &log,
+        None,
+    );
 
     assert_eq!(summary.failure_count(), 1);
     assert!(

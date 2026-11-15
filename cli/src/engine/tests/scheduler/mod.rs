@@ -33,16 +33,7 @@ impl Mode {
             .map(|task| (task.task_id(), task.assess(ctx)))
             .collect();
         let graph = ResolvedTaskGraph::resolve_assessed(tasks, &assessments).unwrap();
-        let summary = match (self, prior) {
-            (Self::Sequential, None) => run_tasks_sequential(tasks, &graph, &assessments, ctx, log),
-            (Self::Parallel, None) => run_tasks_parallel(tasks, &graph, &assessments, ctx, log),
-            (Self::Sequential, Some(prior)) => {
-                run_tasks_sequential_with_prior(tasks, &graph, &assessments, ctx, log, Some(prior))
-            }
-            (Self::Parallel, Some(prior)) => {
-                run_tasks_parallel_with_prior(tasks, &graph, &assessments, ctx, log, Some(prior))
-            }
-        };
+        let summary = run_tasks(tasks, &graph, &assessments, ctx, log, prior);
         let entries = log.task_entries();
         for (idx, task) in tasks.iter().enumerate() {
             let positions: Vec<_> = entries

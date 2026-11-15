@@ -196,9 +196,13 @@ between a declared graph and its runtime assessment.
 
 ### Parallelism and shared state
 
-Ready tasks run in scoped threads; resource batches can use Rayon.
-`ctx.parallel()` gates both. `.sequential()` only serializes one batch; it does
-not prevent another task from touching the same document.
+The scheduler queues a task once all its dependencies have finished. A bounded
+pool of scoped threads runs ready tasks. Finishing a task frees a worker and can
+make more tasks ready while independent work continues.
+
+Resource batches use a separate Rayon pool. `--no-parallel` uses one task worker
+and processes resource batches serially. `.sequential()` serializes a single
+batch. Another task can still touch the same document.
 
 Use [AccessClaim](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/access.rs) for that exclusion. Equal
 namespace/key pairs cannot overlap within the run's claim registry:

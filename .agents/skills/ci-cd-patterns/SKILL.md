@@ -13,9 +13,10 @@ action-version inventories in guidance.
 
 ## CI rules
 
-- Keep permissions least-privilege and cancel superseded CI runs. Preserve the
-  [release workflow's](../../../.github/workflows/release.yml) non-cancelling
-  concurrency policy so publishing is not interrupted.
+- Keep permissions least-privilege. Let active CI runs on `main` finish and
+  keep only the newest pending run. Cancel superseded CI runs on other refs.
+  Preserve the [release workflow's](../../../.github/workflows/release.yml)
+  non-cancelling concurrency policy so publishing can finish.
 - Pin external actions to full commit SHAs with the release tag in a comment.
 - Use the `ci` Cargo profile for checks and `release` only for publishing.
 - Put recurring logic in `.github/workflows/scripts/{linux,windows}/`.
@@ -47,7 +48,7 @@ action-version inventories in guidance.
   the change affects it; routine wording does not need another browser audit.
 - Wait for completion, inspect failed job logs, and report actionable failures.
   If monitoring is unavailable, state the SHA, run, and blocker.
-- If a newer push cancels the requested SHA's run, report the original run as
+- If a newer push replaces the requested SHA's pending run, report it as
   cancelled and verify whether the newer SHA contains the requested commits.
   If it does, follow that SHA's checks and any applicable publication, and
   report those results under the newer SHA.

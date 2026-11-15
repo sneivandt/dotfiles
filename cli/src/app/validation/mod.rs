@@ -23,7 +23,7 @@ pub(crate) fn display_diagnostics(diagnostics: &[Diagnostic], output: &dyn Outpu
         diagnostics.len()
     ));
     for diagnostic in diagnostics {
-        output.warn(format!(
+        output.warn_continuation(format!(
             "  [{}] {} [{}] ({}): {}",
             diagnostic.severity.label(),
             diagnostic.source,

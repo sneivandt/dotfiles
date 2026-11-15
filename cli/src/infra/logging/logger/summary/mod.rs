@@ -12,11 +12,14 @@ mod totals;
 
 use crate::infra::logging::utils::format_elapsed;
 use render::{RowOpts, task_block};
-use totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
+use totals::{
+    SummaryCounts, SummaryMode, SummaryPresentation, format_summary_lines,
+    should_space_before_totals,
+};
 
 impl Logger {
     /// Print the summary of all recorded tasks.
-    pub fn print_summary(&self) {
+    pub fn print_summary(&self, disposition: crate::infra::logging::CompletionDisposition) {
         let counts = SummaryCounts::from_tasks(&self.lock_tasks());
         self.clear_status();
         self.separate_from_startup();
@@ -30,7 +33,17 @@ impl Logger {
         if self.needs_totals_separator() {
             self.task_result("");
         }
-        for line in format_summary_lines(counts, summary_mode, &elapsed_str, style) {
+        for line in format_summary_lines(
+            counts,
+            summary_mode,
+            &elapsed_str,
+            style,
+            SummaryPresentation {
+                disposition,
+                dry_run: self.dry_run,
+                symbols: self.symbols,
+            },
+        ) {
             self.always(&line);
         }
     }
@@ -44,7 +57,12 @@ impl Logger {
     fn row_opts(&self) -> RowOpts {
         RowOpts {
             mode: SummaryMode::for_command(&self.command),
-            style: self.console.stdout_style,
+            style: if self.is_quiet() {
+                self.console.stderr_style
+            } else {
+                self.console.stdout_style
+            },
+            diagnostic_style: self.console.stderr_style,
             symbols: self.symbols,
             verbose: self.is_verbose(),
         }
@@ -85,8 +103,13 @@ impl Logger {
             self.begin_task_block(block.expanded);
             self.task_result(row);
         }
-        for (kind, line) in block.details {
-            self.emit_console(kind, &line);
+        for detail in block.details {
+            self.console.detail(
+                detail.kind,
+                &detail.message,
+                &detail.line,
+                detail.error_stream,
+            );
         }
         if block.status.is_some() {
             self.end_task_block(block.expanded);
@@ -95,9 +118,7 @@ impl Logger {
 
     /// Separate expanded blocks while keeping ordinary check rows compact.
     fn begin_task_block(&self, has_details: bool) {
-        let spaced =
-            SummaryMode::for_command(&self.command) == SummaryMode::Standard || self.is_verbose();
-        self.console.lock().begin_task_block(has_details, spaced);
+        self.console.lock().begin_task_block(has_details);
     }
 
     fn end_task_block(&self, has_details: bool) {
@@ -106,11 +127,7 @@ impl Logger {
 
     #[cfg(test)]
     fn should_separate_task_blocks(&self, has_details: bool) -> bool {
-        let spaced =
-            SummaryMode::for_command(&self.command) == SummaryMode::Standard || self.is_verbose();
-        self.console
-            .lock()
-            .should_separate_task_blocks(has_details, spaced)
+        self.console.lock().should_separate_task_blocks(has_details)
     }
 }
 

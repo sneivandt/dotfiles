@@ -4,7 +4,7 @@
 //! rendered at the end of a run.
 
 use crate::infra::logging::style::{StyleChoice, TextStyle};
-use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus};
+use crate::infra::logging::types::{ActionCounts, CompletionDisposition, TaskEntry, TaskStatus};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SummaryMode {
@@ -65,8 +65,20 @@ pub(super) fn format_summary_lines(
     mode: SummaryMode,
     elapsed: &str,
     style: StyleChoice,
+    presentation: SummaryPresentation,
 ) -> Vec<String> {
     let mut parts = Vec::new();
+    match presentation.disposition {
+        CompletionDisposition::Failed if counts.failed == 0 => {
+            parts.push(style.paint_bold(TextStyle::Red, "Failed"));
+        }
+        CompletionDisposition::Interrupted if counts.interrupted == 0 => {
+            parts.push(style.paint_bold(TextStyle::Yellow, "Interrupted"));
+        }
+        CompletionDisposition::Succeeded
+        | CompletionDisposition::Failed
+        | CompletionDisposition::Interrupted => {}
+    }
     for (count, label, color) in [
         (counts.failed, "failed", TextStyle::Red),
         (counts.interrupted, "interrupted", TextStyle::Yellow),
@@ -120,7 +132,33 @@ pub(super) fn format_summary_lines(
         parts.push(style.paint(TextStyle::Bold, "No checks ran"));
     }
     parts.push(style.paint(TextStyle::Dim, elapsed));
-    vec![parts.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}")))]
+    let text = parts.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}")));
+    let (glyph, color) = match presentation.disposition {
+        CompletionDisposition::Failed => ("✗", TextStyle::Red),
+        CompletionDisposition::Interrupted => ("⊘", TextStyle::Yellow),
+        CompletionDisposition::Succeeded
+            if counts.skipped > 0
+                || counts.blocked > 0
+                || counts.interrupted > 0
+                || counts.failed > 0 =>
+        {
+            ("⊘", TextStyle::Yellow)
+        }
+        CompletionDisposition::Succeeded if presentation.dry_run => ("~", TextStyle::Magenta),
+        CompletionDisposition::Succeeded => ("✓", TextStyle::Green),
+    };
+    vec![if presentation.symbols {
+        format!("{} {text}", style.paint(color, glyph))
+    } else {
+        text
+    }]
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct SummaryPresentation {
+    pub(super) disposition: CompletionDisposition,
+    pub(super) dry_run: bool,
+    pub(super) symbols: bool,
 }
 
 /// Name the task unit and emphasize the first outcome plus all incomplete work.

@@ -123,6 +123,7 @@ fn message_presentation_golden_matrix() {
             "WARN  detail",
             "\x1b[1;33mWARN\x1b[0m  detail",
         ),
+        (MsgKind::WarnContinuation, false, "detail", "detail"),
         (
             MsgKind::Error,
             false,
@@ -176,18 +177,35 @@ fn structured_startup_line_emphasizes_its_label_only() {
 }
 
 #[test]
-fn cli_upgrade_remains_a_startup_notice_with_a_dim_version_transition() {
-    assert_eq!(
-        crate::infra::logging::console::ui_line_with_style(
-            MsgKind::Startup,
-            "CLI upgraded · old → new",
-            StyleChoice::auto(true, false),
-            false,
-            true,
-        )
-        .as_deref(),
-        Some("\x1b[1mCLI upgraded\x1b[0m\x1b[2m · old → new\x1b[0m")
-    );
+fn lifecycle_transitions_use_an_accent_without_bold_or_a_words_only_glyph() {
+    for message in ["CLI upgraded · old → new", "Repository synced · restarting"] {
+        for symbols in [false, true] {
+            for (terminal, no_color) in [(true, false), (true, true), (false, false)] {
+                let (label, metadata) = message.split_once(" · ").unwrap();
+                let ansi = terminal && !no_color;
+                let prefix = if symbols {
+                    if ansi { "\x1b[36m↻\x1b[0m " } else { "↻ " }
+                } else {
+                    ""
+                };
+                let metadata = if ansi {
+                    format!("\x1b[2m · {metadata}\x1b[0m")
+                } else {
+                    format!(" · {metadata}")
+                };
+                assert_eq!(
+                    crate::infra::logging::console::ui_line_with_style(
+                        MsgKind::Transition,
+                        message,
+                        StyleChoice::auto(terminal, no_color),
+                        false,
+                        symbols,
+                    ),
+                    Some(format!("{prefix}{label}{metadata}")),
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -335,25 +353,29 @@ fn another_logger_cannot_change_the_active_subscribers_verbosity() {
 }
 
 #[test]
-fn dry_run_header_highlights_mode_and_recovery_hint_keeps_contrast() {
-    for (message, colored) in [
+fn dry_run_header_highlights_mode_and_recovery_command_keeps_contrast() {
+    for (kind, message, plain, colored) in [
         (
+            MsgKind::Startup,
+            "Update · dry run · desktop profile · Arch Linux",
             "Update · dry run · desktop profile · Arch Linux",
             "\x1b[1mUpdate\x1b[0m\x1b[2m · \x1b[0m\x1b[35mdry run\x1b[0m\x1b[2m · desktop profile · Arch Linux\x1b[0m",
         ),
         (
+            MsgKind::RecoveryHint,
             "Run 'dotfiles log --id fixture -v' for details.",
-            "Run 'dotfiles log --id fixture -v' for details.",
+            "  Run 'dotfiles log --id fixture -v' for details.",
+            "  \x1b[2mRun \x1b[0m\x1b[36m'dotfiles log --id fixture -v'\x1b[0m\x1b[2m for details.\x1b[0m",
         ),
     ] {
         for (terminal, no_color, expected) in [
             (true, false, colored),
-            (true, true, message),
-            (false, false, message),
+            (true, true, plain),
+            (false, false, plain),
         ] {
             assert_eq!(
                 crate::infra::logging::console::ui_line_with_style(
-                    MsgKind::Startup,
+                    kind,
                     message,
                     StyleChoice::auto(terminal, no_color),
                     false,

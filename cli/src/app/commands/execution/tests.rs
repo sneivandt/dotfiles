@@ -1213,6 +1213,12 @@ fn completed_task_stays_satisfied_but_cancelled_command_does_not_succeed() {
     assert_eq!(summary.failure_count(), 0);
     let error = finish_run(&ctx, &log, &summary).unwrap_err();
     assert!(error.is::<CommandInterrupted>(), "{error:#}");
+    assert!(
+        log.captured_lines()
+            .iter()
+            .any(|line| line.starts_with("⊘ Interrupted")),
+        "late cancellation must not claim success"
+    );
 }
 
 #[test]
@@ -1227,6 +1233,32 @@ fn completion_uses_scheduler_outcomes_even_without_presentation_records() {
     );
     let error = finish_run(&ctx, &log, &summary).unwrap_err();
     assert!(error.is::<CommandInterrupted>(), "{error:#}");
+    assert!(
+        log.captured_lines()
+            .iter()
+            .any(|line| line.starts_with("⊘ Interrupted"))
+    );
+}
+
+#[test]
+fn hidden_failure_precedes_cancellation_in_both_result_and_totals() {
+    let (ctx, log) = sequential_context();
+    ctx.cancellation_token().cancel();
+    let mut summary = crate::engine::scheduler::ExecutionSummary::default();
+    summary.record(numeric_task_id(1), "internal failure", TaskOutcome::Failed);
+    summary.add_failures(1);
+    let error = finish_run(&ctx, &log, &summary).unwrap_err();
+    assert!(error.is::<TaskFailures>());
+    assert!(
+        log.captured_lines()
+            .iter()
+            .any(|line| line.starts_with("✗ Failed"))
+    );
+    assert!(
+        !log.captured_lines()
+            .iter()
+            .any(|line| line.contains("No changes"))
+    );
 }
 
 #[test]

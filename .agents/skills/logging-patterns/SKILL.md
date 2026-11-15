@@ -44,6 +44,9 @@ exact plain/ANSI rendering. Preserve these implementation constraints:
   Typed actions persist once before buffering. Sort only consecutive typed action
   runs and preserve warning/context barriers; never classify or rephrase messages
   by their text.
+  Preserve typed verb/subject spans through replay and completed rows. Subjects
+  are opaque, including arrows and current-state text; only an identifiable
+  suffix outside the complete subject may be dimmed.
 - Emit generated counters with `summary`, and mark generated task-result reasons
   with `with_summary_message`. Custom reasons remain visible even if they resemble
   counter text.
@@ -54,6 +57,14 @@ exact plain/ANSI rendering. Preserve these implementation constraints:
 - Keep skipped, blocked, and interrupted outcomes distinct in rows and totals.
   Typed cancellation is interrupted; dependency prevention is blocked.
 - Transient status lines are always cleared and never replace durable logging.
+  Live custom preflight status is separate from task progress. Hold the shared
+  console lock through redraw so clearing, durable output, and ticker shutdown
+  cannot resurrect it. Fit clean text before styling and reserve the autowrap
+  column; `NO_COLOR` disables styling, not cursor control.
+  Task-block spacing depends on actual visible details in both verbosity modes.
+  Timings, count badges, and hidden entries do not expand a block.
+  Final disposition comes from scheduler failure/cancellation checks, not
+  presentation counts.
 
 - Console filtering must preserve persistent records. JSON Lines must work
   when the persistent sink is unavailable and contain no human progress.
@@ -70,10 +81,13 @@ exact plain/ANSI rendering. Preserve these implementation constraints:
 | `action` | applied or planned item detail with explicit verb and subject |
 | `info` | informational detail, not an inferred action |
 | `summary` | aggregate counters retained only in the run log |
-| `warn` / `error` | visible problems |
+| `warn` / `error` | visible problems; task-owned presentation is indented without changing severity or stream |
+| `warn_continuation` | warning item under a shared diagnostic heading, retaining raw warning records |
 | `dry_run` | planned mutation |
 | `always` | output that must be visible |
-| `startup` | startup notice |
+| `startup` | bold run-command header |
+| `transition` | normal-weight lifecycle notice with accented glyph and dim metadata |
+| `recovery_hint` | copyable command for a healthy retained log, with dim surrounding instructions |
 
 ## Persistent records
 

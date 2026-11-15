@@ -5,6 +5,7 @@ use std::io::{self, BufRead, Write};
 use anyhow::{Context as _, Result};
 
 use super::{ProfileInfo, available};
+use crate::infra::logging::{StyleChoice, stdout_style};
 
 /// Interactively prompt the user to select a profile.
 ///
@@ -14,20 +15,26 @@ use super::{ProfileInfo, available};
 pub fn prompt_interactive() -> Result<String> {
     let stdin = io::stdin();
     let stdout = io::stdout();
-    prompt_interactive_with_io(available(), &mut stdin.lock(), &mut stdout.lock())
+    prompt_interactive_with_io(
+        available(),
+        &mut stdin.lock(),
+        &mut stdout.lock(),
+        stdout_style(),
+    )
 }
 
 fn prompt_interactive_with_io(
     profiles: &[ProfileInfo],
     input: &mut impl BufRead,
     output: &mut impl Write,
+    style: StyleChoice,
 ) -> Result<String> {
     writeln!(output, "\nSelect a profile:")?;
     for (index, profile) in profiles.iter().enumerate() {
         writeln!(
             output,
-            "  \x1b[1m{}\x1b[0m) {} \u{2014} {}",
-            index.saturating_add(1),
+            "  {}) {} \u{2014} {}",
+            style.bold(&index.saturating_add(1).to_string()),
             profile.name,
             profile.description,
         )?;
@@ -60,7 +67,12 @@ mod tests {
     fn prompt(input: &str) -> (Result<String>, String) {
         let mut input = Cursor::new(input.as_bytes());
         let mut output = Vec::new();
-        let result = prompt_interactive_with_io(available(), &mut input, &mut output);
+        let result = prompt_interactive_with_io(
+            available(),
+            &mut input,
+            &mut output,
+            StyleChoice::auto(false, false),
+        );
         let output = String::from_utf8(output).expect("prompt output should be UTF-8");
         (result, output)
     }
@@ -91,6 +103,33 @@ mod tests {
                 error.contains(expected),
                 "input {input:?} should report {expected:?}, got {error:?}"
             );
+        }
+    }
+
+    #[test]
+    fn option_numbers_follow_the_injected_terminal_and_color_policy() {
+        for (terminal, no_color) in [(false, false), (true, false), (true, true)] {
+            let mut input = Cursor::new(b"1\n");
+            let mut output = Vec::new();
+            assert_eq!(
+                prompt_interactive_with_io(
+                    available(),
+                    &mut input,
+                    &mut output,
+                    StyleChoice::auto(terminal, no_color)
+                )
+                .unwrap(),
+                "base",
+            );
+            let text = String::from_utf8(output).unwrap();
+            if terminal && !no_color {
+                assert!(text.contains("  \x1b[1m1\x1b[0m) base"));
+                assert_eq!(text.matches("\x1b[1m").count(), 2);
+            } else {
+                assert!(text.contains("  1) base"));
+                assert!(!text.contains('\x1b'));
+            }
+            assert!(text.contains("base — Core shell environment, no desktop GUI"));
         }
     }
 }

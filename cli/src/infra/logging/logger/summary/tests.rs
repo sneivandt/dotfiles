@@ -2,7 +2,8 @@ use std::fmt::Write as _;
 use std::time::Duration;
 
 use super::render::{RowOpts, format_task_line, task_block};
-use super::totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
+use super::totals::{SummaryCounts, SummaryMode, SummaryPresentation, should_space_before_totals};
+use crate::infra::logging::CompletionDisposition;
 use crate::infra::logging::buffered::entry::LogEntry;
 use crate::infra::logging::style::StyleChoice;
 use crate::infra::logging::types::{ActionCounts, MsgKind, TaskEntry, TaskStatus, TaskVisibility};
@@ -37,7 +38,12 @@ fn task_result_lines(task: &TaskEntry, details: &[String], opts: RowOpts) -> Vec
     block
         .status
         .into_iter()
-        .chain(block.details.into_iter().map(|(_, line)| line))
+        .chain(
+            block
+                .details
+                .into_iter()
+                .flat_map(|detail| detail.line.lines().map(str::to_string).collect::<Vec<_>>()),
+        )
         .collect()
 }
 
@@ -46,6 +52,7 @@ fn plain_opts() -> RowOpts {
     RowOpts {
         mode: SummaryMode::Standard,
         style: StyleChoice::plain(),
+        diagnostic_style: StyleChoice::plain(),
         symbols: true,
         verbose: false,
     }
@@ -55,8 +62,29 @@ fn plain_opts() -> RowOpts {
 fn colored_opts() -> RowOpts {
     RowOpts {
         style: StyleChoice::colored(),
+        diagnostic_style: StyleChoice::colored(),
         ..plain_opts()
     }
+}
+
+/// Count/vocabulary fixtures deliberately omit symbols; disposition is tested separately.
+fn format_summary_lines(
+    counts: SummaryCounts,
+    mode: SummaryMode,
+    elapsed: &str,
+    style: StyleChoice,
+) -> Vec<String> {
+    super::totals::format_summary_lines(
+        counts,
+        mode,
+        elapsed,
+        style,
+        SummaryPresentation {
+            disposition: CompletionDisposition::Succeeded,
+            dry_run: false,
+            symbols: false,
+        },
+    )
 }
 
 #[test]
@@ -241,8 +269,8 @@ fn check_compacts_only_consecutive_single_line_rows() {
             current_has_details,
         ));
     }
-    assert!(should_separate("check", true, false, false));
-    assert!(should_separate("install", false, false, false));
+    assert!(!should_separate("check", true, false, false));
+    assert!(!should_separate("install", false, false, false));
 }
 
 #[test]
@@ -484,7 +512,9 @@ fn task_row_golden_matrix() {
                         } else {
                             word
                         };
-                        let mut row = if ansi {
+                        let mut row = if ansi && status == TaskStatus::Ok {
+                            format!("\x1b[{color}m{label}\x1b[0m task")
+                        } else if ansi {
                             format!("\x1b[{color}m{label}\x1b[0m \x1b[1mtask\x1b[0m")
                         } else {
                             format!("{label} task")
@@ -500,7 +530,9 @@ fn task_row_golden_matrix() {
                             | TaskStatus::NotApplicable
                             | TaskStatus::Failed => None,
                         };
-                        if symbols && let Some(state) = annotation {
+                        if (symbols || status == TaskStatus::DryRun)
+                            && let Some(state) = annotation
+                        {
                             if ansi {
                                 write!(row, "\x1b[2m · \x1b[0m\x1b[{color}m{state}\x1b[0m")
                                     .unwrap();
@@ -528,17 +560,8 @@ fn task_row_golden_matrix() {
                                 " · 1.5s"
                             });
                         }
-                        let visible = match status {
-                            TaskStatus::Ok => verbose,
-                            TaskStatus::NotApplicable => false,
-                            TaskStatus::Changed
-                            | TaskStatus::Passed
-                            | TaskStatus::Skipped
-                            | TaskStatus::Blocked
-                            | TaskStatus::Interrupted
-                            | TaskStatus::DryRun
-                            | TaskStatus::Failed => true,
-                        };
+                        let visible = status != TaskStatus::NotApplicable
+                            && (verbose || status != TaskStatus::Ok);
                         let expected: Vec<_> = visible.then_some(row).into_iter().collect();
                         assert_eq!(
                             task_result_lines(
@@ -549,6 +572,7 @@ fn task_row_golden_matrix() {
                                     symbols,
                                     verbose,
                                     style: StyleChoice::auto(ansi, false),
+                                    diagnostic_style: StyleChoice::auto(ansi, false),
                                 }
                             ),
                             expected,
@@ -653,7 +677,7 @@ fn print_summary_clears_visible_progress() {
     assert!(log.progress_rows_count() > 0);
     assert!(log.status_row_visible());
 
-    log.print_summary();
+    log.print_summary(CompletionDisposition::Succeeded);
 
     assert_eq!(log.progress_rows_count(), 0);
     assert!(!log.status_row_visible());
@@ -820,4 +844,180 @@ fn symbol_rows_name_states_even_without_reasons_or_with_action_details() {
             1
         );
     }
+}
+
+#[test]
+fn expanded_action_badges_use_structured_counts_in_both_modes() {
+    for verbose in [false, true] {
+        for (status, count, expected) in [
+            (TaskStatus::Changed, 0, "✓ task"),
+            (TaskStatus::Changed, 1, "✓ task"),
+            (TaskStatus::Changed, 35, "✓ task · 35 actions applied"),
+            (TaskStatus::DryRun, 0, "~ task · planned"),
+            (TaskStatus::DryRun, 1, "~ task · planned"),
+            (TaskStatus::DryRun, 35, "~ task · planned · 35 actions"),
+        ] {
+            let mut task = task_entry("task", status, None);
+            task.actions = ActionCounts {
+                applied: if status == TaskStatus::Changed {
+                    count
+                } else {
+                    999
+                },
+                planned: if status == TaskStatus::DryRun {
+                    count
+                } else {
+                    999
+                },
+                ..ActionCounts::default()
+            };
+            let opts = RowOpts {
+                verbose,
+                ..plain_opts()
+            };
+            let block = task_block(
+                &task,
+                &[LogEntry::action(
+                    "write",
+                    "item",
+                    status == TaskStatus::DryRun,
+                    "write item",
+                )],
+                opts,
+            );
+            assert!(block.expanded);
+            assert_eq!(block.status.as_deref(), Some(expected));
+            let collapsed = task_block(&task, &[], opts);
+            assert!(!collapsed.expanded);
+            assert!(!collapsed.status.unwrap().contains("actions"));
+        }
+    }
+}
+
+#[test]
+fn hidden_details_timings_and_counts_do_not_expand_verbose_rows() {
+    let mut task = task_entry("task", TaskStatus::Ok, None);
+    task.duration = Some(Duration::from_secs(1));
+    task.actions.applied = 35;
+    let entries = [
+        MsgKind::Stage,
+        MsgKind::Trace,
+        MsgKind::Summary,
+        MsgKind::Debug,
+    ]
+    .map(|kind| LogEntry::Message {
+        kind,
+        msg: if kind == MsgKind::Debug {
+            " \t".into()
+        } else {
+            "hidden".into()
+        },
+    });
+    let block = task_block(
+        &task,
+        &entries,
+        RowOpts {
+            verbose: true,
+            ..plain_opts()
+        },
+    );
+    assert!(!block.expanded);
+    assert_eq!(block.status.as_deref(), Some("○ task · 1.0s"));
+}
+
+#[test]
+fn final_summary_uses_explicit_disposition_before_visible_counts_and_preview() {
+    for mode in [SummaryMode::Standard, SummaryMode::Check] {
+        for symbols in [false, true] {
+            for dry_run in [false, true] {
+                for (disposition, counts, glyph, color, text) in [
+                    (
+                        CompletionDisposition::Failed,
+                        SummaryCounts::default(),
+                        "✗",
+                        "31",
+                        "Failed",
+                    ),
+                    (
+                        CompletionDisposition::Interrupted,
+                        SummaryCounts::default(),
+                        "⊘",
+                        "33",
+                        "Interrupted",
+                    ),
+                    (
+                        CompletionDisposition::Succeeded,
+                        SummaryCounts {
+                            skipped: 1,
+                            ..SummaryCounts::default()
+                        },
+                        "⊘",
+                        "33",
+                        "1 task skipped",
+                    ),
+                    (
+                        CompletionDisposition::Succeeded,
+                        SummaryCounts::default(),
+                        if dry_run { "~" } else { "✓" },
+                        if dry_run { "35" } else { "32" },
+                        if mode == SummaryMode::Check {
+                            "No checks ran"
+                        } else {
+                            "No changes"
+                        },
+                    ),
+                ] {
+                    for ansi in [false, true] {
+                        let lines = super::totals::format_summary_lines(
+                            counts,
+                            mode,
+                            "1.0s",
+                            StyleChoice::auto(ansi, false),
+                            SummaryPresentation {
+                                disposition,
+                                dry_run,
+                                symbols,
+                            },
+                        );
+                        let clean = crate::infra::logging::utils::strip_ansi(&lines[0]);
+                        assert_eq!(
+                            clean,
+                            format!(
+                                "{}{text} · 1.0s",
+                                if symbols {
+                                    format!("{glyph} ")
+                                } else {
+                                    String::new()
+                                }
+                            )
+                        );
+                        if symbols && ansi {
+                            assert!(lines[0].starts_with(&format!("\x1b[{color}m{glyph}\x1b[0m ")));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_warning_does_not_hide_a_changed_tasks_custom_reason_or_use_stdout_styling() {
+    let task = task_entry("task", TaskStatus::Changed, Some("custom outcome"));
+    let entries = [LogEntry::Message {
+        kind: MsgKind::Warn,
+        msg: "check permissions".into(),
+    }];
+    let block = task_block(
+        &task,
+        &entries,
+        RowOpts {
+            diagnostic_style: StyleChoice::plain(),
+            ..colored_opts()
+        },
+    );
+    assert!(block.status.unwrap().contains("custom outcome"));
+    assert!(block.expanded);
+    assert_eq!(block.details[0].line, "  WARN  check permissions");
+    assert!(block.details[0].error_stream);
 }

@@ -243,7 +243,7 @@ fn end_prompt_line() {
 fn force_quit(log: &dyn Output, non_interactive: bool) -> ! {
     log.clear_status_line();
     log.error(FORCE_QUIT_MESSAGE);
-    log.startup("Run 'dotfiles log' for details.");
+    crate::app::run::recovery_hint(log);
     elevation::wait_if_elevated(non_interactive);
     log.finish_run(FORCE_QUIT_EXIT_CODE);
     std::process::exit(FORCE_QUIT_EXIT_CODE)
@@ -352,6 +352,23 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(finishes, [(RunOutcome::Interrupted, 130)], "{contents}");
+        let run_id = records
+            .iter()
+            .find_map(|stored| {
+                if let Record::RunStart { run_id, .. } = &stored.record {
+                    Some(run_id)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        assert_eq!(
+            contents
+                .matches(&format!("Run 'dotfiles log --id {run_id} -v' for details."))
+                .count(),
+            1,
+            "force quit must retain a stable recovery command for its own healthy run"
+        );
         for message in [CANCEL_MESSAGE, FORCE_QUIT_MESSAGE] {
             let count = contents
                 .lines()

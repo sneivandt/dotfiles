@@ -169,6 +169,7 @@ mod startup_log_tests {
                 Platform::new(Os::Linux, false),
                 true,
                 None,
+                Path::new("/home/fixture"),
             ),
             "Install · dry run · workstation profile · Linux"
         );
@@ -183,6 +184,7 @@ mod startup_log_tests {
                 Platform::new(Os::Linux, false),
                 false,
                 Some(Path::new("/private/overlay")),
+                Path::new("/home/fixture"),
             ),
             "Install · workstation profile · Linux · overlay /private/overlay",
             "overlay must be appended to the startup header, not emitted on its own line"
@@ -198,8 +200,45 @@ mod startup_log_tests {
                 Platform::new(Os::Linux, false),
                 true,
                 Some(Path::new("/private/overlay")),
+                Path::new("/home/fixture"),
             ),
             "Install · dry run · workstation profile · Linux · overlay /private/overlay"
         );
+    }
+
+    #[test]
+    fn overlay_home_abbreviation_respects_native_component_boundaries() {
+        let home = if cfg!(windows) {
+            Path::new(r"C:\Users\al")
+        } else {
+            Path::new("/home/al")
+        };
+        for (path, expected) in [
+            (home.to_path_buf(), "~".to_string()),
+            (
+                home.join("private").join("overlay"),
+                "~/private/overlay".to_string(),
+            ),
+            (
+                home.with_file_name("alice").join("overlay"),
+                home.with_file_name("alice")
+                    .join("overlay")
+                    .display()
+                    .to_string(),
+            ),
+        ] {
+            let header = startup_context_line(
+                "Update",
+                "desktop",
+                Platform::new_wsl(),
+                false,
+                Some(&path),
+                home,
+            );
+            assert_eq!(
+                header,
+                format!("Update · desktop profile · Linux · WSL · overlay {expected}")
+            );
+        }
     }
 }

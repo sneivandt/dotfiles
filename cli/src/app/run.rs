@@ -200,11 +200,12 @@ fn report_failure(error: &anyhow::Error, log: &dyn logging::Output) {
     {
         log.error(format!("{error:#}"));
     }
+    recovery_hint(log);
+}
+
+pub(crate) fn recovery_hint(log: &dyn logging::Output) {
     if let Some(run) = log.run_log().filter(|run| run.is_healthy()) {
-        log.startup(format!(
-            "Run 'dotfiles log --id {} -v' for details.",
-            run.id()
-        ));
+        log.recovery_hint(format!("dotfiles log --id {} -v", run.id()));
     }
 }
 
@@ -307,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_task_failure_only_prints_dim_log_hint() {
+    fn aggregate_task_failure_only_prints_recovery_hint() {
         let tmp = tempfile::tempdir().unwrap();
         let logger = logging::Logger::new_in("update", tmp.path());
         let id = logger.run_log().unwrap().id();
@@ -321,14 +322,14 @@ mod tests {
             "aggregate task failure should not repeat the failed task count"
         );
         assert_eq!(
-            log.messages_of(MsgKind::Startup),
+            log.messages_of(MsgKind::RecoveryHint),
             [format!("Run 'dotfiles log --id {id} -v' for details.")],
-            "log hint should use the always-visible dim channel"
+            "log hint should use the dedicated always-visible recovery intent"
         );
     }
 
     #[test]
-    fn unexpected_failure_still_prints_error_and_dim_log_hint() {
+    fn unexpected_failure_still_prints_error_and_recovery_hint() {
         let tmp = tempfile::tempdir().unwrap();
         let logger = logging::Logger::new_in("update", tmp.path());
         let id = logger.run_log().unwrap().id();
@@ -343,17 +344,26 @@ mod tests {
             "unexpected command failures should remain visible as errors"
         );
         assert_eq!(
-            log.messages_of(MsgKind::Startup),
+            log.messages_of(MsgKind::RecoveryHint),
             [format!("Run 'dotfiles log --id {id} -v' for details.")],
-            "log hint should use the always-visible dim channel"
+            "log hint should use the dedicated always-visible recovery intent"
         );
     }
     #[test]
     fn unavailable_log_never_offers_a_misleading_failure_hint() {
         let log = CapturingOutput::default();
         report_failure(&anyhow::anyhow!("configuration failed"), &log);
-        assert!(log.messages_of(MsgKind::Startup).is_empty());
+        assert!(log.messages_of(MsgKind::RecoveryHint).is_empty());
         assert_eq!(log.messages_of(MsgKind::Error), ["configuration failed"]);
+    }
+
+    #[test]
+    fn an_unlogged_run_id_does_not_authorize_a_recovery_hint() {
+        let log = logging::Logger::test();
+        log.start_run(None);
+        assert!(log.run_id().is_some());
+        recovery_hint(&log);
+        assert!(log.captured_lines().is_empty());
     }
 
     #[test]
@@ -442,7 +452,7 @@ mod tests {
                     "{name}: interruption is not a failure-shaped error"
                 );
                 assert!(
-                    log.messages_of(MsgKind::Startup).is_empty(),
+                    log.messages_of(MsgKind::RecoveryHint).is_empty(),
                     "{name}: interruption must not offer a failure-log hint"
                 );
             }
@@ -461,6 +471,6 @@ mod tests {
 
         assert_eq!(exit_code, ExitCode::from(130));
         assert!(log.messages_of(MsgKind::Error).is_empty());
-        assert!(log.messages_of(MsgKind::Startup).is_empty());
+        assert!(log.messages_of(MsgKind::RecoveryHint).is_empty());
     }
 }

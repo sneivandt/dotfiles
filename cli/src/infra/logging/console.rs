@@ -10,7 +10,7 @@ use super::utils::strip_ansi;
 pub(super) struct Console {
     state: Mutex<ConsoleState>,
     pub(super) stdout_style: StyleChoice,
-    stderr_style: StyleChoice,
+    pub(super) stderr_style: StyleChoice,
 }
 
 /// All terminal state changes and writes happen under the same lock.
@@ -24,8 +24,9 @@ pub(super) struct ConsoleState {
     stderr_closed: bool,
     pub(super) verbose: bool,
     pub(super) progress_rows: u16,
-    /// Only task footers animate; cleared rows and custom status messages stay untouched.
+    /// A live task footer is separate from a pre-graph custom transient.
     pub(super) active_progress: bool,
+    pub(super) custom_progress: Option<String>,
     pub(super) task_output_emitted: bool,
     pub(super) last_task_block_had_details: bool,
     pub(super) ends_with_blank_line: bool,
@@ -55,7 +56,10 @@ impl Console {
     }
 
     pub(super) fn emit(&self, kind: MsgKind, message: &str, symbols: bool) {
-        let error = matches!(kind, MsgKind::Warn | MsgKind::Error);
+        let error = matches!(
+            kind.log_event(),
+            super::types::LogEvent::Warn | super::types::LogEvent::Error
+        );
         let style = if error {
             self.stderr_style
         } else {
@@ -72,6 +76,9 @@ impl Console {
         }
         let mut state = self.lock();
         if let Some(line) = ui_line_with_style(kind, message, style, state.verbose, symbols) {
+            if kind == MsgKind::Transition && state.startup_separator_emitted {
+                state.separate_block();
+            }
             state.line(error, &line);
         }
     }
@@ -104,6 +111,24 @@ impl Console {
 
     pub(super) fn task_result(&self, message: &str) {
         self.lock().line(false, &self.stdout_style.clean(message));
+    }
+
+    /// Render a buffered detail without persisting its presentation.
+    pub(super) fn detail(&self, kind: MsgKind, message: &str, line: &str, error_stream: bool) {
+        let diagnostic = matches!(
+            kind.log_event(),
+            super::types::LogEvent::Warn | super::types::LogEvent::Error
+        );
+        if diagnostic {
+            self.record(
+                &super::log_thread_name(),
+                super::records::Record::Message {
+                    event: kind.log_event().name().into(),
+                    text: message.into(),
+                },
+            );
+        }
+        self.lock().line(error_stream, line);
     }
 
     #[cfg(test)]
@@ -175,6 +200,7 @@ impl ConsoleState {
 
     fn line(&mut self, error: bool, line: &str) {
         self.active_progress = false;
+        self.custom_progress = None;
         let clear = progress_clear_sequence(std::mem::take(&mut self.progress_rows));
         self.ends_with_blank_line = strip_ansi(line).trim().is_empty();
         self.write(error, &format!("{clear}{line}\n"));
@@ -182,6 +208,7 @@ impl ConsoleState {
 
     pub(super) fn clear_progress(&mut self) {
         self.active_progress = false;
+        self.custom_progress = None;
         let rows = std::mem::take(&mut self.progress_rows);
         if rows > 0 {
             self.write(false, &progress_clear_sequence(rows));
@@ -203,6 +230,7 @@ impl ConsoleState {
         if self.mode != super::OutputMode::Human {
             return;
         }
+        self.custom_progress = None;
         if self.progress_rows > 0 {
             self.replace_status(line);
         } else {
@@ -229,13 +257,13 @@ impl ConsoleState {
         }
     }
 
-    pub(super) const fn should_separate_task_blocks(&self, expanded: bool, spaced: bool) -> bool {
-        self.task_output_emitted && (spaced || self.last_task_block_had_details || expanded)
+    pub(super) const fn should_separate_task_blocks(&self, expanded: bool) -> bool {
+        self.task_output_emitted && (self.last_task_block_had_details || expanded)
     }
 
-    pub(super) fn begin_task_block(&mut self, expanded: bool, spaced: bool) {
+    pub(super) fn begin_task_block(&mut self, expanded: bool) {
         self.separate_from_startup();
-        if self.should_separate_task_blocks(expanded, spaced) {
+        if self.should_separate_task_blocks(expanded) {
             self.line(false, "");
         }
     }
@@ -281,8 +309,36 @@ pub(in crate::infra::logging) fn ui_line_with_style(
             style.paint_bold(TextStyle::Red, "ERROR")
         )),
         MsgKind::DryRun => Some(format!("  {msg}")),
-        MsgKind::Always => Some(msg),
+        MsgKind::Always | MsgKind::WarnContinuation => Some(msg),
         MsgKind::Startup => Some(startup_line_with_style(&msg, style)),
+        MsgKind::Transition => {
+            let (label, metadata) = msg.split_once(" · ").unwrap_or((&msg, ""));
+            let prefix = if symbols {
+                format!("{} ", style.paint(TextStyle::Cyan, "↻"))
+            } else {
+                String::new()
+            };
+            let metadata = if metadata.is_empty() {
+                String::new()
+            } else {
+                style.paint(TextStyle::Dim, &format!(" · {metadata}"))
+            };
+            Some(format!("{prefix}{label}{metadata}"))
+        }
+        MsgKind::RecoveryHint => {
+            let command = msg
+                .strip_prefix("Run '")
+                .and_then(|text| text.strip_suffix("' for details."));
+            let Some(command) = command else {
+                return Some(format!("  {msg}"));
+            };
+            Some(format!(
+                "  {}{}{}",
+                style.paint(TextStyle::Dim, "Run "),
+                style.paint(TextStyle::Cyan, &format!("'{command}'")),
+                style.paint(TextStyle::Dim, " for details."),
+            ))
+        }
         MsgKind::SudoRequired => {
             let notice = startup_line_with_style(&msg, style);
             Some(if symbols {
@@ -294,8 +350,7 @@ pub(in crate::infra::logging) fn ui_line_with_style(
     }
 }
 
-/// Give structured startup notices a visible label while keeping their
-/// metadata subdued. Recovery hints retain normal foreground contrast.
+/// Give the run header a visible command while subduing its metadata.
 fn startup_line_with_style(msg: &str, style: StyleChoice) -> String {
     let Some((label, metadata)) = msg.split_once(" · ") else {
         return style.clean(msg);

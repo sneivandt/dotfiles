@@ -304,6 +304,7 @@ fn resolve_profile(
         platform,
         runtime.execution.dry_run,
         overlay,
+        &crate::engine::context::home_directory(runtime.env.as_ref(), platform)?,
     );
     log.record(crate::infra::logging::records::Record::RunContext {
         profile: profile.name.clone(),
@@ -337,6 +338,7 @@ pub(super) fn startup_context_line(
     platform: Platform,
     dry_run: bool,
     overlay: Option<&std::path::Path>,
+    home: &std::path::Path,
 ) -> String {
     let mut platform_label = platform.description().to_string();
     if platform.is_wsl() {
@@ -344,7 +346,17 @@ pub(super) fn startup_context_line(
     }
     let dry_run = if dry_run { " \u{00b7} dry run" } else { "" };
     let overlay = overlay.map_or_else(String::new, |path| {
-        format!(" \u{00b7} overlay {}", path.display())
+        let display = path.strip_prefix(home).map_or_else(
+            |_| path.display().to_string(),
+            |relative| {
+                if relative.as_os_str().is_empty() {
+                    "~".into()
+                } else {
+                    format!("~/{}", relative.to_string_lossy().replace('\\', "/"))
+                }
+            },
+        );
+        format!(" \u{00b7} overlay {display}")
     });
     format!(
         "{command_title}{dry_run} \u{00b7} {profile_name} profile \u{00b7} {platform_label}{overlay}"
@@ -545,9 +557,14 @@ mod root_tests {
             (vec![], Some("missing"), None),
         ] {
             let global = super::super::tests::global(&flags);
-            let env = env_profile.map_or_else(MapEnv::new, |name| {
-                MapEnv::new().with("DOTFILES_PROFILE", name)
-            });
+            let env = env_profile.map_or_else(
+                || MapEnv::new().with("HOME", root.path()),
+                |name| {
+                    MapEnv::new()
+                        .with("HOME", root.path())
+                        .with("DOTFILES_PROFILE", name)
+                },
+            );
             let runtime = RuntimePolicy::new(&global, false, env.into_handle(), false, true);
             let profile = resolve_profile(&runtime, root.path(), Platform::detect(), None, &log);
             assert_eq!(

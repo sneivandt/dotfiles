@@ -184,7 +184,7 @@ fn starts_precede_stats_and_results_and_durations_are_recorded_once() {
                 tasks.push(&DetailTask);
                 tasks.push(&inapplicable);
                 let summary = mode.run(&tasks, ctx, log, None);
-                log.print_summary();
+                log.print_summary(logging::CompletionDisposition::Succeeded);
                 let contents = std::fs::read_to_string(log.log_path().expect("run log")).unwrap();
                 for (task, &(_, count)) in stats.iter().zip(&cases) {
                     let stage = format!("[task_start] {}", task.name());

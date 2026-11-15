@@ -425,3 +425,113 @@ fn quiet_mode_keeps_skipped_work_visible_without_changing_exit_policy() {
         assert!(String::from_utf8_lossy(&output.stderr).contains("shellcheck not found in PATH"));
     }
 }
+
+#[test]
+fn human_transcripts_show_home_overlay_and_completion_disposition() {
+    for symbols in [false, true] {
+        for verbose in [false, true] {
+            for preview in [false, true] {
+                let repo = common::TestContextBuilder::new().build();
+                let home = tempfile::tempdir().unwrap();
+                let overlay = home.path().join("overlay");
+                std::fs::create_dir(&overlay).unwrap();
+                let mut command = common::cli_command(
+                    repo.root_path(),
+                    home.path(),
+                    Some(&overlay),
+                    "update",
+                    "completions",
+                );
+                command.env("NO_COLOR", "1");
+                if !symbols {
+                    command.arg("--no-symbols");
+                }
+                if verbose {
+                    command.arg("--verbose");
+                }
+                if preview {
+                    command.arg("--dry-run");
+                }
+                let output = command.output().unwrap();
+                let stdout = String::from_utf8(output.stdout).unwrap();
+                assert!(
+                    output.status.success(),
+                    "{stdout}\n{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                assert!(!stdout.contains('\x1b'));
+                assert!(
+                    stdout
+                        .lines()
+                        .next()
+                        .unwrap()
+                        .ends_with("overlay ~/overlay"),
+                    "{stdout}"
+                );
+                assert!(
+                    !stdout.contains("actions"),
+                    "a single-action operation must not invent a badge: {stdout}"
+                );
+                let final_line = stdout.lines().last().unwrap();
+                let prefix = match (symbols, preview) {
+                    (true, true) => "~ 1 task would change",
+                    (true, false) => "✓ 1 task changed",
+                    (false, true) => "1 task would change",
+                    (false, false) => "1 task changed",
+                };
+                assert!(final_line.starts_with(prefix), "{stdout}");
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn quantified_symlink_actions_have_badges_without_capping_details() {
+    for preview in [false, true] {
+        for verbose in [false, true] {
+            let repo = common::TestContextBuilder::new()
+                .with_config_file(
+                    "symlinks.toml",
+                    "[base]\nsymlinks = [\n\
+                    { source = 'first', target = '.first' },\n\
+                    { source = 'second', target = '.second' },\n]\n",
+                )
+                .with_symlink_source("first")
+                .with_symlink_source("second")
+                .build();
+            let home = tempfile::tempdir().unwrap();
+            let mut command =
+                common::cli_command(repo.root_path(), home.path(), None, "update", "symlinks");
+            if preview {
+                command.arg("--dry-run");
+            }
+            if verbose {
+                command.arg("--verbose");
+            }
+            let output = command.output().unwrap();
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            assert!(
+                output.status.success(),
+                "{stdout}\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                stdout.contains(if preview {
+                    " · 2 actions"
+                } else {
+                    " · 2 actions applied"
+                }),
+                "{stdout}"
+            );
+            assert!(
+                stdout.contains("  link ~/.first → symlinks/first"),
+                "{stdout}"
+            );
+            assert!(
+                stdout.contains("  link ~/.second → symlinks/second"),
+                "{stdout}"
+            );
+        }
+    }
+}

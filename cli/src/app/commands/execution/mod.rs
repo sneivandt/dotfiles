@@ -225,12 +225,21 @@ fn finish_run(
     log: &Arc<Logger>,
     summary: &crate::engine::scheduler::ExecutionSummary,
 ) -> Result<()> {
-    log.print_summary();
+    use crate::infra::logging::CompletionDisposition;
     let count = summary.failure_count();
+    let interrupted = ctx.is_cancelled() || summary.was_interrupted();
+    let disposition = if count > 0 {
+        CompletionDisposition::Failed
+    } else if interrupted {
+        CompletionDisposition::Interrupted
+    } else {
+        CompletionDisposition::Succeeded
+    };
+    log.print_summary(disposition);
     if count > 0 {
         return Err(TaskFailures::new(count).into());
     }
-    if ctx.is_cancelled() || summary.was_interrupted() {
+    if interrupted {
         return Err(CommandInterrupted.into());
     }
     Ok(())

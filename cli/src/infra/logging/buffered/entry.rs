@@ -6,6 +6,7 @@
 
 use crate::infra::logging::logger::Logger;
 use crate::infra::logging::runlog::RunLog;
+use crate::infra::logging::style::{StyleChoice, TextStyle};
 use crate::infra::logging::types::{MsgKind, TaskStatus};
 use crate::infra::logging::utils::duplicates_task_message;
 
@@ -79,7 +80,74 @@ impl LogEntry {
 
     /// Replay this entry to the console.
     pub(in crate::infra::logging) fn replay(&self, logger: &Logger) {
-        logger.emit_console(self.kind(), self.message());
+        match self {
+            Self::Message { kind, msg } => logger.emit_console(*kind, msg),
+            Self::Action { .. } => {
+                if let Some(line) = self.console_line(
+                    logger.console.stdout_style,
+                    logger.is_verbose(),
+                    logger.symbols,
+                ) {
+                    logger
+                        .console
+                        .detail(self.kind(), self.message(), &line, false);
+                }
+            }
+        }
+    }
+
+    /// Preserve typed spans and opaque subjects; never infer actions from prose.
+    pub(in crate::infra::logging) fn console_line(
+        &self,
+        style: StyleChoice,
+        verbose: bool,
+        symbols: bool,
+    ) -> Option<String> {
+        let Self::Action {
+            verb,
+            subject,
+            planned,
+            message,
+        } = self
+        else {
+            return crate::infra::logging::console::ui_line_with_style(
+                self.kind(),
+                self.message(),
+                style,
+                verbose,
+                symbols,
+            );
+        };
+        if !planned && !verbose {
+            return None;
+        }
+        let prefix = format!("{verb} {subject}");
+        let Some(suffix) = message
+            .strip_prefix(&prefix)
+            .filter(|suffix| suffix.is_empty() || suffix.starts_with(char::is_whitespace))
+        else {
+            return Some(format!("  {}", style.clean(message)).replace('\n', "\n  "));
+        };
+        Some(
+            format!(
+                "  {} {}{}",
+                style.paint(
+                    if *planned {
+                        TextStyle::Magenta
+                    } else {
+                        TextStyle::Cyan
+                    },
+                    verb
+                ),
+                style.clean(subject),
+                if suffix.is_empty() {
+                    String::new()
+                } else {
+                    style.paint(TextStyle::Dim, suffix)
+                },
+            )
+            .replace('\n', "\n  "),
+        )
     }
 
     /// Select the message kind and text for verbose task detail.
@@ -108,15 +176,22 @@ impl LogEntry {
     pub(in crate::infra::logging) fn detail_line(&self, status: TaskStatus) -> Option<&str> {
         match self.kind() {
             MsgKind::Info | MsgKind::DryRun | MsgKind::Always => Some(self.message()),
-            MsgKind::Warn | MsgKind::Error if status == TaskStatus::Failed => Some(self.message()),
+            MsgKind::Warn | MsgKind::WarnContinuation | MsgKind::Error
+                if status == TaskStatus::Failed =>
+            {
+                Some(self.message())
+            }
             MsgKind::Stage
             | MsgKind::Debug
             | MsgKind::Context
             | MsgKind::Trace
             | MsgKind::Summary
             | MsgKind::Startup
+            | MsgKind::Transition
+            | MsgKind::RecoveryHint
             | MsgKind::SudoRequired
             | MsgKind::Warn
+            | MsgKind::WarnContinuation
             | MsgKind::Error => None,
         }
     }
@@ -134,7 +209,10 @@ impl LogEntry {
         task_message: Option<&str>,
     ) -> bool {
         status != TaskStatus::Failed
-            && matches!(self.kind(), MsgKind::Warn | MsgKind::Error)
+            && matches!(
+                self.kind(),
+                MsgKind::Warn | MsgKind::WarnContinuation | MsgKind::Error
+            )
             && !duplicates_task_message(self.message(), task_message)
     }
 }

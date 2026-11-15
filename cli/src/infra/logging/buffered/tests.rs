@@ -588,37 +588,39 @@ fn completed_task_transcripts_preserve_spacing_and_warning_placement() {
             } else {
                 "CHANGED"
             };
-            let compact = command == "check" && !verbose;
             let mut expected = vec![
                 "Run · fixture".to_string(),
                 String::new(),
                 "PASSED first".into(),
             ];
-            if !compact {
-                expected.push(String::new());
-            }
             expected.extend([
                 "PASSED second".into(),
                 String::new(),
                 format!("{changed} actions"),
                 "  link a".into(),
                 "  link z".into(),
+                "  WARN  check permissions".into(),
+                "  link b".into(),
             ]);
             if verbose {
-                expected.extend([
-                    "WARN  check permissions".into(),
-                    "  link b".into(),
-                    String::new(),
-                    "CURRENT current".into(),
-                ]);
-            } else {
-                expected.extend(["  link b".into(), "WARN  check permissions".into()]);
+                expected.extend([String::new(), "CURRENT current".into()]);
             }
-            expected.extend([String::new(), "PASSED last".into()]);
+            if !verbose {
+                expected.push(String::new());
+            }
+            expected.push("PASSED last".into());
             assert_eq!(
                 log.captured_lines(),
                 expected,
                 "{command}, verbose={verbose}"
+            );
+            assert!(
+                log.console
+                    .lock()
+                    .captured
+                    .iter()
+                    .any(|(stderr, text)| { *stderr && text == "  WARN  check permissions\n" }),
+                "task warnings must retain stderr in both verbosity modes"
             );
         }
     }
@@ -639,7 +641,7 @@ fn failed_task_transcript_keeps_reason_once_and_preserves_diagnostics() {
         buf.record_task(task);
         buf.flush_and_complete("links", "links");
         let diagnostic = if verbose {
-            "ERROR permission denied"
+            "  ERROR permission denied"
         } else {
             "  permission denied"
         };
@@ -656,5 +658,102 @@ fn failed_task_transcript_keeps_reason_once_and_preserves_diagnostics() {
         let stored = fs::read_to_string(log.log_path().unwrap()).unwrap();
         assert_eq!(stored.matches("[warn] cannot link").count(), 1);
         assert_eq!(stored.matches("[error] permission denied").count(), 1);
+    }
+}
+
+#[test]
+fn typed_action_spans_preserve_opaque_subjects_and_custom_messages() {
+    use crate::infra::logging::style::StyleChoice;
+    for planned in [false, true] {
+        let color = if planned { "35" } else { "36" };
+        let subject = "~/target → source (current value)";
+        let message = format!("refresh {subject} (extra context)");
+        let action = LogEntry::action("refresh", subject, planned, &message);
+        assert_eq!(
+            action
+                .console_line(StyleChoice::colored(), true, true)
+                .unwrap(),
+            format!("  \x1b[{color}mrefresh\x1b[0m {subject}\x1b[2m (extra context)\x1b[0m")
+        );
+        assert_eq!(
+            action
+                .console_line(StyleChoice::plain(), true, true)
+                .unwrap(),
+            format!("  {message}")
+        );
+        for custom_message in [
+            "custom message",
+            "refresh ~/target-extra",
+            "Refresh ~/target",
+            "refresh  ~/target",
+            "refresh ~/target\ncontinuation",
+        ] {
+            let custom_action = LogEntry::action("refresh", "~/target", planned, custom_message);
+            let line = custom_action
+                .console_line(StyleChoice::colored(), true, true)
+                .unwrap();
+            assert_eq!(
+                crate::infra::logging::utils::strip_ansi(&line),
+                format!("  {}", custom_message.replace('\n', "\n  "))
+            );
+            if !custom_message.contains('\n') {
+                assert!(
+                    !line.contains('\x1b'),
+                    "a mismatched custom message must remain opaque"
+                );
+            }
+        }
+        let prose = entry(MsgKind::Info, "refresh ~/target → source");
+        assert_eq!(
+            prose
+                .console_line(StyleChoice::colored(), true, true)
+                .unwrap(),
+            "  refresh ~/target → source"
+        );
+    }
+}
+
+#[test]
+fn typed_actions_share_the_same_text_through_direct_replay_and_completed_rows() {
+    for planned in [false, true] {
+        for verbose in [false, true] {
+            let (mut log, _tmp, _guard) = isolated_logger();
+            log.set_verbose(verbose);
+            let log = Arc::new(log);
+            let action = LogEntry::action(
+                "refresh",
+                "opaque → source",
+                planned,
+                "refresh opaque → source\nsecond line",
+            );
+            action.replay(&log);
+            let direct = log.captured_lines();
+            let buf = BufferedLog::new(Arc::clone(&log));
+            buf.action("refresh", "opaque → source", planned, action.message());
+            buf.record_task(task_entry(
+                "task",
+                if planned {
+                    TaskStatus::DryRun
+                } else {
+                    TaskStatus::Changed
+                },
+                ActionCounts::default(),
+            ));
+            buf.flush_and_complete("task", "task");
+            let completed = log.captured_lines();
+            assert!(
+                completed.ends_with(&["  refresh opaque → source".into(), "  second line".into()])
+            );
+            assert_eq!(direct.is_empty(), !planned && !verbose);
+            if planned || verbose {
+                assert_eq!(&completed[completed.len() - 2..], direct);
+            }
+            let stored = fs::read_to_string(log.log_path().unwrap()).unwrap();
+            assert_eq!(
+                stored.matches("\"type\":\"action\"").count(),
+                1,
+                "replay must not persist a second action"
+            );
+        }
     }
 }

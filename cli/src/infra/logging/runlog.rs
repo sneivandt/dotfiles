@@ -1053,6 +1053,30 @@ mod tests {
     }
 
     #[test]
+    fn recovery_hint_disappears_when_persistent_storage_degrades() {
+        use crate::infra::logging::Output as _;
+        let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
+        crate::app::run::recovery_hint(&log);
+        assert!(
+            log.captured_lines()
+                .last()
+                .unwrap()
+                .starts_with("  Run 'dotfiles log --id ")
+        );
+        let run = log.run_log().unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _file_guard = run.file.lock().unwrap();
+            panic!("fixture log failure");
+        }));
+        assert!(result.is_err());
+        run.emit(LogEvent::Info, "mark the poisoned sink degraded");
+        assert!(!run.is_healthy());
+        let before = log.captured_lines();
+        crate::app::run::recovery_hint(&log);
+        assert_eq!(log.captured_lines(), before);
+    }
+
+    #[test]
     fn run_log_resource_events_include_messages() {
         let (run_log, _tmp) = isolated_run_log();
         run_log.emit(LogEvent::ResourceCheck, "~/.bashrc state=Missing");

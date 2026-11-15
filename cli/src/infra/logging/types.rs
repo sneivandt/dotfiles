@@ -171,6 +171,17 @@ pub enum TaskStatus {
     Failed,
 }
 
+/// Scheduler-authoritative completion, used only for final presentation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompletionDisposition {
+    /// Execution completed without failure or cancellation.
+    Succeeded,
+    /// Execution failed, including failures hidden from task totals.
+    Failed,
+    /// Cancellation stopped the command, even if no visible task was interrupted.
+    Interrupted,
+}
+
 /// The kind of a user-facing message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MsgKind {
@@ -195,6 +206,8 @@ pub enum MsgKind {
     Trace,
     /// A warning message.
     Warn,
+    /// A warning continuation item without a repeated severity heading.
+    WarnContinuation,
     /// An error message.
     Error,
     /// A dry-run action message.
@@ -203,11 +216,12 @@ pub enum MsgKind {
     ///
     /// Used for structural output such as the version banner and summary.
     Always,
-    /// Always-visible run context or recovery instructions.
-    ///
-    /// Structured notices have a bold label and dim metadata, with dry-run
-    /// mode in magenta. Unstructured recovery hints use normal contrast.
+    /// Always-visible run header with a bold command and dim metadata.
     Startup,
+    /// Always-visible lifecycle transition, distinct from the run header.
+    Transition,
+    /// Always-visible recovery command with subdued surrounding instructions.
+    RecoveryHint,
     /// Foreground notice before an interactive sudo prompt.
     SudoRequired,
 }
@@ -218,10 +232,15 @@ impl MsgKind {
     pub(in crate::infra::logging) const fn log_event(self) -> LogEvent {
         match self {
             Self::Stage => LogEvent::Stage,
-            Self::Info | Self::Always | Self::Startup | Self::SudoRequired => LogEvent::Info,
+            Self::Info
+            | Self::Always
+            | Self::Startup
+            | Self::SudoRequired
+            | Self::Transition
+            | Self::RecoveryHint => LogEvent::Info,
             Self::Summary => LogEvent::Summary,
             Self::Debug | Self::Context | Self::Trace => LogEvent::Debug,
-            Self::Warn => LogEvent::Warn,
+            Self::Warn | Self::WarnContinuation => LogEvent::Warn,
             Self::Error => LogEvent::Error,
             Self::DryRun => LogEvent::DryRun,
         }
@@ -428,6 +447,8 @@ pub trait OutputExt: Output {
         trace => Trace,
         /// Log a warning message.
         warn => Warn,
+        /// Log a warning continuation without repeating the severity heading.
+        warn_continuation => WarnContinuation,
         /// Log an error message.
         error => Error,
         /// Log a dry-run action message.
@@ -435,11 +456,21 @@ pub trait OutputExt: Output {
         /// Log a message that always appears on the console regardless of the
         /// verbose setting.  Used for structural output (version, profile, summary).
         always => Always,
-        /// Log de-emphasised run context. Always visible, rendered dim.
+        /// Log the always-visible run header with a bold command.
         startup => Startup,
+        /// Announce a lifecycle transition without repeating the run header.
+        transition => Transition,
         /// Announce the tasks requiring an interactive sudo prompt.
         #[cfg(any(unix, test))]
         sudo_required => SudoRequired,
+    }
+
+    /// Show a copyable recovery command, retaining the complete instruction.
+    fn recovery_hint<'a>(&self, command: impl Into<Cow<'a, str>>) {
+        self.emit(
+            MsgKind::RecoveryHint,
+            format!("Run '{}' for details.", command.into()).into(),
+        );
     }
 }
 

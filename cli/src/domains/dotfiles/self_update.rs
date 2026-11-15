@@ -204,7 +204,7 @@ fn with_status<T>(log: &dyn Output, status: &str, work: impl FnOnce() -> T) -> T
 ///
 /// Progress is reported through a transient status line, so a run that was
 /// already current leaves no console output at all; only an update that
-/// actually happened prints a durable, dimmed line.
+/// actually happened prints a durable lifecycle transition.
 ///
 /// Returns `Ok(false)` when no update is needed or when running from a
 /// cargo build directory. Setting `DOTFILES_SKIP_SELF_UPDATE=1` also skips the
@@ -252,7 +252,7 @@ pub fn pre_update(
                 download_and_install(root, &latest, &client, skip_attestation)
             })?;
 
-            log.startup(format!("CLI upgraded \u{00b7} {current} \u{2192} {latest}"));
+            log.transition(format!("CLI upgraded \u{00b7} {current} \u{2192} {latest}"));
 
             Ok(true)
         }

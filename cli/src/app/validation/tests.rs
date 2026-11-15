@@ -37,15 +37,96 @@ fn display_diagnostics_formats_severity_and_code() {
         [
             (MsgKind::Warn, "found 2 configuration diagnostic(s):".into()),
             (
-                MsgKind::Warn,
+                MsgKind::WarnContinuation,
                 "  [warn] pkg.toml [git] (package.empty-name): name is empty".into(),
             ),
             (
-                MsgKind::Warn,
+                MsgKind::WarnContinuation,
                 "  [err] sym.toml [.bashrc] (symlink.parent-in-source): unsafe path".into(),
             ),
         ]
     );
+}
+
+#[test]
+fn startup_diagnostic_continuations_keep_stderr_and_raw_jsonl_facts() {
+    use crate::infra::config::DiagnosticCode;
+    use crate::infra::logging::{OutputMode, isolated_logger};
+    let diagnostics = [Diagnostic::warning(
+        "fixture.toml",
+        "item",
+        DiagnosticCode::new("fixture", "invalid"),
+        "fix the value",
+    )];
+    for mode in [OutputMode::Human, OutputMode::Quiet, OutputMode::Jsonl] {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.set_verbose(false);
+        log.set_output_mode(mode);
+        display_diagnostics(&diagnostics, &log);
+        let writes = log.captured_output();
+        let item = "  [warn] fixture.toml [item] (fixture.invalid): fix the value";
+        if mode == OutputMode::Jsonl {
+            let values: Vec<serde_json::Value> = writes
+                .iter()
+                .map(|(stderr, line)| {
+                    assert!(!stderr);
+                    serde_json::from_str(line).unwrap()
+                })
+                .collect();
+            assert_eq!(values.len(), 2);
+            assert_eq!(values[1]["event"], "warn");
+            assert_eq!(values[1]["text"], item);
+        } else {
+            assert_eq!(
+                writes,
+                [
+                    (true, "WARN  found 1 configuration diagnostic(s):\n".into()),
+                    (true, format!("{item}\n"))
+                ]
+            );
+        }
+        let stored = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+        assert!(stored.contains(item.trim_start()));
+        assert!(!stored.contains("WARN  "));
+    }
+}
+
+#[test]
+fn completed_validation_diagnostics_keep_their_continuations_in_both_modes() {
+    use crate::infra::config::DiagnosticCode;
+    use crate::infra::logging::{
+        ActionCounts, BufferedLog, TaskEntry, TaskStatus, TaskVisibility, isolated_logger,
+    };
+    use std::sync::Arc;
+    let diagnostics = [Diagnostic::warning(
+        "fixture.toml",
+        "item",
+        DiagnosticCode::new("fixture", "invalid"),
+        "fix the value",
+    )];
+    for verbose in [false, true] {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.set_verbose(verbose);
+        let log = Arc::new(log);
+        let buffer = BufferedLog::new(Arc::clone(&log));
+        display_diagnostics(&diagnostics, &buffer);
+        log.record_task(TaskEntry::new(
+            "validation",
+            "Validation",
+            TaskStatus::Failed,
+            None,
+            ActionCounts::default(),
+            TaskVisibility::Visible,
+        ));
+        buffer.flush_and_complete("validation", "Validation");
+        let writes = log.captured_output();
+        assert!(
+            writes.iter().any(|(stderr, text)| *stderr
+                && text == "  WARN  found 1 configuration diagnostic(s):\n")
+        );
+        assert!(writes.iter().any(|(stderr, text)| *stderr
+            && text == "    [warn] fixture.toml [item] (fixture.invalid): fix the value\n"));
+    }
 }
 
 #[test]

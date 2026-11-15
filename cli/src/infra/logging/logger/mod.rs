@@ -335,8 +335,13 @@ impl Logger {
     }
 
     #[cfg(test)]
-    pub(in crate::infra::logging) fn captured_lines(&self) -> Vec<String> {
+    pub(crate) fn captured_lines(&self) -> Vec<String> {
         self.console.captured_lines()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn captured_output(&self) -> Vec<(bool, String)> {
+        self.console.lock().captured.clone()
     }
 
     /// Record a task result for the summary.
@@ -617,13 +622,58 @@ mod tests {
     fn consecutive_startup_lines_defer_the_separator() {
         let (log, _tmp, _guard) = isolated_logger();
 
-        log.startup("CLI upgraded · old → new");
+        log.transition("CLI upgraded · old → new");
         log.startup("Install · desktop profile · Arch Linux");
 
         assert!(
             !log.console.lock().startup_separator_emitted,
             "startup lines should remain contiguous until details begin"
         );
+        assert_eq!(
+            log.captured_lines(),
+            [
+                "↻ CLI upgraded · old → new",
+                "Install · desktop profile · Arch Linux"
+            ]
+        );
+    }
+
+    #[test]
+    fn transition_and_recovery_intents_remain_human_only_and_persist_once() {
+        for mode in [
+            super::super::OutputMode::Human,
+            super::super::OutputMode::Quiet,
+            super::super::OutputMode::Jsonl,
+        ] {
+            let (mut log, _tmp, _guard) = isolated_logger();
+            log.set_verbose(false);
+            log.set_output_mode(mode);
+            log.transition("Repository synced · restarting");
+            log.recovery_hint("dotfiles log --id fixture -v");
+            let expected = if mode == super::super::OutputMode::Human {
+                vec![
+                    "↻ Repository synced · restarting",
+                    "  Run 'dotfiles log --id fixture -v' for details.",
+                ]
+            } else {
+                vec![]
+            };
+            assert_eq!(log.captured_lines(), expected);
+            let stored = fs::read_to_string(log.log_path().unwrap()).unwrap();
+            assert_eq!(
+                stored
+                    .matches("[info] Repository synced · restarting")
+                    .count(),
+                1
+            );
+            assert_eq!(
+                stored
+                    .matches("[info] Run 'dotfiles log --id fixture -v' for details.")
+                    .count(),
+                1
+            );
+            assert!(!stored.contains('\x1b'));
+        }
     }
 
     #[test]
@@ -631,7 +681,7 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
         log.startup("Install · desktop profile · Arch Linux");
 
-        log.print_summary();
+        log.print_summary(super::super::CompletionDisposition::Succeeded);
 
         assert!(
             log.console.lock().startup_separator_emitted,
@@ -817,7 +867,7 @@ mod tests {
             None,
             ActionCounts::default(),
         ));
-        log.print_summary();
+        log.print_summary(super::super::CompletionDisposition::Succeeded);
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();
         assert!(

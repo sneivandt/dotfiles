@@ -118,7 +118,7 @@ pub(crate) fn re_exec_after_repository_update(root: &std::path::Path, log: &dyn 
         }
     };
     let command = build_reexec_command(&exe, &reexec_args(log), REPOSITORY_REEXEC_GUARD_VAR);
-    log.startup("Repository synced · restarting to load configuration");
+    log.transition("Repository synced · restarting to load configuration");
     run_reexec(command, root, log)
 }
 

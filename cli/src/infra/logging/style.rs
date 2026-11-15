@@ -6,7 +6,7 @@ use super::utils::strip_ansi;
 
 /// Whether ANSI styling should be emitted for a console stream.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::infra::logging) struct StyleChoice {
+pub(crate) struct StyleChoice {
     ansi: bool,
 }
 
@@ -19,6 +19,7 @@ pub(in crate::infra::logging) enum TextStyle {
     Yellow,
     Green,
     Magenta,
+    Cyan,
 }
 
 impl TextStyle {
@@ -30,6 +31,7 @@ impl TextStyle {
             Self::Yellow => "33",
             Self::Green => "32",
             Self::Magenta => "35",
+            Self::Cyan => "36",
         }
     }
 }
@@ -37,7 +39,7 @@ impl TextStyle {
 impl StyleChoice {
     /// Create a style policy from `color=auto` inputs.
     #[must_use]
-    pub(in crate::infra::logging) const fn auto(is_terminal: bool, no_color: bool) -> Self {
+    pub(crate) const fn auto(is_terminal: bool, no_color: bool) -> Self {
         Self {
             ansi: is_terminal && !no_color,
         }
@@ -74,6 +76,11 @@ impl StyleChoice {
         }
     }
 
+    /// Emphasize an interactive option using the same stream styling policy.
+    pub(crate) fn bold(self, text: &str) -> String {
+        self.paint(TextStyle::Bold, text)
+    }
+
     /// Combine emphasis and color in one escape so resets do not cancel bold.
     #[must_use]
     pub(in crate::infra::logging) fn paint_bold(self, style: TextStyle, text: &str) -> String {
@@ -96,7 +103,7 @@ impl StyleChoice {
 }
 
 #[must_use]
-pub(in crate::infra::logging) fn stdout_style() -> StyleChoice {
+pub(crate) fn stdout_style() -> StyleChoice {
     StyleChoice::auto(std::io::stdout().is_terminal(), no_color_enabled())
 }
 

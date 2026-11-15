@@ -184,9 +184,15 @@ remain available while a run is active.
 ## Console output
 
 Check the header's profile, platform, overlay, and dry-run indicator first.
+The command is bold; metadata is dim, with dry-run mode in magenta.
+Overlay paths inside your home use `~`. CLI upgrades and repository restarts
+use a cyan `↻` transition notice rather than another bold run header.
 Tasks print as they finish, so output order is not configuration order.
-While tasks run in an interactive terminal, a spinner shows the remaining task
-count and active task names.
+In an interactive terminal, the release check has a transient spinner.
+During task execution, the spinner shows a compact remaining count first,
+then active names, such as `⠋  4 left · System packages, Home symlinks +2`.
+The count covers scheduled work, not a fixed total for every phase. Spinners
+are cyan normally and magenta in preview; their accompanying text is dim.
 
 | Status | Meaning |
 |---|---|
@@ -199,13 +205,32 @@ count and active task names.
 | `✗` / `FAILED` | An operation failed |
 
 `--verbose` adds current tasks, decisions, and timings. `--no-symbols` uses the
-text labels above; `NO_COLOR` disables color. Inapplicable and internal tasks
+text labels above and an ASCII spinner. A nonempty `NO_COLOR` disables styling,
+including profile-prompt emphasis, but not functional terminal redraws.
+Redirected streams have no ANSI styling. Inapplicable and internal tasks
 do not appear in normal rows or totals, but remain in logs.
 
-Indented actions describe files or packages. The final counts describe
-tasks, not the number of action lines. Failed, interrupted, blocked, and
-skipped work appears before successful counts. **Exit 0 with skipped work is
-not necessarily a complete installation.** Use `--fail-on-skip` when it must be.
+Task names are bold except for verbose `CURRENT` rows. Consecutive rows
+without visible details stay compact; expanded blocks have a blank line
+around them. Indented actions describe files or packages, with applied verbs
+in cyan and planned verbs in magenta. All concrete actions remain visible.
+An expanded row with multiple quantified actions adds `· 35 actions applied`
+or `· planned · 35 actions`. Task-owned warnings and verbose errors stay
+indented under their row, with warnings between the actions they concern.
+
+The final summary counts tasks, not action lines. Failed, interrupted, blocked,
+and skipped work appears before successful counts. The leading glyph is red `✗`
+for failure, yellow `⊘` for interruption or incomplete work, magenta `~` for
+an otherwise successful preview, and green `✓` for complete success.
+`--no-symbols` omits that glyph. Failure and interruption remain explicit even
+when the affected work is internal and absent from visible task counts.
+**Exit 0 with skipped work is not necessarily a complete installation.**
+Use `--fail-on-skip` when it must be.
+
+After failure or force quit, a healthy persistent log provides an indented
+recovery hint. The quoted command is cyan and copyable; the surrounding text
+is dim. It selects that exact run with `--id` and includes `-v` for diagnostics.
+No hint is offered when the log is unavailable or degraded.
 
 ## Check configuration
 

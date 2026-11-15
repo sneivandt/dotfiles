@@ -80,27 +80,21 @@ fn active_names(active: &[String], limit: usize, cols: usize) -> (String, usize)
 
 fn active_display_line(
     active: &[String],
-    remaining: Option<usize>,
+    progress: Option<(usize, usize)>,
     frame: usize,
     symbols: bool,
     verbose: bool,
     cols: usize,
-    style: StyleChoice,
+    appearance: ProgressStyle,
 ) -> String {
     let active: Vec<String> = active.iter().map(|name| strip_ansi(name)).collect();
-    let spinner = if symbols {
-        ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-            .get(frame % 10)
-            .copied()
-            .unwrap_or("⠋")
-    } else {
-        ["|", "/", "-", "\\"].get(frame % 4).copied().unwrap_or("|")
-    };
-    let count = remaining.map_or_else(String::new, |count| {
-        let unit = if count == 1 { "task" } else { "tasks" };
-        format!("{count} {unit} left")
+    let spinner = spinner(frame, symbols);
+    let count = progress.map_or_else(String::new, |(done, total)| {
+        let count = total.saturating_sub(done);
+        let width = total.to_string().len();
+        format!("{count:>width$} left")
     });
-    let separator = if remaining.is_some() { " · " } else { "" };
+    let separator = if progress.is_some() { " · " } else { "" };
     let prefix = format!("{spinner} {count}{separator}");
     // Very narrow terminals still get a bounded line, even without room for names.
     let line = if prefix.width() >= cols || active.is_empty() {
@@ -118,16 +112,55 @@ fn active_display_line(
         };
         format!("{prefix}{names}{suffix}")
     };
-    style.paint(
-        TextStyle::Dim,
-        &transient_display_line_with_style(&line, cols, style),
+    styled_progress_line(&line, cols, appearance)
+}
+
+#[derive(Clone, Copy)]
+struct ProgressStyle {
+    style: StyleChoice,
+    dry_run: bool,
+}
+
+fn spinner(frame: usize, symbols: bool) -> &'static str {
+    if symbols {
+        ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+            .get(frame % 10)
+            .copied()
+            .unwrap_or("⠋")
+    } else {
+        ["|", "/", "-", "\\"].get(frame % 4).copied().unwrap_or("|")
+    }
+}
+
+fn styled_progress_line(line: &str, cols: usize, appearance: ProgressStyle) -> String {
+    let plain = transient_display_line_with_style(line, cols, StyleChoice::auto(false, true));
+    let Some(first) = plain.chars().next() else {
+        return plain;
+    };
+    let (glyph, rest) = plain.split_at(first.len_utf8());
+    format!(
+        "{}{}",
+        appearance.style.paint(
+            if appearance.dry_run {
+                TextStyle::Magenta
+            } else {
+                TextStyle::Cyan
+            },
+            glyph,
+        ),
+        appearance.style.paint(TextStyle::Dim, rest),
     )
+}
+
+const fn transient_budget(columns: usize) -> usize {
+    columns.saturating_sub(1)
 }
 
 /// Keeps animation scoped to the command and wakes immediately on shutdown.
 struct ProgressTicker {
     stop: std::sync::mpsc::Sender<()>,
     thread: Option<std::thread::JoinHandle<()>>,
+    log: std::sync::Weak<Logger>,
 }
 
 impl Drop for ProgressTicker {
@@ -135,6 +168,9 @@ impl Drop for ProgressTicker {
         let _stop_sent = self.stop.send(());
         if let Some(thread) = self.thread.take() {
             drop(thread.join());
+        }
+        if let Some(log) = self.log.upgrade() {
+            log.clear_status();
         }
     }
 }
@@ -145,37 +181,73 @@ impl Logger {
     }
 
     pub(in crate::infra::logging) fn replace_status_line(&self, line: &str) {
-        let line =
-            transient_display_line_with_style(line, terminal_columns(), self.console.stdout_style);
-        self.console.lock().replace_status(&line);
+        let mut state = self.console.lock();
+        if state.mode != crate::infra::logging::OutputMode::Human {
+            return;
+        }
+        let display = self.custom_display_line(line);
+        state.replace_status(&display);
+        state.custom_progress = Some(strip_ansi(line));
+    }
+
+    fn custom_display_line(&self, line: &str) -> String {
+        styled_progress_line(
+            &format!(
+                "{} {}",
+                spinner(
+                    self.progress_frame
+                        .load(std::sync::atomic::Ordering::Relaxed),
+                    self.symbols
+                ),
+                strip_ansi(line)
+            ),
+            transient_budget(terminal_columns()),
+            ProgressStyle {
+                style: self.console.stdout_style,
+                dry_run: self.dry_run,
+            },
+        )
     }
 
     pub(in crate::infra::logging) fn draw_active_status(&self, active: &[String]) {
-        let remaining = self
-            .task_progress()
-            .map(|(done, total)| total.saturating_sub(done));
-        let line = active_display_line(
-            active,
-            remaining,
-            self.progress_frame
-                .load(std::sync::atomic::Ordering::Relaxed),
-            self.symbols,
-            self.is_verbose(),
-            terminal_columns(),
-            self.console.stdout_style,
-        );
+        let line = self.active_display_line(active, self.is_verbose());
         self.console.lock().active_status(&line);
     }
 
-    /// Animate only the existing task footer; never revive cleared or custom status lines.
+    fn active_display_line(&self, active: &[String], verbose: bool) -> String {
+        active_display_line(
+            active,
+            self.task_progress(),
+            self.progress_frame
+                .load(std::sync::atomic::Ordering::Relaxed),
+            self.symbols,
+            verbose,
+            transient_budget(terminal_columns()),
+            ProgressStyle {
+                style: self.console.stdout_style,
+                dry_run: self.dry_run,
+            },
+        )
+    }
+
+    /// Animate only a live transient; durable output and clearing suspend it.
     fn tick_progress(&self) {
         let _guard = self.lock_flush();
-        if !self.console.lock().active_progress {
+        let active = self.lock_active_tasks();
+        let mut state = self.console.lock();
+        if !state.active_progress && state.custom_progress.is_none() {
             return;
         }
         self.progress_frame
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        self.redraw_active_status_locked(true);
+        if let Some(custom) = state.custom_progress.clone() {
+            state.replace_status(&self.custom_display_line(&custom));
+        } else if active.is_empty() {
+            state.clear_progress();
+        } else {
+            let line = self.active_display_line(&active, state.verbose);
+            state.active_status(&line);
+        }
     }
 
     pub(crate) fn start_progress(self: &std::sync::Arc<Self>) -> impl Drop {
@@ -185,6 +257,7 @@ impl Logger {
     fn start_progress_with_terminal(self: &std::sync::Arc<Self>, terminal: bool) -> ProgressTicker {
         let (stop, receiver) = std::sync::mpsc::channel();
         let weak = std::sync::Arc::downgrade(self);
+        let worker_log = std::sync::Weak::clone(&weak);
         let thread =
             if terminal && self.console.lock().mode == crate::infra::logging::OutputMode::Human {
                 std::thread::Builder::new()
@@ -194,7 +267,7 @@ impl Logger {
                             receiver.recv_timeout(std::time::Duration::from_millis(100)),
                             Err(std::sync::mpsc::RecvTimeoutError::Timeout)
                         ) {
-                            let Some(log) = weak.upgrade() else {
+                            let Some(log) = worker_log.upgrade() else {
                                 break;
                             };
                             log.tick_progress();
@@ -204,7 +277,11 @@ impl Logger {
             } else {
                 None
             };
-        ProgressTicker { stop, thread }
+        ProgressTicker {
+            stop,
+            thread,
+            log: weak,
+        }
     }
 
     pub(in crate::infra::logging) fn has_task_console_output(&self) -> bool {
@@ -232,10 +309,120 @@ mod tests {
     use crate::infra::logging::isolated_logger;
     use crate::infra::logging::style::StyleChoice;
 
+    /// Feed remaining-count fixtures through production's total/done accounting.
+    fn active_display_line(
+        active: &[String],
+        remaining: Option<usize>,
+        frame: usize,
+        symbols: bool,
+        verbose: bool,
+        cols: usize,
+        style: StyleChoice,
+    ) -> String {
+        super::active_display_line(
+            active,
+            remaining.map(|total| (0, total)),
+            frame,
+            symbols,
+            verbose,
+            cols,
+            super::ProgressStyle {
+                style,
+                dry_run: false,
+            },
+        )
+    }
+
     #[test]
     fn progress_rows_zero_initially() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.progress_rows_count(), 0);
+    }
+
+    #[test]
+    fn progress_reserves_autowrap_column_and_accents_only_the_spinner() {
+        let names = ["界界界界", "Fonts", "Git", "Shell"].map(String::from);
+        for columns in 0..60 {
+            let budget = super::transient_budget(columns);
+            assert_eq!(budget, columns.saturating_sub(1));
+            for dry_run in [false, true] {
+                for symbols in [false, true] {
+                    let line = super::active_display_line(
+                        &names,
+                        Some((96, 100)),
+                        0,
+                        symbols,
+                        false,
+                        budget,
+                        super::ProgressStyle {
+                            style: StyleChoice::colored(),
+                            dry_run,
+                        },
+                    );
+                    let clean = crate::infra::logging::utils::strip_ansi(&line);
+                    assert!(unicode_width::UnicodeWidthStr::width(clean.as_str()) <= budget);
+                    if budget == 0 {
+                        assert_eq!(line, "");
+                    } else {
+                        let color = if dry_run { "35" } else { "36" };
+                        assert!(line.starts_with(&format!("\x1b[{color}m")));
+                        assert!(
+                            line.contains("\x1b[0m\x1b[2m"),
+                            "dim rest must survive the accent reset"
+                        );
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            super::active_display_line(
+                &["Packages".into()],
+                Some((96, 100)),
+                0,
+                true,
+                false,
+                79,
+                super::ProgressStyle {
+                    style: StyleChoice::plain(),
+                    dry_run: false
+                }
+            ),
+            "⠋   4 left · Packages",
+        );
+    }
+
+    #[test]
+    fn preflight_has_no_startup_separator_and_cannot_resume_after_output_or_shutdown() {
+        use crate::infra::logging::OutputExt as _;
+        let (log, _tmp, _guard) = isolated_logger();
+        let log = std::sync::Arc::new(log);
+        let ticker = log.start_progress_with_terminal(false);
+        log.replace_status_line("Checking for updates");
+        assert!(!log.console.lock().startup_separator_emitted);
+        assert_eq!(log.progress_rows_count(), 1);
+        log.tick_progress();
+        assert!(
+            log.console
+                .lock()
+                .captured
+                .last()
+                .unwrap()
+                .1
+                .contains("⠙ Checking for updates")
+        );
+        log.transition("CLI upgraded · old → new");
+        let writes = log.console.lock().captured.len();
+        log.tick_progress();
+        assert_eq!(log.console.lock().captured.len(), writes);
+        log.replace_status_line("Checking again");
+        drop(ticker);
+        assert_eq!(log.progress_rows_count(), 0);
+        let shutdown_writes = log.console.lock().captured.len();
+        log.tick_progress();
+        assert_eq!(log.console.lock().captured.len(), shutdown_writes);
+        let stored = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+        assert!(!stored.contains("Checking"));
+        assert_eq!(stored.matches("[info] CLI upgraded · old → new").count(), 1);
     }
 
     #[test]
@@ -255,7 +442,7 @@ mod tests {
             .iter()
             .map(|name| (*name).to_string())
             .collect::<Vec<_>>();
-        super::active_display_line(
+        active_display_line(
             &active,
             remaining,
             0,
@@ -271,37 +458,29 @@ mod tests {
         let names = ["Packages", "Symlinks", "Fonts", "Git", "Shell"];
         assert_eq!(
             render(&names, Some(12), 80, false),
-            "⠋ 12 tasks left · Packages, Symlinks, Fonts +2"
+            "⠋ 12 left · Packages, Symlinks, Fonts +2"
         );
         assert_eq!(
             render(&names, Some(12), 80, true),
-            "⠋ 12 tasks left · Packages, Symlinks, Fonts, Git, Shell"
+            "⠋ 12 left · Packages, Symlinks, Fonts, Git, Shell"
         );
         assert_eq!(
             render(&["Packages"], Some(1), 80, false),
-            "⠋ 1 task left · Packages"
+            "⠋ 1 left · Packages"
         );
         assert_eq!(render(&["Packages"], None, 80, false), "⠋ Packages");
         assert_eq!(
             render(&["Packages"], Some(0), 80, false),
-            "⠋ 0 tasks left · Packages"
+            "⠋ 0 left · Packages"
         );
     }
 
     #[test]
-    fn footer_dims_spinner_count_names_and_overflow() {
+    fn footer_accents_spinner_and_dims_count_names_and_overflow() {
         let active = ["Packages", "Symlinks", "Fonts", "Git"].map(String::from);
         assert_eq!(
-            super::active_display_line(
-                &active,
-                Some(4),
-                0,
-                true,
-                false,
-                80,
-                StyleChoice::colored()
-            ),
-            "\x1b[2m⠋ 4 tasks left · Packages, Symlinks, Fonts +1\x1b[0m"
+            active_display_line(&active, Some(4), 0, true, false, 80, StyleChoice::colored()),
+            "\x1b[36m⠋\x1b[0m\x1b[2m 4 left · Packages, Symlinks, Fonts +1\x1b[0m"
         );
     }
 
@@ -317,7 +496,7 @@ mod tests {
             for remaining in [None, Some(1), Some(12)] {
                 for symbols in [false, true] {
                     for cols in 0..60 {
-                        let plain = super::active_display_line(
+                        let plain = active_display_line(
                             &active,
                             remaining,
                             0,
@@ -327,7 +506,7 @@ mod tests {
                             StyleChoice::plain(),
                         );
                         assert_eq!(
-                            super::active_display_line(
+                            crate::infra::logging::utils::strip_ansi(&active_display_line(
                                 &active,
                                 remaining,
                                 0,
@@ -335,8 +514,8 @@ mod tests {
                                 false,
                                 cols,
                                 StyleChoice::colored(),
-                            ),
-                            format!("\x1b[2m{plain}\x1b[0m"),
+                            )),
+                            plain,
                             "active={active:?}, remaining={remaining:?}, symbols={symbols}, cols={cols}"
                         );
                     }
@@ -365,11 +544,10 @@ mod tests {
     #[test]
     fn exact_width_footer_retains_its_styling() {
         let names = ["Packages", "Symlinks", "Fonts", "Git"].map(String::from);
-        let plain =
-            super::active_display_line(&names, Some(4), 0, true, false, 80, StyleChoice::plain());
+        let plain = active_display_line(&names, Some(4), 0, true, false, 80, StyleChoice::plain());
         let exact_width = unicode_width::UnicodeWidthStr::width(plain.as_str());
         assert_eq!(
-            super::active_display_line(
+            active_display_line(
                 &names,
                 Some(4),
                 0,
@@ -378,7 +556,7 @@ mod tests {
                 exact_width,
                 StyleChoice::colored()
             ),
-            super::active_display_line(&names, Some(4), 0, true, false, 80, StyleChoice::colored()),
+            active_display_line(&names, Some(4), 0, true, false, 80, StyleChoice::colored()),
             "a footer that fits exactly must stay dim throughout"
         );
     }
@@ -418,7 +596,7 @@ mod tests {
         ] {
             for frame in 0..frames.len() * 2 {
                 assert_eq!(
-                    super::active_display_line(
+                    active_display_line(
                         &names,
                         None,
                         frame,
@@ -449,7 +627,7 @@ mod tests {
                 .last()
                 .unwrap()
                 .1
-                .contains("2 tasks left")
+                .contains("2 left")
         );
         log.record_task(TaskEntry::new(
             "done",
@@ -468,12 +646,12 @@ mod tests {
                 .last()
                 .unwrap()
                 .1
-                .contains("1 task left")
+                .contains("1 left")
         );
     }
 
     #[test]
-    fn animation_does_not_revive_cleared_or_custom_status_or_enter_logs() {
+    fn animation_tracks_live_custom_status_without_reviving_cleared_rows_or_entering_logs() {
         let (log, _tmp, _guard) = isolated_logger();
         log.notify_task_start_with_progress("Packages", true);
         log.tick_progress();
@@ -487,13 +665,26 @@ mod tests {
                 .contains("⠙ Packages")
         );
         log.clear_status();
-        let writes = log.console.lock().captured.len();
+        let cleared_custom_writes = log.console.lock().captured.len();
         log.tick_progress();
-        assert_eq!(log.console.lock().captured.len(), writes);
+        assert_eq!(log.console.lock().captured.len(), cleared_custom_writes);
         log.replace_status_line("Downloading release");
         let custom_writes = log.console.lock().captured.len();
         log.tick_progress();
-        assert_eq!(log.console.lock().captured.len(), custom_writes);
+        assert_eq!(log.console.lock().captured.len(), custom_writes + 1);
+        assert!(
+            log.console
+                .lock()
+                .captured
+                .last()
+                .unwrap()
+                .1
+                .contains("Downloading release")
+        );
+        log.clear_status();
+        let writes = log.console.lock().captured.len();
+        log.tick_progress();
+        assert_eq!(log.console.lock().captured.len(), writes);
         log.notify_task_done_with_progress("Packages", true);
         let completed_writes = log.console.lock().captured.len();
         log.tick_progress();
@@ -512,6 +703,7 @@ mod tests {
         let progress = super::ProgressTicker {
             stop,
             thread: Some(worker),
+            log: std::sync::Weak::new(),
         };
         drop(progress);
         assert_eq!(

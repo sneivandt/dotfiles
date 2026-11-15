@@ -15,6 +15,7 @@ use crate::infra::logging::utils::{duplicates_task_message, format_elapsed};
 pub(super) struct RowOpts {
     pub(super) mode: SummaryMode,
     pub(super) style: StyleChoice,
+    pub(super) diagnostic_style: StyleChoice,
     pub(super) symbols: bool,
     /// Verbose rows show every applicable task, per-task timing, and uncapped details.
     pub(super) verbose: bool,
@@ -23,68 +24,136 @@ pub(super) struct RowOpts {
 /// A completed task's status and ordered details, ready for console output.
 pub(super) struct TaskBlock {
     pub(super) status: Option<String>,
-    pub(super) details: Vec<(MsgKind, String)>,
+    pub(super) details: Vec<TaskDetail>,
     pub(super) expanded: bool,
+}
+
+pub(super) struct TaskDetail {
+    pub(super) kind: MsgKind,
+    pub(super) message: String,
+    pub(super) line: String,
+    pub(super) error_stream: bool,
 }
 
 pub(super) fn task_block(task: &TaskEntry, entries: &[LogEntry], opts: RowOpts) -> TaskBlock {
     let mut block = TaskBlock {
         status: None,
         details: Vec::new(),
-        expanded: opts.verbose,
+        expanded: false,
     };
     if !task.visibility.is_visible() || task.status == TaskStatus::NotApplicable {
         return block;
     }
     let message = task.message.as_deref();
     let emit_row = should_emit_task_result(task, opts.verbose);
-    if opts.verbose {
-        if emit_row {
-            block.status = Some(format_task_line(task, opts));
+    for entry in entries {
+        if duplicates_task_message(entry.message(), message) {
+            continue;
         }
-        block.details = entries
-            .iter()
-            .filter_map(|entry| entry.verbose_detail(message))
-            .map(|(kind, text)| (kind, text.to_string()))
-            .collect();
-    } else {
-        if emit_row && should_record_task_details(task.status) {
-            block.details = entries
-                .iter()
-                .filter_map(|entry| entry.detail_line(task.status))
-                .filter(|line| !duplicates_task_message(line, message))
-                .filter(|line| Some(*line) != row_reason(task))
-                .flat_map(str::lines)
-                .filter(|line| !line.trim().is_empty())
-                .map(|line| (MsgKind::Always, indented(line, opts.style)))
-                .collect();
+        let diagnostic = matches!(
+            entry.kind(),
+            MsgKind::Warn | MsgKind::WarnContinuation | MsgKind::Error
+        );
+        let normal_detail = emit_row
+            && should_record_task_details(task.status)
+            && entry.detail_line(task.status).is_some()
+            && Some(entry.message()) != row_reason(task);
+        let visible = if opts.verbose {
+            entry.verbose_detail(message).is_some()
+        } else {
+            normal_detail
+                || (task.status != TaskStatus::Ok
+                    && entry.is_visible_in_non_verbose(task.status, message))
+        };
+        if !visible {
+            continue;
         }
-        if emit_row {
-            let show_reason = block.details.is_empty()
-                || matches!(
-                    task.status,
-                    TaskStatus::Failed
-                        | TaskStatus::Skipped
-                        | TaskStatus::Blocked
-                        | TaskStatus::Interrupted
-                );
-            block.status = Some(format_task_line_with_reason(task, opts, show_reason));
+        // Failed-task explanations remain stdout; warnings keep their severity.
+        let explanatory_error =
+            !opts.verbose && task.status == TaskStatus::Failed && entry.kind() == MsgKind::Error;
+        let style = if diagnostic && !explanatory_error {
+            opts.diagnostic_style
+        } else {
+            opts.style
+        };
+        let line = if explanatory_error {
+            Some(indented(entry.message(), style))
+        } else {
+            entry.console_line(style, true, opts.symbols).map(|line| {
+                if diagnostic {
+                    format!("  {line}")
+                } else if !opts.verbose && matches!(entry, LogEntry::Message { .. }) {
+                    indented(entry.message(), style)
+                } else {
+                    line
+                }
+            })
+        };
+        if let Some(line) = line.filter(|line| {
+            !crate::infra::logging::utils::strip_ansi(line)
+                .trim()
+                .is_empty()
+        }) {
+            block.details.push(TaskDetail {
+                kind: entry.kind(),
+                message: entry.message().into(),
+                line,
+                error_stream: diagnostic && !explanatory_error,
+            });
         }
-        if task.status != TaskStatus::Ok {
-            block.details.extend(
-                entries
-                    .iter()
-                    .filter(|entry| entry.is_visible_in_non_verbose(task.status, message))
-                    .map(|entry| (entry.kind(), entry.message().to_string())),
+    }
+    block.expanded = !block.details.is_empty();
+    if emit_row {
+        let show_reason = opts.verbose
+            || !block.details.iter().any(|detail| {
+                !matches!(
+                    detail.kind,
+                    MsgKind::Warn | MsgKind::WarnContinuation | MsgKind::Error
+                )
+            })
+            || matches!(
+                task.status,
+                TaskStatus::Failed
+                    | TaskStatus::Skipped
+                    | TaskStatus::Blocked
+                    | TaskStatus::Interrupted
             );
+        let mut row = format_task_line_with_reason(task, opts, show_reason);
+        if block.expanded
+            && let Some(badge) = action_badge(task)
+        {
+            row.push_str(&opts.style.paint(TextStyle::Dim, &badge));
         }
-        block.expanded = !block.details.is_empty();
+        block.status = Some(row);
     }
     block
 }
 
+fn action_badge(task: &TaskEntry) -> Option<String> {
+    match task.status {
+        TaskStatus::Changed if task.actions.applied > 1 => {
+            Some(format!(" · {} actions applied", task.actions.applied))
+        }
+        TaskStatus::DryRun if task.actions.planned > 1 => {
+            Some(format!(" · {} actions", task.actions.planned))
+        }
+        TaskStatus::Changed
+        | TaskStatus::DryRun
+        | TaskStatus::Ok
+        | TaskStatus::Passed
+        | TaskStatus::NotApplicable
+        | TaskStatus::Skipped
+        | TaskStatus::Blocked
+        | TaskStatus::Interrupted
+        | TaskStatus::Failed => None,
+    }
+}
+
 fn indented(text: &str, style: StyleChoice) -> String {
-    style.clean(&format!("  {}", text.trim_start()))
+    text.lines()
+        .map(|line| style.clean(&format!("  {}", line.trim_start())))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Whether a task produces a console row.
@@ -116,6 +185,7 @@ fn should_emit_task_result(task: &TaskEntry, verbose: bool) -> bool {
 ///
 /// The task's message lives on this row unless a successful outcome already
 /// lists its concrete actions below it.
+#[cfg(test)]
 pub(super) fn format_task_line(task: &TaskEntry, opts: RowOpts) -> String {
     format_task_line_with_reason(task, opts, true)
 }
@@ -125,11 +195,15 @@ fn format_task_line_with_reason(task: &TaskEntry, opts: RowOpts, show_reason: bo
     let mut line = format!(
         "{} {}",
         opts.style.paint(text_style, label),
-        opts.style.paint(TextStyle::Bold, &task.name)
+        if task.status == TaskStatus::Ok {
+            opts.style.clean(&task.name)
+        } else {
+            opts.style.paint(TextStyle::Bold, &task.name)
+        }
     );
 
     let annotation = status::annotation(task.status);
-    if opts.symbols
+    if (opts.symbols || task.status == TaskStatus::DryRun)
         && let Some((word, color)) = annotation
     {
         line.push_str(&opts.style.paint(TextStyle::Dim, " · "));

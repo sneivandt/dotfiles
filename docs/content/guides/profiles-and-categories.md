@@ -106,8 +106,8 @@ Dotfiles looks for a profile in this order:
 4. An interactive profile prompt, when the command allows one.
 
 An explicit flag is a **one-run override**; it does not save a new default.
-Only an interactive prompt saves its answer automatically. That prompt can
-also occur during `check` or `--dry-run`.
+An interactive profile choice is saved once configuration loads successfully.
+This also applies during `check` and `--dry-run`.
 
 To inspect or deliberately change the saved default, run these from the
 intended checkout:

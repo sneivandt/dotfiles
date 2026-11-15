@@ -21,11 +21,14 @@ fn selected_profile_name(
     cli_profile: Option<&str>,
     root: &Path,
     env: &dyn crate::infra::env::Env,
-) -> Result<Option<String>> {
+) -> Result<Option<(String, ProfileSource)>> {
     if let Some(name) = cli_profile {
-        return Ok(Some(name.to_owned()));
+        return Ok(Some((name.to_owned(), ProfileSource::Argument)));
     }
-    read_from_env(env)?.map_or_else(|| read_persisted(root), |name| Ok(Some(name)))
+    if let Some(name) = read_from_env(env)? {
+        return Ok(Some((name, ProfileSource::Environment)));
+    }
+    Ok(read_persisted(root)?.map(|name| (name, ProfileSource::Repository)))
 }
 
 /// One built-in role profile used by selection prompts and completions.
@@ -63,41 +66,36 @@ pub(super) const KNOWN_CATEGORIES: &[Category] = &[
     Category::Wsl,
 ];
 
-/// Resolve the profile from CLI arg, `DOTFILES_PROFILE` env var, persisted
-/// git config, or interactive prompt.
-///
-/// When the profile is obtained via interactive prompt it is persisted to the
-/// repository's local git config (`dotfiles.profile`) so future runs skip
-/// the prompt automatically.
-///
-/// # Errors
-///
-/// Returns an error if saved configuration cannot be read, the profile name is
-/// invalid, or interactive prompting fails.
-pub fn resolve_from_args(
+/// Where a startup profile selection came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProfileSource {
+    Argument,
+    Environment,
+    Repository,
+    Prompt,
+}
+
+/// Resolve the profile and its source without writing repository settings.
+pub(crate) fn resolve_from_args(
     cli_profile: Option<&str>,
     root: &Path,
     platform: Platform,
     env: &dyn crate::infra::env::Env,
     non_interactive: bool,
-) -> Result<Profile> {
-    let name = if let Some(name) = selected_profile_name(cli_profile, root, env)? {
-        name
+    prompt: impl FnOnce() -> Result<String>,
+) -> Result<(Profile, ProfileSource)> {
+    let (name, source) = if let Some(selection) = selected_profile_name(cli_profile, root, env)? {
+        selection
     } else {
         if non_interactive {
             anyhow::bail!(
                 "profile selection is required in non-interactive mode; pass --profile, set DOTFILES_PROFILE, or persist a profile"
             );
         }
-        let name = prompt_interactive()?;
-        #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
-        if let Err(e) = persist(root, &name) {
-            eprintln!("warning: could not persist profile to git config: {e}");
-        }
-        name
+        (prompt()?, ProfileSource::Prompt)
     };
 
-    resolve(&name, platform).map_err(Into::into)
+    Ok((resolve(&name, platform)?, source))
 }
 
 /// Resolve a profile for a read-only discovery command without prompting or
@@ -115,7 +113,7 @@ pub fn resolve_read_only(
     platform: Platform,
     env: &dyn crate::infra::env::Env,
 ) -> Result<Profile> {
-    let name = selected_profile_name(cli_profile, root, env)?.ok_or_else(|| {
+    let (name, _) = selected_profile_name(cli_profile, root, env)?.ok_or_else(|| {
         anyhow::anyhow!("profile selection is required; pass --profile <base|desktop>")
     })?;
     resolve(&name, platform).map_err(Into::into)
@@ -141,6 +139,7 @@ mod tests {
             linux_platform(),
             &crate::infra::env::MapEnv::new(),
             true,
+            || panic!("unexpected profile prompt"),
         )
         .expect_err("non-interactive resolution must not read stdin");
 
@@ -262,7 +261,10 @@ mod tests {
                 let result = if read_only {
                     resolve_read_only(cli, fixture.path(), linux_platform(), &env)
                 } else {
-                    resolve_from_args(cli, fixture.path(), linux_platform(), &env, true)
+                    resolve_from_args(cli, fixture.path(), linux_platform(), &env, true, || {
+                        panic!("unexpected profile prompt")
+                    })
+                    .map(|(profile, _)| profile)
                 };
                 if cli.is_some() {
                     assert_eq!(result.unwrap().name, "base");
@@ -338,7 +340,10 @@ mod tests {
                 let result = if read_only {
                     resolve_read_only(cli, &root, linux_platform(), &env)
                 } else {
-                    resolve_from_args(cli, &root, linux_platform(), &env, true)
+                    resolve_from_args(cli, &root, linux_platform(), &env, true, || {
+                        panic!("unexpected profile prompt")
+                    })
+                    .map(|(profile, _)| profile)
                 };
                 if let Some(name) = expected {
                     assert_eq!(result.unwrap().name, name);
@@ -379,7 +384,10 @@ mod tests {
                 let result = if read_only {
                     resolve_read_only(cli, root.path(), linux_platform(), &env)
                 } else {
-                    resolve_from_args(cli, root.path(), linux_platform(), &env, true)
+                    resolve_from_args(cli, root.path(), linux_platform(), &env, true, || {
+                        panic!("unexpected profile prompt")
+                    })
+                    .map(|(profile, _)| profile)
                 };
                 match expected {
                     Ok(name) => assert_eq!(

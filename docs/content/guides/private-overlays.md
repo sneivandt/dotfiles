@@ -110,8 +110,8 @@ dotfiles update --overlay ../dotfiles-private --dry-run
 ```
 
 `list` does not run tasks or save the selection. The update preview saves an
-explicit overlay path for future runs, even though it does not apply ordinary
-configuration changes. Check the resolved path and profile in the header.
+explicit overlay path for future runs once configuration loads successfully.
+Check the resolved path and profile in the header.
 After reviewing the result, normal `dotfiles update` runs use the saved overlay.
 
 Check that the directory exists and contains the intended files. Missing
@@ -134,10 +134,12 @@ Selection priority is:
 
 Relative paths resolve from the **directory where you run the command**. A
 path passed with `--overlay` to update, remove, or check is saved
-as an absolute path. Environment selections are not saved. Existing saved
-relative paths retain their working-directory meaning until replaced.
-List and explain use the selection for that invocation only. Check for a persistence warning if a
-later run does not remember the path.
+as an absolute path once configuration loads successfully. A repository-only
+update saves the explicit path during startup and skips configuration loading.
+Environment selections apply to the current invocation. Existing saved relative
+paths retain their working-directory meaning until replaced. List and explain
+use the selection for that invocation only. Check for a persistence warning if
+a later run does not remember the path.
 
 Passing a linked Git worktree (`.git` is a file) with `--overlay` requires
 confirmation, defaulting to no. Update, remove, and check decline it in

@@ -1,5 +1,6 @@
 //! Command startup composition and task-set construction.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -7,6 +8,7 @@ use anyhow::Result;
 use crate::app::config::Config;
 use crate::app::config::profiles;
 use crate::app::config::store::ConfigStore;
+use crate::domains::overlay::resolution::{self as overlay_resolution, OverlaySource};
 use crate::engine::{Context, Task, TaskId};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::{Log, LogEvent, Logger};
@@ -82,19 +84,38 @@ impl CommandRunner {
         token: &crate::engine::CancellationToken,
         run_lock: Option<crate::infra::run_lock::CommandLocks>,
     ) -> Result<Self> {
+        Self::new_with_profile_prompt(runtime, log, token, run_lock, profiles::prompt_interactive)
+    }
+
+    fn new_with_profile_prompt(
+        runtime: &RuntimePolicy<'_>,
+        log: &Arc<Logger>,
+        token: &crate::engine::CancellationToken,
+        run_lock: Option<crate::infra::run_lock::CommandLocks>,
+        prompt: impl FnOnce() -> Result<String>,
+    ) -> Result<Self> {
         let platform = Platform::detect();
         let root = resolve_root(runtime)?;
         let env = &runtime.env;
-        let overlay = crate::domains::overlay::resolution::resolve_from_args(
+        let overlay = overlay_resolution::resolve_from_args(
             runtime.global.overlay.as_deref(),
             &root,
             env.as_ref(),
             runtime.execution.non_interactive,
         )?;
-        let profile = resolve_profile(runtime, &root, platform, overlay.as_deref(), log)?;
-        let config = load_config(&root, &profile, platform, overlay.as_deref(), log)?;
-        let store = ConfigStore::from_config(config);
+        let overlay_path = overlay.as_ref().map(|(path, _)| path.as_path());
+        let (profile, source) =
+            resolve_profile(runtime, &root, platform, overlay_path, log, prompt)?;
+        let config = load_config(&root, &profile, platform, overlay_path, log)?;
 
+        let overlay = overlay.map(|selection| save_explicit_overlay(&root, selection));
+        #[allow(clippy::print_stderr, reason = "intentional user-facing warning")]
+        if source == profiles::ProfileSource::Prompt
+            && let Err(e) = profiles::persist(&root, &profile.name)
+        {
+            eprintln!("warning: could not persist profile to git config: {e}");
+        }
+        let store = ConfigStore::from_config(config);
         let ctx = Self::context(runtime, log, token, root, overlay, platform)?;
         Ok(Self {
             _run_lock: run_lock,
@@ -112,12 +133,14 @@ impl CommandRunner {
     ) -> Result<()> {
         let platform = Platform::detect();
         let root = resolve_root(runtime)?;
-        let overlay = crate::domains::overlay::resolution::resolve_from_args(
+        let overlay = overlay_resolution::resolve_from_args(
             runtime.global.overlay.as_deref(),
             &root,
             runtime.env.as_ref(),
             runtime.execution.non_interactive,
         )?;
+        // Repository-only startup does not load aggregate configuration.
+        let overlay = overlay.map(|selection| save_explicit_overlay(&root, selection));
         let preview = if runtime.execution.dry_run {
             " · dry run"
         } else {
@@ -140,8 +163,8 @@ impl CommandRunner {
         runtime: &RuntimePolicy<'_>,
         log: &Arc<Logger>,
         token: &crate::engine::CancellationToken,
-        root: std::path::PathBuf,
-        overlay: Option<std::path::PathBuf>,
+        root: PathBuf,
+        overlay: Option<PathBuf>,
         platform: Platform,
     ) -> Result<Context> {
         let executor: Arc<dyn crate::infra::exec::Executor> =
@@ -231,7 +254,7 @@ impl CommandRunner {
 /// # Errors
 ///
 /// Returns an error if the root directory cannot be determined or doesn't exist.
-pub(super) fn resolve_root(runtime: &RuntimePolicy<'_>) -> Result<std::path::PathBuf> {
+pub(super) fn resolve_root(runtime: &RuntimePolicy<'_>) -> Result<PathBuf> {
     let cwd = std::env::current_dir().ok();
     resolve_root_from_dir(
         runtime.global.root.as_deref(),
@@ -241,24 +264,22 @@ pub(super) fn resolve_root(runtime: &RuntimePolicy<'_>) -> Result<std::path::Pat
 }
 
 /// Resolve a repository root for standalone discovery commands.
-pub(crate) fn resolve_root_path(
-    explicit_root: Option<&std::path::Path>,
-) -> Result<std::path::PathBuf> {
+pub(crate) fn resolve_root_path(explicit_root: Option<&Path>) -> Result<PathBuf> {
     let cwd = std::env::current_dir().ok();
     resolve_root_from_dir(explicit_root, cwd.as_deref(), &crate::infra::env::SystemEnv)
 }
 
 fn resolve_root_from_dir(
-    explicit_root: Option<&std::path::Path>,
-    cwd: Option<&std::path::Path>,
+    explicit_root: Option<&Path>,
+    cwd: Option<&Path>,
     env: &dyn crate::infra::env::Env,
-) -> Result<std::path::PathBuf> {
+) -> Result<PathBuf> {
     if let Some(root) = explicit_root {
         return crate::infra::fs::canonicalize(root);
     }
 
     if let Some(root) = env.var_os("DOTFILES_ROOT") {
-        return crate::infra::fs::canonicalize(std::path::Path::new(&root));
+        return crate::infra::fs::canonicalize(Path::new(&root));
     }
 
     if let Ok(exe) = std::env::current_exe()
@@ -282,21 +303,33 @@ fn resolve_root_from_dir(
     anyhow::bail!("cannot determine dotfiles root. Use --root or set DOTFILES_ROOT env var");
 }
 
+#[allow(clippy::print_stderr, reason = "intentional user-facing warning")]
+fn save_explicit_overlay(root: &Path, (path, source): (PathBuf, OverlaySource)) -> PathBuf {
+    if source == OverlaySource::Argument
+        && let Err(e) = overlay_resolution::persist(root, &path)
+    {
+        eprintln!("warning: could not persist overlay path to git config: {e}");
+    }
+    path
+}
+
 fn resolve_profile(
     runtime: &RuntimePolicy<'_>,
-    root: &std::path::Path,
+    root: &Path,
     platform: Platform,
-    overlay: Option<&std::path::Path>,
+    overlay: Option<&Path>,
     log: &Logger,
-) -> Result<profiles::Profile> {
+    prompt: impl FnOnce() -> Result<String>,
+) -> Result<(profiles::Profile, profiles::ProfileSource)> {
     // Run-log only: the startup header must be the first console line.
     log.run_event(LogEvent::Stage, "resolving profile");
-    let profile = profiles::resolve_from_args(
+    let (profile, source) = profiles::resolve_from_args(
         runtime.global.profile.as_deref(),
         root,
         platform,
         runtime.env.as_ref(),
         runtime.execution.non_interactive,
+        prompt,
     )?;
     let context = startup_context_line(
         &log.command_title(),
@@ -312,7 +345,7 @@ fn resolve_profile(
         dry_run: runtime.execution.dry_run,
     });
     emit_startup_context(log, &context, runtime.repository_child);
-    Ok(profile)
+    Ok((profile, source))
 }
 
 /// Emit startup context once across a repository-update restart.
@@ -337,8 +370,8 @@ pub(super) fn startup_context_line(
     profile_name: &str,
     platform: Platform,
     dry_run: bool,
-    overlay: Option<&std::path::Path>,
-    home: &std::path::Path,
+    overlay: Option<&Path>,
+    home: &Path,
 ) -> String {
     let mut platform_label = platform.description().to_string();
     if platform.is_wsl() {
@@ -364,10 +397,10 @@ pub(super) fn startup_context_line(
 }
 
 fn load_config(
-    root: &std::path::Path,
+    root: &Path,
     profile: &profiles::Profile,
     platform: Platform,
-    overlay: Option<&std::path::Path>,
+    overlay: Option<&Path>,
     log: &Logger,
 ) -> Result<Config> {
     tracing::debug!("loading configuration");
@@ -446,8 +479,72 @@ mod root_tests {
     }
 
     #[test]
+    fn startup_saves_selections_only_after_configuration_loads() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(root.path()).unwrap();
+        let overlay = tempfile::tempdir().unwrap();
+        let previous = root.path().join("previous-overlay");
+        overlay_resolution::persist(root.path(), &previous).unwrap();
+        let git_config = repo.path().join("config");
+        let original = std::fs::read(&git_config).unwrap();
+        let conf = root.path().join("conf");
+        std::fs::create_dir(&conf).unwrap();
+        for file in crate::app::config::REQUIRED_CONFIG_FILES {
+            std::fs::write(conf.join(file), "").unwrap();
+        }
+        let invalid = conf.join("symlinks.toml");
+        std::fs::write(&invalid, "[invalid").unwrap();
+
+        let mut global = super::super::tests::global(&["--dry-run"]);
+        global.root = Some(root.path().to_path_buf());
+        global.overlay = Some(overlay.path().to_path_buf());
+        let env = MapEnv::new()
+            .with("HOME", root.path())
+            .with("USERPROFILE", root.path());
+        let runtime = RuntimePolicy::new(&global, false, env.into_handle(), true, true);
+        let log = Arc::new(Logger::test());
+        let token = crate::engine::CancellationToken::new();
+        let start = || {
+            CommandRunner::new_with_profile_prompt(&runtime, &log, &token, None, || {
+                Ok("desktop".into())
+            })
+        };
+
+        let error = start().expect_err("invalid TOML should stop startup");
+        assert!(format!("{error:#}").contains("symlinks.toml"), "{error:#}");
+        assert_eq!(std::fs::read(&git_config).unwrap(), original);
+
+        std::fs::write(invalid, "").unwrap();
+        let runner = start().expect("startup should succeed after repairing the TOML");
+        assert_eq!(runner.ctx.overlay(), Some(overlay.path()));
+        assert_eq!(
+            overlay_resolution::read_persisted(root.path())
+                .unwrap()
+                .as_deref(),
+            Some(overlay.path())
+        );
+        assert_eq!(
+            profiles::read_persisted(root.path()).unwrap().as_deref(),
+            Some("desktop")
+        );
+
+        let saved = std::fs::read(&git_config).unwrap();
+        global.overlay = None;
+        let overrides = MapEnv::new()
+            .with("HOME", root.path())
+            .with("USERPROFILE", root.path())
+            .with("DOTFILES_PROFILE", "base")
+            .with("DOTFILES_OVERLAY", &previous);
+        let unattended = RuntimePolicy::new(&global, false, overrides.into_handle(), false, false);
+        let overridden = CommandRunner::new_with_lock(&unattended, &log, &token, None).unwrap();
+        assert_eq!(overridden.ctx.overlay(), Some(previous.as_path()));
+        assert_eq!(overridden.config_handle().get().profile.name, "base");
+        assert_eq!(std::fs::read(&git_config).unwrap(), saved);
+    }
+
+    #[test]
     fn overlay_tasks_use_the_context_overlay_and_startup_script_snapshot() {
-        for overlay in [None, Some(std::path::PathBuf::from("/fixture-overlay"))] {
+        for overlay in [None, Some(PathBuf::from("/fixture-overlay"))] {
             let mut config = crate::test_helpers::empty_config("/fixture-repo".into());
             config.overlay = overlay.clone();
             config
@@ -541,6 +638,8 @@ mod root_tests {
 
     #[test]
     fn profile_precedence_and_prompt_policy_use_the_same_runtime_environment() {
+        use profiles::ProfileSource::{Argument, Environment, Repository};
+
         let root = tempfile::tempdir().unwrap();
         let repo = git2::Repository::init(root.path()).unwrap();
         repo.config()
@@ -550,9 +649,13 @@ mod root_tests {
         let log = Logger::test();
 
         for (flags, env_profile, expected) in [
-            (vec![], None, Some("base")),
-            (vec![], Some("desktop"), Some("desktop")),
-            (vec!["--profile", "base"], Some("desktop"), Some("base")),
+            (vec![], None, Some(("base", Repository))),
+            (vec![], Some("desktop"), Some(("desktop", Environment))),
+            (
+                vec!["--profile", "base"],
+                Some("desktop"),
+                Some(("base", Argument)),
+            ),
             (vec!["--profile", "missing"], Some("desktop"), None),
             (vec![], Some("missing"), None),
         ] {
@@ -566,10 +669,17 @@ mod root_tests {
                 },
             );
             let runtime = RuntimePolicy::new(&global, false, env.into_handle(), false, true);
-            let profile = resolve_profile(&runtime, root.path(), Platform::detect(), None, &log);
+            let profile = resolve_profile(
+                &runtime,
+                root.path(),
+                Platform::detect(),
+                None,
+                &log,
+                || panic!("unexpected profile prompt"),
+            );
             assert_eq!(
-                profile.ok().map(|profile| profile.name).as_deref(),
-                expected,
+                profile.ok().map(|(profile, source)| (profile.name, source)),
+                expected.map(|(name, source)| (name.to_owned(), source)),
                 "{flags:?} {env_profile:?}"
             );
         }
@@ -577,8 +687,15 @@ mod root_tests {
         repo.config().unwrap().remove("dotfiles.profile").unwrap();
         let global = super::super::tests::global(&[]);
         let runtime = RuntimePolicy::new(&global, false, MapEnv::new().into_handle(), false, true);
-        let error =
-            resolve_profile(&runtime, root.path(), Platform::detect(), None, &log).unwrap_err();
+        let error = resolve_profile(
+            &runtime,
+            root.path(),
+            Platform::detect(),
+            None,
+            &log,
+            || panic!("unexpected profile prompt"),
+        )
+        .unwrap_err();
         assert!(
             error
                 .to_string()

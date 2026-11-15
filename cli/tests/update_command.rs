@@ -385,6 +385,12 @@ fn conflicting_overlay_desired_state_stops_update_before_selected_tasks_run() {
                 "update",
                 "symlinks",
             );
+            let git_config = git2::Repository::open(repo.root_path())
+                .unwrap()
+                .path()
+                .join("config");
+            let saved = std::fs::read(&git_config).unwrap();
+
             if dry_run {
                 command.arg("--dry-run");
             }
@@ -399,6 +405,11 @@ fn conflicting_overlay_desired_state_stops_update_before_selected_tasks_run() {
                 "{file}, dry_run={dry_run}: {text}"
             );
             assert!(text.contains(code), "{file}, dry_run={dry_run}: {text}");
+            assert_eq!(
+                std::fs::read(&git_config).unwrap(),
+                saved,
+                "a failed load must leave the saved overlay unchanged"
+            );
             assert!(
                 text.contains(&overlay.path().join("conf").join(file).display().to_string()),
                 "{text}"
@@ -1093,7 +1104,17 @@ fn repository_only_update_recovers_bad_config_and_refuses_a_deleted_upstream() {
     git(&root, &["push", "origin", "main"]);
     git(&root, &["reset", "--hard", &broken]);
 
-    let update = || common::isolated_cli_command(&root, &home, None, "update", "repository", true);
+    let overlay = tempfile::tempdir().unwrap();
+    let update = || {
+        common::isolated_cli_command(
+            &root,
+            &home,
+            Some(overlay.path()),
+            "update",
+            "repository",
+            true,
+        )
+    };
     let config_file = std::fs::File::options().write(true).open(&config).unwrap();
     config_file
         .set_times(std::fs::FileTimes::new().set_modified(
@@ -1105,6 +1126,12 @@ fn repository_only_update_recovers_bad_config_and_refuses_a_deleted_upstream() {
     let index_before = std::fs::read(&index).unwrap();
     let preview = update().arg("--dry-run").output().unwrap();
     assert!(preview.status.success(), "{preview:?}");
+    let settings = git2::Repository::open(&root).unwrap().config().unwrap();
+    assert_eq!(
+        settings.get_string("dotfiles.overlay").unwrap(),
+        overlay.path().to_string_lossy(),
+        "repository-only preview saves the explicit overlay despite invalid aggregate configuration"
+    );
     assert_eq!(
         std::fs::read(&index).unwrap(),
         index_before,

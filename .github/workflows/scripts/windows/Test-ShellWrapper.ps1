@@ -240,21 +240,6 @@ function Test-AttestationVerification {
     $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
     $content = Get-Content $wrapper -Raw
 
-    if (
-        -not $content.Contains('function Test-Attestation') -or
-        -not $content.Contains('gh attestation verify') -or
-        -not $content.Contains('DOTFILES_SKIP_ATTESTATION') -or
-        -not $content.Contains('Write-Warning "gh not found. Install GitHub CLI')
-    ) {
-        Write-TestFail "Wrapper does not verify build provenance for downloaded binaries"
-        return $false
-    }
-
-    if ($content -notmatch '(?s)if \(-not \(Get-Command gh.*?\)\).*?Write-Warning "gh not found.*?return \$false') {
-        Write-TestFail "Wrapper does not reject unattested bootstrap when gh is unavailable"
-        return $false
-    }
-
     $lines = $content -split '\r?\n'
     $checksumLine = ($lines | Select-String -SimpleMatch 'Write-Error "Checksum verification failed!"' | Select-Object -First 1).LineNumber
     $attestLine = ($lines | Select-String -SimpleMatch 'Test-Attestation -Path $stagedBinary' | Select-Object -First 1).LineNumber
@@ -277,8 +262,11 @@ function Test-AttestationVerification {
         $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
         $node.Name -eq 'Test-Attestation'
     }, $true)
+    if (-not $verifier) { throw "Wrapper has no attestation verifier" }
     . ([scriptblock]::Create($verifier.Extent.Text))
     $savedSkip = $env:DOTFILES_SKIP_ATTESTATION
+    $savedStderr = [Console]::Error
+    $stderr = [System.IO.StringWriter]::new()
     $probe = @{ Available = $false; Arguments = $null }
     Set-Item Function:Get-Command -Value {
         if ($probe.Available) { return @{ Name = 'gh' } }
@@ -289,9 +277,13 @@ function Test-AttestationVerification {
         $global:LASTEXITCODE = 0
     }
     try {
+        [Console]::SetError($stderr)
         $env:DOTFILES_SKIP_ATTESTATION = '0'
         if (Test-Attestation -Path 'fixture asset' -Repo 'fixture/releases') {
             throw 'Missing gh accepted an unattested asset'
+        }
+        if (-not $stderr.ToString().Contains('WARNING: gh not found. Install GitHub CLI')) {
+            throw 'Missing gh did not explain the refusal on stderr'
         }
         $env:DOTFILES_SKIP_ATTESTATION = '1'
         if (-not (Test-Attestation -Path 'fixture asset' -Repo 'fixture/releases')) {
@@ -307,6 +299,8 @@ function Test-AttestationVerification {
             throw 'Verification did not receive the explicit release repository'
         }
     } finally {
+        [Console]::SetError($savedStderr)
+        $stderr.Dispose()
         $env:DOTFILES_SKIP_ATTESTATION = $savedSkip
     }
     Write-TestPass "Wrapper requires provenance unless explicitly bypassed"

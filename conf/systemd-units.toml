@@ -27,8 +27,8 @@ units = [
   "hyprpaper.service",
   "hyprpolkitagent.service",
   "mako.service",
+  "nautilus-settings.service",
   { name = "network-manager-applet.service", scope = "user", enabled = false },
   "quickshell.service",
-  "thunar-view-settings.service",
   "xdg-user-directories.service",
 ]

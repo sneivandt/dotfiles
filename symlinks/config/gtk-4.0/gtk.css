@@ -1,0 +1,34 @@
+/* Keep libadwaita's layout and limit palette overrides to Files. */
+window.nautilus-window {
+  --accent-bg-color: #7aa2f7;
+  --accent-fg-color: #1a1b26;
+  --accent-color: #7aa2f7;
+
+  --window-bg-color: #1a1b26;
+  --window-fg-color: #c0caf5;
+  --view-bg-color: #1a1b26;
+  --view-fg-color: #c0caf5;
+
+  --headerbar-bg-color: #1f2333;
+  --headerbar-fg-color: #c0caf5;
+  --headerbar-backdrop-color: #1f2333;
+  --headerbar-border-color: #414868;
+  --headerbar-shade-color: rgb(0 0 0 / 18%);
+
+  --sidebar-bg-color: #1f2333;
+  --sidebar-fg-color: #c0caf5;
+  --sidebar-backdrop-color: #1f2333;
+  --sidebar-border-color: rgb(0 0 0 / 18%);
+  --sidebar-shade-color: rgb(0 0 0 / 18%);
+
+  --card-bg-color: rgb(192 202 245 / 6%);
+  --card-fg-color: #c0caf5;
+  --dialog-bg-color: #24283b;
+  --dialog-fg-color: #c0caf5;
+  --popover-bg-color: #24283b;
+  --popover-fg-color: #c0caf5;
+  --overview-bg-color: #16161e;
+  --overview-fg-color: #c0caf5;
+  --thumbnail-bg-color: #24283b;
+  --thumbnail-fg-color: #c0caf5;
+}

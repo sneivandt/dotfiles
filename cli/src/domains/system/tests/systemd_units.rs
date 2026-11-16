@@ -541,33 +541,138 @@ fn run_does_not_reload_enabled_system_scope_units() {
 }
 
 #[test]
-fn condition_skipped_system_timer_needs_no_elevation_or_mutation() {
+fn previously_condition_skipped_system_timer_requires_elevation_for_retry() {
     let name = "fstrim.timer";
     let task = systemd_task(name, UnitScope::System, true);
-    for dry_run in [false, true] {
-        let mut executor = script();
-        for _ in 0..5 {
-            executor = executor
-                .command(
-                    systemctl(&["is-enabled", name]),
-                    Ok(ExecResult::success("enabled\n")),
-                )
-                .command(
-                    runtime_probe(name),
-                    Ok(ExecResult::success(
-                        "ActiveState=inactive\nConditionResult=no\nResult=success\n",
-                    )),
-                );
-        }
-        let ctx = context(executor).with_dry_run(dry_run);
-        assert!(!task.needs_elevation(&ctx));
-        for _ in 0..2 {
-            let result = task.run(&ctx).unwrap();
-            let stats = crate::test_helpers::task_batch(&result);
-            assert_eq!(stats.already_ok_count(), 1, "dry_run={dry_run}");
-            assert_eq!(stats.changed_count(), 0, "dry_run={dry_run}");
-        }
+    let executor = script()
+        .command(
+            systemctl(&["is-enabled", name]),
+            Ok(ExecResult::success("enabled\n")),
+        )
+        .command(
+            runtime_probe(name),
+            Ok(ExecResult::success(
+                "ActiveState=inactive\nConditionResult=no\n",
+            )),
+        );
+    assert!(task.needs_elevation(&context(executor)));
+}
+
+fn user_unit_probe(
+    executor: ScriptedExecutor,
+    name: &str,
+    dry_run: bool,
+    runtime: &str,
+) -> ScriptedExecutor {
+    let mut executor = executor.command(
+        systemctl(&["--user", "show-environment"]),
+        Ok(ExecResult::success("")),
+    );
+    if !dry_run {
+        executor = executor.command(
+            CommandSpec::new("systemctl").args(&["--user", "daemon-reload"]),
+            Ok(ExecResult::success("")),
+        );
     }
+    executor
+        .command(
+            systemctl(&["--user", "is-enabled", name]),
+            Ok(ExecResult::success("enabled\n")),
+        )
+        .command(
+            systemctl(&[
+                "--user",
+                "show",
+                "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
+                name,
+            ]),
+            Ok(ExecResult::success(runtime)),
+        )
+}
+
+#[test]
+fn systemd_retries_a_previously_skipped_start_and_then_converges() {
+    let name = "example.service";
+    let task = systemd_task(name, UnitScope::User, true);
+    let skipped = "ActiveState=inactive\nConditionResult=no\n";
+    let preview = context(user_unit_probe(script(), name, true, skipped)).with_dry_run(true);
+    let preview = task.run(&preview).unwrap();
+    assert_eq!(crate::test_helpers::task_batch(&preview).changed_count(), 1);
+
+    let executor = user_unit_probe(script(), name, false, skipped).command(
+        systemctl(&["--user", "enable", "--now", name]),
+        Ok(ExecResult::success("")),
+    );
+    let ctx = context(user_unit_probe(
+        executor,
+        name,
+        false,
+        "ActiveState=active\n",
+    ));
+    let applied = task.run(&ctx).unwrap();
+    assert_eq!(crate::test_helpers::task_batch(&applied).changed_count(), 1);
+    let repeated = task.run(&ctx).unwrap();
+    assert_eq!(
+        crate::test_helpers::task_batch(&repeated).already_ok_count(),
+        1
+    );
+}
+
+#[test]
+fn live_thunar_service_restarts_for_drift_and_leaves_matching_settings_alone() {
+    let name = "thunar-view-settings.service";
+    let task = systemd_task(name, UnitScope::User, true);
+    let probe = |executor, dry_run, settings| {
+        user_unit_probe(
+            executor,
+            name,
+            dry_run,
+            "ActiveState=active\nType=oneshot\n",
+        )
+        .command(
+            CommandSpec::new("/bin/sh")
+                .arg(
+                    std::path::Path::new("/tmp")
+                        .join("symlinks/config/Thunar/managed-view-settings.sh"),
+                )
+                .arg("check")
+                .unchecked(),
+            Ok(settings),
+        )
+    };
+
+    let old = ExecResult::failure("", "", Some(1));
+    let current = ExecResult::success("");
+    let executor = probe(script(), true, old.clone());
+    let executor = probe(executor, false, old)
+        .command(
+            systemctl(&["--user", "enable", name]),
+            Ok(ExecResult::success("")),
+        )
+        .command(
+            systemctl(&["--user", "restart", name]),
+            Ok(ExecResult::success("")),
+        );
+    let executor = probe(executor, false, current);
+    let ctx = context(probe(
+        executor,
+        false,
+        ExecResult::failure("", "no bus", Some(2)),
+    ));
+    for dry_run in [true, false] {
+        let result = task.run(&ctx.with_dry_run(dry_run)).unwrap();
+        assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);
+    }
+    let converged = task.run(&ctx).unwrap();
+    assert_eq!(
+        crate::test_helpers::task_batch(&converged).already_ok_count(),
+        1
+    );
+    let failed_probe = task.run(&ctx).unwrap();
+    assert_eq!(
+        crate::test_helpers::task_batch(&failed_probe).failed_count(),
+        1
+    );
 }
 
 #[test]

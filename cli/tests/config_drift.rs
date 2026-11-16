@@ -233,6 +233,64 @@ fn hypr_vscode_launcher_resolves_managed_code_insiders_shim() {
 
 #[cfg(unix)]
 #[test]
+fn thunar_view_helper_checks_and_applies_the_same_settings() {
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::process::Command;
+
+    let root = repo_root();
+    let source = "config/Thunar/managed-view-settings.sh";
+    let symlinks = load_symlink_sections(&root.join("conf/symlinks.toml"));
+    assert!(symlinks["arch-desktop"].iter().any(|entry| entry == source));
+    let unit = std::fs::read_to_string(
+        root.join("symlinks/config/systemd/user/thunar-view-settings.service"),
+    )
+    .unwrap();
+    assert!(
+        unit.lines()
+            .any(|line| { line == format!(r#"ExecStart=/bin/sh "%h/.{source}" apply"#) })
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let xfconf = dir.path().join("xfconf-query");
+    let settings = dir.path().join("settings");
+    std::fs::write(
+        &xfconf,
+        r#"#!/bin/sh
+case "$*" in
+  '--channel thunar --list --verbose') /bin/cat "$THUNAR_FIXTURE" ;;
+  '--channel thunar --property /last-show-hidden --create --type bool --set true')
+    printf '/last-show-hidden    true\n' >> "$THUNAR_FIXTURE" ;;
+  '--channel thunar --property /default-view --create --type string --set ThunarCompactView')
+    printf '/default-view        ThunarCompactView\n' >> "$THUNAR_FIXTURE" ;;
+  *) exit 2 ;;
+esac
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&xfconf, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let run = |mode| {
+        Command::new("/bin/sh")
+            .arg(root.join("symlinks").join(source))
+            .arg(mode)
+            .env("PATH", dir.path())
+            .env("THUNAR_FIXTURE", &settings)
+            .output()
+            .unwrap()
+            .status
+            .code()
+    };
+    assert_eq!(run("check"), Some(2), "unreadable settings");
+    std::fs::write(&settings, "").unwrap();
+    assert_eq!(run("check"), Some(1), "settings drift");
+    assert!(std::fs::read(&settings).unwrap().is_empty());
+    assert_eq!(run("apply"), Some(0));
+    let applied = std::fs::read(&settings).unwrap();
+    assert_eq!(run("check"), Some(0), "matching settings");
+    assert_eq!(std::fs::read(&settings).unwrap(), applied);
+}
+
+#[cfg(unix)]
+#[test]
 fn code_insiders_shim_normalizes_password_store_and_forwards_arguments() {
     use std::os::unix::fs::PermissionsExt as _;
 

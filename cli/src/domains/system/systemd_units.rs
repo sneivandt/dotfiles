@@ -55,6 +55,7 @@ impl Task for ConfigureSystemd {
                         entry,
                         ctx.executor_arc(),
                         ctx.home(),
+                        ctx.root(),
                         user_manager,
                     )
                     .current_state()
@@ -110,6 +111,7 @@ impl Task for ConfigureSystemd {
                     entry,
                     Arc::clone(&executor),
                     ctx.home(),
+                    ctx.root(),
                     user_manager_available,
                 )
             });
@@ -141,8 +143,14 @@ fn system_unit_needs_change(ctx: &Context, units: &[SystemdUnit]) -> bool {
         .filter(|unit| unit.scope == UnitScope::System)
         .any(|unit| {
             matches!(
-                SystemdUnitResource::from_entry(unit, Arc::clone(&executor), ctx.home(), true)
-                    .current_state(),
+                SystemdUnitResource::from_entry(
+                    unit,
+                    Arc::clone(&executor),
+                    ctx.home(),
+                    ctx.root(),
+                    true
+                )
+                .current_state(),
                 Ok(ResourceState::Missing | ResourceState::Incorrect { .. })
             )
         })

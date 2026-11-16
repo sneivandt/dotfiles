@@ -31,7 +31,7 @@ fn offline_unit(home: &Path, name: &str, enabled: bool) -> SystemdUnitResource {
         scope: UnitScope::User,
         enabled,
     };
-    SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), home, false)
+    SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), home, home, false)
 }
 
 fn queried_unit(
@@ -109,12 +109,6 @@ fn runtime_state_handles_daemons_and_completed_oneshots() {
             false,
         ),
         (
-            "condition-skipped oneshot",
-            true,
-            "ActiveState=inactive\nType=oneshot\nResult=success\nExecMainStartTimestampMonotonic=0\nConditionResult=no",
-            true,
-        ),
-        (
             "failed oneshot",
             true,
             "ActiveState=failed\nType=oneshot\nResult=exit-code\nExecMainStartTimestampMonotonic=123",
@@ -158,17 +152,28 @@ fn runtime_state_handles_daemons_and_completed_oneshots() {
 }
 
 #[test]
-fn runtime_state_accepts_condition_skips_without_hiding_stopped_or_failed_units() {
+fn runtime_state_retries_condition_skips_without_hiding_stopped_or_failed_units() {
     for (label, properties, expected) in [
         (
             "condition-skipped timer",
             "ActiveState=inactive\nConditionResult=no\nResult=success",
-            ResourceState::Correct,
+            ResourceState::Incorrect {
+                current: "previous start was skipped by a condition".into(),
+            },
         ),
         (
             "condition-skipped daemon",
             "ActiveState=inactive\nType=simple\nConditionResult=no\nResult=success",
-            ResourceState::Correct,
+            ResourceState::Incorrect {
+                current: "previous start was skipped by a condition".into(),
+            },
+        ),
+        (
+            "condition skip after a previous successful start",
+            "ActiveState=inactive\nType=oneshot\nResult=success\nExecMainStartTimestampMonotonic=123\nConditionResult=no",
+            ResourceState::Incorrect {
+                current: "previous start was skipped by a condition".into(),
+            },
         ),
         (
             "stopped timer",
@@ -186,6 +191,109 @@ fn runtime_state_accepts_condition_skips_without_hiding_stopped_or_failed_units(
         ),
     ] {
         assert_eq!(runtime_state(true, properties), expected, "{label}");
+    }
+    assert_eq!(
+        runtime_state(false, "ActiveState=inactive\nConditionResult=no"),
+        ResourceState::Correct
+    );
+}
+
+#[test]
+fn live_aliases_report_the_canonical_name_without_probing_runtime() {
+    let name = "example-alias.service";
+    let fallback = "example-alias.service is an alias. Declare the canonical unit name";
+    for (result, reason) in [
+        (
+            ExecResult::success("example.service\n"),
+            "example-alias.service is an alias. Declare the canonical unit example.service",
+        ),
+        (
+            ExecResult::failure("", "manager unavailable", Some(1)),
+            fallback,
+        ),
+        (ExecResult::success("/invalid.service\n"), fallback),
+        (ExecResult::success(format!("{name}\n")), fallback),
+    ] {
+        let executor = crate::test_helpers::ScriptedExecutor::new()
+            .command(
+                CommandSpec::new("systemctl")
+                    .args(&["--user", "is-enabled", name])
+                    .unchecked(),
+                Ok(ExecResult::success("alias\n")),
+            )
+            .command(
+                CommandSpec::new("systemctl")
+                    .args(&["--user", "show", "--property=Id", "--value", name])
+                    .unchecked(),
+                Ok(result),
+            );
+        let resource = SystemdUnitResource::new(name, UnitScope::User, Arc::new(executor));
+        assert_eq!(
+            resource.current_state().unwrap(),
+            ResourceState::Invalid {
+                reason: reason.into()
+            }
+        );
+    }
+    let failed = queried_unit(
+        name,
+        UnitScope::User,
+        true,
+        ExecResult::failure("alias\n", "probe failed", Some(1)),
+        None,
+    );
+    assert!(matches!(
+        failed.current_state().unwrap(),
+        ResourceState::Unknown { .. }
+    ));
+}
+
+#[test]
+fn disabled_or_system_scope_thunar_units_use_the_regular_systemd_lifecycle() {
+    use crate::test_helpers::ScriptedExecutor;
+
+    for (scope, enabled, prefix, enablement, runtime) in [
+        (
+            UnitScope::User,
+            false,
+            &["--user"][..],
+            ExecResult::failure("disabled", "", Some(1)),
+            "ActiveState=inactive\n",
+        ),
+        (
+            UnitScope::System,
+            true,
+            &[][..],
+            ExecResult::success("enabled"),
+            "ActiveState=active\n",
+        ),
+    ] {
+        let entry = crate::domains::system::config::systemd_units::SystemdUnit {
+            name: THUNAR_SETTINGS_UNIT.into(),
+            scope,
+            enabled,
+        };
+        let probe = |args: &[&str]| {
+            CommandSpec::new("systemctl")
+                .args(prefix)
+                .args(args)
+                .arg(&entry.name)
+                .unchecked()
+        };
+        let executor = ScriptedExecutor::new()
+            .command(probe(&["is-enabled"]), Ok(enablement))
+            .command(
+                probe(&["show", "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult"]),
+                Ok(ExecResult::success(runtime)),
+            );
+        let resource = SystemdUnitResource::from_entry(
+            &entry,
+            Arc::new(executor),
+            Path::new("/tmp"),
+            Path::new("/tmp"),
+            true,
+        );
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 }
 
@@ -493,8 +601,8 @@ fn configured_scope_and_enablement_drive_exact_apply_commands() {
             scope,
             enabled,
         };
-        let resource =
-            SystemdUnitResource::from_entry(&entry, Arc::new(mock), Path::new("unused-home"), true);
+        let home = Path::new("unused-home");
+        let resource = SystemdUnitResource::from_entry(&entry, Arc::new(mock), home, home, true);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
 }

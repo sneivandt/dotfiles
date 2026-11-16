@@ -97,6 +97,7 @@ symlinks = [
   "config/systemd/user/quickshell.service",
   "config/systemd/user/thunar-view-settings.service",
   "config/systemd/user/xdg-user-directories.service",
+  "config/Thunar/managed-view-settings.sh",
   "config/user-dirs.conf",
   "config/user-dirs.dirs",
   "config/wallpaper",

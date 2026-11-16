@@ -7,6 +7,9 @@ use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::exec::{CommandSpec, Executor};
 
+const THUNAR_SETTINGS_UNIT: &str = "thunar-view-settings.service";
+const THUNAR_SETTINGS_SCRIPT: &str = "symlinks/config/Thunar/managed-view-settings.sh";
+
 /// A systemd unit resource that converges its configured enablement state.
 #[derive(Debug)]
 pub struct SystemdUnitResource {
@@ -25,6 +28,7 @@ pub struct SystemdUnitResource {
     /// Whether the live user service manager is reachable.
     user_manager_available: bool,
     retired_source: Option<PathBuf>,
+    thunar_settings_script: Option<PathBuf>,
 }
 
 impl SystemdUnitResource {
@@ -49,6 +53,7 @@ impl SystemdUnitResource {
             .collect(),
             user_manager_available: true,
             retired_source: None,
+            thunar_settings_script: None,
         }
     }
 
@@ -58,12 +63,16 @@ impl SystemdUnitResource {
         entry: &crate::domains::system::config::systemd_units::SystemdUnit,
         executor: Arc<dyn Executor>,
         home: &Path,
+        root: &Path,
         user_manager_available: bool,
     ) -> Self {
         let mut resource = Self::new(entry.name.clone(), entry.scope.clone(), executor);
         resource.enabled = entry.enabled;
         resource.home = Some(home.to_path_buf());
         resource.user_manager_available = user_manager_available;
+        if entry.enabled && entry.scope == UnitScope::User && entry.name == THUNAR_SETTINGS_UNIT {
+            resource.thunar_settings_script = Some(root.join(THUNAR_SETTINGS_SCRIPT));
+        }
         resource
     }
 
@@ -200,6 +209,42 @@ impl SystemdUnitResource {
                 output_if_present(&output)
             ),
         }
+    }
+
+    fn alias_state(&self) -> ResourceResult<ResourceState> {
+        let args = self.check_args(&["show", "--property=Id", "--value"])?;
+        let result = self
+            .executor
+            .execute(CommandSpec::new("systemctl").args(&args).unchecked())?;
+        let id = result.stdout.trim();
+        let reason = if result.success && safe_unit_name(id) && id != self.name {
+            format!("{} is an alias. Declare the canonical unit {id}", self.name)
+        } else {
+            format!("{} is an alias. Declare the canonical unit name", self.name)
+        };
+        Ok(ResourceState::Invalid { reason })
+    }
+
+    fn thunar_settings_state(&self, script: &Path) -> ResourceResult<ResourceState> {
+        let result = self.executor.execute(
+            CommandSpec::new("/bin/sh")
+                .arg(script.as_os_str())
+                .arg("check")
+                .unchecked(),
+        )?;
+        Ok(match result.code {
+            Some(0) => ResourceState::Correct,
+            Some(1) => ResourceState::Incorrect {
+                current: "Thunar settings differ from the managed defaults".into(),
+            },
+            _ => ResourceState::Unknown {
+                reason: format!(
+                    "reading Thunar settings failed ({}): {}",
+                    exit_status(&result),
+                    output_if_present(&command_output(&result))
+                ),
+            },
+        })
     }
 
     fn offline_enablement_links(&self) -> ResourceResult<Vec<(PathBuf, PathBuf)>> {
@@ -485,7 +530,11 @@ fn runtime_state(enabled: bool, properties: &str) -> ResourceState {
             .find_map(|(name, value)| (name == key).then_some(value))
     };
     let active = property("ActiveState").unwrap_or("");
-    let condition_skipped = active == "inactive" && property("ConditionResult") == Some("no");
+    if enabled && active == "inactive" && property("ConditionResult") == Some("no") {
+        return ResourceState::Incorrect {
+            current: "previous start was skipped by a condition".into(),
+        };
+    }
     let successful_oneshot = active == "inactive"
         && property("Type") == Some("oneshot")
         && property("Result") == Some("success")
@@ -494,7 +543,7 @@ fn runtime_state(enabled: bool, properties: &str) -> ResourceState {
             .is_some_and(|value| value > 0);
     let matches = match active {
         "active" | "reloading" | "refreshing" | "activating" => enabled,
-        "inactive" | "failed" => !enabled || condition_skipped || successful_oneshot,
+        "inactive" | "failed" => !enabled || successful_oneshot,
         "deactivating" => false,
         _ => {
             return ResourceState::Unknown {
@@ -691,6 +740,13 @@ impl Resource for SystemdUnitResource {
             };
         }
         if self.enabled {
+            if self.thunar_settings_script.is_some() {
+                let enablement = self.change_live_unit(&["enable"])?;
+                if !matches!(enablement, ResourceChange::Applied) {
+                    return Ok(enablement);
+                }
+                return self.change_live_unit(&["restart"]);
+            }
             return self.change_live_unit(&["enable", "--now"]);
         }
         // systemctl scopes disable to one enablement directory at a time.
@@ -732,6 +788,9 @@ impl IntrinsicState for SystemdUnitResource {
         let result = self
             .executor
             .execute(CommandSpec::new("systemctl").args(&args).unchecked())?;
+        if result.success && result.stdout.trim() == "alias" {
+            return self.alias_state();
+        }
         let enablement = self.state_from_is_enabled(&result);
         // Missing disabled units need no runtime probe. Ambiguous enablement
         // must keep its diagnostic instead of being treated as converged.
@@ -761,7 +820,13 @@ impl IntrinsicState for SystemdUnitResource {
                 ),
             });
         }
-        Ok(runtime_state(self.enabled, &runtime_result.stdout))
+        let state = runtime_state(self.enabled, &runtime_result.stdout);
+        if matches!(state, ResourceState::Correct)
+            && let Some(script) = &self.thunar_settings_script
+        {
+            return self.thunar_settings_state(script);
+        }
+        Ok(state)
     }
 }
 

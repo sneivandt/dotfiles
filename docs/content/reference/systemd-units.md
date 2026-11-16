@@ -60,17 +60,23 @@ units = [
 A string means an enabled user unit. A table requires `name` and `scope`; `scope` is
 `user` or `system`, and `enabled` defaults to `true`. Include a supported suffix:
 `.service`, `.timer`, `.socket`, `.target`, `.path`, `.mount`, `.automount` or `.swap`.
+Use the canonical unit name. If the live manager reports an alias, Dotfiles
+asks you to declare the backing unit.
 
 With a live manager:
 
 - `enabled = true` means persistently enabled and started. Runtime-only
   enablement is not sufficient. Static units have no install instructions and
-  cannot satisfy this declaration.
+  cannot satisfy this declaration. Dotfiles retries a start previously skipped
+  by a condition so systemd can evaluate it again. Retrying a system unit can
+  require sudo even if the condition still prevents it from starting.
 - `enabled = false` means disabled and stopped, including stopping a static
   unit that has no enablement links.
 - Disabling is not masking: another unit may start it later.
 
 User unit files usually arrive through symlinks; packages may provide others.
+When the managed Thunar settings service has already run, Dotfiles checks its
+two managed preferences and reruns the service if either differs.
 System-scope changes can require sudo. Inside WSL, systemd must already be running or
 degraded; changing `wsl.conf` cannot start it in the current session.
 

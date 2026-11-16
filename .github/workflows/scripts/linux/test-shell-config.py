@@ -537,6 +537,34 @@ class ShellConfigTests(unittest.TestCase):
         ])
         self.assertEqual((self.home / ".ssh/github").stat().st_mode & 0o777, 0o700)
 
+    def test_ssh_wsl_resolves_windows_profile_without_windows_path(self):
+        windows = self.fixture / "Windows tools"
+        profile = self.fixture / "Windows User"
+        keys = profile / ".ssh/github"
+        keys.mkdir(parents=True)
+        self.write(windows / "cmd.exe",
+                   "#!/bin/sh\n"
+                   '[ "$3" = \'echo "%USERPROFILE%"\' ] || exit 2\n'
+                   "printf '\"C:\\\\Users\\\\Windows User\"\\r\\n'\n",
+                   executable=True)
+        self.env["WINDOWS_TOOLS"] = str(windows)
+        self.env["WINDOWS_PROFILE"] = str(profile)
+        self.run_shell(
+            'unset WINHOME WSL_CMD_EXE\n'
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz ssh-wsl\n'
+            'command -v cmd.exe >/dev/null && exit 2\n'
+            'wslpath() {\n'
+            '  case "$*" in\n'
+            '    \'-u C:\\Windows\\System32\\cmd.exe\') print -r -- "$WINDOWS_TOOLS/cmd.exe";;\n'
+            '    \'-a -u C:\\Users\\Windows User\') print -r -- "$WINDOWS_PROFILE";;\n'
+            '    *) return 3;;\n'
+            '  esac\n'
+            '}\n'
+            'ssh-wsl\n'
+        )
+        self.assertEqual((self.home / ".ssh/github").resolve(), keys)
+
     def test_ssh_helpers_secure_existing_directories(self):
         ssh = self.home / ".ssh"
         github = ssh / "github"
@@ -665,7 +693,11 @@ class ShellConfigTests(unittest.TestCase):
         for failure in ("generation", "empty", "invalid", "copy", "rename", "none"):
             with self.subTest(failure=failure):
                 destination.write_text("original\n")
-                self.write(self.fixture / "bin/reflector", "#!/bin/sh\n" + {
+                self.write(self.fixture / "bin/reflector",
+                           "#!/bin/sh\n"
+                           '[ "$1" = @/etc/xdg/reflector/reflector.conf ] && '
+                           '[ "$2" = --save ] && [ "$#" = 3 ] || exit 2\n'
+                           'exec > "$3"\n' + {
                     "generation": "printf 'partial\n'; exit 19\n",
                     "empty": "printf '# no servers\n'\n",
                     "invalid": "printf 'Server = http://insecure.example/$repo/os/$arch\n'\n",

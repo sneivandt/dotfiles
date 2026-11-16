@@ -87,6 +87,11 @@ helper setup and recipe preparation. See
 
 ### Arch Linux
 
+The weekly Reflector timer and the `update-mirrors` Zsh helper both read
+`/etc/xdg/reflector/reflector.conf`. Set mirror filters and sorting there
+to apply the same policy to automatic and manual refreshes. The helper
+checks the generated HTTPS mirror list before replacing the current one.
+
 ::: warning Installing a missing package can upgrade the system
 Pacman installation uses `pacman -Syu --needed --noconfirm`. It can synchronize
 databases and upgrade other installed packages as well as install missing ones.

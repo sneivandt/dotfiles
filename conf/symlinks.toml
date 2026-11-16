@@ -99,7 +99,6 @@ symlinks = [
   "config/user-dirs.conf",
   "config/user-dirs.dirs",
   "config/wallpaper",
-  "config/wireplumber/wireplumber.conf.d/10-restore-state.conf",
   "config/xdg-desktop-portal/hyprland-portals.conf",
   "config/quickshell",
   "local/bin/code-insiders",

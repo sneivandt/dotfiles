@@ -3,7 +3,26 @@
 # Symlink SSH keys for WSL
 
 command -v wslpath >/dev/null 2>&1 || { echo "ERROR: Not in WSL Environment" 1>&2 && return 1; }
-[ -n "$WINHOME" ] || { echo "ERROR: WINHOME not set" 1>&2 && return 1; }
+
+local cmd_exe windows_profile winhome="${WINHOME:-}"
+if [[ -z "$winhome" ]]; then
+  cmd_exe="${WSL_CMD_EXE:-}"
+  if [[ -z "$cmd_exe" ]]; then
+    cmd_exe=$(command -v cmd.exe) || cmd_exe=$(wslpath -u 'C:\Windows\System32\cmd.exe' 2>/dev/null) || cmd_exe=
+  fi
+  if [[ -z "$cmd_exe" ]] ||
+     ! windows_profile=$("$cmd_exe" /d /c 'echo "%USERPROFILE%"' 2>/dev/null); then
+    echo "ERROR: Cannot read the Windows profile. Set WINHOME to its WSL path." >&2
+    return 1
+  fi
+  windows_profile=${windows_profile%$'\r'}
+  if [[ "$windows_profile" != \"?*\" ]] ||
+     ! winhome=$(wslpath -a -u "${windows_profile[2,-2]}") ||
+     [[ "$winhome" != /* || ! -d "$winhome" ]]; then
+    echo "ERROR: Cannot find the Windows profile. Set WINHOME to its WSL path." >&2
+    return 1
+  fi
+fi
 
 local i source_path target_path
 
@@ -16,7 +35,7 @@ chmod 700 -- "$HOME/.ssh" || return $?
 
 for i in github github_internal ado
 do
-  source_path="$WINHOME/.ssh/$i"
+  source_path="$winhome/.ssh/$i"
   target_path="$HOME/.ssh/$i"
 
   [ -d "$source_path" ] || continue

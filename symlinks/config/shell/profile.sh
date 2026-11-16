@@ -151,31 +151,3 @@ elif command -v virtualenvwrapper.sh >/dev/null 2>&1; then
   export WORKON_HOME=~/.venv
   . virtualenvwrapper.sh
 fi
-
-# wsl
-# Each cmd.exe round trip costs a few hundred milliseconds, so the resolved
-# paths are cached and only recomputed when the cache is missing. Delete
-# "$XDG_CACHE_HOME/wsl-env" if the Windows drive or profile path ever changes.
-if command -v wslpath >/dev/null 2>&1; then
-  _wsl_cache="${XDG_CACHE_HOME:-$HOME/.cache}/wsl-env"
-
-  if [ ! -s "$_wsl_cache" ]; then
-    _windrive=$(wslpath -a -u "$(cmd.exe /c "echo %SYSTEMDRIVE%\\" 2>/dev/null)" | sed s"/..$//")
-    _winhome=$(wslpath -a -u "$(cmd.exe /c "echo %USERPROFILE%\\" 2>/dev/null)" | sed s"/..$//")
-    if [ -n "$_windrive" ] && [ -n "$_winhome" ]; then
-      mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}"
-      printf '%s\n%s\n' "$_windrive" "$_winhome" > "$_wsl_cache"
-    fi
-    unset _windrive _winhome
-  fi
-
-  # Read as plain lines rather than sourcing, so paths containing spaces or
-  # shell metacharacters are handled literally.
-  if [ -s "$_wsl_cache" ]; then
-    { IFS= read -r WINDRIVE; IFS= read -r WINHOME; } < "$_wsl_cache"
-    export WINDRIVE
-    export WINHOME
-  fi
-
-  unset _wsl_cache
-fi

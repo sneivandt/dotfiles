@@ -9,7 +9,8 @@ command -v reflector >/dev/null 2>&1 || { echo "ERROR: reflector not installed" 
   local mirrorlist
   mirrorlist=$(mktemp) || return $?
   {
-    reflector --country US --protocol https --latest 6 --sort rate > "$mirrorlist" || return $?
+    # Use the timer's policy, overriding only where Reflector writes its output.
+    reflector @/etc/xdg/reflector/reflector.conf --save "$mirrorlist" || return $?
     if ! awk '
       /^[[:space:]]*(#|$)/ { next }
       /^Server = https:\/\/[^[:space:]]+$/ { servers++; next }

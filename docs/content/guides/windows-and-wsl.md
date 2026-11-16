@@ -258,6 +258,11 @@ and can need sudo. Disabling PATH injection means Windows commands are not
 automatically discoverable by name inside Linux; use their full paths or add
 only the directories you need.
 
+`ssh-wsl` resolves the Windows profile when you run it. It can find
+`cmd.exe` under `C:\Windows` with Windows PATH injection disabled. If Windows
+is installed elsewhere, set `WSL_CMD_EXE` to the Linux path to `cmd.exe` or
+set `WINHOME` to the Linux path to your Windows profile.
+
 Changes to WSL startup settings need a restart. Save all WSL work, then run
 this from Windows:
 

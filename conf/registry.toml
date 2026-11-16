@@ -38,13 +38,6 @@ ColorTable13 = 16227003                # Tokyo Night bright magenta (#bb9af7)
 ColorTable14 = 6860768                 # Tokyo Night bright yellow (#e0af68)
 ColorTable15 = 16108224                # Tokyo Night bright white (#c0caf5)
 
-# Desktop window focus settings
-[desktop]
-path = 'HKCU:\Control Panel\Desktop'
-
-[desktop.values]
-ForegroundLockTimeout = 0              # Disable foreground lock timeout (allow focus stealing)
-
 # Regional date/time formatting
 [international]
 path = 'HKCU:\Control Panel\International'
@@ -80,7 +73,6 @@ TaskbarAl = 0                          # Align taskbar icons to the left
 TaskbarDa = 0                          # Hide Widgets button
 ShowTaskViewButton = 0                 # Hide Task View button
 ShowCopilotButton = 0                  # Hide Copilot button
-ShowCortanaButton = 0                  # Hide Cortana button
 TaskbarAnimations = 0                  # Disable taskbar animations
 TaskbarSizeMove = 0                    # Lock taskbar size and position
 TaskbarGlomLevel = 0                   # Always combine taskbar buttons

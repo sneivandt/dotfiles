@@ -80,9 +80,6 @@ impl Console {
                 state.separate_block();
             }
             state.line(error, &line);
-            if kind == MsgKind::Transition {
-                state.separate_block();
-            }
         }
     }
 

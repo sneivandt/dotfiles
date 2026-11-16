@@ -1044,11 +1044,23 @@ fn repository_restart_preserves_non_unicode_paths_and_loads_new_configuration() 
     let updated = git(&root, &["rev-parse", "HEAD"]);
     git(&root, &["push", "origin", "main"]);
     git(&root, &["reset", "--hard", &initial]);
-    let result =
+    let run_update = || {
         common::isolated_cli_command(&root, &home, None, "update", "repository,symlinks", true)
+            .env("NO_COLOR", "1")
             .output()
-            .unwrap();
+            .unwrap()
+    };
+    let result = run_update();
     assert!(result.status.success(), "{result:?}");
+    let stdout = String::from_utf8(result.stdout).unwrap();
+    let after_restart = stdout
+        .split_once("Repository synced · restarting to load configuration\n")
+        .expect("expected the repository restart notice")
+        .1;
+    assert!(
+        after_restart.starts_with('\n') && !after_restart.starts_with("\n\n"),
+        "expected one separator after the restart notice in {stdout:?}"
+    );
     assert_eq!(git(&root, &["rev-parse", "HEAD"]), updated);
     assert_eq!(
         std::fs::read_to_string(home.join(".fresh")).unwrap(),
@@ -1065,6 +1077,17 @@ fn repository_restart_preserves_non_unicode_paths_and_loads_new_configuration() 
         .map(|log| std::fs::read_to_string(log).unwrap())
         .any(|log| log.contains("\"parent_run_id\":\""));
     assert!(child, "restart must retain parent-run linkage");
+
+    // Repeat the fast-forward with the managed link already in place.
+    git(&root, &["reset", "--hard", &initial]);
+    let repeat = run_update();
+    assert!(repeat.status.success(), "{repeat:?}");
+    let repeat_stdout = String::from_utf8(repeat.stdout).unwrap();
+    assert!(
+        repeat_stdout
+            .contains("Repository synced · restarting to load configuration\n\nNo changes ·"),
+        "expected the no-change summary after one separator in {repeat_stdout:?}"
+    );
 }
 
 #[test]

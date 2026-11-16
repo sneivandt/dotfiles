@@ -619,19 +619,19 @@ mod tests {
     }
 
     #[test]
-    fn transition_separates_the_notice_from_the_header_and_preserves_task_spacing() {
+    fn transition_stays_with_the_header_and_preserves_task_spacing() {
         for verbose in [false, true] {
             for symbols in [false, true] {
                 let (mut log, _tmp, _guard) = isolated_logger();
                 log.set_verbose(verbose);
                 log.set_symbols(symbols);
                 log.transition("CLI upgraded · old → new");
-                assert_eq!(log.captured_lines(), ["CLI upgraded · old → new", ""]);
+                assert_eq!(log.captured_lines(), ["CLI upgraded · old → new"]);
                 log.startup("Update · desktop profile · Arch Linux");
 
                 assert!(
                     !log.console.lock().startup_separator_emitted,
-                    "the notice separator must not replace the separator after the header"
+                    "the notice must leave spacing to the next output block"
                 );
                 log.separate_from_startup();
                 log.separate_console_block();
@@ -640,7 +640,6 @@ mod tests {
                     log.captured_lines(),
                     [
                         "CLI upgraded · old → new",
-                        "",
                         "Update · desktop profile · Arch Linux",
                         "",
                         "task result"
@@ -652,7 +651,7 @@ mod tests {
     }
 
     #[test]
-    fn transition_after_task_output_has_one_separator_on_each_side() {
+    fn task_output_and_transition_use_one_separator_between_blocks() {
         let (log, _tmp, _guard) = isolated_logger();
         log.startup("Update · fixture");
         log.separate_from_startup();
@@ -689,7 +688,6 @@ mod tests {
             let expected = if mode == super::super::OutputMode::Human {
                 vec![
                     "Repository synced · restarting",
-                    "",
                     "  Run 'dotfiles log --id fixture -v' for details.",
                 ]
             } else {

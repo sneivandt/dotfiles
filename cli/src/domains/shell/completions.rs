@@ -179,7 +179,9 @@ mod tests {
             .with_home(home.clone());
         let (destination, content) = if os == Os::Windows {
             (
-                home.join(".config/powershell/profile.d")
+                home.join(".config")
+                    .join("powershell")
+                    .join("profile.d")
                     .join(POWERSHELL_COMPLETION_FILENAME),
                 SAMPLE_POWERSHELL_COMPLETION,
             )

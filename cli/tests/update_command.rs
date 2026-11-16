@@ -332,14 +332,7 @@ fn update_console_separates_tasks_and_keeps_no_op_compact() {
                 } else {
                     "No changes · 2 tasks current"
                 };
-                let prefix = if symbols { "✓ " } else { "" };
-                assert!(
-                    blocks
-                        .last()
-                        .unwrap()
-                        .starts_with(&format!("{prefix}{summary}")),
-                    "{text}"
-                );
+                assert!(blocks.last().unwrap().starts_with(summary), "{text}");
             }
         }
     }

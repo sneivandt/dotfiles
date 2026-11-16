@@ -1216,7 +1216,7 @@ fn completed_task_stays_satisfied_but_cancelled_command_does_not_succeed() {
     assert!(
         log.captured_lines()
             .iter()
-            .any(|line| line.starts_with("⊘ Interrupted")),
+            .any(|line| line.starts_with("Interrupted · ")),
         "late cancellation must not claim success"
     );
 }
@@ -1236,7 +1236,7 @@ fn completion_uses_scheduler_outcomes_even_without_presentation_records() {
     assert!(
         log.captured_lines()
             .iter()
-            .any(|line| line.starts_with("⊘ Interrupted"))
+            .any(|line| line.starts_with("Interrupted · "))
     );
 }
 
@@ -1252,7 +1252,7 @@ fn hidden_failure_precedes_cancellation_in_both_result_and_totals() {
     assert!(
         log.captured_lines()
             .iter()
-            .any(|line| line.starts_with("✗ Failed"))
+            .any(|line| line.starts_with("Failed · "))
     );
     assert!(
         !log.captured_lines()

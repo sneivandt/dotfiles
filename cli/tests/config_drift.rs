@@ -7,10 +7,6 @@
 //! Integration tests for relationships among the repository's real
 //! configuration files and managed sources.
 
-use dotfiles_cli::testing::{
-    config::{Config, profiles},
-    platform::{Os, Platform},
-};
 use serde::{Deserialize, Deserializer, de::Error as _};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -110,8 +106,14 @@ fn mirrored_symlink_parser_rejects_unknown_table_fields() {
 // Tests
 // ---------------------------------------------------------------------------
 
+#[cfg(target_os = "linux")]
 #[test]
 fn arch_desktop_leaves_dhcpcd_handoff_manual() {
+    use dotfiles_cli::testing::{
+        config::{Config, profiles},
+        platform::{Os, Platform},
+    };
+
     let platform = Platform {
         os: Os::Linux,
         is_arch: true,

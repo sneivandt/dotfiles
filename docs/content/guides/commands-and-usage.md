@@ -213,17 +213,17 @@ do not appear in normal rows or totals, but remain in logs.
 
 Task names are bold except for verbose `CURRENT` rows. Consecutive rows
 without visible details stay compact; expanded blocks have a blank line
-around them. Indented actions describe files or packages, with applied verbs
-in cyan and planned verbs in magenta. All concrete actions remain visible.
+around them. Indented actions describe each task's work, with applied verbs
+in cyan and planned verbs in magenta, including completion writes and workflow
+repairs. Informational messages and script-provided output remain plain;
+their first words are not treated as action verbs. All concrete actions remain visible.
 An expanded row with multiple quantified actions adds `· 35 actions applied`
 or `· planned · 35 actions`. Task-owned warnings and verbose errors stay
 indented under their row, with warnings between the actions they concern.
 
 The final summary counts tasks, not action lines. Failed, interrupted, blocked,
-and skipped work appears before successful counts. The leading glyph is red `✗`
-for failure, yellow `⊘` for interruption or incomplete work, magenta `~` for
-an otherwise successful preview, and green `✓` for complete success.
-`--no-symbols` omits that glyph. Failure and interruption remain explicit even
+and skipped work appears before successful counts. This line has no symbol
+prefix, regardless of `--no-symbols`. Failure and interruption remain explicit even
 when the affected work is internal and absent from visible task counts.
 **Exit 0 with skipped work is not necessarily a complete installation.**
 Use `--fail-on-skip` when it must be.

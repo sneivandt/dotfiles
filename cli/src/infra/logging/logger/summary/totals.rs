@@ -65,10 +65,10 @@ pub(super) fn format_summary_lines(
     mode: SummaryMode,
     elapsed: &str,
     style: StyleChoice,
-    presentation: SummaryPresentation,
+    disposition: CompletionDisposition,
 ) -> Vec<String> {
     let mut parts = Vec::new();
-    match presentation.disposition {
+    match disposition {
         CompletionDisposition::Failed if counts.failed == 0 => {
             parts.push(style.paint_bold(TextStyle::Red, "Failed"));
         }
@@ -132,33 +132,7 @@ pub(super) fn format_summary_lines(
         parts.push(style.paint(TextStyle::Bold, "No checks ran"));
     }
     parts.push(style.paint(TextStyle::Dim, elapsed));
-    let text = parts.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}")));
-    let (glyph, color) = match presentation.disposition {
-        CompletionDisposition::Failed => ("✗", TextStyle::Red),
-        CompletionDisposition::Interrupted => ("⊘", TextStyle::Yellow),
-        CompletionDisposition::Succeeded
-            if counts.skipped > 0
-                || counts.blocked > 0
-                || counts.interrupted > 0
-                || counts.failed > 0 =>
-        {
-            ("⊘", TextStyle::Yellow)
-        }
-        CompletionDisposition::Succeeded if presentation.dry_run => ("~", TextStyle::Magenta),
-        CompletionDisposition::Succeeded => ("✓", TextStyle::Green),
-    };
-    vec![if presentation.symbols {
-        format!("{} {text}", style.paint(color, glyph))
-    } else {
-        text
-    }]
-}
-
-#[derive(Clone, Copy)]
-pub(super) struct SummaryPresentation {
-    pub(super) disposition: CompletionDisposition,
-    pub(super) dry_run: bool,
-    pub(super) symbols: bool,
+    vec![parts.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}")))]
 }
 
 /// Name the task unit and emphasize the first outcome plus all incomplete work.

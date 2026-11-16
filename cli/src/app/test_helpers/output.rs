@@ -9,8 +9,18 @@ use crate::infra::logging::{Logger, MsgKind, Output, RunLog, TaskEntry, TaskReco
 #[derive(Debug, Default)]
 pub struct CapturingOutput {
     messages: Mutex<Vec<(MsgKind, String)>>,
+    actions: Mutex<Vec<CapturedAction>>,
     records: Mutex<Vec<TaskEntry>>,
     logger: Option<Logger>,
+}
+
+/// Semantic spans and display text supplied by a task action.
+#[derive(Debug, Clone)]
+pub struct CapturedAction {
+    pub verb: String,
+    pub subject: String,
+    pub planned: bool,
+    pub message: String,
 }
 
 impl CapturingOutput {
@@ -35,6 +45,11 @@ impl CapturingOutput {
             .collect()
     }
 
+    /// Snapshot typed actions with their styling spans intact.
+    pub fn actions(&self) -> Vec<CapturedAction> {
+        self.actions.lock().unwrap().clone()
+    }
+
     /// Snapshot completed task entries in recording order.
     pub fn records(&self) -> Vec<TaskEntry> {
         self.records.lock().unwrap().clone()
@@ -51,6 +66,23 @@ impl Output for CapturingOutput {
             .lock()
             .unwrap()
             .push((kind, message.into_owned()));
+    }
+
+    fn action(&self, verb: &str, subject: &str, planned: bool, message: &str) {
+        self.actions.lock().unwrap().push(CapturedAction {
+            verb: verb.into(),
+            subject: subject.into(),
+            planned,
+            message: message.into(),
+        });
+        self.emit(
+            if planned {
+                MsgKind::DryRun
+            } else {
+                MsgKind::Info
+            },
+            message.into(),
+        );
     }
 }
 

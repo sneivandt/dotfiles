@@ -351,16 +351,63 @@ test('sidebar groups start expanded and collapse with their right-hand arrow', a
   await expect(link).toBeVisible();
 });
 
-test('the terminal illustration dims every part of each live status line', async ({ page }) => {
+test('the terminal illustration matches the CLI progress and action styling', async ({ page }) => {
   await page.goto('/assets/terminal-screenshot.svg');
-  const rows = page.locator('g[class^="live-"]');
-  await expect(rows).toHaveCount(8);
+  const rows = page.locator('g[class^="live-"], g.updating');
+  expect(await rows.count()).toBeGreaterThan(0);
   for (const row of await rows.all()) {
-    const fills = await row.locator('text, tspan').evaluateAll((elements) =>
+    const fills = await row.locator('text:first-child, text:first-child tspan').evaluateAll((elements) =>
       elements.map((element) => getComputedStyle(element).fill));
-    expect(fills.length).toBeGreaterThan(0);
-    expect(new Set(fills)).toEqual(new Set(['rgb(137, 146, 181)']));
+    expect(new Set(fills)).toEqual(new Set(['rgb(125, 207, 255)']));
+    await expect(row.locator('text').last()).toHaveCSS('fill', 'rgb(126, 133, 161)');
   }
+  const counts = await page.locator('g[class^="live-"] text:last-child').allTextContents();
+  for (const count of counts) {
+    expect(count).toMatch(/^([1-9]\d| \d) left · \S/);
+  }
+  for (const task of ['links', 'completions', 'packages']) {
+    const block = page.locator(`g.${task}`);
+    if (task !== 'completions') {
+      await expect(block.locator('text').first()).toContainText(' · 2 actions applied');
+      await expect(block.locator('text:first-child tspan').last()).toHaveCSS('fill', 'rgb(126, 133, 161)');
+    }
+    const actions = block.locator('text:not(:first-child)');
+    for (const action of await actions.all()) {
+      await expect(action).toHaveCSS('fill', 'rgb(192, 202, 245)');
+      await expect(action.locator('tspan')).toHaveCSS('fill', 'rgb(125, 207, 255)');
+    }
+  }
+});
+
+test('the terminal illustration preserves the completed transcript with reduced motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/assets/terminal-screenshot.svg');
+  for (const row of await page.locator('.transient, g[class^="live-"]').all()) {
+    await expect(row).toBeHidden();
+  }
+  for (const name of ['upgraded', 'startup', 'links', 'completions', 'packages', 'summary', 'prompt']) {
+    await expect(page.locator(`g.${name}`)).toBeVisible();
+  }
+  await expect(page.locator('.upgraded text')).toHaveCSS('font-weight', '400');
+  for (const label of await page.locator('.startup tspan:first-child, .links tspan:nth-child(2), .completions tspan:nth-child(2), .packages tspan:nth-child(2)').all()) {
+    await expect(label).toHaveCSS('font-weight', '700');
+  }
+  const noticeY = Number(await page.locator('.upgraded text').getAttribute('y'));
+  const headerY = Number(await page.locator('.startup text').getAttribute('y'));
+  const taskY = Number(await page.locator('.links text').first().getAttribute('y'));
+  expect(headerY - noticeY).toBe(48);
+  expect(taskY - headerY).toBe(48);
+  await expect(page.locator('.summary text')).toHaveText('3 tasks changed · 14 tasks current · 6.1s');
+  await expect(page.locator('.summary tspan').first()).toHaveCSS('fill', 'rgb(158, 206, 106)');
+  const clipped = await page.locator('svg').evaluate((svg) => {
+    const bounds = svg.getBoundingClientRect();
+    return [...svg.querySelectorAll('text')].filter((text) => {
+      const box = text.getBoundingClientRect();
+      return box.width > 0 && (box.left < bounds.left || box.top < bounds.top ||
+        box.right > bounds.right || box.bottom > bounds.bottom);
+    }).map((text) => text.textContent);
+  });
+  expect(clipped).toEqual([]);
 });
 
 test('consolidated topics link to their sections after everyday guidance', async ({ page }) => {

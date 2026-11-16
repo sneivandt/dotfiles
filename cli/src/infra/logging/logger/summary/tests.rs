@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 use std::time::Duration;
 
 use super::render::{RowOpts, format_task_line, task_block};
-use super::totals::{SummaryCounts, SummaryMode, SummaryPresentation, should_space_before_totals};
+use super::totals::{SummaryCounts, SummaryMode, should_space_before_totals};
 use crate::infra::logging::CompletionDisposition;
 use crate::infra::logging::buffered::entry::LogEntry;
 use crate::infra::logging::style::StyleChoice;
@@ -67,7 +67,7 @@ fn colored_opts() -> RowOpts {
     }
 }
 
-/// Count/vocabulary fixtures deliberately omit symbols; disposition is tested separately.
+/// Count/vocabulary fixtures use successful completion; disposition is tested separately.
 fn format_summary_lines(
     counts: SummaryCounts,
     mode: SummaryMode,
@@ -79,11 +79,7 @@ fn format_summary_lines(
         mode,
         elapsed,
         style,
-        SummaryPresentation {
-            disposition: CompletionDisposition::Succeeded,
-            dry_run: false,
-            symbols: false,
-        },
+        CompletionDisposition::Succeeded,
     )
 }
 
@@ -926,75 +922,53 @@ fn hidden_details_timings_and_counts_do_not_expand_verbose_rows() {
 }
 
 #[test]
-fn final_summary_uses_explicit_disposition_before_visible_counts_and_preview() {
+fn final_summary_preserves_disposition_and_emphasis_without_a_symbol_prefix() {
     for mode in [SummaryMode::Standard, SummaryMode::Check] {
-        for symbols in [false, true] {
-            for dry_run in [false, true] {
-                for (disposition, counts, glyph, color, text) in [
-                    (
-                        CompletionDisposition::Failed,
-                        SummaryCounts::default(),
-                        "✗",
-                        "31",
-                        "Failed",
-                    ),
-                    (
-                        CompletionDisposition::Interrupted,
-                        SummaryCounts::default(),
-                        "⊘",
-                        "33",
-                        "Interrupted",
-                    ),
-                    (
-                        CompletionDisposition::Succeeded,
-                        SummaryCounts {
-                            skipped: 1,
-                            ..SummaryCounts::default()
-                        },
-                        "⊘",
-                        "33",
-                        "1 task skipped",
-                    ),
-                    (
-                        CompletionDisposition::Succeeded,
-                        SummaryCounts::default(),
-                        if dry_run { "~" } else { "✓" },
-                        if dry_run { "35" } else { "32" },
-                        if mode == SummaryMode::Check {
-                            "No checks ran"
-                        } else {
-                            "No changes"
-                        },
-                    ),
-                ] {
-                    for ansi in [false, true] {
-                        let lines = super::totals::format_summary_lines(
-                            counts,
-                            mode,
-                            "1.0s",
-                            StyleChoice::auto(ansi, false),
-                            SummaryPresentation {
-                                disposition,
-                                dry_run,
-                                symbols,
-                            },
-                        );
-                        let clean = crate::infra::logging::utils::strip_ansi(&lines[0]);
-                        assert_eq!(
-                            clean,
-                            format!(
-                                "{}{text} · 1.0s",
-                                if symbols {
-                                    format!("{glyph} ")
-                                } else {
-                                    String::new()
-                                }
-                            )
-                        );
-                        if symbols && ansi {
-                            assert!(lines[0].starts_with(&format!("\x1b[{color}m{glyph}\x1b[0m ")));
-                        }
-                    }
+        for (disposition, counts, emphasis, text) in [
+            (
+                CompletionDisposition::Failed,
+                SummaryCounts::default(),
+                "1;31",
+                "Failed",
+            ),
+            (
+                CompletionDisposition::Interrupted,
+                SummaryCounts::default(),
+                "1;33",
+                "Interrupted",
+            ),
+            (
+                CompletionDisposition::Succeeded,
+                SummaryCounts {
+                    skipped: 1,
+                    ..SummaryCounts::default()
+                },
+                "1;33",
+                "1 task skipped",
+            ),
+            (
+                CompletionDisposition::Succeeded,
+                SummaryCounts::default(),
+                "1",
+                if mode == SummaryMode::Check {
+                    "No checks ran"
+                } else {
+                    "No changes"
+                },
+            ),
+        ] {
+            for ansi in [false, true] {
+                let lines = super::totals::format_summary_lines(
+                    counts,
+                    mode,
+                    "1.0s",
+                    StyleChoice::auto(ansi, false),
+                    disposition,
+                );
+                let clean = crate::infra::logging::utils::strip_ansi(&lines[0]);
+                assert_eq!(clean, format!("{text} · 1.0s"));
+                if ansi {
+                    assert!(lines[0].starts_with(&format!("\x1b[{emphasis}m{text}\x1b[0m")));
                 }
             }
         }
@@ -1052,7 +1026,7 @@ fn completed_blocks_preserve_typed_action_style_and_verbose_message_presentation
 }
 
 #[test]
-fn incomplete_summary_glyphs_cover_each_outcome_without_duplicate_disposition_text() {
+fn incomplete_summaries_report_each_outcome_without_duplicate_disposition_text() {
     for (counts, incomplete_disposition, text) in [
         (
             SummaryCounts {
@@ -1094,20 +1068,11 @@ fn incomplete_summary_glyphs_cover_each_outcome_without_duplicate_disposition_te
                     mode,
                     "1.0s",
                     StyleChoice::plain(),
-                    SummaryPresentation {
-                        disposition,
-                        dry_run: true,
-                        symbols: true,
-                    },
+                    disposition,
                 );
-                let glyph = if disposition == CompletionDisposition::Failed {
-                    "✗"
-                } else {
-                    "⊘"
-                };
                 assert_eq!(
                     lines,
-                    [format!("{glyph} {text} · 1.0s")],
+                    [format!("{text} · 1.0s")],
                     "{mode:?}, {disposition:?}"
                 );
             }

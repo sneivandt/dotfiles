@@ -35,14 +35,10 @@ impl UpdateTarget {
     }
 
     pub(super) fn dry_run_action(&self) -> String {
-        match self.kind {
-            UpdateTargetKind::Main => {
-                "fast-forward available (local merge eligibility not checked)".to_string()
-            }
-            UpdateTargetKind::Overlay => {
-                "overlay fast-forward available (local merge eligibility not checked)".to_string()
-            }
-        }
+        format!(
+            "update {} · fast-forward available (local merge eligibility not checked)",
+            self.description()
+        )
     }
 }
 

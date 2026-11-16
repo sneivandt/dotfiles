@@ -156,18 +156,26 @@ impl ApmInstallPlan {
 
         let mut planned = 1_u32;
         if self.manifest_needs_write {
-            ctx.log().dry_run(format!(
-                "merge {} APM manifest fragment(s) into {}",
-                self.fragment_count,
-                self.manifest_path.display()
-            ));
+            let subject = format!("{} APM manifest fragment(s)", self.fragment_count);
+            ctx.log().action(
+                "merge",
+                &subject,
+                true,
+                &format!("merge {subject} into {}", self.manifest_path.display()),
+            );
             planned = planned.saturating_add(1);
         }
         match self.mode {
-            ApmPackageMode::Install => ctx.log().dry_run(
+            ApmPackageMode::Install => ctx.log().action(
+                "run",
+                "apm install -g",
+                true,
                 "run apm install -g to converge dependencies and remove stale user-scope deployments",
             ),
-            ApmPackageMode::UpdatePins => ctx.log().dry_run(
+            ApmPackageMode::UpdatePins => ctx.log().action(
+                "run",
+                "apm update -g --yes, then apm install -g",
+                true,
                 "run apm update -g --yes, then apm install -g to advance matching refs and converge local packages and deployments",
             ),
         }

@@ -313,10 +313,15 @@ impl Operation for ParuInstallOperation<'_> {
                 true,
                 &format!("install missing paru from AUR source · {reason}"),
             ),
-            ParuInstallPlan::Rebuild { path, reason } => ctx.log().dry_run(format!(
-                "rebuild broken paru from AUR source · executable {} · {reason}",
-                path.display()
-            )),
+            ParuInstallPlan::Rebuild { path, reason } => ctx.log().action(
+                "rebuild",
+                "broken paru from AUR source",
+                true,
+                &format!(
+                    "rebuild broken paru from AUR source · executable {} · {reason}",
+                    path.display()
+                ),
+            ),
         }
         Ok(TaskStats::changed().finish())
     }
@@ -344,11 +349,16 @@ impl Operation for ParuInstallOperation<'_> {
                 path,
                 package,
                 version,
-            } => ctx.log().info(format!(
-                "{} paru · target validated · package {package} · executable {} · {version}",
+            } => ctx.log().action(
                 plan.action(),
-                path.display()
-            )),
+                "paru",
+                false,
+                &format!(
+                    "{} paru · target validated · package {package} · executable {} · {version}",
+                    plan.action(),
+                    path.display()
+                ),
+            ),
             ParuHealth::Missing { reason } => anyhow::bail!(
                 "paru {} completed but the target package was not found during validation: {reason}",
                 plan.action()

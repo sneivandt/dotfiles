@@ -9,7 +9,8 @@ use crate::infra::ConfigHandle;
 use crate::infra::exec::{CommandSpec, ExecError, ExecResult, MockExecutor};
 use crate::infra::platform::Os;
 use crate::test_helpers::{
-    assert_task_changed, assert_task_ok, make_platform_context_with_which, task_batch, task_skipped,
+    CapturingOutput, assert_task_changed, assert_task_ok, make_platform_context_with_which,
+    task_batch, task_skipped,
 };
 use std::path::PathBuf;
 
@@ -176,6 +177,52 @@ fn install_paru_run_returns_dry_run_when_not_installed_in_dry_run() {
 }
 
 #[test]
+fn paru_previews_keep_install_and_rebuild_verbs_separate_from_context() {
+    for (plan, verb, subject) in [
+        (
+            ParuInstallPlan::Install {
+                reason: "not installed".into(),
+            },
+            "install",
+            "missing paru from AUR source",
+        ),
+        (
+            ParuInstallPlan::Rebuild {
+                path: PathBuf::from("/fixture/bin/paru"),
+                reason: "missing shared library".into(),
+            },
+            "rebuild",
+            "broken paru from AUR source",
+        ),
+    ] {
+        let output = Arc::new(CapturingOutput::default());
+        let ctx = make_package_context(
+            PathBuf::from("/fixture"),
+            None,
+            Os::Linux,
+            true,
+            MockExecutor::new(),
+        )
+        .with_log(Arc::<CapturingOutput>::clone(&output))
+        .with_dry_run(true);
+        let operation = ParuInstallOperation {
+            build_root: Path::new("/fixture"),
+        };
+        assert_task_changed(&operation.preview(&ctx, &plan).unwrap());
+        let actions = output.actions();
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].verb, verb);
+        assert_eq!(actions[0].subject, subject);
+        assert!(actions[0].planned);
+        assert!(
+            actions[0]
+                .message
+                .starts_with(&format!("{verb} {subject} · "))
+        );
+    }
+}
+
+#[test]
 fn install_paru_reports_change_and_cleans_its_fixture_build_directory() {
     let fixture = tempfile::tempdir_in(".").unwrap();
     let legacy = fixture.path().join("paru-build");
@@ -216,12 +263,24 @@ fn install_paru_reports_change_and_cleans_its_fixture_build_directory() {
         .returning(|_| Ok(ExecResult::success("")));
     expect_healthy_paru(&mut mock, 1);
 
-    let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock);
+    let output = Arc::new(CapturingOutput::default());
+    let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock)
+        .with_log(Arc::<CapturingOutput>::clone(&output));
     let result = run_paru_install(&ctx, fixture.path()).unwrap();
     let stats = task_batch(&result);
     assert!(
         stats.changed_count() > 0 && stats.message() == Some("installed paru"),
         "expected changed result after paru install, got {result:?}"
+    );
+    let actions = output.actions();
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0].verb, "install");
+    assert_eq!(actions[0].subject, "paru");
+    assert!(!actions[0].planned);
+    assert!(
+        actions[0]
+            .message
+            .starts_with("install paru · target validated · ")
     );
     assert!(
         !build_dir.get().unwrap().exists(),
@@ -753,11 +812,23 @@ fn broken_paru_is_rebuilt_and_revalidated() {
         .withf(is_makepkg(Arc::clone(&build_dir)))
         .returning(|_| Ok(ExecResult::success("")));
 
-    let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock);
+    let output = Arc::new(CapturingOutput::default());
+    let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock)
+        .with_log(Arc::<CapturingOutput>::clone(&output));
     let result = run_paru_install(&ctx, fixture.path()).unwrap();
     let stats = task_batch(&result);
 
     assert_eq!(stats.message(), Some("rebuilt paru"));
+    let actions = output.actions();
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0].verb, "rebuild");
+    assert_eq!(actions[0].subject, "paru");
+    assert!(!actions[0].planned);
+    assert!(
+        actions[0]
+            .message
+            .starts_with("rebuild paru · target validated · ")
+    );
     assert!(
         !build_dir.get().unwrap().exists(),
         "successful rebuild must clean its checkout"

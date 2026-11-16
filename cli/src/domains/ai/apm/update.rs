@@ -5,14 +5,16 @@ use anyhow::Result;
 use super::commands::{ApmCommand, ApmCommandResult, run_apm_invocation};
 use super::managed_targets::ManagedTargets;
 use crate::engine::{Context, TaskResult};
-use crate::infra::logging::OutputExt as _;
 
 pub(super) fn preview_apm_update(ctx: &Context, targets: ManagedTargets) -> Result<TaskResult> {
     match run_apm_invocation(ctx, ApmCommand::Update, &["update", "-g", "--dry-run"])? {
         ApmCommandResult::Success(result) => {
             let plan = describe_update_plan(&result.stdout);
             if plan.is_empty() {
-                ctx.log().dry_run(
+                ctx.log().action(
+                    "use",
+                    "APM's update plan",
+                    true,
                     "use APM's update plan to advance dependencies to their latest matching refs",
                 );
             } else {
@@ -21,7 +23,10 @@ pub(super) fn preview_apm_update(ctx: &Context, targets: ManagedTargets) -> Resu
                         .action(verb, &subject, true, &format!("{verb} {subject}"));
                 }
             }
-            ctx.log().dry_run(
+            ctx.log().action(
+                "run",
+                "apm install -g",
+                true,
                 "run apm install -g after the update to reconcile local packages and deployment drift",
             );
             targets.preview(ctx, ApmCommand::Update);

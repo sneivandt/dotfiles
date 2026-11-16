@@ -137,7 +137,12 @@ pub(super) fn dry_run_repositories(
     }
 
     for target in &updates {
-        ctx.log().dry_run(target.dry_run_action());
+        ctx.log().action(
+            "update",
+            target.description(),
+            true,
+            &target.dry_run_action(),
+        );
     }
     Ok(if updates.is_empty() {
         TaskResult::Ok

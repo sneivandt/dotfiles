@@ -7,7 +7,9 @@ use crate::infra::ConfigHandle;
 use crate::infra::exec::{ExecResult, MockExecutor};
 use crate::infra::logging::{BufferedLog, Log, Logger, TaskStatus};
 use crate::infra::platform::{Os, Platform};
-use crate::test_helpers::{assert_task_changed, empty_config, make_context, make_linux_context};
+use crate::test_helpers::{
+    CapturingOutput, assert_task_changed, empty_config, make_context, make_linux_context,
+};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -221,10 +223,19 @@ fn removal_dry_run_does_not_execute_remove() {
         ExecResult::success(""),
     );
 
-    let ctx = context_with_executor(overlay.path(), mock).with_dry_run(true);
+    let output = Arc::new(CapturingOutput::default());
+    let ctx = context_with_executor(overlay.path(), mock)
+        .with_dry_run(true)
+        .with_log(Arc::<CapturingOutput>::clone(&output));
     let task =
         OverlayScriptTask::with_mode(entry, overlay.path().to_path_buf(), ScriptTaskMode::Remove);
     assert_task_changed(&task.run(&ctx).unwrap());
+    let actions = output.actions();
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0].verb, "remove");
+    assert_eq!(actions[0].subject, "overlay script state");
+    assert!(actions[0].planned);
+    assert_eq!(actions[0].message, "remove overlay script state");
 }
 
 #[test]

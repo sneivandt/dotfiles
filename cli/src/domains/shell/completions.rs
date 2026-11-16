@@ -4,7 +4,6 @@ use anyhow::{Context as _, Result};
 use crate::engine::{
     Context, Operation, OperationState, Task, TaskMeta, TaskResult, TaskStats, process_operation,
 };
-use crate::infra::logging::OutputExt as _;
 
 /// Filename of the generated zsh completion script.
 const ZSH_COMPLETION_FILENAME: &str = "_dotfiles";
@@ -51,15 +50,17 @@ impl Operation for CompletionOperation<'_> {
     }
 
     fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
+        let subject = self.destination.display().to_string();
         ctx.log()
-            .dry_run(format!("write {}", self.destination.display()));
+            .action("write", &subject, true, &format!("write {subject}"));
         Ok(TaskStats::changed().finish())
     }
 
     fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         crate::infra::fs::write_atomic(&self.destination, self.content)?;
+        let subject = format!("{} completions", self.shell_name);
         ctx.log()
-            .info(format!("write {} completions", self.shell_name));
+            .action("write", &subject, false, &format!("write {subject}"));
         Ok(TaskStats::changed().finish())
     }
 }
@@ -253,6 +254,40 @@ mod tests {
                 "stale completions",
                 "{os:?}"
             );
+        }
+    }
+
+    #[test]
+    fn completion_actions_identify_the_verb_subject_and_preview_mode() {
+        use crate::test_helpers::CapturingOutput;
+        use std::sync::Arc;
+
+        for os in [Os::Linux, Os::Windows] {
+            for dry_run in [false, true] {
+                let (_dir, ctx, destination, _) = completion_fixture(os);
+                let output = Arc::new(CapturingOutput::default());
+                let ctx = ctx
+                    .with_dry_run(dry_run)
+                    .with_log(Arc::<CapturingOutput>::clone(&output));
+                crate::test_helpers::assert_task_changed(&task().run(&ctx).unwrap());
+
+                let actions = output.actions();
+                assert_eq!(actions.len(), 1);
+                let action = &actions[0];
+                assert_eq!(action.verb, "write");
+                assert_eq!(action.planned, dry_run);
+                assert_eq!(
+                    action.subject,
+                    if dry_run {
+                        destination.display().to_string()
+                    } else if os == Os::Windows {
+                        "PowerShell completions".into()
+                    } else {
+                        "zsh completions".into()
+                    }
+                );
+                assert_eq!(action.message, format!("write {}", action.subject));
+            }
         }
     }
 

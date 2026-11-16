@@ -3,7 +3,9 @@ use super::RepositoryUpdateSignal as UpdateSignal;
 use super::*;
 use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor, MockExecutor};
 use crate::infra::platform::{Os, Platform};
-use crate::test_helpers::{ScriptedExecutor, empty_config, make_context, make_linux_context};
+use crate::test_helpers::{
+    CapturingOutput, ScriptedExecutor, empty_config, make_context, make_linux_context,
+};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -882,6 +884,8 @@ fn repeat_update_after_fast_forward_does_not_merge_or_request_another_restart() 
     let ctx = make_update_context(root.path().to_path_buf(), None, executor);
 
     for first_run in [true, false] {
+        let output = Arc::new(CapturingOutput::default());
+        let ctx = ctx.with_log(Arc::<CapturingOutput>::clone(&output));
         let signal = UpdateSignal::new();
         let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
         if first_run {
@@ -890,6 +894,14 @@ fn repeat_update_after_fast_forward_does_not_merge_or_request_another_restart() 
             crate::test_helpers::assert_task_ok(&result);
         }
         assert_eq!(signal.was_updated(), first_run);
+        let actions = output.actions();
+        assert_eq!(actions.len(), usize::from(first_run));
+        if first_run {
+            assert_eq!(actions[0].verb, "update");
+            assert_eq!(actions[0].subject, "repository");
+            assert!(!actions[0].planned);
+            assert_eq!(actions[0].message, "update repository");
+        }
     }
 }
 
@@ -977,7 +989,10 @@ fn dry_run_queries_remote_without_fetch_merge_or_restart() {
         } else {
             exec
         };
-        let ctx = make_update_context(root.path().to_path_buf(), None, exec).with_dry_run(true);
+        let output = Arc::new(CapturingOutput::default());
+        let ctx = make_update_context(root.path().to_path_buf(), None, exec)
+            .with_dry_run(true)
+            .with_log(Arc::<CapturingOutput>::clone(&output));
         let signal = UpdateSignal::new();
         let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
 
@@ -987,6 +1002,17 @@ fn dry_run_queries_remote_without_fetch_merge_or_restart() {
             crate::test_helpers::assert_task_ok(&result);
         }
         assert!(!signal.was_updated(), "preview must not trigger a restart");
+        let actions = output.actions();
+        assert_eq!(actions.len(), usize::from(changed));
+        if changed {
+            assert_eq!(actions[0].verb, "update");
+            assert_eq!(actions[0].subject, "repository");
+            assert!(actions[0].planned);
+            assert_eq!(
+                actions[0].message,
+                "update repository · fast-forward available (local merge eligibility not checked)"
+            );
+        }
     }
 }
 

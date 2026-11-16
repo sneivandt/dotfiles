@@ -47,6 +47,14 @@ fn completions_report_changes_then_current() {
                 String::from_utf8_lossy(&output.stderr)
             );
             assert!(stdout.contains(expected), "{repository_child}: {stdout}");
+            assert_eq!(
+                stdout
+                    .lines()
+                    .filter(|line| line.starts_with("  write "))
+                    .count(),
+                usize::from(expected.starts_with("CHANGED")),
+                "{stdout}"
+            );
         }
     }
 }
@@ -217,6 +225,25 @@ fn structured_runs_report_success_preview_and_failure_without_human_output() {
                     && record["status"] == expected_status),
                 "{stdout}"
             );
+            if selector == "completions" {
+                let logs = common::retained_logs(&home.path().join("logs"));
+                assert_eq!(logs.len(), 1);
+                let stored = std::fs::read_to_string(logs.first().unwrap()).unwrap();
+                let actions: Vec<serde_json::Value> = stored
+                    .lines()
+                    .filter_map(|line| line.split_once(" [record] ").map(|(_, json)| json))
+                    .map(|json| serde_json::from_str(json).unwrap())
+                    .filter(|record: &serde_json::Value| record["type"] == "action")
+                    .collect();
+                assert_eq!(actions.len(), 1, "{stored}");
+                let action = actions.first().unwrap();
+                assert_eq!(action["verb"], "write");
+                assert_eq!(action["planned"], dry_run);
+                assert_eq!(
+                    action["message"],
+                    format!("write {}", action["subject"].as_str().unwrap())
+                );
+            }
             if dry_run {
                 for destination in [
                     repo.root_path()
@@ -472,12 +499,21 @@ fn human_transcripts_show_home_overlay_and_completion_disposition() {
                     !stdout.contains("actions"),
                     "a single-action operation must not invent a badge: {stdout}"
                 );
+                let task_prefix = match (symbols, preview) {
+                    (true, true) => "~ Shell completions",
+                    (true, false) => "✓ Shell completions",
+                    (false, true) => "PLANNED Shell completions",
+                    (false, false) => "CHANGED Shell completions",
+                };
+                assert!(
+                    stdout.lines().any(|line| line.starts_with(task_prefix)),
+                    "{stdout}"
+                );
                 let final_line = stdout.lines().last().unwrap();
-                let prefix = match (symbols, preview) {
-                    (true, true) => "~ 1 task would change",
-                    (true, false) => "✓ 1 task changed",
-                    (false, true) => "1 task would change",
-                    (false, false) => "1 task changed",
+                let prefix = if preview {
+                    "1 task would change"
+                } else {
+                    "1 task changed"
                 };
                 assert!(final_line.starts_with(prefix), "{stdout}");
             }

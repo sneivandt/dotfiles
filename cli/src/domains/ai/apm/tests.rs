@@ -14,7 +14,9 @@ use crate::engine::Context;
 use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
 use crate::infra::logging::{self, Log, Logger};
 use crate::infra::platform::{Os, Platform};
-use crate::test_helpers::{assert_task_changed, assert_task_ok, task_batch, task_skipped};
+use crate::test_helpers::{
+    CapturingOutput, assert_task_changed, assert_task_ok, task_batch, task_skipped,
+};
 
 fn command_failure(message: &str) -> ExecError {
     ExecError::non_zero("apm", ExecResult::failure("", message, Some(1)))
@@ -579,7 +581,10 @@ fn update_dry_run_uses_native_apm_plan() {
         assert_eq!(spec.arguments(), ["update", "-g", "--dry-run"]);
         Ok(ExecResult::success("would update example/plugin\n"))
     });
-    let ctx = linux_context(dir.path(), mock).with_dry_run(true);
+    let output = Arc::new(CapturingOutput::default());
+    let ctx = linux_context(dir.path(), mock)
+        .with_dry_run(true)
+        .with_log(Arc::<CapturingOutput>::clone(&output));
 
     assert!(matches!(
         update_task().run(&ctx).expect("preview update"),
@@ -587,6 +592,28 @@ fn update_dry_run_uses_native_apm_plan() {
     ));
     assert_eq!(std::fs::read(manifest_path).unwrap(), manifest_before);
     assert_eq!(std::fs::read(lock_path).unwrap(), lock_before);
+    let actions = output.actions();
+    assert_eq!(
+        actions
+            .iter()
+            .map(|action| (
+                action.verb.as_str(),
+                action.subject.as_str(),
+                action.planned
+            ))
+            .collect::<Vec<_>>(),
+        [
+            ("use", "APM's update plan", true),
+            ("run", "apm install -g", true)
+        ]
+    );
+    for action in &actions {
+        assert!(
+            action
+                .message
+                .starts_with(&format!("{} {} ", action.verb, action.subject))
+        );
+    }
 }
 
 #[test]
@@ -630,7 +657,10 @@ fn stale_or_missing_manifest_previews_preserve_all_managed_target_state() {
             if update {
                 expect_which_apm(&mut mock, true);
             }
-            let ctx = make_windows_cowork_context(dir.path(), mock).with_dry_run(true);
+            let output = Arc::new(CapturingOutput::default());
+            let ctx = make_windows_cowork_context(dir.path(), mock)
+                .with_dry_run(true)
+                .with_log(Arc::<CapturingOutput>::clone(&output));
             let task = if update {
                 update_task()
             } else {
@@ -638,6 +668,29 @@ fn stale_or_missing_manifest_previews_preserve_all_managed_target_state() {
             };
 
             assert_task_changed(&task.run(&ctx).expect("preview stale or missing manifest"));
+            let actions = output.actions();
+            let mut verbs: Vec<_> = actions.iter().map(|action| action.verb.as_str()).collect();
+            verbs.sort_unstable();
+            assert_eq!(
+                verbs,
+                if update {
+                    ["merge", "redeploy", "restore", "run", "run"]
+                } else {
+                    ["merge", "restore", "run", "run", "sync"]
+                }
+            );
+            assert_eq!(
+                actions.len(),
+                output.messages_of(logging::MsgKind::DryRun).len()
+            );
+            for action in &actions {
+                assert!(action.planned);
+                assert!(
+                    action
+                        .message
+                        .starts_with(&format!("{} {} ", action.verb, action.subject))
+                );
+            }
 
             if let Some(manifest) = manifest {
                 assert_eq!(std::fs::read(&manifest_path).unwrap(), manifest.as_bytes());

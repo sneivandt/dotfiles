@@ -12,7 +12,6 @@ use super::commands::{
 use super::cowork::{reconcile_cowork_skills, remove_legacy_cowork_lock_deployments};
 use super::targets::{ApmTargets, CopilotDeployment, CopilotTarget};
 use crate::engine::Context;
-use crate::infra::logging::OutputExt as _;
 
 /// Command outcome plus changes made by dotfiles-owned deployment adapters.
 #[derive(Debug)]
@@ -56,25 +55,42 @@ impl ManagedTargets {
 
     /// Preview every target-specific convergence action.
     pub(super) fn preview(self, ctx: &Context, command: ApmCommand) -> u32 {
-        let action = match command {
-            ApmCommand::Install => "sync",
-            ApmCommand::Update => "redeploy updated",
+        let (verb, qualifier) = match command {
+            ApmCommand::Install => ("sync", ""),
+            ApmCommand::Update => ("redeploy", "updated "),
         };
         let mut planned = 0_u32;
         for target in self.active.active() {
             match target.deployment() {
-                CopilotDeployment::NativeApm { args, .. } => ctx.log().dry_run(format!(
-                    "run apm {} to {action} {}",
-                    args.join(" "),
-                    target.display_name()
-                )),
-                CopilotDeployment::CoworkFileReconcile { .. } => ctx.log().dry_run(format!(
-                    "{action} {} skills file-by-file without replacing Cowork-owned directories",
-                    target.display_name()
-                )),
+                CopilotDeployment::NativeApm { args, .. } => {
+                    let subject = format!("apm {}", args.join(" "));
+                    ctx.log().action(
+                        "run",
+                        &subject,
+                        true,
+                        &format!(
+                            "run {subject} to {verb} {qualifier}{}",
+                            target.display_name()
+                        ),
+                    );
+                }
+                CopilotDeployment::CoworkFileReconcile { .. } => {
+                    let subject = format!("{qualifier}{} skills", target.display_name());
+                    ctx.log().action(
+                        verb,
+                        &subject,
+                        true,
+                        &format!(
+                            "{verb} {subject} file-by-file without replacing Cowork-owned directories"
+                        ),
+                    );
+                }
             }
             if target == CopilotTarget::CopilotApp {
-                ctx.log().dry_run(
+                ctx.log().action(
+                    "restore",
+                    "dotfiles-managed Copilot App workflow automation state and schedules",
+                    true,
                     "restore dotfiles-managed Copilot App workflow automation state and \
                      schedules in ~/.copilot/data.db",
                 );

@@ -21,6 +21,36 @@ fn repair_changed(ctx: &Context, pre: &DesiredApmWorkflows) -> bool {
 }
 
 #[test]
+fn workflow_repair_reports_a_typed_action_only_when_state_changed() {
+    use crate::test_helpers::CapturingOutput;
+    use std::sync::Arc;
+
+    for outcome in [
+        FixupOutcome::NoWorkflows,
+        FixupOutcome::Quiet,
+        FixupOutcome::Unparsed,
+        FixupOutcome::Set(3),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let output = Arc::new(CapturingOutput::default());
+        let ctx = make_home_context_with_executor(dir.path(), MockExecutor::new());
+        let ctx = ctx.with_log(Arc::<CapturingOutput>::clone(&output));
+        super::outcome::report_fixup_outcome(&ctx, outcome, "");
+        let actions = output.actions();
+        assert_eq!(actions.len(), usize::from(outcome == FixupOutcome::Set(3)));
+        if let Some(action) = actions.first() {
+            assert_eq!(action.verb, "restore");
+            assert_eq!(action.subject, "3 apm workflow(s)");
+            assert!(!action.planned);
+            assert_eq!(
+                action.message,
+                "restore 3 apm workflow(s) to desired automation state"
+            );
+        }
+    }
+}
+
+#[test]
 fn cron_skips_calendar_fields_and_bounds_impossible_schedules() {
     let Some(python) = python_for_script_tests() else {
         return;

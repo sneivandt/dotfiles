@@ -37,7 +37,7 @@ second set of autostart commands to work around a failed service.
 | Shortcut | Action |
 |---|---|
 | Super + Return | Open Alacritty |
-| Super + E | Open your home folder in Files (Nautilus) |
+| Super + E | Open your home folder in Thunar |
 | Super + P | Open the application launcher |
 | Super + O / V | Choose a browser / editor |
 | Super + G / C | Open GitHub Copilot / ChatGPT |
@@ -58,9 +58,8 @@ keep elsewhere: the desktop's
 runs daily and deletes files and links after 31 complete days since their last
 modification (`find -mtime +30`), along with old empty directories.
 
-GNOME Files (Nautilus) uses Tokyo Night colours and an icon-grid default.
-Use the toolbar to change views, **Ctrl+L** to enter a path, and **Ctrl+H**
-to toggle hidden files.
+Thunar is the default file manager and uses the shared Tokyo Night GTK colours.
+GVFS provides trash and removable-drive support.
 
 ### Media keys
 

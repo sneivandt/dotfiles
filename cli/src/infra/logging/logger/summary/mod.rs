@@ -12,10 +12,7 @@ mod totals;
 
 use crate::infra::logging::utils::format_elapsed;
 use render::{RowOpts, task_block};
-use totals::{
-    SummaryCounts, SummaryMode, SummaryPresentation, format_summary_lines,
-    should_space_before_totals,
-};
+use totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
 
 impl Logger {
     /// Print the summary of all recorded tasks.
@@ -33,17 +30,7 @@ impl Logger {
         if self.needs_totals_separator() {
             self.task_result("");
         }
-        for line in format_summary_lines(
-            counts,
-            summary_mode,
-            &elapsed_str,
-            style,
-            SummaryPresentation {
-                disposition,
-                dry_run: self.dry_run,
-                symbols: self.symbols,
-            },
-        ) {
+        for line in format_summary_lines(counts, summary_mode, &elapsed_str, style, disposition) {
             self.always(&line);
         }
     }

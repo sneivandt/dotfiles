@@ -76,9 +76,13 @@ pub(super) fn report_fixup_outcome(ctx: &Context, outcome: FixupOutcome, stdout:
             });
         }
         FixupOutcome::Set(n) => {
-            ctx.log().always(format!(
-                "    workflows: restored {n} apm workflow(s) to desired automation state"
-            ));
+            let subject = format!("{n} apm workflow(s)");
+            ctx.log().action(
+                "restore",
+                &subject,
+                false,
+                &format!("restore {subject} to desired automation state"),
+            );
         }
         FixupOutcome::Quiet => {
             ctx.debug_fmt(|| {

@@ -122,6 +122,52 @@ fn script() -> ScriptedExecutor {
     ScriptedExecutor::new().with_programs(&["systemctl"])
 }
 
+#[test]
+fn gtk_service_migration_runs_only_for_the_enabled_user_replacement() {
+    let unit = |name: &str, scope, enabled| SystemdUnit {
+        name: name.into(),
+        scope,
+        enabled,
+    };
+    let gtk = unit("gtk-settings.service", UnitScope::User, true);
+    for (label, units, expected) in [
+        ("replacement", vec![gtk.clone()], true),
+        (
+            "no replacement",
+            vec![unit("other.service", UnitScope::User, true)],
+            false,
+        ),
+        (
+            "disabled replacement",
+            vec![unit("gtk-settings.service", UnitScope::User, false)],
+            false,
+        ),
+        (
+            "system replacement",
+            vec![unit("gtk-settings.service", UnitScope::System, true)],
+            false,
+        ),
+        (
+            "explicit user unit",
+            vec![
+                gtk.clone(),
+                unit("nautilus-settings.service", UnitScope::User, true),
+            ],
+            false,
+        ),
+        (
+            "unrelated system unit",
+            vec![
+                gtk,
+                unit("nautilus-settings.service", UnitScope::System, true),
+            ],
+            true,
+        ),
+    ] {
+        assert_eq!(should_retire_nautilus_settings(&units), expected, "{label}");
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn gtk_service_migration_previews_then_removes_retired_links_once() {

@@ -98,14 +98,7 @@ impl Task for ConfigureSystemd {
             reload_daemons(ctx, user_manager_available, system_reload_required)?;
 
             let executor = ctx.executor_arc();
-            let retired = (units.iter().any(|entry| {
-                entry.scope == UnitScope::User
-                    && entry.name == "gtk-settings.service"
-                    && entry.enabled
-            }) && !units.iter().any(|entry| {
-                entry.scope == UnitScope::User && entry.name == "nautilus-settings.service"
-            }))
-            .then(|| {
+            let retired = should_retire_nautilus_settings(units).then(|| {
                 SystemdUnitResource::retired_nautilus_settings(
                     ctx.root(),
                     ctx.home(),
@@ -127,6 +120,14 @@ impl Task for ConfigureSystemd {
             )
         })
     }
+}
+
+fn should_retire_nautilus_settings(units: &[SystemdUnit]) -> bool {
+    units.iter().any(|entry| {
+        entry.scope == UnitScope::User && entry.name == "gtk-settings.service" && entry.enabled
+    }) && !units
+        .iter()
+        .any(|entry| entry.scope == UnitScope::User && entry.name == "nautilus-settings.service")
 }
 
 fn systemctl_requirement() -> Requirement<'static> {

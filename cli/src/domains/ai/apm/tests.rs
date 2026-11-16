@@ -565,6 +565,42 @@ fn update_reports_ok_when_lock_is_byte_identical() {
 }
 
 #[test]
+fn single_target_previews_restore_workflows_only_for_copilot_app() {
+    use super::commands::ApmCommand;
+    use super::managed_targets::ManagedTargets;
+
+    for command in [ApmCommand::Install, ApmCommand::Update] {
+        for copilot_app in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let ctx = if copilot_app {
+                write_copilot_app_db(dir.path());
+                linux_context(dir.path(), MockExecutor::new())
+            } else {
+                make_windows_cowork_context(dir.path(), MockExecutor::new())
+            };
+            let output = Arc::new(CapturingOutput::default());
+            let ctx = ctx
+                .with_dry_run(true)
+                .with_log(Arc::<CapturingOutput>::clone(&output));
+
+            ManagedTargets::detect(&ctx).unwrap().preview(&ctx, command);
+
+            let actions = output.actions();
+            let verbs: Vec<_> = actions.iter().map(|action| action.verb.as_str()).collect();
+            let expected = if copilot_app {
+                vec!["run", "restore"]
+            } else if matches!(command, ApmCommand::Install) {
+                vec!["sync"]
+            } else {
+                vec!["redeploy"]
+            };
+            assert_eq!(verbs, expected, "{command:?}, copilot_app={copilot_app}");
+            assert!(actions.iter().all(|action| action.planned));
+        }
+    }
+}
+
+#[test]
 fn update_dry_run_uses_native_apm_plan() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_and_lock(dir.path());

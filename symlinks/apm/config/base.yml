@@ -18,5 +18,5 @@ targets:
 dependencies:
   apm:
     # Local plugins
-    - ~/.apm/plugins/dot-agent
     - ~/.apm/plugins/dot-skill
+    - ~/.apm/plugins/dot-workflow

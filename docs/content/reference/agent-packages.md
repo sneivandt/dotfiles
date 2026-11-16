@@ -45,8 +45,8 @@ targets:
   - copilot
 dependencies:
   apm:
-    - ~/.apm/plugins/dot-agent
     - ~/.apm/plugins/dot-skill
+    - ~/.apm/plugins/dot-workflow
 ```
 
 Select a fragment by linking it through `conf/symlinks.toml`; use matching categories

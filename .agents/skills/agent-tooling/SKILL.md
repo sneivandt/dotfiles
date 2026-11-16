@@ -23,9 +23,6 @@ changes, read [apm.rs](../../../cli/src/domains/ai/apm.rs) and its
 | stable Copilot/Codex preference | `conf/agent-settings.toml` |
 | install and pin-update behavior | `cli/src/domains/ai/apm.rs` and `cli/src/domains/ai/apm/` |
 
-The personal `agent-customization` skill is optional audience guidance;
-repository work must remain possible without it.
-
 ## Decisions and pitfalls
 
 - Edit source fragments/plugins, not generated manifests, deployed content, or

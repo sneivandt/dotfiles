@@ -1,34 +1,30 @@
 ---
 name: agent-customization
 description: >
-  Use when deciding where Stuart's reusable agent customization belongs:
-  public dotfiles vs private overlay, dot-agent vs dot-skill, APM target
-  compatibility, or plugin/config-fragment structure. Not for repo Rust details.
+  Choose where reusable agent customization belongs in dotfiles, a repository,
+  or a private overlay. Use for APM package structure and target compatibility.
 ---
 
 # Agent Customization
 
 ## Place the change
 
-| Content | Owner |
-|---|---|
-| reusable interaction or coding workflow | `dot-agent` |
-| skill/plugin authoring and maintenance | `dot-skill` |
-| repository-specific guidance | that repository's `.agents/skills/` |
-| work, host, employer, or private guidance | private overlay plugin |
-| model/reasoning/UI defaults | public `conf/agent-settings.toml` |
-| skills, hooks, prompts, instructions, MCP | APM plugin or fragment |
-
-APM packages reusable content; dotfiles manages harness preferences separately.
-Repository-specific guidance stays in its repository.
-
-Prefer one narrow skill per recurring behavior. Update an existing skill instead
-of adding a near-duplicate.
+- Keep guidance tied to a codebase in that repository's `.agents/skills/`.
+- Put host-specific, employer-specific, or private guidance in a private overlay.
+- Package reusable public content with APM. Group related skills, hooks,
+  prompts, and instructions by purpose. Use configuration fragments to select
+  packages and declare external dependencies.
+- Put reusable task workflows in `dot-workflow` and skill authoring and
+  maintenance guidance in `dot-skill`.
+- Set model, reasoning, and UI defaults in `conf/agent-settings.toml`.
+- Give each skill one recurring job. Extend an existing skill when it already
+  covers the same intent.
 
 ## APM package rules
 
 - Use native layout: `apm.yml`, `includes: auto`, and `.apm/<primitive>/`.
-- Keep local package names short and `dot-*`.
+- Use short `dot-*` names for local plugins. Match each skill's directory to
+  its frontmatter name.
 - Reference local packages with forward slashes.
 - Public files contain no secrets, private URLs, or employer-confidential data.
 - Private overlays add fragments/plugins through overlay symlink config and
@@ -49,9 +45,9 @@ of adding a near-duplicate.
 
 ## Verify
 
-Use the dotfiles checkout's `docs/content/development/testing.md` for scoped checks and previews,
-and its `agent-tooling` skill for implementation details. Skill-text-only edits
-need frontmatter, link, and routing review, not a live install or deployment.
+Use the dotfiles checkout's `docs/content/development/testing.md` for scoped
+checks and previews. For skill-text-only edits, review frontmatter, links, and
+trigger descriptions.
 For behavior changes, prefer current-source checks with isolated homes and
 synthetic overlays; a wrapper may bootstrap or run an older installed binary.
 An authorized preview with a real overlay can execute its cooperative

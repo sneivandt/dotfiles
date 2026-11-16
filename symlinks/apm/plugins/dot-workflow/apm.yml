@@ -1,0 +1,7 @@
+name: dot-workflow
+version: 1.0.0
+description: Reusable skills for carrying out and completing tasks
+license: MIT
+includes: auto
+dependencies:
+  apm: []

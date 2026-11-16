@@ -130,6 +130,8 @@ fn check_rejects_malformed_system_fragments_without_reading_targets() {
             "[linux]\nfiles = [\
                 { source = 'broken.toml', merge = 'toml' },\
                 { source = 'broken.ini', merge = 'ini' },\
+                { source = 'empty-key.ini', merge = 'ini' },\
+                { source = 'broken-section.ini', merge = 'ini' },\
                 { source = 'broken.pam', merge = 'pam' }]\n",
         )
         .build();
@@ -138,6 +140,8 @@ fn check_rejects_malformed_system_fragments_without_reading_targets() {
     for (name, content) in [
         ("broken.toml", "[missing-bracket"),
         ("broken.ini", "key=value"),
+        ("empty-key.ini", "[options]\n=value\n"),
+        ("broken-section.ini", "[options]\n[broken\n"),
         ("broken.pam", "auth optional"),
     ] {
         std::fs::write(system.join(name), content).unwrap();
@@ -158,7 +162,13 @@ fn check_rejects_malformed_system_fragments_without_reading_targets() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(!output.status.success(), "{text}");
-    for name in ["broken.toml", "broken.ini", "broken.pam"] {
+    for name in [
+        "broken.toml",
+        "broken.ini",
+        "empty-key.ini",
+        "broken-section.ini",
+        "broken.pam",
+    ] {
         assert!(text.contains(name), "{text}");
     }
     assert!(text.contains("system-file.invalid-fragment"), "{text}");

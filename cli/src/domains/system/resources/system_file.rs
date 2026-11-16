@@ -555,6 +555,15 @@ fn ini_settings(
         if line.is_empty() || line.starts_with(['#', ';']) {
             continue;
         }
+        if strict && line.starts_with('[') {
+            let name = line
+                .strip_prefix('[')
+                .and_then(|rest| rest.strip_suffix(']'));
+            anyhow::ensure!(
+                name.is_some_and(|name| !name.trim().is_empty() && !name.contains(['[', ']'])),
+                "INI fragment contains an invalid section header: {line}"
+            );
+        }
         if let Some(header) = ini_section(line) {
             section = Some(header.to_string());
             continue;
@@ -565,6 +574,9 @@ fn ini_settings(
             }
             continue;
         };
+        if strict && key.is_empty() {
+            bail!("INI fragment contains an empty key: {line}");
+        }
         let Some(section) = &section else {
             if strict {
                 bail!("INI fragment contains a setting outside a section: {line}");
@@ -1396,9 +1408,7 @@ mod tests {
                 " \tkey \t= first = second \t",
                 Some(("key", Some("first = second"))),
             ),
-            ("empty key", " = value ", Some(("", Some("value")))),
             ("empty value", "key \t= \t", Some(("key", Some("")))),
-            ("empty key and value", "\t= \t", Some(("", Some("")))),
             ("bare flag with tabs", "\tFlag\t", Some(("Flag", None))),
             (
                 "whitespace inside an assigned key is retained",
@@ -1409,11 +1419,6 @@ mod tests {
                 "inline comment characters are literal",
                 "key=value # hash ; semicolon",
                 Some(("key", Some("value # hash ; semicolon"))),
-            ),
-            (
-                "malformed section-like line remains a bare setting",
-                "\t[not-a-section\t",
-                Some(("[not-a-section", None)),
             ),
             ("empty line", "", None),
             ("whitespace", " \t ", None),
@@ -1480,7 +1485,7 @@ mod tests {
             (
                 "malformed section-like flag outside a section",
                 "\t[not-a-section\t\n",
-                "INI fragment contains a setting outside a section: [not-a-section",
+                "INI fragment contains an invalid section header: [not-a-section",
             ),
             (
                 "first invalid line wins",
@@ -1575,6 +1580,25 @@ mod tests {
         for (merge, fragment, reason) in [
             (MergeStrategy::Toml, "managed = [\n", "parsing TOML"),
             (MergeStrategy::Ini, "managed=true\n", "outside a section"),
+            (MergeStrategy::Ini, "[options]\n = value\n", "empty key"),
+            (MergeStrategy::Ini, "[options]\n = \n", "empty key"),
+            (
+                MergeStrategy::Ini,
+                "[options]\n[broken\n",
+                "invalid section header",
+            ),
+            (
+                MergeStrategy::Ini,
+                "[]\nkey=value\n",
+                "invalid section header",
+            ),
+            (MergeStrategy::Ini, "[ \t]\n", "invalid section header"),
+            (MergeStrategy::Ini, "[[nested]]\n", "invalid section header"),
+            (
+                MergeStrategy::Ini,
+                "[broken]extra]\n",
+                "invalid section header",
+            ),
             (
                 MergeStrategy::Ini,
                 "[options]\nmanaged=true\nmanaged=false\n",

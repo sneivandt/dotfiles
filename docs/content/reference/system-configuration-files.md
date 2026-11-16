@@ -73,7 +73,9 @@ Unrelated settings are preserved. TOML updates preserve comments and formatting
 around existing keys; managed values and new keys can change formatting.
 TOML and INI fragments are validated even when the destination is absent.
 INI cannot assign different values to the same key within one section. Identical
-repeated assignments are allowed.
+repeated assignments are allowed. Fragment keys and section names must be nonempty,
+and section headers must have matching, non-nested brackets. Bare flags such as
+`Color` remain valid inside a section.
 
 PAM needs an existing service file and a stack of the same type as each fragment rule. A
 rule with the same module path in that stack is replaced. If the same module name

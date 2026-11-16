@@ -981,7 +981,17 @@ fn check_partial_repository_refresh(ignored: bool) {
 }
 
 fn git(root: &std::path::Path, args: &[&str]) -> String {
-    let output = std::process::Command::new("git")
+    let mut command = std::process::Command::new("git");
+    for (key, _) in std::env::vars_os() {
+        if key
+            .to_string_lossy()
+            .to_ascii_uppercase()
+            .starts_with("GIT_")
+        {
+            command.env_remove(key);
+        }
+    }
+    let output = command
         .args([
             "-c",
             "user.name=Fixture",
@@ -1006,6 +1016,42 @@ fn git(root: &std::path::Path, args: &[&str]) -> String {
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+#[test]
+fn git_fixture_ignores_inherited_configuration_and_repository_paths() {
+    const CHILD: &str = "DOTFILES_TEST_GIT_FIXTURE_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        let root = tempfile::tempdir().unwrap();
+        git(root.path(), &["init", "--bare", "-b", "main"]);
+        assert_eq!(
+            git(root.path(), &["rev-parse", "--is-bare-repository"]),
+            "true"
+        );
+        assert_eq!(
+            std::fs::canonicalize(git(root.path(), &["rev-parse", "--absolute-git-dir"])).unwrap(),
+            std::fs::canonicalize(root.path()).unwrap()
+        );
+        return;
+    }
+    let unrelated = tempfile::tempdir().unwrap();
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "git_fixture_ignores_inherited_configuration_and_repository_paths",
+            "--nocapture",
+        ])
+        .env(CHILD, "1")
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "safe.bareRepository")
+        .env("GIT_CONFIG_VALUE_0", "explicit")
+        .env("GIT_DIR", unrelated.path().join("not-a-repository"))
+        .env("GIT_WORK_TREE", unrelated.path())
+        .env("GIT_INDEX_FILE", unrelated.path().join("index"))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(std::fs::read_dir(unrelated.path()).unwrap().count(), 0);
 }
 
 #[cfg(unix)]

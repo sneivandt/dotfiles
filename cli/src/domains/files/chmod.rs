@@ -82,6 +82,106 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn inaccessible_directories_are_previewed_without_mutation_and_repaired_recursively() {
+        use crate::test_helpers::task_batch;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        for root_mode in [0o000, 0o600, 0o700] {
+            let fixture = tempfile::tempdir().unwrap();
+            let directory = fixture.path().join(".ssh");
+            let nested = directory.join("nested");
+            let file = nested.join("config");
+            let outside = fixture.path().join("outside");
+            std::fs::create_dir_all(&nested).unwrap();
+            std::fs::write(&file, "fixture").unwrap();
+            std::fs::write(&outside, "unmanaged").unwrap();
+            std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+            std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o644)).unwrap();
+            std::os::unix::fs::symlink(&outside, nested.join("link")).unwrap();
+            std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0o000)).unwrap();
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(root_mode))
+                .unwrap();
+            let ctx = make_linux_context(fixture.path().to_path_buf(), None)
+                .with_home(fixture.path().to_path_buf());
+            let task =
+                ApplyFilePermissions::new(ConfigHandle::new(vec![ChmodEntry::new("600", "ssh")]));
+            let preview = task.run(&ctx.with_dry_run(true)).unwrap();
+            assert_eq!(task_batch(&preview).failed_count(), 0, "{root_mode:o}");
+            assert_eq!(task_batch(&preview).changed_count(), 1, "{root_mode:o}");
+            assert_eq!(
+                directory.metadata().unwrap().permissions().mode() & 0o777,
+                root_mode
+            );
+            // Reopen only for assertions, then restore the inaccessible starting state.
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+            assert_eq!(nested.metadata().unwrap().permissions().mode() & 0o777, 0);
+            std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0o700)).unwrap();
+            assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o644);
+            std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0o000)).unwrap();
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(root_mode))
+                .unwrap();
+
+            let result = task.run(&ctx).unwrap();
+            assert_eq!(task_batch(&result).failed_count(), 0, "{root_mode:o}");
+            assert_eq!(task_batch(&result).changed_count(), 1);
+            for path in [&directory, &nested] {
+                assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o700);
+            }
+            assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+            assert_eq!(
+                outside.metadata().unwrap().permissions().mode() & 0o777,
+                0o644
+            );
+            assert_eq!(task_batch(&task.run(&ctx).unwrap()).changed_count(), 0);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn inaccessible_tree_with_hard_links_restores_temporary_access_without_changing_files() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir().unwrap();
+        let directory = fixture.path().join(".ssh");
+        let nested = directory.join("nested");
+        let file = directory.join("ordinary");
+        let outside = fixture.path().join("outside");
+        std::fs::create_dir_all(&nested).unwrap();
+        for path in [&file, &outside] {
+            std::fs::write(path, "private").unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        std::fs::hard_link(&outside, nested.join("alias")).unwrap();
+        std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0o000)).unwrap();
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let ctx = make_linux_context(fixture.path().to_path_buf(), None)
+            .with_home(fixture.path().to_path_buf());
+        let error =
+            ApplyFilePermissions::new(ConfigHandle::new(vec![ChmodEntry::new("755", "ssh")]))
+                .run(&ctx)
+                .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("multiply linked file"),
+            "{error:#}"
+        );
+        assert!(
+            !format!("{error:#}").contains("could not restore temporary directory access"),
+            "{error:#}"
+        );
+        assert_eq!(
+            directory.metadata().unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(nested.metadata().unwrap().permissions().mode() & 0o777, 0);
+        std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0o700)).unwrap();
+        for path in [&file, &outside] {
+            assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn hard_linked_targets_are_rejected_before_recursive_permissions_change() {
         use std::os::unix::fs::PermissionsExt as _;
         for parallel in [false, true] {

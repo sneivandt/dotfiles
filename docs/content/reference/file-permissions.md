@@ -57,6 +57,12 @@ changing their mode would also change every other name for the same file.
 Give the managed file an independent copy before retrying. The external-target
 opt-in does not bypass this check.
 
+When a directory lacks owner read or traversal access that the declared mode
+would grant, apply temporarily restores that access to inspect its contents.
+If inspection fails or finds a hard-linked file, it restores the original
+directory modes without changing file permissions. Preview never changes modes;
+an inaccessible subtree can still reveal a blocker during apply.
+
 For example, `600` permits only the owner to read and write a file; `700`
 also permits the owner to traverse a directory but excludes other users.
 Dotfiles accepts octal strings, not symbolic expressions such as `u+rw`. The

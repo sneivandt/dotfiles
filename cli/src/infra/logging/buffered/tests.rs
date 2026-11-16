@@ -152,12 +152,12 @@ fn completion_order_and_action_barriers_survive_buffered_flush() {
         assert_eq!(
             actions,
             [
-                "configure b",
-                "link a",
-                "link z",
+                "configure  b",
+                "link     a",
+                "link     z",
                 "context",
-                "install a",
-                "install z"
+                "install  a",
+                "install  z"
             ],
             "completion order and action barriers must survive rendering"
         );
@@ -537,7 +537,7 @@ fn restart_notice_suppresses_the_completed_row_but_retains_verbose_details() {
         buf.flush_and_complete("repository", "repository");
 
         let expected = if verbose {
-            vec!["  update repository"]
+            vec!["  update  repository"]
         } else {
             vec![]
         };
@@ -597,10 +597,10 @@ fn completed_task_transcripts_preserve_spacing_and_warning_placement() {
                 "PASSED second".into(),
                 String::new(),
                 format!("{changed} actions"),
-                "  link a".into(),
-                "  link z".into(),
+                "  link  a".into(),
+                "  link  z".into(),
                 "  WARN  check permissions".into(),
-                "  link b".into(),
+                "  link  b".into(),
             ]);
             if verbose {
                 expected.extend([String::new(), "CURRENT current".into()]);
@@ -671,13 +671,13 @@ fn typed_action_spans_preserve_opaque_subjects_and_custom_messages() {
         let action = LogEntry::action("refresh", subject, planned, &message);
         assert_eq!(
             action
-                .console_line(StyleChoice::colored(), true, true)
+                .console_line(StyleChoice::colored(), true, true, 1)
                 .unwrap(),
             format!("  \x1b[{color}mrefresh\x1b[0m {subject}\x1b[2m (extra context)\x1b[0m")
         );
         assert_eq!(
             action
-                .console_line(StyleChoice::plain(), true, true)
+                .console_line(StyleChoice::plain(), true, true, 1)
                 .unwrap(),
             format!("  {message}")
         );
@@ -690,7 +690,7 @@ fn typed_action_spans_preserve_opaque_subjects_and_custom_messages() {
         ] {
             let custom_action = LogEntry::action("refresh", "~/target", planned, custom_message);
             let line = custom_action
-                .console_line(StyleChoice::colored(), true, true)
+                .console_line(StyleChoice::colored(), true, true, 1)
                 .unwrap();
             assert_eq!(
                 crate::infra::logging::utils::strip_ansi(&line),
@@ -706,7 +706,7 @@ fn typed_action_spans_preserve_opaque_subjects_and_custom_messages() {
         let prose = entry(MsgKind::Info, "refresh ~/target → source");
         assert_eq!(
             prose
-                .console_line(StyleChoice::colored(), true, true)
+                .console_line(StyleChoice::colored(), true, true, 1)
                 .unwrap(),
             "  refresh ~/target → source"
         );
@@ -714,7 +714,7 @@ fn typed_action_spans_preserve_opaque_subjects_and_custom_messages() {
 }
 
 #[test]
-fn typed_actions_share_the_same_text_through_direct_replay_and_completed_rows() {
+fn typed_actions_preserve_subjects_and_continuations_when_aligned() {
     for planned in [false, true] {
         for verbose in [false, true] {
             let (mut log, _tmp, _guard) = isolated_logger();
@@ -742,11 +742,11 @@ fn typed_actions_share_the_same_text_through_direct_replay_and_completed_rows() 
             buf.flush_and_complete("task", "task");
             let completed = log.captured_lines();
             assert!(
-                completed.ends_with(&["  refresh opaque → source".into(), "  second line".into()])
+                completed.ends_with(&["  refresh  opaque → source".into(), "  second line".into()])
             );
             assert_eq!(direct.is_empty(), !planned && !verbose);
             if planned || verbose {
-                assert_eq!(&completed[completed.len() - 2..], direct);
+                assert_eq!(direct, ["  refresh opaque → source", "  second line"]);
             }
             let stored = fs::read_to_string(log.log_path().unwrap()).unwrap();
             assert_eq!(

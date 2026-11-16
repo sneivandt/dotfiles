@@ -373,6 +373,7 @@ test('the terminal illustration matches the CLI progress and action styling', as
     }
     const actions = block.locator('text:not(:first-child)');
     for (const action of await actions.all()) {
+      expect(await action.textContent()).toMatch(/^\S+ {2}\S/);
       await expect(action).toHaveCSS('fill', 'rgb(192, 202, 245)');
       await expect(action.locator('tspan')).toHaveCSS('fill', 'rgb(125, 207, 255)');
     }

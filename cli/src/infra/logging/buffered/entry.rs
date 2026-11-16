@@ -4,11 +4,13 @@
 //! replay/visibility policy (what a single entry means for the console and for
 //! summary details) separate from the buffering and flush orchestration.
 
+use unicode_width::UnicodeWidthStr as _;
+
 use crate::infra::logging::logger::Logger;
 use crate::infra::logging::runlog::RunLog;
 use crate::infra::logging::style::{StyleChoice, TextStyle};
 use crate::infra::logging::types::{MsgKind, TaskStatus};
-use crate::infra::logging::utils::duplicates_task_message;
+use crate::infra::logging::utils::{duplicates_task_message, strip_ansi};
 
 /// A single buffered console entry, replayed when the task completes.
 ///
@@ -87,6 +89,7 @@ impl LogEntry {
                     logger.console.stdout_style,
                     logger.is_verbose(),
                     logger.symbols,
+                    1,
                 ) {
                     logger
                         .console
@@ -96,12 +99,36 @@ impl LogEntry {
         }
     }
 
+    /// Measure the verb and the first line at its original spacing.
+    pub(in crate::infra::logging) fn action_columns(&self) -> Option<(usize, usize)> {
+        let Self::Action {
+            verb,
+            subject,
+            message,
+            ..
+        } = self
+        else {
+            return None;
+        };
+        action_suffix(verb, subject, message)?;
+        let verb = strip_ansi(verb);
+        if verb.contains(['\n', '\r', '\t']) {
+            return None;
+        }
+        let message = strip_ansi(message);
+        Some((
+            verb.width(),
+            2 + message.lines().next().unwrap_or_default().width(),
+        ))
+    }
+
     /// Preserve typed spans and opaque subjects; never infer actions from prose.
     pub(in crate::infra::logging) fn console_line(
         &self,
         style: StyleChoice,
         verbose: bool,
         symbols: bool,
+        action_gap: usize,
     ) -> Option<String> {
         let Self::Action {
             verb,
@@ -121,16 +148,12 @@ impl LogEntry {
         if !planned && !verbose {
             return None;
         }
-        let prefix = format!("{verb} {subject}");
-        let Some(suffix) = message
-            .strip_prefix(&prefix)
-            .filter(|suffix| suffix.is_empty() || suffix.starts_with(char::is_whitespace))
-        else {
+        let Some(suffix) = action_suffix(verb, subject, message) else {
             return Some(format!("  {}", style.clean(message)).replace('\n', "\n  "));
         };
         Some(
             format!(
-                "  {} {}{}",
+                "  {}{:action_gap$}{}{}",
                 style.paint(
                     if *planned {
                         TextStyle::Magenta
@@ -139,6 +162,7 @@ impl LogEntry {
                     },
                     verb
                 ),
+                "",
                 style.clean(subject),
                 if suffix.is_empty() {
                     String::new()
@@ -215,6 +239,14 @@ impl LogEntry {
             )
             && !duplicates_task_message(self.message(), task_message)
     }
+}
+
+fn action_suffix<'a>(verb: &str, subject: &str, message: &'a str) -> Option<&'a str> {
+    message
+        .strip_prefix(verb)?
+        .strip_prefix(' ')?
+        .strip_prefix(subject)
+        .filter(|suffix| suffix.is_empty() || suffix.starts_with(char::is_whitespace))
 }
 
 pub(in crate::infra::logging) const fn should_record_task_details(status: TaskStatus) -> bool {

@@ -17,6 +17,7 @@ pub(super) struct RowOpts {
     pub(super) style: StyleChoice,
     pub(super) diagnostic_style: StyleChoice,
     pub(super) symbols: bool,
+    pub(super) columns: Option<usize>,
     /// Verbose rows show every applicable task, per-task timing, and uncapped details.
     pub(super) verbose: bool,
 }
@@ -44,30 +45,30 @@ pub(super) fn task_block(task: &TaskEntry, entries: &[LogEntry], opts: RowOpts) 
     if !task.visibility.is_visible() || task.status == TaskStatus::NotApplicable {
         return block;
     }
-    let message = task.message.as_deref();
     let emit_row = should_emit_task_result(task, opts.verbose);
-    for entry in entries {
-        if duplicates_task_message(entry.message(), message) {
-            continue;
-        }
+    let visible_entries: Vec<_> = entries
+        .iter()
+        .filter(|entry| detail_is_visible(entry, task, opts.verbose, emit_row))
+        .map(|entry| (entry, entry.action_columns()))
+        .collect();
+    let verb_width = visible_entries
+        .iter()
+        .filter_map(|(_, columns)| columns.map(|(verb, _)| verb))
+        .max()
+        .unwrap_or(0);
+
+    for (entry, action_columns) in visible_entries {
         let diagnostic = matches!(
             entry.kind(),
             MsgKind::Warn | MsgKind::WarnContinuation | MsgKind::Error
         );
-        let normal_detail = emit_row
-            && should_record_task_details(task.status)
-            && entry.detail_line(task.status).is_some()
-            && Some(entry.message()) != row_reason(task);
-        let visible = if opts.verbose {
-            entry.verbose_detail(message).is_some()
-        } else {
-            normal_detail
-                || (task.status != TaskStatus::Ok
-                    && entry.is_visible_in_non_verbose(task.status, message))
-        };
-        if !visible {
-            continue;
-        }
+        let action_gap = action_columns.map_or(1, |(verb, line)| {
+            let gap = verb_width - verb + 2;
+            match opts.columns {
+                Some(columns) if line <= columns => gap.min(columns - line + 1),
+                _ => gap,
+            }
+        });
         // Failed-task explanations remain stdout; warnings keep their severity.
         let explanatory_error =
             !opts.verbose && task.status == TaskStatus::Failed && entry.kind() == MsgKind::Error;
@@ -79,15 +80,17 @@ pub(super) fn task_block(task: &TaskEntry, entries: &[LogEntry], opts: RowOpts) 
         let line = if explanatory_error {
             Some(indented(entry.message(), style))
         } else {
-            entry.console_line(style, true, opts.symbols).map(|line| {
-                if diagnostic {
-                    format!("  {line}")
-                } else if !opts.verbose && matches!(entry, LogEntry::Message { .. }) {
-                    indented(entry.message(), style)
-                } else {
-                    line
-                }
-            })
+            entry
+                .console_line(style, true, opts.symbols, action_gap)
+                .map(|line| {
+                    if diagnostic {
+                        format!("  {line}")
+                    } else if !opts.verbose && matches!(entry, LogEntry::Message { .. }) {
+                        indented(entry.message(), style)
+                    } else {
+                        line
+                    }
+                })
         };
         if let Some(line) = line.filter(|line| {
             !crate::infra::logging::utils::strip_ansi(line)
@@ -127,6 +130,22 @@ pub(super) fn task_block(task: &TaskEntry, entries: &[LogEntry], opts: RowOpts) 
         block.status = Some(row);
     }
     block
+}
+
+fn detail_is_visible(entry: &LogEntry, task: &TaskEntry, verbose: bool, emit_row: bool) -> bool {
+    let message = task.message.as_deref();
+    if verbose {
+        return entry.verbose_detail(message).is_some();
+    }
+    if duplicates_task_message(entry.message(), message) {
+        return false;
+    }
+    let normal_detail = emit_row
+        && should_record_task_details(task.status)
+        && entry.detail_line(task.status).is_some()
+        && Some(entry.message()) != row_reason(task);
+    normal_detail
+        || (task.status != TaskStatus::Ok && entry.is_visible_in_non_verbose(task.status, message))
 }
 
 fn action_badge(task: &TaskEntry) -> Option<String> {

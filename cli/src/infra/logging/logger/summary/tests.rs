@@ -54,6 +54,7 @@ fn plain_opts() -> RowOpts {
         style: StyleChoice::plain(),
         diagnostic_style: StyleChoice::plain(),
         symbols: true,
+        columns: None,
         verbose: false,
     }
 }
@@ -566,6 +567,7 @@ fn task_row_golden_matrix() {
                                 RowOpts {
                                     mode,
                                     symbols,
+                                    columns: None,
                                     verbose,
                                     style: StyleChoice::auto(ansi, false),
                                     diagnostic_style: StyleChoice::auto(ansi, false),
@@ -1006,7 +1008,7 @@ fn completed_blocks_preserve_typed_action_style_and_verbose_message_presentation
             let color = if planned { "35" } else { "36" };
             assert_eq!(
                 block.details[0].line,
-                format!("  \x1b[{color}mwrite\x1b[0m item → source\x1b[2m (extra detail)\x1b[0m"),
+                format!("  \x1b[{color}mwrite\x1b[0m  item → source\x1b[2m (extra detail)\x1b[0m"),
                 "verbose={verbose}, planned={planned}",
             );
         }
@@ -1022,6 +1024,55 @@ fn completed_blocks_preserve_typed_action_style_and_verbose_message_presentation
             block.details[0].line,
             if verbose { "notice" } else { "  notice" }
         );
+    }
+}
+
+#[test]
+fn completed_actions_align_visible_subjects_without_forcing_wrap() {
+    let task = task_entry("task", TaskStatus::Changed, Some("reconfigure hidden"));
+    let entries = [
+        LogEntry::action("更新", "one → two", false, "更新 one → two (detail)"),
+        LogEntry::Message {
+            kind: MsgKind::Warn,
+            msg: "check permissions".into(),
+        },
+        LogEntry::action("install", "fd", false, "install fd"),
+        LogEntry::action("reconfigure", "hidden", false, "reconfigure hidden"),
+        LogEntry::action("synchronize", "item", false, "custom action wording"),
+        LogEntry::action("refresh\tcache", "item", false, "refresh\tcache item"),
+    ];
+
+    for (columns, first_line) in [
+        (None, "  更新     one → two (detail)"),
+        (Some(27), "  更新   one → two (detail)"),
+        (Some(25), "  更新 one → two (detail)"),
+        (Some(24), "  更新     one → two (detail)"),
+    ] {
+        let block = task_block(
+            &task,
+            &entries,
+            RowOpts {
+                columns,
+                ..colored_opts()
+            },
+        );
+        let lines: Vec<_> = block
+            .details
+            .iter()
+            .map(|detail| crate::infra::logging::utils::strip_ansi(&detail.line))
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                first_line,
+                "  WARN  check permissions",
+                "  install  fd",
+                "  custom action wording",
+                "  refresh\tcache item",
+            ],
+            "terminal columns: {columns:?}",
+        );
+        assert!(block.details[1].error_stream);
     }
 }
 

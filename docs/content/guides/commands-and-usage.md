@@ -215,8 +215,10 @@ Task names are bold except for verbose `CURRENT` rows. Consecutive rows
 without visible details stay compact; expanded blocks have a blank line
 around them. Indented actions describe each task's work, with applied verbs
 in cyan and planned verbs in magenta, including completion writes and workflow
-repairs. Informational messages and script-provided output remain plain;
-their first words are not treated as action verbs. All concrete actions remain visible.
+repairs. Action subjects line up within each task. On narrow terminals, the
+gap can shrink to keep an action on one line. Informational messages and
+script-provided output remain plain; their first words are not treated as action
+verbs. All concrete actions remain visible.
 An expanded row with multiple quantified actions adds `· 35 actions applied`
 or `· planned · 35 actions`. Task-owned warnings and verbose errors stay
 indented under their row, with warnings between the actions they concern.

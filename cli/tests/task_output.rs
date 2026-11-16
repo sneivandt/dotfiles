@@ -561,11 +561,11 @@ fn quantified_symlink_actions_have_badges_without_capping_details() {
                 "{stdout}"
             );
             assert!(
-                stdout.contains("  link ~/.first → symlinks/first"),
+                stdout.contains("  link  ~/.first → symlinks/first"),
                 "{stdout}"
             );
             assert!(
-                stdout.contains("  link ~/.second → symlinks/second"),
+                stdout.contains("  link  ~/.second → symlinks/second"),
                 "{stdout}"
             );
         }

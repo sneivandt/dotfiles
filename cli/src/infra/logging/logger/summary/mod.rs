@@ -2,6 +2,8 @@
 //!
 //! Renders final aggregate counts and compact completed-task rows.
 
+use std::io::IsTerminal as _;
+
 use super::Logger;
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::buffered::entry::LogEntry;
@@ -10,7 +12,7 @@ mod render;
 mod status;
 mod totals;
 
-use crate::infra::logging::utils::format_elapsed;
+use crate::infra::logging::utils::{format_elapsed, terminal_columns};
 use render::{RowOpts, task_block};
 use totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
 
@@ -51,6 +53,7 @@ impl Logger {
             },
             diagnostic_style: self.console.stderr_style,
             symbols: self.symbols,
+            columns: std::io::stdout().is_terminal().then(terminal_columns),
             verbose: self.is_verbose(),
         }
     }

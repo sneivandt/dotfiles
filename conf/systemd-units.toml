@@ -18,7 +18,6 @@ units = [
 [arch-desktop]
 units = [
   { name = "NetworkManager.service", scope = "system" },
-  { name = "dhcpcd.service", scope = "system", enabled = false },
   "clean-screenshots.timer",
   "dotfiles-first-login.service",
   "gammastep.service",

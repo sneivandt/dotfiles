@@ -7,6 +7,10 @@
 //! Integration tests for relationships among the repository's real
 //! configuration files and managed sources.
 
+use dotfiles_cli::testing::{
+    config::{Config, profiles},
+    platform::{Os, Platform},
+};
 use serde::{Deserialize, Deserializer, de::Error as _};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -105,6 +109,33 @@ fn mirrored_symlink_parser_rejects_unknown_table_fields() {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+#[test]
+fn arch_desktop_leaves_dhcpcd_handoff_manual() {
+    let platform = Platform {
+        os: Os::Linux,
+        is_arch: true,
+        is_wsl: false,
+    };
+    let profile = profiles::resolve("desktop", platform).expect("desktop profile");
+    let config =
+        Config::load(&repo_root(), &profile, platform, None).expect("load repository config");
+
+    assert!(
+        config
+            .units
+            .iter()
+            .any(|unit| unit.name == "NetworkManager.service" && unit.enabled),
+        "the Arch desktop profile should enable NetworkManager"
+    );
+    assert!(
+        config
+            .units
+            .iter()
+            .all(|unit| unit.name != "dhcpcd.service"),
+        "the default update must leave dhcpcd alone until the user verifies the network handoff"
+    );
+}
 
 #[test]
 fn vscode_remote_settings_cover_stable_and_insiders_servers() {

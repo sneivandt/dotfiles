@@ -88,9 +88,10 @@ helper setup and recipe preparation. See
 ### Arch Linux
 
 The weekly Reflector timer and the `update-mirrors` Zsh helper both read
-`/etc/xdg/reflector/reflector.conf`. Set mirror filters and sorting there
-to apply the same policy to automatic and manual refreshes. The helper
-checks the generated HTTPS mirror list before replacing the current one.
+`/etc/xdg/reflector/reflector.conf` for mirror filters and sorting. Set
+`--protocol https` there if you use the helper. A generated list that is
+empty or contains a non-HTTPS mirror leaves the current mirrorlist in place,
+even if the same filters work for the scheduled refresh.
 
 ::: warning Installing a missing package can upgrade the system
 Pacman installation uses `pacman -Syu --needed --noconfirm`. It can synchronize

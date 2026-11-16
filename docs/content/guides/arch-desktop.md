@@ -196,9 +196,17 @@ flowchart TB
 
 Long-running daemons are user services, not duplicated Hyprland autostart
 commands. They include Quickshell, Hypridle, Hyprpaper, Mako, Gammastep, the
-keyring, and the authentication agent. NetworkManager is a system service;
-the old `dhcpcd` service and standalone network tray applet are disabled.
+keyring, and the authentication agent. Dotfiles enables NetworkManager as a
+system service and disables the standalone network tray applet.
 PipeWire and WirePlumber provide audio.
+
+On an existing installation that uses `dhcpcd.service`, handle the network
+handoff from a local session. After updating, run `nmcli device status` and
+check that NetworkManager shows `connected` for the interface you rely on,
+then verify that you can reach the network you need. Once the handoff is
+confirmed, run `sudo systemctl disable --now dhcpcd.service` and check the
+connection again. The default service configuration leaves `dhcpcd.service`
+alone so a failed NetworkManager startup cannot stop the existing service.
 
 Service selection lives in
 [conf/systemd-units.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml);

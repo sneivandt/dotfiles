@@ -177,6 +177,12 @@ behavior. Dotfiles does not back up the original values, and `remove` does not
 restore them. Some settings take effect only when the application or user
 session restarts; save work before restarting either.
 
+Older checkouts set `ForegroundLockTimeout` to `0` under
+`HKCU\Control Panel\Desktop` to allow applications to take focus. If you
+applied that setting, review it in Registry Editor. Use a registry backup
+from before the change to recover the original value, if available. Updates
+preserve the currently stored value.
+
 ## PATH and wrapper
 
 The launcher task writes `%USERPROFILE%\.local\bin\dotfiles.cmd`, and the PATH

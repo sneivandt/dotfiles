@@ -15,9 +15,6 @@ set visible-stats on
 "\e[A": history-search-backward
 "\e[B": history-search-forward
 
-# Word Style
-C-b:unix-filename-rubout
-
 # Ctrl + Backspace. Terminals are configured to emit ESC DEL rather than ^H so
 # the binding survives tmux, which claims C-h for pane navigation.
 "\e\C-?": backward-kill-word

@@ -431,6 +431,17 @@ class ShellConfigTests(unittest.TestCase):
         self.assertEqual([line.split()[-1] for line in result.stdout.splitlines()],
                          ["beginning-of-line", "end-of-line", "delete-char"])
 
+    def test_readline_keeps_character_navigation_and_word_deletion_distinct(self):
+        result = self.run_shell(
+            'set -o emacs\n'
+            'bind -f "$ROOT/symlinks/config/readline/inputrc"\n'
+            'bind -p\n', shell="bash",
+        )
+        bindings = dict(line.rsplit(": ", 1) for line in result.stdout.splitlines()
+                        if line.startswith('"') and ": " in line)
+        self.assertEqual(bindings[r'"\C-b"'], "backward-char")
+        self.assertEqual(bindings[r'"\e\C-?"'], "backward-kill-word")
+
     def test_desktop_profile_paths_and_overrides(self):
         config = self.home / "custom config"
         cache = self.home / "custom cache"
@@ -1108,6 +1119,70 @@ class ShellConfigTests(unittest.TestCase):
                     ) if backend_name == "locate" else ""
                     result = self.run_shell(helpers + select_backend + 'ff -- "$QUERY"\n')
                     self.assertEqual(result.stdout.strip(), query)
+
+    def test_tmux_copy_bindings_choose_the_available_session_backend(self):
+        if shutil.which("tmux") is None:
+            self.skipTest("tmux is not available")
+        command = ["tmux", "-S", str(self.fixture / "tmux.sock"),
+                   "-f", str(ROOT / "symlinks/config/tmux/tmux.conf")]
+        try:
+            subprocess.run(command + ["new-session", "-d", "-s", "fixture", "sleep 60"],
+                           env=self.env, check=True, capture_output=True, timeout=10)
+            result = subprocess.run(command + ["list-keys", "-T", "copy-mode-vi"],
+                                    env=self.env, check=True, text=True,
+                                    capture_output=True, timeout=10)
+            keys = ("y", "C-c", "MouseDragEnd1Pane")
+            bindings = {}
+            for line in result.stdout.splitlines():
+                parts = shlex.split(line)
+                if parts[3] in keys and "copy-pipe-and-cancel" in parts:
+                    bindings[parts[3]] = line
+            self.assertCountEqual(bindings, keys)
+
+            binary_dir = self.fixture / "bin"
+            binary_dir.mkdir()
+            (binary_dir / "cat").symlink_to(shutil.which("cat"))
+            clipboard = self.fixture / "clipboard"
+            calls = self.fixture / "clipboard-calls"
+            self.env.update(PATH=str(binary_dir), CLIPBOARD=str(clipboard),
+                            CLIPBOARD_CALLS=str(calls))
+            for wayland, tools, expected in (
+                (True, ("wl-copy", "xclip"), "wl-copy"),
+                (False, ("wl-copy", "xclip"), "xclip"),
+                (True, ("xclip",), "xclip"),
+                (False, ("wl-copy",), None),
+            ):
+                self.env["WAYLAND_DISPLAY"] = "wayland-fixture" if wayland else ""
+                for name in ("wl-copy", "xclip"):
+                    binary = binary_dir / name
+                    if name in tools:
+                        self.write(
+                            binary,
+                            f'#!/bin/sh\nprintf "%s\\n" "{name}" "$@" > "$CLIPBOARD_CALLS"\n'
+                            'cat > "$CLIPBOARD"\n',
+                            executable=True,
+                        )
+                    else:
+                        binary.unlink(missing_ok=True)
+                for key, invocation in bindings.items():
+                    with self.subTest(key=key, wayland=wayland, tools=tools):
+                        clipboard.unlink(missing_ok=True)
+                        calls.unlink(missing_ok=True)
+                        # Decode tmux's quoting with Bash, including escaped dollar signs.
+                        script = 'bind-key() { shift 6; /bin/sh -c "$1"; }\n' + invocation
+                        subprocess.run(["/bin/bash", "--noprofile", "--norc", "-c", script],
+                                       input=b"selection without trailing newline",
+                                       env=self.env, check=True, capture_output=True, timeout=10)
+                        if expected is None:
+                            self.assertFalse(calls.exists())
+                            self.assertFalse(clipboard.exists())
+                        else:
+                            arguments = ["-selection", "clipboard", "-in"] if expected == "xclip" else []
+                            self.assertEqual(calls.read_text().splitlines(), [expected, *arguments])
+                            self.assertEqual(clipboard.read_bytes(), b"selection without trailing newline")
+        finally:
+            subprocess.run([shutil.which("tmux"), "-S", str(self.fixture / "tmux.sock"),
+                            "kill-server"], env=self.env, capture_output=True, timeout=10)
 
     def test_tmux_panes_load_login_profile_without_starting_the_desktop(self):
         if shutil.which("tmux") is None:

@@ -95,6 +95,7 @@ symlinks = [
   "config/systemd/user/mako.service",
   "config/systemd/user/network-manager-applet.service",
   "config/systemd/user/quickshell.service",
+  "config/systemd/user/thunar-view-settings.service",
   "config/systemd/user/xdg-user-directories.service",
   "config/user-dirs.conf",
   "config/user-dirs.dirs",

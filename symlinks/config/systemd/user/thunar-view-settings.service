@@ -1,0 +1,13 @@
+[Unit]
+Description=Apply managed Thunar view settings
+PartOf=graphical-session.target
+ConditionFileIsExecutable=/usr/bin/xfconf-query
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/xfconf-query --channel thunar --property /last-show-hidden --create --type bool --set true
+ExecStart=/usr/bin/xfconf-query --channel thunar --property /default-view --create --type string --set ThunarCompactView
+
+[Install]
+WantedBy=graphical-session.target

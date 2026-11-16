@@ -98,6 +98,20 @@ impl Task for ConfigureSystemd {
             reload_daemons(ctx, user_manager_available, system_reload_required)?;
 
             let executor = ctx.executor_arc();
+            let retired = (units.iter().any(|entry| {
+                entry.scope == UnitScope::User
+                    && entry.name == "gtk-settings.service"
+                    && entry.enabled
+            }) && !units.iter().any(|entry| {
+                entry.scope == UnitScope::User && entry.name == "nautilus-settings.service"
+            }))
+            .then(|| {
+                SystemdUnitResource::retired_nautilus_settings(
+                    ctx.root(),
+                    ctx.home(),
+                    Arc::clone(&executor),
+                )
+            });
             let resources = units.iter().map(|entry| {
                 SystemdUnitResource::from_entry(
                     entry,
@@ -108,7 +122,7 @@ impl Task for ConfigureSystemd {
             });
             process_resources(
                 ctx,
-                resources,
+                retired.into_iter().chain(resources),
                 &ProcessOpts::lenient("configure").sequential(),
             )
         })

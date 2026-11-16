@@ -363,6 +363,16 @@ fn disabling_a_static_unit_converges_after_stopping_it() {
                 .in_sequence(&mut sequence)
                 .withf(|spec| {
                     spec.program() == "sudo"
+                        && spec.arguments()
+                            == ["systemctl", "disable", "--runtime", "static.service"]
+                        && !spec.is_checked()
+                })
+                .returning(|_| Ok(ExecResult::success("")));
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .withf(|spec| {
+                    spec.program() == "sudo"
                         && spec.arguments() == ["systemctl", "disable", "--now", "static.service"]
                         && !spec.is_checked()
                 })
@@ -454,13 +464,30 @@ fn configured_scope_and_enablement_drive_exact_apply_commands() {
         ),
     ] {
         let mut mock = MockExecutor::new();
-        mock.expect_execute().once().returning(move |spec| {
-            assert_eq!(spec.program(), program);
-            assert_eq!(spec.arguments(), args);
-            assert_eq!(spec.working_dir(), None);
-            assert!(!spec.is_checked());
-            Ok(ExecResult::success(""))
-        });
+        let mut sequence = mockall::Sequence::new();
+        if !enabled {
+            let mut runtime = args;
+            runtime[2] = "--runtime";
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .returning(move |spec| {
+                    assert_eq!(spec.program(), program);
+                    assert_eq!(spec.arguments(), runtime);
+                    assert!(!spec.is_checked());
+                    Ok(ExecResult::success(""))
+                });
+        }
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .returning(move |spec| {
+                assert_eq!(spec.program(), program);
+                assert_eq!(spec.arguments(), args);
+                assert_eq!(spec.working_dir(), None);
+                assert!(!spec.is_checked());
+                Ok(ExecResult::success(""))
+            });
         let entry = crate::domains::system::config::systemd_units::SystemdUnit {
             name: "fixture.service".into(),
             scope,
@@ -470,6 +497,25 @@ fn configured_scope_and_enablement_drive_exact_apply_commands() {
             SystemdUnitResource::from_entry(&entry, Arc::new(mock), Path::new("unused-home"), true);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
+}
+
+#[test]
+fn runtime_disable_failure_is_reported_before_persistent_disable() {
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .once()
+        .withf(|spec| {
+            spec.program() == "systemctl"
+                && spec.arguments() == ["--user", "disable", "--runtime", "fixture.service"]
+                && !spec.is_checked()
+        })
+        .returning(|_| Ok(ExecResult::failure("", "permission denied", Some(1))));
+    let mut resource = SystemdUnitResource::new("fixture.service", UnitScope::User, Arc::new(mock));
+    resource.enabled = false;
+    assert!(matches!(
+        resource.apply().unwrap(),
+        ResourceChange::Skipped { reason, .. } if reason.contains("permission denied")
+    ));
 }
 
 #[test]
@@ -506,7 +552,9 @@ fn system_automount_and_swap_units_use_the_existing_runtime_contract() {
 
             assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
             assert_eq!(
-                resource.apply_invocation().unwrap(),
+                resource
+                    .change_invocation(&[if enabled { "enable" } else { "disable" }, "--now"])
+                    .unwrap(),
                 (
                     "sudo",
                     vec![
@@ -1064,6 +1112,63 @@ fn runtime_enablement_does_not_satisfy_persistent_enablement() {
             disabled_resource.current_state().unwrap(),
             ResourceState::Incorrect { .. }
         ));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn retired_nautilus_cleanup_preserves_local_units_and_removes_owned_dangling_links() {
+    for target in ["checkout", "installed", "local"] {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("repo");
+        let home = fixture.path().join("home");
+        let source_dir = root.join("symlinks/config/systemd/user");
+        let user_dir = home.join(".config/systemd/user");
+        let wants = user_dir.join("graphical-session.target.wants");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        std::fs::create_dir_all(&wants).unwrap();
+        let resource = SystemdUnitResource::retired_nautilus_settings(
+            &root,
+            &home,
+            Arc::new(MockExecutor::new()),
+        );
+        let installed = user_dir.join(&resource.name);
+        let enabled = wants.join(&resource.name);
+        let source = source_dir.join(&resource.name);
+        if target == "local" {
+            std::fs::write(&installed, "local unit").unwrap();
+        } else {
+            std::os::unix::fs::symlink(&source, &installed).unwrap();
+        }
+        std::os::unix::fs::symlink(
+            if target == "checkout" {
+                &source
+            } else {
+                &installed
+            },
+            &enabled,
+        )
+        .unwrap();
+        if target == "local" {
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+            assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+            assert_eq!(std::fs::read_to_string(&installed).unwrap(), "local unit");
+            assert_eq!(std::fs::read_link(&enabled).unwrap(), installed);
+        } else {
+            assert!(matches!(
+                resource.current_state().unwrap(),
+                ResourceState::Incorrect { .. }
+            ));
+            assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+            for link in [&installed, &enabled] {
+                assert_eq!(
+                    std::fs::symlink_metadata(link).unwrap_err().kind(),
+                    std::io::ErrorKind::NotFound
+                );
+            }
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+            assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+        }
     }
 }
 

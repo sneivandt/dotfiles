@@ -122,6 +122,57 @@ fn script() -> ScriptedExecutor {
     ScriptedExecutor::new().with_programs(&["systemctl"])
 }
 
+#[cfg(unix)]
+#[test]
+fn gtk_service_migration_previews_then_removes_retired_links_once() {
+    let task = systemd_task("gtk-settings.service", UnitScope::User, true);
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path().join("checkout");
+    let home = fixture.path().join("home");
+    let source_dir = root.join("symlinks/config/systemd/user");
+    let user_dir = home.join(".config/systemd/user");
+    let wants = user_dir.join("graphical-session.target.wants");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    std::fs::create_dir_all(&wants).unwrap();
+    let old_name = "nautilus-settings.service";
+    let old_source = source_dir.join(old_name);
+    let old_unit = user_dir.join(old_name);
+    let old_enablement = wants.join(old_name);
+    std::os::unix::fs::symlink(&old_source, &old_unit).unwrap();
+    std::os::unix::fs::symlink(&old_source, &old_enablement).unwrap();
+    let gtk = user_dir.join("gtk-settings.service");
+    std::fs::write(&gtk, "[Install]\nWantedBy=graphical-session.target\n").unwrap();
+    std::os::unix::fs::symlink(&gtk, wants.join("gtk-settings.service")).unwrap();
+
+    let mut executor = script();
+    for _ in 0..3 {
+        executor = executor.command(
+            systemctl(&["--user", "show-environment"]),
+            Ok(ExecResult::failure("", "No user manager", Some(1))),
+        );
+    }
+    let ctx = make_context(
+        root,
+        None,
+        Platform::new(Os::Linux, true),
+        Arc::new(executor),
+    )
+    .with_home(home);
+    let preview = task.run(&ctx.with_dry_run(true)).unwrap();
+    assert_eq!(crate::test_helpers::task_batch(&preview).changed_count(), 1);
+    assert_eq!(std::fs::read_link(&old_unit).unwrap(), old_source);
+    assert_eq!(std::fs::read_link(&old_enablement).unwrap(), old_source);
+    let applied = task.run(&ctx).unwrap();
+    assert_eq!(crate::test_helpers::task_batch(&applied).changed_count(), 1);
+    assert!(!old_unit.is_symlink());
+    assert!(!old_enablement.is_symlink());
+    let repeated = task.run(&ctx).unwrap();
+    assert_eq!(
+        crate::test_helpers::task_batch(&repeated).changed_count(),
+        0
+    );
+}
+
 #[test]
 fn run_calls_daemon_reload_before_enabling_unit() {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -490,13 +541,23 @@ fn run_reloads_then_changes_system_enablement_with_sudo() {
                 CommandSpec::new("sudo").args(&["systemctl", "daemon-reload"]),
                 Ok(ExecResult::success("")),
             )
-            .command(systemctl(&["is-enabled", name]), Ok(observed))
-            .command(
+            .command(systemctl(&["is-enabled", name]), Ok(observed));
+        let executor = if enabled {
+            executor
+        } else {
+            executor.command(
                 CommandSpec::new("sudo")
-                    .args(&["systemctl", action, "--now", name])
+                    .args(&["systemctl", "disable", "--runtime", name])
                     .unchecked(),
                 Ok(ExecResult::success("")),
-            );
+            )
+        };
+        let executor = executor.command(
+            CommandSpec::new("sudo")
+                .args(&["systemctl", action, "--now", name])
+                .unchecked(),
+            Ok(ExecResult::success("")),
+        );
         let result = systemd_task(name, UnitScope::System, enabled)
             .run(&context(executor))
             .unwrap();
@@ -555,6 +616,16 @@ fn runtime_drift_plans_elevation_respects_dry_run_and_converges() {
             })
             .returning(|_| Ok(ExecResult::success("")));
         let applied = Arc::clone(&active);
+        if !enabled {
+            mock.expect_execute()
+                .once()
+                .withf(|spec| {
+                    spec.program() == "sudo"
+                        && spec.arguments() == ["systemctl", "disable", "--runtime", "test.service"]
+                        && !spec.is_checked()
+                })
+                .returning(|_| Ok(ExecResult::success("")));
+        }
         mock.expect_execute()
             .once()
             .withf(move |spec| {

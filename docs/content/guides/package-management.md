@@ -133,7 +133,9 @@ accepted, but an application's installer can still request UAC consent.
 Administrator-required, cancelled, and policy-blocked installs count as failures.
 Other packages may still install, but the task fails overall. An already-installed
 or no-applicable-upgrade response counts as current. A failed or unparseable
-`winget list` fails even during preview.
+inventory export fails even during preview. Discovery reads `winget export` JSON
+from a temporary file, so translated console headers and truncated table IDs do
+not affect package matching. The temporary export is removed after the query.
 
 Keep the main run unelevated. Consult [Windows elevation](windows-and-wsl.md#elevation)
 before retrying an application that requires Administrator rights. Installing

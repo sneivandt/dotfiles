@@ -260,6 +260,19 @@ Starting Neovim can clone the pinned lazy.nvim manager and install missing
 plugins. It needs Git and network access and is **not a read-only check**.
 Use `:echo stdpath('data')` to locate its data directory; the manager lives
 under `lazy/lazy.nvim` there. Existing installations are not reset on startup.
+New installs are cloned and checked out in a private sibling directory before
+publication. If an older bootstrap left a manager without its runtime files,
+startup preserves that directory as `lazy.nvim.bootstrap-*.interrupted` and
+installs a fresh copy. Inspect the reported backup before removing it.
+
+Concurrent bootstraps may clone separately, but only one publishes the manager.
+An interrupted clone can leave an unused `lazy.nvim.bootstrap-*` staging
+directory. A publication lock records its owner atomically; the next startup
+recovers it automatically if that process has exited. Startup waits briefly
+for an active owner and reports an error if it cannot acquire the lock; retry
+after that process exits. Abandoned staging directories can be removed after
+all Neovim processes using this data path have stopped. Keep the manager and
+any backups you still need.
 
 Run `:TSInstallConfigured` separately for missing configured Tree-sitter parsers.
 Wait for the asynchronous installation, then reopen the file. Normal startup

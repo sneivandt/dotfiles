@@ -22,9 +22,9 @@ it does not manage file ownership or Windows access-control lists.
 ## What it does
 
 Applies Unix modes to existing configured home targets after the symlink task succeeds.
-Directories recurse and retain traversal bits; ordinary files have execute bits cleared
-unless explicitly configured otherwise. Missing content is not created. Changes through
-links can affect the checkout.
+Directories recurse and gain traversal bits wherever the mode grants read access;
+ordinary files have execute bits cleared unless explicitly configured otherwise.
+Missing content is not created. Changes through links can affect the checkout.
 
 ## Configuration
 
@@ -46,22 +46,32 @@ dot-prefixed home convention: `ssh/config` means `~/.ssh/config`. `./` component
 normalize; absolute paths, parent traversal and home itself are invalid.
 
 Missing targets are not created. A directory entry applies recursively: directories
-retain traversal access and ordinary files have execute bits cleared. Give executable
-files their own entries. Explicit descendant entries override recursive ancestors
-regardless of ordering or parallel execution.
-This also applies when a parent directory is reached through a symlink.
-Declarations requesting different modes for the same resolved destination fail
-before the task changes any permissions. Keep one mode for that destination.
+gain execute bits for each permission class with read access, and ordinary files have
+execute bits cleared. Give executable files their own entries. Explicit descendant
+entries are excluded from recursive ancestors regardless of ordering or parallel
+execution, including when a parent is reached through a symlink. Parent modes must
+still allow owner traversal for separate descendant entries to be checked.
+Declarations requesting different modes for the same readable resolved destination fail
+before the task changes any permissions. Destinations hidden by inaccessible directories
+are checked again after access is restored, before applying modes within that tree.
+Keep one mode for each destination.
 Files with multiple hard links are refused, including within recursive trees:
 changing their mode would also change every other name for the same file.
 Give the managed file an independent copy before retrying. The external-target
 opt-in does not bypass this check.
 
-When a directory lacks owner read or traversal access that the declared mode
-would grant, apply temporarily restores that access to inspect its contents.
-If inspection fails or finds a hard-linked file, it restores the original
-directory modes without changing file permissions. Preview never changes modes;
-an inaccessible subtree can still reveal a blocker during apply.
+When a directory lacks owner read or traversal access, apply temporarily grants
+owner read and traversal to inspect its contents. Directory modes are applied
+after their descendants, so restrictive modes such as `000` do not interrupt
+recursive changes. If inspection fails, finds a hard-linked file or reveals
+conflicting declarations, it restores the original directory modes without changing
+file permissions. An apply error also restores temporary access, but does not undo
+permission changes completed before that error.
+
+Parent access is repaired before separately declared descendants are validated,
+including descendants reached through aliases. Preview never changes modes;
+an inaccessible descendant is reported as unknown rather than assumed safe.
+An inaccessible subtree can still reveal a blocker during apply.
 
 For example, `600` permits only the owner to read and write a file; `700`
 also permits the owner to traverse a directory but excludes other users.

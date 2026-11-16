@@ -21,6 +21,7 @@ pub struct ChmodResource {
     home: Option<PathBuf>,
     validation_error: Option<String>,
     excluded_targets: Vec<PathBuf>,
+    declared_modes: Vec<(PathBuf, u32)>,
     source_roots: Vec<PathBuf>,
     allow_external_target: bool,
 }
@@ -36,6 +37,7 @@ impl ChmodResource {
             home: None,
             validation_error: None,
             excluded_targets: Vec::new(),
+            declared_modes: Vec::new(),
             source_roots: Vec::new(),
             allow_external_target: false,
         }
@@ -54,6 +56,7 @@ impl ChmodResource {
             home: Some(home.to_path_buf()),
             validation_error: validate_path(&entry.path).err(),
             excluded_targets: Vec::new(),
+            declared_modes: Vec::new(),
             source_roots: Vec::new(),
             allow_external_target: entry.allow_external_target,
         }
@@ -75,12 +78,43 @@ impl ChmodResource {
         self
     }
 
-    pub(crate) fn resolved_target(&self) -> Result<PathBuf> {
-        if self.target.try_exists()? {
-            crate::infra::fs::canonicalize(&self.target)
-        } else {
-            crate::infra::fs::resolve_target_entry(&self.target)
+    #[must_use]
+    pub(crate) fn with_declared_modes(mut self, modes: &[(PathBuf, u32)]) -> Self {
+        self.declared_modes = modes.to_vec();
+        self
+    }
+
+    pub(crate) fn validate_declared_modes(modes: &[(PathBuf, u32)]) -> Result<()> {
+        let mut seen = std::collections::HashMap::new();
+        for (path, mode) in modes {
+            if let Some(target) = resolve_declared_target(path)?
+                && let Some((previous_mode, previous_path)) =
+                    seen.insert(target.clone(), (mode, path))
+            {
+                anyhow::ensure!(
+                    previous_mode == mode,
+                    "conflicting permission modes for {} and {} resolving to {}; keep one mode for this destination",
+                    previous_path.display(),
+                    path.display(),
+                    target.display()
+                );
+            }
         }
+        Ok(())
+    }
+
+    pub(crate) fn ordering_target(&self) -> Result<PathBuf> {
+        exclusion_target(&self.target)
+    }
+
+    #[cfg(unix)]
+    fn is_excluded(&self, path: &std::path::Path) -> ResourceResult<bool> {
+        for target in &self.excluded_targets {
+            if exclusion_target(target)? == path {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     fn invalid_path_reason(&self) -> ResourceResult<Option<String>> {
@@ -142,6 +176,7 @@ impl Resource for ChmodResource {
                 reason,
             ));
         }
+        Self::validate_declared_modes(&self.declared_modes)?;
         #[cfg(unix)]
         {
             let mode = self.mode.as_ref().map_err(|reason| {
@@ -158,13 +193,12 @@ impl Resource for ChmodResource {
             let result = (|| {
                 let reason = permission_tree_reason(
                     &target,
-                    &self.excluded_targets,
+                    &|path| self.is_excluded(path),
                     &mut |path, metadata| {
                         use std::os::unix::fs::PermissionsExt as _;
                         let current = metadata.permissions().mode() & MODE_BITS_MASK;
-                        if needs_directory_access(current, dir_mode) {
-                            set_permissions(path, current | 0o500)?;
-                            recovered.push((path.to_path_buf(), current));
+                        if needs_directory_access(current) {
+                            recovered.push(RecoveredDirectory::acquire(path, current)?);
                         }
                         Ok(true)
                     },
@@ -176,13 +210,18 @@ impl Resource for ChmodResource {
                         reason,
                     ));
                 }
+                Self::validate_declared_modes(&self.declared_modes)?;
                 if target.is_dir() {
-                    apply_recursive(
+                    let changed = apply_recursive(
                         &target,
                         dir_mode,
                         strip_file_execute_bits(mode),
-                        &self.excluded_targets,
+                        &|path| self.is_excluded(path),
+                        &mut recovered,
                     )?;
+                    if !changed {
+                        return Ok(ResourceChange::AlreadyCorrect);
+                    }
                 } else {
                     set_permissions(&target, mode)?;
                 }
@@ -190,25 +229,18 @@ impl Resource for ChmodResource {
             })();
 
             match result {
-                Err(error) => {
-                    let mut failures = Vec::new();
-                    for (path, original) in recovered.into_iter().rev() {
-                        if let Err(restore_error) = set_permissions(&path, original) {
-                            failures.push(format!("{}: {restore_error}", path.display()));
-                        }
+                Err(error) => match restore_directory_access(recovered.iter()) {
+                    Ok(()) => Err(error),
+                    Err(restore_error) => {
+                        Err(anyhow::Error::from(error).context(restore_error).into())
                     }
-                    if failures.is_empty() {
-                        Err(error)
-                    } else {
-                        Err(anyhow::Error::from(error)
-                            .context(format!(
-                                "could not restore temporary directory access: {}",
-                                failures.join("; ")
-                            ))
-                            .into())
-                    }
+                },
+                Ok(change) => {
+                    restore_directory_access(
+                        recovered.iter().filter(|recovery| !recovery.finalized),
+                    )?;
+                    Ok(change)
                 }
-                success => success,
             }
         }
 
@@ -223,15 +255,27 @@ impl Resource for ChmodResource {
 
 impl IntrinsicState for ChmodResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
-        if let Some(reason) = self.invalid_path_reason()? {
+        let invalid_reason = match self.invalid_path_reason() {
+            Err(error) if error_is_permission_denied(&error) => {
+                return Ok(ResourceState::Unknown {
+                    reason: format!(
+                        "cannot validate {} until ancestor permissions allow access",
+                        self.target.display()
+                    ),
+                });
+            }
+            result => result?,
+        };
+        if let Some(reason) = invalid_reason {
             return Ok(ResourceState::Invalid { reason });
         }
+        Self::validate_declared_modes(&self.declared_modes)?;
         if let Err(reason) = &self.mode {
             return Ok(ResourceState::Invalid {
                 reason: reason.clone(),
             });
         }
-        if !self.target.exists() {
+        if !self.target.try_exists()? {
             return Ok(ResourceState::Missing);
         }
 
@@ -245,20 +289,21 @@ impl IntrinsicState for ChmodResource {
                 .map_err(|reason| anyhow::anyhow!("{reason}"))?;
             let desired_mode = mode.as_u32();
             let target = crate::infra::fs::canonicalize(&self.target)?;
-            if let Some(reason) =
-                permission_tree_reason(&target, &self.excluded_targets, &mut |_, metadata| {
+            if let Some(reason) = permission_tree_reason(
+                &target,
+                &|path| self.is_excluded(path),
+                &mut |_, metadata| {
                     // Inaccessible, incorrect directories are inspected during apply,
                     // after temporarily restoring owner access, never during discovery.
                     Ok(!needs_directory_access(
                         metadata.permissions().mode() & MODE_BITS_MASK,
-                        ensure_dir_execute_bits(desired_mode),
                     ))
-                })?
-            {
+                },
+            )? {
                 return Ok(ResourceState::Invalid { reason });
             }
             if self.target.is_dir() {
-                check_dir_recursive(&target, desired_mode, &self.excluded_targets)
+                check_dir_recursive(&target, desired_mode, &|path| self.is_excluded(path))
             } else {
                 let current_mode =
                     std::fs::metadata(&self.target)?.permissions().mode() & MODE_BITS_MASK;
@@ -280,6 +325,112 @@ impl IntrinsicState for ChmodResource {
     }
 }
 
+fn error_is_permission_denied(error: &(dyn std::error::Error + 'static)) -> bool {
+    error
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
+        || error.source().is_some_and(error_is_permission_denied)
+}
+
+fn resolve_declared_target(path: &std::path::Path) -> Result<Option<PathBuf>> {
+    let resolved = (|| {
+        if path.try_exists()? {
+            crate::infra::fs::canonicalize(path)
+        } else {
+            crate::infra::fs::resolve_target_entry(path)
+        }
+    })();
+    match resolved {
+        Err(error) if error_is_permission_denied(error.as_ref()) => Ok(None),
+        result => result.map(Some),
+    }
+}
+
+// An unresolved suffix is only an exclusion/order hint, never permission to
+// mutate a destination. Each resource still validates its fully resolved target.
+fn exclusion_target(path: &std::path::Path) -> Result<PathBuf> {
+    if let Some(target) = resolve_declared_target(path)? {
+        return Ok(target);
+    }
+    for ancestor in path.ancestors().skip(1) {
+        match crate::infra::fs::canonicalize(ancestor) {
+            Ok(resolved) => return Ok(resolved.join(path.strip_prefix(ancestor)?)),
+            Err(error) if error_is_permission_denied(error.as_ref()) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    anyhow::bail!("cannot resolve chmod exclusion {}", path.display())
+}
+
+#[cfg(unix)]
+struct RecoveredDirectory {
+    path: PathBuf,
+    original: u32,
+    directory: std::fs::File,
+    finalized: bool,
+}
+
+#[cfg(unix)]
+impl RecoveredDirectory {
+    fn acquire(path: &std::path::Path, original: u32) -> ResourceResult<Self> {
+        use std::os::unix::fs::OpenOptionsExt as _;
+
+        set_permissions(path, original | 0o500)?;
+        let opened = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(nix::libc::O_DIRECTORY | nix::libc::O_NOFOLLOW)
+            .open(path);
+        match opened {
+            Ok(directory) => Ok(Self {
+                path: path.to_path_buf(),
+                original,
+                directory,
+                finalized: false,
+            }),
+            Err(error) => {
+                let error = anyhow::Error::new(error)
+                    .context(format!("open recovered directory {}", path.display()));
+                match set_permissions(path, original) {
+                    Ok(()) => Err(error.into()),
+                    Err(restore_error) => Err(error
+                        .context(format!(
+                            "could not restore temporary directory access on {}: {restore_error}",
+                            path.display()
+                        ))
+                        .into()),
+                }
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+fn restore_directory_access<'a>(
+    recovered: impl DoubleEndedIterator<Item = &'a RecoveredDirectory>,
+) -> ResourceResult<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let mut failures = Vec::new();
+    for recovery in recovered.rev() {
+        // A completed restrictive ancestor may no longer be traversable.
+        // Restore the original directory itself, without resolving its path again.
+        if let Err(error) = recovery
+            .directory
+            .set_permissions(std::fs::Permissions::from_mode(recovery.original))
+        {
+            failures.push(format!("{}: {error}", recovery.path.display()));
+        }
+    }
+    if !failures.is_empty() {
+        return Err(anyhow::anyhow!(
+            "could not restore temporary directory access: {}",
+            failures.join("; ")
+        )
+        .into());
+    }
+    Ok(())
+}
+
 /// Recursively check a directory and its contents against the desired mode.
 ///
 /// Directories are compared with execute bits added (via [`ensure_dir_execute_bits`]),
@@ -289,7 +440,7 @@ impl IntrinsicState for ChmodResource {
 fn check_dir_recursive(
     path: &std::path::Path,
     base_mode: u32,
-    excluded_targets: &[PathBuf],
+    is_excluded: &impl Fn(&std::path::Path) -> ResourceResult<bool>,
 ) -> ResourceResult<ResourceState> {
     use std::os::unix::fs::PermissionsExt;
 
@@ -302,6 +453,14 @@ fn check_dir_recursive(
             current: format!("directory {} has mode {current_mode:o}", path.display()),
         });
     }
+    if needs_directory_access(current_mode) {
+        return Ok(ResourceState::Incorrect {
+            current: format!(
+                "directory {} needs temporary owner access to inspect contents",
+                path.display()
+            ),
+        });
+    }
 
     let entries =
         std::fs::read_dir(path).with_context(|| format!("reading directory {}", path.display()))?;
@@ -310,13 +469,13 @@ fn check_dir_recursive(
         let entry = entry.with_context(|| format!("reading entry in {}", path.display()))?;
         let entry_path = entry.path();
 
-        if excluded_targets.contains(&entry_path) || entry_path.is_symlink() {
+        if is_excluded(&entry_path)? || entry_path.is_symlink() {
             continue;
         }
 
         if entry_path.is_dir() {
             if let recursive_state @ ResourceState::Incorrect { .. } =
-                check_dir_recursive(&entry_path, base_mode, excluded_targets)?
+                check_dir_recursive(&entry_path, base_mode, is_excluded)?
             {
                 return Ok(recursive_state);
             }
@@ -338,29 +497,48 @@ fn apply_recursive(
     path: &std::path::Path,
     dir_mode: u32,
     file_mode: u32,
-    excluded_targets: &[PathBuf],
-) -> ResourceResult<()> {
-    let effective_mode = if path.is_dir() { dir_mode } else { file_mode };
-    set_permissions(path, effective_mode)?;
+    is_excluded: &impl Fn(&std::path::Path) -> ResourceResult<bool>,
+    recovered: &mut [RecoveredDirectory],
+) -> ResourceResult<bool> {
+    use std::os::unix::fs::PermissionsExt as _;
 
+    let mut changed = false;
     if path.is_dir() {
         for entry in std::fs::read_dir(path)
             .with_context(|| format!("reading directory {}", path.display()))?
         {
             let entry = entry.with_context(|| format!("reading entry in {}", path.display()))?;
             let entry_path = entry.path();
-            if excluded_targets.contains(&entry_path) || entry_path.is_symlink() {
+            if is_excluded(&entry_path)? || entry_path.is_symlink() {
                 continue;
             }
             if entry_path.is_dir() {
-                apply_recursive(&entry_path, dir_mode, file_mode, excluded_targets)?;
+                changed |=
+                    apply_recursive(&entry_path, dir_mode, file_mode, is_excluded, recovered)?;
             } else {
+                changed |= std::fs::metadata(&entry_path)?.permissions().mode() & MODE_BITS_MASK
+                    != file_mode;
                 set_permissions(&entry_path, file_mode)?;
             }
         }
     }
 
-    Ok(())
+    // Keep directories traversable until every descendant has been processed.
+    let effective_mode = if path.is_dir() { dir_mode } else { file_mode };
+    let original = recovered
+        .iter()
+        .find(|recovery| recovery.path == path)
+        .map(|recovery| recovery.original);
+    let current = match original {
+        Some(mode) => mode,
+        None => std::fs::metadata(path)?.permissions().mode() & MODE_BITS_MASK,
+    };
+    changed |= current != effective_mode;
+    set_permissions(path, effective_mode)?;
+    if let Some(recovery) = recovered.iter_mut().find(|recovery| recovery.path == path) {
+        recovery.finalized = true;
+    }
+    Ok(changed)
 }
 
 #[cfg(unix)]
@@ -388,7 +566,7 @@ fn set_permissions(path: &std::path::Path, mode: u32) -> ResourceResult<()> {
 #[cfg(unix)]
 fn permission_tree_reason(
     path: &std::path::Path,
-    excluded_targets: &[PathBuf],
+    is_excluded: &impl Fn(&std::path::Path) -> ResourceResult<bool>,
     prepare_directory: &mut impl FnMut(&std::path::Path, &std::fs::Metadata) -> ResourceResult<bool>,
 ) -> ResourceResult<Option<String>> {
     let metadata = std::fs::symlink_metadata(path)?;
@@ -401,12 +579,10 @@ fn permission_tree_reason(
         for entry in std::fs::read_dir(path)? {
             let entry = entry?;
             let child = entry.path();
-            if excluded_targets.contains(&child) {
+            if is_excluded(&child)? {
                 continue;
             }
-            if let Some(reason) =
-                permission_tree_reason(&child, excluded_targets, prepare_directory)?
-            {
+            if let Some(reason) = permission_tree_reason(&child, is_excluded, prepare_directory)? {
                 return Ok(Some(reason));
             }
         }
@@ -415,8 +591,8 @@ fn permission_tree_reason(
 }
 
 #[cfg(unix)]
-const fn needs_directory_access(current: u32, desired: u32) -> bool {
-    desired & 0o500 == 0o500 && current & 0o500 != 0o500
+const fn needs_directory_access(current: u32) -> bool {
+    current & 0o500 != 0o500
 }
 
 /// Add execute bits to a mode for each permission triplet that has read access.
@@ -441,22 +617,56 @@ mod mutation_tests {
     use super::*;
 
     #[test]
-    fn temporary_owner_access_requires_both_declared_read_and_traversal() {
-        for (current, desired, recover) in [
-            (0o000, 0o700, true),
-            (0o600, 0o700, true),
-            (0o100, 0o700, true),
-            (0o700, 0o700, false),
-            (0o700, 0o000, false),
-            (0o000, 0o000, false),
-            (0o000, 0o400, false),
-            (0o000, 0o100, false),
-            (0o000, 0o050, false),
-        ] {
+    fn recovery_restores_original_directories_after_restrictive_ancestors_and_alias_replacement() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        for replace_path in [false, true] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let root = fixture.path().join("tree");
+            let branch = root.join("branch");
+            let nested = branch.join("nested");
+            let preserved = branch.join("preserved");
+            let outside = fixture.path().join("outside");
+            std::fs::create_dir_all(&nested).unwrap();
+            std::fs::set_permissions(&branch, std::fs::Permissions::from_mode(0o700)).unwrap();
+            std::fs::write(&outside, "unmanaged").unwrap();
+            std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o600)).unwrap();
+            for path in [&nested, &root] {
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o000)).unwrap();
+            }
+            let recovered = [
+                RecoveredDirectory::acquire(&root, 0).unwrap(),
+                RecoveredDirectory::acquire(&nested, 0).unwrap(),
+            ];
+            if replace_path {
+                std::fs::rename(&nested, &preserved).unwrap();
+                std::os::unix::fs::symlink(&outside, &nested).unwrap();
+            } else {
+                set_permissions(&nested, 0).unwrap();
+            }
+            // Model a completed restrictive branch before a later apply failure.
+            set_permissions(&branch, 0).unwrap();
+            restore_directory_access(recovered.iter()).unwrap();
+
             assert_eq!(
-                needs_directory_access(current, desired),
-                recover,
-                "current={current:o}, desired={desired:o}"
+                root.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+                0
+            );
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+            assert_eq!(
+                branch.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+                0
+            );
+            std::fs::set_permissions(&branch, std::fs::Permissions::from_mode(0o700)).unwrap();
+            let restored = if replace_path { &preserved } else { &nested };
+            assert_eq!(
+                restored.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+                0
+            );
+            std::fs::set_permissions(restored, std::fs::Permissions::from_mode(0o700)).unwrap();
+            assert_eq!(
+                outside.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+                0o600
             );
         }
     }
@@ -471,14 +681,14 @@ mod mutation_tests {
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
         std::fs::hard_link(&file, &alias).unwrap();
         assert!(
-            permission_tree_reason(fixture.path(), &[], &mut |_, _| Ok(true))
+            permission_tree_reason(fixture.path(), &|_| Ok(false), &mut |_, _| Ok(true))
                 .unwrap()
                 .is_some()
         );
         assert!(
             permission_tree_reason(
                 fixture.path(),
-                &[file.clone(), alias.clone()],
+                &|path| Ok(path == file || path == alias),
                 &mut |_, _| Ok(true),
             )
             .unwrap()

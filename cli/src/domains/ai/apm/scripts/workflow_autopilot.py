@@ -30,8 +30,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
-def parse_cron_field(field, minimum, maximum, *, sunday_alias=False):
-    """Expand one numeric cron field supporting lists, ranges, and steps."""
+def parse_cron_field(field, minimum, maximum, *, names=None, sunday_alias=False):
+    """Expand a cron field supporting names, lists, ranges, and numeric steps."""
+    def parse_value(text):
+        if names and text.upper() in names:
+            return names[text.upper()]
+        return int(text)
+
     values = set()
     for item in field.split(","):
         base, separator, step_text = item.partition("/")
@@ -42,9 +47,9 @@ def parse_cron_field(field, minimum, maximum, *, sunday_alias=False):
             start, end = minimum, maximum
         elif "-" in base:
             start_text, end_text = base.split("-", 1)
-            start, end = int(start_text), int(end_text)
+            start, end = parse_value(start_text), parse_value(end_text)
         else:
-            start = int(base)
+            start = parse_value(base)
             end = maximum if separator else start
         if start < minimum or end > maximum or start > end:
             raise ValueError(f"invalid cron range: {item!r}")
@@ -64,8 +69,15 @@ def compute_next_cron(expression, now_local):
     minutes = parse_cron_field(minute_text, 0, 59)
     hours = parse_cron_field(hour_text, 0, 23)
     month_days = parse_cron_field(month_day_text, 1, 31)
-    months = parse_cron_field(month_text, 1, 12)
-    week_days = parse_cron_field(week_day_text, 0, 7, sunday_alias=True)
+    months = parse_cron_field(
+        month_text, 1, 12,
+        names=dict(zip("JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split(), range(1, 13))),
+    )
+    week_days = parse_cron_field(
+        week_day_text, 0, 7,
+        names=dict(zip("SUN MON TUE WED THU FRI SAT".split(), range(7))),
+        sunday_alias=True,
+    )
     month_day_any = month_day_text == "*"
     week_day_any = week_day_text == "*"
 

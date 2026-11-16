@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use super::package::*;
-use super::winget::parse_winget_ids;
+use super::winget::{mock_inventory, parse_winget_ids};
 use crate::engine::{Resource, ResourceChange, ResourceState};
 use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor, MockExecutor};
 
@@ -115,20 +115,14 @@ fn inventory_failures_are_not_reported_as_an_empty_package_set() {
         for spawn_failure in [false, true] {
             let mut mock = MockExecutor::new();
             mock.expect_execute().once().returning(move |spec| {
-                let (program, args) = if manager == PackageManager::Winget {
-                    (
-                        "winget",
-                        vec![
-                            "list",
-                            "--accept-source-agreements",
-                            "--disable-interactivity",
-                        ],
-                    )
+                let program = if manager == PackageManager::Winget {
+                    mock_inventory(&spec, &[]);
+                    "winget"
                 } else {
-                    ("pacman", vec!["-Q"])
+                    assert_eq!(spec.arguments(), ["-Q"]);
+                    "pacman"
                 };
                 assert_eq!(spec.program(), program);
-                assert_eq!(spec.arguments(), args);
                 assert_eq!(spec.working_dir(), None);
                 assert!(spec.is_checked());
                 if spawn_failure {
@@ -166,11 +160,10 @@ fn inventory_failures_are_not_reported_as_an_empty_package_set() {
 #[test]
 fn get_installed_winget_parses_id_tokens() {
     let mut mock = MockExecutor::new();
-    mock.expect_execute().once().returning(|_| {
-            Ok(ExecResult::success(
-                "Name          Id                    Version\nGit           Git.Git               2.39.0\nPowerShell    Microsoft.PowerShell  7.3\n",
-            ))
-        });
+    mock.expect_execute().once().returning(|spec| {
+        mock_inventory(&spec, &["Git.Git", "Microsoft.PowerShell"]);
+        Ok(ExecResult::success(""))
+    });
     let installed = get_installed_packages(PackageManager::Winget, &mock).unwrap();
     assert!(installed.contains("Git.Git"));
     assert!(installed.contains("Microsoft.PowerShell"));
@@ -181,13 +174,16 @@ fn get_installed_winget_parses_id_tokens() {
 }
 
 #[test]
-fn get_installed_winget_ignores_separator_and_extra_columns() {
-    let stdout = concat!(
-        "Name                          Id                           Version        Available Source\n",
-        "-------------------------------------------------------------------------------------\n",
-        "Git                           Git.Git                      2.45.1         2.46.0   winget\n",
-        "Windows Terminal              Microsoft.WindowsTerminal    1.21.2361.0             winget\n",
-    );
+fn get_installed_winget_ignores_export_metadata() {
+    let stdout = r#"{
+        "$schema": "https://aka.ms/winget-packages.schema.2.0.json",
+        "CreationDate": "2026-11-16T00:00:00.000-00:00",
+        "WinGetVersion": "1.12",
+        "Sources": [{"SourceDetails": {"Name": "winget"}, "Packages": [
+            {"PackageIdentifier": "Git.Git", "Version": "2.45.1"},
+            {"PackageIdentifier": "Microsoft.WindowsTerminal", "Scope": "user"}
+        ]}]
+    }"#;
 
     let installed = parse_winget_ids(stdout).unwrap();
     assert!(installed.contains("Git.Git"));
@@ -196,21 +192,12 @@ fn get_installed_winget_ignores_separator_and_extra_columns() {
 }
 
 #[test]
-fn get_installed_winget_handles_unicode_in_name_column() {
-    // The Name column contains multi-byte and multi-width Unicode characters
-    // (accented letters, an em dash, and wide CJK characters). winget aligns the
-    // Id column by display width, not byte or char offset, so the parser must
-    // slice columns by display column to extract IDs from every row.
-    let stdout = concat!(
-        "Name                          Id                           Version\n",
-        "-------------------------------------------------------------------\n",
-        // CJK characters (display width 2 each) in Name
-        "中文名称 App                  Unicode.App                  1.0.0\n",
-        // em dash (display width 1) in Name
-        "App \u{2014} Edition                 App.Edition                  2.0.0\n",
-        // accented characters (display width 1 each) in Name
-        "Ünïcödé App                   Unicode.Accented             3.0.0\n",
-    );
+fn get_installed_winget_does_not_depend_on_localized_names() {
+    let stdout = r#"{"Sources":[{"Packages":[
+        {"Name": "中文名称 App", "PackageIdentifier": "Unicode.App"},
+        {"Name": "App — Edition", "PackageIdentifier": "App.Edition"},
+        {"Name": "Ünïcödé App", "PackageIdentifier": "Unicode.Accented"}
+    ]}]}"#;
 
     let installed = parse_winget_ids(stdout).unwrap();
     assert!(

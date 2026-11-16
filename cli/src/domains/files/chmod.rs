@@ -44,30 +44,42 @@ impl Task for ApplyFilePermissions {
             .iter()
             .map(|entry| ChmodResource::from_entry(entry, ctx.home()).with_source_roots(&roots))
             .collect();
-        let targets = resources
+        let targets: Vec<_> = resources
             .iter()
-            .map(ChmodResource::resolved_target)
-            .collect::<Result<Vec<_>>>()?;
-        let mut seen = std::collections::HashMap::new();
-        for ((resource, target), entry) in resources.iter().zip(&targets).zip(self.config.get()) {
-            if let Ok(mode) = entry.parsed_mode()
-                && let Some((previous_mode, previous_path)) =
-                    seen.insert(target, (mode.as_u32(), &resource.target))
-            {
-                anyhow::ensure!(
-                    previous_mode == mode.as_u32(),
-                    "conflicting permission modes for {} and {} resolving to {}; keep one mode for this destination",
-                    previous_path.display(),
-                    resource.target.display(),
-                    target.display()
-                );
-            }
-        }
-        let resources = resources
-            .into_iter()
-            .map(|resource| resource.excluding(&targets))
+            .map(|resource| resource.target.clone())
             .collect();
-        run_resource_task(ctx, resources, &ProcessOpts::fix_existing("configure"))
+        let modes: Vec<_> = resources
+            .iter()
+            .zip(self.config.get())
+            .filter_map(|(resource, entry)| {
+                entry
+                    .parsed_mode()
+                    .as_ref()
+                    .ok()
+                    .map(|mode| (resource.target.clone(), mode.as_u32()))
+            })
+            .collect();
+        ChmodResource::validate_declared_modes(&modes)?;
+        let mut resources = resources
+            .into_iter()
+            .map(|resource| {
+                let order = resource.ordering_target()?.components().count();
+                Ok((
+                    order,
+                    resource.excluding(&targets).with_declared_modes(&modes),
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        // Parents must restore access before their descendants are inspected.
+        resources.sort_by_key(|(order, _)| *order);
+        run_resource_task(
+            ctx,
+            resources
+                .into_iter()
+                .map(|(_, resource)| resource)
+                .collect(),
+            &ProcessOpts::fix_existing("configure").sequential(),
+        )
     }
 }
 
@@ -79,6 +91,210 @@ mod tests {
     use crate::infra::ConfigHandle;
     use crate::test_helpers::{empty_config, make_linux_context, make_windows_context};
     use std::path::PathBuf;
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_children_are_resolved_after_ancestor_repair() {
+        use crate::test_helpers::task_batch;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        for parallel in [false, true] {
+            for child_first in [false, true] {
+                for alias in [false, true] {
+                    let fixture = tempfile::tempdir_in(".").unwrap();
+                    let home = fixture.path().canonicalize().unwrap();
+                    let directory = if alias {
+                        home.join(".real/nested")
+                    } else {
+                        home.join(".ssh")
+                    };
+                    std::fs::create_dir_all(&directory).unwrap();
+                    if alias {
+                        std::os::unix::fs::symlink(&directory, home.join(".ssh")).unwrap();
+                    }
+                    let file = directory.join("config");
+                    std::fs::write(&file, "fixture").unwrap();
+                    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644))
+                        .unwrap();
+                    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o000))
+                        .unwrap();
+                    let child = if alias {
+                        "real/nested/config"
+                    } else {
+                        "ssh/config"
+                    };
+                    let mut entries =
+                        vec![ChmodEntry::new("700", "ssh"), ChmodEntry::new("640", child)];
+                    if child_first {
+                        entries.reverse();
+                    }
+                    let task = ApplyFilePermissions::new(ConfigHandle::new(entries));
+                    let ctx = make_linux_context(home.clone(), None)
+                        .with_home(home)
+                        .with_parallel(parallel);
+                    let preview = task.run(&ctx.with_dry_run(true)).unwrap();
+                    assert_eq!(task_batch(&preview).changed_count(), 1);
+                    assert_eq!(task_batch(&preview).failed_count(), 1);
+                    assert_eq!(
+                        directory.metadata().unwrap().permissions().mode() & 0o777,
+                        0
+                    );
+                    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+                        .unwrap();
+                    assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o644);
+                    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o000))
+                        .unwrap();
+
+                    let result = task.run(&ctx).unwrap();
+                    assert_eq!(task_batch(&result).failed_count(), 0);
+                    assert_eq!(
+                        directory.metadata().unwrap().permissions().mode() & 0o777,
+                        0o700
+                    );
+                    assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o640);
+                    let repeated = task.run(&ctx).unwrap();
+                    assert_eq!(task_batch(&repeated).changed_count(), 0);
+                    assert_eq!(task_batch(&repeated).already_ok_count(), 2);
+                }
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn deferred_children_still_reject_external_and_home_aliases() {
+        use crate::test_helpers::task_batch;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        for target_home in [false, true] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let root = fixture.path().canonicalize().unwrap();
+            let home = root.join("home");
+            let directory = home.join(".ssh");
+            let outside = root.join("outside");
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o755)).unwrap();
+            std::fs::write(&outside, "unmanaged").unwrap();
+            std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o644)).unwrap();
+            std::os::unix::fs::symlink(
+                if target_home { &home } else { &outside },
+                directory.join("config"),
+            )
+            .unwrap();
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o000)).unwrap();
+            let ctx = make_linux_context(root, None).with_home(home.clone());
+            let task = ApplyFilePermissions::new(ConfigHandle::new(vec![
+                ChmodEntry::new("600", "ssh/config"),
+                ChmodEntry::new("700", "ssh"),
+            ]));
+            let result = task.run(&ctx).unwrap();
+            assert_eq!(task_batch(&result).failed_count(), 1);
+            assert_eq!(
+                directory.metadata().unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+            assert_eq!(home.metadata().unwrap().permissions().mode() & 0o777, 0o755);
+            assert_eq!(
+                outside.metadata().unwrap().permissions().mode() & 0o777,
+                0o644
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn conflicts_uncovered_by_recovery_restore_ancestor_access() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let home = fixture.path().canonicalize().unwrap();
+        let directory = home.join(".ssh");
+        let file = directory.join("config");
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::write(&file, "fixture").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::os::unix::fs::symlink(&file, directory.join("alias")).unwrap();
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let ctx = make_linux_context(home.clone(), None).with_home(home);
+        let error = ApplyFilePermissions::new(ConfigHandle::new(vec![
+            ChmodEntry::new("700", "ssh"),
+            ChmodEntry::new("600", "ssh/config"),
+            ChmodEntry::new("644", "ssh/alias"),
+        ]))
+        .run(&ctx)
+        .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("conflicting permission modes"),
+            "{error:#}"
+        );
+        assert_eq!(
+            directory.metadata().unwrap().permissions().mode() & 0o777,
+            0
+        );
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolution_failures_other_than_access_denial_are_not_deferred() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let home = fixture.path().canonicalize().unwrap();
+        let directory = home.join(".ssh");
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::os::unix::fs::symlink("config", directory.join("config")).unwrap();
+        let ctx = make_linux_context(home.clone(), None).with_home(home);
+        let result = ApplyFilePermissions::new(ConfigHandle::new(vec![
+            ChmodEntry::new("700", "ssh"),
+            ChmodEntry::new("600", "ssh/config"),
+        ]))
+        .run(&ctx);
+        assert!(
+            result.is_err(),
+            "a symlink loop is not a deferred access check"
+        );
+        assert_eq!(
+            directory.metadata().unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn deferred_exclusions_do_not_leave_temporary_directory_access_behind() {
+        use crate::test_helpers::task_batch;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let home = fixture.path().canonicalize().unwrap();
+        let directory = home.join(".ssh");
+        let nested = directory.join("nested");
+        let file = nested.join("config");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(&file, "fixture").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::os::unix::fs::symlink(".", nested.join("alias")).unwrap();
+        for path in [&nested, &directory] {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        let task = ApplyFilePermissions::new(ConfigHandle::new(vec![
+            ChmodEntry::new("700", "ssh"),
+            ChmodEntry::new("999", "ssh/nested/alias"),
+        ]));
+        let ctx = make_linux_context(home.clone(), None).with_home(home);
+        let result = task.run(&ctx).unwrap();
+        assert_eq!(task_batch(&result).failed_count(), 1);
+        assert_eq!(
+            directory.metadata().unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(nested.metadata().unwrap().permissions().mode() & 0o777, 0);
+        std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o644);
+    }
 
     #[cfg(unix)]
     #[test]

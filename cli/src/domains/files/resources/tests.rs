@@ -376,6 +376,103 @@ mod chmod {
 
     #[cfg(unix)]
     #[test]
+    fn restrictive_recursive_modes_finish_descendants_and_recover_on_repeat() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        for desired in [0o000, 0o200, 0o111] {
+            for initial in [0o000, 0o700] {
+                let fixture = tempfile::tempdir_in(".").unwrap();
+                let root = fixture.path().join("tree");
+                let nested = root.join("nested");
+                let file = nested.join("data");
+                std::fs::create_dir_all(&nested).unwrap();
+                std::fs::write(&file, "fixture").unwrap();
+                std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+                for directory in [&nested, &root] {
+                    std::fs::set_permissions(directory, std::fs::Permissions::from_mode(initial))
+                        .unwrap();
+                }
+                let resource = ChmodResource::new(root.clone(), mode(&format!("{desired:03o}")));
+                assert!(matches!(
+                    resource.current_state().unwrap(),
+                    ResourceState::Incorrect { .. }
+                ));
+                assert_eq!(
+                    resource.apply().unwrap(),
+                    ResourceChange::Applied,
+                    "desired={desired:o}, initial={initial:o}"
+                );
+                // Reopen only to assert descendants and clean up the fixture.
+                for directory in [&root, &nested] {
+                    assert_eq!(
+                        directory.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+                        desired
+                    );
+                    std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700))
+                        .unwrap();
+                }
+                assert_eq!(
+                    file.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+                    strip_file_execute_bits(desired)
+                );
+                for directory in [&nested, &root] {
+                    std::fs::set_permissions(directory, std::fs::Permissions::from_mode(desired))
+                        .unwrap();
+                }
+                assert_eq!(
+                    resource.apply().unwrap(),
+                    ResourceChange::AlreadyCorrect,
+                    "repeating a restrictive declaration must converge"
+                );
+                for directory in [&root, &nested] {
+                    assert_eq!(
+                        directory.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+                        desired
+                    );
+                    std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700))
+                        .unwrap();
+                }
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restrictive_recursive_preflight_restores_access_when_hard_links_are_found() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().join("tree");
+        let nested = root.join("nested");
+        let outside = fixture.path().join("outside");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(&outside, "unmanaged").unwrap();
+        std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::hard_link(&outside, nested.join("alias")).unwrap();
+        for directory in [&nested, &root] {
+            std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        let resource = ChmodResource::new(root.clone(), mode("000"));
+        let error = resource.apply().unwrap_err();
+        assert!(
+            format!("{error:#}").contains("multiply linked file"),
+            "{error:#}"
+        );
+        for directory in [&root, &nested] {
+            assert_eq!(
+                directory.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+                0
+            );
+            std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        assert_eq!(
+            outside.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+            0o600
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn current_state_detects_wrong_file_inside_correct_directory() {
         use std::os::unix::fs::PermissionsExt;
 

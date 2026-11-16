@@ -315,6 +315,12 @@ When the App database exists, dotfiles enables APM's experimental `copilot-app`
 support and installs workflow packages after the primary deployment. It does
 not send manifest-wide MCP dependencies to this workflow-only integration.
 
+Local workflow prompts can set `cron_expression` in their YAML frontmatter.
+It uses five fields: minute, hour, day of month, month, and day of week.
+Month and weekday fields accept case-insensitive three-letter names, including
+lists, ranges, and numeric steps. For example, `0 9 * JAN-DEC MON-FRI` runs at
+09:00 on weekdays in the machine's local time.
+
 You can update agent packages while the Copilot App is open. If the App still
 shows an old schedule after the update, reopen it to reload the scheduler.
 If the update reports a database lock, close the App and retry the update.

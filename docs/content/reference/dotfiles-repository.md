@@ -47,6 +47,8 @@ For update, `--no-repo-update` removes this task even from dependency expansion.
 The task uses the current Git branch and its configured upstream. The main checkout and
 [private overlay](../guides/private-overlays.md) are selected through CLI options and saved
 selection settings, not a repository-update TOML file.
+Git's system configuration remains in effect, including proxy, certificate,
+credential-helper, and URL-rewrite settings.
 
 To understand an unmet result, inspect each affected checkout:
 

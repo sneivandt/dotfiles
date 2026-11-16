@@ -8,104 +8,63 @@ use super::package::PackageProvider;
 use crate::engine::ResourceChange;
 use crate::infra::exec::{CommandSpec, Executor};
 
-/// Parses the column header row of `winget list` output into a list of
-/// `(display-column, name)` pairs, one per column.
-///
-/// winget left-aligns each value at the same *display* column as its header.
-/// Column starts are therefore measured in terminal cells, not bytes or
-/// `char`s, so that wide characters (e.g. CJK names, which occupy two cells)
-/// and multibyte-but-narrow characters (e.g. an en-dash) both keep later
-/// columns aligned. Column names are detected as runs of non-space characters.
-fn header_columns(line: &str) -> Vec<(usize, String)> {
-    let mut cols = Vec::new();
-    let mut col = 0usize;
-    let mut start: Option<usize> = None;
-    let mut current = String::new();
-
-    for ch in line.chars() {
-        if ch == ' ' {
-            if let Some(s) = start.take() {
-                cols.push((s, std::mem::take(&mut current)));
-            }
-        } else {
-            if start.is_none() {
-                start = Some(col);
-            }
-            current.push(ch);
-        }
-        col = col.saturating_add(char_display_width(ch));
-    }
-
-    if let Some(s) = start {
-        cols.push((s, current));
-    }
-
-    cols
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct Inventory {
+    sources: Vec<InventorySource>,
 }
 
-/// Returns the display width of `ch` in terminal cells, treating control and
-/// zero-width characters as width zero.
-fn char_display_width(ch: char) -> usize {
-    unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0)
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct InventorySource {
+    packages: Vec<InventoryPackage>,
 }
 
-/// Returns the substring of `line` spanning the half-open *display-column*
-/// range `[start, end)`. Walking by display width keeps the slice aligned with
-/// winget's column layout regardless of the byte or `char` length of preceding
-/// values.
-fn slice_by_display_range(line: &str, start: usize, end: usize) -> String {
-    let mut col = 0usize;
-    let mut out = String::new();
-
-    for ch in line.chars() {
-        if col >= end {
-            break;
-        }
-        if col >= start {
-            out.push(ch);
-        }
-        col = col.saturating_add(char_display_width(ch));
-    }
-
-    out
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct InventoryPackage {
+    package_identifier: String,
 }
 
-pub(super) fn parse_winget_ids(stdout: &str) -> Result<HashSet<String>> {
+pub(super) fn parse_winget_ids(json: &str) -> Result<HashSet<String>> {
+    let inventory: Inventory = serde_json::from_str(json.trim_start_matches('\u{feff}'))
+        .context("could not parse winget export inventory")?;
     let mut ids = HashSet::new();
-    let mut id_range: Option<(usize, usize)> = None;
-
-    for line in stdout.lines() {
-        if let Some((id_start, next_start)) = id_range {
-            if line.bytes().all(|b| b == b'-' || b == b' ') {
-                continue;
-            }
-            let cell = slice_by_display_range(line, id_start, next_start);
-            let id = cell.trim();
-            // Package IDs never contain spaces; this also filters stray
-            // sentence fragments that may precede the table.
-            if !id.is_empty() && !id.contains(' ') {
-                ids.insert(id.to_string());
-            }
-        } else {
-            let cols = header_columns(line);
-            if let Some(pos) = cols
-                .iter()
-                .position(|(_, name)| name.eq_ignore_ascii_case("Id"))
-                && let Some(&(id_start, _)) = cols.get(pos)
-            {
-                let next_start = cols
-                    .get(pos.saturating_add(1))
-                    .map_or(usize::MAX, |&(s, _)| s);
-                id_range = Some((id_start, next_start));
-            }
-        }
+    for package in inventory
+        .sources
+        .into_iter()
+        .flat_map(|source| source.packages)
+    {
+        anyhow::ensure!(
+            !package.package_identifier.trim().is_empty(),
+            "winget export inventory contains an empty package identifier"
+        );
+        ids.insert(package.package_identifier);
     }
-
-    if id_range.is_none() {
-        anyhow::bail!("could not parse winget list output: package Id column not found");
-    }
-
     Ok(ids)
+}
+
+#[cfg(test)]
+pub(crate) fn mock_inventory(spec: &CommandSpec, ids: &[&str]) {
+    assert_eq!(spec.program(), "winget");
+    let args = spec.arguments();
+    assert_eq!(args.len(), 5);
+    assert_eq!(args[0], "export");
+    assert_eq!(args[1], "--output");
+    assert_eq!(args[3], "--accept-source-agreements");
+    assert_eq!(args[4], "--disable-interactivity");
+    assert!(spec.is_checked());
+    let output = std::path::Path::new(&args[2]);
+    std::fs::write(
+        output,
+        serde_json::json!({
+            "Sources": [{"Packages": ids.iter().map(|id| {
+                serde_json::json!({"PackageIdentifier": id})
+            }).collect::<Vec<_>>()}]
+        })
+        .to_string(),
+    )
+    .unwrap();
 }
 
 /// Winget exit codes this provider reacts to.
@@ -163,7 +122,7 @@ enum InstallVerdict {
 /// Classify a winget exit code into the action the caller should take.
 ///
 /// Recognising "already installed" as success keeps installs idempotent when
-/// `winget list` under-reports a package, and recognising the privilege codes
+/// inventory discovery under-reports a package, and recognising the privilege codes
 /// lets an unelevated run degrade to a skip instead of a hard failure.
 const fn classify_install(code: Option<i32>) -> InstallVerdict {
     match code {
@@ -221,15 +180,25 @@ impl PackageProvider for WingetProvider {
     }
 
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
-        let result = executor
-            .execute(CommandSpec::new("winget").args(&[
-                "list",
-                "--accept-source-agreements",
-                "--disable-interactivity",
-            ]))
+        let staging = crate::infra::fs::TempGuard::create_unique_dir_with_mode(
+            &std::env::temp_dir(),
+            "dotfiles-winget",
+            "inventory",
+            0o700,
+        )
+        .context("creating temporary winget inventory directory")?;
+        let output = staging.path().join("packages.json");
+        executor
+            .execute(
+                CommandSpec::new("winget")
+                    .arg("export")
+                    .arg("--output")
+                    .arg(&output)
+                    .args(&["--accept-source-agreements", "--disable-interactivity"]),
+            )
             .context("querying installed winget packages")?;
-
-        parse_winget_ids(&result.stdout)
+        let json = std::fs::read_to_string(&output).context("reading winget export inventory")?;
+        parse_winget_ids(&json)
     }
 
     /// Install `name`, preferring a per-user installer.
@@ -326,112 +295,86 @@ mod tests {
     }
 
     #[test]
-    fn parse_winget_ids_handles_truncated_name_with_single_space_separator() {
-        // A 28-char name padded to width 29 leaves exactly ONE trailing space
-        // before the Id, reproducing the winget truncation that broke the old
-        // 2+-space column splitter.
-        let header = format!("{:<29}{:<37}{}", "Name", "Id", "Version");
-        let row = format!(
-            "{:<29}{:<37}{}",
-            "Visual Studio Code Insiders…", "Microsoft.VisualStudioCode.Insiders", "1.125.0"
+    fn export_inventory_preserves_full_ids_across_sources_and_optional_fields() {
+        let json = r#"{
+            "Sources": [
+                {"Packages": [
+                    {"PackageIdentifier": "Microsoft.VisualStudioCode.Insiders", "Version": "1.0"},
+                    {"PackageIdentifier": "Git.Git"}
+                ], "SourceDetails": {"Name": "winget"}},
+                {"Packages": [{"PackageIdentifier": "Git.Git"}]}
+            ]
+        }"#;
+        assert_eq!(
+            parse_winget_ids(json).unwrap(),
+            HashSet::from([
+                "Microsoft.VisualStudioCode.Insiders".into(),
+                "Git.Git".into()
+            ])
         );
-        let stdout = format!("{header}\n{}\n{row}\n", "-".repeat(73));
-
-        let ids = parse_winget_ids(&stdout).unwrap();
-
-        assert!(ids.contains("Microsoft.VisualStudioCode.Insiders"));
-        assert_eq!(ids.len(), 1);
-    }
-
-    #[test]
-    fn parse_winget_ids_handles_en_dash_name() {
-        // The en-dash is one char but three bytes; display-range slicing must
-        // keep the Id column aligned.
-        let header = format!("{:<44}{:<20}{}", "Name", "Id", "Version");
-        let row = format!(
-            "{:<44}{:<20}{}",
-            "APM – Agent Package Manager", "Microsoft.APM", "1.0.0"
+        assert_eq!(
+            parse_winget_ids(&format!("\u{feff}{json}")).unwrap(),
+            parse_winget_ids(json).unwrap()
         );
-        let stdout = format!("{header}\n{}\n{row}\n", "-".repeat(70));
-
-        let ids = parse_winget_ids(&stdout).unwrap();
-
-        assert!(ids.contains("Microsoft.APM"));
-        assert_eq!(ids.len(), 1);
-    }
-
-    #[test]
-    fn parse_winget_ids_accepts_japanese_inventory() {
-        let ids = parse_winget_ids(concat!(
-            "名前      ID                  バージョン\n",
-            "------------------------------------------\n",
-            "端末      Microsoft.Terminal  1.0\n",
-        ))
-        .unwrap();
-        assert_eq!(ids, HashSet::from(["Microsoft.Terminal".to_string()]));
-    }
-
-    #[test]
-    fn parse_winget_ids_rejects_unrecognized_output() {
-        for stdout in [
-            "",
-            "Name  Version\nGit   2.51.0\n",
-            "unexpected status message\n",
-        ] {
-            let error = parse_winget_ids(stdout).expect_err("missing table must not mean empty");
-            assert!(error.to_string().contains("package Id column not found"));
+        for empty in [r#"{"Sources":[]}"#, r#"{"Sources":[{"Packages":[]}]}"#] {
+            assert!(parse_winget_ids(empty).unwrap().is_empty());
         }
     }
 
     #[test]
-    fn parse_winget_ids_accepts_a_recognized_empty_table() {
-        assert!(
-            parse_winget_ids("Name  Id       Version\n----------------------\n")
-                .unwrap()
-                .is_empty()
-        );
+    fn export_inventory_rejects_incomplete_or_invalid_inventory() {
+        for json in [
+            "",
+            "not json",
+            "{}",
+            r#"{"Sources":null}"#,
+            r#"{"Sources":[{}]}"#,
+            r#"{"Sources":[{"Packages":[{}]}]}"#,
+            r#"{"Sources":[{"Packages":[{"PackageIdentifier":""}]}]}"#,
+        ] {
+            assert!(parse_winget_ids(json).is_err(), "{json}");
+        }
     }
 
     #[test]
-    fn parse_winget_ids_ignores_blank_and_separator_rows() {
-        let ids = parse_winget_ids(concat!(
-            "Name             Id        Version\n",
-            "----------------------------------\n",
-            "\n",
-            "                                  \n",
-            "Git              Git.Git   2.51.0\n",
-        ))
-        .unwrap();
-
-        assert_eq!(ids.len(), 1);
-        assert!(ids.contains("Git.Git"));
-    }
-
-    #[test]
-    fn winget_query_installed_uses_expected_noninteractive_flags() {
+    fn winget_inventory_ignores_localized_console_output_and_cleans_export() {
+        let output_path = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let captured = std::sync::Arc::clone(&output_path);
         let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .withf(|spec| {
-                spec.program() == "winget"
-                    && spec.arguments()
-                        == [
-                            "list",
-                            "--accept-source-agreements",
-                            "--disable-interactivity",
-                        ]
-                    && spec.is_checked()
-            })
-            .returning(|_| {
-                Ok(ExecResult::success(
-                    "Name  Id       Version\nGit   Git.Git  2.51.0\n",
-                ))
-            });
+        mock.expect_execute().once().returning(move |spec| {
+            mock_inventory(&spec, &["Git.Git"]);
+            *captured.lock().unwrap() = Some(std::path::PathBuf::from(&spec.arguments()[2]));
+            Ok(ExecResult::success("Имя  ИД  Версия\nЭкспорт завершён"))
+        });
 
         let ids = WingetProvider.query_installed(&mock).unwrap();
 
         assert_eq!(ids.len(), 1);
         assert!(ids.contains("Git.Git"));
+        assert!(
+            !output_path
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .exists()
+        );
+    }
+
+    #[test]
+    fn winget_export_success_without_output_is_not_empty_inventory() {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .returning(|_| Ok(ExecResult::success("")));
+        let error = WingetProvider.query_installed(&mock).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("reading winget export inventory")
+        );
     }
 
     #[test]

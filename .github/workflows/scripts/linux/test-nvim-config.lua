@@ -25,8 +25,9 @@ local uv = vim.uv or vim.loop
 local fs_stat = uv.fs_stat
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 uv.fs_stat = function(path)
-  if path == lazypath then
-    return { type = "directory" }
+  if path == lazypath .. "/lua/lazy/init.lua"
+    or path == lazypath .. "/lua/lazy/core/config.lua" then
+    return { type = "file" }
   end
   return fs_stat(path)
 end

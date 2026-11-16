@@ -95,6 +95,119 @@ assert iterations < 3000, iterations
     run_python_script(python, &script, &[]);
 }
 
+#[test]
+fn cron_accepts_case_insensitive_names_and_preserves_numeric_rules() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    let (helpers, _) = WORKFLOW_AUTOPILOT_SCRIPT
+        .split_once("\ncon = sqlite3.connect")
+        .unwrap();
+    let script = helpers.to_owned()
+        + r#"
+now = datetime(2026, 11, 13, 15, 15)
+cases = [
+    ("15 7,11,15 * * MON-FRI", datetime(2026, 11, 16, 7, 15)),
+    ("0 9 * nOv mOn,wEd,fRi", datetime(2026, 11, 16, 9)),
+    ("0 9 * NOV-DEC/2 MON-FRI/2", datetime(2026, 11, 16, 9)),
+    ("0 9 * JAN,MAR-MAY/2 *", datetime(2027, 1, 1, 9)),
+    ("0 9 1 JAN/2 *", datetime(2027, 1, 1, 9)),
+    ("0 9 * * MON/2", datetime(2026, 11, 15, 9)),
+    ("0 9 * * SUN", datetime(2026, 11, 15, 9)),
+    ("0 9 * * 7", datetime(2026, 11, 15, 9)),
+    ("0 9 * * SUN,7", datetime(2026, 11, 15, 9)),
+    ("0 9 * * FRI-7/2", datetime(2026, 11, 15, 9)),
+    ("0 9 * * SUN-SAT/2", datetime(2026, 11, 14, 9)),
+    ("0 9 14 NOV MON", datetime(2026, 11, 14, 9)),
+    ("0 9 * 11,DEC MON,5", datetime(2026, 11, 16, 9)),
+]
+for expression, expected in cases:
+    actual = compute_next_cron(expression, now)
+    assert actual == expected, (expression, actual, expected)
+
+for index, name in enumerate("JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split(), 1):
+    assert compute_next_cron(f"0 0 1 {name} *", datetime(2025, 12, 31, 23, 59)) == datetime(2026, index, 1), name
+for index, name in enumerate("MON TUE WED THU FRI SAT SUN".split()):
+    assert compute_next_cron(f"0 9 * * {name}", datetime(2026, 11, 15, 12)) == datetime(2026, 11, 16 + index, 9), name
+
+invalid = [
+    "0 9 * FOO MON", "0 9 * JAN FOO", "0 9 * MON *", "0 9 * * JAN",
+    "MON 9 * * *", "0 JAN * * *", "0 9 MON * *", "0 9 * JANUARY MONDAY",
+    "0 9 * DEC-FEB *", "0 9 * * FRI-MON", "0 9 * JAN/0 MON",
+    "0 9 * JAN/-1 MON", "0 9 * JAN/MAR MON", "0 9 * * MON/FRI",
+    "0 9 * JAN-13 MON", "0 9 * * MON-8", "0 9 * JAN MON,,FRI",
+    "0 9 * JAN MON/2/3", "@daily", "0 0 31 FEB *",
+]
+for expression in invalid:
+    try:
+        compute_next_cron(expression, now)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(f"invalid cron accepted: {expression!r}")
+"#;
+    run_python_script(python, &script, &[]);
+}
+
+#[test]
+fn named_cron_repairs_the_workflow_batch_and_invalid_cron_rolls_it_back() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    let dir = tempfile::tempdir().expect("create fixture directory");
+    let db_path = dir.path().join("data.db");
+    run_python_script(
+        python,
+        r#"
+import json, sqlite3, subprocess, sys
+from datetime import datetime
+source, db = sys.argv[1:]
+connection = sqlite3.connect(db)
+connection.execute("CREATE TABLE workflows (id TEXT, name TEXT, prompt TEXT, mode TEXT, enabled INTEGER, interval TEXT, schedule_hour INTEGER, schedule_minute INTEGER, schedule_day INTEGER, next_run_at TEXT, cron_expression TEXT)")
+for wid in ["apm--daily", "apm--named", "apm--unmanaged"]:
+    connection.execute("INSERT INTO workflows VALUES (?, 'Review', 'prompt', 'interactive', 0, 'daily', 9, 0, 1, NULL, NULL)", (wid,))
+connection.commit()
+ids = ["apm--daily", "apm--named"]
+def repair(cron):
+    return subprocess.run(
+        [sys.executable, "-c", source, db, "--cron-schedules", json.dumps({"apm--named": cron}), *ids],
+        capture_output=True, text=True,
+    )
+def rows():
+    return connection.execute("SELECT * FROM workflows ORDER BY id, rowid").fetchall()
+unmanaged = rows()[2]
+result = repair("0 9 * JAN-DEC MON-FRI")
+assert result.returncode == 0, result.stderr
+assert result.stdout == "2 2\napm--daily\napm--named\n", result.stdout
+repaired = rows()
+for row in repaired[:2]:
+    assert row[3:5] == ("autopilot", 1), row
+    assert datetime.fromisoformat(row[9].replace("Z", "+00:00")) > datetime.now().astimezone(), row
+assert repaired[1][5] == "manual", repaired
+assert repaired[1][10] == "0 9 * JAN-DEC MON-FRI", repaired
+named_next = datetime.fromisoformat(repaired[1][9].replace("Z", "+00:00")).astimezone()
+assert named_next.hour == 9 and named_next.minute == 0 and named_next.weekday() < 5, named_next
+assert repaired[2] == unmanaged, repaired
+assert repair("0 9 * JAN-DEC MON-FRI").returncode == 0
+assert rows() == repaired, "repeat repair must preserve next_run_at"
+
+connection.execute("UPDATE workflows SET mode='interactive', enabled=0, next_run_at=NULL WHERE id IN (?, ?)", ids)
+connection.execute("INSERT INTO workflows SELECT * FROM workflows WHERE id='apm--daily'")
+connection.commit()
+before_invalid = rows()
+result = repair("0 9 * JAN-DEC MON-BOGUS")
+assert result.returncode != 0, result.stdout
+assert "ValueError" in result.stderr, result.stderr
+assert not result.stdout, result.stdout
+assert rows() == before_invalid, "invalid named cron must roll back deduplication, mode, source cron, and scheduler writes"
+"#,
+        &[
+            WORKFLOW_AUTOPILOT_SCRIPT,
+            db_path.to_str().expect("fixture path utf-8"),
+        ],
+    );
+}
+
 use super::lockfile::parse_deployed_workflow_ids;
 use super::outcome::{
     FixupExecution, FixupFailure, FixupOutcome, decide_fixup_outcome, interpret_fixup_result,

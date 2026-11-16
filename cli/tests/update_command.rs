@@ -980,6 +980,74 @@ fn check_partial_repository_refresh(ignored: bool) {
     check_preview("local branch diverged from upstream");
 }
 
+#[test]
+fn repository_update_honors_system_git_configuration_in_preview_and_apply() {
+    let fixture = tempfile::tempdir().unwrap();
+    let home = fixture.path().join("home");
+    let root = fixture.path().join("repo");
+    let upstream = fixture.path().join("upstream");
+    std::fs::create_dir(&home).unwrap();
+    common::setup_minimal_repo(&root);
+    git(&root, &["init", "-b", "main"]);
+    git(&root, &["add", "."]);
+    git(&root, &["commit", "-m", "initial"]);
+    let initial = git(&root, &["rev-parse", "HEAD"]);
+    git(
+        fixture.path(),
+        &["clone", root.to_str().unwrap(), upstream.to_str().unwrap()],
+    );
+    std::fs::write(upstream.join("new-file"), "upstream content").unwrap();
+    git(&upstream, &["add", "new-file"]);
+    git(&upstream, &["commit", "-m", "advance"]);
+    let expected = git(&upstream, &["rev-parse", "HEAD"]);
+    git(
+        &root,
+        &["remote", "add", "origin", upstream.to_str().unwrap()],
+    );
+    git(&root, &["fetch", "origin"]);
+    git(&root, &["branch", "--set-upstream-to=origin/main"]);
+    git(
+        &root,
+        &["remote", "set-url", "origin", "audit-system://upstream"],
+    );
+    let system_config = fixture.path().join("system.gitconfig");
+    git(
+        &root,
+        &[
+            "config",
+            "--file",
+            system_config.to_str().unwrap(),
+            &format!("url.{}.insteadOf", upstream.to_str().unwrap()),
+            "audit-system://upstream",
+        ],
+    );
+    for dry_run in [true, false] {
+        let mut command =
+            common::isolated_cli_command(&root, &home, None, "update", "repository", true);
+        command
+            .env("GIT_CONFIG_SYSTEM", &system_config)
+            .env("GIT_CONFIG_NOSYSTEM", "0");
+        if dry_run {
+            command.arg("--dry-run");
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "dry_run={dry_run}: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            git(&root, &["rev-parse", "HEAD"]),
+            if dry_run {
+                initial.as_str()
+            } else {
+                expected.as_str()
+            }
+        );
+    }
+}
+
 fn git(root: &std::path::Path, args: &[&str]) -> String {
     let mut command = std::process::Command::new("git");
     for (key, _) in std::env::vars_os() {

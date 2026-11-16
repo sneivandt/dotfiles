@@ -90,13 +90,15 @@ impl DefaultShellResource {
         }
     }
 
-    fn non_interactive_sudo_available(&self) -> ResourceResult<bool> {
+    fn non_interactive_sudo_available(&self, shell: &str, user: &str) -> ResourceResult<bool> {
         if !self.executor.which("sudo") {
             return Ok(false);
         }
-        let result = self
-            .executor
-            .execute(CommandSpec::new("sudo").args(&["-n", "true"]).unchecked())?;
+        let result = self.executor.execute(
+            CommandSpec::new("sudo")
+                .args(&["-n", "-l", "--", "usermod", "-s", shell, user])
+                .unchecked(),
+        )?;
         Ok(result.success)
     }
 }
@@ -151,7 +153,7 @@ impl Resource for DefaultShellResource {
                 shell_str,
                 user.as_str(),
             ]))?;
-        } else if self.non_interactive_sudo_available()? {
+        } else if self.non_interactive_sudo_available(shell_str, &user)? {
             self.executor.execute(CommandSpec::new("sudo").args(&[
                 "-n",
                 "usermod",
@@ -201,7 +203,11 @@ mod tests {
             if sudo_present {
                 mock.expect_execute()
                     .once()
-                    .withf(|spec| spec.program() == "sudo" && spec.arguments() == ["-n", "true"])
+                    .withf(|spec| {
+                        spec.program() == "sudo"
+                            && spec.arguments()
+                                == ["-n", "-l", "--", "usermod", "-s", "/usr/bin/zsh", "stuart"]
+                    })
                     .returning(|_| Ok(ExecResult::failure("", "password required", Some(1))));
             }
             let resource =
@@ -548,7 +554,7 @@ mod tests {
     }
 
     #[test]
-    fn non_interactive_install_uses_passwordless_sudo_usermod() {
+    fn non_interactive_install_accepts_command_scoped_sudo_usermod() {
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
         mock.expect_which_path()
@@ -563,7 +569,10 @@ mod tests {
             .once()
             .in_sequence(&mut seq)
             .withf(|spec| {
-                spec.program() == "sudo" && spec.arguments() == ["-n", "true"] && !spec.is_checked()
+                spec.program() == "sudo"
+                    && spec.arguments()
+                        == ["-n", "-l", "--", "usermod", "-s", "/usr/bin/zsh", "stuart"]
+                    && !spec.is_checked()
             })
             .returning(|_| Ok(ExecResult::success("")));
         mock.expect_execute()
@@ -598,7 +607,10 @@ mod tests {
             .once()
             .in_sequence(&mut seq)
             .withf(|spec| {
-                spec.program() == "sudo" && spec.arguments() == ["-n", "true"] && !spec.is_checked()
+                spec.program() == "sudo"
+                    && spec.arguments()
+                        == ["-n", "-l", "--", "usermod", "-s", "/usr/bin/zsh", "stuart"]
+                    && !spec.is_checked()
             })
             .returning(|_| Ok(ExecResult::failure("", "password required", Some(1))));
         mock.expect_execute()
@@ -713,7 +725,8 @@ mod tests {
             .once()
             .withf(|spec| {
                 spec.program() == "sudo"
-                    && spec.arguments() == ["-n", "true"]
+                    && spec.arguments()
+                        == ["-n", "-l", "--", "usermod", "-s", "/usr/bin/zsh", "stuart"]
                     && !spec.is_checked()
                     && spec.working_dir().is_none()
             })

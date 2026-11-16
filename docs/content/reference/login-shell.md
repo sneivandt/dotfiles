@@ -29,6 +29,8 @@ work.
 State comes from the account database, not `$SHELL`. Apply uses `usermod` as root, `sudo
 -n usermod` when available without prompting, or `chsh` in an interactive run.
 Non-interactive runs report unmet work when authentication would require a prompt.
+The sudo permission check targets the exact `usermod` command, so a scoped
+passwordless rule does not need to authorize unrelated commands.
 A matching shell name
 with a missing/unusable executable still needs repair. Your currently running terminal
 shell is not replaced.

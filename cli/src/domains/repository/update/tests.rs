@@ -932,7 +932,7 @@ fn expect_git(
                 && spec
                     .environment()
                     .iter()
-                    .any(|(key, value)| key == "GIT_CONFIG_NOSYSTEM" && value == "1")
+                    .all(|(key, _)| key != "GIT_CONFIG_NOSYSTEM")
         })
         .return_once(|_| result);
 }

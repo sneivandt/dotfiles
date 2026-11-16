@@ -102,7 +102,7 @@ impl RecordingExecutor {
         } else {
             CallKind::RunUnchecked
         };
-        let recorded = RecordedCall {
+        let mut recorded = RecordedCall {
             kind,
             program: spec.program().to_string_lossy().into_owned(),
             args: spec
@@ -111,8 +111,6 @@ impl RecordingExecutor {
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect(),
         };
-        self.calls.lock().unwrap().push(recorded.clone());
-
         let expected = self
             .expected
             .lock()
@@ -120,6 +118,14 @@ impl RecordingExecutor {
             .pop_front()
             .unwrap_or_else(|| panic!("unexpected executor call: {recorded:?}"));
 
+        if recorded.program == "winget" && recorded.args.first().is_some_and(|arg| arg == "export")
+        {
+            assert_eq!(recorded.args.len(), 5);
+            assert_eq!(recorded.args[1], "--output");
+            std::fs::write(&recorded.args[2], &expected.result.stdout).unwrap();
+            recorded.args[2] = "<inventory>".into();
+        }
+        self.calls.lock().unwrap().push(recorded.clone());
         assert_eq!(expected.kind, recorded.kind, "executor call kind mismatch");
         assert_eq!(
             expected.program, recorded.program,
@@ -659,11 +665,13 @@ fn winget_task_uses_exact_ids_and_installs_each_missing_package() {
                 CallKind::Run,
                 "winget",
                 &[
-                    "list",
+                    "export",
+                    "--output",
+                    "<inventory>",
                     "--accept-source-agreements",
                     "--disable-interactivity",
                 ],
-                ok("Name             Id        Version\nGit              Git.Git   2.51.0\n"),
+                ok(r#"{"Sources":[{"Packages":[{"PackageIdentifier":"Git.Git"}]}]}"#),
             ),
             expect(
                 CallKind::RunUnchecked,

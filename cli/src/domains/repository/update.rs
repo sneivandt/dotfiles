@@ -103,7 +103,6 @@ fn git_command(ctx: &Context, root: &Path, args: &[&str]) -> CommandSpec {
         .args(args)
         .current_dir(root)
         .env("HOME", ctx.home().to_string_lossy().into_owned())
-        .env("GIT_CONFIG_NOSYSTEM", "1")
 }
 
 impl Operation for UpdateRepositoryOperation<'_> {

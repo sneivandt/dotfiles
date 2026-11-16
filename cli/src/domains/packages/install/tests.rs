@@ -1346,10 +1346,10 @@ fn cancelled_winget_task_preserves_completed_and_initially_current_counts() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut sequence)
-        .withf(|spec| spec.program() == "winget" && spec.arguments().first().is_some_and(|arg| arg == "list"))
-        .returning(|_| Ok(ExecResult::success(
-            "Name       Id             Version\n---------------------------------\nExisting   Existing.App   1.0\n",
-        )));
+        .returning(|spec| {
+            crate::domains::packages::resources::mock_inventory(&spec, &["Existing.App"]);
+            Ok(ExecResult::success(""))
+        });
     mock.expect_execute()
         .once()
         .in_sequence(&mut sequence)
@@ -1411,43 +1411,36 @@ fn winget_per_package_install_preserves_changed_and_already_current_counts() {
             .once()
             .with(mockall::predicate::eq("winget"))
             .return_const(true);
-        for (args, result) in [
-            (
-                &[
-                    "list",
-                    "--accept-source-agreements",
-                    "--disable-interactivity",
-                ][..],
-                ExecResult::success("Name  Id       Version\n"),
-            ),
-            (
-                &[
-                    "install",
-                    "--id",
-                    "Git.Git",
-                    "--exact",
-                    "--source",
-                    "winget",
-                    "--accept-source-agreements",
-                    "--accept-package-agreements",
-                    "--disable-interactivity",
-                    "--scope",
-                    "user",
-                ][..],
-                install_result,
-            ),
-        ] {
-            mock.expect_execute()
-                .once()
-                .in_sequence(&mut sequence)
-                .withf(move |spec| {
-                    spec.program() == "winget"
-                        && spec.arguments() == args
-                        && spec.is_checked() == (args[0] == "list")
-                        && spec.working_dir().is_none()
-                })
-                .return_once(|_| Ok(result));
-        }
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .returning(|spec| {
+                crate::domains::packages::resources::mock_inventory(&spec, &[]);
+                Ok(ExecResult::success(""))
+            });
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .withf(|spec| {
+                spec.program() == "winget"
+                    && spec.arguments()
+                        == [
+                            "install",
+                            "--id",
+                            "Git.Git",
+                            "--exact",
+                            "--source",
+                            "winget",
+                            "--accept-source-agreements",
+                            "--accept-package-agreements",
+                            "--disable-interactivity",
+                            "--scope",
+                            "user",
+                        ]
+                    && !spec.is_checked()
+                    && spec.working_dir().is_none()
+            })
+            .return_once(|_| Ok(install_result));
         let ctx = make_package_context("fixture-repository".into(), None, Os::Windows, false, mock);
         let result = InstallPackages::new(packages(&[("Git.Git", false)]))
             .run(&ctx)
@@ -1480,13 +1473,13 @@ fn winget_discovery_parse_failure_never_attempts_installation() {
                     && spec
                         .arguments()
                         .first()
-                        .is_some_and(|argument| argument == "list")
+                        .is_some_and(|argument| argument == "export")
                     && spec.is_checked()
             })
-            .returning(|_| {
-                Ok(ExecResult::success(
-                    "Name  Identifier  Version\nGit   Git.Git     2.51.0\n",
-                ))
+            .returning(|spec| {
+                crate::domains::packages::resources::mock_inventory(&spec, &[]);
+                std::fs::write(&spec.arguments()[2], r#"{"Sources":[{}]}"#).unwrap();
+                Ok(ExecResult::success(""))
             });
         let ctx = make_package_context(
             PathBuf::from("fixture-repository"),
@@ -1501,7 +1494,7 @@ fn winget_discovery_parse_failure_never_attempts_installation() {
             .run(&ctx)
             .expect_err("unknown inventory must not plan every package for installation");
 
-        assert!(error.to_string().contains("could not parse winget list"));
+        assert!(error.to_string().contains("could not parse winget export"));
     }
 }
 

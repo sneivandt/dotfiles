@@ -222,7 +222,7 @@ fn format_task_line_with_reason(task: &TaskEntry, opts: RowOpts, show_reason: bo
     );
 
     let annotation = status::annotation(task.status);
-    if (opts.symbols || task.status == TaskStatus::DryRun)
+    if opts.symbols
         && let Some((word, color)) = annotation
     {
         line.push_str(&opts.style.paint(TextStyle::Dim, " · "));

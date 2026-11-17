@@ -54,6 +54,9 @@ or save profile/overlay selections.
 
 ## Discover tasks
 
+A task is a named group of work, such as installing packages or creating home
+symlinks. One task can perform many individual actions.
+
 Use `dotfiles list` to find the selectors available to your profile and platform.
 To include inapplicable tasks or inspect selection and dependencies:
 
@@ -201,7 +204,7 @@ are cyan normally and magenta in preview; their accompanying text is dim.
 |---|---|
 | `✓` / `CHANGED` or `PASSED` | Changes applied, or a check passed |
 | `~` / `PLANNED` | A dry run found changes to make |
-| `○` / `CURRENT` | Already satisfied; shown with `--verbose` |
+| `○` / `UNCHANGED` | Already matches configuration; shown with `--verbose` |
 | `⊘` / `SKIPPED` | Work was not performed; read the reason |
 | `⊘` / `BLOCKED` | A required predecessor did not complete successfully |
 | `⊘` / `INTERRUPTED` | Work stopped during cancellation |
@@ -213,7 +216,7 @@ including profile-prompt emphasis, but not functional terminal redraws.
 Redirected streams have no ANSI styling. Inapplicable and internal tasks
 do not appear in normal rows or totals, but remain in logs.
 
-Task names are bold except for verbose `CURRENT` rows. Consecutive rows
+Task names are bold except for verbose `UNCHANGED` rows. Consecutive rows
 without visible details stay compact; expanded blocks have a blank line
 around them. Indented actions describe each task's work, with applied verbs
 in cyan and planned verbs in magenta, including completion writes and workflow
@@ -225,11 +228,13 @@ An expanded row with multiple quantified actions adds `· 35 actions applied`
 or `· planned · 35 actions`. Task-owned warnings and verbose errors stay
 indented under their row, with warnings between the actions they concern.
 
-The final summary counts tasks, not action lines or CLI upgrades. When every
-reported task was already satisfied, it says **17 tasks already current**, for
-example, rather than claiming the whole invocation made no changes. Repository
-syncs that restart the command appear in their notice rather than the child's
-task totals. A successful run with no reportable tasks says **No task changes**.
+The final summary names its unit once: **Tasks: 3 changed · 14 unchanged**, or
+**Checks: 5 passed · 1 skipped**. Previews use **planned** instead of **changed**.
+These are task counts, not action counts or CLI upgrades. **Unchanged** means
+the selected work needed no changes, not that every installed package is at its
+latest version. Repository syncs that restart the command appear in their notice
+rather than the child's task totals. When no selected tasks apply, the summary
+says **No applicable tasks**.
 
 An illustrative update that upgraded the CLI and synced the repository, but
 needed no further task changes:
@@ -240,7 +245,7 @@ Update · desktop profile · Arch Linux
 CLI upgraded · v2026.01.01-1 → v2026.01.01-2
 Repository synced · restarting to load configuration
 
-17 tasks already current · 3.4s
+Tasks: 17 unchanged · 3.4s
 ```
 
 The final duration covers the CLI invocation, including self-update and
@@ -329,6 +334,9 @@ changed, pass the original `--profile` and `--overlay` explicitly.
 | Managed home links | Replaced with real copies of the configured sources |
 | Managed Git hooks and launcher | Removed only if they still match their managed state |
 | Active overlay scripts | Their removal actions run when their checks find managed state |
+
+Home-link actions read `copy <home path> from <source>`. Existing managed links
+are replaced with independent copies; the repository sources are not changed.
 
 **Remove is not rollback.** The copies contain current configured content,
 not your pre-install files. Missing targets stay missing. Use

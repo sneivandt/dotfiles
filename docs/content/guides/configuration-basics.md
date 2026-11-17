@@ -62,7 +62,7 @@ dotfiles update --only symlinks --dry-run
 ```
 
 Resolve failed or skipped checks before applying. The preview should show the intended
-destinations under Home symlinks; add `--verbose` to see links that are already current.
+destinations under Home symlinks; add `--verbose` to see unchanged links too.
 For another kind of change, select its task instead. The preview uses current checkout
 content, but still has the [documented side
 effects](commands-and-usage.md#dry-run-scope).

@@ -14,6 +14,9 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
     after_help = "\
 Default command: update
 
+A task is a named group of work, such as installing packages or creating home symlinks.
+Use 'dotfiles list' to find task selectors for --only and --skip.
+
 Examples:
   dotfiles update
   dotfiles update --dry-run
@@ -127,16 +130,20 @@ pub(super) fn normalize_command_position(args: &mut Vec<std::ffi::OsString>) {
 /// Available subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Apply configuration and update dependencies
-    #[command(after_help = "Startup may check for CLI updates before running tasks.
+    /// Sync the repository and apply configuration
+    #[command(
+        after_help = "Installs missing system packages; does not upgrade installed system packages.
+Startup may check for CLI updates before running tasks.
 Dry runs may query tools and save logs, caches, or selections.
 Use list with an existing binary for read-only discovery.
-JSON Lines output disables prompts.")]
+JSON Lines output disables prompts."
+    )]
     Update(UpdateCommandOpts),
 
     /// Remove managed links and integrations
     #[command(after_help = "\
-Removes home links, Git hooks, the launcher, and overlay script state.
+Replaces managed home symlinks with independent copies of their source contents.
+Removes Git hooks, the launcher, and overlay script state.
 Preserves packages, services, registry values, and shell selection.
 
 Startup may check for CLI updates before running tasks.
@@ -289,15 +296,15 @@ pub struct UpdateCommandOpts {
     pub tasks: UpdateOpts,
 
     /// Preview changes without applying them
-    #[arg(short = 'n', long, help_heading = "Mutation policy")]
+    #[arg(short = 'n', long, help_heading = "Changes and safety")]
     pub dry_run: bool,
 
     /// Use the current checkout without syncing
-    #[arg(long, help_heading = "Mutation policy")]
+    #[arg(long, help_heading = "Changes and safety")]
     pub no_repo_update: bool,
 
     /// Skip CLI update provenance verification
-    #[arg(long, help_heading = "Mutation policy")]
+    #[arg(long, help_heading = "Changes and safety")]
     pub skip_attestation: bool,
 
     /// Internal marker for a child process that performs elevated tasks.
@@ -339,11 +346,11 @@ pub struct RemoveCommandOpts {
     pub tasks: RemoveOpts,
 
     /// Preview changes without applying them
-    #[arg(short = 'n', long, help_heading = "Mutation policy")]
+    #[arg(short = 'n', long, help_heading = "Changes and safety")]
     pub dry_run: bool,
 
     /// Skip CLI update provenance verification
-    #[arg(long, help_heading = "Mutation policy")]
+    #[arg(long, help_heading = "Changes and safety")]
     pub skip_attestation: bool,
 
     /// Internal marker for a child process that performs elevated tasks.
@@ -646,7 +653,7 @@ pub struct RemoveOpts {
     #[command(flatten)]
     pub filters: TaskFilters,
 
-    /// Materialize configured home targets even if they are missing
+    /// Also copy configuration to missing home paths
     #[arg(long)]
     pub restore_missing: bool,
 }
@@ -821,7 +828,7 @@ mod tests {
 
         let normalized = help.split_whitespace().collect::<Vec<_>>().join(" ");
         for text in [
-            "update Apply configuration and update dependencies",
+            "update Sync the repository and apply configuration",
             "remove Remove managed links and integrations",
             "check Validate configuration and repository files",
             "list Inspect task selectors and dependencies",
@@ -829,6 +836,7 @@ mod tests {
             "log Inspect previous runs and task diagnostics",
             "help Print this message or the help of the given subcommand(s)",
             "dotfiles check",
+            "A task is a named group of work",
         ] {
             assert!(
                 normalized.contains(text),
@@ -841,6 +849,26 @@ mod tests {
                 "top-level help should omit {hidden:?}"
             );
         }
+    }
+
+    #[test]
+    fn mutation_help_explains_package_and_file_preservation_scope() {
+        let update = display_output(&["dotfiles", "update", "--help"], ErrorKind::DisplayHelp);
+        assert!(
+            update.contains("does not upgrade installed system packages"),
+            "{update}"
+        );
+        assert!(update.contains("Changes and safety:"), "{update}");
+        let remove = display_output(&["dotfiles", "remove", "--help"], ErrorKind::DisplayHelp);
+        assert!(
+            remove.contains("independent copies of their source contents"),
+            "{remove}"
+        );
+        assert!(
+            remove.contains("Also copy configuration to missing home paths"),
+            "{remove}"
+        );
+        assert!(!remove.contains("Materialize"), "{remove}");
     }
 
     #[test]

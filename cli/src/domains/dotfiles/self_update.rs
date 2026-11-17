@@ -235,7 +235,7 @@ pub fn pre_update(
         return Ok(None);
     }
     let client = default_http_client();
-    let check = with_status(log, "Checking for updates", || {
+    let check = with_status(log, "Checking for CLI updates", || {
         let token = github_token(&SystemEnv, &ProcessExecutor::system());
         check_for_update(root, &client, token.as_deref(), dry_run)
     });
@@ -243,12 +243,12 @@ pub fn pre_update(
         UpdateCheck::Offline | UpdateCheck::DevBuild | UpdateCheck::AlreadyCurrent => Ok(None),
         UpdateCheck::UpdateAvailable { latest, current } => {
             if dry_run {
-                log.info(format!("update available: {current} \u{2192} {latest}"));
+                log.info(format!("CLI update available: {current} \u{2192} {latest}"));
                 return Ok(None);
             }
             log.stage("CLI upgrade");
             log.debug(format!("updating: {current} \u{2192} {latest}"));
-            with_status(log, &format!("Updating to {latest}"), || {
+            with_status(log, &format!("Updating CLI to {latest}"), || {
                 download_and_install(root, &latest, &client, skip_attestation)
             })?;
 

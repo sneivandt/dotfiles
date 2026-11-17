@@ -318,7 +318,7 @@ fn update_console_separates_tasks_and_keeps_no_op_compact() {
                         (true, true) => "✓",
                         (true, false) => "CHANGED",
                         (false, true) => "○",
-                        (false, false) => "CURRENT",
+                        (false, false) => "UNCHANGED",
                     };
                     for (block, name) in blocks[1..3]
                         .iter()
@@ -328,9 +328,9 @@ fn update_console_separates_tasks_and_keeps_no_op_compact() {
                     }
                 }
                 let summary = if changed {
-                    "2 tasks changed"
+                    "Tasks: 2 changed"
                 } else {
-                    "2 tasks already current"
+                    "Tasks: 2 unchanged"
                 };
                 assert!(blocks.last().unwrap().starts_with(summary), "{text}");
             }
@@ -727,6 +727,11 @@ fn retained_history_selects_exact_runs_and_preserves_parent_and_actions() {
         task_log.contains("log-example") && !task_log.contains("[run_start]"),
         "{task_log}"
     );
+    assert!(task_log.contains("Home symlinks · Planned:"), "{task_log}");
+    let normal = read_retained_log(&log_dir, &["--id", parent_id]);
+    for internal in [task_id, "[main]", "elapsed_us", "[info]"] {
+        assert!(!normal.contains(internal), "{normal}");
+    }
     assert_eq!(
         common::retained_logs(&log_dir).len(),
         2,
@@ -1199,7 +1204,7 @@ fn repository_restart_preserves_non_unicode_paths_and_loads_new_configuration() 
     let repeat_stdout = String::from_utf8(repeat.stdout).unwrap();
     assert!(
         repeat_stdout.contains(
-            "Repository synced · restarting to load configuration\n\n1 task already current ·"
+            "Repository synced · restarting to load configuration\n\nTasks: 1 unchanged ·"
         ),
         "expected the no-change summary after one separator in {repeat_stdout:?}"
     );
@@ -1280,7 +1285,7 @@ fn repository_only_update_recovers_bad_config_and_refuses_a_deleted_upstream() {
     let repair = update().output().unwrap();
     assert!(repair.status.success(), "{repair:?}");
     assert!(
-        String::from_utf8_lossy(&repair.stdout).contains("1 task changed"),
+        String::from_utf8_lossy(&repair.stdout).contains("Tasks: 1 changed"),
         "repository-only repair must report the change: {repair:?}"
     );
     assert_eq!(

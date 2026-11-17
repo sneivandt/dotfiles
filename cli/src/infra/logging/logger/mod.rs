@@ -748,7 +748,10 @@ mod tests {
             &lines[..4],
             ["Update · fixture", "", "CLI upgraded · old → new", "",]
         );
-        assert!(lines[4].starts_with("No task changes · 1m "), "{lines:?}");
+        assert!(
+            lines[4].starts_with("No applicable tasks · 1m "),
+            "{lines:?}"
+        );
     }
 
     #[test]

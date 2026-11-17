@@ -376,7 +376,7 @@ mod tests {
                 let output = std::fs::read_to_string(fixture.path().join("child-output")).unwrap();
                 assert!(
                     output.starts_with(
-                        "Update · fixture\n\nCLI upgraded · old → new\n\nNo task changes · 1m "
+                        "Update · fixture\n\nCLI upgraded · old → new\n\nNo applicable tasks · 1m "
                     ),
                     "{output}"
                 );
@@ -388,7 +388,7 @@ mod tests {
                 );
                 let tail =
                     std::fs::read_to_string(fixture.path().join("child-output-tail")).unwrap();
-                assert!(tail.starts_with("\nNo task changes · 1m "), "{tail}");
+                assert!(tail.starts_with("\nNo applicable tasks · 1m "), "{tail}");
                 assert!(!tail.contains("CLI upgraded"), "{tail}");
             }
             if role == "parent-interrupt" {

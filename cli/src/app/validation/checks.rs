@@ -47,7 +47,7 @@ impl Task for ValidateConfigWarnings {
             ),
         );
         if diagnostics.is_empty() {
-            ctx.log().info("no configuration diagnostics found");
+            ctx.log().info("no configuration issues found");
             return Ok(TaskResult::CheckPassed);
         }
 
@@ -62,10 +62,9 @@ impl Task for ValidateConfigWarnings {
             ));
         }
 
-        anyhow::bail!(
-            "test failed: {} configuration diagnostic(s) found",
-            diagnostics.len()
-        );
+        let count = diagnostics.len();
+        let unit = if count == 1 { "issue" } else { "issues" };
+        anyhow::bail!("configuration check failed: {count} {unit} found");
     }
 }
 
@@ -85,7 +84,7 @@ impl ValidateSymlinkSources {
 
 impl Task for ValidateSymlinkSources {
     task_metadata! {
-        name: "Validate symlink sources",
+        name: "Symlink sources",
         selector: "symlink-sources",
     }
 
@@ -192,7 +191,7 @@ pub struct ValidateConfigFiles;
 
 impl Task for ValidateConfigFiles {
     task_metadata! {
-        name: "Validate config files",
+        name: "Required configuration files",
         selector: "config-files",
     }
 
@@ -237,7 +236,7 @@ pub struct ValidateApmPlugins;
 
 impl Task for ValidateApmPlugins {
     task_metadata! {
-        name: "Validate APM plugins",
+        name: "APM plugins",
         selector: "apm-plugins",
     }
 
@@ -292,7 +291,7 @@ pub struct RunShellcheck;
 
 impl Task for RunShellcheck {
     task_metadata! {
-        name: "Shellcheck",
+        name: "ShellCheck",
         selector: "shellcheck",
     }
 

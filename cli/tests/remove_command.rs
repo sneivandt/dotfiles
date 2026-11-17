@@ -312,14 +312,28 @@ fn missing_symlink_targets_are_only_materialized_on_request() {
     let home = tempfile::tempdir().unwrap();
     let target = home.path().join(".fixture");
     for restore in [false, true] {
-        let mut command =
-            common::cli_command(repo.root_path(), home.path(), None, "remove", "symlinks");
-        if restore {
-            command.arg("--restore-missing");
+        for preview in [true, false] {
+            let mut command =
+                common::cli_command(repo.root_path(), home.path(), None, "remove", "symlinks");
+            command.arg("--no-symbols");
+            if restore {
+                command.arg("--restore-missing");
+            }
+            if preview {
+                command.arg("--dry-run");
+            }
+            let output = command.output().unwrap();
+            assert!(output.status.success(), "{output:?}");
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            assert_eq!(target.exists(), restore && !preview);
+            assert_eq!(
+                stdout.contains("copy  ~/.fixture from symlinks/fixture"),
+                restore,
+                "{stdout}",
+            );
+            assert!(!stdout.contains("materialize"), "{stdout}");
+            assert!(!stdout.contains(" · planned"), "{stdout}");
         }
-        let output = command.output().unwrap();
-        assert!(output.status.success(), "{output:?}");
-        assert_eq!(target.exists(), restore);
     }
     assert_eq!(
         std::fs::read_to_string(target).unwrap(),

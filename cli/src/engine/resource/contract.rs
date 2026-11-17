@@ -84,6 +84,13 @@ pub trait IntrinsicState: Resource {
 /// require this bound, which makes "this resource cannot be removed" a
 /// compile error at the call site instead of a failed task.
 pub trait RemovableResource: Resource {
+    /// Human-readable subject for removal actions.
+    ///
+    /// Override when removal has different effects from applying the resource.
+    fn removal_description(&self) -> String {
+        self.description()
+    }
+
     /// Inspect removal eligibility, which can differ from apply state.
     ///
     /// # Errors

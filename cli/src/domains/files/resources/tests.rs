@@ -781,7 +781,7 @@ mod symlink {
 
         let error = resource.remove().unwrap_err();
         assert!(
-            format!("{error:#}").contains("inspect materialization source"),
+            format!("{error:#}").contains("inspect copy source"),
             "{error:#}"
         );
         assert_eq!(std::fs::read_link(&target).unwrap(), original_link);

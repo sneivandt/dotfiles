@@ -86,7 +86,7 @@ fn display_diagnostics_formats_severity_and_code() {
     assert_eq!(
         output.messages(),
         [
-            (MsgKind::Warn, "found 2 configuration diagnostic(s):".into()),
+            (MsgKind::Warn, "found 2 configuration issues:".into()),
             (
                 MsgKind::WarnContinuation,
                 "  [warn] pkg.toml [git] (package.empty-name): name is empty".into(),
@@ -131,7 +131,7 @@ fn startup_diagnostic_continuations_keep_stderr_and_raw_jsonl_facts() {
             assert_eq!(
                 writes,
                 [
-                    (true, "WARN  found 1 configuration diagnostic(s):\n".into()),
+                    (true, "WARN  found 1 configuration issue:\n".into()),
                     (true, format!("{item}\n"))
                 ]
             );
@@ -172,8 +172,9 @@ fn completed_validation_diagnostics_keep_their_continuations_in_both_modes() {
         buffer.flush_and_complete("validation", "Validation");
         let writes = log.captured_output();
         assert!(
-            writes.iter().any(|(stderr, text)| *stderr
-                && text == "  WARN  found 1 configuration diagnostic(s):\n")
+            writes
+                .iter()
+                .any(|(stderr, text)| *stderr && text == "  WARN  found 1 configuration issue:\n")
         );
         assert!(writes.iter().any(|(stderr, text)| *stderr
             && text == "    [warn] fixture.toml [item] (fixture.invalid): fix the value\n"));

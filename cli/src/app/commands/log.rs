@@ -1,7 +1,7 @@
 //! Log command implementation.
 
 use crate::infra::logging::records::{Record, RunOutcome, StoredRecord};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, Seek};
 use std::path::{Path, PathBuf};
 
@@ -163,6 +163,71 @@ impl RecordMetadata {
     }
 }
 
+#[derive(Default)]
+struct LogIndex {
+    selected_task_ids: Option<HashSet<String>>,
+    results: HashSet<String>,
+    durations: HashSet<String>,
+    task_names: HashMap<String, String>,
+}
+
+fn index_log(reader: &mut impl BufRead, task: Option<&str>) -> Result<LogIndex> {
+    let mut index = LogIndex {
+        selected_task_ids: task.map(|requested| HashSet::from([requested.to_string()])),
+        ..LogIndex::default()
+    };
+    let normalized = task.map(crate::app::filter::normalize_task_filter);
+    // Older runs wrote text completion/timing events alongside structured facts.
+    // Prefer the structured facts without altering raw or unknown-schema output.
+    for line in reader.lines() {
+        let line = line.context("reading log index")?;
+        let Some(metadata) = RecordMetadata::from_line(&line) else {
+            continue;
+        };
+        if !matches!(
+            metadata.kind.as_str(),
+            "task_result" | "task_duration" | "message"
+        ) {
+            continue;
+        }
+        let Some(stored) = StoredRecord::from_line(&line) else {
+            continue;
+        };
+        match stored.record {
+            Record::TaskResult {
+                task_id,
+                selector,
+                name,
+                ..
+            } => {
+                if let (Some(identities), Some(normalized), Some(selector)) =
+                    (&mut index.selected_task_ids, &normalized, selector)
+                    && crate::app::filter::normalize_task_filter(&selector) == *normalized
+                {
+                    identities.insert(task_id.clone());
+                }
+                index.task_names.insert(task_id, name);
+                index.results.insert(stored.context);
+            }
+            Record::TaskDuration { .. } => {
+                index.durations.insert(stored.context);
+            }
+            Record::Message { event, text } => {
+                if event == "task_start" {
+                    index.task_names.entry(stored.context).or_insert(text);
+                }
+            }
+            Record::RunStart { .. }
+            | Record::RunContext { .. }
+            | Record::RunScope { .. }
+            | Record::RunFinish { .. }
+            | Record::Action { .. }
+            | Record::Command { .. } => {}
+        }
+    }
+    Ok(index)
+}
+
 fn write_selected_log(
     reader: &mut (impl BufRead + Seek),
     verbose: bool,
@@ -174,52 +239,15 @@ fn write_selected_log(
         std::io::copy(reader, out).context("writing raw log output")?;
         return Ok(());
     }
-    let mut selected_task_ids = task.map(|requested| HashSet::from([requested.to_string()]));
-    let normalized = task.map(crate::app::filter::normalize_task_filter);
-    // Older runs wrote text completion/timing events alongside structured facts.
-    // Prefer the structured facts without altering raw or unknown-schema output.
-    let mut results = HashSet::new();
-    let mut durations = HashSet::new();
-    for line in reader.by_ref().lines() {
-        let line = line.context("reading log index")?;
-        let Some(metadata) = RecordMetadata::from_line(&line) else {
-            continue;
-        };
-        if !matches!(metadata.kind.as_str(), "task_result" | "task_duration") {
-            continue;
-        }
-        let Some(stored) = StoredRecord::from_line(&line) else {
-            continue;
-        };
-        match stored.record {
-            Record::TaskResult {
-                task_id, selector, ..
-            } => {
-                if let (Some(identities), Some(normalized), Some(selector)) =
-                    (&mut selected_task_ids, &normalized, selector)
-                    && crate::app::filter::normalize_task_filter(&selector) == *normalized
-                {
-                    identities.insert(task_id);
-                }
-                results.insert(stored.context);
-            }
-            Record::TaskDuration { .. } => {
-                durations.insert(stored.context);
-            }
-            Record::RunStart { .. }
-            | Record::RunContext { .. }
-            | Record::RunScope { .. }
-            | Record::RunFinish { .. }
-            | Record::Action { .. }
-            | Record::Command { .. }
-            | Record::Message { .. } => {}
-        }
-    }
+    let index = index_log(reader, task)?;
     reader.rewind().context("rewinding dotfiles log")?;
     let mut wrote_line = false;
     for line in reader.lines() {
         let line = line.context("reading dotfiles log")?;
-        if let Some(identities) = &selected_task_ids {
+        if !raw && !verbose && line.starts_with("# Columns:") {
+            continue;
+        }
+        if let Some(identities) = &index.selected_task_ids {
             let metadata = RecordMetadata::from_line(&line);
             let context = metadata
                 .as_ref()
@@ -241,17 +269,25 @@ fn write_selected_log(
             .or_else(|| line_context(&line));
         if let Some(stored) = record {
             if let Some((event, message)) = render_record(stored.record, verbose) {
-                let prefix = line
-                    .split_once(" [record] ")
-                    .map_or("", |(prefix, _)| prefix);
-                writeln!(out, "{prefix} [{event}] {message}").context("writing log output")?;
+                write_rendered_record(
+                    out,
+                    &stored.context,
+                    &index.task_names,
+                    &event,
+                    &message,
+                    verbose.then_some(line.as_str()),
+                )?;
                 wrote_line = true;
             }
-        } else if !legacy_duplicate(&line, context, &results, &durations)
+        } else if !legacy_duplicate(&line, context, &index.results, &index.durations)
             && (verbose || line_event(&line).is_none_or(|event| !diagnostic_event(event)))
         {
-            // Old logs and unknown schemas remain readable rather than disappearing.
-            writeln!(out, "{line}").context("writing log output")?;
+            if !verbose && let Some((text_context, event, message)) = text_record_parts(&line) {
+                write_rendered_record(out, text_context, &index.task_names, event, message, None)?;
+            } else {
+                // Unrecognized lines and record schemas remain visible as stored.
+                writeln!(out, "{line}").context("writing log output")?;
+            }
             wrote_line = true;
         }
     }
@@ -259,6 +295,71 @@ fn write_selected_log(
         anyhow::bail!("No records match the requested task selector or identity");
     }
     Ok(())
+}
+
+fn write_rendered_record(
+    out: &mut dyn std::io::Write,
+    context: &str,
+    task_names: &HashMap<String, String>,
+    event: &str,
+    message: &str,
+    original_line: Option<&str>,
+) -> Result<()> {
+    if let Some(line) = original_line {
+        let prefix = line
+            .split_once(" [record] ")
+            .map_or("", |(prefix, _)| prefix);
+        return writeln!(out, "{prefix} [{event}] {message}").context("writing log output");
+    }
+    let label = match event {
+        "run_start" => "Run",
+        "run_context" => "Configuration",
+        "run_scope" => "Selection",
+        "run_finish" | "task_done" | "resource_result" => "Result",
+        "warn" | "warn_continuation" => "Warning",
+        "error" => "Error",
+        "command" => "Command",
+        "plan" | "dry_run" => "Planned",
+        "task_skip" => "Skipped",
+        "info" | "action" | "resource_apply" | "resource_remove" | "task_result" => "",
+        other => other,
+    };
+    let mut labels = Vec::new();
+    if context != "main" && event != "task_result" {
+        labels.push(task_names.get(context).map_or_else(
+            || context.rsplit("::").next().unwrap_or(context),
+            String::as_str,
+        ));
+    }
+    if !label.is_empty() {
+        labels.push(label);
+    }
+    if labels.is_empty() {
+        writeln!(out, "{message}")
+    } else {
+        writeln!(out, "{}: {message}", labels.join(" · "))
+    }
+    .context("writing log output")
+}
+
+fn text_record_parts(line: &str) -> Option<(&str, &str, &str)> {
+    let (context, tail) = line.split_once(" [")?.1.split_once("] [")?;
+    let (event, message) = tail.split_once("] ")?;
+    matches!(
+        event,
+        "info"
+            | "warn"
+            | "warn_continuation"
+            | "error"
+            | "action"
+            | "dry_run"
+            | "task_done"
+            | "task_skip"
+            | "resource_apply"
+            | "resource_remove"
+            | "resource_result"
+    )
+    .then_some((context, event, message))
 }
 
 /// Plumbing remains available in verbose/raw viewing, including legacy logs.
@@ -292,14 +393,14 @@ fn legacy_duplicate(
     }
 }
 
-/// Human labels differ from stable enum names only for current and planned work.
+/// Human labels do not change the stored status names.
 const fn human_task_status(status: TaskStatus) -> &'static str {
     match status {
-        TaskStatus::Ok => "Current",
+        TaskStatus::Ok => "Unchanged",
         TaskStatus::DryRun => "Planned",
         TaskStatus::Changed => "Changed",
         TaskStatus::Passed => "Passed",
-        TaskStatus::NotApplicable => "NotApplicable",
+        TaskStatus::NotApplicable => "Not applicable",
         TaskStatus::Skipped => "Skipped",
         TaskStatus::Blocked => "Blocked",
         TaskStatus::Interrupted => "Interrupted",
@@ -316,8 +417,8 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
         } => (
             "run_start",
             format!(
-                "{command} id={run_id}{}",
-                parent_run_id.map_or_else(String::new, |id| format!(" parent={id}"))
+                "{command} · {run_id}{}",
+                parent_run_id.map_or_else(String::new, |id| format!(" · parent {id}"))
             ),
         ),
         Record::RunContext {
@@ -326,7 +427,10 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
             dry_run,
         } => (
             "run_context",
-            format!("profile={profile} platform={platform} dry_run={dry_run}"),
+            format!(
+                "{profile} profile · {platform}{}",
+                if dry_run { " · dry run" } else { "" }
+            ),
         ),
         Record::RunScope {
             only,
@@ -335,11 +439,7 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
             no_repo_update,
         } => (
             "run_scope",
-            format!(
-                "only={} skip={} with_deps={with_deps} no_repo_update={no_repo_update}",
-                selector_list(&only, "all"),
-                selector_list(&skip, "none")
-            ),
+            render_scope(&only, &skip, with_deps, no_repo_update),
         ),
         Record::RunFinish {
             outcome,
@@ -348,7 +448,7 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
         } => (
             "run_finish",
             format!(
-                "{} elapsed={} exit={exit_code}",
+                "{} · {} · exit {exit_code}",
                 outcome.label(),
                 format_duration(elapsed_us)
             ),
@@ -368,16 +468,20 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
                 reason.map_or_else(String::new, |reason| format!(": {reason}"))
             ),
         ),
-        Record::TaskDuration {
-            task_id: _,
-            elapsed_us,
-        } => {
-            if !verbose {
-                return None;
-            }
+        Record::TaskDuration { elapsed_us, .. } if verbose => {
             ("task_timing", format_duration(elapsed_us))
         }
-        Record::Action { message, .. } => ("action", message),
+        Record::TaskDuration { .. } => return None,
+        Record::Action {
+            message, planned, ..
+        } => (
+            if planned && !verbose {
+                "plan"
+            } else {
+                "action"
+            },
+            message,
+        ),
         Record::Command {
             command,
             outcome,
@@ -407,6 +511,20 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
     Some((rendered.0.into(), rendered.1))
 }
 
+fn render_scope(only: &[String], skip: &[String], with_deps: bool, no_repo_update: bool) -> String {
+    let mut scope = vec![selector_list(only, "all tasks")];
+    if !skip.is_empty() {
+        scope.push(format!("excluding {}", skip.join(", ")));
+    }
+    if with_deps {
+        scope.push("including dependencies".into());
+    }
+    if no_repo_update {
+        scope.push("repository sync disabled".into());
+    }
+    scope.join(" · ")
+}
+
 fn selector_list(selectors: &[String], empty: &str) -> String {
     if selectors.is_empty() {
         empty.into()
@@ -434,11 +552,18 @@ fn render_command(
     } else {
         outcome
     };
-    let mut lines = vec![format!(
-        "{command}: {label}, exit={}, elapsed={}",
-        exit_code.map_or_else(|| "none".into(), |code| code.to_string()),
-        format_duration(elapsed_us)
-    )];
+    let code = exit_code.map_or_else(|| "none".into(), |code| code.to_string());
+    let mut lines = vec![if verbose {
+        format!(
+            "{command}: {label}, exit={code}, elapsed={}",
+            format_duration(elapsed_us)
+        )
+    } else {
+        format!(
+            "{command}: {label} · exit {code} · {}",
+            format_duration(elapsed_us)
+        )
+    }];
     for (stream, text, bytes) in streams {
         match text {
             Some(text) if !text.is_empty() => lines.push(format!("{stream}:\n{text}")),
@@ -1296,7 +1421,7 @@ mod tests {
         let mut out = Vec::new();
         write_selected_contents(&content, false, false, None, &mut out).unwrap();
         let output = String::from_utf8(out).unwrap();
-        for expected in ["first\n  second\n\nlast", "cause", "warning", "exit=1"] {
+        for expected in ["first\n  second\n\nlast", "cause", "warning", "exit 1"] {
             assert!(output.contains(expected), "{output}");
         }
         let mut selected = Vec::new();
@@ -1409,8 +1534,16 @@ mod tests {
         let mut out = Vec::new();
         write_selected_contents(&content, false, false, None, &mut out).unwrap();
         let out = String::from_utf8(out).unwrap();
-        assert!(out.contains("profile=desktop platform=Linux dry_run=true"));
-        assert!(out.contains("only=symlinks skip=packages with_deps=true no_repo_update=true"));
+        assert!(
+            out.contains("Configuration: desktop profile · Linux · dry run"),
+            "{out}"
+        );
+        assert!(out.contains("Selection: symlinks · excluding packages · including dependencies · repository sync disabled"), "{out}");
+        let mut verbose = Vec::new();
+        write_selected_contents(&content, true, false, None, &mut verbose).unwrap();
+        let verbose = String::from_utf8(verbose).unwrap();
+        assert!(verbose.contains("[run_context] desktop profile · Linux · dry run"));
+        assert!(verbose.contains("[run_scope] symlinks · excluding packages · including dependencies · repository sync disabled"));
     }
 
     #[test]
@@ -1445,13 +1578,26 @@ mod tests {
         assert!(selected.contains("selected detail"), "{selected}");
         assert!(selected.contains("Home symlinks"), "{selected}");
         assert!(!selected.contains("other detail"), "{selected}");
+        assert!(!selected.contains(task_id), "{selected}");
+        assert!(!selected.contains("000001 +"), "{selected}");
+        assert!(
+            selected.contains("Home symlinks: selected detail"),
+            "{selected}"
+        );
+
+        let mut verbose = Vec::new();
+        write_selected_contents(&content, true, false, Some("symlinks"), &mut verbose).unwrap();
+        let verbose = String::from_utf8(verbose).unwrap();
+        assert!(verbose.contains(task_id), "{verbose}");
+        assert!(verbose.contains("000001 +"), "{verbose}");
     }
 
     #[test]
-    fn human_task_states_use_current_and_planned_without_rewriting_raw_records() {
+    fn human_task_states_do_not_rewrite_raw_records() {
         for (status, label) in [
-            (TaskStatus::Ok, "Current"),
+            (TaskStatus::Ok, "Unchanged"),
             (TaskStatus::DryRun, "Planned"),
+            (TaskStatus::NotApplicable, "Not applicable"),
             (TaskStatus::Blocked, "Blocked"),
             (TaskStatus::Interrupted, "Interrupted"),
         ] {
@@ -1477,6 +1623,50 @@ mod tests {
             write_selected_contents(&contents, false, true, None, &mut raw).unwrap();
             assert_eq!(String::from_utf8(raw).unwrap(), contents);
         }
+    }
+
+    #[test]
+    fn readable_logs_name_unfinished_tasks_and_plans_without_storage_metadata() {
+        let task = "dotfiles_cli::example::PendingTask";
+        let contents =
+            "# Dotfiles test\n# Columns: seq | elapsed_us | wall_utc | context | event | message\n"
+                .to_owned()
+                + &record(
+                    task,
+                    Record::Message {
+                        event: "task_start".into(),
+                        text: "Pending work".into(),
+                    },
+                )
+                + &record(
+                    task,
+                    Record::Action {
+                        verb: "link".into(),
+                        subject: "example".into(),
+                        planned: true,
+                        message: "link example".into(),
+                    },
+                )
+                + &record(
+                    task,
+                    Record::Message {
+                        event: "warn".into(),
+                        text: "fixture warning\nsecond line".into(),
+                    },
+                )
+                + &format!(
+                    "000002 +20 now [{task}] [info] ordinary message\n\
+                     000003 +30 now [{task}] [warn] ordinary warning\n  continuation\n"
+                );
+        let mut output = Vec::new();
+        write_selected_contents(&contents, false, false, None, &mut output).unwrap();
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "# Dotfiles test\nPending work · Planned: link example\nPending work · Warning: fixture warning\nsecond line\nPending work: ordinary message\nPending work · Warning: ordinary warning\n  continuation\n",
+        );
+        let mut raw = Vec::new();
+        write_selected_contents(&contents, false, true, None, &mut raw).unwrap();
+        assert_eq!(raw, contents.as_bytes());
     }
 
     #[test]

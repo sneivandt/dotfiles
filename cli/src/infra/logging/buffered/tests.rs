@@ -603,7 +603,7 @@ fn completed_task_transcripts_preserve_spacing_and_warning_placement() {
                 "  link  b".into(),
             ]);
             if verbose {
-                expected.extend([String::new(), "CURRENT current".into()]);
+                expected.extend([String::new(), "UNCHANGED current".into()]);
             }
             if !verbose {
                 expected.push(String::new());

@@ -193,6 +193,10 @@ impl Resource for SymlinkResource {
 }
 
 impl RemovableResource for SymlinkResource {
+    fn removal_description(&self) -> String {
+        format!("{} from {}", self.display_target(), self.display_source())
+    }
+
     fn removal_state(&self) -> ResourceResult<ResourceState> {
         let target = match self.checked_target() {
             Ok(target) => target,
@@ -241,7 +245,7 @@ impl RemovableResource for SymlinkResource {
         let target = self.checked_target()?;
         if self.validation_error.is_some() || state::same_entry(&self.source, &target) {
             return Ok(ResourceChange::skipped(
-                "invalid symlink resource will not be materialized",
+                "invalid symlink will not be replaced with a copy",
             ));
         }
         match crate::infra::fs::symlink_metadata_optional(&target, "stat target")? {
@@ -259,15 +263,8 @@ impl RemovableResource for SymlinkResource {
         // Stage source content before replacing the managed link.
         let roots = self.checkout_roots();
         materialize::validate_source(&self.source, &roots)?;
-        copy_into_place(&self.source, &target, &roots, self.restore_missing).with_context(
-            || {
-                format!(
-                    "materialize {} to {}",
-                    self.source.display(),
-                    target.display()
-                )
-            },
-        )?;
+        copy_into_place(&self.source, &target, &roots, self.restore_missing)
+            .with_context(|| format!("copy {} to {}", self.source.display(), target.display()))?;
         Ok(ResourceChange::Applied)
     }
 }

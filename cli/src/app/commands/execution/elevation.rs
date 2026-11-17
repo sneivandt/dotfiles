@@ -278,7 +278,7 @@ fn prepare_sudo_elevation(
         Ok(true) => ElevationPlan::Ready,
         Ok(false) => {
             log.separate_from_startup();
-            log.error("sudo credential priming failed");
+            log.error("could not authenticate with sudo");
             ElevationPlan::Unavailable {
                 reason: "sudo credentials unavailable",
             }

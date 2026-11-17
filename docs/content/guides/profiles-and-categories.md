@@ -158,7 +158,7 @@ For a desktop-to-base transition, plan cleanup before changing the saved role:
    current source copies. Review before applying and keep sources available
    until it succeeds.
    Then preview `dotfiles update --profile base --only symlinks --dry-run`.
-   The materialized base files now block link installation: update preserves
+   The copied base files now block link installation: update preserves
    ordinary files instead of overwriting them. Inspect each reported target,
    preserve any edits, and move only the intended file or directory aside to
    a backup location. Repeat the base preview until it proposes the intended

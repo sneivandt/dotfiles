@@ -151,7 +151,7 @@ intended checkout. Before installation, use that checkout's wrapper as described
 in [Getting started](../guides/getting-started.md).
 
 Run the task's preview and inspect the proposed items and destinations. Add
-`--verbose` to include items that are already current. Resolve failures and unmet
+`--verbose` to include unchanged items. Resolve failures and unmet
 prerequisites, then repeat the command without `--dry-run` to apply. Applying
 inspects the current state again; the preview is not a saved execution plan.
 
@@ -211,7 +211,7 @@ The former `local-package-versions` and `local-package-repository` selectors
 also remain aliases for `custom-package-versions` and `custom-package-repository`.
 
 Independent ready tasks may run concurrently, with console rows in completion
-order. `--no-parallel` disables parallel execution. Tasks may finish current,
+order. `--no-parallel` disables parallel execution. Tasks may finish unchanged,
 not applicable or unmet rather than changed; failure is not a rollback.
 See [Architecture](../development/architecture.md#requirements) for runtime readiness
 assessment and conditional scheduling.

@@ -155,7 +155,7 @@ fn process_single_reports_unmet_work_as_a_warning() {
     assert_eq!(counts(&stats), (0, 0, 0, 1));
     assert_eq!(
         events.lock().unwrap().as_slice(),
-        ["warn: skipping mock resource: state unknown: systemctl failed"]
+        ["warn: cannot install mock resource: state unknown: systemctl failed"]
     );
 }
 

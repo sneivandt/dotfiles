@@ -18,10 +18,9 @@ pub(crate) fn display_diagnostics(diagnostics: &[Diagnostic], output: &dyn Outpu
         return;
     }
 
-    output.warn(format!(
-        "found {} configuration diagnostic(s):",
-        diagnostics.len()
-    ));
+    let count = diagnostics.len();
+    let unit = if count == 1 { "issue" } else { "issues" };
+    output.warn(format!("found {count} configuration {unit}:"));
     for diagnostic in diagnostics {
         output.warn_continuation(format!(
             "  [{}] {} [{}] ({}): {}",

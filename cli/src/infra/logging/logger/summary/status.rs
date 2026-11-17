@@ -20,7 +20,7 @@ pub(super) const fn presentation(
         TaskStatus::Blocked => ("⊘", "BLOCKED", TextStyle::Yellow),
         TaskStatus::Interrupted => ("⊘", "INTERRUPTED", TextStyle::Yellow),
         TaskStatus::Failed => ("✗", "FAILED", TextStyle::Red),
-        TaskStatus::Ok => ("○", "CURRENT", TextStyle::Dim),
+        TaskStatus::Ok => ("○", "UNCHANGED", TextStyle::Dim),
         TaskStatus::NotApplicable => ("⁃", "N/A", TextStyle::Dim),
     };
     (if symbols { symbol } else { word }, style)

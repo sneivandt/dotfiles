@@ -134,10 +134,10 @@ fn symlinks_preview_apply_repeat_and_conservative_uninstall() {
             &fixture,
             parallel,
             |store| Box::new(UninstallSymlinks::new(store.symlinks)),
-            "materialize",
+            "copy",
             &[
-                "~/.folder → symlinks/folder",
-                "~/Documents/profile.ps1 → symlinks/profile file",
+                "~/.folder from symlinks/folder",
+                "~/Documents/profile.ps1 from symlinks/profile file",
             ],
             3,
             || {

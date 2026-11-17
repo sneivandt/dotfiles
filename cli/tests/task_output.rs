@@ -8,6 +8,20 @@
 mod common;
 
 #[test]
+fn explicitly_selected_inapplicable_work_is_not_reported_as_unchanged() {
+    let repo = common::TestContextBuilder::new().build();
+    let home = tempfile::tempdir().unwrap();
+    let output = common::cli_command(repo.root_path(), home.path(), None, "update", "symlinks")
+        .arg("--no-symbols")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("No applicable tasks · "), "{stdout}");
+    assert!(!stdout.contains("unchanged"), "{stdout}");
+}
+
+#[test]
 fn completions_report_changes_then_current() {
     for (repository_child, self_update_child) in [(false, false), (true, false), (false, true)] {
         let repo = common::TestContextBuilder::new().build();
@@ -56,7 +70,7 @@ fn completions_report_changes_then_current() {
             }
             lock
         });
-        for expected in ["CHANGED Shell completions", "1 task already current"] {
+        for expected in ["CHANGED Shell completions", "Tasks: 1 unchanged"] {
             let output = command.output().unwrap();
             let stdout = String::from_utf8(output.stdout).unwrap();
             assert!(
@@ -138,13 +152,10 @@ fn overlay_check_failures_are_visible_in_both_schedulers() {
                     }),
                     "{stdout}"
                 );
-                assert!(!stdout.contains("No task changes"), "{stdout}");
-                assert!(!stdout.contains("already current"), "{stdout}");
+                assert!(!stdout.contains("No applicable tasks"), "{stdout}");
+                assert!(!stdout.contains("unchanged"), "{stdout}");
                 if verbose {
-                    assert!(
-                        stdout.contains("running 1 task(s): Audit script"),
-                        "{stdout}"
-                    );
+                    assert!(stdout.contains("selected tasks: Audit script"), "{stdout}");
                 }
             }
         }
@@ -195,9 +206,9 @@ fn unavailable_check_tools_explain_skips_and_fail_when_required() {
             );
             assert!(
                 stdout.contains(if expected_code == 1 {
-                    "1 task failed"
+                    "Checks: 1 failed"
                 } else {
-                    "1 task skipped"
+                    "Checks: 1 skipped"
                 }),
                 "{stdout}"
             );
@@ -543,9 +554,9 @@ fn human_transcripts_show_home_overlay_and_completion_disposition() {
                 );
                 let final_line = stdout.lines().last().unwrap();
                 let prefix = if preview {
-                    "1 task would change"
+                    "Tasks: 1 planned"
                 } else {
-                    "1 task changed"
+                    "Tasks: 1 changed"
                 };
                 assert!(final_line.starts_with(prefix), "{stdout}");
             }

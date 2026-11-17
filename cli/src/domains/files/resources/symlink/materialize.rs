@@ -55,18 +55,17 @@ fn publish(
 ) -> Result<()> {
     anyhow::ensure!(
         !same_entry(source, target),
-        "refusing to replace the source entry while materializing: {}",
+        "refusing to replace the source entry while copying: {}",
         target.display()
     );
     let publish_copy = || {
-        publish_copy(staged, target)
-            .with_context(|| format!("publish materialized copy at {}", target.display()))
+        publish_copy(staged, target).with_context(|| format!("place copy at {}", target.display()))
     };
     check_recovery(target)?;
     if crate::infra::fs::symlink_metadata_optional(target, "stat target")?.is_none() {
         anyhow::ensure!(
             allow_missing,
-            "managed link disappeared during materialization: {}",
+            "managed link disappeared while preparing its copy: {}",
             target.display()
         );
         return publish_copy();
@@ -166,7 +165,7 @@ pub(super) fn copy_dir_into_place(
         )
     })?;
     validate_relocated_links(guard.path(), guard.path(), repositories)
-        .with_context(|| format!("cannot safely materialize directory {}", source.display()))?;
+        .with_context(|| format!("cannot safely copy directory {}", source.display()))?;
 
     publish(
         source,
@@ -182,7 +181,7 @@ pub(super) fn copy_dir_into_place(
 pub(super) fn validate_source(source: &Path, repositories: &[&Path]) -> Result<()> {
     let metadata = source
         .metadata()
-        .with_context(|| format!("inspect materialization source {}", source.display()))?;
+        .with_context(|| format!("inspect copy source {}", source.display()))?;
     if metadata.is_dir() {
         validate_relocated_links(source, source, repositories)?;
     } else {
@@ -415,7 +414,7 @@ mod tests {
         })
         .unwrap_err();
 
-        assert!(error.to_string().contains("publish materialized copy"));
+        assert!(error.to_string().contains("place copy"));
         assert_eq!(std::fs::read_link(&target).unwrap(), referent);
         assert_eq!(std::fs::read_dir(fixture.path()).unwrap().count(), 3);
         publish(&source, &staged, &target, true, rename_noreplace).unwrap();

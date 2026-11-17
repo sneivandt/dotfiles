@@ -19,7 +19,7 @@ downloads and the source-build route.
 
 | Command | Purpose |
 |---|---|
-| `update` (default) | Apply configured state and update dependencies when their version rules allow it |
+| `update` (default) | Sync the repository and apply configuration; install missing system packages, not upgrade installed ones |
 | `remove` | Detach a limited set of integrations, not restore machine defaults |
 | `check` | Validate configuration and repository files |
 | `list` | Discover selectors or inspect a dependency graph |
@@ -63,7 +63,7 @@ These options apply to update, remove, and check:
 
 | Option | Purpose |
 |---|---|
-| `-v`, `--verbose` | Include current tasks, decisions, and timings; also available in log viewing |
+| `-v`, `--verbose` | Include unchanged tasks, decisions, and timings; also available in log viewing |
 | `-q`, `--quiet` | Keep warnings and incomplete outcomes |
 | `--format human\|jsonl` | Choose human-readable or JSON Lines output |
 | `--no-parallel` | Run selected work sequentially |
@@ -216,7 +216,10 @@ index. Historical `install` and `uninstall` filters remain supported; they
 are not current execution commands.
 
 Normal viewing shows actions, outcomes, warnings, context, and failed-command
-output. Verbose adds task starts, checks, timings, and debug details.
+output with task names and readable labels. Verbose adds task starts, checks,
+timings, debug details, and stored event identifiers and contexts. Raw viewing
+preserves the original records. Unrecognized lines and record formats remain
+visible as stored rather than being reformatted.
 An external command can return a nonzero exit code without failing its task
 when that code has an expected meaning, such as "not installed."
 Successful stdout is usually not saved;

@@ -258,7 +258,7 @@ dotfiles list --graph update --only systemd
 | Missing from the command | Look under the correct update/remove/check group; try `list --all` |
 | `filtered` or `skipped` in the graph | Check both `--only` and `--skip` |
 | Omitted prerequisite warning | Decide whether to include `--with-deps` |
-| No normal result row | The task may be current or inapplicable; inspect verbose output/logs |
+| No normal result row | The task may need no changes or be inapplicable; verbose shows unchanged tasks, logs also show inapplicable ones |
 | `requires …` or blocked | Fix the named prerequisite first |
 | Missing capability/tool | Provide that prerequisite deliberately |
 | No active entries | Check the profile/category selection |

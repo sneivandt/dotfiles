@@ -31,7 +31,8 @@ pub(super) fn process_single<R: Resource>(
         }
         ApplyOperation::Skip { reason, kind } => {
             if kind.is_failure() {
-                ctx.log().warn(format!("skipping {description}: {reason}"));
+                ctx.log()
+                    .warn(format!("cannot {} {description}: {reason}", opts.verb));
             } else {
                 ctx.debug_fmt(|| format!("skipping {description}: {reason}"));
             }
@@ -90,11 +91,20 @@ fn record_resource_change(
             delta.record(ItemOutcome::AlreadyOk);
         }
         ResourceChange::Skipped { reason, kind } => {
+            let outcome = if kind.is_failure() {
+                "failed"
+            } else {
+                "skipped"
+            };
             ctx.log().run_event(
                 LogEvent::ResourceResult,
-                &format!("{desc} skipped: {reason}"),
+                &format!("{desc} {outcome}: {reason}"),
             );
-            ctx.log().warn(format!("skipping {desc}: {reason}"));
+            if kind.is_failure() {
+                ctx.log().warn(format!("cannot {verb} {desc}: {reason}"));
+            } else {
+                ctx.log().warn(format!("skipping {desc}: {reason}"));
+            }
             delta.record(if kind.is_failure() {
                 ItemOutcome::Failed
             } else {
@@ -234,7 +244,7 @@ pub(super) fn remove_single<R: RemovableResource>(
         } else {
             current
         };
-    let description = resource.description();
+    let description = resource.removal_description();
     let plan = RemoveOperation::from_state(effective_state, verb);
     let mut delta = TaskStats::new();
     match &plan {
@@ -255,7 +265,7 @@ pub(super) fn remove_single<R: RemovableResource>(
             // than risking removing something we did not install. Unlike a
             // known unmanaged target, this leaves removal unverified.
             ctx.log()
-                .warn(format!("skipping removal of {description}: {reason}"));
+                .warn(format!("cannot {verb} {description}: {reason}"));
             delta.record(ItemOutcome::Failed);
         }
         RemoveOperation::Noop => {

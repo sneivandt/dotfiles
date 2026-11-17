@@ -187,7 +187,7 @@ impl Task for UninstallSymlinks {
             .map(|resource| resource.with_restore_missing(self.restore_missing))
             .collect();
         validate_resolved_targets(&resources)?;
-        process_resources_remove(ctx, resources, "materialize")
+        process_resources_remove(ctx, resources, "copy")
     }
 }
 

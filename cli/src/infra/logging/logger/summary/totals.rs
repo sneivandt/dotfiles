@@ -79,6 +79,7 @@ pub(super) fn format_summary_lines(
         | CompletionDisposition::Failed
         | CompletionDisposition::Interrupted => {}
     }
+    let counts_start = parts.len();
     for (count, label, color) in [
         (counts.failed, "failed", TextStyle::Red),
         (counts.interrupted, "interrupted", TextStyle::Yellow),
@@ -101,28 +102,23 @@ pub(super) fn format_summary_lines(
                 &mut parts,
                 counts.dry_run,
                 TextStyle::Magenta,
-                "would change",
+                "planned",
                 style,
                 false,
             );
-            if parts.is_empty() && counts.actions.applied == 0 && counts.actions.planned == 0 {
-                let text = if counts.ok == 0 {
-                    "No task changes".to_owned()
-                } else {
-                    let unit = if counts.ok == 1 { "task" } else { "tasks" };
-                    format!("{} {unit} already current", counts.ok)
-                };
-                parts.push(style.paint(TextStyle::Bold, &text));
+            let unchanged_style = if parts.is_empty() {
+                TextStyle::Bold
             } else {
-                push_count(
-                    &mut parts,
-                    counts.ok,
-                    TextStyle::Dim,
-                    "current",
-                    style,
-                    false,
-                );
-            }
+                TextStyle::Dim
+            };
+            push_count(
+                &mut parts,
+                counts.ok,
+                unchanged_style,
+                "unchanged",
+                style,
+                false,
+            );
         }
         SummaryMode::Check => {
             push_count(
@@ -135,14 +131,27 @@ pub(super) fn format_summary_lines(
             );
         }
     }
-    if parts.is_empty() && mode == SummaryMode::Check {
-        parts.push(style.paint(TextStyle::Bold, "No checks ran"));
+    if let Some(first_count) = parts.get_mut(counts_start) {
+        let unit = match mode {
+            SummaryMode::Standard => "Tasks:",
+            SummaryMode::Check => "Checks:",
+        };
+        *first_count = format!("{} {first_count}", style.paint(TextStyle::Dim, unit));
+    }
+    if parts.is_empty() {
+        parts.push(style.paint(
+            TextStyle::Bold,
+            match mode {
+                SummaryMode::Standard => "No applicable tasks",
+                SummaryMode::Check => "No checks ran",
+            },
+        ));
     }
     parts.push(style.paint(TextStyle::Dim, elapsed));
     vec![parts.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}")))]
 }
 
-/// Name the task unit and emphasize the first outcome plus all incomplete work.
+/// Emphasize the first outcome plus all incomplete work.
 fn push_count(
     parts: &mut Vec<String>,
     count: u32,
@@ -152,9 +161,10 @@ fn push_count(
     incomplete: bool,
 ) {
     if count > 0 {
-        let unit = if count == 1 { "task" } else { "tasks" };
-        let text = format!("{count} {unit} {label}");
-        parts.push(if incomplete || parts.is_empty() {
+        let text = format!("{count} {label}");
+        parts.push(if matches!(text_style, TextStyle::Bold) {
+            style.bold(&text)
+        } else if incomplete || parts.is_empty() {
             style.paint_bold(text_style, &text)
         } else {
             style.paint(text_style, &text)

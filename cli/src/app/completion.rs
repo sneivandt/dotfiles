@@ -930,7 +930,7 @@ mod tests {
     fn task_candidates_follow_command_membership() {
         let json = br#"[
             {"selector":"symlinks","task":"Home symlinks","commands":["update","remove"]},
-            {"selector":"shellcheck","task":"Shellcheck","commands":["check"]},
+            {"selector":"shellcheck","task":"ShellCheck","commands":["check"]},
             {"selector":"pin-only","task":"Pin updater","commands":["update"]}
         ]"#;
 

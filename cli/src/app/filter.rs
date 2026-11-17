@@ -42,11 +42,7 @@ pub(crate) fn apply_task_filters<'a>(
             .filter(|task| task.visibility().is_visible())
             .map(|task| task.name())
             .collect();
-        log.debug(format!(
-            "active filters — running {} task(s): {}",
-            names.len(),
-            names.join(", ")
-        ));
+        log.debug(format!("selected tasks: {}", names.join(", ")));
     }
 
     Ok(filtered)
@@ -171,6 +167,9 @@ fn legacy_task_filters(selector: &str) -> &'static [&'static str] {
         "custom-package-versions" => &["local-package-versions", "local-package-updates"],
         "login-shell" => &["shell", "default-shell"],
         "config-diagnostics" => &["config-warnings", "validate-config-warnings"],
+        "config-files" => &["validate-config-files"],
+        "symlink-sources" => &["validate-symlink-sources"],
+        "apm-plugins" => &["validate-apm-plugins"],
         "git" => &["git-settings"],
         "registry" => &["windows-registry"],
         _ => &[],
@@ -270,6 +269,25 @@ mod tests {
     fn selector_matching_normalizes_punctuation_and_case() {
         let task = SampleTask;
         assert!(task_matches_filter(&task, "HOME_SYMLINKS"));
+    }
+
+    #[test]
+    fn renamed_check_labels_remain_accepted_as_filters() {
+        use crate::app::validation::{
+            ValidateApmPlugins, ValidateConfigFiles, ValidateSymlinkSources,
+        };
+        let sources = ValidateSymlinkSources::new(crate::infra::ConfigHandle::new(
+            crate::test_helpers::empty_config(std::path::PathBuf::from("/fixture")),
+        ));
+        let cases: [(&dyn Task, &str); 3] = [
+            (&ValidateConfigFiles, "Validate config files"),
+            (&ValidateApmPlugins, "Validate APM plugins"),
+            (&sources, "Validate symlink sources"),
+        ];
+        for (task, old_label) in cases {
+            assert!(task_matches_filter(task, old_label), "{old_label}");
+            assert!(task_matches_filter(task, task.name()), "{}", task.name());
+        }
     }
 
     #[test]

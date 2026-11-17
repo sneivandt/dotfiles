@@ -77,8 +77,8 @@ pub(crate) fn run(opts: &ExplainOpts) -> Result<()> {
         };
     writeln!(output, "Update: {update_action}")?;
     let removal_action = match resource.removal_state() {
-        Ok(state) => match RemoveOperation::from_state(&state, "materialize") {
-            RemoveOperation::Remove { .. } => "materialize managed link".into(),
+        Ok(state) => match RemoveOperation::from_state(&state, "copy") {
+            RemoveOperation::Remove { .. } => "replace link with an independent copy".into(),
             RemoveOperation::Noop => "leave target as it is".into(),
             RemoveOperation::Skip { reason } => format!("blocked ({reason})"),
         },

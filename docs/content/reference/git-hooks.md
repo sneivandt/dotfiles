@@ -24,7 +24,9 @@ manage the personal Git templates described in
 
 Copies extensionless files from `hooks/` after repository synchronization, honoring
 `core.hooksPath` and the common hooks directory of linked worktrees. When the
-destination is already the tracked source, it is neither copied over itself nor removed.
+destination is the tracked source, Git runs that file directly and removal preserves it.
+On Linux, update reports a hook Git cannot execute. Restore execute permission with
+`chmod +x hooks/pre-commit`, or set a separate repository-local `core.hooksPath` for copies.
 
 Foreign or locally modified hooks are preserved and reported as conflicts, even when
 their filenames match managed hooks. Back them up and move them aside before installing

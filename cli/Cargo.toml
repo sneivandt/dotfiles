@@ -75,7 +75,7 @@ windows-sys = { version = "0.61", features = ["Win32_Security", "Win32_Storage_F
 rustix = { version = "1", features = ["fs"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", features = ["process", "signal", "user"] }
+nix = { version = "0.31", features = ["fs", "process", "signal", "user"] }
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }

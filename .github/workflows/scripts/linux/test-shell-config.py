@@ -909,9 +909,14 @@ class ShellConfigTests(unittest.TestCase):
         self.assertFalse(Path(str(dump) + ".checked").exists())
 
     def test_hostname_cache_refreshes_after_ssh_source_changes(self):
-        for source, contents, hostname in (
-            ("config", "Host new-config-alias\n  HostName example.test\n", "new-config-alias"),
-            ("known_hosts", "new-known-host ssh-ed25519 fixture\n", "new-known-host"),
+        for source, contents, hostnames in (
+            ("config", "Host new-config-alias\n  HostName example.test\n", ["new-config-alias"]),
+            (
+                "known_hosts",
+                "new-known-host,another-known-host\tssh-ed25519 fixture\n"
+                "|1|salt|hash ssh-ed25519 fixture\n",
+                ["new-known-host", "another-known-host"],
+            ),
         ):
             with self.subTest(source=source):
                 if "ZSH_COMPDUMP" not in self.env:
@@ -928,7 +933,10 @@ class ShellConfigTests(unittest.TestCase):
                     'print -rl -- "${hosts[@]}"\n'
                 )
                 result = self.run_shell(script)
-                self.assertIn(hostname, result.stdout.splitlines())
+                candidates = result.stdout.splitlines()
+                for hostname in hostnames:
+                    self.assertIn(hostname, candidates)
+                self.assertNotIn("|1|salt|hash", candidates)
                 updated = cache.stat().st_mtime_ns
                 self.run_shell(script)
                 self.assertEqual(cache.stat().st_mtime_ns, updated,

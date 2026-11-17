@@ -27,8 +27,9 @@ HEAD is inapplicable. A missing upstream, local-only commits, or diverged histor
 the task unmet. It does not reset or rebase the branch. Other branch-query errors remain
 failures.
 
-Apply fetches and fast-forwards. A local file that would be overwritten blocks the
-merge, including a file Git normally ignores. A successfully changed checkout triggers
+Apply uses Git 2.41 or later to fetch each upstream and fast-forward to the commit
+reported by that fetch. A local file that would be overwritten blocks the merge,
+including a file Git normally ignores. A successfully changed checkout triggers
 the guarded [configuration
 restart](../development/architecture.md#repository-updates-are-a-restart-boundary) before later tasks
 run. The parent keeps the run lock. Updating two repositories is not a transaction: a

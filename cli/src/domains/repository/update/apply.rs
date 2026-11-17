@@ -6,8 +6,10 @@ use anyhow::Result;
 use crate::engine::{Context, TaskResult, TaskStats};
 use crate::infra::exec::ExecError;
 
-use super::discovery::upstream;
-use super::models::{CheckedRepository, RepositoryPlanReadiness, RepositoryUpdatePlan};
+use super::discovery::{compare_commits, upstream};
+use super::models::{
+    CheckedRepository, CommitRelationship, RepositoryPlanReadiness, RepositoryUpdatePlan,
+};
 use super::{RepositoryUpdateSignal, git_command};
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{log_thread_name, set_log_thread_name};
@@ -53,13 +55,14 @@ pub(super) fn apply_repository_updates(
         };
         tracked.push((repository, remote, reference));
     }
-    if let Some(reason) = fetch_all(ctx, &tracked)? {
-        return Ok(TaskResult::Failed(reason));
-    }
+    let commits = match fetch_all(ctx, &tracked)? {
+        Ok(commits) => commits,
+        Err(reason) => return Ok(TaskResult::Failed(reason)),
+    };
 
     let mut plans = Vec::with_capacity(repositories.len());
-    for repository in repositories {
-        match plan_repository_update(ctx, repository)? {
+    for (repository, commit) in repositories.iter().zip(&commits) {
+        match plan_repository_update(ctx, repository, commit)? {
             RepositoryPlanReadiness::Ready(plan) => plans.push(plan),
             RepositoryPlanReadiness::Skipped(reason) => return Ok(TaskResult::unmet(reason)),
         }
@@ -115,8 +118,8 @@ pub(super) fn apply_repository_updates(
     })
 }
 
-/// Fetch every repository, returning the failure reason for the first one that
-/// could not be fetched.
+/// Fetch every repository and capture the commit reported by each fetch.
+/// Ordinary failures are reported in repository order.
 ///
 /// Fetches are network-bound and mutually independent, so with more than one
 /// repository they run concurrently: the overlay fetch no longer waits on the
@@ -125,31 +128,36 @@ pub(super) fn apply_repository_updates(
 fn fetch_all(
     ctx: &Context,
     repositories: &[(&CheckedRepository, String, String)],
-) -> std::result::Result<Option<String>, ExecError> {
+) -> std::result::Result<Result<Vec<String>, String>, ExecError> {
     use rayon::prelude::*;
 
-    let fetch_one =
-        |(repository, remote, reference): &(&CheckedRepository, String, String)| -> std::result::Result<Option<String>, ExecError> {
-            ctx.log()
-                .debug(format!("pulling from {}", repository.target.root.display()));
-            match fetch_with_retry(ctx, repository, remote, reference) {
-                Ok(()) => Ok(None),
-                Err(error) if error.is_cancelled() => Err(error),
-                Err(error) => {
-                    let reason = repository.target.reason("git fetch failed");
-                    ctx.log().warn(format!("{reason}: {error:#}"));
-                    Ok(Some(reason))
-                }
-            }
+    let fetch_one = |(repository, remote, reference): &(&CheckedRepository, String, String)| {
+        ctx.log()
+            .debug(format!("pulling from {}", repository.target.root.display()));
+        let failure = |detail: &dyn std::fmt::Display| {
+            let reason = repository.target.reason("git fetch failed");
+            ctx.log().warn(format!("{reason}: {detail:#}"));
+            Err(reason)
         };
+        match fetch_with_retry(ctx, repository, remote, reference) {
+            Ok(output) => Ok(fetched_commit(&output).map_or_else(
+                || failure(&"git fetch did not report exactly one upstream object"),
+                |commit| Ok(commit.to_owned()),
+            )),
+            Err(error) if error.is_cancelled() => Err(error),
+            Err(error) => Ok(failure(&error)),
+        }
+    };
 
     if !ctx.parallel() || repositories.len() < 2 {
+        let mut commits = Vec::with_capacity(repositories.len());
         for repository in repositories {
-            if let Some(reason) = fetch_one(repository)? {
-                return Ok(Some(reason));
+            match fetch_one(repository)? {
+                Ok(commit) => commits.push(commit),
+                Err(reason) => return Ok(Err(reason)),
             }
         }
-        return Ok(None);
+        return Ok(Ok(commits));
     }
 
     // Rayon reuses threads across work items, so re-assert the diagnostic
@@ -169,7 +177,29 @@ fn fetch_all(
     let outcomes = outcomes
         .into_iter()
         .collect::<std::result::Result<Vec<_>, _>>()?;
-    Ok(outcomes.into_iter().flatten().next())
+    Ok(outcomes.into_iter().collect())
+}
+
+// Git can report the same object for FETCH_HEAD and its tracking refs. Pruned
+// refs have a deletion flag and do not participate in the merge.
+fn fetched_commit(output: &str) -> Option<&str> {
+    let mut commit = None;
+    for line in output.lines() {
+        let mut fields = line.split_ascii_whitespace();
+        if fields.next()? == "-" {
+            continue;
+        }
+        let oid = fields.nth(1)?;
+        if fields.next().is_none()
+            || !matches!(oid.len(), 40 | 64)
+            || !oid.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || commit.is_some_and(|previous| previous != oid)
+        {
+            return None;
+        }
+        commit = Some(oid);
+    }
+    commit
 }
 
 fn fetch_with_retry(
@@ -177,18 +207,27 @@ fn fetch_with_retry(
     repository: &CheckedRepository,
     remote: &str,
     reference: &str,
-) -> std::result::Result<(), ExecError> {
+) -> std::result::Result<String, ExecError> {
     let mut attempt = 1_u32;
     loop {
         match ctx.executor().execute(
             git_command(
                 ctx,
                 &repository.target.root,
-                &["fetch", "--quiet", "--no-tags", "--", remote, reference],
+                &[
+                    "fetch",
+                    "--porcelain",
+                    "--verbose",
+                    "--no-tags",
+                    "--no-recurse-submodules",
+                    "--",
+                    remote,
+                    reference,
+                ],
             )
             .timeout(Duration::from_mins(5)),
         ) {
-            Ok(_) => return Ok(()),
+            Ok(result) => return Ok(result.stdout),
             Err(error) if error.is_cancelled() => return Err(error),
             Err(error) if attempt < MAX_FETCH_ATTEMPTS && is_transient_fetch_error(&error) => {
                 ctx.log().warn(format!(
@@ -222,78 +261,51 @@ const fn fetch_retry_delay(_attempt: u32) -> Duration {
 
 /// Check whether the repository needs a merge by comparing HEAD with the
 /// upstream ref, and reject diverged branches.
-pub(super) fn plan_repository_update(
+fn plan_repository_update(
     ctx: &Context,
     repository: &CheckedRepository,
+    upstream_sha: &str,
 ) -> Result<RepositoryPlanReadiness> {
-    let pre_sha = ctx
+    let root = &repository.target.root;
+    let head = ctx
         .executor()
-        .execute(git_command(
-            ctx,
-            &repository.target.root,
-            &["rev-parse", "HEAD"],
-        ))?
-        .stdout
-        .trim()
-        .to_string();
-
-    let upstream_sha = ctx
-        .executor()
-        .execute(git_command(
-            ctx,
-            &repository.target.root,
-            &["rev-parse", "--verify", "FETCH_HEAD^{commit}"],
-        ))?
-        .stdout
-        .trim()
-        .to_string();
-
-    if pre_sha == upstream_sha {
-        ctx.log().debug(format!(
-            "{} already up to date",
-            repository.target.description()
-        ));
-        return Ok(RepositoryPlanReadiness::Ready(RepositoryUpdatePlan {
-            target: repository.target.clone(),
-            commit: None,
-        }));
-    }
-
-    // Detect a diverged or local-only branch by counting commits on HEAD
-    // that are not on upstream. A non-zero count means `git pull --ff-only`
-    // would fail; skip rather than report a hard failure.
-    let ahead_output = ctx
-        .executor()
-        .execute(git_command(
-            ctx,
-            &repository.target.root,
-            &["rev-list", "--count", &format!("{upstream_sha}..{pre_sha}")],
-        ))?
-        .stdout
-        .trim()
-        .to_string();
-    let ahead = match ahead_output.parse::<u64>() {
-        Ok(ahead) => ahead,
-        Err(error) => {
-            let reason = repository
-                .target
-                .reason("could not determine whether the local branch diverged");
-            ctx.log().warn(format!(
-                "{reason}: invalid rev-list count {ahead_output:?}: {error}"
+        .execute(git_command(ctx, root, &["rev-parse", "HEAD"]))?;
+    let upstream = ctx.executor().execute(git_command(
+        ctx,
+        root,
+        &[
+            "rev-parse",
+            "--verify",
+            &format!("{upstream_sha}^{{commit}}"),
+        ],
+    ))?;
+    let upstream = upstream.stdout.trim();
+    let commit = match compare_commits(ctx, root, head.stdout.trim(), upstream)? {
+        CommitRelationship::AlreadyCurrent => {
+            ctx.log().debug(format!(
+                "{} already up to date",
+                repository.target.description()
             ));
-            return Ok(RepositoryPlanReadiness::Skipped(reason));
+            None
+        }
+        CommitRelationship::WouldUpdate => Some(upstream.to_owned()),
+        CommitRelationship::Ahead => {
+            return Ok(RepositoryPlanReadiness::Skipped(
+                repository
+                    .target
+                    .reason("local branch is ahead of upstream"),
+            ));
+        }
+        CommitRelationship::Diverged => {
+            return Ok(RepositoryPlanReadiness::Skipped(
+                repository
+                    .target
+                    .reason("local branch diverged from upstream"),
+            ));
         }
     };
-
-    if ahead > 0 {
-        let reason = repository
-            .target
-            .reason("local branch diverged from upstream");
-        return Ok(RepositoryPlanReadiness::Skipped(reason));
-    }
-
     Ok(RepositoryPlanReadiness::Ready(RepositoryUpdatePlan {
         target: repository.target.clone(),
-        commit: Some(upstream_sha),
+        commit,
     }))
 }

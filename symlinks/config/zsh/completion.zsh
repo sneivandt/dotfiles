@@ -87,13 +87,19 @@ fi
 if [[ "$_zsh_hosts_fresh" == true ]]; then
   source "$_ZSH_HOSTS_CACHE"
 else
-  [ -r /etc/ssh/ssh_known_hosts ] && _global_ssh_hosts=(${${${${(f)"$(</etc/ssh/ssh_known_hosts)"}:#[\|]*}%%\ *}%%,*}) || _global_ssh_hosts=()
-  [ -r ~/.ssh/known_hosts ] && _ssh_hosts=(${${${${(f)"$(<~/.ssh/known_hosts)"}:#[\|]*}%%\ *}%%,*}) || _ssh_hosts=()
+  _known_hosts=()
+  for _zsh_hosts_source in /etc/ssh/ssh_known_hosts ~/.ssh/known_hosts; do
+    [[ -r "$_zsh_hosts_source" ]] || continue
+    for _zsh_hosts_line in "${(@f)$(<"$_zsh_hosts_source")}"; do
+      _zsh_hosts_field=${_zsh_hosts_line%%[[:blank:]]*}
+      [[ -z $_zsh_hosts_field || $_zsh_hosts_field == [\|\#]* ]] && continue
+      _known_hosts+=("${(@s:,:)_zsh_hosts_field}")
+    done
+  done
   [ -r /etc/hosts ] && : ${(A)_etc_hosts:=${(s: :)${(ps:\t:)${${(f)~~"$(</etc/hosts)"}%%\#*}##[:blank:]#[^[:blank:]]#}}} || _etc_hosts=()
   [ -r ~/.ssh/config ] && _ssh_config=($(sed -ne 's/Host[=\t ]//p' ~/.ssh/config)) || _ssh_config=()
   hosts=(
-    "$_global_ssh_hosts[@]"
-    "$_ssh_hosts[@]"
+    "$_known_hosts[@]"
     "$_etc_hosts[@]"
     "$_ssh_config[@]"
     "$HOST"
@@ -112,5 +118,5 @@ else
     mv "$tmp_hosts_cache" "$_ZSH_HOSTS_CACHE"
   fi
 fi
-unset _zsh_hosts_fresh _zsh_hosts_source
+unset _zsh_hosts_fresh _zsh_hosts_source _zsh_hosts_line _zsh_hosts_field _known_hosts
 zstyle ':completion:*:hosts' hosts $hosts

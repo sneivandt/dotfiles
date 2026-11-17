@@ -77,12 +77,11 @@ pub(super) enum RepositoryPlanReadiness {
     Skipped(String),
 }
 
-/// Dry-run comparison result between HEAD and the known upstream SHA.
+/// Ancestry relationship between two locally available commits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum DryRunUpdateStatus {
+pub(super) enum CommitRelationship {
     AlreadyCurrent,
     WouldUpdate,
     Ahead,
     Diverged,
-    Unknown,
 }

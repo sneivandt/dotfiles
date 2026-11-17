@@ -7,7 +7,7 @@ use crate::infra::exec::ExecError;
 
 use super::git_command;
 use super::models::{
-    CheckedRepository, DryRunUpdateStatus, RepositoryReadiness, RepositorySetReadiness,
+    CheckedRepository, CommitRelationship, RepositoryReadiness, RepositorySetReadiness,
     UpdateTarget, UpdateTargetKind,
 };
 use crate::infra::logging::OutputExt as _;
@@ -107,28 +107,28 @@ pub(super) fn dry_run_repositories(
     let mut updates = Vec::new();
     for repository in repositories {
         match dry_run_update_status(ctx, &repository.target.root, &repository.head_ref)? {
-            DryRunUpdateStatus::AlreadyCurrent => {
+            Some(CommitRelationship::AlreadyCurrent) => {
                 ctx.log().debug(format!(
                     "{} already up to date",
                     repository.target.description()
                 ));
             }
-            DryRunUpdateStatus::WouldUpdate => updates.push(&repository.target),
-            DryRunUpdateStatus::Ahead => {
+            Some(CommitRelationship::WouldUpdate) => updates.push(&repository.target),
+            Some(CommitRelationship::Ahead) => {
                 return Ok(TaskResult::unmet(
                     repository
                         .target
                         .reason("local branch is ahead of upstream"),
                 ));
             }
-            DryRunUpdateStatus::Diverged => {
+            Some(CommitRelationship::Diverged) => {
                 return Ok(TaskResult::unmet(
                     repository
                         .target
                         .reason("local branch diverged from upstream"),
                 ));
             }
-            DryRunUpdateStatus::Unknown => {
+            None => {
                 return Ok(TaskResult::unmet(repository.target.reason(
                     "cannot determine fast-forward eligibility without fetching",
                 )));
@@ -153,36 +153,49 @@ pub(super) fn dry_run_repositories(
 
 /// Determine whether a pull would change HEAD by comparing it against the
 /// upstream SHA without fetching.
-pub(super) fn dry_run_update_status(
+fn dry_run_update_status(
     ctx: &Context,
     root: &Path,
     head_ref: &str,
-) -> Result<DryRunUpdateStatus> {
+) -> Result<Option<CommitRelationship>> {
     let head = ctx
         .executor()
         .execute(git_command(ctx, root, &["rev-parse", "HEAD"]))?;
     let head = head.stdout.trim();
     let Some(upstream) = upstream_remote_sha(ctx, root, head_ref)? else {
-        return Ok(DryRunUpdateStatus::Unknown);
+        return Ok(None);
     };
     if head == upstream {
-        return Ok(DryRunUpdateStatus::AlreadyCurrent);
+        return Ok(Some(CommitRelationship::AlreadyCurrent));
     }
     let commit = format!("{upstream}^{{commit}}");
-    if optional_git_output(ctx, root, &["rev-parse", "--verify", "--quiet", &commit], 1)?.is_none()
-    {
-        return Ok(DryRunUpdateStatus::Unknown);
+    let Some(commit) =
+        optional_git_output(ctx, root, &["rev-parse", "--verify", "--quiet", &commit], 1)?
+    else {
+        return Ok(None);
+    };
+    compare_commits(ctx, root, head, &commit).map(Some)
+}
+
+pub(super) fn compare_commits(
+    ctx: &Context,
+    root: &Path,
+    head: &str,
+    upstream: &str,
+) -> Result<CommitRelationship> {
+    if head == upstream {
+        return Ok(CommitRelationship::AlreadyCurrent);
     }
     let is_ancestor = |older: &str, newer: &str| {
         optional_git_output(ctx, root, &["merge-base", "--is-ancestor", older, newer], 1)
             .map(|result| result.is_some())
     };
-    Ok(if is_ancestor(head, &upstream)? {
-        DryRunUpdateStatus::WouldUpdate
-    } else if is_ancestor(&upstream, head)? {
-        DryRunUpdateStatus::Ahead
+    Ok(if is_ancestor(head, upstream)? {
+        CommitRelationship::WouldUpdate
+    } else if is_ancestor(upstream, head)? {
+        CommitRelationship::Ahead
     } else {
-        DryRunUpdateStatus::Diverged
+        CommitRelationship::Diverged
     })
 }
 

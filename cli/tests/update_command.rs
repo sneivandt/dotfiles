@@ -796,6 +796,75 @@ fn startup_failure_writes_finished_history_and_an_exact_diagnostic_hint() {
     assert!(read_retained_log(&log_dir, &["--list"]).contains("failed"));
 }
 
+#[cfg(unix)]
+#[test]
+fn repository_update_uses_each_fetch_result_when_a_later_fetch_overwrites_fetch_head() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let fixture = tempfile::tempdir().unwrap();
+    let home = fixture.path().join("home");
+    let root = fixture.path().join("main");
+    let overlay = fixture.path().join("overlay");
+    let bin = fixture.path().join("bin");
+    for dir in [&home, &overlay, &bin] {
+        std::fs::create_dir(dir).unwrap();
+    }
+    common::setup_minimal_repo(&root);
+
+    let mut expected = Vec::new();
+    for (repo, name) in [(&root, "main-remote"), (&overlay, "overlay-remote")] {
+        git(fixture.path(), &["init", "--bare", "-b", "main", name]);
+        git(repo, &["init", "-b", "main"]);
+        git(repo, &["add", "."]);
+        git(repo, &["commit", "--allow-empty", "-m", "initial"]);
+        let initial = git(repo, &["rev-parse", "HEAD"]);
+        let remote = fixture.path().join(name);
+        git(repo, &["remote", "add", "origin", remote.to_str().unwrap()]);
+        git(repo, &["push", "-u", "origin", "main"]);
+        git(repo, &["commit", "--allow-empty", "-m", name]);
+        let upstream = git(repo, &["rev-parse", "HEAD"]);
+        git(repo, &["push", "origin", "main"]);
+        git(repo, &["commit", "--allow-empty", "-m", "unrelated"]);
+        let unrelated = git(repo, &["rev-parse", "HEAD"]);
+        git(repo, &["push", "origin", "HEAD:refs/heads/unrelated"]);
+        git(repo, &["reset", "--hard", &initial]);
+        expected.push((repo, upstream, unrelated));
+    }
+
+    let path = std::env::var_os("PATH").unwrap();
+    let real_git = std::env::split_paths(&path)
+        .find_map(|dir| dir.join("git").canonicalize().ok())
+        .unwrap();
+    let wrapped_git = bin.join("git");
+    std::fs::write(
+        &wrapped_git,
+        r#"#!/bin/sh
+if [ "$1" = fetch ]; then
+    "$FIXTURE_GIT" "$@" || exit "$?"
+    "$FIXTURE_GIT" fetch --quiet --no-tags origin refs/heads/unrelated
+else
+    exec "$FIXTURE_GIT" "$@"
+fi
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(wrapped_git, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path =
+        std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
+    let output =
+        common::isolated_cli_command(&root, &home, Some(&overlay), "update", "repository", true)
+            .env("PATH", path)
+            .env("FIXTURE_GIT", real_git)
+            .output()
+            .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    for (repo, upstream, unrelated) in expected {
+        assert_eq!(git(repo, &["rev-parse", "FETCH_HEAD"]), unrelated);
+        assert_eq!(git(repo, &["rev-parse", "HEAD"]), upstream);
+        assert_eq!(git(repo, &["rev-parse", "@{u}"]), upstream);
+    }
+}
+
 #[test]
 fn partial_repository_refresh_can_retry_with_fresh_configuration() {
     check_partial_repository_refresh(false);
@@ -947,21 +1016,28 @@ fn check_partial_repository_refresh(ignored: bool) {
     );
 
     git(&root, &["commit", "--allow-empty", "-m", "local only"]);
-    let check_preview = |expected: &str| {
-        let output = common::isolated_cli_command(&root, &home, None, "update", "repository", true)
-            .arg("--dry-run")
-            .output()
-            .unwrap();
-        let preview_text = format!(
+    let local_head = git(&root, &["rev-parse", "HEAD"]);
+    let check_status = |expected: &str, dry_run| {
+        let mut command =
+            common::isolated_cli_command(&root, &home, None, "update", "repository", true);
+        if dry_run {
+            command.arg("--dry-run");
+        }
+        let output = command.output().unwrap();
+        let status_text = format!(
             "{}{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        assert!(output.status.success(), "{preview_text}");
-        assert!(!preview_text.contains("would change"), "{preview_text}");
-        assert!(preview_text.contains(expected), "{preview_text}");
+        if dry_run {
+            assert!(output.status.success(), "{status_text}");
+        }
+        assert!(!status_text.contains("would change"), "{status_text}");
+        assert!(status_text.contains(expected), "{status_text}");
+        assert_eq!(git(&root, &["rev-parse", "HEAD"]), local_head);
     };
-    check_preview("local branch is ahead of upstream");
+    check_status("local branch is ahead of upstream", true);
+    check_status("local branch is ahead of upstream", false);
 
     let publisher = fixture.path().join("publisher");
     git(
@@ -974,7 +1050,7 @@ fn check_partial_repository_refresh(ignored: bool) {
     );
     git(&publisher, &["push", "origin", "main"]);
     let tracking_before = git(&root, &["rev-parse", "@{u}"]);
-    check_preview("cannot determine fast-forward eligibility");
+    check_status("cannot determine fast-forward eligibility", true);
     assert_eq!(
         git(&root, &["rev-parse", "@{u}"]),
         tracking_before,
@@ -982,7 +1058,8 @@ fn check_partial_repository_refresh(ignored: bool) {
     );
 
     git(&root, &["fetch", "origin"]);
-    check_preview("local branch diverged from upstream");
+    check_status("local branch diverged from upstream", true);
+    check_status("local branch diverged from upstream", false);
 }
 
 #[test]

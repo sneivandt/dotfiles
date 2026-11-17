@@ -16,7 +16,7 @@ use crate::engine::{
 /// # Errors
 ///
 /// Returns an error if the `hooks/` directory cannot be read.
-fn discover_hooks(ctx: &Context) -> Result<Vec<HookFileResource>> {
+fn discover_hooks(ctx: &Context, installing: bool) -> Result<Vec<HookFileResource>> {
     let hooks_src = ctx.hooks_dir().to_path_buf();
     let repository =
         git2::Repository::open(ctx.root()).context("opening repository for Git hooks")?;
@@ -50,12 +50,35 @@ fn discover_hooks(ctx: &Context) -> Result<Vec<HookFileResource>> {
         if path.is_file() && path.extension().is_none() {
             let resource = HookFileResource::new(path, hooks_dst.join(entry.file_name()));
             // A user-owned hooksPath can execute the tracked sources directly.
-            if !resource.targets_source()? {
+            if resource.targets_source()? {
+                if installing {
+                    check_direct_hook(&resource)?;
+                }
+            } else {
                 resources.push(resource);
             }
         }
     }
     Ok(resources)
+}
+
+#[cfg(unix)]
+fn check_direct_hook(resource: &HookFileResource) -> Result<()> {
+    nix::unistd::access(&resource.target, nix::unistd::AccessFlags::X_OK).with_context(|| {
+        format!(
+            "Git cannot execute its hook at {}; make it executable (chmod +x) or configure a separate repository-local core.hooksPath",
+            resource.target.display()
+        )
+    })
+}
+
+#[cfg(not(unix))]
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "match the Unix hook check signature"
+)]
+const fn check_direct_hook(_resource: &HookFileResource) -> Result<()> {
+    Ok(())
 }
 
 /// Install git hooks from hooks/ into .git/hooks/.
@@ -81,7 +104,7 @@ impl Task for InstallGitHooks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources = discover_hooks(ctx)?;
+        let resources = discover_hooks(ctx, true)?;
         process_resources(ctx, resources, &ProcessOpts::strict("install"))
     }
 }
@@ -109,7 +132,7 @@ impl Task for UninstallGitHooks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources = discover_hooks(ctx)?;
+        let resources = discover_hooks(ctx, false)?;
         process_resources_remove(ctx, resources, "remove")
     }
 }
@@ -172,7 +195,7 @@ mod tests {
         }
         std::fs::create_dir(hooks.join("subdir")).unwrap();
         let ctx = make_linux_context(dir.path().to_path_buf(), None);
-        let resources = discover_hooks(&ctx).unwrap();
+        let resources = discover_hooks(&ctx, true).unwrap();
         let mut names: Vec<_> = resources
             .iter()
             .map(|resource| {
@@ -263,6 +286,49 @@ mod tests {
             !git_hooks_dir.join("pre-commit").exists(),
             "pre-commit hook should be removed from .git/hooks/"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn direct_source_hook_requires_execute_access_and_is_preserved_on_removal() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        let repository = init_repo(dir.path());
+        repository
+            .config()
+            .unwrap()
+            .set_str("core.hooksPath", "hooks")
+            .unwrap();
+        std::fs::create_dir(dir.path().join("hooks")).unwrap();
+        let path = dir.path().join("hooks/pre-commit");
+        let contents = "#!/bin/sh\nexit 0\n";
+        std::fs::write(&path, contents).unwrap();
+        let ctx = make_linux_context(dir.path().to_path_buf(), None);
+        for mode in [0o644, 0o755] {
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+            for dry_run in [false, true] {
+                let result = InstallGitHooks.run(&ctx.with_dry_run(dry_run));
+                if mode == 0o644 {
+                    let error = result.unwrap_err().to_string();
+                    assert!(
+                        error.contains("hooks/pre-commit") && error.contains("chmod +x"),
+                        "{error}"
+                    );
+                } else {
+                    crate::test_helpers::assert_task_ok(&result.unwrap());
+                }
+            }
+            let removal = UninstallGitHooks.run(&ctx).unwrap();
+            let stats = crate::test_helpers::task_batch(&removal);
+            assert_eq!(stats.changed_count(), 0);
+            assert_eq!(stats.failed_count(), 0);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), contents);
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                mode
+            );
+        }
     }
 
     #[test]

@@ -2,11 +2,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::domains::editors::resources::deferred_extensions::DeferredExtensionsResource;
 use crate::domains::system::config::systemd_units::{UnitScope, safe_unit_name};
 use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::exec::{CommandSpec, Executor};
+use crate::infra::provisioning::{
+    DEFERRED_EXTENSIONS_MARKER, DeferredExtensionsState, deferred_extensions_state,
+};
 
 const THUNAR_SETTINGS_UNIT: &str = "thunar-view-settings.service";
 const THUNAR_SETTINGS_SCRIPT: &str = "symlinks/config/Thunar/managed-view-settings.sh";
@@ -833,17 +835,16 @@ impl IntrinsicState for SystemdUnitResource {
             && systemd_property(properties, "ActiveState") == Some("inactive")
             && let Some(home) = &self.home
         {
-            return Ok(
-                match DeferredExtensionsResource::new(home).current_state()? {
-                    ResourceState::Missing => ResourceState::Correct,
-                    ResourceState::Correct => ResourceState::Incorrect {
-                        current: "VS Code extension provisioning is pending".into(),
-                    },
-                    state @ (ResourceState::Incorrect { .. }
-                    | ResourceState::Invalid { .. }
-                    | ResourceState::Unknown { .. }) => state,
+            let marker = home.join(DEFERRED_EXTENSIONS_MARKER);
+            return Ok(match deferred_extensions_state(&marker)? {
+                DeferredExtensionsState::Absent => ResourceState::Correct,
+                DeferredExtensionsState::Pending => ResourceState::Incorrect {
+                    current: "VS Code extension provisioning is pending".into(),
                 },
-            );
+                DeferredExtensionsState::Invalid => ResourceState::Invalid {
+                    reason: format!("{} is not a regular file", marker.display()),
+                },
+            });
         }
         let state = runtime_state(self.enabled, properties);
         if matches!(state, ResourceState::Correct)

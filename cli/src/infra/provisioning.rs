@@ -1,4 +1,7 @@
-//! Explicit detection of installation environments that lack a real user session.
+//! Installation environments and work deferred until the first user session.
+
+use std::io;
+use std::path::Path;
 
 use super::env::Env;
 
@@ -7,6 +10,36 @@ pub const ENV_VAR: &str = "DOTFILES_PROVISIONING";
 
 /// Value used while `install-arch` invokes dotfiles through `arch-chroot`.
 pub const ARCH_CHROOT: &str = "arch-chroot";
+
+/// Marker path relative to the user's home directory.
+pub const DEFERRED_EXTENSIONS_MARKER: &str = ".local/state/dotfiles/deferred-vscode-extensions";
+
+/// Filesystem state of the deferred extension provisioning marker.
+#[derive(Debug)]
+pub enum DeferredExtensionsState {
+    /// A regular marker file signals pending work.
+    Pending,
+    /// The marker path does not exist.
+    Absent,
+    /// The marker path exists but is not a regular file.
+    Invalid,
+}
+
+/// Inspect the marker without following a symlink at the marker path.
+///
+/// # Errors
+///
+/// Returns inspection errors other than a missing marker.
+pub fn deferred_extensions_state(marker: &Path) -> io::Result<DeferredExtensionsState> {
+    match std::fs::symlink_metadata(marker) {
+        Ok(metadata) if metadata.is_file() => Ok(DeferredExtensionsState::Pending),
+        Ok(_) => Ok(DeferredExtensionsState::Invalid),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            Ok(DeferredExtensionsState::Absent)
+        }
+        Err(error) => Err(error),
+    }
+}
 
 /// Return whether dotfiles is configuring a target from an Arch chroot.
 #[must_use]

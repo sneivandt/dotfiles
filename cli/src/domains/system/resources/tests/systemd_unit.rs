@@ -215,9 +215,9 @@ fn first_login_marker_policy_only_applies_to_enabled_user_units() {
         ResourceState::Incorrect { .. }
     ));
 
-    DeferredExtensionsResource::new(home.path())
-        .apply()
-        .unwrap();
+    let marker = home.path().join(DEFERRED_EXTENSIONS_MARKER);
+    std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+    std::fs::write(marker, "pending").unwrap();
     let mut disabled = queried_unit(
         FIRST_LOGIN_UNIT,
         UnitScope::User,

@@ -262,7 +262,7 @@ mod tests {
         );
         let marker = home
             .path()
-            .join(crate::domains::editors::resources::deferred_extensions::MARKER_RELATIVE_PATH);
+            .join(crate::infra::provisioning::DEFERRED_EXTENSIONS_MARKER);
         assert!(
             std::fs::read_to_string(&marker)
                 .unwrap()

@@ -620,10 +620,10 @@ fn systemd_retries_a_previously_skipped_start_and_then_converges() {
 
 #[test]
 fn first_login_service_retries_pending_work_and_converges_after_marker_removal() {
-    use crate::domains::editors::resources::deferred_extensions::MARKER_RELATIVE_PATH;
+    use crate::infra::provisioning::DEFERRED_EXTENSIONS_MARKER;
 
     let home = tempfile::tempdir().unwrap();
-    let marker = home.path().join(MARKER_RELATIVE_PATH);
+    let marker = home.path().join(DEFERRED_EXTENSIONS_MARKER);
     let name = "dotfiles-first-login.service";
     let task = systemd_task(name, UnitScope::User, true);
     let skipped = "ActiveState=inactive\nType=oneshot\nResult=success\nConditionResult=no\n";
@@ -636,7 +636,8 @@ fn first_login_service_retries_pending_work_and_converges_after_marker_removal()
         systemctl(&["--user", "enable", "--now", name]),
         Ok(ExecResult::success("")),
     );
-    let ctx = context(user_unit_probe(executor, name, false, completed))
+    let executor = user_unit_probe(executor, name, false, completed);
+    let ctx = context(user_unit_probe(executor, name, false, unstarted))
         .with_home(home.path().to_path_buf());
 
     for _ in 0..2 {
@@ -662,6 +663,11 @@ fn first_login_service_retries_pending_work_and_converges_after_marker_removal()
         crate::test_helpers::task_batch(&repeated).already_ok_count(),
         1
     );
+
+    std::fs::create_dir(&marker).unwrap();
+    let invalid = task.run(&ctx).unwrap();
+    assert_eq!(crate::test_helpers::task_batch(&invalid).failed_count(), 1);
+    assert!(marker.is_dir());
 }
 
 #[test]

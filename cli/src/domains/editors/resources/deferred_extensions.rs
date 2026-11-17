@@ -3,9 +3,9 @@
 use std::path::{Path, PathBuf};
 
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
-
-/// Marker path relative to the user's home directory.
-pub const MARKER_RELATIVE_PATH: &str = ".local/state/dotfiles/deferred-vscode-extensions";
+use crate::infra::provisioning::{
+    DEFERRED_EXTENSIONS_MARKER, DeferredExtensionsState, deferred_extensions_state,
+};
 
 const MARKER_CONTENT: &str = "VS Code extensions were deferred during Arch chroot provisioning.\n\
 The dotfiles-first-login service removes this marker only after they converge.\n";
@@ -21,7 +21,7 @@ impl DeferredExtensionsResource {
     #[must_use]
     pub fn new(home: &Path) -> Self {
         Self {
-            marker: home.join(MARKER_RELATIVE_PATH),
+            marker: home.join(DEFERRED_EXTENSIONS_MARKER),
         }
     }
 }
@@ -45,16 +45,13 @@ impl Resource for DeferredExtensionsResource {
 
 impl IntrinsicState for DeferredExtensionsResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
-        match std::fs::symlink_metadata(&self.marker) {
-            Ok(metadata) if metadata.is_file() => Ok(ResourceState::Correct),
-            Ok(_) => Ok(ResourceState::Invalid {
+        Ok(match deferred_extensions_state(&self.marker)? {
+            DeferredExtensionsState::Pending => ResourceState::Correct,
+            DeferredExtensionsState::Invalid => ResourceState::Invalid {
                 reason: format!("{} is not a regular file", self.marker.display()),
-            }),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                Ok(ResourceState::Missing)
-            }
-            Err(error) => Err(error.into()),
-        }
+            },
+            DeferredExtensionsState::Absent => ResourceState::Missing,
+        })
     }
 }
 

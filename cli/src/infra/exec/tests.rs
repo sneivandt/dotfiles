@@ -267,6 +267,88 @@ fn timeout_remains_active_while_a_descendant_holds_output_pipes() {
     );
 }
 
+#[cfg(unix)]
+const DETACHED_PIPE_TEST: &str = "infra::exec::tests::detached_pipe_child";
+
+#[cfg(unix)]
+fn detached_pipe_command(command: &mut Command, fixture: &Path, role: &str) {
+    command
+        .args(["--ignored", "--exact", DETACHED_PIPE_TEST, "--nocapture"])
+        .env("DOTFILES_EXEC_PIPE_FIXTURE", fixture)
+        .env("DOTFILES_EXEC_PIPE_ROLE", role);
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "subprocess fixture for the detached pipe test"]
+fn detached_pipe_child() {
+    use std::io::Write as _;
+
+    let fixture = PathBuf::from(std::env::var_os("DOTFILES_EXEC_PIPE_FIXTURE").unwrap());
+    if std::env::var("DOTFILES_EXEC_PIPE_ROLE").unwrap() == "leader" {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        detached_pipe_command(&mut command, &fixture, "descendant");
+        drop(command.spawn().unwrap());
+        return;
+    }
+    nix::unistd::setsid().unwrap();
+    io::stdout().write_all(b"detached stdout\n").unwrap();
+    io::stderr().write_all(b"detached stderr\n").unwrap();
+    std::fs::create_dir(fixture.join("ready")).unwrap();
+    // Parent cleanup releases the fixture. Keep a deadline for the failure
+    // case so the test also finishes against a blocking reader.
+    let started = Instant::now();
+    while fixture.exists() && started.elapsed() < Duration::from_secs(6) {
+        std::thread::sleep(POLL_INTERVAL);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn interrupting_detached_pipe_writers_preserves_output_and_returns_promptly() {
+    for cancelled in [false, true] {
+        let fixture = tempfile::tempdir().unwrap();
+        let mut command = new_command(std::env::current_exe().unwrap());
+        detached_pipe_command(&mut command, fixture.path(), "leader");
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut child = process::spawn(command).unwrap();
+        let ready = fixture.path().join("ready");
+        let ready_started = Instant::now();
+        while !ready.exists() && ready_started.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(POLL_INTERVAL);
+        }
+        if !ready.exists() {
+            terminate_child(&child);
+            wait_after_terminate(&mut child);
+            panic!("descendant did not detach and write its markers");
+        }
+        let token = CancellationToken::new();
+        if cancelled {
+            token.cancel();
+        }
+        let settings = CommandSettings::managed(token, Duration::ZERO);
+        let started = Instant::now();
+        let error = collect_child(child, "detached pipe fixture", &settings).unwrap_err();
+        assert!(
+            started.elapsed() < Duration::from_secs(4),
+            "detached writer held capture open after interruption: {error:?}"
+        );
+        let result = if cancelled {
+            let ExecError::Cancelled { result, .. } = error else {
+                panic!("wrong cancellation classification: {error:?}");
+            };
+            result
+        } else {
+            let ExecError::TimedOut { result, .. } = error else {
+                panic!("wrong timeout classification: {error:?}");
+            };
+            result
+        };
+        assert!(result.stdout.contains("detached stdout"));
+        assert!(result.stderr.contains("detached stderr"));
+    }
+}
+
 #[test]
 fn cancelled_executor_does_not_attempt_to_spawn_commands() {
     let token = CancellationToken::new();

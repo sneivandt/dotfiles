@@ -30,6 +30,9 @@ Missing content is not created. Changes through links can affect the checkout.
 
 Edit [conf/chmod.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml).
 
+The Linux default sets `~/.ssh/config` to `600`. If an earlier update changed
+permissions under `~/.config/zsh`, restore the affected files' intended modes.
+
 For example, restrict an existing SSH directory and its configuration. Extend
 the existing category's array:
 

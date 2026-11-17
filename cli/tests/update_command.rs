@@ -1063,7 +1063,7 @@ fn check_partial_repository_refresh(ignored: bool) {
 }
 
 #[test]
-fn repository_update_honors_system_git_configuration_in_preview_and_apply() {
+fn repository_update_isolates_checkout_and_honors_system_git_configuration() {
     let fixture = tempfile::tempdir().unwrap();
     let home = fixture.path().join("home");
     let root = fixture.path().join("repo");
@@ -1078,16 +1078,18 @@ fn repository_update_honors_system_git_configuration_in_preview_and_apply() {
         fixture.path(),
         &["clone", root.to_str().unwrap(), upstream.to_str().unwrap()],
     );
-    std::fs::write(upstream.join("new-file"), "upstream content").unwrap();
-    git(&upstream, &["add", "new-file"]);
-    git(&upstream, &["commit", "-m", "advance"]);
-    let expected = git(&upstream, &["rev-parse", "HEAD"]);
     git(
         &root,
         &["remote", "add", "origin", upstream.to_str().unwrap()],
     );
     git(&root, &["fetch", "origin"]);
     git(&root, &["branch", "--set-upstream-to=origin/main"]);
+    // Publish only after establishing the old tracking ref so the first apply
+    // must parse a real fast-forward line with a blank porcelain status.
+    std::fs::write(upstream.join("new-file"), "upstream content").unwrap();
+    git(&upstream, &["add", "new-file"]);
+    git(&upstream, &["commit", "-m", "advance"]);
+    let expected = git(&upstream, &["rev-parse", "HEAD"]);
     git(
         &root,
         &["remote", "set-url", "origin", "audit-system://upstream"],
@@ -1103,12 +1105,32 @@ fn repository_update_honors_system_git_configuration_in_preview_and_apply() {
             "audit-system://upstream",
         ],
     );
+    let unrelated = fixture.path().join("unrelated");
+    git(
+        fixture.path(),
+        &[
+            "clone",
+            "--branch",
+            "main",
+            root.to_str().unwrap(),
+            "unrelated",
+        ],
+    );
+    let unrelated_index = unrelated.join(".git/index");
+    let original_index = std::fs::read(&unrelated_index).unwrap();
     for dry_run in [true, false] {
         let mut command =
             common::isolated_cli_command(&root, &home, None, "update", "repository", true);
         command
             .env("GIT_CONFIG_SYSTEM", &system_config)
-            .env("GIT_CONFIG_NOSYSTEM", "0");
+            .env("GIT_CONFIG_NOSYSTEM", "0")
+            .env("GIT_DIR", unrelated.join(".git"))
+            .env("GIT_COMMON_DIR", unrelated.join(".git"))
+            .env("GIT_WORK_TREE", &unrelated)
+            .env("GIT_INDEX_FILE", &unrelated_index)
+            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "branch.main.remote")
+            .env("GIT_CONFIG_VALUE_0", "wrong-remote");
         if dry_run {
             command.arg("--dry-run");
         }
@@ -1127,6 +1149,19 @@ fn repository_update_honors_system_git_configuration_in_preview_and_apply() {
                 expected.as_str()
             }
         );
+        assert_eq!(
+            git(&root, &["rev-parse", "@{u}"]),
+            if dry_run {
+                initial.as_str()
+            } else {
+                expected.as_str()
+            },
+            "preview preserves tracking state and the first apply advances it"
+        );
+        assert_eq!(git(&unrelated, &["rev-parse", "HEAD"]), initial);
+        assert_eq!(std::fs::read(&unrelated_index).unwrap(), original_index);
+        assert!(!unrelated.join(".git/FETCH_HEAD").exists());
+        assert!(!unrelated.join("new-file").exists());
     }
 }
 

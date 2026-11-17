@@ -99,10 +99,31 @@ struct UpdateRepositoryOperation<'a> {
 }
 
 fn git_command(ctx: &Context, root: &Path, args: &[&str]) -> CommandSpec {
+    // Use the repository-local names from `git rev-parse --local-env-vars`.
+    // Git hooks can export these for their own repository. Keep global and
+    // system config files and transport variables such as GIT_SSH_COMMAND.
+    const LOCAL_ENV: &[&str] = &[
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_CONFIG",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_COUNT",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_IMPLICIT_WORK_TREE",
+        "GIT_GRAFT_FILE",
+        "GIT_INDEX_FILE",
+        "GIT_NO_REPLACE_OBJECTS",
+        "GIT_REPLACE_REF_BASE",
+        "GIT_PREFIX",
+        "GIT_SHALLOW_FILE",
+        "GIT_COMMON_DIR",
+    ];
     CommandSpec::new("git")
         .args(args)
         .current_dir(root)
-        .env("HOME", ctx.home().to_string_lossy().into_owned())
+        .env("HOME", ctx.home().as_os_str())
+        .remove_inherited_env(LOCAL_ENV)
 }
 
 impl Operation for UpdateRepositoryOperation<'_> {

@@ -185,9 +185,13 @@ fn fetch_all(
 fn fetched_commit(output: &str) -> Option<&str> {
     let mut commit = None;
     for line in output.lines() {
-        let mut fields = line.split_ascii_whitespace();
-        if fields.next()? == "-" {
-            continue;
+        // A fast-forward uses a literal space as the status field.
+        let (status, fields) = line.split_at_checked(1)?;
+        let mut fields = fields.strip_prefix(' ')?.split_ascii_whitespace();
+        match status {
+            "-" => continue,
+            " " | "+" | "t" | "*" | "=" => {}
+            _ => return None,
         }
         let oid = fields.nth(1)?;
         if fields.next().is_none()

@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 use crate::infra::cancellation::CancellationToken;
 
 mod output;
+#[cfg(unix)]
+mod pipe;
 mod process;
 #[cfg(any(windows, test))]
 pub(crate) mod windows;
@@ -113,6 +115,7 @@ pub struct CommandSpec {
     args: Vec<OsString>,
     current_dir: Option<PathBuf>,
     env: Vec<(OsString, OsString)>,
+    removed_env: Vec<OsString>,
     checked: bool,
     log_arguments: bool,
     timeout: Option<Duration>,
@@ -147,6 +150,7 @@ impl CommandSpec {
             args: Vec::new(),
             current_dir: None,
             env: Vec::new(),
+            removed_env: Vec::new(),
             checked: true,
             log_arguments: true,
             timeout: None,
@@ -163,6 +167,7 @@ impl CommandSpec {
             args: Vec::new(),
             current_dir: None,
             env: Vec::new(),
+            removed_env: Vec::new(),
             checked: false,
             log_arguments: false,
             timeout: None,
@@ -206,6 +211,13 @@ impl CommandSpec {
             env.iter()
                 .map(|(key, value)| (key.as_ref().to_os_string(), value.as_ref().to_os_string())),
         );
+        self
+    }
+
+    /// Suppress selected inherited environment variables for this invocation.
+    #[must_use]
+    pub fn remove_inherited_env(mut self, keys: &[&str]) -> Self {
+        self.removed_env.extend(keys.iter().map(OsString::from));
         self
     }
 
@@ -331,6 +343,9 @@ impl CommandSpec {
         };
         if let Some(dir) = self.current_dir {
             command.current_dir(dir);
+        }
+        for key in self.removed_env {
+            command.env_remove(key);
         }
         command.envs(self.env);
         command
@@ -634,26 +649,36 @@ fn collect_child(
         source: io::Error::other("child stderr pipe was unavailable"),
     })?;
     let (pipe_tx, pipe_rx) = channel::<()>();
+    #[cfg(unix)]
+    let shutdown = pipe::ReaderShutdown::default();
+    #[cfg(unix)]
+    let (stdout, stderr) = (shutdown.reader(stdout), shutdown.reader(stderr));
     let stdout_reader = spawn_reader(stdout, pipe_tx.clone());
     let stderr_reader = spawn_reader(stderr, pipe_tx);
 
     let start = Instant::now();
     let mut pipes_closed = false;
     let status = loop {
-        if settings.is_cancelled() {
-            let result = terminate_and_collect(&mut child, stdout_reader, stderr_reader, label)?;
-            return Err(ExecError::Cancelled {
-                command: label.to_string(),
-                result,
-            });
-        }
+        let cancelled = settings.is_cancelled();
         let remaining = settings.timeout.saturating_sub(start.elapsed());
-        if remaining.is_zero() {
-            let result = terminate_and_collect(&mut child, stdout_reader, stderr_reader, label)?;
-            return Err(ExecError::TimedOut {
-                command: label.to_string(),
-                timeout: settings.timeout,
-                result,
+        if cancelled || remaining.is_zero() {
+            #[cfg(unix)]
+            terminate_child(&child);
+            #[cfg(windows)]
+            terminate_child(&mut child);
+            wait_after_terminate(&mut child);
+            #[cfg(unix)]
+            shutdown.finish(&pipe_rx);
+            let result = collect_result(None, stdout_reader, stderr_reader, label)?;
+            let command = label.to_string();
+            return Err(if cancelled {
+                ExecError::Cancelled { command, result }
+            } else {
+                ExecError::TimedOut {
+                    command,
+                    timeout: settings.timeout,
+                    result,
+                }
             });
         }
 
@@ -701,17 +726,6 @@ fn collect_child(
     };
 
     collect_result(Some(status), stdout_reader, stderr_reader, label)
-}
-
-fn terminate_and_collect(
-    child: &mut Child,
-    stdout_reader: JoinHandle<io::Result<Vec<u8>>>,
-    stderr_reader: JoinHandle<io::Result<Vec<u8>>>,
-    label: &str,
-) -> std::result::Result<ExecResult, ExecError> {
-    terminate_child(child);
-    wait_after_terminate(child);
-    collect_result(None, stdout_reader, stderr_reader, label)
 }
 
 fn wait_for_pipe_close(

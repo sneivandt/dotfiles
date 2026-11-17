@@ -10,6 +10,5 @@
 
 [linux]
 permissions = [
-  { mode = "755", path = "config/zsh" },
   { mode = "600", path = "ssh/config" },
 ]

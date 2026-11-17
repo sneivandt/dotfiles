@@ -239,6 +239,49 @@ fn included_git_settings_converge_without_modifying_included_files() {
     );
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn default_linux_modes_preserve_local_zsh_files_and_restrict_ssh_config() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let repo = common::TestContextBuilder::new()
+        .with_config_file("chmod.toml", include_str!("../../conf/chmod.toml"))
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let files = [
+        (".config/zsh/private-plugin.zsh", 0o600, 0o600),
+        (".config/zsh/local-helper", 0o700, 0o700),
+        (".ssh/config", 0o644, 0o600),
+    ];
+    for (path, mode, _) in files {
+        let target = home.path().join(path);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&target, "fixture").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode)).unwrap();
+    }
+    output(
+        &mut common::cli_command(
+            repo.root_path(),
+            home.path(),
+            None,
+            "update",
+            "file-permissions",
+        ),
+        true,
+    );
+    for (path, _, expected) in files {
+        let mode = home
+            .path()
+            .join(path)
+            .metadata()
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, expected, "{path}");
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn redirected_chmod_is_blocked_until_explicitly_allowed() {

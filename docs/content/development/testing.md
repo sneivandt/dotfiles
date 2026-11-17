@@ -292,7 +292,7 @@ Cargo and dependency checks may still need network or cache access. It is a
 manual command, not an installed Git hook, and does not push.
 
 Resolve selected local failures before publishing. Its `REMAINING CI` list
-identifies full builds/integration, mutation, or publication work left to CI,
+identifies full builds/integration or publication work left to CI,
 even when narrower local fixtures for that area passed. Report unavailable
 checks explicitly. A request to push includes monitoring the
 [exact commit's aggregate and informational results](ci-and-releases.md#reading-a-run)
@@ -568,16 +568,29 @@ for why a docs-only push can recover a previously failed release.
 ## Focused mutation testing
 
 Mutation testing temporarily changes code to check whether tests notice a
-wrong branch, lost error, or incorrect preview. Use local mutation testing
-when it adds evidence for changed safety guards, failure handling, scheduling,
-or partial success, or to diagnose a surviving mutant. It is not an automatic
-local gate for every Rust edit. The selected remote mutation shards remain
-required, and their reports must be inspected after pushing.
+wrong branch, lost error, or incorrect preview. Decide whether a focused local
+run would answer a concrete question that ordinary tests leave open.
+
+| Change or uncertainty | Local mutation choice before pushing |
+|---|---|
+| Data preservation, permissions/elevation, dry-run safety, or failure/partial-success propagation | Run focused mutations when a guard or preserved-state assertion could pass despite broken behavior |
+| Safety tests are weakened, consolidated, or substantially rewritten | Recheck the affected production function/module, even when only tests changed |
+| A known surviving mutant is being fixed | Replay that mutant or its original source range and verify it is caught |
+| Prose/configuration, mechanical refactoring, or low-risk behavior already directly asserted | Ordinary focused checks are usually sufficient; do not add mutations automatically |
+
+State the choice briefly with the selected coverage. Target the relevant
+file/function and native platform, not the entire crate. Do not defer a known
+safety-test gap to the nightly workflow. Linux execution cannot establish
+native Windows behavior; report that gap when a selected local check is
+unavailable, or use a focused manual remote run.
 
 Follow [Mutation testing](mutation-testing.md) to create a disposable worktree,
 select the original committed source range, inspect survivors, and preserve
-reports before cleanup. Selected mutation shards must pass CI; ordinary tests
-and the local checker's `--all` do not run them.
+reports before cleanup. A zero-mutant run is not evidence that tests catch the
+intended defect. Ordinary tests and the local checker's `--all` do not run
+mutations. The [nightly/manual workflow](ci-and-releases.md#scheduled-mutation-testing)
+is separate from normal CI; pushes do not wait for it unless mutation
+verification is explicitly part of the task.
 
 ## Platform coverage parity
 

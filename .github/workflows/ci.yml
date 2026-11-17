@@ -8,11 +8,6 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      mutation_base:
-        description: "Compare Rust sources with this ancestor SHA for mutation testing"
-        type: string
-        required: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -43,9 +38,6 @@ jobs:
       run_rust_fmt: ${{ steps.classify.outputs.run_rust_fmt }}
       run_audit: ${{ steps.classify.outputs.run_audit }}
       run_deny: ${{ steps.classify.outputs.run_deny }}
-      run_mutation: ${{ steps.classify.outputs.run_mutation }}
-      comparison_base: ${{ steps.range.outputs.base_sha }}
-      comparison_head: ${{ steps.range.outputs.head_sha }}
       run_build_linux: ${{ steps.classify.outputs.run_build_linux }}
       run_build_windows: ${{ steps.classify.outputs.run_build_windows }}
       run_profile_linux: ${{ steps.classify.outputs.run_profile_linux }}
@@ -76,7 +68,6 @@ jobs:
           PUSH_BEFORE: ${{ github.event.before }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          MUTATION_BASE: ${{ inputs.mutation_base }}
         run: sh .github/workflows/scripts/linux/ci-comparison-range.sh
       - name: Find the last published documentation
         if: github.event_name == 'push'
@@ -479,129 +470,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # ── Mutation Testing (gating) ───────
-  mutation:
-    name: "Rust: Mutation (changed code, shard ${{ matrix.shard }})"
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [classify-changes]
-    if: needs.classify-changes.outputs.run_mutation == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
-    defaults:
-      run:
-        working-directory: cli
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - name: Build changed-code diff
-        shell: bash
-        env:
-          BASE_SHA: ${{ needs.classify-changes.outputs.comparison_base }}
-          HEAD_SHA: ${{ needs.classify-changes.outputs.comparison_head }}
-        run: |
-          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
-            echo "Selected mutation testing requires a comparison base." >&2
-            exit 1
-          fi
-          git diff --relative=cli --no-renames --unified=0 "$BASE_SHA" "$HEAD_SHA" -- src > mutants.diff
-          if [[ ! -s mutants.diff ]]; then
-            echo "Selected mutation testing produced an empty source diff." >&2
-            exit 1
-          fi
-      - name: Install Rust toolchain
-        run: rustup toolchain install
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: "cli -> target"
-          cache-on-failure: true
-      - name: Install cargo-mutants
-        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
-        with:
-          tool: cargo-mutants@27.1.0
-      - name: Test changed-code mutants
-        env:
-          MUTATION_SHARD: ${{ matrix.shard }}
-        # cargo-mutants does not evaluate cfg attributes. These Windows-only
-        # functions/modules are absent on Linux, not gaps in its test coverage.
-        # Keep exclusions here (not in crate config) so Windows can test them.
-        # PATH backend names also cover their tested unsupported-host stubs.
-        # Canonicalizing an existing regular settings file is equivalent to
-        # writing its original path; retain every other settings mutation.
-        # The Unix lock flags are disjoint, so XOR has the same effect as OR.
-        run: >-
-          cargo mutants --in-place --no-shuffle --in-diff mutants.diff
-          --shard "$MUTATION_SHARD/8"
-          --exclude 'src/infra/run_lock/windows.rs'
-          --exclude 'src/infra/fs/mutation/windows.rs'
-          --exclude-re '^src/infra/fs/mutation\.rs:[0-9]+:[0-9]+: replace \| with \^ in open_in_place$'
-          --exclude-re '^src/domains/files/resources/symlink/platform\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported)\b'
-          --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b'
-          --exclude-re '^src/app/commands/execution/elevation\.rs:.*\bprepare_windows_elevation\b'
-          --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|append_user_path|user_path_contains)\b'
-          --exclude-re '^src/domains/ai/apm/cowork\.rs:.*\bis_desired_skill_directory\b'
-          --exclude-re '^src/domains/system/resources/registry\.rs:.*\bnative::'
-          --exclude-re '^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$'
-          --cargo-arg=--profile=ci --cargo-arg=--locked
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: rust-mutation-results-${{ matrix.shard }}
-          path: cli/mutants.out
-          if-no-files-found: ignore
-          retention-days: 7
-
-  mutation-windows:
-    name: "Rust: Native Windows mutation (shard ${{ matrix.shard }})"
-    runs-on: windows-latest
-    timeout-minutes: 45
-    needs: [classify-changes]
-    if: needs.classify-changes.outputs.run_mutation == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1]
-    defaults:
-      run:
-        working-directory: cli
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install Rust toolchain
-        run: rustup toolchain install
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: "cli -> target"
-          cache-on-failure: true
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
-        with:
-          tool: cargo-mutants@27.1.0
-      - name: Check native registry, PATH and elevation contracts
-        shell: bash
-        env:
-          MUTATION_SHARD: ${{ matrix.shard }}
-        # These functions are compiled out of Linux. Exercise their full range
-        # even when this push changes only their consumers or tests.
-        run: >-
-          cargo mutants --in-place --no-shuffle
-          --shard "$MUTATION_SHARD/2"
-          --file src/domains/dotfiles/resources/path_entry.rs
-          --file src/domains/system/resources/registry.rs
-          --file src/infra/elevation.rs
-          --file src/app/commands/execution/elevation.rs
-          --file src/infra/fs/mutation/windows.rs
-          --re '(decode_reg_string|encode_reg_string|native::raw_value_to_string|native::raw_value_type|run_elevated_child|prepare_windows_elevation|ensure_single_link|check_information)'
-          --cargo-arg=--profile=ci --cargo-arg=--locked --cargo-arg=--lib
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: rust-mutation-results-windows-${{ matrix.shard }}
-          path: cli/mutants.out
-          if-no-files-found: error
-          retention-days: 7
-
   build-windows:
     name: "Build: Windows"
     runs-on: windows-latest
@@ -894,8 +762,6 @@ jobs:
       - deny
       - build-linux
       - msrv
-      - mutation
-      - mutation-windows
       - build-windows
       - integration-linux
       - integration-windows

@@ -73,6 +73,13 @@ failure disappear.
 
 ## Mutation regressions
 
+- Before pushing a safety/failure fix or rewriting its assertions, decide if
+  ordinary tests directly prove the risky branch and preserved state. Use
+  focused local mutations where that remains uncertain, and always to verify a
+  survivor fix. Target a file/function on the affected native platform. Routine
+  refactors and directly asserted low-risk changes need not run mutations;
+  nightly runs are separate from normal CI. See the
+  [decision table](../../../docs/content/development/testing.md#focused-mutation-testing).
 - Read each survivor's diff and identify what a caller would observe if the
   mutation were real. Assert the result and the relevant side effect or
   preserved state. Cover the negative case for guards and the success case

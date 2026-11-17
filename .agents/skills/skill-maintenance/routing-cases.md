@@ -76,10 +76,12 @@ suites. The result should explain why a check can exercise the change.
 | Skill wording and ordinary guide prose | Source review, affected links and skill metadata; no npm, site, or Rust | Exact-SHA aggregate, docs, and selected publication |
 | Heading rename or moved page | Incoming links; build for moved routes and generated navigation | Full docs job and Pages |
 | Search hook, theme CSS, or Mermaid renderer | Affected Node/type checks, build, focused browser cases | Full docs/browser suite and Pages |
-| Linux-only resource implementation | fmt, host Clippy, owning tests; no automatic Windows compile | Selected native platform and mutation jobs |
-| Shared path helper or platform gates | Owning tests plus affected-target compilation; native runtime where available | Native Windows path behavior and selected mutation reports |
+| Linux-only resource implementation | fmt, host Clippy, owning tests; focused mutations for uncertain safety/failure assertions, not automatically | Selected native platform CI; mutations separately nightly |
+| Shared path helper or platform gates | Owning tests plus affected-target compilation; focused native mutations for preservation/elevation risks | Native Windows path behavior; no waiting for unrelated nightly runs |
 | Shared scheduler or loader | Broader Rust suite and affected command contracts | Full selected platform/integration matrix |
 | One integration-test assertion | Its target; verify the filter ran tests | Selected CI tests, retaining pending source range after a failed push |
+| Mutation survivor fixed only in tests | Original source range or reported function in a disposable native checkout; verify the mutant is caught, not zero selected | Follow manual mutation replay only when selected for the task |
+| Prose, routine refactor, or directly asserted low-risk behavior | No local mutation run by default; explain ordinary coverage | Normal CI, not a blocking nightly mutation run |
 
 A passing focused check need not be repeated merely because a commit was
 created. Verify the committed inputs match; rerun after relevant edits or

@@ -1,0 +1,186 @@
+name: Mutation Testing
+
+on:
+  schedule:
+    - cron: '37 8 * * *'
+  workflow_dispatch:
+    inputs:
+      mutation_base:
+        description: "Optional ancestor SHA to replay; manual runs do not advance the nightly baseline"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  select:
+    name: "Mutation: Select accumulated changes"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      run_linux: ${{ steps.select.outputs.run_linux }}
+      run_windows: ${{ steps.select.outputs.run_windows }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select mutation inputs
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MUTATION_BASE: ${{ inputs.mutation_base }}
+        run: python3 -B .github/workflows/scripts/linux/select-mutations.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.select.outputs.run_linux == 'true'
+        with:
+          name: mutation-inputs
+          path: cli/mutants.diff
+          if-no-files-found: error
+          retention-days: 7
+
+  mutation:
+    name: "Rust: Mutation (changed code, shard ${{ matrix.shard }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    needs: [select]
+    if: needs.select.outputs.run_linux == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mutation-inputs
+          path: cli/
+      - name: Install Rust toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: "cli -> target"
+          cache-on-failure: true
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-mutants@27.1.0
+      - name: Test changed-code mutants
+        env:
+          MUTATION_SHARD: ${{ matrix.shard }}
+        # Native Windows functions are absent on Linux, not coverage gaps.
+        # The settings guard and disjoint lock-flag XOR are equivalent mutants.
+        run: >-
+          cargo mutants --in-place --no-shuffle --in-diff mutants.diff
+          --shard "$MUTATION_SHARD/8"
+          --exclude 'src/infra/run_lock/windows.rs'
+          --exclude 'src/infra/fs/mutation/windows.rs'
+          --exclude-re '^src/infra/fs/mutation\.rs:[0-9]+:[0-9]+: replace \| with \^ in open_in_place$'
+          --exclude-re '^src/domains/files/resources/symlink/platform\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported)\b'
+          --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b'
+          --exclude-re '^src/app/commands/execution/elevation\.rs:.*\bprepare_windows_elevation\b'
+          --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|append_user_path|user_path_contains)\b'
+          --exclude-re '^src/domains/ai/apm/cowork\.rs:.*\bis_desired_skill_directory\b'
+          --exclude-re '^src/domains/system/resources/registry\.rs:.*\bnative::'
+          --exclude-re '^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$'
+          --cargo-arg=--profile=ci --cargo-arg=--locked
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: rust-mutation-results-${{ matrix.shard }}
+          path: cli/mutants.out
+          if-no-files-found: error
+          retention-days: 7
+
+  mutation-windows:
+    name: "Rust: Native Windows mutation (shard ${{ matrix.shard }})"
+    runs-on: windows-latest
+    timeout-minutes: 45
+    needs: [select]
+    if: needs.select.outputs.run_windows == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: "cli -> target"
+          cache-on-failure: true
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-mutants@27.1.0
+      - name: Check native registry, PATH and elevation contracts
+        shell: bash
+        env:
+          MUTATION_SHARD: ${{ matrix.shard }}
+        # Keep the fixed native suite: its runtime no longer delays normal CI.
+        run: >-
+          cargo mutants --in-place --no-shuffle
+          --shard "$MUTATION_SHARD/2"
+          --file src/domains/dotfiles/resources/path_entry.rs
+          --file src/domains/system/resources/registry.rs
+          --file src/infra/elevation.rs
+          --file src/app/commands/execution/elevation.rs
+          --file src/infra/fs/mutation/windows.rs
+          --re '(decode_reg_string|encode_reg_string|native::raw_value_to_string|native::raw_value_type|run_elevated_child|prepare_windows_elevation|ensure_single_link|check_information)'
+          --cargo-arg=--profile=ci --cargo-arg=--locked --cargo-arg=--lib
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: rust-mutation-results-windows-${{ matrix.shard }}
+          path: cli/mutants.out
+          if-no-files-found: error
+          retention-days: 7
+
+  mutation-results:
+    name: "Mutation: Results"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs: [select, mutation, mutation-windows]
+    steps:
+      - name: Report selected mutation results
+        env:
+          MUTATION_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          needs = json.loads(os.environ["MUTATION_NEEDS"])
+          selected = needs["select"]
+          failures = []
+          if selected["result"] != "success":
+              failures.append("Mutation selection did not succeed.")
+          rows = ["| Job | Result |", "|---|---|"]
+          for job, flag in (("mutation", "run_linux"), ("mutation-windows", "run_windows")):
+              value = selected["outputs"].get(flag)
+              result = needs[job]["result"]
+              rows.append(f"| {job} | {result} |")
+              if value not in ("true", "false") or result != ("success" if value == "true" else "skipped"):
+                  failures.append(f"{job}: unexpected result {result} (selected={value}).")
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text("\n".join(rows + [""] + failures) + "\n")
+          if failures:
+              for failure in failures:
+                  print(f"::error::{failure}")
+              raise SystemExit(1)
+          PY

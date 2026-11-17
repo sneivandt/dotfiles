@@ -76,14 +76,23 @@ changes usually do not need engine changes.
 - Fix selected local failures. Distinguish intentionally deferred CI coverage
   from checks that could not run; neither is a local pass. Do not provision a
   second OS or build the docs site solely to duplicate remote CI.
-- Use [focused mutation testing](docs/content/development/testing.md#focused-mutation-testing)
-  locally when it helps verify changed safety or failure behavior, or investigate
-  a survivor; otherwise rely on the selected remote shards. When fixing a
-  survivor, rerun the original source range even for a test-only fix.
+- Decide whether [focused local mutations](docs/content/development/testing.md#focused-mutation-testing)
+  add evidence before pushing. Use them for high-consequence preservation,
+  permissions/elevation, dry-run, or failure-propagation changes when ordinary
+  assertions leave doubt; for weakened/reworked safety tests; and for survivor
+  fixes. Target the relevant file/function on its native platform, not the whole
+  crate. Skip routine prose/configuration, mechanical refactors, and low-risk
+  changes whose behavior is already directly asserted. Explain the decision
+  briefly with the selected coverage; nightly testing is not a substitute for
+  resolving a known local gap. Preserve a survivor's original source range even
+  for a test-only fix; never count a zero-mutant run as evidence.
 - A request to push includes monitoring CI by default, without a separate
-  request. After an authorized push, monitor the exact commit's aggregate CI and inspect
-  selected mutation shard reports. Survivors, timeouts, and tool failures block
-  CI. Follow the [CI monitoring guidance](.agents/skills/ci-cd-patterns/SKILL.md#after-pushing)
+  request. After an authorized push, monitor the exact commit's aggregate CI.
+  Mutation testing runs separately on a nightly
+  schedule or manual dispatch; do not wait for or launch it on every push.
+  When mutation work is selected for the task, inspect its reports and resolve
+  survivors, timeouts, and tool failures before claiming that check passed.
+  Follow the [CI monitoring guidance](.agents/skills/ci-cd-patterns/SKILL.md#after-pushing)
   and verify publication when reporting a release. Do not report the push task
   complete while its checks are pending. If monitoring is blocked, report the
   exact SHA, run, and blocker instead of claiming success.

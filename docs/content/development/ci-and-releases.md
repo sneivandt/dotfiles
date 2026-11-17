@@ -44,10 +44,9 @@ job runs even after an earlier failure and verifies that every selected gating
 job succeeded and every unselected job was skipped. Missing outputs, cancellation, unexpected
 skips, and classification failure fail the gate.
 
-After a push, inspect the run for the **exact pushed SHA**. Selected mutation
-shards must pass before the aggregate gate succeeds. Inspect their artifacts
-for surviving mutants, timeouts, and tool errors. Coverage reports remain
-informational.
+After a push, inspect the run for the **exact pushed SHA**. Mutation testing
+runs separately and does not participate in the aggregate gate. Coverage
+reports remain informational.
 
 Wait for the pushed commit's run and inspect failures before relying on its
 result. When sharing a result, include the commit and run link so another
@@ -82,8 +81,8 @@ runs full CI so earlier changes still receive coverage.
 
 Deletions and both sides of renames count. Invalid Git ranges fail; a valid
 empty diff runs the always-on checks. Unavailable comparison ranges use
-conservative full CI instead. Full CI alone does not request publication or
-mutation testing.
+conservative full CI instead. Full CI alone does not request publication.
+Mutation testing is not part of push, pull request, or manual CI runs.
 
 Cargo verification uses the CI build profile and `--locked`. Downstream integration
 jobs reuse uploaded binaries rather than downloading an unrelated release.
@@ -106,7 +105,6 @@ Coverage below is conditional on the relevant job being selected.
 | Arch package, system-file and offline systemd acceptance | Disposable Arch container | No |
 | Full commit-hook suite | Yes | No |
 | Coverage reports | Yes | Yes |
-| Mutation testing | Changed code | Focused registry, PATH and elevation contracts |
 
 These jobs do not cover every architecture, existing user configuration, or
 network/authentication setup. The Arch acceptance fixture covers package
@@ -122,13 +120,39 @@ script analyzers. Windows application integration skips APM, packages, and VS
 Code. Separate jobs or local checks cover some of those concerns; do not call
 the profile matrix a full clean-machine installation test.
 
-Mutation jobs run when a pull request or push to main changes Rust source
-under `cli/src/`. The selected mutations are split across jobs. A push after
-failed or unfinished CI compares against a successful ancestor, so a test-only
-fix can still exercise pending source changes. Linux excludes
-native Windows code; separate native shards check registry values, PATH encoding
-and elevation dispatch. Exact filters live in the workflow. See the
-[mutation testing guide](testing.md#focused-mutation-testing).
+## Scheduled mutation testing
+
+[mutation.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/mutation.yml)
+runs nightly at 08:37 UTC and on manual dispatch. It does not block `ci-success`,
+releases, or documentation publishing. Ordinary Windows builds, Clippy, tests,
+and integration checks remain in normal CI.
+
+The workflow compares its selected commit with the last successful scheduled
+mutation run on `main`, not the preceding push. Failed or cancelled runs leave
+pending changes in scope. For migration, it can inherit a successful legacy CI
+run only if every Linux and Windows mutation shard passed; without a verified
+baseline it selects all source. API or invalid-history errors fail selection
+rather than silently skipping coverage.
+
+Linux mutates whole changed Rust source files, including production functions
+beside edited inline tests. Changes to standalone tests, shared test helpers,
+embedded assets, or Cargo/build/toolchain inputs conservatively recheck all
+source. Selected Rust changes also run the existing fixed Windows suite for
+registry values, PATH encoding, elevation dispatch, and native file safety;
+there is no fine-grained Windows dependency classifier. Unrelated docs and
+configuration changes skip both suites. Exact filters live in the workflow.
+
+For manual replay, dispatch **Mutation Testing** and optionally supply the
+original full ancestor SHA as `mutation_base`. Manual runs never advance the
+nightly baseline, so a narrow replay cannot discard pending coverage. Reports
+and selected Linux inputs are retained as artifacts for seven days. The result
+job reports failures and unexpected skips; survivors, timeouts, and tool errors
+fail this separate workflow.
+
+Enable Actions failure notifications for this workflow and investigate red
+runs; successful push CI does not mean nightly mutations passed. Check that the
+schedule remains enabled in repository settings. For focused checks before
+pushing or a survivor fix, use [local mutation testing](testing.md#focused-mutation-testing).
 
 ## Scheduled dependency checks
 

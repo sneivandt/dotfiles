@@ -22,8 +22,7 @@ case "${GITHUB_EVENT_NAME:?}" in
         else
             echo "Preceding push CI could not be verified. Selecting full CI."
             force_full=true
-            # A test-only retry must still exercise all source changes that
-            # have not passed CI. Filter out unrelated history and this run.
+            # Carry pending source changes through test-only retries.
             if ! candidates=$(gh api --method GET "$workflow_runs" -f event=push \
                 -f branch=main -f status=success -F per_page=100 \
                 --jq '.workflow_runs[].head_sha'); then
@@ -44,18 +43,6 @@ case "${GITHUB_EVENT_NAME:?}" in
         ;;
     workflow_dispatch)
         force_full=true
-        if [ -n "${MUTATION_BASE:-}" ]; then
-            case "$MUTATION_BASE" in
-                *[!0-9a-f]*) echo "Mutation base must be a full commit SHA." >&2; exit 1 ;;
-            esac
-            if [ "${#MUTATION_BASE}" != 40 ] ||
-                ! git merge-base --is-ancestor "$MUTATION_BASE" "${GITHUB_SHA:?}"; then
-                echo "Mutation base must be a full SHA reachable from the selected commit." >&2
-                exit 1
-            fi
-            base=$MUTATION_BASE
-            head=$GITHUB_SHA
-        fi
         ;;
 esac
 printf 'base_sha=%s\nhead_sha=%s\nforce_full=%s\n' "$base" "$head" "$force_full" >> "${GITHUB_OUTPUT:?}"

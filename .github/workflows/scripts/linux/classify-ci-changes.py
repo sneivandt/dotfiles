@@ -13,7 +13,7 @@ WINDOWS = SCRIPTS + "windows/"
 FLAGS = (
     "run_docs_checks", "run_docs_site", "run_docs_contracts", "run_rust_checks",
     "run_rust_fmt", "run_audit", "run_deny",
-    "run_mutation", "run_build_linux", "run_build_windows", "run_validate_config",
+    "run_build_linux", "run_build_windows", "run_validate_config",
     "run_config_drift", "run_profile_linux", "run_profile_windows",
     "run_roundtrip_linux", "run_roundtrip_windows", "run_app_tests",
     "run_app_windows", "run_git_hooks", "run_hook_inputs", "run_wrapper_linux",
@@ -128,7 +128,10 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             LINUX + "pre-push.py",
         }:
             full = True
-        elif path in {LINUX + "check-ci-contract.py", LINUX + "test-ci-changes.py"}:
+        elif path in {
+            LINUX + "check-ci-contract.py", LINUX + "test-ci-changes.py",
+            LINUX + "select-mutations.py", ".github/workflows/mutation.yml",
+        }:
             pass  # Always executed by classify-changes.
         elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh", LINUX + "release-tag.sh"}:
             pass  # Publishing builds are selected independently of CI builds.
@@ -178,8 +181,6 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             profiles("linux", "windows")
             apps.update(APPS)
             enable("app_windows", "wrapper_linux", "wrapper_windows")
-            if path.startswith("cli/src/") and path.endswith(".rs"):
-                enable("mutation")
             if path.endswith(("Cargo.toml", "Cargo.lock")):
                 enable("audit", "deny")
         elif path.startswith("packages/"):
@@ -248,10 +249,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
     if full:
         # Full CI is not itself a reason to publish an unchanged binary.
         release = flags["run_release"]
-        mutation = flags["run_mutation"]
         flags = dict.fromkeys(FLAGS, True)
         flags["run_release"] = release
-        flags["run_mutation"] = mutation
         apps.update(APPS)
         linters.update(LINTERS)
 

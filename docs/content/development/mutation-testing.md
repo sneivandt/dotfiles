@@ -8,15 +8,17 @@ description: Check whether tests detect incorrect Rust behavior using a committe
 Mutation testing temporarily changes code to check whether tests notice a
 wrong branch, lost error, or incorrect preview. Select local mutation checks
 when they add evidence for safety or failure behavior, or when investigating a
-survivor. They are not a required local gate for every Rust edit; selected remote
-shards remain required. Use [Testing](testing.md#choosing-coverage) to choose
-coverage for the diff.
+survivor. They are not a required local gate for every Rust edit. Use the
+[local decision table](testing.md#focused-mutation-testing) to choose when
+mutation testing adds evidence.
 
 Run `cargo-mutants` in a disposable checkout, never the shared working copy.
 For a `MISSED` result, add an assertion that passes on the original code and
-fails with the mutation, or establish that the mutant is equivalent. Selected
-shards with survivors, timeouts, or tooling failures block CI. Ordinary tests
-and the local checker's `--all` do not run mutation testing.
+fails with the mutation, or establish that the mutant is equivalent. Survivors,
+timeouts, and tooling failures fail the mutation check. The
+[nightly/manual workflow](ci-and-releases.md#scheduled-mutation-testing)
+does not block ordinary CI or publishing. Ordinary tests and the local
+checker's `--all` do not run mutation testing.
 
 ## Prepare an isolated source snapshot
 
@@ -97,6 +99,6 @@ The force option also deletes its untracked and ignored reports and build
 artifacts. It is appropriate here only because this worktree was created for
 the check; never point it at the primary checkout.
 
-CI handles changed-code selection, shards, and native-code exclusions; see
-[Mutation coverage](ci-and-releases.md#platform-coverage). Linux checks do not
+The separate workflow handles accumulated selection, shards, and native-code
+exclusions; see [Scheduled mutations](ci-and-releases.md#scheduled-mutation-testing). Linux checks do not
 provide native Windows mutation coverage.

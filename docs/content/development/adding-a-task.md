@@ -213,5 +213,6 @@ build those cases without using the developer's installation.
 
 Select focused and cross-platform coverage from
 [Testing](testing.md#choosing-coverage). Before pushing, validate the committed
-patch and run focused mutation testing for changed Rust behavior. A working
+patch and use [risk-based focused mutations](testing.md#focused-mutation-testing)
+where safety/failure assertions need stronger evidence. A working
 unit test does not prove selection, elevation, or native platform behavior.

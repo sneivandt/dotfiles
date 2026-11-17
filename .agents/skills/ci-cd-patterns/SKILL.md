@@ -27,6 +27,11 @@ action-version inventories in guidance.
   job that is always skipped is not coverage; preserve docs-only execution and
   distinguish intended skips from failures/cancellation in the success gate.
 - Keep local `check.sh` and `Check.ps1` stages aligned with gating concerns.
+- Keep mutation testing in the separate nightly/manual
+  [workflow](../../../.github/workflows/mutation.yml), outside `ci-success` and
+  release/Pages dependencies. A failed mutation run must stay visibly failed,
+  retain its reports, and not advance the nightly comparison baseline. Manual
+  replay ranges must not narrow later scheduled coverage.
 - A confirmed local npm TLS failure need not block a push. Use the pre-push
   checker's [unavailable-coverage receipt](../../../docs/content/development/testing.md#local-npm-tls-failures)
   for the exact commit, run the remaining selected checks, and report docs as
@@ -52,13 +57,15 @@ action-version inventories in guidance.
   cancelled and verify whether the newer SHA contains the requested commits.
   If it does, follow that SHA's checks and any applicable publication, and
   report those results under the newer SHA.
-- Mutation shards are required when selected. Inspect every shard report for
-  survivors, timeouts, and tooling errors, and fix the cause before reporting
-  success. Keep the exact matrix and use narrowly justified exclusions for
-  equivalent or platform-only mutations.
-- Push recovery compares against a successful ancestor so a test-only follow-up
-  still checks pending Rust changes. For manual replay, pass the original ancestor
-  through `mutation_base` and verify that the run selected the shards.
+- Do not launch or wait for nightly mutations merely because a push changed
+  Rust. For task-selected local mutations, use the risk-based decision in
+  [Testing](../../../docs/content/development/testing.md#focused-mutation-testing);
+  safety-test rewrites and known survivors deserve focused evidence before push.
+- When changing mutation automation or investigating a mutation failure,
+  follow the selected run and inspect every shard report for survivors,
+  timeouts, and tooling errors before claiming success. Keep the exact matrix
+  and narrowly justified equivalent/platform-only exclusions. Replay the
+  original ancestor through `mutation_base` on `mutation.yml`, not `ci.yml`.
 
 ## Release rules
 

@@ -24,8 +24,6 @@ JOB_CONDITIONS = {
     "build-linux": "run_build_linux",
     "msrv": "run_rust_checks",
     "coverage": "run_rust_checks",
-    "mutation": "run_mutation",
-    "mutation-windows": "run_mutation",
     "build-windows": "run_build_windows",
     "integration-linux": "run_profile_linux",
     "integration-windows": "run_profile_windows",
@@ -41,7 +39,6 @@ JOB_CONDITIONS = {
 }
 SPECIAL_CONDITIONS = {
     "validate-config": "needs.classify-changes.outputs.run_validate_config == 'true' && needs.build-linux.result == 'success'",
-    "mutation": "needs.classify-changes.outputs.run_mutation == 'true'",
 }
 
 
@@ -149,11 +146,33 @@ def check(workflow: str) -> None:
         if required not in jobs["classify-changes"]:
             raise ValueError(f"documentation selection is missing {required}")
 
+
+def check_mutation(workflow: str) -> None:
+    jobs = job_blocks(workflow)
+    if jobs.keys() != {"select", "mutation", "mutation-windows", "mutation-results"}:
+        raise ValueError("unexpected mutation workflow jobs")
+    if re.search(r"(?m)^  (push|pull_request|workflow_run):", workflow):
+        raise ValueError("mutation testing must not run on normal CI events")
+    for required in ("  schedule:", "  workflow_dispatch:", "select-mutations.py",
+                     "actions: read", "contents: read"):
+        if required not in workflow:
+            raise ValueError(f"mutation scheduling is missing {required}")
+    for name, flag in (("mutation", "run_linux"), ("mutation-windows", "run_windows")):
+        if job_condition(jobs[name]) != f"needs.select.outputs.{flag} == 'true'":
+            raise ValueError(f"mutation selection condition changed for {name}")
+        if job_needs(jobs[name]) != {"select"}:
+            raise ValueError(f"{name} must depend on mutation selection")
+    if job_condition(jobs["mutation-results"]) != "always()" or job_needs(jobs["mutation-results"]) != {
+        "select", "mutation", "mutation-windows",
+    }:
+        raise ValueError("mutation results must report every selected job")
+    if "continue-on-error:" in workflow or 'raise SystemExit(1)' not in jobs["mutation-results"]:
+        raise ValueError("mutation workflow must propagate failures")
     mutation = jobs["mutation"]
     if re.search(r"(?m)^\s+continue-on-error:", mutation):
         raise ValueError("mutation jobs and steps must propagate failures")
-    if 'Selected mutation testing requires a comparison base.' not in mutation:
-        raise ValueError("selected mutation testing must reject a missing comparison base")
+    if "name: mutation-inputs" not in mutation or "--in-diff mutants.diff" not in mutation:
+        raise ValueError("Linux mutations must consume the selected source diff")
     shards = re.search(r"(?m)^        shard: \[([0-9, ]+)\]$", mutation)
     partition = re.search(r'--shard "\$MUTATION_SHARD/([0-9]+)"', mutation)
     if shards is None or partition is None:
@@ -270,6 +289,7 @@ def check_results(needs: dict) -> None:
 if __name__ == "__main__":
     try:
         check(WORKFLOW.read_text(encoding="utf-8"))
+        check_mutation(WORKFLOW.with_name("mutation.yml").read_text(encoding="utf-8"))
         check_release(WORKFLOW.with_name("release.yml").read_text(encoding="utf-8"))
         check_pages(WORKFLOW.with_name("pages.yml").read_text(encoding="utf-8"),
                     WORKFLOW.read_text(encoding="utf-8"))

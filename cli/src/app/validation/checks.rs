@@ -37,7 +37,15 @@ impl Task for ValidateConfigWarnings {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let diagnostics = self.config.get().validate(ctx.platform());
+        let config = self.config.get();
+        let mut diagnostics = config.validate(ctx.platform());
+        diagnostics.extend(
+            crate::domains::files::config::symlinks::config_home_diagnostic(
+                &config.symlinks,
+                ctx.home(),
+                ctx.env().as_ref(),
+            ),
+        );
         if diagnostics.is_empty() {
             ctx.log().info("no configuration diagnostics found");
             return Ok(TaskResult::CheckPassed);

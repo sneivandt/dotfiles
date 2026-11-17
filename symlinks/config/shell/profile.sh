@@ -14,6 +14,10 @@ fi
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+if [ "$XDG_CONFIG_HOME" != "$HOME/.config" ]; then
+  printf 'dotfiles: custom XDG_CONFIG_HOME is unsupported; managed settings remain under %s\n' \
+    "$HOME/.config" >&2
+fi
 
 # editor
 if command -v nvim >/dev/null 2>&1; then
@@ -83,14 +87,26 @@ else
 fi
 
 # readline
-export INPUTRC="$XDG_CONFIG_HOME"/readline/inputrc
+if [ "${INPUTRC+x}" != x ]; then
+  if [ -r "$XDG_CONFIG_HOME/readline/inputrc" ]; then
+    export INPUTRC="$XDG_CONFIG_HOME/readline/inputrc"
+  elif [ -r "$HOME/.config/readline/inputrc" ]; then
+    export INPUTRC="$HOME/.config/readline/inputrc"
+  fi
+fi
 
 # terminfo
 export TERMINFO="${TERMINFO:-$XDG_DATA_HOME/terminfo}"
 export TERMINFO_DIRS="${TERMINFO_DIRS:-$XDG_DATA_HOME/terminfo:}"
 
 # wget
-export WGETRC="$XDG_CONFIG_HOME"/wgetrc
+if [ "${WGETRC+x}" != x ]; then
+  if [ -r "$XDG_CONFIG_HOME/wgetrc" ]; then
+    export WGETRC="$XDG_CONFIG_HOME/wgetrc"
+  elif [ -r "$HOME/.config/wgetrc" ]; then
+    export WGETRC="$HOME/.config/wgetrc"
+  fi
+fi
 
 # fzf
 export FZF_CTRL_R_OPTS="${FZF_CTRL_R_OPTS---no-preview}"

@@ -106,6 +106,80 @@ fn mirrored_symlink_parser_rejects_unknown_table_fields() {
 // Tests
 // ---------------------------------------------------------------------------
 
+#[test]
+fn windows_git_editor_override_requires_the_desktop_package() {
+    use dotfiles_cli::testing::{
+        config::{Config, profiles},
+        platform::{Os, Platform},
+    };
+    let platform = Platform {
+        os: Os::Windows,
+        is_arch: false,
+        is_wsl: false,
+    };
+    for name in ["base", "desktop"] {
+        let profile = profiles::resolve(name, platform).unwrap();
+        let config = Config::load(&repo_root(), &profile, platform, None).unwrap();
+        let override_selected = config
+            .symlinks
+            .iter()
+            .any(|link| link.source == "config/git/windows-desktop");
+        let editor_installed = config
+            .packages
+            .iter()
+            .any(|package| package.name == "Microsoft.VisualStudioCode.Insiders");
+        assert_eq!(override_selected, name == "desktop", "{name}");
+        assert_eq!(override_selected, editor_installed, "{name}");
+    }
+}
+
+#[test]
+fn graphical_services_wait_for_session_ownership_without_pulling_it_in() {
+    use dotfiles_cli::testing::{
+        config::{Config, profiles},
+        platform::{Os, Platform},
+    };
+    let root = repo_root();
+    let platform = Platform {
+        os: Os::Linux,
+        is_arch: true,
+        is_wsl: false,
+    };
+    let profile = profiles::resolve("desktop", platform).unwrap();
+    let config = Config::load(&root, &profile, platform, None).unwrap();
+    let mut inspected = 0;
+    for unit in config.units {
+        let path = root.join("symlinks/config/systemd/user").join(&unit.name);
+        if !path.exists() {
+            continue;
+        }
+        let contents = std::fs::read_to_string(&path).unwrap();
+        if !contents.contains("PartOf=graphical-session.target") {
+            continue;
+        }
+        inspected += 1;
+        assert!(
+            unit.graphical,
+            "{} must defer startup outside a graphical session",
+            unit.name
+        );
+        for line in contents.lines() {
+            if let Some((key, value)) = line.split_once('=')
+                && ["Wants", "Requires", "BindsTo"].contains(&key.trim())
+            {
+                assert!(
+                    !value
+                        .split_whitespace()
+                        .any(|target| target == "graphical-session.target"),
+                    "{} must not pull in graphical-session.target: {line}",
+                    unit.name
+                );
+            }
+        }
+    }
+    assert!(inspected > 0);
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn arch_desktop_leaves_dhcpcd_handoff_manual() {

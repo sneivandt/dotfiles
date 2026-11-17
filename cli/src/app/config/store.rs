@@ -9,6 +9,7 @@
 use crate::app::config::Config;
 use crate::domains::ai::apm::ApmFragmentSource;
 use crate::domains::files::config::symlinks::{Symlink, default_target, resolve_symlinks_dir};
+use crate::domains::packages::arch_recipes::ParuBase;
 use crate::infra::ConfigHandle;
 use std::path::Path;
 
@@ -24,6 +25,8 @@ macro_rules! define_config_store {
             pub aggregate: ConfigHandle<Config>,
             /// Resolved APM fragment sources derived from managed symlinks.
             pub(crate) apm_fragments: ConfigHandle<Vec<ApmFragmentSource>>,
+            /// Selected source for the generated Paru configuration.
+            pub(crate) paru_base: ConfigHandle<Option<ParuBase>>,
             $(
                 #[doc = concat!("Configuration handle for `", stringify!($field), "`.")]
                 pub $field: ConfigHandle<$ty>,
@@ -35,9 +38,18 @@ macro_rules! define_config_store {
             #[must_use]
             pub fn from_config(config: Config) -> Self {
                 let apm_fragments = apm_fragment_sources(&config);
+                let paru_base = config.symlinks.iter().find_map(|link| {
+                    let target = link.target.clone().unwrap_or_else(|| default_target(&link.source));
+                    (Path::new(&target) == Path::new(".config/paru/paru.conf.base"))
+                        .then(|| {
+                            let root = resolve_symlinks_dir(link, &config.root);
+                            ParuBase { path: root.join(&link.source), root }
+                        })
+                });
                 Self {
                     $($field: ConfigHandle::new(config.$field.clone()),)+
                     apm_fragments: ConfigHandle::new(apm_fragments),
+                    paru_base: ConfigHandle::new(paru_base),
                     aggregate: ConfigHandle::new(config),
                 }
             }
@@ -91,6 +103,56 @@ mod tests {
     use crate::domains::files::config::symlinks::Symlink;
     use crate::test_helpers::empty_config;
     use std::path::PathBuf;
+
+    #[test]
+    fn paru_generation_uses_the_selected_overlay_before_links_exist() {
+        use crate::domains::packages::arch_recipes::ConfigureParu;
+        use crate::engine::Task as _;
+        use crate::infra::env::MapEnv;
+        use crate::test_helpers::{make_linux_context, task_batch};
+
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("main");
+        let overlay = fixture.path().join("overlay");
+        let home = fixture.path().join("home");
+        let public = root.join("symlinks/config/paru/paru.conf.base");
+        let selected = overlay.join("symlinks/custom-paru");
+        for (path, content) in [
+            (&public, "[options]\nBottomUp\n"),
+            (&selected, "[options]\nNewsOnUpgrade\n"),
+        ] {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, content).unwrap();
+        }
+        let mut config = empty_config(root.clone());
+        config.symlinks = vec![Symlink {
+            source: "custom-paru".into(),
+            target: Some(".config/paru/paru.conf.base".into()),
+            origin: Some(overlay.clone()),
+            allow_external_target: false,
+        }];
+        let store = ConfigStore::from_config(config);
+        let task = ConfigureParu::new(store.paru_base);
+        let ctx = make_linux_context(root, Some(overlay))
+            .with_home(home.clone())
+            .with_env(MapEnv::new().into_handle());
+        let target = home.join(".config/paru/paru.conf");
+        assert_eq!(
+            task_batch(&task.run(&ctx.with_dry_run(true)).unwrap()).changed_count(),
+            1
+        );
+        assert!(!target.exists());
+        assert_eq!(task_batch(&task.run(&ctx).unwrap()).changed_count(), 1);
+        let generated = std::fs::read_to_string(&target).unwrap();
+        assert!(generated.contains("NewsOnUpgrade"));
+        assert!(!generated.contains("BottomUp"));
+        std::fs::remove_file(&selected).unwrap();
+        assert!(
+            task.run(&ctx).is_err(),
+            "a missing selected source must not fall back to public"
+        );
+        assert_eq!(std::fs::read_to_string(target).unwrap(), generated);
+    }
 
     fn symlink(root: &Path, source: &str) -> Symlink {
         Symlink {

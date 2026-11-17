@@ -7,6 +7,57 @@ use crate::test_helpers::{empty_config, make_context, make_linux_context};
 use crate::{domains::files::config::chmod::ChmodEntry, infra::ConfigHandle};
 
 #[test]
+fn configuration_check_reports_unsupported_xdg_layouts() {
+    use crate::domains::files::config::symlinks::config_home_diagnostic;
+    use crate::infra::config::Severity;
+    use crate::infra::env::MapEnv;
+
+    let fixture = tempfile::tempdir().unwrap();
+    let mut config = empty_config(fixture.path().into());
+    config.symlinks = vec![crate::test_helpers::symlink("config/git/config", None)];
+    let home = fixture.path().join("home");
+    for value in [
+        None,
+        Some(std::ffi::OsString::new()),
+        Some(home.join(".config").into_os_string()),
+    ] {
+        let env = value.map_or_else(MapEnv::new, |value| {
+            MapEnv::new().with("XDG_CONFIG_HOME", value)
+        });
+        assert!(config_home_diagnostic(&config.symlinks, &home, &env).is_none());
+    }
+    let env = MapEnv::new().with("XDG_CONFIG_HOME", fixture.path().join("custom"));
+    let diagnostic = config_home_diagnostic(&config.symlinks, &home, &env).unwrap();
+    assert_eq!(
+        diagnostic.code.to_string(),
+        "symlink.unsupported-config-home"
+    );
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert_eq!(diagnostic.source, "symlinks.toml");
+    assert_eq!(diagnostic.item, "XDG_CONFIG_HOME");
+    assert!(diagnostic.message.contains("or unset"));
+    let ctx = make_linux_context(fixture.path().into(), None)
+        .with_home(home.clone())
+        .with_env(env.into_handle());
+    assert!(
+        ValidateConfigWarnings::new(ConfigHandle::new(config))
+            .run(&ctx)
+            .is_err()
+    );
+    assert!(
+        config_home_diagnostic(
+            &[crate::test_helpers::symlink(
+                "config/file",
+                Some("custom/file")
+            )],
+            &home,
+            &MapEnv::new().with("XDG_CONFIG_HOME", "custom"),
+        )
+        .is_none()
+    );
+}
+
+#[test]
 fn display_diagnostics_formats_severity_and_code() {
     use crate::infra::config::DiagnosticCode;
     use crate::infra::logging::MsgKind;

@@ -1,7 +1,9 @@
 [core]
-  editor = code-insiders --wait
   autocrlf = true
   pager = less -imRj8X
 
 [interactive]
   diffFilter =
+
+[include]
+  path = windows-desktop

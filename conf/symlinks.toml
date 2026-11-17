@@ -137,6 +137,7 @@ symlinks = [
 
 [windows-desktop]
 symlinks = [
+  "config/git/windows-desktop",
   { source = "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json", target = "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json" },
   { source = "config/Code/User/keybindings.json", target = "AppData/Roaming/Code - Insiders/User/keybindings.json" },
   { source = "config/Code/User/settings.json", target = "AppData/Roaming/Code - Insiders/User/settings.json" },

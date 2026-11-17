@@ -63,8 +63,12 @@ first. Edit tracked sources, not cached inputs or generated Paru sections.
 
 The editable Paru defaults are
 [symlinks/config/paru/paru.conf.base](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/paru/paru.conf.base).
-The task generates a complete configuration from that file, the build-cache
-location, and the prepared repository sections.
+The task resolves the selected source for the `.config/paru/paru.conf.base`
+symlink, including an overlay replacement or explicitly renamed source. It
+generates a complete configuration from that source, the build-cache location,
+and the prepared repository sections. The link need not exist yet, so a fresh
+installation can be previewed. A missing declaration or selected source is an
+error; the task does not silently fall back to the public base.
 
 ::: warning Existing Paru configuration is replaced
 Applying this task replaces the whole destination document, not just its

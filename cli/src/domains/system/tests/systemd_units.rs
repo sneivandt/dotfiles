@@ -17,6 +17,7 @@ fn systemd_task(name: &str, scope: UnitScope, enabled: bool) -> ConfigureSystemd
     ConfigureSystemd::new(ConfigHandle::new(vec![SystemdUnit {
         name: name.into(),
         scope,
+        graphical: false,
         enabled,
     }]))
 }
@@ -71,6 +72,7 @@ fn contradictory_units_are_rejected_before_any_command_including_preview() {
             .map(|enabled| SystemdUnit {
                 name: "audit.service".into(),
                 scope: UnitScope::User,
+                graphical: false,
                 enabled,
             })
             .to_vec(),
@@ -122,11 +124,124 @@ fn script() -> ScriptedExecutor {
     ScriptedExecutor::new().with_programs(&["systemctl"])
 }
 
+fn graphical_probe() -> CommandSpec {
+    CommandSpec::new("systemctl").args(&[
+        "--user",
+        "show",
+        "--property=ActiveState",
+        "--value",
+        "graphical-session.target",
+    ])
+}
+
+#[test]
+fn graphical_units_enable_without_starting_until_the_session_is_active() {
+    let name = "hypridle.service";
+    let task = ConfigureSystemd::new(ConfigHandle::new(vec![SystemdUnit {
+        name: name.into(),
+        scope: UnitScope::User,
+        enabled: true,
+        graphical: true,
+    }]));
+    for dry_run in [true, false] {
+        let mut executor = script();
+        for (session, enabled, running) in [
+            ("inactive", false, false),
+            ("inactive", true, false),
+            ("activating", true, false),
+            ("deactivating", true, false),
+            ("failed", true, false),
+            ("active", true, false),
+            ("active", true, true),
+        ] {
+            executor = executor
+                .command(
+                    systemctl(&["--user", "show-environment"]),
+                    Ok(ExecResult::success("")),
+                )
+                .command(graphical_probe(), Ok(ExecResult::success(session)));
+            if !dry_run {
+                executor = executor.command(
+                    CommandSpec::new("systemctl").args(&["--user", "daemon-reload"]),
+                    Ok(ExecResult::success("")),
+                );
+            }
+            executor = executor.command(
+                systemctl(&["--user", "is-enabled", name]),
+                Ok(if enabled {
+                    ExecResult::success("enabled")
+                } else {
+                    disabled_result()
+                }),
+            );
+            if session == "active" {
+                executor = executor.command(
+                    systemctl(&["--user", "show", "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult", name]),
+                    Ok(ExecResult::success(if running { "ActiveState=active" } else { "ActiveState=inactive" })),
+                );
+            }
+            if !dry_run && (!enabled || (session == "active" && !running)) {
+                let args = if session == "active" {
+                    vec!["--user", "enable", "--now", name]
+                } else {
+                    vec!["--user", "enable", name]
+                };
+                executor = executor.command(systemctl(&args), Ok(ExecResult::success("")));
+            }
+        }
+        let ctx = context(executor).with_dry_run(dry_run);
+        for changed in [1, 0, 0, 0, 0, 1, 0] {
+            let result = task.run(&ctx).unwrap();
+            assert_eq!(
+                crate::test_helpers::task_batch(&result).changed_count(),
+                changed
+            );
+            assert_eq!(
+                crate::test_helpers::task_batch(&result).already_ok_count(),
+                1 - changed
+            );
+        }
+    }
+}
+
+#[test]
+fn graphical_session_probe_errors_never_reload_or_start_units() {
+    let units = vec![SystemdUnit {
+        name: "hypridle.service".into(),
+        scope: UnitScope::User,
+        enabled: true,
+        graphical: true,
+    }];
+    for response in [
+        Ok(ExecResult::success("")),
+        Ok(ExecResult::success("unexpected")),
+        Err(ExecError::NonZero {
+            command: "systemctl show".into(),
+            result: ExecResult::failure("", "no bus", Some(1)),
+        }),
+    ] {
+        let executor = script()
+            .command(
+                systemctl(&["--user", "show-environment"]),
+                Ok(ExecResult::success("")),
+            )
+            .command(graphical_probe(), response);
+        let task = ConfigureSystemd::new(ConfigHandle::new(units.clone()));
+        assert!(task.run(&context(executor)).is_err());
+    }
+    let ctx = context(MockExecutor::new());
+    assert!(!graphical_session_active(&ctx, &units, false).unwrap());
+    let mut disabled = units;
+    disabled[0].enabled = false;
+    assert!(!graphical_session_active(&ctx, &disabled, true).unwrap());
+}
+
 #[test]
 fn gtk_service_migration_runs_only_for_the_enabled_user_replacement() {
     let unit = |name: &str, scope, enabled| SystemdUnit {
         name: name.into(),
         scope,
+        graphical: false,
         enabled,
     };
     let gtk = unit("gtk-settings.service", UnitScope::User, true);
@@ -683,10 +798,7 @@ fn live_thunar_service_restarts_for_drift_and_leaves_matching_settings_alone() {
         )
         .command(
             CommandSpec::new("/bin/sh")
-                .arg(
-                    std::path::Path::new("/tmp")
-                        .join("symlinks/config/Thunar/managed-view-settings.sh"),
-                )
+                .arg(std::path::Path::new("/tmp").join(".config/Thunar/managed-view-settings.sh"))
                 .arg("check")
                 .unchecked(),
             Ok(settings),
@@ -710,7 +822,8 @@ fn live_thunar_service_restarts_for_drift_and_leaves_matching_settings_alone() {
         executor,
         false,
         ExecResult::failure("", "no bus", Some(2)),
-    ));
+    ))
+    .with_home("/tmp".into());
     for dry_run in [true, false] {
         let result = task.run(&ctx.with_dry_run(dry_run)).unwrap();
         assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);

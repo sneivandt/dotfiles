@@ -198,22 +198,31 @@ class GitHubLauncherTests(ScriptFixture):
 
 @unittest.skipUnless(shutil.which("gio") and BASH, "Requires Gio and Bash")
 class GitHubDesktopEntryTests(ScriptFixture):
-    def test_menu_launch_and_protocol_uri_use_shared_launcher(self):
+    def test_menu_and_protocol_launch_with_or_without_shared_helper(self):
         home = self.work / "home with spaces"
         launcher = home / ".config/hypr/scripts/launch-github.sh"
         launcher.parent.mkdir(parents=True)
-        launcher.write_text(
+        stub = (
             '#!/bin/sh\n'
             ': > "$HOME/argv"\n'
             'if [ "$#" -gt 0 ]; then printf "%s\\0" "$@" > "$HOME/argv"; fi\n'
             'printf "%s" "$#" > "$HOME/count"\n'
         )
+        launcher.write_text(stub)
         launcher.chmod(0o700)
+        native = self.work / "github"
+        native.write_text(stub)
+        native.chmod(0o700)
         desktop = self.work / "copilot.desktop"
         source = SCRIPTS.parents[2] / "local/share/applications/GitHub Copilot.desktop"
-        desktop.write_text(source.read_text())
-        for args in ([], ["ghapp://synthetic/path?q=space%20value"]):
-            with self.subTest(args=args):
+        contents = source.read_text()
+        self.assertEqual(contents.count("/usr/bin/github"), 1)
+        desktop.write_text(contents.replace("/usr/bin/github", str(native)))
+        for helper, args in ((helper, args) for helper in (True, False)
+                             for args in ([], ["ghapp://synthetic/path?q=space%20value"])):
+            with self.subTest(helper=helper, args=args):
+                if not helper:
+                    launcher.unlink(missing_ok=True)
                 (home / "count").unlink(missing_ok=True)
                 result = subprocess.run(
                     ["gio", "launch", str(desktop), *args],

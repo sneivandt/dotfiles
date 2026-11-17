@@ -128,7 +128,7 @@ pub(crate) fn update_tasks_for_run(
         Box::new(InstallPackages::new(store.packages.clone())),
         Box::new(InstallParu),
         Box::new(InstallAurPackages::new(store.packages.clone())),
-        Box::new(ConfigureParu),
+        Box::new(ConfigureParu::new(store.paru_base.clone())),
         Box::new(UpdateCustomPackageVersions),
         with_ordering_deps(
             InstallSymlinks::new(store.symlinks.clone()),
@@ -286,6 +286,7 @@ mod tests {
             config.units = vec![SystemdUnit {
                 name: name.into(),
                 scope: scope.clone(),
+                graphical: false,
                 enabled,
             }];
             let tasks = all_update_tasks(&ConfigStore::from_config(config));

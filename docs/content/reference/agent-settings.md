@@ -43,7 +43,11 @@ settings = [
 | Target | Document |
 |---|---|
 | `copilot` | `~/.copilot/settings.json` |
-| `codex` | `~/.codex/config.toml` |
+| `codex` | `$CODEX_HOME/config.toml`, defaulting to `~/.codex/config.toml` |
+
+An unset or empty `CODEX_HOME` selects the default. A nonempty value must be an
+absolute path. Run dotfiles with the same environment as Codex; changing this
+location does not migrate or delete settings in the previous document.
 
 `target`, `key` and `value` are required. Keys are dot-separated paths; values use TOML
 types. Choose the narrowest key that expresses the preference. Undeclared and

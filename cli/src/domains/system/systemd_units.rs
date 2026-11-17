@@ -49,14 +49,16 @@ impl Task for ConfigureSystemd {
                     return Ok(RequirementState::unsatisfied("systemd unavailable"));
                 }
                 let user_manager = user_manager_available(ctx, self.config.get())?;
+                let graphical_session =
+                    graphical_session_active(ctx, self.config.get(), user_manager)?;
                 // Non-current units may still need package-provided inputs.
                 for entry in self.config.get() {
                     match SystemdUnitResource::from_entry(
                         entry,
                         ctx.executor_arc(),
                         ctx.home(),
-                        ctx.root(),
                         user_manager,
+                        graphical_session,
                     )
                     .current_state()
                     .with_context(|| format!("checking systemd unit {}", entry.name))?
@@ -86,6 +88,12 @@ impl Task for ConfigureSystemd {
             super::config::systemd_units::validate_conflicts(units).is_empty(),
             "conflicting systemd enablement declarations; keep one desired state per scope and unit"
         );
+        anyhow::ensure!(
+            units
+                .iter()
+                .all(|unit| !unit.graphical || unit.scope == UnitScope::User),
+            "graphical units require scope = 'user'"
+        );
         if units.is_empty() {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }
@@ -95,6 +103,7 @@ impl Task for ConfigureSystemd {
             }
 
             let user_manager_available = user_manager_available(ctx, units)?;
+            let graphical_session = graphical_session_active(ctx, units, user_manager_available)?;
             let system_reload_required = system_unit_needs_change(ctx, units);
             reload_daemons(ctx, user_manager_available, system_reload_required)?;
 
@@ -111,8 +120,8 @@ impl Task for ConfigureSystemd {
                     entry,
                     Arc::clone(&executor),
                     ctx.home(),
-                    ctx.root(),
                     user_manager_available,
+                    graphical_session,
                 )
             });
             process_resources(
@@ -147,8 +156,8 @@ fn system_unit_needs_change(ctx: &Context, units: &[SystemdUnit]) -> bool {
                     unit,
                     Arc::clone(&executor),
                     ctx.home(),
-                    ctx.root(),
-                    true
+                    true,
+                    false
                 )
                 .current_state(),
                 Ok(ResourceState::Missing | ResourceState::Incorrect { .. })
@@ -199,6 +208,31 @@ fn user_manager_available(ctx: &Context, units: &[SystemdUnit]) -> Result<bool> 
         );
     }
     Ok(available)
+}
+
+fn graphical_session_active(
+    ctx: &Context,
+    units: &[SystemdUnit],
+    user_manager_available: bool,
+) -> Result<bool> {
+    if !user_manager_available || !units.iter().any(|unit| unit.enabled && unit.graphical) {
+        return Ok(false);
+    }
+    let result = ctx
+        .executor()
+        .execute(CommandSpec::new("systemctl").args(&[
+            "--user",
+            "show",
+            "--property=ActiveState",
+            "--value",
+            "graphical-session.target",
+        ]))
+        .context("checking graphical session state")?;
+    match result.stdout.trim() {
+        "active" => Ok(true),
+        "inactive" | "activating" | "deactivating" | "failed" => Ok(false),
+        state => anyhow::bail!("unexpected graphical-session.target ActiveState: {state:?}"),
+    }
 }
 
 fn reload_daemons(

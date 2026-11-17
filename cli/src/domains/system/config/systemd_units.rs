@@ -13,6 +13,7 @@ crate::infra::config::diagnostic_codes! {
     SYSTEMD_PLATFORM_UNSUPPORTED => "platform-unsupported",
     SYSTEMD_INVALID_NAME => "invalid-name",
     SYSTEMD_CONFLICTING_VALUES => "conflicting-values",
+    SYSTEMD_GRAPHICAL_SCOPE => "graphical-scope",
 }
 
 /// A systemd unit and its desired enablement state.
@@ -26,6 +27,9 @@ pub struct SystemdUnit {
     /// Whether the unit should be enabled and started.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Start only while the user's graphical session is active.
+    #[serde(default)]
+    pub graphical: bool,
 }
 
 /// Scope in which a systemd unit is managed.
@@ -71,6 +75,7 @@ config_section! {
             name,
             scope: UnitScope::User,
             enabled: true,
+            graphical: false,
         },
         StringOrTable::Table(unit) => unit,
     },
@@ -116,7 +121,7 @@ pub(crate) fn validate_conflicts(units: &[SystemdUnit]) -> Vec<Diagnostic> {
             units,
             SYSTEMD_CONFLICTING_VALUES,
             |unit| format!("{:?}:{}", unit.scope, unit.name),
-            |unit| unit.enabled,
+            |unit| (unit.enabled, unit.graphical),
             |_| None,
         )
         .finish()
@@ -147,6 +152,11 @@ pub fn validate(
                 .iter()
                 .any(|ext| u.name.ends_with(ext));
             [
+                check_error(
+                    u.graphical && u.scope != UnitScope::User,
+                    SYSTEMD_GRAPHICAL_SCOPE,
+                    "graphical units require scope = 'user'",
+                ),
                 check_error(!safe_unit_name(&u.name), SYSTEMD_INVALID_NAME,
                     "unit name must be a single safe systemd name, not a path or option"),
                 check(u.name.trim().is_empty(), SYSTEMD_EMPTY_NAME, "unit name is empty"),
@@ -210,6 +220,7 @@ mod tests {
         let units = [SystemdUnit {
             name: "../audit.service".into(),
             scope: UnitScope::User,
+            graphical: false,
             enabled: true,
         }];
         let diagnostics = validate(
@@ -230,6 +241,7 @@ mod tests {
         let first = SystemdUnit {
             name: "audit.service".into(),
             scope: UnitScope::User,
+            graphical: false,
             enabled: true,
         };
         for (name, scope, enabled, count) in [
@@ -243,6 +255,7 @@ mod tests {
                 SystemdUnit {
                     name: name.into(),
                     scope,
+                    graphical: false,
                     enabled,
                 },
             ]);
@@ -264,6 +277,43 @@ mod tests {
 units = [{ name = "dunst.service", scop = "system" }]
 "#,
             "scop",
+        );
+    }
+
+    #[test]
+    fn graphical_policy_requires_user_scope_and_participates_in_conflicts() {
+        let unit = SystemdUnit {
+            name: "hypridle.service".into(),
+            scope: UnitScope::User,
+            enabled: true,
+            graphical: true,
+        };
+        let platform =
+            crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false);
+        assert!(validate(std::slice::from_ref(&unit), platform).is_empty());
+        let invalid = SystemdUnit {
+            scope: UnitScope::System,
+            ..unit.clone()
+        };
+        let diagnostics = validate(&[invalid], platform);
+        let diagnostic = diagnostics
+            .iter()
+            .find(|d| d.code == SYSTEMD_GRAPHICAL_SCOPE)
+            .unwrap();
+        assert_eq!(diagnostic.severity, crate::infra::config::Severity::Error);
+        assert_eq!(diagnostic.source, SYSTEMD_UNITS_TOML);
+        assert_eq!(diagnostic.item, "hypridle.service");
+        assert!(diagnostic.message.contains("scope = 'user'"));
+        assert_eq!(
+            validate_conflicts(&[
+                unit.clone(),
+                SystemdUnit {
+                    graphical: false,
+                    ..unit
+                },
+            ])
+            .len(),
+            1
         );
     }
 
@@ -319,6 +369,7 @@ units = [{ name = "dhcpcd.service", scope = "system", enabled = false }]
         let units = vec![SystemdUnit {
             name: "myunit".to_string(),
             scope: UnitScope::User,
+            graphical: false,
             enabled: true,
         }];
         let warnings = validate(&units, Platform::new(Os::Linux, false));
@@ -349,6 +400,7 @@ units = [{ name = "dhcpcd.service", scope = "system", enabled = false }]
             let units = [SystemdUnit {
                 name: name.to_string(),
                 scope: UnitScope::System,
+                graphical: false,
                 enabled: true,
             }];
             let diagnostics = validate(&units, platform);
@@ -390,6 +442,7 @@ units = [{ name = "dhcpcd.service", scope = "system", enabled = false }]
         let units = vec![SystemdUnit {
             name: "  ".to_string(),
             scope: UnitScope::User,
+            graphical: false,
             enabled: true,
         }];
         let warnings = validate(&units, Platform::new(Os::Linux, false));
@@ -406,6 +459,7 @@ units = [{ name = "dhcpcd.service", scope = "system", enabled = false }]
         let units = vec![SystemdUnit {
             name: "test.service".to_string(),
             scope: UnitScope::User,
+            graphical: false,
             enabled: true,
         }];
         let warnings = validate(&units, Platform::new(Os::Windows, false));

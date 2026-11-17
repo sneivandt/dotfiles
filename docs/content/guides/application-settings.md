@@ -122,6 +122,12 @@ Run `git alias` to list all aliases. If a setting does not take effect, use
 `<key>` with the setting name. Included files and repository settings can
 override the shared configuration.
 
+On Windows, the base profile leaves editor selection to Git and the environment.
+The desktop profile adds `config/git/windows-desktop`, which selects the installed
+VS Code Insiders command. Switching back to base does not remove an already-installed
+desktop override; stop selecting and remove that link deliberately if you no longer
+want it.
+
 ### Git templates
 
 The shared configuration selects
@@ -167,10 +173,16 @@ separate profile.
 
 The shared profile supplies defaults for XDG directories, the editor, locale,
 terminal information, and the `less` pager. It preserves existing values for
-settings such as `EDITOR`, `VISUAL`, `LANG`, and the XDG directories. Other
-preferences, including pager colors and `WGETRC`, are assigned on startup;
-change those in `config/shell/profile.sh` rather than expecting an environment
-override to win.
+settings such as `EDITOR`, `VISUAL`, `LANG`, and the XDG directories.
+Managed application links still use `~/.config`: a different `XDG_CONFIG_HOME`
+produces a shell warning and fails the configuration check and link installation.
+Unset it or use `~/.config` before applying managed application settings; the
+installer does not relocate existing configuration.
+
+Explicit `WGETRC` and `INPUTRC` values are preserved. When unset, the profile
+selects a readable file in the XDG directory, then the managed `~/.config` location.
+If neither exists, it leaves the variable unset rather than breaking the application
+with a missing file. Other preferences, including pager colors, are assigned on startup.
 
 `config/shell/path.sh` puts user command directories ahead of inherited PATH
 entries and removes duplicates of those entries. It honors `CARGO_HOME`,

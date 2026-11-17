@@ -29,9 +29,10 @@ fn offline_unit(home: &Path, name: &str, enabled: bool) -> SystemdUnitResource {
     let entry = crate::domains::system::config::systemd_units::SystemdUnit {
         name: name.into(),
         scope: UnitScope::User,
+        graphical: false,
         enabled,
     };
-    SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), home, home, false)
+    SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), home, false, false)
 }
 
 fn queried_unit(
@@ -302,6 +303,7 @@ fn disabled_or_system_scope_thunar_units_use_the_regular_systemd_lifecycle() {
         let entry = crate::domains::system::config::systemd_units::SystemdUnit {
             name: THUNAR_SETTINGS_UNIT.into(),
             scope,
+            graphical: false,
             enabled,
         };
         let probe = |args: &[&str]| {
@@ -321,7 +323,7 @@ fn disabled_or_system_scope_thunar_units_use_the_regular_systemd_lifecycle() {
             &entry,
             Arc::new(executor),
             Path::new("/tmp"),
-            Path::new("/tmp"),
+            true,
             true,
         );
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
@@ -630,10 +632,11 @@ fn configured_scope_and_enablement_drive_exact_apply_commands() {
         let entry = crate::domains::system::config::systemd_units::SystemdUnit {
             name: "fixture.service".into(),
             scope,
+            graphical: false,
             enabled,
         };
         let home = Path::new("unused-home");
-        let resource = SystemdUnitResource::from_entry(&entry, Arc::new(mock), home, home, true);
+        let resource = SystemdUnitResource::from_entry(&entry, Arc::new(mock), home, true, true);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
 }

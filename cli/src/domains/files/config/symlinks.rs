@@ -17,6 +17,7 @@ crate::infra::config::diagnostic_codes! {
     SYMLINK_SOURCE_OUTSIDE_ROOT => "source-outside-root",
     SYMLINK_ROOT_SOURCE => "root-source",
     SYMLINK_ROOT_TARGET => "root-target",
+    SYMLINK_CONFIG_HOME => "unsupported-config-home",
 }
 
 mod glob_expansion;
@@ -44,6 +45,37 @@ pub struct Symlink {
     /// returned. [`resolve_symlinks_dir`] falls back to a supplied root for the
     /// remaining `None` window.
     pub origin: Option<PathBuf>,
+}
+
+pub(crate) fn config_home_diagnostic(
+    symlinks: &[Symlink],
+    home: &Path,
+    env: &dyn crate::infra::env::Env,
+) -> Option<Diagnostic> {
+    let configured = env
+        .var_os("XDG_CONFIG_HOME")
+        .filter(|value| !value.is_empty())?;
+    let expected = home.join(".config");
+    if Path::new(&configured) == expected
+        || !symlinks.iter().any(|link| {
+            let target = link
+                .target
+                .clone()
+                .unwrap_or_else(|| default_target(&link.source));
+            Path::new(&target).starts_with(".config")
+        })
+    {
+        return None;
+    }
+    Some(Diagnostic::error(
+        SYMLINKS_TOML,
+        "XDG_CONFIG_HOME",
+        SYMLINK_CONFIG_HOME,
+        format!(
+            "managed application settings require XDG_CONFIG_HOME={} (or unset); custom configuration layouts are not supported",
+            expected.display()
+        ),
+    ))
 }
 
 /// The explicit table form of a symlink entry: `{ source, target }`.

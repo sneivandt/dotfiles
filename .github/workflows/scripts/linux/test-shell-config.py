@@ -329,6 +329,46 @@ class ShellConfigTests(unittest.TestCase):
                 '[ "${LESS+x}" = x ] && [ -z "$LESS" ]\n', shell=shell,
             )
 
+    def test_custom_xdg_layout_warns_without_breaking_wget(self):
+        self.env["XDG_CONFIG_HOME"] = str(self.home / "custom config")
+        for installed in (False, True):
+            if installed:
+                self.write(self.home / ".config/wgetrc", "check_certificate = on\n")
+                self.write(self.home / ".config/readline/inputrc", "set editing-mode vi\n")
+            for shell in ("bash", "zsh"):
+                with self.subTest(installed=installed, shell=shell):
+                    result = self.run_shell(
+                        '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                        'printf "%s\\n" "${WGETRC-unset}" "${INPUTRC-unset}"\n'
+                        'wget --version >/dev/null\n', shell=shell,
+                    )
+                    self.assertIn("custom XDG_CONFIG_HOME is unsupported", result.stderr)
+                    self.assertEqual(result.stdout.splitlines(), [
+                        str(self.home / ".config/wgetrc") if installed else "unset",
+                        str(self.home / ".config/readline/inputrc") if installed else "unset",
+                    ])
+        self.assertFalse(Path(self.env["XDG_CONFIG_HOME"]).exists())
+
+    def test_profile_preserves_readline_and_wget_overrides(self):
+        custom = self.home / "custom config"
+        self.env["XDG_CONFIG_HOME"] = str(custom)
+        for suffix in ("wgetrc", "readline/inputrc"):
+            self.write(custom / suffix, "# fixture\n")
+        for explicit in (False, True):
+            if explicit:
+                self.env.update(WGETRC=str(custom / "chosen-wgetrc"),
+                                INPUTRC=str(custom / "chosen-inputrc"))
+            for shell in ("bash", "zsh"):
+                with self.subTest(explicit=explicit, shell=shell):
+                    result = self.run_shell(
+                        '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                        'printf "%s\\n" "$WGETRC" "$INPUTRC"\n', shell=shell,
+                    )
+                    self.assertEqual(result.stdout.splitlines(), [
+                        self.env["WGETRC"] if explicit else str(custom / "wgetrc"),
+                        self.env["INPUTRC"] if explicit else str(custom / "readline/inputrc"),
+                    ])
+
     def test_approximate_completion_requires_repeated_unchanged_input(self):
         self.prepare_completion()
         result = self.run_shell(
@@ -1389,13 +1429,21 @@ class ShellConfigTests(unittest.TestCase):
         self.assertIn("Error", result.stderr)
         self.assertEqual(list(self.home.iterdir()), [])
 
-    def test_windows_git_editor_uses_installed_insiders_command(self):
-        result = subprocess.run(
-            ["git", "config", "--file", str(ROOT / "symlinks/config/git/windows"),
-             "--get", "core.editor"],
-            cwd=self.fixture, env=self.env, text=True, capture_output=True, check=True,
-        )
-        self.assertEqual(result.stdout.strip(), "code-insiders --wait")
+    def test_windows_git_editor_is_scoped_to_desktop(self):
+        config = self.home / ".config/git"
+        self.write(config / "windows", (ROOT / "symlinks/config/git/windows").read_text())
+        for desktop in (False, True):
+            with self.subTest(desktop=desktop):
+                if desktop:
+                    self.write(config / "windows-desktop",
+                               (ROOT / "symlinks/config/git/windows-desktop").read_text())
+                result = subprocess.run(
+                    ["git", "config", "--file", str(config / "windows"),
+                     "--includes", "--get", "core.editor"],
+                    cwd=self.fixture, env=self.env, text=True, capture_output=True,
+                )
+                self.assertEqual(result.returncode, 0 if desktop else 1, result.stderr)
+                self.assertEqual(result.stdout.strip(), "code-insiders --wait" if desktop else "")
 
     def test_wget_preserves_url_names_and_reuses_unchanged_downloads(self):
         requests = []

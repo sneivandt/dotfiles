@@ -1,7 +1,7 @@
 [Desktop Entry]
 Categories=
 Comment=Tauri Copilot Application
-Exec=sh -c "exec \\"\\$HOME/.config/hypr/scripts/launch-github.sh\\" \\"\\$@\\"" sh %u
+Exec=sh -c "if [ -x \\"\\$HOME/.config/hypr/scripts/launch-github.sh\\" ]; then exec \\"\\$HOME/.config/hypr/scripts/launch-github.sh\\" \\"\\$@\\"; else exec /usr/bin/github \\"\\$@\\"; fi" sh %u
 Icon=github
 MimeType=x-scheme-handler/github-app;x-scheme-handler/ghapp;x-scheme-handler/gh
 Name=GitHub Copilot

@@ -23,6 +23,13 @@ through UWSM when no graphical session is active. A terminal opened inside an
 existing desktop does not start another session. Installing the configuration
 does not replace your current session immediately.
 
+Updates before a graphical session starts enable its services without starting
+them. UWSM owns activation of `graphical-session.target`; the services do not
+pull it in themselves. If an older update already activated that target without
+a compositor, installing the fix does not stop it automatically. Save your work
+and start a fresh login after reboot rather than stopping session targets under
+running applications.
+
 If login leaves you at a shell, check that Zsh is your login shell, the managed
 `~/.zprofile` link is present, and `uwsm` is available. Follow
 [Session and services](#session-and-services) for startup sources and

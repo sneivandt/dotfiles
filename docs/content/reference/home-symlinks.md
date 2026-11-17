@@ -89,6 +89,12 @@ Paths must stay below their respective roots: sources inside the declaring repos
 `symlinks/`, targets inside home. Absolute paths, `..`, and entries naming the root
 itself are invalid. `./bashrc` normalizes to the same target as `bashrc`.
 
+Managed `.config` destinations are fixed beneath home; `XDG_CONFIG_HOME` does
+not relocate them. When selecting those links, use `~/.config` or leave the
+variable unset. A different value fails link installation and `dotfiles check`
+with an unsupported-layout diagnostic. Removal still operates on the declared
+home-relative destinations so an incompatible environment does not block recovery.
+
 Two active entries within one repository cannot own the same target or overlapping
 parent/child targets. An overlay can replace an exact main target, but cannot turn a
 parent/child conflict into a valid pair. Target comparison normalizes separators and `.`

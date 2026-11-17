@@ -11,7 +11,7 @@ use crate::infra::provisioning::{
 };
 
 const THUNAR_SETTINGS_UNIT: &str = "thunar-view-settings.service";
-const THUNAR_SETTINGS_SCRIPT: &str = "symlinks/config/Thunar/managed-view-settings.sh";
+const THUNAR_SETTINGS_SCRIPT: &str = ".config/Thunar/managed-view-settings.sh";
 const FIRST_LOGIN_UNIT: &str = "dotfiles-first-login.service";
 
 /// A systemd unit resource that converges its configured enablement state.
@@ -31,6 +31,7 @@ pub struct SystemdUnitResource {
     system_user_unit_dirs: Vec<PathBuf>,
     /// Whether the live user service manager is reachable.
     user_manager_available: bool,
+    start: bool,
     retired_source: Option<PathBuf>,
     thunar_settings_script: Option<PathBuf>,
 }
@@ -56,6 +57,7 @@ impl SystemdUnitResource {
             .map(PathBuf::from)
             .collect(),
             user_manager_available: true,
+            start: true,
             retired_source: None,
             thunar_settings_script: None,
         }
@@ -67,15 +69,16 @@ impl SystemdUnitResource {
         entry: &crate::domains::system::config::systemd_units::SystemdUnit,
         executor: Arc<dyn Executor>,
         home: &Path,
-        root: &Path,
         user_manager_available: bool,
+        graphical_session_active: bool,
     ) -> Self {
         let mut resource = Self::new(entry.name.clone(), entry.scope.clone(), executor);
         resource.enabled = entry.enabled;
         resource.home = Some(home.to_path_buf());
         resource.user_manager_available = user_manager_available;
+        resource.start = !entry.graphical || graphical_session_active;
         if entry.enabled && entry.scope == UnitScope::User && entry.name == THUNAR_SETTINGS_UNIT {
-            resource.thunar_settings_script = Some(root.join(THUNAR_SETTINGS_SCRIPT));
+            resource.thunar_settings_script = Some(home.join(THUNAR_SETTINGS_SCRIPT));
         }
         resource
     }
@@ -746,6 +749,9 @@ impl Resource for SystemdUnitResource {
             };
         }
         if self.enabled {
+            if !self.start {
+                return self.change_live_unit(&["enable"]);
+            }
             if self.thunar_settings_script.is_some() {
                 let enablement = self.change_live_unit(&["enable"])?;
                 if !matches!(enablement, ResourceChange::Applied) {
@@ -801,6 +807,7 @@ impl IntrinsicState for SystemdUnitResource {
         // Missing disabled units need no runtime probe. Ambiguous enablement
         // must keep its diagnostic instead of being treated as converged.
         if !matches!(enablement, ResourceState::Correct)
+            || (self.enabled && !self.start)
             || (!self.enabled
                 && (command_output(&result).contains("not-found")
                     || command_output(&result).contains("could not be found")))

@@ -23,29 +23,40 @@ crate::engine::config_task! {
 const NAME: &str = "Agent settings";
 
 impl ConfigureAgentSettings {
-    fn resource(setting: &AgentSetting, home: &Path) -> AgentSettingResource {
-        let (format, path) = target_document(setting.target, home);
-        AgentSettingResource::new(
+    fn resource(setting: &AgentSetting, ctx: &Context) -> Result<AgentSettingResource> {
+        let (format, path) = target_document(setting.target, ctx.home(), ctx.env().as_ref())?;
+        Ok(AgentSettingResource::new(
             setting.target.name().to_string(),
             setting.key.clone(),
             setting.value.clone(),
             format,
             path,
-        )
+        ))
     }
 }
 
-fn target_document(target: AgentHarness, home: &Path) -> (SettingsFormat, PathBuf) {
-    match target {
+fn target_document(
+    target: AgentHarness,
+    home: &Path,
+    env: &dyn crate::infra::env::Env,
+) -> Result<(SettingsFormat, PathBuf)> {
+    Ok(match target {
         AgentHarness::Copilot => (
             SettingsFormat::Json,
             home.join(".copilot").join("settings.json"),
         ),
-        AgentHarness::Codex => (
-            SettingsFormat::Toml,
-            home.join(".codex").join("config.toml"),
-        ),
-    }
+        AgentHarness::Codex => {
+            let directory = match env.var_os("CODEX_HOME").filter(|value| !value.is_empty()) {
+                Some(value) => {
+                    let path = PathBuf::from(value);
+                    anyhow::ensure!(path.is_absolute(), "CODEX_HOME must be an absolute path");
+                    path
+                }
+                None => home.join(".codex"),
+            };
+            (SettingsFormat::Toml, directory.join("config.toml"))
+        }
+    })
 }
 
 impl Task for ConfigureAgentSettings {
@@ -64,8 +75,8 @@ impl Task for ConfigureAgentSettings {
         }
         let resources = settings
             .iter()
-            .map(|setting| Self::resource(setting, ctx.home()))
-            .collect();
+            .map(|setting| Self::resource(setting, ctx))
+            .collect::<Result<Vec<_>>>()?;
         run_resource_task(
             ctx,
             AgentSettingsDocument::group(resources)?,
@@ -80,8 +91,80 @@ mod tests {
     use crate::domains::ai::config::agent_settings::{AgentHarness, AgentSetting};
     use crate::engine::Task;
     use crate::infra::ConfigHandle;
-    use crate::test_helpers::{empty_config, make_linux_context, task_batch};
+    use crate::infra::env::MapEnv;
+    use crate::test_helpers::{empty_config, task_batch};
     use std::path::PathBuf;
+
+    fn make_linux_context(root: PathBuf, overlay: Option<PathBuf>) -> Context {
+        crate::test_helpers::make_linux_context(root, overlay).with_env(MapEnv::new().into_handle())
+    }
+
+    #[test]
+    fn codex_home_override_preserves_default_config_and_converges() {
+        let fixture = tempfile::tempdir().unwrap();
+        let home = fixture.path().join("home");
+        let custom = fixture.path().join("custom codex");
+        let default_path = home.join(".codex/config.toml");
+        std::fs::create_dir_all(default_path.parent().unwrap()).unwrap();
+        std::fs::write(&default_path, "unmanaged = true\n").unwrap();
+        let ctx = make_linux_context(fixture.path().into(), None)
+            .with_home(home)
+            .with_env(MapEnv::new().with("CODEX_HOME", &custom).into_handle());
+        let task = ConfigureAgentSettings::new(ConfigHandle::new(vec![AgentSetting {
+            target: AgentHarness::Codex,
+            key: "approval_policy".into(),
+            value: "on-request".into(),
+        }]));
+        assert_eq!(
+            task_batch(&task.run(&ctx.with_dry_run(true)).unwrap()).changed_count(),
+            1
+        );
+        assert!(!custom.exists());
+        assert_eq!(task_batch(&task.run(&ctx).unwrap()).changed_count(), 1);
+        let actual: toml::Table =
+            toml::from_str(&std::fs::read_to_string(custom.join("config.toml")).unwrap()).unwrap();
+        assert_eq!(actual["approval_policy"].as_str(), Some("on-request"));
+        assert_eq!(task_batch(&task.run(&ctx).unwrap()).already_ok_count(), 1);
+        assert_eq!(
+            std::fs::read_to_string(default_path).unwrap(),
+            "unmanaged = true\n"
+        );
+    }
+
+    #[test]
+    fn relative_codex_home_fails_before_any_harness_write_and_empty_uses_default() {
+        let home = tempfile::tempdir().unwrap();
+        let task = ConfigureAgentSettings::new(ConfigHandle::new(
+            [AgentHarness::Copilot, AgentHarness::Codex]
+                .map(|target| AgentSetting {
+                    target,
+                    key: "model".into(),
+                    value: "fixture".into(),
+                })
+                .into(),
+        ));
+        let ctx = make_linux_context(home.path().into(), None).with_home(home.path().into());
+        for dry_run in [false, true] {
+            let error = task
+                .run(
+                    &ctx.with_dry_run(dry_run)
+                        .with_env(MapEnv::new().with("CODEX_HOME", "relative").into_handle()),
+                )
+                .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("CODEX_HOME must be an absolute path")
+            );
+            assert!(!home.path().join(".copilot").exists());
+            assert!(!home.path().join(".codex").exists());
+        }
+        let result = task
+            .run(&ctx.with_env(MapEnv::new().with("CODEX_HOME", "").into_handle()))
+            .unwrap();
+        assert_eq!(task_batch(&result).changed_count(), 2);
+        assert!(home.path().join(".codex/config.toml").is_file());
+    }
 
     #[test]
     fn run_is_not_applicable_without_settings() {
@@ -197,7 +280,7 @@ mod tests {
             for dry_run in [false, true] {
                 for existing in [false, true] {
                     let home = tempfile::tempdir_in(".").unwrap();
-                    let (_, path) = target_document(target, home.path());
+                    let (_, path) = target_document(target, home.path(), &MapEnv::new()).unwrap();
                     let before = match target {
                         AgentHarness::Copilot => "{\"model\":\"original\",\"unmanaged\":true}\n",
                         AgentHarness::Codex => "model = \"original\"\nunmanaged = true\n",
@@ -250,7 +333,7 @@ mod tests {
     fn failed_setting_preserves_the_entire_document_and_retry_converges() {
         for target in [AgentHarness::Copilot, AgentHarness::Codex] {
             let home = tempfile::tempdir_in(".").unwrap();
-            let (_, path) = target_document(target, home.path());
+            let (_, path) = target_document(target, home.path(), &MapEnv::new()).unwrap();
             let before = match target {
                 AgentHarness::Copilot => r#"{"model":"old","footer":false,"unmanaged":"keep"}"#,
                 AgentHarness::Codex => "model = \"old\"\nfooter = false\nunmanaged = \"keep\"\n",

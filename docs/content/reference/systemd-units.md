@@ -21,8 +21,10 @@ current running state, not the contents of the unit files themselves.
 
 ## What it does
 
-The task starts and enables units marked enabled and stops and disables units
-marked disabled. It inspects unit state after its ordering dependencies finish,
+The task enables units marked enabled and stops and disables units marked disabled.
+It starts enabled units immediately except those marked `graphical = true`, which
+wait for an active user graphical session. It inspects unit state after its ordering
+dependencies finish,
 even if one failed. The first-login user service runs the launcher at
 `~/.local/bin/dotfiles`, so enabling that service waits for launcher installation
 when both tasks are selected.
@@ -63,9 +65,17 @@ A string means an enabled user unit. A table requires `name` and `scope`; `scope
 Use the canonical unit name. If the live manager reports an alias, Dotfiles
 asks you to declare the backing unit.
 
+`graphical = true` is an optional user-unit setting; its default is `false`.
+Outside an active `graphical-session.target`, the task only enables these units
+and does not check or repair their running state or Thunar preferences. Their
+install relationships start them when the session begins. During an active
+session, normal runtime convergence applies. A failed session-state query stops
+the task before service changes rather than assuming it is safe to start.
+
 With a live manager:
 
-- `enabled = true` means persistently enabled and started. Runtime-only
+- `enabled = true` means persistently enabled and, when its graphical policy permits,
+  started. Runtime-only
   enablement is not sufficient. Static units have no install instructions and
   cannot satisfy this declaration. Dotfiles retries a start previously skipped
   by a condition so systemd can evaluate it again. Retrying a system unit can
@@ -79,7 +89,8 @@ An enabled first-login service (`dotfiles-first-login.service`) can stay idle
 once the deferred VS Code extensions marker is gone. If the marker exists,
 Dotfiles retries the idle service.
 When the managed Thunar settings service has already run, Dotfiles checks its
-two managed preferences and reruns the service if either differs.
+two managed preferences and reruns the service if either differs. Both the check
+and the service use the installed helper, including an overlay replacement.
 System-scope changes can require sudo. Inside WSL, systemd must already be running or
 degraded; changing `wsl.conf` cannot start it in the current session.
 

@@ -99,6 +99,13 @@ impl Task for InstallSymlinks {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let symlinks = self.config.get();
+        if let Some(diagnostic) = crate::domains::files::config::symlinks::config_home_diagnostic(
+            symlinks,
+            ctx.home(),
+            ctx.env().as_ref(),
+        ) {
+            anyhow::bail!("{}: {}", diagnostic.code, diagnostic.message);
+        }
         let resources = build_resources(ctx, symlinks);
         validate_resolved_targets(&resources)?;
         // UAC can switch accounts. Home mutations stay in the parent, and the
@@ -241,6 +248,29 @@ mod tests {
 
     fn handle(symlinks: Vec<Symlink>) -> ConfigHandle<Vec<Symlink>> {
         ConfigHandle::new(symlinks)
+    }
+
+    #[test]
+    fn custom_config_home_rejects_install_and_preview_before_writing() {
+        let fixture = tempfile::tempdir().unwrap();
+        let home = fixture.path().join("home");
+        let ctx = make_linux_context(fixture.path().into(), None)
+            .with_home(home.clone())
+            .with_env(
+                crate::infra::env::MapEnv::new()
+                    .with("XDG_CONFIG_HOME", fixture.path().join("custom-config"))
+                    .into_handle(),
+            );
+        let task = InstallSymlinks::new(handle(vec![symlink("config/git/config", None)]));
+        for dry_run in [true, false] {
+            let error = task.run(&ctx.with_dry_run(dry_run)).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("symlink.unsupported-config-home")
+            );
+            assert!(!home.exists());
+        }
     }
 
     #[cfg(unix)]

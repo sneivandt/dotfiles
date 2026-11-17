@@ -79,7 +79,10 @@ The `agent-settings` task edits only declared keys in these documents:
 | Application | User settings |
 |---|---|
 | `copilot` | `~/.copilot/settings.json` |
-| `codex` | `~/.codex/config.toml` |
+| `codex` | `$CODEX_HOME/config.toml`, defaulting to `~/.codex/config.toml` |
+
+Use the same `CODEX_HOME` when running dotfiles and Codex. A nonempty override
+must be an absolute path; it does not move or modify the old default document.
 
 Unmanaged keys and TOML comments survive. If a requested key is invalid or its
 parent has an incompatible value, that document is left unchanged. Detected

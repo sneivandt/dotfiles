@@ -2,7 +2,6 @@
 Description=Quickshell desktop bar
 
 PartOf=graphical-session.target
-Wants=graphical-session.target
 After=graphical-session.target
 
 ConditionFileIsExecutable=/usr/bin/qs

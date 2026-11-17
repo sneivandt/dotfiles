@@ -2,7 +2,6 @@
 Description=Gammastep color temperature adjustment
 
 PartOf=graphical-session.target
-Wants=graphical-session.target
 After=graphical-session.target
 
 ConditionFileIsExecutable=/usr/bin/gammastep

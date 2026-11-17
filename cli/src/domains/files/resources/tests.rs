@@ -104,6 +104,34 @@ mod chmod {
 
     #[cfg(unix)]
     #[test]
+    fn chmod_state_propagates_non_permission_inspection_errors() {
+        use crate::domains::files::config::chmod::ChmodEntry;
+        use crate::engine::resource::ResourceError;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let home = fixture.path().canonicalize().unwrap();
+        let file = home.join(".not-directory");
+        std::fs::write(&file, "fixture").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o640)).unwrap();
+        let resource =
+            ChmodResource::from_entry(&ChmodEntry::new("600", "not-directory/config"), &home);
+        match resource.current_state() {
+            Err(ResourceError::Io { source }) => {
+                assert_eq!(source.kind(), std::io::ErrorKind::NotADirectory);
+            }
+            other => {
+                panic!("a non-directory ancestor is an inspection error, not unknown: {other:?}")
+            }
+        }
+        assert_eq!(
+            file.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+            0o640
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn chmod_resource_detects_correct_mode() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -372,6 +400,39 @@ mod chmod {
         assert_eq!(nested_mode, 0o700);
         assert_eq!(file_mode, 0o600);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        assert_eq!(
+            resource.apply().unwrap(),
+            ResourceChange::AlreadyCorrect,
+            "an already-correct accessible tree must not report a permission change"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn recursive_changes_report_the_distinct_original_mode_of_each_recovered_directory() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().join("tree");
+        let nested = root.join("nested");
+        let deepest = nested.join("deepest");
+        std::fs::create_dir_all(&deepest).unwrap();
+        for (path, initial) in [(&deepest, 0o200), (&nested, 0o000), (&root, 0o000)] {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(initial)).unwrap();
+        }
+        let resource = ChmodResource::new(root.clone(), mode("000"));
+        assert_eq!(
+            resource.apply().unwrap(),
+            ResourceChange::Applied,
+            "the deepest directory changed even though its recovered ancestors already matched"
+        );
+        for directory in [&root, &nested, &deepest] {
+            assert_eq!(
+                directory.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+                0
+            );
+            std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
     }
 
     #[cfg(unix)]

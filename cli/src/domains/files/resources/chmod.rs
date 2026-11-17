@@ -349,11 +349,18 @@ fn resolve_declared_target(path: &std::path::Path) -> Result<Option<PathBuf>> {
 // An unresolved suffix is only an exclusion/order hint, never permission to
 // mutate a destination. Each resource still validates its fully resolved target.
 fn exclusion_target(path: &std::path::Path) -> Result<PathBuf> {
+    exclusion_target_with(path, crate::infra::fs::canonicalize)
+}
+
+fn exclusion_target_with(
+    path: &std::path::Path,
+    canonicalize: impl Fn(&std::path::Path) -> Result<PathBuf>,
+) -> Result<PathBuf> {
     if let Some(target) = resolve_declared_target(path)? {
         return Ok(target);
     }
     for ancestor in path.ancestors().skip(1) {
-        match crate::infra::fs::canonicalize(ancestor) {
+        match canonicalize(ancestor) {
             Ok(resolved) => return Ok(resolved.join(path.strip_prefix(ancestor)?)),
             Err(error) if error_is_permission_denied(error.as_ref()) => {}
             Err(error) => return Err(error),
@@ -373,13 +380,16 @@ struct RecoveredDirectory {
 #[cfg(unix)]
 impl RecoveredDirectory {
     fn acquire(path: &std::path::Path, original: u32) -> ResourceResult<Self> {
-        use std::os::unix::fs::OpenOptionsExt as _;
+        use rustix::fs::{Mode, OFlags};
 
         set_permissions(path, original | 0o500)?;
-        let opened = std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(nix::libc::O_DIRECTORY | nix::libc::O_NOFOLLOW)
-            .open(path);
+        let flags = OFlags::RDONLY
+            .union(OFlags::CLOEXEC)
+            .union(OFlags::DIRECTORY)
+            .union(OFlags::NOFOLLOW);
+        let opened = rustix::fs::open(path, flags, Mode::empty())
+            .map(std::fs::File::from)
+            .map_err(std::io::Error::from);
         match opened {
             Ok(directory) => Ok(Self {
                 path: path.to_path_buf(),
@@ -615,6 +625,66 @@ pub(super) const fn strip_file_execute_bits(mode: u32) -> u32 {
 #[cfg(all(test, unix))]
 mod mutation_tests {
     use super::*;
+
+    #[test]
+    fn exclusion_fallback_preserves_non_permission_resolution_errors() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let locked = root.join("locked");
+        let target = locked.join("config");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::write(&target, "fixture").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        for kind in [
+            std::io::ErrorKind::NotFound,
+            std::io::ErrorKind::NotADirectory,
+            std::io::ErrorKind::Other,
+        ] {
+            let error = exclusion_target_with(&target, |ancestor| {
+                if ancestor == locked {
+                    Err(std::io::Error::new(kind, "ancestor changed during resolution").into())
+                } else {
+                    crate::infra::fs::canonicalize(ancestor)
+                }
+            })
+            .unwrap_err();
+            assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(), kind);
+        }
+        let hint = exclusion_target_with(&target, |ancestor| {
+            if ancestor == locked {
+                Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied).into())
+            } else {
+                crate::infra::fs::canonicalize(ancestor)
+            }
+        })
+        .unwrap();
+        assert_eq!(hint, target);
+        assert_eq!(
+            locked.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+            0
+        );
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
+    #[test]
+    fn recovery_rejects_replaced_non_directories_without_changing_permissions() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let file = fixture.path().join("replaced-directory");
+        std::fs::write(&file, "fixture").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(
+            RecoveredDirectory::acquire(&file, 0o600).is_err(),
+            "recovery must reject a directory replaced by a regular file"
+        );
+        assert_eq!(
+            file.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+            0o600
+        );
+    }
 
     #[test]
     fn recovery_restores_original_directories_after_restrictive_ancestors_and_alias_replacement() {

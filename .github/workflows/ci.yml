@@ -238,7 +238,7 @@ jobs:
       - name: Install documentation dependencies
         run: npm --prefix docs ci --no-audit --no-fund
       - name: Audit documentation dependencies
-        run: npm --prefix docs audit
+        run: python3 -B .github/workflows/scripts/linux/check-doc-audit.py
       - name: Install browser test runtime
         working-directory: docs
         run: npx playwright install --with-deps chromium

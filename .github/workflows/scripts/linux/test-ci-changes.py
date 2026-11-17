@@ -2,6 +2,7 @@
 """Isolated regressions for CI selection, result gates, and release catch-up."""
 
 import contextlib
+from datetime import datetime, timedelta, timezone
 import io
 import json
 import os
@@ -21,9 +22,178 @@ POLICY = runpy.run_path(str(SCRIPTS / "classify-ci-changes.py"))
 CONTRACT = runpy.run_path(str(SCRIPTS / "check-ci-contract.py"))
 PRE_PUSH = runpy.run_path(str(SCRIPTS / "pre-push.py"))
 MUTATION = runpy.run_path(str(SCRIPTS / "select-mutations.py"))
+DOC_AUDIT = runpy.run_path(str(SCRIPTS / "check-doc-audit.py"))
 classify = POLICY["classify"]
 LINUX = POLICY["LINUX"]
 WINDOWS = POLICY["WINDOWS"]
+
+
+class DocumentationAuditTests(unittest.TestCase):
+    now = datetime(2026, 11, 17, 19, tzinfo=timezone.utc)
+
+    @staticmethod
+    def advisory(**changes):
+        return {
+            "name": "picomatch",
+            "dependency": "picomatch",
+            "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+            "range": "<=4.0.7",
+            "severity": "high",
+        } | changes
+
+    @staticmethod
+    def report(causes):
+        return {
+            "auditReportVersion": 2,
+            "vulnerabilities": {
+                name: {"name": name, "via": via} for name, via in causes.items()
+            },
+            "metadata": {"vulnerabilities": {"total": len(causes)}},
+        }
+
+    def evaluate(self, causes, now=None):
+        return DOC_AUDIT["audit_findings"](
+            self.report(causes), int(bool(causes)), now or self.now,
+        )
+
+    def test_only_the_named_advisory_and_its_exclusive_chains_are_accepted(self):
+        accepted, blocked = self.evaluate({
+            "picomatch": [self.advisory()],
+            "fdir": ["picomatch"],
+            "tinyglobby": ["picomatch", "fdir"],
+            "vite": ["fdir", "tinyglobby"],
+            "@vue/language-core": ["picomatch"],
+            "vue-tsc": ["@vue/language-core"],
+        })
+        self.assertEqual(accepted, [
+            "@vue/language-core", "fdir", "picomatch", "tinyglobby", "vite", "vue-tsc",
+        ])
+        self.assertEqual(blocked, [])
+        self.assertEqual(self.evaluate({}), ([], []))
+
+    def test_expiry_blocks_at_the_deadline_without_breaking_clean_reports(self):
+        deadline = datetime(2026, 11, 24, 19, tzinfo=timezone.utc)
+        causes = {"picomatch": [self.advisory()], "vite": ["picomatch"]}
+        self.assertEqual(self.evaluate(causes, deadline - timedelta(microseconds=1))[1], [])
+        for now in [deadline, deadline + timedelta(days=1)]:
+            with self.subTest(now=now):
+                self.assertEqual(self.evaluate(causes, now), ([], ["picomatch", "vite"]))
+                self.assertEqual(self.evaluate({}, now), ([], []))
+
+    def test_changed_advisory_details_or_another_package_are_not_exempt(self):
+        for change in [
+            {"url": "https://github.com/advisories/GHSA-xxxx-xxxx-xxxx"},
+            {"name": "another-package"},
+            {"dependency": "another-package"},
+            {"range": "<=4.0.8"},
+            {"severity": "critical"},
+        ]:
+            with self.subTest(change=change):
+                self.assertEqual(
+                    self.evaluate({"picomatch": [self.advisory(**change)], "vite": ["picomatch"]}),
+                    ([], ["picomatch", "vite"]),
+                )
+        self.assertEqual(
+            self.evaluate({"another-package": [self.advisory()]}),
+            ([], ["another-package"]),
+        )
+
+    def test_new_findings_block_even_alongside_the_exception(self):
+        other = self.advisory(url="https://github.com/advisories/GHSA-xxxx-xxxx-xxxx")
+        for causes, expected in [
+            ({"picomatch": [self.advisory(), other], "vite": ["picomatch"]}, ["picomatch", "vite"]),
+            ({"picomatch": [self.advisory()], "vite": ["picomatch", other]}, ["vite"]),
+            ({"picomatch": [self.advisory()], "other": [other], "vite": ["picomatch", "other"]},
+             ["other", "vite"]),
+        ]:
+            with self.subTest(causes=causes):
+                self.assertEqual(self.evaluate(causes)[1], expected)
+
+    def test_unresolved_cyclic_and_unrecognized_causes_cannot_be_ignored(self):
+        for via in [["missing"], ["vite"], [{}], [None], [42]]:
+            with self.subTest(via=via):
+                self.assertEqual(
+                    self.evaluate({"picomatch": [self.advisory()], "vite": via}),
+                    (["picomatch"], ["vite"]),
+                )
+
+    def test_incomplete_reports_and_command_errors_fail_closed(self):
+        clean = self.report({})
+        finding = self.report({"picomatch": [self.advisory()]})
+        for report, status in [
+            (clean, 2), (clean, -9), (clean, 1), (finding, 0),
+            ({}, 0), ([], 0), (clean | {"error": {}}, 0),
+            (clean | {"auditReportVersion": 3}, 0),
+            (clean | {"metadata": {}}, 0),
+            (finding | {"metadata": clean["metadata"]}, 1),
+            (clean | {"vulnerabilities": []}, 0),
+            (self.report({"picomatch": []}), 1),
+            (finding | {"vulnerabilities": {"picomatch": {"name": "other", "via": []}}}, 1),
+        ]:
+            with self.subTest(report=report, status=status):
+                with self.assertRaises(ValueError):
+                    DOC_AUDIT["audit_findings"](report, status, self.now)
+
+    def test_command_uses_docs_lockfile_and_reports_failures(self):
+        for stdout, status, expected_exit in [
+            (json.dumps(self.report({})), 0, None),
+            ("not json", 1, 1),
+            (json.dumps({"error": {"code": "ENOAUDIT"}}), 1, 1),
+            (json.dumps(self.report({})), 2, 1),
+            (json.dumps(self.report({"other": [self.advisory()]})), 1, 1),
+        ]:
+            with self.subTest(stdout=stdout, status=status):
+                output, errors = io.StringIO(), io.StringIO()
+                result = subprocess.CompletedProcess([], status, stdout, "fixture stderr\n")
+                with patch("shutil.which", return_value="/fixture/npm"), \
+                        patch("subprocess.run", return_value=result) as run, \
+                        contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                    if expected_exit is None:
+                        runpy.run_path(str(SCRIPTS / "check-doc-audit.py"), run_name="__main__")
+                    else:
+                        with self.assertRaises(SystemExit) as failure:
+                            runpy.run_path(str(SCRIPTS / "check-doc-audit.py"), run_name="__main__")
+                        self.assertEqual(failure.exception.code, expected_exit)
+                self.assertEqual(run.call_args.args[0], [
+                    "/fixture/npm", "audit", "--package-lock-only", "--json",
+                ])
+                self.assertEqual(run.call_args.kwargs["cwd"], SCRIPTS.parents[3] / "docs")
+                self.assertEqual(run.call_args.kwargs["timeout"], 120)
+                self.assertIn(stdout, output.getvalue())
+                self.assertIn("fixture stderr", errors.getvalue())
+                self.assertEqual("audit failed:" in errors.getvalue(), expected_exit == 1)
+
+    def test_temporary_acceptance_is_visible_in_command_output(self):
+        main = DOC_AUDIT["main"]
+        report = json.dumps(self.report({"picomatch": [self.advisory()]}))
+        result = subprocess.CompletedProcess([], 1, report, "")
+        output, errors = io.StringIO(), io.StringIO()
+        with patch("shutil.which", return_value="/fixture/npm"), \
+                patch("subprocess.run", return_value=result), \
+                patch.dict(main.__globals__, {"datetime": Mock(now=Mock(return_value=self.now))}), \
+                contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            main()
+        self.assertIn(report, output.getvalue())
+        self.assertIn("with the temporary exception", output.getvalue())
+        self.assertIn("WARNING:", errors.getvalue())
+        self.assertIn("GHSA-fc5q-39xc-vjpf", errors.getvalue())
+        self.assertIn("2026-11-24T19:00:00+00:00", errors.getvalue())
+
+    def test_missing_npm_spawn_errors_and_timeouts_are_reported(self):
+        for npm, error in [
+            (None, None),
+            ("/fixture/npm", OSError("fixture spawn failure")),
+            ("/fixture/npm", subprocess.TimeoutExpired("npm audit", 120)),
+        ]:
+            with self.subTest(npm=npm, error=error):
+                errors = io.StringIO()
+                with patch("shutil.which", return_value=npm), \
+                        patch("subprocess.run", side_effect=error), \
+                        contextlib.redirect_stderr(errors), \
+                        self.assertRaises(SystemExit) as failure:
+                    runpy.run_path(str(SCRIPTS / "check-doc-audit.py"), run_name="__main__")
+                self.assertEqual(failure.exception.code, 1)
+                self.assertIn("audit failed:", errors.getvalue())
 
 
 class ClassificationTests(unittest.TestCase):
@@ -111,6 +281,7 @@ class ClassificationTests(unittest.TestCase):
             (LINUX + "test-docs.sh", {"lint", "docs_site", "docs_contracts"}),
             (LINUX + "check-doc-links.py", set()),
             (LINUX + "check-doc-site.py", {"docs_site"}),
+            (LINUX + "check-doc-audit.py", {"docs_site"}),
             (LINUX + "docs-publication-base.py", {"docs_site"}),
             (LINUX + "test-workflows.sh", {"lint"}),
             (LINUX + "test-desktop-qml.sh", {"lint", "desktop_qml"}),

@@ -31,6 +31,8 @@ pub(super) struct ConsoleState {
     pub(super) last_task_block_had_details: bool,
     pub(super) ends_with_blank_line: bool,
     pub(super) startup_separator_emitted: bool,
+    pub(super) startup_header_emitted: bool,
+    pub(super) last_was_transition: bool,
     #[cfg(test)]
     pub(super) captured: Vec<(bool, String)>,
 }
@@ -76,10 +78,17 @@ impl Console {
         }
         let mut state = self.lock();
         if let Some(line) = ui_line_with_style(kind, message, style, state.verbose, symbols) {
-            if kind == MsgKind::Transition && state.startup_separator_emitted {
-                state.separate_block();
+            if kind == MsgKind::Transition && !state.last_was_transition {
+                if state.startup_header_emitted {
+                    state.separate_from_startup();
+                }
+                if state.startup_separator_emitted {
+                    state.separate_block();
+                }
             }
             state.line(error, &line);
+            state.last_was_transition = kind == MsgKind::Transition;
+            state.startup_header_emitted |= kind == MsgKind::Startup;
         }
     }
 
@@ -199,6 +208,7 @@ impl ConsoleState {
     }
 
     fn line(&mut self, error: bool, line: &str) {
+        self.last_was_transition = false;
         self.active_progress = false;
         self.custom_progress = None;
         let clear = progress_clear_sequence(std::mem::take(&mut self.progress_rows));
@@ -262,6 +272,9 @@ impl ConsoleState {
     }
 
     pub(super) fn begin_task_block(&mut self, expanded: bool) {
+        if self.last_was_transition {
+            self.separate_block();
+        }
         self.separate_from_startup();
         if self.should_separate_task_blocks(expanded) {
             self.line(false, "");

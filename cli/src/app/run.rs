@@ -142,8 +142,11 @@ fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> Exit
         runtime.global.output_mode,
     );
     raw_log.set_dry_run(runtime.execution.dry_run);
+    raw_log.start_run(parent_run_id.map(str::to_string));
+    if let Err(error) = runtime.restore_output(&mut raw_log) {
+        return finish_engine_run(&Err(error), false, &raw_log);
+    }
     let log = std::sync::Arc::new(raw_log);
-    log.start_run(parent_run_id.map(str::to_string));
 
     // Set up cooperative cancellation so Ctrl-C lets in-flight operations
     // finish cleanly instead of terminating the process immediately, and

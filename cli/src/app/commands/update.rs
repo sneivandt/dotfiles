@@ -84,7 +84,7 @@ pub fn run(
         filtered,
         repository_task,
         move || runtime.restart_after_repository_update(repository_update.was_updated()),
-        || super::re_exec_after_repository_update(&root, &**log),
+        || super::re_exec_after_repository_update(&root, log),
     )
 }
 

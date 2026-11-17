@@ -386,19 +386,26 @@ test('the terminal illustration preserves the completed transcript with reduced 
   for (const row of await page.locator('.transient, g[class^="live-"]').all()) {
     await expect(row).toBeHidden();
   }
-  for (const name of ['upgraded', 'startup', 'links', 'completions', 'packages', 'summary', 'prompt']) {
+  for (const name of ['upgraded', 'startup', 'synced', 'links', 'completions', 'packages', 'summary', 'prompt']) {
     await expect(page.locator(`g.${name}`)).toBeVisible();
   }
   await expect(page.locator('.upgraded text')).toHaveCSS('font-weight', '400');
+  await expect(page.locator('.synced text')).toHaveCSS('font-weight', '400');
+  await expect(page.locator('.synced text')).toHaveText('Repository synced · restarting to load configuration');
+  await expect(page.locator('.synced tspan')).toHaveCSS('fill', 'rgb(126, 133, 161)');
   for (const label of await page.locator('.startup tspan:first-child, .links tspan:nth-child(2), .completions tspan:nth-child(2), .packages tspan:nth-child(2)').all()) {
     await expect(label).toHaveCSS('font-weight', '700');
   }
-  const noticeY = Number(await page.locator('.upgraded text').getAttribute('y'));
-  const headerY = Number(await page.locator('.startup text').getAttribute('y'));
-  const taskY = Number(await page.locator('.links text').first().getAttribute('y'));
-  expect(headerY - noticeY).toBe(48);
-  expect(taskY - headerY).toBe(48);
-  await expect(page.locator('.summary text')).toHaveText('3 tasks changed · 14 tasks current · 6.1s');
+  const rowY = async (selector: string) => page.locator(selector).first().evaluate((element) =>
+    element.getBoundingClientRect().y);
+  const headerY = await rowY('.startup text');
+  const noticeY = await rowY('.upgraded text');
+  const syncY = await rowY('.synced text');
+  const taskY = await rowY('.links text');
+  expect(noticeY - headerY).toBe(48);
+  expect(syncY - noticeY).toBe(24);
+  expect(taskY - syncY).toBe(48);
+  await expect(page.locator('.summary text')).toHaveText('3 tasks changed · 14 tasks current · 8.3s');
   await expect(page.locator('.summary tspan').first()).toHaveCSS('fill', 'rgb(158, 206, 106)');
   const clipped = await page.locator('svg').evaluate((svg) => {
     const bounds = svg.getBoundingClientRect();

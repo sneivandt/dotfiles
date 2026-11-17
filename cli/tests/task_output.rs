@@ -9,7 +9,7 @@ mod common;
 
 #[test]
 fn completions_report_changes_then_current() {
-    for repository_child in [false, true] {
+    for (repository_child, self_update_child) in [(false, false), (true, false), (false, true)] {
         let repo = common::TestContextBuilder::new().build();
         let home = tempfile::tempdir().unwrap();
         let overlay = tempfile::tempdir().unwrap();
@@ -21,7 +21,7 @@ fn completions_report_changes_then_current() {
             "completions",
         );
         command.arg("--no-symbols");
-        let _legacy_lock = repository_child.then(|| {
+        let _legacy_lock = (repository_child || self_update_child).then(|| {
             use std::io::Write as _;
 
             let mut lock = std::fs::OpenOptions::new()
@@ -33,12 +33,30 @@ fn completions_report_changes_then_current() {
             lock.try_lock().unwrap();
             write!(lock, "{{\"pid\":{}}}", std::process::id()).unwrap();
             lock.sync_all().unwrap();
-            command
-                .env("DOTFILES_REEXEC_GUARD", "1")
-                .env("DOTFILES_REPOSITORY_REEXEC_GUARD", "1");
+            command.env("DOTFILES_REEXEC_GUARD", "1").env(
+                if repository_child {
+                    "DOTFILES_REPOSITORY_REEXEC_GUARD"
+                } else {
+                    "DOTFILES_SELF_UPDATE_REEXEC_GUARD"
+                },
+                "1",
+            );
+            if self_update_child {
+                let start = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+                command
+                    .env("DOTFILES_STARTUP_TRANSITION", "CLI upgraded · old → new")
+                    .env(
+                        "DOTFILES_INVOCATION_START_US",
+                        start
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_micros()
+                            .to_string(),
+                    );
+            }
             lock
         });
-        for expected in ["CHANGED Shell completions", "No changes · 1 task current"] {
+        for expected in ["CHANGED Shell completions", "1 task already current"] {
             let output = command.output().unwrap();
             let stdout = String::from_utf8(output.stdout).unwrap();
             assert!(
@@ -47,6 +65,19 @@ fn completions_report_changes_then_current() {
                 String::from_utf8_lossy(&output.stderr)
             );
             assert!(stdout.contains(expected), "{repository_child}: {stdout}");
+            if self_update_child {
+                let blocks: Vec<_> = stdout.trim().split("\n\n").collect();
+                assert!(
+                    blocks
+                        .first()
+                        .unwrap()
+                        .starts_with("Update · base profile · "),
+                    "{stdout}"
+                );
+                assert_eq!(blocks.get(1), Some(&"CLI upgraded · old → new"), "{stdout}");
+                assert_eq!(stdout.matches("CLI upgraded").count(), 1, "{stdout}");
+                assert!(blocks.last().unwrap().contains(" · 1m "), "{stdout}");
+            }
             assert_eq!(
                 stdout
                     .lines()
@@ -107,7 +138,8 @@ fn overlay_check_failures_are_visible_in_both_schedulers() {
                     }),
                     "{stdout}"
                 );
-                assert!(!stdout.contains("No changes"), "{stdout}");
+                assert!(!stdout.contains("No task changes"), "{stdout}");
+                assert!(!stdout.contains("already current"), "{stdout}");
                 if verbose {
                     assert!(
                         stdout.contains("running 1 task(s): Audit script"),

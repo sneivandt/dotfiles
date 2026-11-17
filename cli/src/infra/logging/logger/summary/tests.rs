@@ -92,7 +92,7 @@ fn format_elapsed_values() {
 }
 
 #[test]
-fn standard_no_op_has_only_no_changes_line() {
+fn standard_empty_summary_limits_its_claim_to_tasks() {
     let plain_lines = format_summary_lines(
         SummaryCounts::default(),
         SummaryMode::Standard,
@@ -106,11 +106,40 @@ fn standard_no_op_has_only_no_changes_line() {
         StyleChoice::colored(),
     );
 
-    assert_eq!(plain_lines, ["No changes · 1.2s"]);
+    assert_eq!(plain_lines, ["No task changes · 1.2s"]);
     assert_eq!(
         colored_lines,
-        ["\x1b[1mNo changes\x1b[0m \x1b[2m·\x1b[0m \x1b[2m1.2s\x1b[0m"]
+        ["\x1b[1mNo task changes\x1b[0m \x1b[2m·\x1b[0m \x1b[2m1.2s\x1b[0m"]
     );
+}
+
+#[test]
+fn current_only_summary_is_bold_without_a_contradictory_no_changes_label() {
+    for (count, text) in [
+        (1, "1 task already current"),
+        (17, "17 tasks already current"),
+    ] {
+        for ansi in [false, true] {
+            let style = StyleChoice::auto(ansi, false);
+            assert_eq!(
+                format_summary_lines(
+                    SummaryCounts {
+                        ok: count,
+                        ..SummaryCounts::default()
+                    },
+                    SummaryMode::Standard,
+                    "3.4s",
+                    style,
+                ),
+                [format!(
+                    "{} {} {}",
+                    style.paint(crate::infra::logging::style::TextStyle::Bold, text),
+                    style.paint(crate::infra::logging::style::TextStyle::Dim, "·"),
+                    style.paint(crate::infra::logging::style::TextStyle::Dim, "3.4s"),
+                )]
+            );
+        }
+    }
 }
 
 #[test]
@@ -771,7 +800,8 @@ fn incomplete_work_never_claims_no_changes() {
     ] {
         let lines =
             format_summary_lines(counts, SummaryMode::Standard, "1.0s", StyleChoice::plain());
-        assert!(!lines[0].contains("No changes"), "{lines:?}");
+        assert!(!lines[0].contains("No task changes"), "{lines:?}");
+        assert!(!lines[0].contains("already current"), "{lines:?}");
     }
 }
 
@@ -955,7 +985,7 @@ fn final_summary_preserves_disposition_and_emphasis_without_a_symbol_prefix() {
                 if mode == SummaryMode::Check {
                     "No checks ran"
                 } else {
-                    "No changes"
+                    "No task changes"
                 },
             ),
         ] {

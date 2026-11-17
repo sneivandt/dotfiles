@@ -106,16 +106,23 @@ pub(super) fn format_summary_lines(
                 false,
             );
             if parts.is_empty() && counts.actions.applied == 0 && counts.actions.planned == 0 {
-                parts.push(style.paint(TextStyle::Bold, "No changes"));
+                let text = if counts.ok == 0 {
+                    "No task changes".to_owned()
+                } else {
+                    let unit = if counts.ok == 1 { "task" } else { "tasks" };
+                    format!("{} {unit} already current", counts.ok)
+                };
+                parts.push(style.paint(TextStyle::Bold, &text));
+            } else {
+                push_count(
+                    &mut parts,
+                    counts.ok,
+                    TextStyle::Dim,
+                    "current",
+                    style,
+                    false,
+                );
             }
-            push_count(
-                &mut parts,
-                counts.ok,
-                TextStyle::Dim,
-                "current",
-                style,
-                false,
-            );
         }
         SummaryMode::Check => {
             push_count(

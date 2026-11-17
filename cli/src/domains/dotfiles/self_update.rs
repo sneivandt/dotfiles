@@ -198,15 +198,15 @@ fn with_status<T>(log: &dyn Output, status: &str, work: impl FnOnce() -> T) -> T
 /// Run the self-update check before the task graph.
 ///
 /// When the binary lives in `$root/bin/` and a newer release is available,
-/// this function downloads and replaces the binary, returning `Ok(true)`.
+/// this function downloads and replaces the binary, returning an upgrade notice.
 /// The caller should then re-exec the new binary so that all tasks run
 /// with the updated code.
 ///
 /// Progress is reported through a transient status line, so a run that was
 /// already current leaves no console output at all; only an update that
-/// actually happened prints a durable lifecycle transition.
+/// actually happened returns a lifecycle transition for the restarted process.
 ///
-/// Returns `Ok(false)` when no update is needed or when running from a
+/// Returns `Ok(None)` when no update is needed or when running from a
 /// cargo build directory. Setting `DOTFILES_SKIP_SELF_UPDATE=1` also skips the
 /// check without weakening verification for downloads performed by other
 /// processes. `skip_attestation` bypasses provenance verification for the
@@ -222,17 +222,17 @@ pub fn pre_update(
     log: &dyn Output,
     dry_run: bool,
     skip_attestation: bool,
-) -> Result<bool> {
+) -> Result<Option<String>> {
     if self_update_skipped(&SystemEnv) {
         tracing::debug!("self-update skipped by {SKIP_SELF_UPDATE_ENV}");
-        return Ok(false);
+        return Ok(None);
     }
     if REPO.is_empty() {
         tracing::debug!("self-update disabled: no release repository embedded at build time");
-        return Ok(false);
+        return Ok(None);
     }
     if !is_running_from_bin(root) {
-        return Ok(false);
+        return Ok(None);
     }
     let client = default_http_client();
     let check = with_status(log, "Checking for updates", || {
@@ -240,11 +240,11 @@ pub fn pre_update(
         check_for_update(root, &client, token.as_deref(), dry_run)
     });
     match check {
-        UpdateCheck::Offline | UpdateCheck::DevBuild | UpdateCheck::AlreadyCurrent => Ok(false),
+        UpdateCheck::Offline | UpdateCheck::DevBuild | UpdateCheck::AlreadyCurrent => Ok(None),
         UpdateCheck::UpdateAvailable { latest, current } => {
             if dry_run {
                 log.info(format!("update available: {current} \u{2192} {latest}"));
-                return Ok(false);
+                return Ok(None);
             }
             log.stage("CLI upgrade");
             log.debug(format!("updating: {current} \u{2192} {latest}"));
@@ -252,9 +252,9 @@ pub fn pre_update(
                 download_and_install(root, &latest, &client, skip_attestation)
             })?;
 
-            log.transition(format!("CLI upgraded \u{00b7} {current} \u{2192} {latest}"));
-
-            Ok(true)
+            Ok(Some(format!(
+                "CLI upgraded \u{00b7} {current} \u{2192} {latest}"
+            )))
         }
     }
 }

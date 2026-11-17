@@ -35,7 +35,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime};
 
 use super::runlog::RunLog;
 use super::types::{LogEvent, MsgKind, Output, TaskEntry, TaskRecorder, TaskStatus};
@@ -70,6 +70,9 @@ pub struct Logger {
     pub(super) run_log: Option<Arc<RunLog>>,
     /// Instant when the logger was created, used for elapsed time in summary.
     pub(super) start: Instant,
+    invocation_started: SystemTime,
+    elapsed_before_start: Duration,
+    startup_transition: Mutex<Option<String>>,
     /// Whether console task rows use compact status glyphs.
     pub(super) symbols: bool,
     /// Whether the current command is previewing changes without applying them.
@@ -142,6 +145,9 @@ impl Logger {
             tasks_completed: AtomicUsize::new(0),
             run_log,
             start,
+            invocation_started: SystemTime::now() - start.elapsed(),
+            elapsed_before_start: Duration::ZERO,
+            startup_transition: Mutex::new(None),
             symbols: true,
             dry_run: false,
             finished: AtomicBool::new(false),
@@ -151,6 +157,56 @@ impl Logger {
     /// Configure console output without changing retained logs.
     pub fn set_output_mode(&mut self, mode: super::OutputMode) {
         self.console.lock().mode = mode;
+    }
+
+    /// Restore the invocation clock without changing process-local log timings.
+    pub(crate) fn set_invocation_start(
+        &mut self,
+        started: SystemTime,
+    ) -> Result<(), std::time::SystemTimeError> {
+        self.elapsed_before_start = self.invocation_started.duration_since(started)?;
+        self.invocation_started = started;
+        Ok(())
+    }
+
+    pub(crate) const fn invocation_start(&self) -> SystemTime {
+        self.invocation_started
+    }
+
+    fn invocation_elapsed(&self) -> Duration {
+        self.elapsed_before_start
+            .saturating_add(self.start.elapsed())
+    }
+
+    /// Keep a completed upgrade beneath the next process's startup header.
+    pub(crate) fn queue_startup_transition(&self, message: String) {
+        if let Some(run) = &self.run_log {
+            run.emit(LogEvent::Info, &message);
+        }
+        *self
+            .startup_transition
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(message);
+    }
+
+    pub(crate) fn startup_transition(&self) -> Option<String> {
+        self.startup_transition
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    pub(crate) fn take_startup_transition(&self) -> Option<String> {
+        self.startup_transition
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+
+    fn flush_startup_transition(&self) {
+        if let Some(message) = self.take_startup_transition() {
+            self.emit_console(MsgKind::Transition, &message);
+        }
     }
 
     pub(in crate::infra::logging) fn is_quiet(&self) -> bool {
@@ -164,7 +220,7 @@ impl Logger {
                 format!(
                     "unlogged-{}-{}",
                     std::process::id(),
-                    std::time::SystemTime::now()
+                    SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_micros()
@@ -361,7 +417,7 @@ impl Logger {
     }
 
     /// Attach a measured duration to the entry for a scheduler identity.
-    pub fn record_task_duration(&self, task_id: &str, duration: std::time::Duration) {
+    pub fn record_task_duration(&self, task_id: &str, duration: Duration) {
         self.record_in_context(
             task_id,
             super::records::Record::TaskDuration {
@@ -457,9 +513,13 @@ impl Output for Logger {
             run_log.emit(kind.log_event(), &msg);
         }
         self.emit_console(kind, &msg);
+        if kind == MsgKind::Startup {
+            self.flush_startup_transition();
+        }
     }
 
     fn finish_run(&self, code: i32) -> i32 {
+        self.flush_startup_transition();
         let output_error = self.console.output_error();
         let mut final_code = output_error.as_ref().map_or(code, |error| {
             let message = format!("writing command output: {error}");
@@ -530,7 +590,7 @@ impl TaskRecorder for Logger {
         Self::record_task(self, task);
     }
 
-    fn record_task_duration(&self, task_id: &str, duration: std::time::Duration) {
+    fn record_task_duration(&self, task_id: &str, duration: Duration) {
         Self::record_task_duration(self, task_id, duration);
     }
 }
@@ -619,28 +679,26 @@ mod tests {
     }
 
     #[test]
-    fn transition_stays_with_the_header_and_preserves_task_spacing() {
+    fn upgrade_follows_the_header_and_groups_with_repository_transition() {
         for verbose in [false, true] {
             for symbols in [false, true] {
                 let (mut log, _tmp, _guard) = isolated_logger();
                 log.set_verbose(verbose);
                 log.set_symbols(symbols);
-                log.transition("CLI upgraded · old → new");
-                assert_eq!(log.captured_lines(), ["CLI upgraded · old → new"]);
+                log.queue_startup_transition("CLI upgraded · old → new".into());
+                assert!(log.captured_lines().is_empty());
                 log.startup("Update · desktop profile · Arch Linux");
-
-                assert!(
-                    !log.console.lock().startup_separator_emitted,
-                    "the notice must leave spacing to the next output block"
-                );
+                log.transition("Repository synced · restarting to load configuration");
                 log.separate_from_startup();
                 log.separate_console_block();
                 log.always("task result");
                 assert_eq!(
                     log.captured_lines(),
                     [
-                        "CLI upgraded · old → new",
                         "Update · desktop profile · Arch Linux",
+                        "",
+                        "CLI upgraded · old → new",
+                        "Repository synced · restarting to load configuration",
                         "",
                         "task result"
                     ],
@@ -648,6 +706,49 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn startup_failure_retains_the_upgrade_notice_once_in_every_output_mode() {
+        for mode in [
+            super::super::OutputMode::Human,
+            super::super::OutputMode::Quiet,
+            super::super::OutputMode::Jsonl,
+        ] {
+            let (mut log, _tmp, _guard) = isolated_logger();
+            log.set_output_mode(mode);
+            log.queue_startup_transition("CLI upgraded · old → new".into());
+            assert_eq!(log.finish_run(1), 1);
+            assert_eq!(log.finish_run(1), 1);
+            let stored = fs::read_to_string(log.log_path().unwrap()).unwrap();
+            assert_eq!(stored.matches("[info] CLI upgraded · old → new").count(), 1);
+            let lines = log.captured_lines();
+            assert_eq!(
+                lines
+                    .iter()
+                    .filter(|line| line.contains("CLI upgraded"))
+                    .count(),
+                usize::from(mode == super::super::OutputMode::Human),
+                "{mode:?}: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn summary_separates_lifecycle_notices_and_includes_prior_process_time() {
+        let (mut log, _tmp, _guard) = super::super::isolated_logger_for("update");
+        log.set_verbose(false);
+        log.set_invocation_start(log.invocation_start() - Duration::from_secs(60))
+            .unwrap();
+        log.startup("Update · fixture");
+        log.transition("CLI upgraded · old → new");
+        log.print_summary(super::super::CompletionDisposition::Succeeded);
+        let lines = log.captured_lines();
+        assert_eq!(
+            &lines[..4],
+            ["Update · fixture", "", "CLI upgraded · old → new", "",]
+        );
+        assert!(lines[4].starts_with("No task changes · 1m "), "{lines:?}");
     }
 
     #[test]

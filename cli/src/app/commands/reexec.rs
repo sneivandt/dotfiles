@@ -1,6 +1,6 @@
 //! Application self-update re-execution policy.
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use crate::infra::logging::Output;
 
@@ -13,13 +13,15 @@ pub(super) const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
 pub(super) const SELF_UPDATE_REEXEC_GUARD_VAR: &str = "DOTFILES_SELF_UPDATE_REEXEC_GUARD";
 /// Environment variable set when a repository refresh caused the re-exec.
 pub(super) const REPOSITORY_REEXEC_GUARD_VAR: &str = "DOTFILES_REPOSITORY_REEXEC_GUARD";
+pub(super) const INVOCATION_START_VAR: &str = "DOTFILES_INVOCATION_START_US";
+pub(super) const STARTUP_TRANSITION_VAR: &str = "DOTFILES_STARTUP_TRANSITION";
 
 /// Replace the current process with a fresh invocation of the same binary.
 ///
 /// The updated binary is spawned as a child that inherits stdio and is waited
 /// on, so the parent retains the repository run lock until the replacement
 /// process finishes.
-pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
+pub(crate) fn re_exec(root: &std::path::Path, log: &crate::infra::logging::Logger) -> ! {
     let command = build_reexec_command(
         &re_exec_path(root),
         &reexec_args(log),
@@ -47,8 +49,20 @@ fn inherited_lease(marker: Option<std::ffi::OsString>) -> Option<std::ffi::OsStr
     marker.filter(|value| crate::infra::run_lock::RestartLease::covers_home(value))
 }
 
-fn run_reexec(mut command: std::process::Command, root: &std::path::Path, log: &dyn Output) -> ! {
+fn run_reexec(
+    mut command: std::process::Command,
+    root: &std::path::Path,
+    log: &crate::infra::logging::Logger,
+) -> ! {
     let mut setup = || -> Result<_> {
+        command.env(
+            INVOCATION_START_VAR,
+            log.invocation_start()
+                .duration_since(std::time::UNIX_EPOCH)
+                .context("invocation start precedes the Unix epoch")?
+                .as_micros()
+                .to_string(),
+        );
         let inherited = inherited_lease(std::env::var_os(REEXEC_GUARD_VAR));
         if let Some(marker) = inherited {
             command.env(REEXEC_GUARD_VAR, marker);
@@ -76,8 +90,13 @@ fn run_reexec(mut command: std::process::Command, root: &std::path::Path, log: &
     }
     // Clearing the active footer also prevents the ticker from reviving it.
     log.clear_status_line();
+    command.env_remove(STARTUP_TRANSITION_VAR);
+    if let Some(message) = log.startup_transition() {
+        command.env(STARTUP_TRANSITION_VAR, message);
+    }
     let code = match command.status() {
         Ok(status) => {
+            drop(log.take_startup_transition());
             if status.code().is_none() {
                 log.warn("child process terminated by signal");
             }
@@ -107,7 +126,10 @@ pub(super) fn build_reexec_command(
 }
 
 /// Restart the current binary after the repository checkout changed.
-pub(crate) fn re_exec_after_repository_update(root: &std::path::Path, log: &dyn Output) -> ! {
+pub(crate) fn re_exec_after_repository_update(
+    root: &std::path::Path,
+    log: &crate::infra::logging::Logger,
+) -> ! {
     let exe = match std::env::current_exe() {
         Ok(exe) => exe,
         Err(error) => {
@@ -145,13 +167,14 @@ pub(crate) fn prepare_self_update(
     }
 
     let root = runner::resolve_root(runtime)?;
-    if crate::domains::dotfiles::self_update::pre_update(
+    if let Some(notice) = crate::domains::dotfiles::self_update::pre_update(
         &root,
         &**log,
         runtime.execution.dry_run,
         runtime.global.skip_attestation,
     )? {
-        re_exec(&root, &**log);
+        log.queue_startup_transition(notice);
+        re_exec(&root, log);
     }
     Ok(run_lock)
 }
@@ -210,6 +233,30 @@ mod tests {
         }
 
         let root = std::path::PathBuf::from(std::env::var_os(CHILD_ROOT).unwrap());
+        if matches!(role.as_str(), "output" | "output-tail") {
+            let global = super::super::tests::global(&[]);
+            let runtime =
+                RuntimePolicy::new(&global, false, crate::infra::env::system(), false, false);
+            let mut log = crate::infra::logging::Logger::new_in("update", &root.join(&role));
+            runtime.restore_output(&mut log).unwrap();
+            if role == "output" {
+                log.startup("Update · fixture");
+            }
+            log.print_summary(crate::infra::logging::CompletionDisposition::Succeeded);
+            std::fs::write(
+                root.join(format!("child-{role}")),
+                log.captured_lines().join("\n"),
+            )
+            .unwrap();
+            if role == "output" {
+                let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+                command
+                    .args(["--ignored", "--exact", CHILD_TEST, "--nocapture"])
+                    .env(CHILD_ROLE, "output-tail");
+                run_reexec(command, &root, &log);
+            }
+            return;
+        }
         #[cfg(unix)]
         if role == "interrupt" {
             let log = std::sync::Arc::new(crate::infra::logging::Logger::new_in(
@@ -237,7 +284,13 @@ mod tests {
                 }
             }
         }
-        let log = std::sync::Arc::new(crate::infra::logging::Logger::new_in("update", &root));
+        let mut log = crate::infra::logging::Logger::new_in("update", &root);
+        if matches!(role.as_str(), "parent-output" | "missing") {
+            log.set_invocation_start(log.invocation_start() - std::time::Duration::from_secs(60))
+                .unwrap();
+            log.queue_startup_transition("CLI upgraded · old → new".into());
+        }
+        let log = std::sync::Arc::new(log);
         if role == "parent-interrupt" {
             crate::app::interrupt::install(&crate::engine::CancellationToken::new(), &log, true);
         }
@@ -255,7 +308,7 @@ mod tests {
         };
         command.stdin(std::process::Stdio::null());
         git2::Repository::init(&root).unwrap();
-        run_reexec(command, &root, &*log);
+        run_reexec(command, &root, &log);
     }
 
     #[test]
@@ -265,6 +318,7 @@ mod tests {
             ("parent-exit-23", 23, RunOutcome::Failed, None),
             ("parent-exit-130", 130, RunOutcome::Interrupted, None),
             ("missing", 1, RunOutcome::Failed, Some("failed to re-exec")),
+            ("parent-output", 0, RunOutcome::Succeeded, None),
         ];
         #[cfg(unix)]
         let cases = {
@@ -310,6 +364,32 @@ mod tests {
             assert_eq!(finishes, [(expected_outcome, code)], "{role}: {contents}");
             if let Some(diagnostic) = diagnostic {
                 assert!(contents.contains(diagnostic), "{role}: {contents}");
+            }
+            if role == "missing" {
+                assert_eq!(
+                    contents.matches("[info] CLI upgraded").count(),
+                    1,
+                    "{contents}"
+                );
+            }
+            if role == "parent-output" {
+                let output = std::fs::read_to_string(fixture.path().join("child-output")).unwrap();
+                assert!(
+                    output.starts_with(
+                        "Update · fixture\n\nCLI upgraded · old → new\n\nNo task changes · 1m "
+                    ),
+                    "{output}"
+                );
+                assert_eq!(output.matches("CLI upgraded").count(), 1, "{output}");
+                assert_eq!(
+                    contents.matches("[info] CLI upgraded").count(),
+                    1,
+                    "{contents}"
+                );
+                let tail =
+                    std::fs::read_to_string(fixture.path().join("child-output-tail")).unwrap();
+                assert!(tail.starts_with("\nNo task changes · 1m "), "{tail}");
+                assert!(!tail.contains("CLI upgraded"), "{tail}");
             }
             if role == "parent-interrupt" {
                 assert!(!contents.contains("interrupt received"), "{contents}");

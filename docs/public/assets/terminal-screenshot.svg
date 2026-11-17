@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="524" viewBox="0 0 760 524" role="img" aria-labelledby="title desc">
-  <title id="title">CLI self-update and one dotfiles update on an Arch Linux desktop</title>
-  <desc id="desc">Illustrative incremental update on an existing Arch desktop with its profile already selected, repository current, and package-manager authorization cached. The user types dotfiles update. The CLI first updates from example version v2026.01.01-1 to v2026.01.01-2, then continues the update. A normal-weight CLI upgrade notice is separated from the bold Update header by a blank line. Home symlinks restores Git and Zsh configuration, Shell completions writes updated zsh completions, and System packages installs fd and ripgrep. Applied link, write, and install verbs are cyan, and action subjects align within each task; expanded tasks with multiple actions show dim action-count badges. The animated spinner is cyan, with a dim compact remaining count and active task names. The live status is replaced in place as tasks complete; already-current tasks stay quiet. The summary has no symbol prefix: 3 tasks changed and 14 tasks current in 6.1 seconds, followed immediately by the two-line shell prompt. Counts and timings illustrate one run, not a fixed inventory. A 20-second loop includes typing, self-update, and a reading pause. Reduced motion shows the completed transcript.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="548" viewBox="0 0 760 548" role="img" aria-labelledby="title desc">
+  <title id="title">One dotfiles update with CLI and repository updates on an Arch Linux desktop</title>
+  <desc id="desc">Illustrative incremental update on an existing Arch desktop with its profile already selected and package-manager authorization cached. The user types dotfiles update. The CLI updates from example version v2026.01.01-1 to v2026.01.01-2, then syncs the repository and restarts to load configuration. The bold Update header precedes a compact block of normal-weight CLI upgrade and repository sync notices, separated from the header and tasks by blank lines. Home symlinks restores Git and Zsh configuration, Shell completions writes updated zsh completions, and System packages installs fd and ripgrep. Applied link, write, and install verbs are cyan, and action subjects align within each task; expanded tasks with multiple actions show dim action-count badges. The animated spinner is cyan, with a dim compact remaining count and active task names. The live status is replaced in place as tasks complete; already-current tasks stay quiet. The summary has no symbol prefix: 3 tasks changed and 14 tasks current in 8.3 seconds including self-update and repository restarts, followed immediately by the two-line shell prompt. Counts and timings illustrate one run, not a fixed inventory. A 20-second loop includes typing, self-update, and a reading pause. Reduced motion shows the completed transcript.</desc>
   <style>
     /* Alacritty colors, Source Code Pro, a 10px cell and 24px terminal rows.
        Default dim foreground: #c0caf5 * 0.66 = #7e85a1.
-       One update: self-update at 2.4s, update at 4.4s, summary at 10.5s.
+       One invocation: start at 2.2s, header at 4.4s, summary at 10.5s.
        System packages completes at 8.6s; hold the completed output to 20s.
        Step timing replaces terminal rows atomically, without crossfades. */
     @keyframes char-0 { 0% { opacity: 0; } 3.425%, 100% { opacity: 1; }  }
@@ -44,17 +44,19 @@
     .caret { animation: caret 20s step-end infinite; }
     @keyframes updating { 0% { opacity: 0; } 12% { opacity: 1; } 21%, 100% { opacity: 0; } }
     .updating { animation: updating 20s step-end infinite; }
-    @keyframes upgraded { 0% { opacity: 0; } 21% { opacity: 1; } }
+    @keyframes upgraded { 0% { opacity: 0; } 22% { opacity: 1; } }
     .upgraded { animation: upgraded 20s step-end infinite; }
     @keyframes startup { 0% { opacity: 0; } 22% { opacity: 1; }  }
     .startup { animation: startup 20s step-end infinite; }
+    @keyframes synced { 0% { opacity: 0; } 24% { opacity: 1; } }
+    .synced { animation: synced 20s step-end infinite; }
     @keyframes links { 0% { opacity: 0; } 27% { opacity: 1; }  }
     .links { animation: links 20s step-end infinite; }
     @keyframes completions { 0% { opacity: 0; } 31% { opacity: 1; }  }
     .completions { animation: completions 20s step-end infinite; }
     @keyframes packages { 0% { opacity: 0; } 43% { opacity: 1; }  }
     .packages { animation: packages 20s step-end infinite; }
-    @keyframes live-0 { 0% { opacity: 0; } 22% { opacity: 1; } 27%, 100% { opacity: 0; } }
+    @keyframes live-0 { 0% { opacity: 0; } 24% { opacity: 1; } 27%, 100% { opacity: 0; } }
     .live-0 { animation: live-0 20s step-end infinite; }
     @keyframes live-1 { 0% { opacity: 0; } 27% { opacity: 1; } 31%, 100% { opacity: 0; } }
     .live-1 { animation: live-1 20s step-end infinite; }
@@ -106,15 +108,17 @@
       .transient, [class^="live-"] { display: none; }
     }
   </style>
-  <rect x="0.5" y="0.5" width="759" height="523" rx="8" fill="#1a1b26" stroke="#414868"/>
+  <rect x="0.5" y="0.5" width="759" height="547" rx="8" fill="#1a1b26" stroke="#414868"/>
   <g font-family="Source Code Pro, DejaVu Sans Mono, Consolas, monospace" font-size="16.6667" fill="#c0caf5" xml:space="preserve">
 <text x="26" y="41"><tspan fill="#e0af68">~</tspan></text>
 <text x="26" y="65">$</text>
 <text class="char-0" x="46" y="65" fill="#9ece6a">d</text><text class="char-1" x="56" y="65" fill="#9ece6a">o</text><text class="char-2" x="66" y="65" fill="#9ece6a">t</text><text class="char-3" x="76" y="65" fill="#9ece6a">f</text><text class="char-4" x="86" y="65" fill="#9ece6a">i</text><text class="char-5" x="96" y="65" fill="#9ece6a">l</text><text class="char-6" x="106" y="65" fill="#9ece6a">e</text><text class="char-7" x="116" y="65" fill="#9ece6a">s</text><text class="char-8" x="126" y="65" fill="#c0caf5"> </text><text class="char-9" x="136" y="65" fill="#c0caf5">u</text><text class="char-10" x="146" y="65" fill="#c0caf5">p</text><text class="char-11" x="156" y="65" fill="#c0caf5">d</text><text class="char-12" x="166" y="65" fill="#c0caf5">a</text><text class="char-13" x="176" y="65" fill="#c0caf5">t</text><text class="char-14" x="186" y="65" fill="#c0caf5">e</text>
     <g class="typing transient"><g class="caret"><path class="blink" d="M46 49v20" stroke="#c0caf5" stroke-width="2"/></g></g>
     <g class="updating transient"><text x="26" y="89" fill="#7dcfff"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="89" fill="#7e85a1">Updating to v2026.01.01-2</text></g>
-    <g class="upgraded"><text x="26" y="89">CLI upgraded<tspan fill="#7e85a1"> · v2026.01.01-1 → v2026.01.01-2</tspan></text></g>
-    <g class="startup"><text x="26" y="137"><tspan font-weight="700">Update</tspan><tspan fill="#7e85a1"> · desktop profile · Arch Linux</tspan></text></g>
+    <g class="startup"><text x="26" y="89"><tspan font-weight="700">Update</tspan><tspan fill="#7e85a1"> · desktop profile · Arch Linux</tspan></text></g>
+    <g class="upgraded"><text x="26" y="137">CLI upgraded<tspan fill="#7e85a1"> · v2026.01.01-1 → v2026.01.01-2</tspan></text></g>
+    <g class="synced"><text x="26" y="161">Repository synced<tspan fill="#7e85a1"> · restarting to load configuration</tspan></text></g>
+    <g transform="translate(0 24)">
     <g class="links"><text x="26" y="185"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="700">Home symlinks</tspan><tspan fill="#7e85a1"> · 2 actions applied</tspan></text><text x="46" xml:space="preserve" y="209"><tspan fill="#7dcfff">link</tspan>  ~/.config/git/config → symlinks/config/git/config</text><text x="46" xml:space="preserve" y="233"><tspan fill="#7dcfff">link</tspan>  ~/.zshrc → symlinks/zshrc</text></g>
     <g class="completions"><text x="26" y="281"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="700">Shell completions</tspan></text><text x="46" xml:space="preserve" y="305"><tspan fill="#7dcfff">write</tspan>  zsh completions</text></g>
     <g class="packages"><text x="26" y="353"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="700">System packages</tspan><tspan fill="#7e85a1"> · 2 actions applied</tspan></text><text x="46" xml:space="preserve" y="377"><tspan fill="#7dcfff">install</tspan>  fd</text><text x="46" xml:space="preserve" y="401"><tspan fill="#7dcfff">install</tspan>  ripgrep</text></g>
@@ -126,7 +130,8 @@
     <g class="live-5"><text x="26" y="449" fill="#7dcfff"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="449"> 5 left · AUR packages, System configuration files</text></g>
     <g class="live-6"><text x="26" y="449" fill="#7dcfff"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="449"> 3 left · Systemd units, Agent packages</text></g>
     <g class="live-7"><text x="26" y="449" fill="#7dcfff"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="449"> 1 left · Agent packages</text></g>
-    <g class="summary"><text x="26" y="449"><tspan fill="#9ece6a" font-weight="700">3 tasks changed</tspan><tspan fill="#7e85a1"> · 14 tasks current · 6.1s</tspan></text></g>
+    <g class="summary"><text x="26" y="449"><tspan fill="#9ece6a" font-weight="700">3 tasks changed</tspan><tspan fill="#7e85a1"> · 14 tasks current · 8.3s</tspan></text></g>
     <g class="prompt"><text x="26" y="473"><tspan fill="#e0af68">~</tspan></text><text x="26" y="497">$</text><path class="blink" d="M46 481v20" stroke="#c0caf5" stroke-width="2"/></g>
+    </g>
   </g>
 </svg>

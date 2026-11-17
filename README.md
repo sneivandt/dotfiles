@@ -17,7 +17,7 @@ a general-purpose tool, so read the [documentation](https://dotfiles.stuartneiva
 and review the settings before using it on your own machine.
 
 <p align="center">
-  <img src="docs/public/assets/terminal-screenshot.svg" width="760" alt="Animated terminal session: one dotfiles update first updates the CLI, then links configuration, refreshes shell completions, and installs missing packages">
+  <img src="docs/public/assets/terminal-screenshot.svg" width="760" alt="Animated terminal session: one dotfiles update groups CLI upgrade and repository sync notices beneath its header, then links configuration, refreshes shell completions, and installs missing packages">
 </p>
 
 ## What it manages

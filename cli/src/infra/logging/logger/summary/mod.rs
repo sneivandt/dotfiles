@@ -23,7 +23,7 @@ impl Logger {
         self.clear_status();
         self.separate_from_startup();
 
-        let elapsed = self.start.elapsed();
+        let elapsed = self.invocation_elapsed();
         let elapsed_str = format_elapsed(elapsed);
 
         let summary_mode = SummaryMode::for_command(&self.command);
@@ -39,7 +39,9 @@ impl Logger {
 
     /// Whether a blank line should separate the totals from preceding output.
     fn needs_totals_separator(&self) -> bool {
-        should_space_before_totals(&self.command, self.has_task_console_output())
+        let after_transition = self.console.lock().last_was_transition;
+        after_transition
+            || should_space_before_totals(&self.command, self.has_task_console_output())
     }
 
     /// Rendering options for task rows emitted by this logger.

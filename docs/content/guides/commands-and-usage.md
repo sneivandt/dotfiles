@@ -185,9 +185,11 @@ remain available while a run is active.
 
 Check the header's profile, platform, overlay, and dry-run indicator first.
 The command is bold; metadata is dim, with dry-run mode in magenta.
-Overlay paths inside your home use `~`. CLI upgrades and repository restarts
-use a normal-weight notice with dim metadata. After a restart, the run
-continues with the next header, task output, or summary.
+Overlay paths inside your home use `~`. Completed CLI upgrades and repository
+syncs appear together beneath the header, in normal weight with dim metadata.
+The repository notice keeps “restarting to load configuration” so the pause
+has an explanation. The restarted process continues with task output or the
+summary, without repeating the header.
 Tasks print as they finish, so output order is not configuration order.
 In an interactive terminal, the release check has a transient spinner.
 During task execution, the spinner shows a compact remaining count first,
@@ -223,8 +225,28 @@ An expanded row with multiple quantified actions adds `· 35 actions applied`
 or `· planned · 35 actions`. Task-owned warnings and verbose errors stay
 indented under their row, with warnings between the actions they concern.
 
-The final summary counts tasks, not action lines. Failed, interrupted, blocked,
-and skipped work appears before successful counts. This line has no symbol
+The final summary counts tasks, not action lines or CLI upgrades. When every
+reported task was already satisfied, it says **17 tasks already current**, for
+example, rather than claiming the whole invocation made no changes. Repository
+syncs that restart the command appear in their notice rather than the child's
+task totals. A successful run with no reportable tasks says **No task changes**.
+
+An illustrative update that upgraded the CLI and synced the repository, but
+needed no further task changes:
+
+```text
+Update · desktop profile · Arch Linux
+
+CLI upgraded · v2026.01.01-1 → v2026.01.01-2
+Repository synced · restarting to load configuration
+
+17 tasks already current · 3.4s
+```
+
+The final duration covers the CLI invocation, including self-update and
+repository restarts; retained logs keep separate timings for each process.
+Failed, interrupted, blocked, and skipped work appears before successful counts.
+This line has no symbol
 prefix, regardless of `--no-symbols`. Failure and interruption remain explicit even
 when the affected work is internal and absent from visible task counts.
 **Exit 0 with skipped work is not necessarily a complete installation.**

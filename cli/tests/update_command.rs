@@ -330,7 +330,7 @@ fn update_console_separates_tasks_and_keeps_no_op_compact() {
                 let summary = if changed {
                     "2 tasks changed"
                 } else {
-                    "No changes · 2 tasks current"
+                    "2 tasks already current"
                 };
                 assert!(blocks.last().unwrap().starts_with(summary), "{text}");
             }
@@ -1198,8 +1198,9 @@ fn repository_restart_preserves_non_unicode_paths_and_loads_new_configuration() 
     assert!(repeat.status.success(), "{repeat:?}");
     let repeat_stdout = String::from_utf8(repeat.stdout).unwrap();
     assert!(
-        repeat_stdout
-            .contains("Repository synced · restarting to load configuration\n\nNo changes ·"),
+        repeat_stdout.contains(
+            "Repository synced · restarting to load configuration\n\n1 task already current ·"
+        ),
         "expected the no-change summary after one separator in {repeat_stdout:?}"
     );
 }

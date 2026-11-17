@@ -73,12 +73,106 @@ impl<'a> RuntimePolicy<'a> {
     pub(super) const fn restart_after_repository_update(&self, updated: bool) -> bool {
         updated && !self.execution.elevated_child
     }
+
+    /// Restore presentation state only for a guarded replacement process.
+    pub(crate) fn restore_output(
+        &self,
+        log: &mut crate::infra::logging::Logger,
+    ) -> anyhow::Result<()> {
+        use super::reexec::{INVOCATION_START_VAR, STARTUP_TRANSITION_VAR};
+        use anyhow::Context as _;
+
+        if !self.reexec_guarded || self.execution.elevated_child {
+            return Ok(());
+        }
+        if let Some(notice) = self.env.var_os(STARTUP_TRANSITION_VAR) {
+            log.queue_startup_transition(
+                notice
+                    .into_string()
+                    .map_err(|_| anyhow::anyhow!("restart transition is not valid Unicode"))?,
+            );
+        }
+        if let Some(timestamp) = self.env.var_os(INVOCATION_START_VAR) {
+            let micros = timestamp
+                .to_str()
+                .context("restart invocation time is not valid Unicode")?
+                .parse::<u64>()
+                .context("invalid restart invocation time")?;
+            let started = std::time::UNIX_EPOCH
+                .checked_add(std::time::Duration::from_micros(micros))
+                .context("restart invocation time is out of range")?;
+            log.set_invocation_start(started)
+                .context("restart invocation time is in the future")?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::infra::env::MapEnv;
+
+    #[test]
+    fn restart_presentation_requires_a_guard_and_preserves_the_invocation_clock() {
+        use super::super::reexec::{INVOCATION_START_VAR, STARTUP_TRANSITION_VAR};
+        use crate::infra::logging::{Logger, OutputExt as _};
+        use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+        let started = SystemTime::now() - Duration::from_secs(60);
+        let micros = started
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_micros()
+            .to_string();
+        for (guarded, elevated) in [(false, false), (true, false), (true, true)] {
+            let global =
+                super::super::tests::global(if elevated { &["--elevated-child"] } else { &[] });
+            let env = MapEnv::new()
+                .with(INVOCATION_START_VAR, &micros)
+                .with(STARTUP_TRANSITION_VAR, "CLI upgraded · old → new")
+                .with(REEXEC_GUARD_VAR, if guarded { "1" } else { "" });
+            let runtime = RuntimePolicy::new(&global, false, env.into_handle(), false, false);
+            let mut log = Logger::test();
+            let original = log.invocation_start();
+            runtime.restore_output(&mut log).unwrap();
+            log.startup("Update · fixture");
+            let restored = guarded && !elevated;
+            assert_eq!(
+                log.invocation_start(),
+                if restored {
+                    UNIX_EPOCH + Duration::from_micros(micros.parse().unwrap())
+                } else {
+                    original
+                }
+            );
+            assert_eq!(
+                log.captured_lines()
+                    .iter()
+                    .filter(|line| line.contains("CLI upgraded"))
+                    .count(),
+                usize::from(restored)
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_restart_clock_is_reported_instead_of_resetting_the_duration() {
+        for timestamp in ["not-a-time".to_owned(), u64::MAX.to_string()] {
+            let global = super::super::tests::global(&[]);
+            let env = MapEnv::new()
+                .with(REEXEC_GUARD_VAR, "1")
+                .with(super::super::reexec::INVOCATION_START_VAR, timestamp);
+            let runtime = RuntimePolicy::new(&global, false, env.into_handle(), false, false);
+            let error = runtime
+                .restore_output(&mut crate::infra::logging::Logger::test())
+                .unwrap_err();
+            assert!(
+                format!("{error:#}").contains("restart invocation time"),
+                "{error:#}"
+            );
+        }
+    }
 
     #[test]
     fn structured_output_disables_prompts_with_terminal_input() {

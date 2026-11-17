@@ -1257,7 +1257,7 @@ fn hidden_failure_precedes_cancellation_in_both_result_and_totals() {
     assert!(
         !log.captured_lines()
             .iter()
-            .any(|line| line.contains("No changes"))
+            .any(|line| line.contains("No task changes") || line.contains("already current"))
     );
 }
 

@@ -133,6 +133,7 @@ fn windows_git_editor_override_requires_the_desktop_package() {
     }
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn graphical_services_wait_for_session_ownership_without_pulling_it_in() {
     use dotfiles_cli::testing::{

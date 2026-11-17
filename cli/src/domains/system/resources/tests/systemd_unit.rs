@@ -1055,7 +1055,7 @@ fn offline_install_targets_reset_each_relationship_list_independently() {
 
 #[cfg(unix)]
 #[test]
-fn offline_enablement_does_not_recreate_reset_install_targets() {
+fn offline_enablement_reconciles_reset_install_targets() {
     use crate::engine::{ProcessOpts, TaskResult, process_resources};
     use crate::test_helpers::ContextBuilder;
 
@@ -1063,13 +1063,21 @@ fn offline_enablement_does_not_recreate_reset_install_targets() {
     let home = fixture.path().canonicalize().unwrap();
     let unit_dir = home.join(".config/systemd/user");
     std::fs::create_dir_all(&unit_dir).unwrap();
+    let unit = unit_dir.join("example.service");
+    std::fs::write(&unit, "[Install]\nWantedBy=old.target\n").unwrap();
+    let resource = || offline_unit(&home, "example.service", true);
+    resource().apply().unwrap();
+    let obsolete = unit_dir.join("old.target.wants/example.service");
+    let unrelated_dir = unit_dir.join("local.target.wants");
+    std::fs::create_dir(&unrelated_dir).unwrap();
+    let unrelated = unrelated_dir.join("example.service");
+    std::os::unix::fs::symlink("../other.service", &unrelated).unwrap();
     std::fs::write(
-        unit_dir.join("example.service"),
+        &unit,
         "[Install]\nWantedBy=old.target\nRequiredBy=keep.target\n\
          WantedBy=\nWantedBy=new.target\n",
     )
     .unwrap();
-    let resource = || offline_unit(&home, "example.service", true);
     let ctx = ContextBuilder::new(home.clone()).overlay(None).build();
     let preview = process_resources(
         &ctx.with_dry_run(true),
@@ -1080,14 +1088,36 @@ fn offline_enablement_does_not_recreate_reset_install_targets() {
     assert!(matches!(preview, TaskResult::Batch(stats) if stats.changed_count() == 1));
     assert!(!unit_dir.join("new.target.wants").exists());
     assert!(!unit_dir.join("keep.target.requires").exists());
+    assert!(obsolete.is_symlink());
+
+    let keep_dir = unit_dir.join("keep.target.requires");
+    std::fs::create_dir(&keep_dir).unwrap();
+    let conflict = keep_dir.join("example.service");
+    std::fs::write(&conflict, "local file").unwrap();
+    assert!(resource().apply().is_err());
+    assert!(obsolete.is_symlink());
+    assert_eq!(std::fs::read_to_string(&conflict).unwrap(), "local file");
+    std::fs::remove_file(&conflict).unwrap();
 
     assert_eq!(resource().apply().unwrap(), ResourceChange::Applied);
-    assert!(!unit_dir.join("old.target.wants").exists());
+    assert!(!obsolete.is_symlink());
     assert!(
         unit_dir
             .join("new.target.wants/example.service")
             .is_symlink()
     );
+    assert_eq!(
+        std::fs::read_link(&unrelated).unwrap(),
+        Path::new("../other.service")
+    );
+    // Stale links also count as drift when all desired links already exist.
+    std::os::unix::fs::symlink("../example.service", &obsolete).unwrap();
+    assert!(matches!(
+        resource().current_state().unwrap(),
+        ResourceState::Incorrect { .. }
+    ));
+    resource().apply().unwrap();
+    assert!(!obsolete.is_symlink());
     assert!(
         unit_dir
             .join("keep.target.requires/example.service")

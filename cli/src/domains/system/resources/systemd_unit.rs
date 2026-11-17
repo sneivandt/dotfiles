@@ -377,7 +377,7 @@ impl SystemdUnitResource {
 
     fn offline_current_state(&self) -> ResourceResult<ResourceState> {
         if !self.enabled {
-            return Ok(if self.offline_disable_links()?.is_empty() {
+            return Ok(if self.offline_enabled_links()?.is_empty() {
                 ResourceState::Correct
             } else {
                 ResourceState::Incorrect {
@@ -415,7 +415,11 @@ impl SystemdUnitResource {
                 Err(error) => return Err(error.into()),
             }
         }
-        Ok(if all_enabled {
+        Ok(if !self.offline_obsolete_links(&links)?.is_empty() {
+            ResourceState::Incorrect {
+                current: "obsolete enablement links remain".into(),
+            }
+        } else if all_enabled {
             ResourceState::Correct
         } else if any_enabled {
             ResourceState::Incorrect {
@@ -427,7 +431,9 @@ impl SystemdUnitResource {
     }
 
     fn enable_offline(&self) -> ResourceResult<ResourceChange> {
-        for (link, source) in self.offline_enablement_links()? {
+        let links = self.offline_enablement_links()?;
+        let obsolete = self.offline_obsolete_links(&links)?;
+        for (link, source) in &links {
             let parent = link
                 .parent()
                 .ok_or_else(|| anyhow::anyhow!("enablement link has no parent"))?;
@@ -439,12 +445,12 @@ impl SystemdUnitResource {
                     .strip_prefix(&user_dir)
                     .map_err(anyhow::Error::from)?,
             )?;
-            match std::fs::symlink_metadata(&link) {
-                Ok(_) if symlink_references(&link, &source) => continue,
+            match std::fs::symlink_metadata(link) {
+                Ok(_) if symlink_references(link, source) => continue,
                 Ok(metadata)
-                    if metadata.file_type().is_symlink() && symlink_points_to(&link, &source) =>
+                    if metadata.file_type().is_symlink() && symlink_points_to(link, source) =>
                 {
-                    std::fs::remove_file(&link)?;
+                    std::fs::remove_file(link)?;
                 }
                 Ok(_) => {
                     return Err(ResourceError::conflicting_state(
@@ -456,12 +462,22 @@ impl SystemdUnitResource {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error.into()),
             }
-            create_symlink(&source, &link)?;
+            create_symlink(source, link)?;
         }
+        self.remove_offline_links(obsolete)?;
         Ok(ResourceChange::Applied)
     }
 
-    fn offline_disable_links(&self) -> ResourceResult<Vec<PathBuf>> {
+    fn offline_obsolete_links(
+        &self,
+        desired: &[(PathBuf, PathBuf)],
+    ) -> ResourceResult<Vec<PathBuf>> {
+        let mut links = self.offline_enabled_links()?;
+        links.retain(|link| !desired.iter().any(|(wanted, _)| wanted == link));
+        Ok(links)
+    }
+
+    fn offline_enabled_links(&self) -> ResourceResult<Vec<PathBuf>> {
         let user_dir = self.offline_user_dir()?;
         let directories = match std::fs::read_dir(&user_dir) {
             Ok(directories) => directories,
@@ -473,8 +489,8 @@ impl SystemdUnitResource {
             .map(|directory| directory.join(&self.name))
             .collect();
         let mut links = Vec::new();
-        // Disable the installed relationships, not the unit's potentially
-        // changed [Install] directives. Never traverse user-replaced directories.
+        // Discover installed relationships independently of the unit's current
+        // [Install] directives. Never traverse user-replaced directories.
         for directory in directories {
             let directory = directory?;
             let name = directory.file_name();
@@ -507,10 +523,15 @@ impl SystemdUnitResource {
     }
 
     fn disable_offline(&self) -> ResourceResult<ResourceChange> {
-        let links = self.offline_disable_links()?;
+        let links = self.offline_enabled_links()?;
         if links.is_empty() {
             return Ok(ResourceChange::AlreadyCorrect);
         }
+        self.remove_offline_links(links)?;
+        Ok(ResourceChange::Applied)
+    }
+
+    fn remove_offline_links(&self, links: Vec<PathBuf>) -> ResourceResult<()> {
         for link in links {
             let user_dir = self.offline_user_dir()?;
             let parent = link
@@ -522,7 +543,7 @@ impl SystemdUnitResource {
                     .strip_prefix(&user_dir)
                     .map_err(anyhow::Error::from)?,
             )?;
-            if !self.offline_disable_links()?.contains(&link) {
+            if !self.offline_enabled_links()?.contains(&link) {
                 return Err(anyhow::anyhow!(
                     "systemd enablement link changed during removal; retry"
                 )
@@ -530,7 +551,7 @@ impl SystemdUnitResource {
             }
             std::fs::remove_file(link)?;
         }
-        Ok(ResourceChange::Applied)
+        Ok(())
     }
 }
 

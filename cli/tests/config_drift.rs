@@ -75,6 +75,16 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+#[test]
+fn first_login_service_opts_in_to_waiting_for_update_locks() {
+    let unit = include_str!("../../symlinks/config/systemd/user/dotfiles-first-login.service");
+    assert!(
+        unit.lines()
+            .any(|line| line == "Environment=DOTFILES_FIRST_LOGIN_WAIT_FOR_LOCK=1"),
+        "the first-login service must wait while the update that queues it holds the locks"
+    );
+}
+
 fn load_symlink_sections(path: &Path) -> HashMap<String, Vec<String>> {
     let content = std::fs::read_to_string(path).expect("read symlinks.toml");
     let raw: HashMap<String, SymlinkSection> =

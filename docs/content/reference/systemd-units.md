@@ -105,8 +105,10 @@ Without a user manager, the task prepares per-user enablement links for the next
 rather than starting services. Disabling a unit removes its matching enablement links
 even if the unit file is gone. Enablement links still work after managed home links are
 replaced with local copies during removal. Offline enablement honors unit-specific
-drop-ins for `WantedBy` and `RequiredBy`. Templates, other install relationships, and
-install directives in shared drop-ins require a live user manager; the task reports
+drop-ins for `WantedBy` and `RequiredBy`. When those targets change, Dotfiles installs
+the requested links and removes obsolete links that point to the unit.
+Templates, other install relationships, and install directives in shared
+drop-ins require a live user manager. The task reports
 these instead of partially enabling the unit. Conflicting declarations for the same
 scope and unit are rejected.
 

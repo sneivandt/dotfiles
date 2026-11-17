@@ -130,6 +130,7 @@ class ClassificationTests(unittest.TestCase):
              config | {"app_tests", "app_windows", "build_windows", "git_hooks"}),
             ("symlinks/config/systemd/user/clean-home-tmp.service", config | {"git_hooks"}),
             ("symlinks/config/systemd/user/clean-screenshots.service", config | {"git_hooks"}),
+            ("symlinks/config/systemd/user/dotfiles-first-login.service", config),
             (LINUX + "test-maintenance.py", {"git_hooks", "hook_inputs"}),
             (LINUX + "test-nvim-lock.lua", {"app_tests", "build_linux"}),
             (LINUX + "test-nvim-config.lua", {"app_tests", "build_linux"}),

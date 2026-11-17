@@ -453,13 +453,7 @@ mod tests {
         git2::Repository::init(&second).unwrap();
         let platform = Platform::new(Os::Linux, false);
         let env = MapEnv::new();
-        let unit =
-            include_str!("../../../symlinks/config/systemd/user/dotfiles-first-login.service");
-        assert!(
-            unit.lines()
-                .any(|line| line == format!("Environment={FIRST_LOGIN_WAIT_ENV}=1"))
-        );
-        let service_env = MapEnv::new().with(FIRST_LOGIN_WAIT_ENV, "1");
+        let service_env = MapEnv::new().with("DOTFILES_FIRST_LOGIN_WAIT_FOR_LOCK", "1");
 
         for root in [&first, &second] {
             std::thread::scope(|scope| {

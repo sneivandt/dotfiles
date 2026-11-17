@@ -6,6 +6,7 @@ After=graphical-session.target
 
 [Service]
 Type=oneshot
+Environment=DOTFILES_FIRST_LOGIN_WAIT_FOR_LOCK=1
 ExecStart=%h/.local/bin/dotfiles update --profile desktop --only vscode-extensions --fail-on-skip --verbose
 ExecStartPost=/usr/bin/rm -f %h/.local/state/dotfiles/deferred-vscode-extensions
 Restart=on-failure

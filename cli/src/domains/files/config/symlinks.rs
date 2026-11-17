@@ -56,14 +56,11 @@ pub(crate) fn config_home_diagnostic(
         .var_os("XDG_CONFIG_HOME")
         .filter(|value| !value.is_empty())?;
     let expected = home.join(".config");
+    let config_target = path_identity(Path::new(".config"));
     if Path::new(&configured) == expected
-        || !symlinks.iter().any(|link| {
-            let target = link
-                .target
-                .clone()
-                .unwrap_or_else(|| default_target(&link.source));
-            Path::new(&target).starts_with(".config")
-        })
+        || !symlinks
+            .iter()
+            .any(|link| target_identity(link).starts_with(&config_target))
     {
         return None;
     }

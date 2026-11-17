@@ -905,7 +905,7 @@ class GateTests(unittest.TestCase):
 class MutationSelectionTests(unittest.TestCase):
     def test_source_tests_build_and_unrelated_paths(self):
         for paths, sources, windows in (
-            (["docs/example.md", "conf/packages.toml"], [], False),
+            (["docs/example.md", "conf/README.md", "symlinks/config/quickshell/Bar.qml"], [], False),
             (["cli/src/feature.rs"], ["cli/src/feature.rs"], True),
             (["cli/src/feature/tests.rs"], ["cli/src"], True),
             (["cli/src/app/test_helpers/fixture.rs"], ["cli/src"], True),
@@ -913,7 +913,12 @@ class MutationSelectionTests(unittest.TestCase):
             (["cli/src/example.json"], ["cli/src"], True),
             (["cli/Cargo.lock"], ["cli/src"], True),
             (["rust-toolchain.toml"], ["cli/src"], True),
-            ([".github/workflows/mutation.yml"], [], True),
+            ([".github/workflows/mutation.yml"], ["cli/src"], True),
+            ([LINUX + "select-mutations.py"], ["cli/src"], True),
+            (["conf/symlinks.toml"], ["cli/src"], True),
+            (["packages/apm/release.json"], ["cli/src"], True),
+            (["symlinks/config/systemd/user/dotfiles-first-login.service"], ["cli/src"], True),
+            (["docs/content/reference/home-symlinks.md"], ["cli/src"], True),
         ):
             with self.subTest(paths=paths):
                 self.assertEqual(MUTATION["selection"](paths), (sources, windows))

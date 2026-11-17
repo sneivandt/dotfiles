@@ -136,8 +136,10 @@ rather than silently skipping coverage.
 
 Linux mutates whole changed Rust source files, including production functions
 beside edited inline tests. Changes to standalone tests, shared test helpers,
-embedded assets, or Cargo/build/toolchain inputs conservatively recheck all
-source. Selected Rust changes also run the existing fixed Windows suite for
+embedded assets, Cargo/build/toolchain inputs, or the mutation workflow and
+selector recheck all source. The same applies to tracked inputs to Rust tests,
+including configuration, package recipes, and executable documentation examples.
+Selected changes also run the existing fixed Windows suite for
 registry values, PATH encoding, elevation dispatch, and native file safety;
 there is no fine-grained Windows dependency classifier. Unrelated docs and
 configuration changes skip both suites. Exact filters live in the workflow.

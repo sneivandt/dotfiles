@@ -261,15 +261,17 @@ mod tests {
                     .with("XDG_CONFIG_HOME", fixture.path().join("custom-config"))
                     .into_handle(),
             );
-        let task = InstallSymlinks::new(handle(vec![symlink("config/git/config", None)]));
-        for dry_run in [true, false] {
-            let error = task.run(&ctx.with_dry_run(dry_run)).unwrap_err();
-            assert!(
-                error
-                    .to_string()
-                    .contains("symlink.unsupported-config-home")
-            );
-            assert!(!home.exists());
+        for target in [None, Some("./.config/git/config")] {
+            let task = InstallSymlinks::new(handle(vec![symlink("config/git/config", target)]));
+            for dry_run in [true, false] {
+                let error = task.run(&ctx.with_dry_run(dry_run)).unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains("symlink.unsupported-config-home")
+                );
+                assert!(!home.exists());
+            }
         }
     }
 

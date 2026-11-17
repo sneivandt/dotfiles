@@ -8,7 +8,9 @@
 
 use crate::app::config::Config;
 use crate::domains::ai::apm::ApmFragmentSource;
-use crate::domains::files::config::symlinks::{Symlink, default_target, resolve_symlinks_dir};
+use crate::domains::files::config::symlinks::{
+    Symlink, default_target, path_identity, resolve_symlinks_dir, target_identity,
+};
 use crate::domains::packages::arch_recipes::ParuBase;
 use crate::infra::ConfigHandle;
 use std::path::Path;
@@ -38,9 +40,9 @@ macro_rules! define_config_store {
             #[must_use]
             pub fn from_config(config: Config) -> Self {
                 let apm_fragments = apm_fragment_sources(&config);
+                let paru_target = path_identity(Path::new(".config/paru/paru.conf.base"));
                 let paru_base = config.symlinks.iter().find_map(|link| {
-                    let target = link.target.clone().unwrap_or_else(|| default_target(&link.source));
-                    (Path::new(&target) == Path::new(".config/paru/paru.conf.base"))
+                    (target_identity(link) == paru_target)
                         .then(|| {
                             let root = resolve_symlinks_dir(link, &config.root);
                             ParuBase { path: root.join(&link.source), root }
@@ -127,7 +129,7 @@ mod tests {
         let mut config = empty_config(root.clone());
         config.symlinks = vec![Symlink {
             source: "custom-paru".into(),
-            target: Some(".config/paru/paru.conf.base".into()),
+            target: Some("./.config/paru/paru.conf.base".into()),
             origin: Some(overlay.clone()),
             allow_external_target: false,
         }];

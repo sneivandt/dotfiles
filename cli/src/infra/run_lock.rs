@@ -34,6 +34,7 @@ struct Owner<'a> {
 }
 
 const LOCK_NAME: &str = "dotfiles-run.lock";
+const FIRST_LOGIN_WAIT_ENV: &str = "DOTFILES_FIRST_LOGIN_WAIT_FOR_LOCK";
 const RESTART_PREFIX: &str = ".dotfiles-restart";
 const HOME_RESTART_PREFIX: &str = ".dotfiles-restart-home";
 
@@ -53,7 +54,11 @@ impl CommandLocks {
         command: &str,
     ) -> Result<Self> {
         let repository = RunLock::acquire(root, env, platform, command)?;
-        let home = RunLock::acquire_path(&home_lock_path(home, platform)?, command)?;
+        let home = RunLock::acquire_path_with_wait(
+            &home_lock_path(home, platform)?,
+            command,
+            first_login_wait(env),
+        )?;
         Ok(Self {
             _repository: Some(repository),
             _home: home,
@@ -84,6 +89,10 @@ impl CommandLocks {
             _home: RunLock::acquire_path(&path, command)?,
         }))
     }
+}
+
+fn first_login_wait(env: &dyn Env) -> bool {
+    env.var(FIRST_LOGIN_WAIT_ENV).as_deref() == Some("1")
 }
 
 fn home_lock_path(home: &Path, platform: Platform) -> Result<PathBuf> {
@@ -211,10 +220,14 @@ impl RunLock {
         command: &str,
     ) -> Result<Self> {
         let path = repository_state_path(root, env, platform, LOCK_NAME)?;
-        Self::acquire_path(&path, command)
+        Self::acquire_path_with_wait(&path, command, first_login_wait(env))
     }
 
     pub(crate) fn acquire_path(path: &Path, command: &str) -> Result<Self> {
+        Self::acquire_path_with_wait(path, command, false)
+    }
+
+    fn acquire_path_with_wait(path: &Path, command: &str, wait: bool) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating run-lock directory {}", parent.display()))?;
@@ -230,7 +243,12 @@ impl RunLock {
                 .with_context(|| format!("validating run lock {}", path.display()))?;
         }
 
-        file.try_lock().map_err(|error| lock_error(path, error))?;
+        if wait {
+            file.lock()
+                .with_context(|| format!("waiting for run lock {}", path.display()))?;
+        } else {
+            file.try_lock().map_err(|error| lock_error(path, error))?;
+        }
 
         let started_unix_seconds = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -423,6 +441,55 @@ mod tests {
             );
             drop((holder, independent));
             CommandLocks::acquire(&second, &home, &env, platform, "retry").unwrap();
+        }
+    }
+
+    #[test]
+    fn first_login_waits_for_the_repository_or_home_lock() {
+        use std::sync::mpsc::{RecvTimeoutError, channel};
+        use std::time::Duration;
+
+        let fixture = tempfile::tempdir().unwrap();
+        let first = fixture.path().join("first");
+        let second = fixture.path().join("second");
+        let home = fixture.path().join("home");
+        git2::Repository::init(&first).unwrap();
+        git2::Repository::init(&second).unwrap();
+        let platform = Platform::new(Os::Linux, false);
+        let env = MapEnv::new();
+        let unit =
+            include_str!("../../../symlinks/config/systemd/user/dotfiles-first-login.service");
+        assert!(
+            unit.lines()
+                .any(|line| line == format!("Environment={FIRST_LOGIN_WAIT_ENV}=1"))
+        );
+        let service_env = MapEnv::new().with(FIRST_LOGIN_WAIT_ENV, "1");
+
+        for root in [&first, &second] {
+            std::thread::scope(|scope| {
+                let holder =
+                    CommandLocks::acquire(&first, &home, &env, platform, "update").unwrap();
+                let (started, start) = channel();
+                let (finished, finish) = channel();
+                let home = &home;
+                let service_env = &service_env;
+                scope.spawn(move || {
+                    started.send(()).unwrap();
+                    let result =
+                        CommandLocks::acquire(root, home, service_env, platform, "first login");
+                    finished.send(result).unwrap();
+                });
+                start.recv().unwrap();
+                let attempt = finish.recv_timeout(Duration::from_millis(100));
+                drop(holder);
+                assert!(matches!(attempt, Err(RecvTimeoutError::Timeout)));
+                drop(
+                    finish
+                        .recv_timeout(Duration::from_secs(5))
+                        .unwrap()
+                        .unwrap(),
+                );
+            });
         }
     }
 

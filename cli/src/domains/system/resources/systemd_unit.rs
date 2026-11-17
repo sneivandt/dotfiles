@@ -180,6 +180,11 @@ impl SystemdUnitResource {
                         .into(),
                 };
             }
+            if self.enabled && state == "indirect" {
+                return ResourceState::Invalid {
+                    reason: "indirect unit does not confirm persistent enablement; declare the unit with direct install links".into(),
+                };
+            }
             return if self.enabled || state == "static" {
                 ResourceState::Correct
             } else {
@@ -751,6 +756,10 @@ impl Resource for SystemdUnitResource {
         if self.enabled {
             if !self.start {
                 return self.change_live_unit(&["enable"]);
+            }
+            if self.scope == UnitScope::User && self.name == FIRST_LOGIN_UNIT {
+                // The service runs Dotfiles and waits for the current update's locks.
+                return self.change_live_unit(&["enable", "--now", "--no-block"]);
             }
             if self.thunar_settings_script.is_some() {
                 let enablement = self.change_live_unit(&["enable"])?;

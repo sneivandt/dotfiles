@@ -75,11 +75,12 @@ the task before service changes rather than assuming it is safe to start.
 With a live manager:
 
 - `enabled = true` means persistently enabled and, when its graphical policy permits,
-  started. Runtime-only
-  enablement is not sufficient. Static units have no install instructions and
-  cannot satisfy this declaration. Dotfiles retries a start previously skipped
-  by a condition so systemd can evaluate it again. Retrying a system unit can
-  require sudo even if the condition still prevents it from starting.
+  started. Runtime-only enablement is not sufficient. Declare the unit with
+  direct install links when systemd reports an indirect unit. Static units have
+  no install instructions and cannot satisfy this declaration. Dotfiles retries
+  a start previously skipped by a condition so systemd can evaluate it again.
+  Retrying a system unit can require sudo even if the condition still prevents
+  it from starting.
 - `enabled = false` means disabled and stopped, including stopping a static
   unit that has no enablement links.
 - Disabling is not masking: another unit may start it later.
@@ -87,7 +88,8 @@ With a live manager:
 User unit files usually arrive through symlinks; packages may provide others.
 An enabled first-login service (`dotfiles-first-login.service`) can stay idle
 once the deferred VS Code extensions marker is gone. If the marker exists,
-Dotfiles retries the idle service.
+Dotfiles queues the idle service. The service waits for the current update to
+release its locks, then installs the deferred extensions.
 When the managed Thunar settings service has already run, Dotfiles checks its
 two managed preferences and reruns the service if either differs. Both the check
 and the service use the installed helper, including an overlay replacement.

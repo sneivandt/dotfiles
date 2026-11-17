@@ -67,14 +67,46 @@ def baseline(repository, head, explicit=""):
     return ""
 
 
+def repository_test_input(path):
+    # Config::load in config_drift and the tracked Arch recipe descriptor tests.
+    if path.startswith("conf/") and path.endswith(".toml"):
+        return True
+    if path.startswith("packages/") and path.rsplit("/", 1)[-1] in {"PKGBUILD", "release.json"}:
+        return True
+    # Repository assets and embedded Markdown examples read by Rust tests.
+    return path.startswith((
+        "symlinks/config/systemd/user/",
+        "symlinks/config/hypr/scripts/",
+        "symlinks/local/bin/",
+    )) or path in {
+        "symlinks/config/Code/User/settings.json",
+        "symlinks/config/Thunar/managed-view-settings.sh",
+        "symlinks/config/hypr/conf/binds.lua",
+        "symlinks/config/shell/path.sh",
+        "symlinks/local/share/applications/code-insiders.desktop",
+        "symlinks/local/share/applications/code-insiders-url-handler.desktop",
+        "docs/content/guides/agent-configuration.md",
+        "docs/content/guides/private-overlays.md",
+        "docs/content/reference/agent-settings.md",
+        "docs/content/reference/cli-reference.md",
+        "docs/content/reference/home-symlinks.md",
+        "docs/content/reference/system-configuration-files.md",
+        "docs/content/reference/systemd-units.md",
+        "docs/content/reference/task-reference.md",
+    }
+
+
 def selection(paths):
     source = [path for path in paths if path.startswith("cli/src/") and path.endswith(".rs")]
     broad = any(
-        path.startswith(("cli/tests/", "cli/.cargo/", ".cargo/"))
+        repository_test_input(path)
+        or path.startswith(("cli/tests/", "cli/.cargo/", ".cargo/"))
         or path in {
             "cli/Cargo.toml", "cli/Cargo.lock", "cli/build.rs",
             "cli/rust-toolchain", "cli/rust-toolchain.toml", "Cargo.toml", "Cargo.lock", "build.rs",
             "rust-toolchain", "rust-toolchain.toml",
+            ".github/workflows/mutation.yml",
+            ".github/workflows/scripts/linux/select-mutations.py",
         }
         or (path.startswith("cli/src/") and (
             not path.endswith(".rs") or "/tests/" in path or path.endswith("/tests.rs")
@@ -83,13 +115,9 @@ def selection(paths):
         ))
         for path in paths
     )
-    harness = any(path in {
-        ".github/workflows/mutation.yml",
-        ".github/workflows/scripts/linux/select-mutations.py",
-    } for path in paths)
     # Whole changed files include unchanged production code beside edited inline
-    # tests. External tests/build inputs conservatively recheck all source.
-    return (["cli/src"] if broad else source), bool(source or broad or harness)
+    # tests. Harness, external test, and build changes recheck all source.
+    return (["cli/src"] if broad else source), bool(source or broad)
 
 
 def main():

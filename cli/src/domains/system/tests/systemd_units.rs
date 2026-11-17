@@ -748,7 +748,7 @@ fn first_login_service_retries_pending_work_and_converges_after_marker_removal()
     let executor = user_unit_probe(executor, name, false, unstarted);
     let executor = user_unit_probe(executor, name, true, skipped);
     let executor = user_unit_probe(executor, name, false, completed).command(
-        systemctl(&["--user", "enable", "--now", name]),
+        systemctl(&["--user", "enable", "--now", "--no-block", name]),
         Ok(ExecResult::success("")),
     );
     let executor = user_unit_probe(executor, name, false, completed);

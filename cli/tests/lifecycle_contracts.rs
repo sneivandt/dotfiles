@@ -526,6 +526,18 @@ fn git_hooks_preview_apply_repeat_and_conservative_uninstall() {
 fn git_hooks_preserve_direct_source_hooks_path() {
     for hooks_path in ["hooks", "./hooks", "hooks/../hooks", "hook-alias"] {
         let fixture = hook_fixture();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+
+            for hook in ["pre-commit", "commit-msg", "post-checkout"] {
+                std::fs::set_permissions(
+                    fixture.repo.join("hooks").join(hook),
+                    std::fs::Permissions::from_mode(0o755),
+                )
+                .unwrap();
+            }
+        }
         if hooks_path == "hook-alias" {
             let source = fixture.repo.join("hooks");
             let alias = fixture.repo.join("hook-alias");

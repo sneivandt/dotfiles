@@ -75,6 +75,9 @@ With a live manager:
 - Disabling is not masking: another unit may start it later.
 
 User unit files usually arrive through symlinks; packages may provide others.
+An enabled first-login service (`dotfiles-first-login.service`) can stay idle
+once the deferred VS Code extensions marker is gone. If the marker exists,
+Dotfiles retries the idle service.
 When the managed Thunar settings service has already run, Dotfiles checks its
 two managed preferences and reruns the service if either differs.
 System-scope changes can require sudo. Inside WSL, systemd must already be running or

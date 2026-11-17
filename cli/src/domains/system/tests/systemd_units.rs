@@ -619,6 +619,52 @@ fn systemd_retries_a_previously_skipped_start_and_then_converges() {
 }
 
 #[test]
+fn first_login_service_retries_pending_work_and_converges_after_marker_removal() {
+    use crate::domains::editors::resources::deferred_extensions::MARKER_RELATIVE_PATH;
+
+    let home = tempfile::tempdir().unwrap();
+    let marker = home.path().join(MARKER_RELATIVE_PATH);
+    let name = "dotfiles-first-login.service";
+    let task = systemd_task(name, UnitScope::User, true);
+    let skipped = "ActiveState=inactive\nType=oneshot\nResult=success\nConditionResult=no\n";
+    let unstarted = "ActiveState=inactive\nType=oneshot\nResult=success\nConditionResult=yes\nExecMainStartTimestampMonotonic=0\n";
+    let completed = "ActiveState=inactive\nType=oneshot\nResult=success\nConditionResult=yes\nExecMainStartTimestampMonotonic=123\n";
+    let executor = user_unit_probe(script(), name, false, skipped);
+    let executor = user_unit_probe(executor, name, false, unstarted);
+    let executor = user_unit_probe(executor, name, true, skipped);
+    let executor = user_unit_probe(executor, name, false, completed).command(
+        systemctl(&["--user", "enable", "--now", name]),
+        Ok(ExecResult::success("")),
+    );
+    let ctx = context(user_unit_probe(executor, name, false, completed))
+        .with_home(home.path().to_path_buf());
+
+    for _ in 0..2 {
+        let result = task.run(&ctx).unwrap();
+        assert_eq!(
+            crate::test_helpers::task_batch(&result).already_ok_count(),
+            1
+        );
+    }
+
+    std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+    std::fs::write(&marker, "pending").unwrap();
+    let preview = task.run(&ctx.with_dry_run(true)).unwrap();
+    assert_eq!(crate::test_helpers::task_batch(&preview).changed_count(), 1);
+    assert_eq!(std::fs::read_to_string(&marker).unwrap(), "pending");
+
+    let applied = task.run(&ctx).unwrap();
+    assert_eq!(crate::test_helpers::task_batch(&applied).changed_count(), 1);
+    // Model successful completion by the service's ExecStartPost.
+    std::fs::remove_file(&marker).unwrap();
+    let repeated = task.run(&ctx).unwrap();
+    assert_eq!(
+        crate::test_helpers::task_batch(&repeated).already_ok_count(),
+        1
+    );
+}
+
+#[test]
 fn live_thunar_service_restarts_for_drift_and_leaves_matching_settings_alone() {
     let name = "thunar-view-settings.service";
     let task = systemd_task(name, UnitScope::User, true);

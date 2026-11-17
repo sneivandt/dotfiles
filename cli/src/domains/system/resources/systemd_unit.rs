@@ -2,6 +2,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::domains::editors::resources::deferred_extensions::DeferredExtensionsResource;
 use crate::domains::system::config::systemd_units::{UnitScope, safe_unit_name};
 use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
@@ -9,6 +10,7 @@ use crate::infra::exec::{CommandSpec, Executor};
 
 const THUNAR_SETTINGS_UNIT: &str = "thunar-view-settings.service";
 const THUNAR_SETTINGS_SCRIPT: &str = "symlinks/config/Thunar/managed-view-settings.sh";
+const FIRST_LOGIN_UNIT: &str = "dotfiles-first-login.service";
 
 /// A systemd unit resource that converges its configured enablement state.
 #[derive(Debug)]
@@ -522,13 +524,15 @@ impl SystemdUnitResource {
     }
 }
 
+fn systemd_property<'a>(properties: &'a str, key: &str) -> Option<&'a str> {
+    properties
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .find_map(|(name, value)| (name == key).then_some(value))
+}
+
 fn runtime_state(enabled: bool, properties: &str) -> ResourceState {
-    let property = |key: &str| {
-        properties
-            .lines()
-            .filter_map(|line| line.split_once('='))
-            .find_map(|(name, value)| (name == key).then_some(value))
-    };
+    let property = |key| systemd_property(properties, key);
     let active = property("ActiveState").unwrap_or("");
     if enabled && active == "inactive" && property("ConditionResult") == Some("no") {
         return ResourceState::Incorrect {
@@ -820,7 +824,28 @@ impl IntrinsicState for SystemdUnitResource {
                 ),
             });
         }
-        let state = runtime_state(self.enabled, &runtime_result.stdout);
+        let properties = &runtime_result.stdout;
+        // The first-login service removes its marker after finishing deferred work.
+        // Start history can be stale or lost when the user manager restarts.
+        if self.enabled
+            && self.scope == UnitScope::User
+            && self.name == FIRST_LOGIN_UNIT
+            && systemd_property(properties, "ActiveState") == Some("inactive")
+            && let Some(home) = &self.home
+        {
+            return Ok(
+                match DeferredExtensionsResource::new(home).current_state()? {
+                    ResourceState::Missing => ResourceState::Correct,
+                    ResourceState::Correct => ResourceState::Incorrect {
+                        current: "VS Code extension provisioning is pending".into(),
+                    },
+                    state @ (ResourceState::Incorrect { .. }
+                    | ResourceState::Invalid { .. }
+                    | ResourceState::Unknown { .. }) => state,
+                },
+            );
+        }
+        let state = runtime_state(self.enabled, properties);
         if matches!(state, ResourceState::Correct)
             && let Some(script) = &self.thunar_settings_script
         {

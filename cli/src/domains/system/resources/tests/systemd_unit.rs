@@ -199,6 +199,37 @@ fn runtime_state_retries_condition_skips_without_hiding_stopped_or_failed_units(
 }
 
 #[test]
+fn first_login_marker_policy_only_applies_to_enabled_user_units() {
+    let home = tempfile::tempdir().unwrap();
+    let runtime = "ActiveState=inactive\nConditionResult=no\n";
+    let mut system = queried_unit(
+        FIRST_LOGIN_UNIT,
+        UnitScope::System,
+        true,
+        ExecResult::success("enabled"),
+        Some(runtime),
+    );
+    system.home = Some(home.path().to_path_buf());
+    assert!(matches!(
+        system.current_state().unwrap(),
+        ResourceState::Incorrect { .. }
+    ));
+
+    DeferredExtensionsResource::new(home.path())
+        .apply()
+        .unwrap();
+    let mut disabled = queried_unit(
+        FIRST_LOGIN_UNIT,
+        UnitScope::User,
+        false,
+        ExecResult::failure("disabled", "", Some(1)),
+        Some(runtime),
+    );
+    disabled.home = Some(home.path().to_path_buf());
+    assert_eq!(disabled.current_state().unwrap(), ResourceState::Correct);
+}
+
+#[test]
 fn live_aliases_report_the_canonical_name_without_probing_runtime() {
     let name = "example-alias.service";
     let fallback = "example-alias.service is an alias. Declare the canonical unit name";

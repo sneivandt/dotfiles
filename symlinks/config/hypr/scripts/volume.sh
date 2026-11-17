@@ -21,14 +21,13 @@ case "${1:-}" in
 esac
 
 # Feedback is optional; a notification failure must not undo an audio action.
-state=$(wpctl get-volume "$node")
+command -v notify-send >/dev/null 2>&1 || exit 0
+state=$(wpctl get-volume "$node") || exit 0
 percent=$(printf '%s\n' "$state" | awk '{ printf "%.0f", $2 * 100 }')
 case "$state" in
   *'[MUTED]'*) summary="$label muted" ;;
   *) summary="$label $percent%" ;;
 esac
-if command -v notify-send >/dev/null 2>&1; then
-  notify-send --app-name=dotfiles --category=progress --expire-time=2000 \
-    --hint="string:x-canonical-private-synchronous:$tag" \
-    --hint="int:value:$percent" --icon="$icon" "$summary" || true
-fi
+notify-send --app-name=dotfiles --category=progress --expire-time=2000 \
+  --hint="string:x-canonical-private-synchronous:$tag" \
+  --hint="int:value:$percent" --icon="$icon" "$summary" || true

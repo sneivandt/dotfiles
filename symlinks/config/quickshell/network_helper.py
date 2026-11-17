@@ -190,6 +190,7 @@ def profile_kind(profile):
 
 def build_networks(aps, adapters, profiles, active_by_device):
     grouped = {}
+    profiles_by_id = {profile["uuid"]: profile for profile in profiles}
     usable = {adapter["name"] for adapter in adapters if adapter["managed"]}
     for in_use, ssid, bssid, signal, security, device in aps:
         if device not in usable:
@@ -206,6 +207,13 @@ def build_networks(aps, adapters, profiles, active_by_device):
             signal_strength = max(0, min(100, int(signal or "0")))
         except ValueError:
             raise NetworkError("NetworkManager returned invalid Wi-Fi signal data.") from None
+        # The in-use flag and active UUID identify a hidden AP even when
+        # the scan omits its SSID. Keep other hidden APs independent.
+        active_profile = profiles_by_id.get(active_by_device.get(device)) if in_use == "*" else None
+        hidden = not ssid
+        if hidden and active_profile and active_profile["ssid"]:
+            matching = [active_profile]
+            ssid = active_profile["ssid"]
         ap = {
             "name": ssid or "Hidden network",
             "ssid": ssid,
@@ -213,7 +221,7 @@ def build_networks(aps, adapters, profiles, active_by_device):
             "device": device,
             "signal": signal_strength,
             "security": "Open" if kind == "open" else security,
-            "hidden": not ssid,
+            "hidden": hidden,
             "requiresSsid": not ssid,
             "protected": kind == "personal",
             "advanced": kind in ("enterprise", "legacy", "unknown"),

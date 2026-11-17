@@ -9,6 +9,7 @@ ShellPopup {
     id: root
 
     property var quotes: []
+    property var missingSymbols: []
     property int updated: 0
     required property date currentDate
     property bool loading: false
@@ -20,13 +21,16 @@ ShellPopup {
     readonly property string statusText: {
         if (loading)
             return hasQuotes ? "Refreshing quotes..." : "Loading quotes...";
-        if (error.length > 0)
-            return (hasQuotes ? "Refresh failed. Showing previous quotes.\n" : "Could not load quotes.\n") + error;
         if (!hasQuotes)
-            return "No quote data available";
-        if (stale)
-            return updated > 0 ? "Quotes may be out of date." : "Quote update time is unavailable.";
-        return "";
+            return error || "No quote data available";
+        const status = [];
+        if (error.length > 0)
+            status.push(error);
+        else if (stale)
+            status.push(updated > 0 ? "Quotes may be out of date." : "Quote update time is unavailable.");
+        if (missingSymbols.length > 0)
+            status.push("Quotes unavailable for " + missingSymbols.join(", ") + ".");
+        return status.join("\n");
     }
 
     panelWidth: 420
@@ -99,7 +103,7 @@ ShellPopup {
                     bottomPadding: Theme.spacing
                     visible: root.statusText.length > 0
                     text: root.statusText
-                    color: !root.loading && (root.error.length > 0 || root.stale) ? Theme.yellow : Theme.mutedStrong
+                    color: !root.loading && (root.error.length > 0 || root.stale || root.missingSymbols.length > 0) ? Theme.yellow : Theme.mutedStrong
                     font.family: Theme.font
                     font.pixelSize: Theme.textSmall
                     wrapMode: Text.Wrap

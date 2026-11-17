@@ -192,7 +192,9 @@ def main():
         print(f"Cannot refresh market cache: {error.strerror or error}", file=sys.stderr)
         payload = read_cache(cache_dir / "quotes.json")
         code = 1
-    print(json.dumps(payload, separators=(",", ":"), allow_nan=False))
+    available = {quote["symbol"] for quote in payload["quotes"]}
+    missing = [symbol for _, symbol, _, _ in QUOTES if symbol not in available]
+    print(json.dumps({**payload, "missing": missing}, separators=(",", ":"), allow_nan=False))
     return code
 
 

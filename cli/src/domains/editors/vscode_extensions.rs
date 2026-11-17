@@ -59,7 +59,7 @@ impl Task for InstallVsCodeExtensions {
                 .map(|id| {
                     VsCodeExtensionResource::new(id.clone(), cmd.clone(), ctx.executor_arc())
                 });
-            process_resources_with_cache(
+            let result = process_resources_with_cache(
                 ctx,
                 resources,
                 &installed,
@@ -67,7 +67,20 @@ impl Task for InstallVsCodeExtensions {
                     Ok(resource.state_from_installed(installed))
                 },
                 &ProcessOpts::install_missing("install"),
-            )
+            )?;
+            if !ctx.dry_run()
+                && matches!(&result, TaskResult::Batch(stats) if stats.changed_count() > 0 && stats.failed_count() == 0)
+            {
+                let observed = get_installed_extensions(&cmd, ctx.executor())?;
+                let mut missing: Vec<_> = seen.difference(&observed).map(String::as_str).collect();
+                missing.sort_unstable();
+                anyhow::ensure!(
+                    missing.is_empty(),
+                    "VS Code did not report these extensions after installation: {}",
+                    missing.join(", ")
+                );
+            }
+            Ok(result)
         })
     }
 }
@@ -131,7 +144,7 @@ mod tests {
 
     #[test]
     fn bulk_inventory_deduplicates_case_variants_and_converges() {
-        for dry_run in [false, true] {
+        for (dry_run, verified) in [(true, false), (false, true), (false, false)] {
             let root = tempfile::tempdir_in(".").unwrap();
             let launcher = root.path().join("Code Insiders").join(if cfg!(windows) {
                 "code-insiders.cmd"
@@ -146,11 +159,11 @@ mod tests {
             };
             let expected_launcher = launcher.clone();
             mock.expect_which()
-                .times(if dry_run { 1 } else { 2 })
+                .times(if verified { 2 } else { 1 })
                 .withf(move |program| program == command)
                 .return_const(true);
             mock.expect_which_path()
-                .times(if dry_run { 1 } else { 2 })
+                .times(if verified { 2 } else { 1 })
                 .withf(move |program| program == command)
                 .returning(move |_| Ok(expected_launcher.clone()));
             let mut sequence = mockall::Sequence::new();
@@ -174,6 +187,19 @@ mod tests {
                     &mut sequence,
                     &launcher,
                     &["--list-extensions"],
+                    if verified {
+                        "github.copilot\nMS-PYTHON.PYTHON\n"
+                    } else {
+                        "github.copilot\n"
+                    },
+                );
+            }
+            if verified {
+                expect_code(
+                    &mut mock,
+                    &mut sequence,
+                    &launcher,
+                    &["--list-extensions"],
                     "github.copilot\nMS-PYTHON.PYTHON\n",
                 );
             }
@@ -192,14 +218,20 @@ mod tests {
                 "MS-PYTHON.PYTHON".to_string(),
             ]));
 
-            let first = task.run(&ctx).unwrap();
+            let first = task.run(&ctx);
+            if !dry_run && !verified {
+                let error = first.unwrap_err().to_string();
+                assert!(error.contains("did not report") && error.contains("ms-python.python"));
+                continue;
+            }
+            let first = first.unwrap();
             assert_eq!(task_batch(&first).changed_count(), 1, "dry_run={dry_run}");
             assert_eq!(
                 task_batch(&first).already_ok_count(),
                 1,
                 "dry_run={dry_run}"
             );
-            if !dry_run {
+            if verified {
                 let repeated = task.run(&ctx).unwrap();
                 assert_eq!(task_batch(&repeated).changed_count(), 0);
                 assert_eq!(task_batch(&repeated).already_ok_count(), 2);

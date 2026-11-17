@@ -84,6 +84,11 @@ With a live manager:
 - `enabled = false` means disabled and stopped, including stopping a static
   unit that has no enablement links.
 - Disabling is not masking: another unit may start it later.
+- When a locally installed user unit already has enablement links, Dotfiles can reconcile
+  changed `WantedBy` and `RequiredBy` targets using the same directive support as offline
+  enablement. Other units use native systemctl enablement.
+- Dotfiles asks the system manager to reload a configured system unit when the manager
+  reports a stale definition. Reloading reads the updated unit definition into the manager.
 
 User unit files usually arrive through symlinks; packages may provide others.
 An enabled first-login service (`dotfiles-first-login.service`) can stay idle
@@ -103,7 +108,8 @@ false` declaration. Deleting its entry alone does not disable it.
 
 Without a user manager, the task prepares per-user enablement links for the next login
 rather than starting services. Disabling a unit removes its matching enablement links
-even if the unit file is gone. Enablement links still work after managed home links are
+even if the unit file is gone. When a global user enablement link keeps the unit enabled
+for all users, ask an administrator to disable it globally. Enablement links still work after managed home links are
 replaced with local copies during removal. Offline enablement honors unit-specific
 drop-ins for `WantedBy` and `RequiredBy`. When those targets change, Dotfiles installs
 the requested links and removes obsolete links that point to the unit.

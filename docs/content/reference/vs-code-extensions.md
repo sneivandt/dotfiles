@@ -22,8 +22,8 @@ are present; it does not pin extension versions or configure their preferences.
 ## What it does
 
 After waiting for package tasks, finds an editor CLI, reads installed extensions, and
-installs missing ones. If no CLI is available, the task is skipped rather than reported
-as successful.
+installs missing ones. After installing, Dotfiles queries the inventory again and reports
+any extensions that are still missing. If no CLI is available, the task is skipped.
 
 The search prefers `code-insiders` over `code` on Linux, and
 `code-insiders.cmd` over `code.cmd` on Windows. The selected CLI receives all

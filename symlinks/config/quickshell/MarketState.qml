@@ -5,6 +5,7 @@ import Quickshell.Io
 Scope {
     id: root
     property var quotes: []
+    property var missingSymbols: []
     property int updated: 0
     property string error: ""
     property bool _queryActive: false
@@ -58,6 +59,7 @@ Scope {
                 return;
             }
             root.quotes = payload.quotes;
+            root.missingSymbols = Array.isArray(payload.missing) ? payload.missing : [];
             root.updated = payload.updated;
             root.error = refreshError || (payload.quotes.some(quote => !Number.isFinite(quote.updated) || Date.now() / 1000 - quote.updated >= 300)
                 ? "Some market quotes are stale. Showing the last available prices." : "");

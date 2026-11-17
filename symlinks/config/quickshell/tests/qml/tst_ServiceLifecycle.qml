@@ -213,6 +213,21 @@ Item {
             compare(market.quotes[0].symbol, "OLD");
         }
 
+        function test_market_partial_refresh_exposes_missing_symbols_until_recovery() {
+            const market = make(marketComponent);
+            const query = process(market, "marketQueryProcess");
+            const now = Date.now() / 1000;
+            query.finish(0, JSON.stringify({ quotes: [{ symbol: "FOUND", updated: now }],
+                    updated: now, missing: ["MISSING"] }), "");
+            compare(market.missingSymbols, ["MISSING"]);
+            compare(market.quotes[0].symbol, "FOUND");
+            compare(market.error, "");
+            market.refresh();
+            query.finish(0, JSON.stringify({ quotes: [{ symbol: "FOUND", updated: now },
+                    { symbol: "MISSING", updated: now }], updated: now, missing: [] }), "");
+            compare(market.missingSymbols, []);
+        }
+
         function test_market_exit_failure_is_not_replaced_by_start_error() {
             const market = make(marketComponent);
             process(market, "marketQueryProcess").finish(1, "", "Fixture market failure");

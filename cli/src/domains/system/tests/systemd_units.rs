@@ -115,7 +115,7 @@ fn systemctl(args: &[&str]) -> CommandSpec {
 fn runtime_probe(name: &str) -> CommandSpec {
     systemctl(&[
         "show",
-        "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
+        "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload",
         name,
     ])
 }
@@ -176,7 +176,7 @@ fn graphical_units_enable_without_starting_until_the_session_is_active() {
             );
             if session == "active" {
                 executor = executor.command(
-                    systemctl(&["--user", "show", "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult", name]),
+                    systemctl(&["--user", "show", "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload", name]),
                     Ok(ExecResult::success(if running { "ActiveState=active" } else { "ActiveState=inactive" })),
                 );
             }
@@ -698,7 +698,7 @@ fn user_unit_probe(
             systemctl(&[
                 "--user",
                 "show",
-                "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
+                "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload",
                 name,
             ]),
             Ok(ExecResult::success(runtime)),
@@ -886,6 +886,30 @@ fn run_reloads_then_changes_system_enablement_with_sudo() {
 }
 
 #[test]
+fn stale_active_system_unit_reloads_without_restarting_it() {
+    let name = "test.service";
+    let observed = "ActiveState=active\nNeedDaemonReload=yes\n";
+    let refreshed = "ActiveState=active\nNeedDaemonReload=no\n";
+    let enablement = || systemctl(&["is-enabled", name]);
+    let executor = script()
+        .command(enablement(), Ok(ExecResult::success("enabled")))
+        .command(runtime_probe(name), Ok(ExecResult::success(observed)))
+        .command(
+            CommandSpec::new("sudo").args(&["systemctl", "daemon-reload"]),
+            Ok(ExecResult::success("")),
+        )
+        .command(enablement(), Ok(ExecResult::success("enabled")))
+        .command(runtime_probe(name), Ok(ExecResult::success(refreshed)));
+    let result = systemd_task(name, UnitScope::System, true)
+        .run(&context(executor))
+        .unwrap();
+    assert_eq!(
+        crate::test_helpers::task_batch(&result).already_ok_count(),
+        1
+    );
+}
+
+#[test]
 fn runtime_drift_plans_elevation_respects_dry_run_and_converges() {
     use std::sync::atomic::{AtomicBool, Ordering};
     for enabled in [true, false] {
@@ -911,7 +935,7 @@ fn runtime_drift_plans_elevation_respects_dry_run_and_converges() {
                     spec.program() == "systemctl"
                         && spec.arguments() == [
                             "show",
-                            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
+                            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload",
                             "test.service",
                         ]
                         && !spec.is_checked()

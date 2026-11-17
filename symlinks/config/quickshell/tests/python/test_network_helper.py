@@ -412,6 +412,21 @@ class NetworkTests(unittest.TestCase):
         self.assertTrue(saved["hidden"])
         self.assertFalse(saved["requiresSsid"])
 
+    def test_active_hidden_access_point_uses_its_saved_profile(self):
+        adapters = [{"name": "wlan0", "managed": True}]
+        aps = [
+            ["*", "", "AA:BB", "65", "WPA2", "wlan0"],
+            ["", "", "AA:CC", "90", "WPA2", "wlan0"],
+        ]
+        entries = network.build_networks(
+            aps, adapters, [profile(hidden=True, ssid="Private")], {"wlan0": "saved-uuid"},
+        )
+        self.assertEqual([(row["name"], row["active"], row["signal"]) for row in entries],
+                         [("Private", True, 65), ("Hidden network", False, 90)])
+        self.assertTrue(entries[0]["saved"] and entries[0]["available"] and entries[0]["hidden"])
+        self.assertFalse(entries[0]["requiresSsid"])
+        self.assertTrue(entries[1]["requiresSsid"])
+
     def test_hidden_access_point_and_bssid_shaped_ssid_remain_distinct(self):
         adapters = [{"name": "wlan0", "managed": True}]
         bssid = "AA:BB:CC:DD:EE:FF"

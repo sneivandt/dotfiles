@@ -15,6 +15,7 @@ wpctl() {
     printf '%s\n' "$*" >> "$HOME/calls"
     [ "${AUDIO_FAIL:-0}" = 0 ] || return 1
     if [ "$1" = get-volume ]; then
+        [ "${READBACK_FAIL:-0}" = 0 ] || return 37
         printf '%s\n' "${VOLUME_STATE:-Volume: 0.55}"
     fi
 }
@@ -64,6 +65,15 @@ class VolumeTests(ScriptFixture):
     def test_audio_failure_does_not_claim_success(self):
         result = self.volume("up", AUDIO_FAIL="1")
         self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.work / "notification").exists())
+
+    def test_readback_failure_keeps_successful_audio_change(self):
+        result = self.volume("up", READBACK_FAIL="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.work / "calls").read_text().splitlines(), [
+            "set-volume --limit 1.5 @DEFAULT_AUDIO_SINK@ 5%+",
+            "get-volume @DEFAULT_AUDIO_SINK@",
+        ])
         self.assertFalse((self.work / "notification").exists())
 
     def test_feedback_is_optional(self):

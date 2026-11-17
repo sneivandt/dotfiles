@@ -4,8 +4,14 @@ set -o nounset
 
 for editor in code-insiders code gvim
 do
-  if command -v "$editor" >/dev/null 2>&1
+  if launcher=$(command -v "$editor" 2>/dev/null)
   then
+    # The managed shim remains on PATH if its package is removed.
+    if [ "$editor" = code-insiders ] &&
+       [ "$launcher" = "${HOME:-}/.local/bin/code-insiders" ] &&
+       [ ! -x /usr/bin/code-insiders ]; then
+      continue
+    fi
     exec "$editor" "$@"
   fi
 done

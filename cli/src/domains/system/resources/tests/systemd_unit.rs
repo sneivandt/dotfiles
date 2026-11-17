@@ -11,7 +11,7 @@ fn expect_runtime(mock: &mut MockExecutor, unit: &str, scope: UnitScope, output:
             .withf(move |spec| {
                 let mut args = vec![
                     "show",
-                    "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
+                    "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload",
                     &unit,
                 ];
                 if scope == UnitScope::User {
@@ -316,7 +316,7 @@ fn disabled_or_system_scope_thunar_units_use_the_regular_systemd_lifecycle() {
         let executor = ScriptedExecutor::new()
             .command(probe(&["is-enabled"]), Ok(enablement))
             .command(
-                probe(&["show", "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult"]),
+                probe(&["show", "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload"]),
                 Ok(ExecResult::success(runtime)),
             );
         let resource = SystemdUnitResource::from_entry(
@@ -492,7 +492,7 @@ fn disabling_a_static_unit_converges_after_stopping_it() {
                 spec.program() == "systemctl"
                     && spec.arguments() == [
                         "show",
-                        "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
+                        "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload",
                         "static.service",
                     ]
                     && !spec.is_checked()
@@ -1126,6 +1126,109 @@ fn offline_enablement_reconciles_reset_install_targets() {
     let repeated =
         process_resources(&ctx, [resource()], &ProcessOpts::strict("configure")).unwrap();
     assert!(matches!(repeated, TaskResult::Batch(stats) if stats.already_ok_count() == 1));
+}
+
+#[cfg(unix)]
+#[test]
+fn live_user_enablement_reconciles_changed_targets_and_preserves_foreign_links() {
+    use crate::engine::{ProcessOpts, process_resources};
+    use crate::test_helpers::ScriptedExecutor;
+    use crate::test_helpers::{ContextBuilder, task_batch};
+
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let home = fixture.path().canonicalize().unwrap();
+    let user_dir = home.join(".config/systemd/user");
+    let old = user_dir.join("old.target.wants");
+    let foreign = user_dir.join("foreign.target.wants");
+    for directory in [&old, &foreign] {
+        std::fs::create_dir_all(directory).unwrap();
+    }
+    let name = "example.service";
+    let unit = user_dir.join(name);
+    std::fs::write(&unit, "[Install]\nWantedBy=new.target\n").unwrap();
+    std::os::unix::fs::symlink(&unit, old.join(name)).unwrap();
+    std::os::unix::fs::symlink("../another.service", foreign.join(name)).unwrap();
+    let probe = || {
+        CommandSpec::new("systemctl")
+            .args(&["--user", "is-enabled", name])
+            .unchecked()
+    };
+    let scripted = ScriptedExecutor::new()
+        .command(probe(), Ok(ExecResult::success("enabled")))
+        .command(probe(), Ok(ExecResult::success("enabled")))
+        .command(
+            CommandSpec::new("systemctl").args(&["--user", "daemon-reload"]),
+            Ok(ExecResult::success("")),
+        )
+        .command(probe(), Ok(ExecResult::success("enabled")));
+    let executor: Arc<dyn Executor> = Arc::new(scripted);
+    let resource = || {
+        let mut resource = offline_unit(&home, name, true);
+        resource.user_manager_available = true;
+        resource.start = false;
+        resource.executor = Arc::clone(&executor);
+        resource.system_user_unit_dirs.clear();
+        resource
+    };
+    let ctx = ContextBuilder::new(home.clone()).overlay(None).build();
+    let preview = process_resources(
+        &ctx.with_dry_run(true),
+        [resource()],
+        &ProcessOpts::strict("configure"),
+    )
+    .unwrap();
+    assert_eq!(task_batch(&preview).changed_count(), 1);
+    assert!(old.join(name).is_symlink());
+    assert!(!user_dir.join("new.target.wants").exists());
+    let resource = resource();
+    assert!(matches!(
+        resource.current_state().unwrap(),
+        ResourceState::Incorrect { .. }
+    ));
+    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    assert!(!old.join(name).is_symlink());
+    assert_eq!(
+        std::fs::read_link(user_dir.join("new.target.wants").join(name)).unwrap(),
+        unit
+    );
+    assert_eq!(
+        std::fs::read_link(foreign.join(name)).unwrap(),
+        Path::new("../another.service")
+    );
+    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+}
+
+#[cfg(unix)]
+#[test]
+fn offline_disable_reports_global_enablement_and_preserves_the_admin_link() {
+    let fixture = tempfile::tempdir().unwrap();
+    let home = fixture.path().join("home");
+    let admin = fixture.path().join("etc/systemd/user");
+    let wants = admin.join("default.target.wants");
+    std::fs::create_dir_all(&wants).unwrap();
+    let name = "example.service";
+    let source = admin.join(name);
+    let link = wants.join(name);
+    std::fs::write(&source, "[Install]\nWantedBy=default.target\n").unwrap();
+    std::os::unix::fs::symlink("../example.service", &link).unwrap();
+    let mut resource = offline_unit(&home, name, false);
+    resource.system_user_unit_dirs = vec![admin];
+    assert!(matches!(
+        resource.current_state().unwrap(),
+        ResourceState::Invalid { reason } if reason.contains("ask an administrator")
+    ));
+    assert_eq!(
+        resource.apply().unwrap(),
+        ResourceChange::unusable(format!(
+            "{name} is enabled for all users by {}; ask an administrator to disable it",
+            link.display()
+        ))
+    );
+    assert_eq!(
+        std::fs::read_link(&link).unwrap(),
+        Path::new("../example.service")
+    );
+    assert!(!home.exists());
 }
 
 #[cfg(unix)]

@@ -224,6 +224,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 "symlinks/config/hypr/hyprland.lua", "symlinks/config/hypr/hyprlock.conf",
             }:
                 enable("desktop_qml")
+            if path.startswith("symlinks/config/systemd/user/") and path.endswith((".service", ".timer")):
+                enable("desktop_qml")
             if path.startswith("symlinks/config/quickshell/"):
                 enable("desktop_python", "desktop_qml")
             if path in {

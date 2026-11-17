@@ -709,7 +709,7 @@ fn winget_task_uses_exact_ids_and_installs_each_missing_package() {
 }
 
 #[test]
-fn vscode_task_queries_once_and_installs_only_missing_extensions() {
+fn vscode_task_installs_only_missing_extensions_and_verifies_the_batch() {
     #[cfg(target_os = "windows")]
     let code_command = "code-insiders.cmd";
     #[cfg(not(target_os = "windows"))]
@@ -734,6 +734,11 @@ fn vscode_task_queries_once_and_installs_only_missing_extensions() {
                 &resolved_code_command,
                 &["--install-extension", "ms-python.python", "--force"],
                 ok(""),
+            ),
+            expect_code_cmd(
+                &resolved_code_command,
+                &["--list-extensions"],
+                ok("github.copilot-chat\nms-python.python\n"),
             ),
         ],
     ));

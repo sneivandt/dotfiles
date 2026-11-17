@@ -196,6 +196,7 @@ PanelWindow {
         id: stocksMenu
         anchorItem: stocksButton
         quotes: bar.markets.quotes
+        missingSymbols: bar.markets.missingSymbols
         updated: bar.markets.updated
         currentDate: bar.currentDate
         loading: bar.markets.loading

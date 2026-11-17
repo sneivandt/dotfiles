@@ -377,6 +377,9 @@ impl SystemdUnitResource {
 
     fn offline_current_state(&self) -> ResourceResult<ResourceState> {
         if !self.enabled {
+            if let Some(state) = self.global_enablement_conflict()? {
+                return Ok(state);
+            }
             return Ok(if self.offline_enabled_links()?.is_empty() {
                 ResourceState::Correct
             } else {
@@ -391,12 +394,48 @@ impl SystemdUnitResource {
             // create it. The enablement link would therefore also be missing.
             return Ok(ResourceState::Missing);
         }
-        let links = self.offline_enablement_links()?;
+        self.enablement_link_state(&self.offline_enablement_links()?, false)
+    }
+
+    fn live_user_link_state(&self) -> ResourceResult<Option<ResourceState>> {
+        if !self.enabled || self.scope != UnitScope::User || self.home.is_none() {
+            return Ok(None);
+        }
+        let unit = self.offline_user_dir()?.join(&self.name);
+        match std::fs::metadata(unit) {
+            Ok(metadata) if metadata.is_file() => {}
+            Ok(_) => return Ok(None),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        }
+        if self.offline_enabled_links()?.is_empty() {
+            return Ok(None);
+        }
+        let links = match self.offline_enablement_links() {
+            Ok(links) => links,
+            // Keep native enablement for aliases, templates and directives
+            // the per-user link reconciler cannot model.
+            Err(ResourceError::NotSupported { .. }) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        Ok(Some(self.enablement_link_state(&links, true)?))
+    }
+
+    fn enablement_link_state(
+        &self,
+        links: &[(PathBuf, PathBuf)],
+        accept_direct_links: bool,
+    ) -> ResourceResult<ResourceState> {
         let mut all_enabled = true;
         let mut any_enabled = false;
-        for (link, source) in &links {
+        for (link, source) in links {
             match std::fs::symlink_metadata(link) {
-                Ok(_) if symlink_references(link, source) => any_enabled = true,
+                Ok(_)
+                    if symlink_references(link, source)
+                        || (accept_direct_links && symlink_points_to(link, source)) =>
+                {
+                    any_enabled = true;
+                }
                 Ok(_) if symlink_points_to(link, source) => {
                     any_enabled = true;
                     all_enabled = false;
@@ -415,7 +454,7 @@ impl SystemdUnitResource {
                 Err(error) => return Err(error.into()),
             }
         }
-        Ok(if !self.offline_obsolete_links(&links)?.is_empty() {
+        Ok(if !self.offline_obsolete_links(links)?.is_empty() {
             ResourceState::Incorrect {
                 current: "obsolete enablement links remain".into(),
             }
@@ -432,8 +471,16 @@ impl SystemdUnitResource {
 
     fn enable_offline(&self) -> ResourceResult<ResourceChange> {
         let links = self.offline_enablement_links()?;
-        let obsolete = self.offline_obsolete_links(&links)?;
-        for (link, source) in &links {
+        self.reconcile_user_links(&links, false)
+    }
+
+    fn reconcile_user_links(
+        &self,
+        links: &[(PathBuf, PathBuf)],
+        accept_direct_links: bool,
+    ) -> ResourceResult<ResourceChange> {
+        let obsolete = self.offline_obsolete_links(links)?;
+        for (link, source) in links {
             let parent = link
                 .parent()
                 .ok_or_else(|| anyhow::anyhow!("enablement link has no parent"))?;
@@ -446,7 +493,12 @@ impl SystemdUnitResource {
                     .map_err(anyhow::Error::from)?,
             )?;
             match std::fs::symlink_metadata(link) {
-                Ok(_) if symlink_references(link, source) => continue,
+                Ok(_)
+                    if symlink_references(link, source)
+                        || (accept_direct_links && symlink_points_to(link, source)) =>
+                {
+                    continue;
+                }
                 Ok(metadata)
                     if metadata.file_type().is_symlink() && symlink_points_to(link, source) =>
                 {
@@ -478,12 +530,31 @@ impl SystemdUnitResource {
     }
 
     fn offline_enabled_links(&self) -> ResourceResult<Vec<PathBuf>> {
-        let user_dir = self.offline_user_dir()?;
-        let directories = match std::fs::read_dir(&user_dir) {
+        self.enablement_links_in(&self.offline_user_dir()?)
+    }
+
+    fn global_enablement_conflict(&self) -> ResourceResult<Option<ResourceState>> {
+        for directory in &self.system_user_unit_dirs {
+            if let Some(link) = self.enablement_links_in(directory)?.first() {
+                return Ok(Some(ResourceState::Invalid {
+                    reason: format!(
+                        "{} is enabled for all users by {}; ask an administrator to disable it",
+                        self.name,
+                        link.display()
+                    ),
+                }));
+            }
+        }
+        Ok(None)
+    }
+
+    fn enablement_links_in(&self, unit_dir: &Path) -> ResourceResult<Vec<PathBuf>> {
+        let directories = match std::fs::read_dir(unit_dir) {
             Ok(directories) => directories,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(error.into()),
         };
+        let user_dir = self.offline_user_dir()?;
         let sources: Vec<_> = std::iter::once(&user_dir)
             .chain(&self.system_user_unit_dirs)
             .map(|directory| directory.join(&self.name))
@@ -523,6 +594,9 @@ impl SystemdUnitResource {
     }
 
     fn disable_offline(&self) -> ResourceResult<ResourceChange> {
+        if let Some(ResourceState::Invalid { reason }) = self.global_enablement_conflict()? {
+            return Ok(ResourceChange::unusable(reason));
+        }
         let links = self.offline_enabled_links()?;
         if links.is_empty() {
             return Ok(ResourceChange::AlreadyCorrect);
@@ -775,6 +849,31 @@ impl Resource for SystemdUnitResource {
             };
         }
         if self.enabled {
+            let link_state = self.live_user_link_state()?;
+            if let Some(ResourceState::Invalid { reason }) = link_state {
+                return Ok(ResourceChange::unusable(reason));
+            }
+            if matches!(
+                link_state,
+                Some(ResourceState::Incorrect { .. } | ResourceState::Missing)
+            ) {
+                let links = self.offline_enablement_links()?;
+                self.reconcile_user_links(&links, true)?;
+                self.executor
+                    .execute(CommandSpec::new("systemctl").args(&["--user", "daemon-reload"]))?;
+                if !self.start {
+                    return Ok(ResourceChange::Applied);
+                }
+                if self.name == FIRST_LOGIN_UNIT {
+                    return self.change_live_unit(&["start", "--no-block"]);
+                }
+                let action = if self.thunar_settings_script.is_some() {
+                    "restart"
+                } else {
+                    "start"
+                };
+                return self.change_live_unit(&[action]);
+            }
             if !self.start {
                 return self.change_live_unit(&["enable"]);
             }
@@ -834,6 +933,12 @@ impl IntrinsicState for SystemdUnitResource {
             return self.alias_state();
         }
         let enablement = self.state_from_is_enabled(&result);
+        if matches!(enablement, ResourceState::Correct)
+            && let Some(state) = self.live_user_link_state()?
+            && !matches!(state, ResourceState::Correct)
+        {
+            return Ok(state);
+        }
         // Missing disabled units need no runtime probe. Ambiguous enablement
         // must keep its diagnostic instead of being treated as converged.
         if !matches!(enablement, ResourceState::Correct)
@@ -846,7 +951,7 @@ impl IntrinsicState for SystemdUnitResource {
         }
         let runtime_args = self.check_args(&[
             "show",
-            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
+            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload",
         ])?;
         let runtime_result = self.executor.execute(
             CommandSpec::new("systemctl")
@@ -864,6 +969,13 @@ impl IntrinsicState for SystemdUnitResource {
             });
         }
         let properties = &runtime_result.stdout;
+        if self.scope == UnitScope::System
+            && systemd_property(properties, "NeedDaemonReload") == Some("yes")
+        {
+            return Ok(ResourceState::Incorrect {
+                current: "systemd has a stale unit definition".into(),
+            });
+        }
         // The first-login service removes its marker after finishing deferred work.
         // Start history can be stale or lost when the user manager restarts.
         if self.enabled

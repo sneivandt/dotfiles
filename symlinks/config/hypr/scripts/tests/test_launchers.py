@@ -12,10 +12,22 @@ from script_test_support import BASH, SCRIPTS, ScriptFixture
 
 
 MOCKS = r"""
+function [ {
+    if builtin [ "${MISSING_INSIDERS:-0}" = 1 ] &&
+       builtin [ "$*" = "! -x /usr/bin/code-insiders ]" ]; then
+        return 0
+    fi
+    builtin [ "$@"
+}
 command() {
     if [ "$1" = "-v" ]; then
         case " $AVAILABLE " in
-            *" $2 "*) return 0 ;;
+            *" $2 "*)
+                if [ "$2" = code-insiders ] && [ "${MISSING_INSIDERS:-0}" = 1 ]; then
+                    printf '%s\n' "$HOME/.local/bin/code-insiders"
+                fi
+                return 0
+                ;;
             *) return 1 ;;
         esac
     fi
@@ -244,7 +256,7 @@ class GitHubDesktopEntryTests(ScriptFixture):
 
 @unittest.skipUnless(BASH, "Requires Bash (Git Bash on Windows)")
 class LauncherTests(unittest.TestCase):
-    def launch(self, name, args, available, cwd=None):
+    def launch(self, name, args, available, cwd=None, missing_insiders=False):
         # Python's Windows argv quoting does not protect literal newlines from
         # Git Bash. Set the fixture arguments inside Bash instead.
         script = MOCKS + "set -- " + shlex.join(args) + "\n"
@@ -261,6 +273,7 @@ class LauncherTests(unittest.TestCase):
                 "BASH_ENV": "",
                 "ENV": "",
                 "AVAILABLE": available,
+                "MISSING_INSIDERS": "1" if missing_insiders else "0",
             },
         )
 
@@ -279,6 +292,12 @@ class LauncherTests(unittest.TestCase):
         self.assert_launch(
             "choose-editor.sh", [], "code-insiders code gvim", ["code-insiders"]
         )
+
+    def test_missing_insiders_backing_binary_uses_stable_editor(self):
+        result = self.launch("choose-editor.sh", ["report.txt"], "code-insiders code",
+                             missing_insiders=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.split("\0")[:-1], ["code", "report.txt"])
 
     def test_browser_aliases_still_open_apps(self):
         cases = [
@@ -325,13 +344,14 @@ class LauncherTests(unittest.TestCase):
 
     def test_browser_existing_relative_files_are_not_hostnames(self):
         with tempfile.TemporaryDirectory() as directory:
-            for target in ("report.html", "file with spaces.html", "example.invalid", "youtube", "PRIME VIDEO"):
+            for target in ("report.html", "file with spaces.html", "-local.html", "example.invalid", "youtube", "PRIME VIDEO"):
                 with self.subTest(target=target):
                     with open(os.path.join(directory, target), "w", encoding="utf-8") as output:
                         output.write("fixture")
                     result = self.launch("choose-browser.sh", [target], "chromium", cwd=directory)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual(result.stdout.split("\0")[:-1], ["chromium", target])
+                    filename = "./" + target if target.startswith("-") else target
+                    self.assertEqual(result.stdout.split("\0")[:-1], ["chromium", filename])
 
     def test_missing_app_is_reported(self):
         for name in ("choose-editor.sh", "choose-browser.sh"):

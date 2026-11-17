@@ -8,7 +8,10 @@ do
   then
     # An explicit local file takes precedence over a named website shortcut.
     if [ "$#" -eq 1 ] && [ -e "$1" ]; then
-      exec "$browser" "$1"
+      case "$1" in
+        -*) exec "$browser" "./$1" ;;
+        *) exec "$browser" "$1" ;;
+      esac
     fi
     normalized=$(printf '%s' "$*" | tr '[:upper:]' '[:lower:]')
 

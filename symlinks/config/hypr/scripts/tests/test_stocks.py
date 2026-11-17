@@ -266,6 +266,15 @@ class StocksCacheTests(unittest.TestCase):
             self.path.write_text(text)
             self.assertEqual(stocks.quotes(self.cache, self.fetch), {"quotes": [], "updated": 0})
 
+    def test_main_reports_missing_symbols_without_hiding_available_quotes(self):
+        available, *missing = self.cached["quotes"]
+        with patch.object(stocks, "quotes", return_value={"quotes": [available], "updated": 1}), \
+             patch("builtins.print") as output:
+            self.assertEqual(stocks.main(), 0)
+        payload = json.loads(output.call_args.args[0])
+        self.assertEqual(payload["quotes"], [available])
+        self.assertEqual(payload["missing"], [quote["symbol"] for quote in missing])
+
     def test_main_reports_cache_failure_with_stale_payload(self):
         self.write_cache()
         with patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache.parent)}), \

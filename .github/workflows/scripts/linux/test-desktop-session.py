@@ -50,6 +50,12 @@ def main():
                    WLR_RENDERER='gles2' if native else 'pixman', WLR_LIBINPUT_NO_DEVICES='1',
                    LIBGL_ALWAYS_SOFTWARE='0' if native else '1', QT_QUICK_BACKEND='software',
                    HYPRLAND_TRACE='1', HYPRLAND_LOG_WLR='1', HYPRLAND_NO_SD_NOTIFY='1', HYPRLAND_NO_SD_VARS='1')
+        units = SOURCE / 'symlinks/config/systemd/user'
+        subprocess.run(
+            ['systemd-analyze', '--user', '--man=no', '--recursive-errors=no', 'verify',
+             *sorted(units.glob('*.service')), *sorted(units.glob('*.timer'))],
+            env=env, check=True, timeout=25,
+        )
         check_hypr_configuration(env)
         processes = []
         logs = []

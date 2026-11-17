@@ -57,7 +57,7 @@ impl CommandLocks {
         let home = RunLock::acquire_path_with_wait(
             &home_lock_path(home, platform)?,
             command,
-            first_login_wait(env),
+            env.var(FIRST_LOGIN_WAIT_ENV).as_deref(),
         )?;
         Ok(Self {
             _repository: Some(repository),
@@ -89,10 +89,6 @@ impl CommandLocks {
             _home: RunLock::acquire_path(&path, command)?,
         }))
     }
-}
-
-fn first_login_wait(env: &dyn Env) -> bool {
-    env.var(FIRST_LOGIN_WAIT_ENV).as_deref() == Some("1")
 }
 
 fn home_lock_path(home: &Path, platform: Platform) -> Result<PathBuf> {
@@ -220,14 +216,14 @@ impl RunLock {
         command: &str,
     ) -> Result<Self> {
         let path = repository_state_path(root, env, platform, LOCK_NAME)?;
-        Self::acquire_path_with_wait(&path, command, first_login_wait(env))
+        Self::acquire_path_with_wait(&path, command, env.var(FIRST_LOGIN_WAIT_ENV).as_deref())
     }
 
     pub(crate) fn acquire_path(path: &Path, command: &str) -> Result<Self> {
-        Self::acquire_path_with_wait(path, command, false)
+        Self::acquire_path_with_wait(path, command, None)
     }
 
-    fn acquire_path_with_wait(path: &Path, command: &str, wait: bool) -> Result<Self> {
+    fn acquire_path_with_wait(path: &Path, command: &str, wait: Option<&str>) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating run-lock directory {}", parent.display()))?;
@@ -243,7 +239,7 @@ impl RunLock {
                 .with_context(|| format!("validating run lock {}", path.display()))?;
         }
 
-        if wait {
+        if matches!(wait, Some("1")) {
             file.lock()
                 .with_context(|| format!("waiting for run lock {}", path.display()))?;
         } else {

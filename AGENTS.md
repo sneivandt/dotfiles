@@ -65,6 +65,11 @@ changes usually do not need engine changes.
 - Run the smallest useful checks with the pinned toolchain. Broaden for shared
   behavior, uncertain impact, or failures. Do not run unrelated suites or repeat
   passing checks unless relevant inputs changed. Keep commit hooks lightweight.
+- Before full validation or a large Rust build in a worktree, use the
+  [validation cache preview](docs/content/development/testing.md#validation-cache).
+  Use the coordinator's scoped cleanup for its own cache and report any eviction.
+  Get explicit authorization before deleting a worktree, toolchain, or saved
+  agent artifact.
 - For skills and prose, check metadata and links as affected. Use
   [docs/README.md](docs/README.md#checks) to decide whether a site build or browser
   review adds evidence; neither is automatic for Markdown or mixed patches.

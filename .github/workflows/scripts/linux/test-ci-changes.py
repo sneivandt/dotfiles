@@ -564,15 +564,47 @@ class PrePushCoordinatorTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "WSL is unavailable"):
                 PRE_PUSH["wsl_command"]("base", "head", False)
 
-    def test_wsl_cache_is_not_shared_with_windows(self):
-        root = Path(tempfile.gettempdir()) / "mounted source"
-        with patch.object(sys, "platform", "linux"), patch.dict(os.environ, {"WSL_INTEROP": "fixture"}):
-            cache = PRE_PUSH["target_cache"](root)
-            self.assertTrue(cache.is_relative_to(Path.home() / ".cache/dotfiles-pre-push"))
-            self.assertNotEqual(cache, root / "cli/target")
-            self.assertEqual(cache, PRE_PUSH["target_cache"](root))
-        with patch.object(sys, "platform", "win32"):
-            self.assertEqual(PRE_PUSH["target_cache"](root), root / "cli/target")
+    def test_validation_cache_is_separate_by_checkout_and_platform(self):
+        root = Path(tempfile.gettempdir()) / "source checkout"
+        cache = PRE_PUSH["target_cache"](root)
+        self.assertTrue(cache.is_relative_to(Path.home() / ".cache/dotfiles-pre-push" / sys.platform))
+        self.assertNotEqual(cache, root / "cli/target")
+        self.assertEqual(cache, PRE_PUSH["target_cache"](root))
+        self.assertNotEqual(cache, PRE_PUSH["target_cache"](root.with_name("another checkout")))
+        other_platform = "linux" if sys.platform == "win32" else "win32"
+        with patch.object(sys, "platform", other_platform):
+            self.assertNotEqual(cache, PRE_PUSH["target_cache"](root))
+
+    def test_validation_cache_only_clears_its_own_artifacts_under_pressure(self):
+        minimum = PRE_PUSH["MIN_CACHE_FREE"]
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            cache = Path(directory) / "target"
+            cache.mkdir()
+            (cache / "artifact").touch()
+            sibling = cache.with_name("other-build")
+            sibling.touch()
+            functions = PRE_PUSH["locked_cache"].__wrapped__.__globals__
+            with patch.dict(functions, {"free_cache_space": Mock(return_value=minimum)}):
+                with PRE_PUSH["locked_cache"](cache):
+                    self.assertTrue((cache / "artifact").is_file())
+                    with self.assertRaisesRegex(RuntimeError, "Could not lock validation cache"):
+                        with PRE_PUSH["locked_cache"](cache):
+                            self.fail("A second validation obtained the lock")
+            with patch.dict(functions, {"free_cache_space": Mock(side_effect=[minimum - 1, minimum])}):
+                with PRE_PUSH["locked_cache"](cache):
+                    self.assertFalse(cache.exists())
+                    self.assertTrue(sibling.is_file())
+            with patch.dict(functions, {"free_cache_space": Mock(return_value=minimum - 1)}):
+                with self.assertRaisesRegex(RuntimeError, "Free at least 10 GiB"):
+                    with PRE_PUSH["locked_cache"](cache):
+                        self.fail("Validation started with insufficient free space")
+
+    def test_cache_preview_does_not_create_or_remove_anything(self):
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()) as output:
+            cache = Path(directory) / "uncreated" / "target"
+            PRE_PUSH["cache_status"](cache)
+            self.assertIn(str(cache), output.getvalue())
+            self.assertFalse(cache.parent.exists())
 
     def test_explicit_baseline_does_not_query_github(self):
         with patch.dict(PRE_PUSH["comparison_base"].__globals__, {"git": lambda *args: "original-sha"}):

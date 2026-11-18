@@ -9,6 +9,7 @@ files = [
 [arch]
 files = [
   { source = "pacman.conf", merge = "ini" },
+  { source = "systemd/system/paccache.service.d/retention.conf", merge = "ini" },
 ]
 
 [arch-desktop]

@@ -120,6 +120,11 @@ machine, including packages absent from this checkout's declarations. Review
 its transaction. For [custom packages](#custom-arch-packages), run dotfiles
 first so Paru sees the refreshed recipe snapshots.
 
+The weekly `paccache.timer` keeps two cached versions of each package.
+On an existing installation, run `dotfiles update --only system-files` to
+install the retention setting, then `sudo systemctl daemon-reload` to load it.
+Run `paccache -d -k2` to preview the files eligible for removal.
+
 ### Windows
 
 Winget uses exact IDs and installs missing packages. Dotfiles does not run

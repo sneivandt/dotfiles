@@ -171,6 +171,9 @@ debug = 0
 
 [profile.ci]
 inherits = "dev"
+# Local validation reuses build artifacts across commits. Bound the compiler's
+# cache growth while leaving incremental builds enabled for development.
+incremental = false
 # The CLI is compiled several times for build, lint, test, and coverage jobs.
 # Its tests spend little time executing, so optimizing the workspace crate adds
 # compile and link time without helping CI throughput.

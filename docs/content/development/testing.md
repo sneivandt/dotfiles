@@ -240,7 +240,7 @@ On Windows it runs documentation and selected native Rust, configuration,
 PowerShell wrapper, prompt, and Python fixtures in a temporary native checkout.
 It then runs the Linux worker through the default WSL distribution. Linux
 snapshots live under `/tmp`, and WSL Cargo artifacts use a separate Linux
-cache, never the Windows target directory. WSL reads Git objects from the
+cache. WSL reads Git objects from the
 source checkout but executes fixtures on the Linux filesystem.
 
 The Windows coordinator checks documentation once and passes the exact commit's
@@ -251,6 +251,23 @@ invocation retains Windows cross-target Clippy and reports the native-runtime ga
 Documentation-only work can use the native checker above without provisioning
 WSL. Host installation and full application integration remain disposable-runner
 coverage; safe shell and editor fixtures are included locally when selected.
+
+#### Validation cache
+
+The coordinator keeps a separate Cargo cache for each checkout and platform
+under `~/.cache/dotfiles-pre-push/`. Preview its location, approximate size,
+and free space without running checks or changing the cache:
+
+```sh
+python3 -B .github/workflows/scripts/linux/pre-push.py --cache-status
+```
+
+On Windows use `python` in place of `python3`. Run the preview from WSL to
+inspect the Linux cache. Before checks that compile Rust, the coordinator
+locks its cache. If the cache filesystem has less than 10 GiB free, it clears
+its own build output and checks again. Validation stops if space is still below
+10 GiB. The next run rebuilds any evicted artifacts. Ordinary Cargo builds
+use the checkout's own build directory.
 
 If documentation already passed the native checker for this commit, add
 `--docs-checked <commit>` to both commands, using the SHA printed by the native

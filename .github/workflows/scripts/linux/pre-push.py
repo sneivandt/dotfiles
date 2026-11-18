@@ -2,6 +2,7 @@
 """Validate committed inputs in an isolated checkout using CI's path policy."""
 
 import argparse
+from contextlib import ExitStack, contextmanager
 import hashlib
 import json
 import os
@@ -9,6 +10,7 @@ from pathlib import Path
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -16,6 +18,8 @@ import tomllib
 
 
 SCRIPTS = Path(__file__).resolve().parent
+GIB = 1024 ** 3
+MIN_CACHE_FREE = 10 * GIB
 
 
 def plan(selection, msrv, docs_checked=False, windows_checked=False):
@@ -168,23 +172,86 @@ def snapshot(root, head, destination):
 
 
 def target_cache(root):
-    if sys.platform == "linux" and (
-        os.environ.get("WSL_INTEROP") or os.environ.get("WSL_DISTRO_NAME")
-        or re.match(r"^/mnt/[a-z]/", str(root))
-    ):
-        identity = hashlib.sha256(str(root).encode()).hexdigest()[:16]
-        return Path.home() / ".cache/dotfiles-pre-push" / identity / "target"
-    return root / "cli/target"
+    identity = hashlib.sha256(os.fsencode(os.path.normcase(root.resolve()))).hexdigest()[:16]
+    return Path.home() / ".cache/dotfiles-pre-push" / sys.platform / identity / "target"
+
+
+def free_cache_space(cache):
+    location = cache
+    while not location.exists():
+        location = location.parent
+    return shutil.disk_usage(location).free
+
+
+def cache_directory(cache):
+    try:
+        info = cache.lstat()
+    except FileNotFoundError:
+        return False
+    junction = sys.platform == "win32" and info.st_reparse_tag == stat.IO_REPARSE_TAG_MOUNT_POINT
+    if not stat.S_ISDIR(info.st_mode) or junction or os.path.ismount(cache):
+        raise RuntimeError(f"Validation cache must be a regular directory: {cache}")
+    return True
+
+
+def cache_status(cache):
+    exists = cache_directory(cache)
+    free = free_cache_space(cache)
+    size = sum(
+        (Path(directory) / name).lstat().st_size
+        for directory, _, files in os.walk(cache)
+        for name in files
+    )
+    print(f"Validation cache: {cache}\n"
+          f"Files: {size / GIB:.2f} GiB. Free: {free / GIB:.2f} GiB. "
+          f"Minimum free: {MIN_CACHE_FREE / GIB:.0f} GiB.", flush=True)
+    if free < MIN_CACHE_FREE:
+        action = ("Validation would attempt to clear this cache before building." if exists
+                  else "Validation would stop because there is no cache to clear.")
+        print(action, flush=True)
+
+
+@contextmanager
+def locked_cache(cache):
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    # Keep the lock outside the directory that may be cleared. File locks are
+    # released automatically if the coordinator exits or is interrupted.
+    with (cache.parent / "validation.lock").open("ab") as lock:
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            raise RuntimeError(f"Could not lock validation cache {cache}: {error}") from error
+        exists = cache_directory(cache)
+        free = free_cache_space(cache)
+        if free < MIN_CACHE_FREE and exists:
+            print(f"Clearing validation cache at {cache} with {free / GIB:.2f} GiB free.", flush=True)
+            shutil.rmtree(cache)
+            free = free_cache_space(cache)
+        if free < MIN_CACHE_FREE:
+            raise RuntimeError(f"Only {free / GIB:.2f} GiB free on the filesystem for {cache}. "
+                               f"Free at least {MIN_CACHE_FREE / GIB:.0f} GiB before running validation.")
+        yield
 
 
 def execute(root, head, commands, selection):
-    with tempfile.TemporaryDirectory(prefix="dotfiles-pre-push-", dir="/tmp" if sys.platform == "linux" else None) as temporary:
+    cache = target_cache(root)
+    with ExitStack() as stack:
+        if any(selection["run_" + check] for check in ("rust_checks", "validate_config", "config_drift")):
+            stack.enter_context(locked_cache(cache))
+        temporary = stack.enter_context(tempfile.TemporaryDirectory(
+            prefix="dotfiles-pre-push-", dir="/tmp" if sys.platform == "linux" else None,
+        ))
         temp = Path(temporary)
         checkout = temp / "source"
         snapshot(root, head, checkout)
         env = {key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "DOTFILES_"))}
         env.update(DOTFILES_CHECK_STRICT="1", XDG_STATE_HOME=str(temp / "state"),
-                   DOTFILES_LOG_DIR=str(temp / "logs"), CARGO_TARGET_DIR=str(target_cache(root)),
+                   DOTFILES_LOG_DIR=str(temp / "logs"), CARGO_TARGET_DIR=str(cache),
                    RUSTUP_AUTO_INSTALL="0", DIR=str(checkout), DOCS_TEST_PYTHON=sys.executable)
         if sys.platform == "linux":
             tools = []
@@ -223,6 +290,7 @@ def main():
     parser.add_argument("--base", help="explicit original verified baseline (default: verify origin/main's CI, recovering to a successful ancestor)")
     parser.add_argument("--head", default="HEAD", help="commit to validate (default: HEAD)")
     parser.add_argument("--plan", action="store_true", help="print selected checks without running them")
+    parser.add_argument("--cache-status", action="store_true", help="preview cache cleanup and exit without running checks")
     docs = parser.add_mutually_exclusive_group()
     docs.add_argument("--docs-checked", metavar="COMMIT",
                       help="reuse successful native documentation checks for this exact commit")
@@ -237,6 +305,9 @@ def main():
     if args.windows_checked and sys.platform != "linux":
         parser.error("--windows-checked is only for the Linux worker")
     root = Path(git(SCRIPTS, "rev-parse", "--show-toplevel"))
+    if args.cache_status:
+        cache_status(target_cache(root))
+        return
     head = git(root, "rev-parse", "--verify", args.head + "^{commit}")
     base, recovery = comparison_base(root, args.base, head)
     for option, value in (

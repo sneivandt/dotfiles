@@ -173,13 +173,16 @@ advisory. The exception expires automatically; other advisories still block
 publication, including new findings in the same packages. The audit prints
 the full report and a warning when it uses the exception.
 
-This is a temporary risk acceptance, not a fix. No patched release was available
-when the exception was added on 17 November. The affected dependency paths are
-documentation build and type-check tooling; exploitation requires a malicious
-glob pattern and matching input. The public site serves static files, not a
-Node service accepting glob patterns. Builds still process repository input,
-so keep pull-request jobs unprivileged and do not treat the dependency as safe
-for untrusted input.
+No patched release was available when the exception was added on 17 November.
+The picomatch maintainer disputes the advisory and closed the proposed fix
+without merging it. He argues that glob patterns behave like regular expressions
+and callers should prevent untrusted users from supplying them.
+[Upstream fix discussion](https://github.com/micromatch/picomatch/pull/235)
+
+The affected dependency paths are documentation build and type-check tooling.
+The public site serves static files. Builds still process repository input, so
+keep pull-request jobs unprivileged and treat untrusted glob patterns as a
+denial-of-service risk.
 
 The weekly security audit remains strict and continues reporting the advisory.
 Upgrade when a patched release is available, remove the exception, and run the

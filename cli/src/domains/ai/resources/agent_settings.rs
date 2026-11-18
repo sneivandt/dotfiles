@@ -238,13 +238,17 @@ fn set_editable_toml(
     let segments: Vec<_> = setting.key.split('.').collect();
     let (last, parents) = segments.split_last().context("empty settings path")?;
     let mut table: &mut dyn toml_edit::TableLike = document.as_table_mut();
+    let mut inline_parent = false;
     for segment in parents {
         if !table.contains_key(segment) {
             table.insert(segment, toml_edit::Item::Table(toml_edit::Table::new()));
         }
         table = table
             .get_mut(segment)
-            .and_then(toml_edit::Item::as_table_like_mut)
+            .and_then(|item| {
+                inline_parent = item.is_inline_table();
+                item.as_table_like_mut()
+            })
             .with_context(|| {
                 format!(
                     "cannot set '{}': '{segment}' is not a TOML table",
@@ -260,6 +264,10 @@ fn set_editable_toml(
         .parse::<toml_edit::DocumentMut>()?
         .remove("value")
         .context("serialized setting missing")?;
+    // Replacing an entry directly bypasses InlineTable's conversion on insert.
+    if inline_parent {
+        value.make_value();
+    }
     if let (Some(old), Some(new)) = (
         table.get(last).and_then(toml_edit::Item::as_value),
         value.as_value_mut(),
@@ -306,7 +314,18 @@ fn apply_document(settings: &[AgentSettingResource], path: &Path) -> Result<Reso
             for setting in settings {
                 set_editable_toml(&mut document, setting)?;
             }
-            document.to_string()
+            let serialized = document.to_string();
+            let updated: toml::Table = toml::from_str(&serialized)
+                .with_context(|| format!("checking serialized settings for {}", path.display()))?;
+            for setting in settings {
+                anyhow::ensure!(
+                    setting.current_toml_value(&updated) == Some(&setting.desired_value),
+                    "serialized settings for {} did not preserve the desired value of '{}'",
+                    path.display(),
+                    setting.key
+                );
+            }
+            serialized
         }
     };
     if !serialized.ends_with('\n') {
@@ -582,6 +601,61 @@ mod tests {
         assert!(after.contains("# preferred model"));
         assert!(after.starts_with("# My settings\n"));
         assert!(after.ends_with("# Integration notes\n[mcp_servers.example]\ncommand = 'tool' # do not change\noptions = { x = 1, y = 2 }\n"));
+    }
+
+    #[test]
+    fn replaces_existing_structured_values_in_inline_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let before = r#"skills = { config = [{ name = "documentation", enabled = false }], include_instructions = false } # skill preferences
+shell_environment_policy = { set = { TERM = "dumb" }, inherit = "core" } # shell preferences
+"#;
+        let desired: toml::Table = toml::from_str(
+            r#"
+rules = [{ name = "documentation", enabled = false }, { name = "formatting", enabled = false }]
+variables = {}
+"#,
+        )
+        .unwrap();
+        std::fs::write(&path, before).unwrap();
+        let documents = AgentSettingsDocument::group(
+            [
+                ("skills.config", "rules"),
+                ("shell_environment_policy.set", "variables"),
+            ]
+            .map(|(key, value)| {
+                AgentSettingResource::new(
+                    "codex".into(),
+                    key.into(),
+                    desired[value].clone(),
+                    SettingsFormat::Toml,
+                    path.clone(),
+                )
+            })
+            .into(),
+        )
+        .unwrap();
+        let document = &documents[0];
+        assert_eq!(document.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(document.current_state().unwrap(), ResourceState::Correct);
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let updated: toml::Table = toml::from_str(&contents).unwrap();
+        assert_eq!(updated["skills"]["config"], desired["rules"]);
+        assert_eq!(
+            updated["skills"]["include_instructions"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            updated["shell_environment_policy"]["set"],
+            desired["variables"]
+        );
+        assert_eq!(
+            updated["shell_environment_policy"]["inherit"].as_str(),
+            Some("core")
+        );
+        assert!(contents.contains("# skill preferences"));
+        assert!(contents.contains("# shell preferences"));
     }
 
     #[cfg(any(unix, windows))]

@@ -157,7 +157,7 @@ function Test-UpdateArgumentForwarding {
     try {
         $originalSkipSelfUpdate = $env:DOTFILES_SKIP_SELF_UPDATE
         $env:DOTFILES_SKIP_SELF_UPDATE = '1'
-        $output = & $wrapper update -p base -n --skip 'agent-packages,vscode-extensions' 2>&1
+        $output = & $wrapper update --no-repo-update -p base -n --skip 'agent-packages,vscode-extensions' 2>&1
         $text = ($output | Out-String)
         $plain = $text -replace "$([char]27)\[[0-9;]*m", ''
 

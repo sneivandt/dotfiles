@@ -117,7 +117,7 @@ test_install_uninstall_base_profile()
 
   # Run install
   log_verbose "Running install..."
-  "$BINARY_PATH" update --root "$DIR" -p base --skip agent-packages
+  "$BINARY_PATH" update --no-repo-update --root "$DIR" -p base --skip agent-packages
   log_verbose "Install complete"
 
   # Verify representative symlinks were created
@@ -136,7 +136,7 @@ test_install_uninstall_base_profile()
   git_config_state=$(stat -c '%d:%i:%y:%z' "$HOME/.config/git/config")
 
   log_verbose "Running second install to check convergence..."
-  "$BINARY_PATH" update --root "$DIR" -p base --skip agent-packages
+  "$BINARY_PATH" update --no-repo-update --root "$DIR" -p base --skip agent-packages
   assert_installed_unchanged "$HOME/.bashrc" "$DIR/symlinks/bashrc" "$snapshot/bashrc" "$bashrc_state"
   assert_installed_unchanged "$HOME/.zshrc" "$DIR/symlinks/zshrc" "$snapshot/zshrc" "$zshrc_state"
   assert_installed_unchanged "$HOME/.config/git/config" "$DIR/symlinks/config/git/config" "$snapshot/git-config" "$git_config_state"

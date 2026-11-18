@@ -135,7 +135,7 @@ function Test-InstallUninstallBaseProfile {
     $psProfileSnapshot = [System.IO.Path]::GetTempFileName()
     try {
         Write-Information "Running install..." -InformationAction Continue
-        & $env:BINARY_PATH update --root $env:DIR -p base --skip packages,agent-packages,vscode-extensions
+        & $env:BINARY_PATH update --no-repo-update --root $env:DIR -p base --skip packages,agent-packages,vscode-extensions
         if ($LASTEXITCODE -ne 0) {
             throw "Install command failed with exit code $LASTEXITCODE"
         }
@@ -155,7 +155,7 @@ function Test-InstallUninstallBaseProfile {
         $gitConfigState = Get-LinkState $gitConfig
         $psProfileState = Get-LinkState $psProfile
         Write-Information "Running second install to check convergence..." -InformationAction Continue
-        & $env:BINARY_PATH update --root $env:DIR -p base --skip packages,agent-packages,vscode-extensions
+        & $env:BINARY_PATH update --no-repo-update --root $env:DIR -p base --skip packages,agent-packages,vscode-extensions
         if ($LASTEXITCODE -ne 0) {
             throw "Second install command failed with exit code $LASTEXITCODE"
         }

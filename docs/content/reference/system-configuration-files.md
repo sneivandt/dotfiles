@@ -78,10 +78,11 @@ and section headers must have matching, non-nested brackets. Bare flags such as
 `Color` remain valid inside a section.
 
 PAM needs an existing service file and a stack of the same type as each fragment rule.
-An existing rule keeps its position. Dotfiles refuses to add or deduplicate rules
-in a stack with a numeric jump declared in the service file, such as `success=1`.
-It also refuses to deduplicate rules in a stack that uses `include`, since an
-included jump may cross the removed rules. Review the installed stack before retrying.
+An existing rule keeps its position. If several rules in a stack use the same
+module path, Dotfiles preserves all of them when one matches the fragment.
+Otherwise, it stops so you can review which installed rule should change.
+Dotfiles also refuses to add rules to a stack with a numeric jump declared in the
+service file, such as `success=1`. Review the installed stack before retrying.
 
 If the same module name appears under different paths in the stack, make the
 fragment use the intended path before retrying. Dotfiles skips blank lines and

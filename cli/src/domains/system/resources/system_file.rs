@@ -810,7 +810,6 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
         let mut last_in_stack = None;
         let mut matching = Vec::new();
         let mut has_jump = false;
-        let mut has_include = false;
         for (index, line) in lines.iter().enumerate() {
             let code = line.code.trim();
             let Some((current_facility, fields)) = code.split_once(char::is_whitespace) else {
@@ -822,7 +821,6 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
             last_in_stack = Some(index);
             if let Some((control, _)) = pam_control_and_module(fields) {
                 has_jump |= pam_has_jump(control);
-                has_include |= control.eq_ignore_ascii_case("include");
             }
             if let Ok((_, current_module)) = pam_rule_identity(code) {
                 if current_module == module {
@@ -839,27 +837,34 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
         let Some(last_in_stack) = last_in_stack else {
             bail!("PAM service has no {facility} stack; refusing to synthesize one");
         };
-        // Changing the number of rules can redirect a relative jump. Deleting
-        // duplicates can also redirect jumps originating in an included file.
-        anyhow::ensure!(
-            !(has_jump && matching.len() != 1 || has_include && matching.len() > 1),
-            "PAM {facility} stack has jumps or includes that could be affected by adding or removing {module}. Review the installed stack before retrying"
-        );
-
         let replacement = PamLine {
             text: rule,
             code: pam_code(rule).to_string(),
         };
-        if let Some((&first, duplicates)) = matching.split_first() {
-            let installed = lines.get_mut(first).context("missing matched PAM rule")?;
-            if installed.code.trim() != replacement.code {
-                *installed = replacement;
+        match matching.as_slice() {
+            [] => {
+                // Adding a rule can change where a relative jump lands.
+                anyhow::ensure!(
+                    !has_jump,
+                    "PAM {facility} stack has a jump that could be affected by adding {module}. Review the installed stack before retrying"
+                );
+                lines.insert(last_in_stack.saturating_add(1), replacement);
             }
-            for index in duplicates.iter().rev() {
-                lines.remove(*index);
+            [index] => {
+                let installed = lines.get_mut(*index).context("missing matched PAM rule")?;
+                if installed.code.trim() != replacement.code {
+                    *installed = replacement;
+                }
             }
-        } else {
-            lines.insert(last_in_stack.saturating_add(1), replacement);
+            _ => {
+                // Separate invocations of the same module can be intentional.
+                anyhow::ensure!(
+                    matching.iter().any(|index| lines
+                        .get(*index)
+                        .is_some_and(|line| line.code.trim() == replacement.code)),
+                    "multiple PAM {facility} rules use {module}, and none matches the fragment. Review the installed rules and the fragment before retrying"
+                );
+            }
         }
     }
     let mut rendered = String::new();
@@ -1389,7 +1394,6 @@ mod tests {
         for current in [
             fragment,
             "# retained\nauth required keyring.so old_option\n",
-            "auth optional keyring.so\nauth optional keyring.so\n",
         ] {
             let merged = merge_pam(current, fragment).unwrap();
             assert!(merged.ends_with(fragment), "{merged}");
@@ -1403,6 +1407,28 @@ mod tests {
             merge_pam("session optional other.so\n", fragment).is_err(),
             "a genuinely absent facility must still be rejected"
         );
+    }
+
+    #[test]
+    fn pam_merge_preserves_every_invocation_when_one_rule_matches() {
+        let fragment =
+            "auth sufficient pam_listfile.so item=user sense=allow onerr=fail file=/etc/allow-a\n";
+        let other =
+            "auth sufficient pam_listfile.so item=user sense=allow onerr=fail file=/etc/allow-b\n";
+        let fallback = "auth required pam_deny.so\n";
+        for current in [
+            format!("{fragment}{other}{fallback}"),
+            format!("{other}{fragment}{fallback}"),
+            format!("{fragment}{fragment}{fallback}"),
+            format!("auth [success=1 default=ignore] pam_permit.so\n{other}{fragment}{fallback}"),
+            format!("auth include system-auth\n{other}{fragment}{fallback}"),
+        ] {
+            assert_eq!(merge_pam(&current, fragment).unwrap(), current);
+        }
+        let current = format!("{other}{fragment}{fallback}");
+        let changed = fragment.replace("allow-a", "allow-c");
+        let error = merge_pam(&current, &changed).unwrap_err().to_string();
+        assert!(error.contains("none matches the fragment"), "{error}");
     }
 
     #[test]
@@ -1428,15 +1454,8 @@ mod tests {
     fn pam_merge_refuses_to_change_stack_length_around_jumps() {
         let fragment = "auth optional keyring.so\n";
         let jump = "-AUTH [success = \\\n    1 default=die] pam_permit.so\n";
-        for current in [
-            jump.to_string(),
-            format!("{jump}auth optional keyring.so\nauth optional keyring.so\n"),
-            "auth include system-auth\nauth optional keyring.so\nauth optional keyring.so\n"
-                .to_string(),
-        ] {
-            let error = merge_pam(&current, fragment).unwrap_err().to_string();
-            assert!(error.contains("could be affected"), "{error}");
-        }
+        let error = merge_pam(jump, fragment).unwrap_err().to_string();
+        assert!(error.contains("could be affected"), "{error}");
 
         let other_facility = format!("{jump}session required pam_permit.so\n");
         let session = "session optional keyring.so\n";
@@ -1472,16 +1491,28 @@ mod tests {
         let stage = root.join("stage");
         fs::create_dir(&stage).unwrap();
         fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
-        let installed = "auth [success=1 default=die] pam_permit.so\n\
-            auth required pam_permit.so\n";
-        fs::write(&target, installed).unwrap();
         let owner = fs::metadata(&root).unwrap().uid();
-
-        let result =
-            prepare_in_private_stage(&target, "auth optional keyring.so\n", "pam", &stage, owner);
-        assert!(result.is_err());
-        assert_eq!(fs::read_to_string(target).unwrap(), installed);
-        assert_eq!(fs::read_dir(stage).unwrap().count(), 0);
+        let fragment = "auth optional keyring.so\n";
+        for (installed, expected) in [
+            (
+                "auth [success=1 default=die] pam_permit.so\nauth required pam_permit.so\n",
+                None,
+            ),
+            (
+                "auth optional keyring.so first\nauth optional keyring.so second\n",
+                None,
+            ),
+            (
+                "auth optional keyring.so first\nauth optional keyring.so\n",
+                Some("already-correct"),
+            ),
+        ] {
+            fs::write(&target, installed).unwrap();
+            let result = prepare_in_private_stage(&target, fragment, "pam", &stage, owner);
+            assert_eq!(result.ok(), expected, "{installed}");
+            assert_eq!(fs::read_to_string(&target).unwrap(), installed);
+            assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+        }
     }
 
     #[test]

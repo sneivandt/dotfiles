@@ -116,6 +116,24 @@ class GitTemplatesTests(unittest.TestCase):
                        cwd=self.repo, env=self.env, check=True)
         self.assertIn("keep", self.git("branch", "--format=%(refname:short)").splitlines())
 
+    def test_merge_cleanup_uses_branch_names_when_tags_collide(self):
+        self.git("branch", "release")
+        self.git("branch", "merged-feature")
+        self.git("tag", "origin/release")
+        self.git("tag", "merged-feature")
+        self.git("switch", "-q", "release")
+        self.git("commit", "--allow-empty", "-qm", "advance release")
+        self.git("update-ref", "refs/remotes/origin/release", "HEAD")
+        self.git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/release")
+        self.git("switch", "-q", "main")
+
+        self.git("merge", "--ff-only", "refs/remotes/origin/release")
+
+        branches = self.git("for-each-ref", "--format=%(refname)", "refs/heads/")
+        self.assertEqual(branches.splitlines(), ["refs/heads/main", "refs/heads/release"])
+        tags = self.git("for-each-ref", "--format=%(refname)", "refs/tags/")
+        self.assertEqual(tags.splitlines(), ["refs/tags/merged-feature", "refs/tags/origin/release"])
+
 
 class CleanupTests(unittest.TestCase):
     def test_retention_for_files_links_and_directories(self):

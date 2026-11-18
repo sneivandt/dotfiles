@@ -1,8 +1,11 @@
 #!/bin/sh
 set -eu
 
-default_remote=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)
-default_branch=${default_remote#origin/}
+default_ref=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
+case "$default_ref" in
+  refs/remotes/origin/*) default_branch=${default_ref#refs/remotes/origin/} ;;
+  *) exit 0 ;;
+esac
 current_branch=$(git branch --show-current 2>/dev/null)
 worktree_branches=$(
   git worktree list --porcelain 2>/dev/null | while IFS= read -r line; do
@@ -28,19 +31,18 @@ $1
   return 1
 }
 
-# Delete branches merged to origin/HEAD
-if [ -n "$default_remote" ]; then
-  git for-each-ref --format='%(refname:short)' --merged "$default_remote" refs/heads | while IFS= read -r branch; do
-    case "$branch" in
-      ""|"$current_branch"|"$default_branch"|main|master|dev|develop)
-        continue
-        ;;
-    esac
-
-    if is_worktree_branch "$branch"; then
+# Full refs keep branch names stable when tags have the same names.
+git for-each-ref --format='%(refname)' --merged="$default_ref" refs/heads/ | while IFS= read -r ref; do
+  branch=${ref#refs/heads/}
+  case "$branch" in
+    ""|"$current_branch"|"$default_branch"|main|master|dev|develop)
       continue
-    fi
+      ;;
+  esac
 
-    git branch -d -- "$branch" || continue
-  done
-fi
+  if is_worktree_branch "$branch"; then
+    continue
+  fi
+
+  git branch -d -- "$branch" || continue
+done

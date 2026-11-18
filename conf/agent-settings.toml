@@ -13,7 +13,7 @@
 [base]
 settings = [
   # Copilot CLI model, session, and input defaults
-  { target = "copilot", key = "model",                 value = "gpt-6.1-sol" },
+  { target = "copilot", key = "model",                 value = "gpt-6.2-sol" },
   { target = "copilot", key = "effortLevel",           value = "medium"      },
   { target = "copilot", key = "banner",                value = "never"       },
   { target = "copilot", key = "beep",                  value = false         },

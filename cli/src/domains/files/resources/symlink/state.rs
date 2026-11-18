@@ -80,15 +80,30 @@ pub(super) fn link_points_to_source(target: &Path, existing: &Path, source: &Pat
             &lexical,
         ))
     };
-    let Some(referenced) = identity(&resolved) else {
-        return false;
-    };
     let configured = identity(source);
     let canonical = crate::infra::fs::resolve_target_entry(source)
         .ok()
         .and_then(|path| identity(&path));
-    (configured.as_ref() == Some(&referenced) || canonical.as_ref() == Some(&referenced))
-        && same_entry(source, &resolved)
+    let matches_entry = |path: &Path| {
+        identity(path).is_some_and(|referenced| {
+            (configured.as_ref() == Some(&referenced) || canonical.as_ref() == Some(&referenced))
+                && same_entry(source, path)
+        })
+    };
+    if matches_entry(&resolved) {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        // Short names represent the same directory entry. Expand the spelling
+        // without canonicalizing away a link in the path.
+        super::platform::expand_short_path(&resolved)
+            .is_some_and(|expanded| matches_entry(&expanded))
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
 /// Compare entry locations without following the final link.

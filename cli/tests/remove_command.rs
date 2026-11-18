@@ -341,7 +341,6 @@ fn missing_symlink_targets_are_only_materialized_on_request() {
     );
 }
 
-#[cfg(unix)]
 #[test]
 fn removal_only_plans_and_copies_links_directly_to_the_checkout() {
     let repo = common::TestContextBuilder::new()
@@ -356,9 +355,18 @@ fn removal_only_plans_and_copies_links_directly_to_the_checkout() {
     let second = home.path().join(".second");
     let third = home.path().join(".third");
     let source = repo.root_path().join("symlinks/settings");
-    std::os::unix::fs::symlink(&source, &first).unwrap();
-    std::os::unix::fs::symlink(".first/nested", &second).unwrap();
-    std::os::unix::fs::symlink(".first", &third).unwrap();
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&source, &first).unwrap();
+        std::os::unix::fs::symlink(".first/nested", &second).unwrap();
+        std::os::unix::fs::symlink(".first", &third).unwrap();
+    }
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_dir(&source, &first).unwrap();
+        std::os::windows::fs::symlink_file(r".first\nested", &second).unwrap();
+        std::os::windows::fs::symlink_dir(".first", &third).unwrap();
+    }
 
     let update = common::cli_command(repo.root_path(), home.path(), None, "update", "symlinks")
         .arg("--dry-run")

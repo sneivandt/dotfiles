@@ -113,6 +113,35 @@ pub(super) fn is_link_like(path: &Path, meta: &std::fs::Metadata) -> bool {
     }
 }
 
+#[cfg(windows)]
+#[allow(
+    unsafe_code,
+    reason = "Win32 provides the long spelling of an existing path without resolving links"
+)]
+pub(super) fn expand_short_path(path: &Path) -> Option<std::path::PathBuf> {
+    use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
+    use windows_sys::Win32::Storage::FileSystem::GetLongPathNameW;
+
+    let mut raw: Vec<_> = path.as_os_str().encode_wide().collect();
+    if raw.contains(&0) {
+        return None;
+    }
+    raw.push(0);
+    // SAFETY: The input is NUL-terminated and an empty output queries capacity.
+    let capacity = unsafe { GetLongPathNameW(raw.as_ptr(), std::ptr::null_mut(), 0) };
+    if capacity == 0 {
+        return None;
+    }
+    let mut long = vec![0; usize::try_from(capacity).ok()?];
+    // SAFETY: The input is still valid and long contains capacity writable u16s.
+    let written = unsafe { GetLongPathNameW(raw.as_ptr(), long.as_mut_ptr(), capacity) };
+    if written == 0 || written >= capacity {
+        return None;
+    }
+    long.truncate(usize::try_from(written).ok()?);
+    Some(std::ffi::OsString::from_wide(&long).into())
+}
+
 /// Create a Windows directory junction as a fallback for directory symlinks.
 #[cfg(windows)]
 pub(super) fn create_junction(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {

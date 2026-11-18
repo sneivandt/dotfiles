@@ -689,28 +689,38 @@ fn same_pam_facility(current: &str, desired: &str) -> bool {
         .eq_ignore_ascii_case(desired.strip_prefix('-').unwrap_or(desired))
 }
 
+fn pam_control_and_module(fields: &str) -> Option<(&str, &str)> {
+    let fields = fields.trim_start();
+    fields.strip_prefix('[').map_or_else(
+        || {
+            Some(
+                fields
+                    .split_once(char::is_whitespace)
+                    .unwrap_or((fields, "")),
+            )
+        },
+        |extended| extended.split_once(']'),
+    )
+}
+
 fn pam_rule_identity(line: &str) -> anyhow::Result<(&str, &str)> {
-    let mut tokens = line.split_whitespace();
-    let Some(facility) = tokens.next() else {
-        bail!("PAM fragment contains an empty rule");
-    };
-    let Some(control) = tokens.next() else {
-        bail!("PAM fragment rule has no control field: {line}");
-    };
+    let (facility, fields) = line
+        .split_once(char::is_whitespace)
+        .context("PAM fragment rule has no control field")?;
+    let (control, module_fields) = pam_control_and_module(fields)
+        .context("PAM fragment rule has an unterminated control field")?;
     if control.eq_ignore_ascii_case("include") || control.eq_ignore_ascii_case("substack") {
         bail!("PAM fragment rule includes a stack rather than a module: {line}");
-    }
-    if control.starts_with('[')
-        && !control.ends_with(']')
-        && !tokens.by_ref().any(|token| token.ends_with(']'))
-    {
-        bail!("PAM fragment rule has an unterminated control field: {line}");
     }
     #[allow(
         clippy::case_sensitive_file_extension_comparisons,
         reason = "PAM module names and Linux file extensions are case-sensitive"
     )]
-    let Some(module) = tokens.next().filter(|token| token.ends_with(".so")) else {
+    let Some(module) = module_fields
+        .split_whitespace()
+        .next()
+        .filter(|token| token.ends_with(".so"))
+    else {
         bail!("PAM fragment rule has no module: {line}");
     };
     Ok((facility, module))
@@ -729,47 +739,139 @@ fn pam_rules(fragment: &str) -> impl Iterator<Item = anyhow::Result<(&str, &str,
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(|rule| pam_rule_identity(rule).map(|(facility, module)| (rule, facility, module)))
+        .map(|rule| {
+            anyhow::ensure!(
+                pam_continued(rule).is_none(),
+                "PAM fragment rules must occupy one line"
+            );
+            pam_rule_identity(pam_code(rule)).map(|(facility, module)| (rule, facility, module))
+        })
+}
+
+struct PamLine<'a> {
+    text: &'a str,
+    code: String,
+}
+
+fn pam_code(line: &str) -> &str {
+    line.split_once('#').map_or(line, |(code, _)| code).trim()
+}
+
+fn pam_continued(line: &str) -> Option<&str> {
+    if line.contains('#') {
+        return None;
+    }
+    line.trim_end_matches([' ', '\t', '\n']).strip_suffix('\\')
+}
+
+fn pam_service_lines(content: &str) -> anyhow::Result<Vec<PamLine<'_>>> {
+    let mut lines = Vec::new();
+    let mut pending = content;
+    let mut length = 0;
+    let mut code = String::new();
+    for physical in content.split_inclusive('\n') {
+        length += physical.len();
+        if let Some(continued) = pam_continued(physical) {
+            code.push_str(continued.trim_start());
+            code.push(' ');
+        } else {
+            code.push_str(pam_code(physical));
+            let (text, rest) = pending.split_at(length);
+            lines.push(PamLine {
+                text,
+                code: std::mem::take(&mut code),
+            });
+            pending = rest;
+            length = 0;
+        }
+    }
+    anyhow::ensure!(
+        pending.is_empty(),
+        "PAM service file ends with an unfinished rule"
+    );
+    Ok(lines)
+}
+
+fn pam_has_jump(control: &str) -> bool {
+    control.split('=').skip(1).any(|action| {
+        action
+            .trim_start()
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_digit)
+    })
 }
 
 fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
     validate_pam_rules(fragment)?;
-    let mut lines = current.lines().map(str::to_string).collect::<Vec<_>>();
+    let mut lines = pam_service_lines(current)?;
     for rule in pam_rules(fragment) {
         let (rule, facility, module) = rule?;
-        for (current_facility, current_module) in lines.iter().filter_map(|line| {
-            let code = line.split_once('#').map_or(line.as_str(), |(code, _)| code);
-            pam_rule_identity(code).ok()
-        }) {
-            if same_pam_facility(current_facility, facility)
-                && current_module != module
-                && std::path::Path::new(current_module).file_name()
+        let mut last_in_stack = None;
+        let mut matching = Vec::new();
+        let mut has_jump = false;
+        let mut has_include = false;
+        for (index, line) in lines.iter().enumerate() {
+            let code = line.code.trim();
+            let Some((current_facility, fields)) = code.split_once(char::is_whitespace) else {
+                continue;
+            };
+            if !same_pam_facility(current_facility, facility) {
+                continue;
+            }
+            last_in_stack = Some(index);
+            if let Some((control, _)) = pam_control_and_module(fields) {
+                has_jump |= pam_has_jump(control);
+                has_include |= control.eq_ignore_ascii_case("include");
+            }
+            if let Ok((_, current_module)) = pam_rule_identity(code) {
+                if current_module == module {
+                    matching.push(index);
+                } else if std::path::Path::new(current_module).file_name()
                     == std::path::Path::new(module).file_name()
-            {
-                bail!(
-                    "ambiguous PAM {facility} module paths {current_module} and {module}. Review the installed rule and the fragment before retrying"
-                );
+                {
+                    bail!(
+                        "ambiguous PAM {facility} module paths {current_module} and {module}. Review the installed rule and the fragment before retrying"
+                    );
+                }
             }
         }
-        let Some(index) = lines.iter().rposition(|line| {
-            line.split_whitespace()
-                .next()
-                .is_some_and(|current_facility| same_pam_facility(current_facility, facility))
-        }) else {
+        let Some(last_in_stack) = last_in_stack else {
             bail!("PAM service has no {facility} stack; refusing to synthesize one");
         };
-        let mut trailing = lines.split_off(index.saturating_add(1));
-        lines.retain(|line| {
-            let code = line.split_once('#').map_or(line.as_str(), |(code, _)| code);
-            !pam_rule_identity(code).is_ok_and(|(current_facility, current_module)| {
-                same_pam_facility(current_facility, facility) && current_module == module
-            })
-        });
-        lines.push(rule.to_string());
-        lines.append(&mut trailing);
+        // Changing the number of rules can redirect a relative jump. Deleting
+        // duplicates can also redirect jumps originating in an included file.
+        anyhow::ensure!(
+            !(has_jump && matching.len() != 1 || has_include && matching.len() > 1),
+            "PAM {facility} stack has jumps or includes that could be affected by adding or removing {module}. Review the installed stack before retrying"
+        );
+
+        let replacement = PamLine {
+            text: rule,
+            code: pam_code(rule).to_string(),
+        };
+        if let Some((&first, duplicates)) = matching.split_first() {
+            let installed = lines.get_mut(first).context("missing matched PAM rule")?;
+            if installed.code.trim() != replacement.code {
+                *installed = replacement;
+            }
+            for index in duplicates.iter().rev() {
+                lines.remove(*index);
+            }
+        } else {
+            lines.insert(last_in_stack.saturating_add(1), replacement);
+        }
     }
-    let mut rendered = lines.join("\n");
-    rendered.push('\n');
+    let mut rendered = String::new();
+    for line in lines {
+        if !rendered.is_empty() && !rendered.ends_with('\n') {
+            rendered.push('\n');
+        }
+        rendered.push_str(line.text);
+    }
+    if !rendered.is_empty() && !rendered.ends_with('\n') && rendered != current {
+        rendered.push('\n');
+    }
     Ok(rendered)
 }
 
@@ -1301,6 +1403,85 @@ mod tests {
             merge_pam("session optional other.so\n", fragment).is_err(),
             "a genuinely absent facility must still be rejected"
         );
+    }
+
+    #[test]
+    fn pam_merge_preserves_the_rule_a_numeric_jump_skips() {
+        let before = "# retain layout and comments\n\
+            auth [success=1 default=die] pam_permit.so\n\
+            auth optional pam_gnome_keyring.so # existing rule\n\
+            auth sufficient pam_permit.so\n\
+            auth requisite pam_deny.so\n";
+        let fragment = "auth optional pam_gnome_keyring.so\n";
+        assert_eq!(merge_pam(before, fragment).unwrap(), before);
+
+        let updated = "auth optional pam_gnome_keyring.so debug\n";
+        let expected = before.replace(
+            "auth optional pam_gnome_keyring.so # existing rule\n",
+            updated,
+        );
+        assert_eq!(merge_pam(before, updated).unwrap(), expected);
+        assert_eq!(merge_pam(&expected, updated).unwrap(), expected);
+    }
+
+    #[test]
+    fn pam_merge_refuses_to_change_stack_length_around_jumps() {
+        let fragment = "auth optional keyring.so\n";
+        let jump = "-AUTH [success = \\\n    1 default=die] pam_permit.so\n";
+        for current in [
+            jump.to_string(),
+            format!("{jump}auth optional keyring.so\nauth optional keyring.so\n"),
+            "auth include system-auth\nauth optional keyring.so\nauth optional keyring.so\n"
+                .to_string(),
+        ] {
+            let error = merge_pam(&current, fragment).unwrap_err().to_string();
+            assert!(error.contains("could be affected"), "{error}");
+        }
+
+        let other_facility = format!("{jump}session required pam_permit.so\n");
+        let session = "session optional keyring.so\n";
+        assert_eq!(
+            merge_pam(&other_facility, session).unwrap(),
+            format!("{other_facility}{session}")
+        );
+    }
+
+    #[test]
+    fn pam_merge_replaces_a_continued_rule_as_one_entry() {
+        let current = "auth optional keyring.so \\\n    old_option\n\
+            auth required pam_permit.so\n";
+        let fragment = "auth optional keyring.so new_option\n";
+        assert_eq!(
+            merge_pam(current, fragment).unwrap(),
+            format!("{fragment}auth required pam_permit.so\n")
+        );
+        assert!(
+            validate_fragment(MergeStrategy::Pam, "auth optional keyring.so \\\n").is_err(),
+            "a fragment must not continue into the next installed rule"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unsafe_pam_stack_edit_does_not_stage_any_files() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let target = root.join("login");
+        let stage = root.join("stage");
+        fs::create_dir(&stage).unwrap();
+        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
+        let installed = "auth [success=1 default=die] pam_permit.so\n\
+            auth required pam_permit.so\n";
+        fs::write(&target, installed).unwrap();
+        let owner = fs::metadata(&root).unwrap().uid();
+
+        let result =
+            prepare_in_private_stage(&target, "auth optional keyring.so\n", "pam", &stage, owner);
+        assert!(result.is_err());
+        assert_eq!(fs::read_to_string(target).unwrap(), installed);
+        assert_eq!(fs::read_dir(stage).unwrap().count(), 0);
     }
 
     #[test]

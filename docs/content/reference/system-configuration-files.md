@@ -67,7 +67,7 @@ root. Duplicate active destinations within a repository are errors.
 |---|---|
 | `toml` | Keys, recursively merging tables |
 | `ini` | Assigned keys and bare flags within sections, including Pacman options |
-| `pam` | Module rules, placed at the end of their existing authentication, account, password, or session stack |
+| `pam` | Update existing module rules in place or append new rules to their stack |
 
 Unrelated settings are preserved. TOML updates preserve comments and formatting
 around existing keys; managed values and new keys can change formatting.
@@ -77,12 +77,16 @@ repeated assignments are allowed. Fragment keys and section names must be nonemp
 and section headers must have matching, non-nested brackets. Bare flags such as
 `Color` remain valid inside a section.
 
-PAM needs an existing service file and a stack of the same type as each fragment rule. A
-rule with the same module path in that stack is replaced. If the same module name
-appears under different paths in the stack, review the installed rule and make the
-fragment use the intended path before retrying. Blank lines and full-line comments in
-PAM fragments are not inserted. A fragment cannot declare different rules for the
-same facility and module path; identical repeated rules are deduplicated.
+PAM needs an existing service file and a stack of the same type as each fragment rule.
+An existing rule keeps its position. Dotfiles refuses to add or deduplicate rules
+in a stack with a numeric jump declared in the service file, such as `success=1`.
+It also refuses to deduplicate rules in a stack that uses `include`, since an
+included jump may cross the removed rules. Review the installed stack before retrying.
+
+If the same module name appears under different paths in the stack, make the
+fragment use the intended path before retrying. Dotfiles skips blank lines and
+full-line comments in fragments. A fragment can repeat an identical rule but can
+assign only one rule per facility and module path.
 The [PAM merge implementation and
 tests](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/system_file.rs)
 cover detailed rule matching and placement.
@@ -96,8 +100,10 @@ alone. In particular, PAM (Pluggable Authentication Modules) rules control
 authentication and session behavior; their order is significant. Read the
 [PAM configuration manual](https://man.archlinux.org/man/pam.d.5.en) before
 changing those fragments, and keep a recovery path that does not depend on
-the login mechanism you are editing. For WSL's specific file and restart
-requirements, use [Windows and WSL](../guides/windows-and-wsl.md).
+the login mechanism you are editing. If a previous update moved a rule and broke
+authentication, use a working administrator session or a recovery environment to
+restore a known-good copy of the service file. For WSL's specific file and
+restart requirements, use [Windows and WSL](../guides/windows-and-wsl.md).
 
 ## Preview and apply
 

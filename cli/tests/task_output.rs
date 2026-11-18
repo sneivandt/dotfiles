@@ -70,7 +70,7 @@ fn completions_report_changes_then_current() {
             }
             lock
         });
-        for expected in ["CHANGED Shell completions", "Tasks: 1 unchanged"] {
+        for expected in ["CHANGED Shell completions", "Tasks · 1 unchanged"] {
             let output = command.output().unwrap();
             let stdout = String::from_utf8(output.stdout).unwrap();
             assert!(
@@ -554,9 +554,9 @@ fn human_transcripts_show_home_overlay_and_completion_disposition() {
                 );
                 let final_line = stdout.lines().last().unwrap();
                 let prefix = if preview {
-                    "Tasks: 1 planned"
+                    "Tasks · 1 planned"
                 } else {
-                    "Tasks: 1 changed"
+                    "Tasks · 1 changed"
                 };
                 assert!(final_line.starts_with(prefix), "{stdout}");
             }

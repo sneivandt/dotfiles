@@ -129,8 +129,9 @@ fn current_only_summary_is_bold_without_a_contradictory_no_changes_label() {
                     style,
                 ),
                 [format!(
-                    "{} {} {} {}",
-                    style.paint(crate::infra::logging::style::TextStyle::Dim, "Tasks:"),
+                    "{} {} {} {} {}",
+                    style.paint(crate::infra::logging::style::TextStyle::Dim, "Tasks"),
+                    style.paint(crate::infra::logging::style::TextStyle::Dim, "·"),
                     style.paint(crate::infra::logging::style::TextStyle::Bold, text),
                     style.paint(crate::infra::logging::style::TextStyle::Dim, "·"),
                     style.paint(crate::infra::logging::style::TextStyle::Dim, "3.4s"),
@@ -159,7 +160,7 @@ fn interrupted_partial_work_is_not_reported_as_no_changes() {
         assert_eq!(counts.actions.not_attempted, 2);
         assert_eq!(
             format_summary_lines(counts, SummaryMode::Standard, "1.0s", StyleChoice::plain(),),
-            ["Tasks: 1 interrupted · 1.0s"],
+            ["Tasks · 1 interrupted · 1.0s"],
         );
     }
 }
@@ -175,7 +176,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
                 ..SummaryCounts::default()
             },
             "7.2s",
-            "Tasks: 1 failed · 1 unchanged · 7.2s",
+            "Tasks · 1 failed · 1 unchanged · 7.2s",
         ),
         (
             "standard_summary_groups_task_and_action_counts",
@@ -192,7 +193,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
                 ..SummaryCounts::default()
             },
             "2.0s",
-            "Tasks: 1 failed · 1 skipped · 3 changed · 2.0s",
+            "Tasks · 1 failed · 1 skipped · 3 changed · 2.0s",
         ),
         (
             "dry_run_summary_pairs_affected_and_planned_counts",
@@ -205,7 +206,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
                 ..SummaryCounts::default()
             },
             "0.8s",
-            "Tasks: 1 planned · 0.8s",
+            "Tasks · 1 planned · 0.8s",
         ),
         (
             "dry_run_summary_counts_unquantified_affected_tasks",
@@ -214,7 +215,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
                 ..SummaryCounts::default()
             },
             "0.8s",
-            "Tasks: 2 planned · 0.8s",
+            "Tasks · 2 planned · 0.8s",
         ),
         (
             "summary_totals_account_for_every_reported_task",
@@ -229,7 +230,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
                 ..SummaryCounts::default()
             },
             "2.3s",
-            "Tasks: 1 skipped · 2 changed · 15 unchanged · 2.3s",
+            "Tasks · 1 skipped · 2 changed · 15 unchanged · 2.3s",
         ),
         (
             "standard_summary_omits_actions_when_all_action_counts_are_zero",
@@ -238,7 +239,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
                 ..SummaryCounts::default()
             },
             "1.0s",
-            "Tasks: 2 changed · 1.0s",
+            "Tasks · 2 changed · 1.0s",
         ),
     ] {
         assert_eq!(
@@ -683,11 +684,13 @@ fn colored_summary_styles_each_outcome_group() {
 
     assert_eq!(
         lines,
-        ["\x1b[2mTasks:\x1b[0m \x1b[1;31m4 failed\x1b[0m \
+        [
+            "\x1b[2mTasks\x1b[0m \x1b[2m·\x1b[0m \x1b[1;31m4 failed\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[1;33m3 skipped\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[32m1 changed\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[2m2 unchanged\x1b[0m \
-             \x1b[2m·\x1b[0m \x1b[2m1.0s\x1b[0m"]
+             \x1b[2m·\x1b[0m \x1b[2m1.0s\x1b[0m"
+        ]
     );
 }
 
@@ -821,7 +824,7 @@ fn all_incomplete_totals_are_bold_and_precede_successes() {
     assert_eq!(
         lines,
         [
-            "\x1b[2mTasks:\x1b[0m \x1b[1;31m1 failed\x1b[0m \x1b[2m·\x1b[0m \x1b[1;33m2 interrupted\x1b[0m \x1b[2m·\x1b[0m \x1b[1;33m3 blocked\x1b[0m \x1b[2m·\x1b[0m \x1b[1;33m4 skipped\x1b[0m \x1b[2m·\x1b[0m \x1b[32m5 changed\x1b[0m \x1b[2m·\x1b[0m \x1b[35m6 planned\x1b[0m \x1b[2m·\x1b[0m \x1b[2m7 unchanged\x1b[0m \x1b[2m·\x1b[0m \x1b[2m1.0s\x1b[0m"
+            "\x1b[2mTasks\x1b[0m \x1b[2m·\x1b[0m \x1b[1;31m1 failed\x1b[0m \x1b[2m·\x1b[0m \x1b[1;33m2 interrupted\x1b[0m \x1b[2m·\x1b[0m \x1b[1;33m3 blocked\x1b[0m \x1b[2m·\x1b[0m \x1b[1;33m4 skipped\x1b[0m \x1b[2m·\x1b[0m \x1b[32m5 changed\x1b[0m \x1b[2m·\x1b[0m \x1b[35m6 planned\x1b[0m \x1b[2m·\x1b[0m \x1b[2m7 unchanged\x1b[0m \x1b[2m·\x1b[0m \x1b[2m1.0s\x1b[0m"
         ]
     );
 }
@@ -994,23 +997,15 @@ fn final_summary_preserves_disposition_and_emphasis_without_a_symbol_prefix() {
                     disposition,
                 );
                 let clean = crate::infra::logging::utils::strip_ansi(&lines[0]);
-                let unit = if mode == SummaryMode::Check {
-                    "Checks:"
-                } else {
-                    "Tasks:"
-                };
-                let prefix = if counts.skipped > 0 {
-                    format!("{unit} ")
-                } else {
-                    String::new()
+                let (prefix, styled_prefix) = match (counts.skipped > 0, mode) {
+                    (true, SummaryMode::Check) => ("Checks: ", "\x1b[2mChecks:\x1b[0m "),
+                    (true, SummaryMode::Standard) => {
+                        ("Tasks · ", "\x1b[2mTasks\x1b[0m \x1b[2m·\x1b[0m ")
+                    }
+                    (false, _) => ("", ""),
                 };
                 assert_eq!(clean, format!("{prefix}{text} · 1.0s"));
                 if ansi {
-                    let styled_prefix = if counts.skipped > 0 {
-                        format!("\x1b[2m{unit}\x1b[0m ")
-                    } else {
-                        String::new()
-                    };
                     assert!(
                         lines[0]
                             .starts_with(&format!("{styled_prefix}\x1b[{emphasis}m{text}\x1b[0m"))
@@ -1165,14 +1160,13 @@ fn incomplete_summaries_report_each_outcome_without_duplicate_disposition_text()
                     StyleChoice::plain(),
                     disposition,
                 );
-                let unit = if mode == SummaryMode::Check {
-                    "Checks"
-                } else {
-                    "Tasks"
+                let prefix = match mode {
+                    SummaryMode::Check => "Checks: ",
+                    SummaryMode::Standard => "Tasks · ",
                 };
                 assert_eq!(
                     lines,
-                    [format!("{unit}: {text} · 1.0s")],
+                    [format!("{prefix}{text} · 1.0s")],
                     "{mode:?}, {disposition:?}"
                 );
             }

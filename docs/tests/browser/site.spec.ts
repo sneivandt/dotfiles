@@ -405,7 +405,7 @@ test('the terminal illustration preserves the completed transcript with reduced 
   expect(noticeY - headerY).toBe(48);
   expect(syncY - noticeY).toBe(24);
   expect(taskY - syncY).toBe(48);
-  await expect(page.locator('.summary text')).toHaveText('Tasks: 3 changed · 14 unchanged · 8.3s');
+  await expect(page.locator('.summary text')).toHaveText('Tasks · 3 changed · 14 unchanged · 8.3s');
   await expect(page.locator('.summary tspan').first()).toHaveCSS('fill', 'rgb(126, 133, 161)');
   await expect(page.locator('.summary tspan').nth(1)).toHaveCSS('fill', 'rgb(158, 206, 106)');
   const clipped = await page.locator('svg').evaluate((svg) => {

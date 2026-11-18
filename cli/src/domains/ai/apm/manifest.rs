@@ -187,19 +187,17 @@ fn describe_dependency_update(before: &LockedDependency, after: &LockedDependenc
     }
     if before.resolved_commit != after.resolved_commit {
         changes.push(format!(
-            "commit {} -> {}",
+            "{} -> {}",
             display_revision(before.resolved_commit.as_deref()),
             display_revision(after.resolved_commit.as_deref())
         ));
     }
 
     let content_changed = before.content_hash != after.content_hash
-        || before.deployed_file_hashes != after.deployed_file_hashes;
+        || before.deployed_file_hashes != after.deployed_file_hashes
+        || before.deployed_files != after.deployed_files;
     if content_changed && before.resolved_commit == after.resolved_commit {
         changes.push("content changed".to_string());
-    }
-    if before.deployed_files != after.deployed_files {
-        changes.push("deployed files changed".to_string());
     }
     if before.target_subset != after.target_subset {
         changes.push("targets changed".to_string());
@@ -315,8 +313,7 @@ dependencies:
             describe_lock_changes(Some(before), Some(after)),
             [(
                 "update",
-                "cursor/plugins/pstack/skills/unslop · ref - -> main · commit \
-                 efa2a53 -> 93b00b8"
+                "cursor/plugins/pstack/skills/unslop · ref - -> main · efa2a53 -> 93b00b8"
                     .to_string()
             )]
         );
@@ -390,7 +387,7 @@ dependencies:
 ";
         assert_eq!(
             describe_lock_changes(Some(before), Some(after)),
-            [("update", "shared · commit old -> new".to_string()),]
+            [("update", "shared · old -> new".to_string()),]
         );
     }
 

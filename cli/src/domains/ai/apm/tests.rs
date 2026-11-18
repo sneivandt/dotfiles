@@ -389,7 +389,7 @@ fn update_then_install_reports_exact_lock_changes() {
                     .join(".apm")
                     .join("apm.lock.yaml"),
                 "dependencies:\n- repo_url: example/plugin\n  name: example-plugin\n  \
-                 resolved_commit: 2222222bbbb\n",
+                 resolved_commit: 2222222bbbb\n  deployed_files: [new/SKILL.md]\n",
             )
             .expect("advance lock");
             Ok(ExecResult::success("updated\n"))
@@ -426,8 +426,8 @@ fn update_then_install_reports_exact_lock_changes() {
             };
             verb == "update"
                 && !planned
-                && subject == "example-plugin · commit 1111111 -> 2222222"
-                && message == "update example-plugin · commit 1111111 -> 2222222"
+                && subject == "example-plugin · 1111111 -> 2222222"
+                && message == "update example-plugin · 1111111 -> 2222222"
         }),
         "agent package change should be emitted as task detail: {contents}"
     );

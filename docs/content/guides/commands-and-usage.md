@@ -228,8 +228,8 @@ An expanded row with multiple quantified actions adds `· 35 actions applied`
 or `· planned · 35 actions`. Task-owned warnings and verbose errors stay
 indented under their row, with warnings between the actions they concern.
 
-The final summary names its unit once: **Tasks: 3 changed · 14 unchanged**, or
-**Checks: 5 passed · 1 skipped**. Previews use **planned** instead of **changed**.
+The final summary names its unit once, as in **Tasks · 3 changed · 14 unchanged**
+or **Checks: 5 passed · 1 skipped**. Previews use **planned** instead of **changed**.
 These are task counts, not action counts or CLI upgrades. **Unchanged** means
 the selected work needed no changes, not that every installed package is at its
 latest version. Repository syncs that restart the command appear in their notice
@@ -245,7 +245,7 @@ Update · desktop profile · Arch Linux
 CLI upgraded · v2026.01.01-1 → v2026.01.01-2
 Repository synced · restarting to load configuration
 
-Tasks: 17 unchanged · 3.4s
+Tasks · 17 unchanged · 3.4s
 ```
 
 The final duration covers the CLI invocation, including self-update and

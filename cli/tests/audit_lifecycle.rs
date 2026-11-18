@@ -176,7 +176,7 @@ fn launcher_preserves_user_files_and_modified_installations() {
         &mut common::cli_command(repo.root_path(), home.path(), None, "update", "launcher"),
         true,
     );
-    assert!(text.contains("Tasks: 1 unchanged"), "{text}");
+    assert!(text.contains("Tasks · 1 unchanged"), "{text}");
     assert_eq!(std::fs::read(&target).unwrap(), installed);
     std::fs::write(&target, "user edit").unwrap();
     output(
@@ -224,7 +224,7 @@ fn included_git_settings_converge_without_modifying_included_files() {
         &mut common::cli_command(repo.root_path(), home.path(), None, "update", "git"),
         true,
     );
-    assert!(text.contains("Tasks: 1 unchanged"), "{text}");
+    assert!(text.contains("Tasks · 1 unchanged"), "{text}");
     assert_eq!(std::fs::read(&config).unwrap(), after);
     assert_eq!(
         std::fs::read_to_string(&included).unwrap(),
@@ -358,7 +358,7 @@ fn redirected_chmod_is_blocked_until_explicitly_allowed() {
         ),
         true,
     );
-    assert!(text.contains("Tasks: 1 unchanged"), "{text}");
+    assert!(text.contains("Tasks · 1 unchanged"), "{text}");
 }
 
 #[cfg(unix)]
@@ -425,7 +425,7 @@ fn chmod_managed_source_links_converge_in_public_and_overlay_trees() {
             .arg("--fail-on-skip"),
             true,
         );
-        assert!(text.contains("Tasks: 2 unchanged"), "{text}");
+        assert!(text.contains("Tasks · 2 unchanged"), "{text}");
     }
 }
 

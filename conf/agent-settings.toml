@@ -51,7 +51,7 @@ settings = [
   { target = "codex", key = "memories.use_memories",      value = true },
 
   # Codex model and tool defaults
-  { target = "codex", key = "model",                  value = "gpt-6.1-sol"     },
+  { target = "codex", key = "model",                  value = "gpt-6.2-sol"     },
   { target = "codex", key = "model_reasoning_effort", value = "medium"          },
   { target = "codex", key = "web_search",             value = "live"            },
   { target = "codex", key = "file_opener",            value = "vscode-insiders" },

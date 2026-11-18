@@ -4,28 +4,45 @@ use std::path::{Path, PathBuf};
 
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::provisioning::{
-    DEFERRED_EXTENSIONS_MARKER, DeferredExtensionsState, deferred_extensions_state,
+    DEFERRED_EXTENSIONS_IDS, DEFERRED_EXTENSIONS_MARKER, DeferredExtensionsState,
+    deferred_extensions_state,
 };
 
 const MARKER_CONTENT: &str = "# VS Code extensions were deferred during Arch chroot provisioning.\n\
 # The dotfiles-first-login service removes this marker only after they converge.\n";
-const PROFILE_KEY: &str = "DOTFILES_PROFILE=";
 
 /// A marker consumed by the first-session systemd user service.
 #[derive(Debug)]
 pub struct DeferredExtensionsResource {
     marker: PathBuf,
-    profile: String,
+    assignments: String,
 }
 
 impl DeferredExtensionsResource {
     /// Create the marker resource below `home`.
-    #[must_use]
-    pub fn new(home: &Path, profile: &str) -> Self {
-        Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the overlay path or extension list cannot be encoded.
+    pub fn new(
+        home: &Path,
+        profile: &str,
+        overlay: Option<&Path>,
+        extensions: &[String],
+    ) -> anyhow::Result<Self> {
+        let overlay = overlay
+            .map_or(Some(""), Path::to_str)
+            .ok_or_else(|| anyhow::anyhow!("deferred extensions require a UTF-8 overlay path"))?;
+        let ids = serde_json::to_string(extensions)?;
+        Ok(Self {
             marker: home.join(DEFERRED_EXTENSIONS_MARKER),
-            profile: profile.to_owned(),
-        }
+            assignments: format!(
+                "DOTFILES_PROFILE={}\nDOTFILES_OVERLAY={}\n{DEFERRED_EXTENSIONS_IDS}={}\n",
+                environment_value(profile),
+                environment_value(overlay),
+                environment_value(&ids),
+            ),
+        })
     }
 
     fn marker_contents(&self) -> std::io::Result<Option<String>> {
@@ -38,6 +55,19 @@ impl DeferredExtensionsResource {
             )),
         }
     }
+}
+
+// systemd EnvironmentFile double-quoted values preserve whitespace and newlines.
+fn environment_value(value: &str) -> String {
+    let mut quoted = String::from("\"");
+    for character in value.chars() {
+        if matches!(character, '\\' | '"' | '$' | '`') {
+            quoted.push('\\');
+        }
+        quoted.push(character);
+    }
+    quoted.push('"');
+    quoted
 }
 
 impl Resource for DeferredExtensionsResource {
@@ -54,9 +84,7 @@ impl Resource for DeferredExtensionsResource {
         if !content.is_empty() && !content.ends_with('\n') {
             content.push('\n');
         }
-        content.push_str(PROFILE_KEY);
-        content.push_str(&self.profile);
-        content.push('\n');
+        content.push_str(&self.assignments);
         crate::infra::fs::write_atomic_checked(&self.marker, content, || {
             anyhow::ensure!(
                 self.marker_contents()? == previous,
@@ -73,16 +101,12 @@ impl IntrinsicState for DeferredExtensionsResource {
         Ok(match deferred_extensions_state(&self.marker)? {
             DeferredExtensionsState::Pending => {
                 let content = std::fs::read_to_string(&self.marker)?;
-                if content
-                    .lines()
-                    .rev()
-                    .find_map(|line| line.strip_prefix(PROFILE_KEY))
-                    == Some(self.profile.as_str())
-                {
+                if content.ends_with(&self.assignments) {
                     ResourceState::Correct
                 } else {
                     ResourceState::Incorrect {
-                        current: "deferred for a different or unspecified profile".into(),
+                        current: "recorded extension work differs from the current selection"
+                            .into(),
                     }
                 }
             }
@@ -101,7 +125,7 @@ mod tests {
     #[test]
     fn marker_apply_creates_an_explained_deferral() {
         let home = tempfile::tempdir().unwrap();
-        let resource = DeferredExtensionsResource::new(home.path(), "desktop");
+        let resource = DeferredExtensionsResource::new(home.path(), "desktop", None, &[]).unwrap();
 
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
@@ -121,14 +145,15 @@ mod tests {
             ("custom marker", "pending extensions\n"),
         ] {
             let home = tempfile::tempdir().unwrap();
-            let resource = DeferredExtensionsResource::new(home.path(), "desktop");
+            let resource =
+                DeferredExtensionsResource::new(home.path(), "desktop", None, &[]).unwrap();
             std::fs::create_dir_all(resource.marker.parent().unwrap()).unwrap();
             std::fs::write(&resource.marker, content).unwrap();
 
             assert_eq!(
                 resource.current_state().unwrap(),
                 ResourceState::Incorrect {
-                    current: "deferred for a different or unspecified profile".into()
+                    current: "recorded extension work differs from the current selection".into()
                 },
                 "{case}"
             );
@@ -140,7 +165,7 @@ mod tests {
         }
 
         let home = tempfile::tempdir().unwrap();
-        let resource = DeferredExtensionsResource::new(home.path(), "desktop");
+        let resource = DeferredExtensionsResource::new(home.path(), "desktop", None, &[]).unwrap();
         std::fs::create_dir_all(&resource.marker).unwrap();
         let sentinel = resource.marker.join("user-data");
         std::fs::write(&sentinel, "preserve").unwrap();
@@ -159,7 +184,7 @@ mod tests {
     #[test]
     fn marker_symlinks_are_invalid_even_when_the_target_is_a_regular_file() {
         let home = tempfile::tempdir().unwrap();
-        let resource = DeferredExtensionsResource::new(home.path(), "desktop");
+        let resource = DeferredExtensionsResource::new(home.path(), "desktop", None, &[]).unwrap();
         let target = home.path().join("user-marker");
         std::fs::write(&target, "user-owned").unwrap();
         std::fs::create_dir_all(resource.marker.parent().unwrap()).unwrap();
@@ -186,7 +211,7 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let parent = home.path().join(".local");
         std::os::unix::fs::symlink(".local", &parent).unwrap();
-        let resource = DeferredExtensionsResource::new(home.path(), "desktop");
+        let resource = DeferredExtensionsResource::new(home.path(), "desktop", None, &[]).unwrap();
 
         resource
             .current_state()

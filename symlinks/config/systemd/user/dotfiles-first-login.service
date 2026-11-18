@@ -8,6 +8,7 @@ After=graphical-session.target
 Type=oneshot
 Environment=DOTFILES_FIRST_LOGIN_WAIT_FOR_LOCK=1
 Environment=DOTFILES_PROFILE=desktop
+Environment=DOTFILES_RESUME_VSCODE_EXTENSIONS=1
 EnvironmentFile=-%h/.local/state/dotfiles/deferred-vscode-extensions
 ExecStart=%h/.local/bin/dotfiles update --non-interactive --only vscode-extensions --fail-on-skip --verbose
 ExecStartPost=/usr/bin/rm -f %h/.local/state/dotfiles/deferred-vscode-extensions

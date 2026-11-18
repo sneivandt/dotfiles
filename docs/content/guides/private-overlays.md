@@ -133,7 +133,9 @@ Selection priority is:
 3. Repository-local Git setting `dotfiles.overlay`
 
 Relative paths resolve from the **directory where you run the command**. A
-path passed with `--overlay` to update, remove, or check is saved
+selected overlay must be an existing directory. If a saved overlay was moved
+or is temporarily unavailable, restore it or select its new path before updating.
+A path passed with `--overlay` to update, remove, or check is saved
 as an absolute path once configuration loads successfully. A repository-only
 update saves the explicit path during startup and skips configuration loading.
 Environment selections apply to the current invocation. Existing saved relative

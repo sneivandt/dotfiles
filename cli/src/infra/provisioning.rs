@@ -15,6 +15,11 @@ pub const ARCH_CHROOT: &str = "arch-chroot";
 pub const DEFERRED_EXTENSIONS_MARKER: &str = ".local/state/dotfiles/deferred-vscode-extensions";
 pub(crate) const FIRST_LOGIN_UNIT: &str = "dotfiles-first-login.service";
 pub(crate) const FIRST_LOGIN_UNIT_PATH: &str = ".config/systemd/user/dotfiles-first-login.service";
+pub(crate) const DEFERRED_EXTENSIONS_IDS: &str = "DOTFILES_DEFERRED_VSCODE_IDS";
+
+pub(crate) fn resuming_extensions(env: &dyn Env) -> bool {
+    env.var("DOTFILES_RESUME_VSCODE_EXTENSIONS").as_deref() == Some("1")
+}
 
 /// Filesystem state of the deferred extension provisioning marker.
 #[derive(Debug)]

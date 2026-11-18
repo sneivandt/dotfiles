@@ -9,6 +9,7 @@ use crate::engine::{
     process_resources, process_resources_with_cache, task_metadata,
 };
 use crate::infra::logging::OutputExt as _;
+use crate::infra::provisioning::{DEFERRED_EXTENSIONS_IDS, resuming_extensions};
 use anyhow::{Context as _, Result};
 use std::collections::HashSet;
 
@@ -42,8 +43,8 @@ impl Task for InstallVsCodeExtensions {
         selector: "vscode-extensions",
     }
 
-    fn should_run(&self, _ctx: &Context) -> bool {
-        !self.config.get().is_empty()
+    fn should_run(&self, ctx: &Context) -> bool {
+        resuming_extensions(ctx.env().as_ref()) || !self.config.get().is_empty()
     }
 
     fn ordering_requirements(&self) -> Vec<Requirement<'_>> {
@@ -63,13 +64,32 @@ impl Task for InstallVsCodeExtensions {
             );
             return process_resources(
                 ctx,
-                std::iter::once(DeferredExtensionsResource::new(ctx.home(), profile)),
+                std::iter::once(DeferredExtensionsResource::new(
+                    ctx.home(),
+                    profile,
+                    ctx.overlay(),
+                    self.config.get(),
+                )?),
                 &ProcessOpts::strict("defer").sequential(),
             );
         }
+        let resuming = resuming_extensions(ctx.env().as_ref());
+        let queued = if resuming {
+            ctx.env()
+                .var(DEFERRED_EXTENSIONS_IDS)
+                .map(|ids| serde_json::from_str::<Vec<String>>(&ids))
+                .transpose()
+                .context("invalid deferred VS Code extension list")?
+        } else {
+            None
+        };
+        let extensions = queued.as_deref().unwrap_or(self.config.get());
+        anyhow::ensure!(
+            !resuming || !extensions.is_empty(),
+            "cannot verify deferred VS Code extensions because their list is empty"
+        );
         process_requirement(ctx, &launcher_requirement(), |cmd| {
             ctx.debug_fmt(|| format!("using VS Code CLI: {cmd}"));
-            let extensions = self.config.get();
             ctx.trace_fmt(|| {
                 format!(
                     "batch-checking {} extensions with a single query",
@@ -397,10 +417,9 @@ mod tests {
             ),
             "rerunning provisioning should preserve the existing deferral: {result:?}"
         );
-        assert_eq!(
-            std::fs::read_to_string(marker).unwrap(),
-            format!("{preserved_content}DOTFILES_PROFILE=base\n")
-        );
+        let resumed = std::fs::read_to_string(marker).unwrap();
+        assert!(resumed.starts_with(preserved_content));
+        assert!(resumed.contains("DOTFILES_PROFILE=\"base\"\n"));
     }
 
     #[test]

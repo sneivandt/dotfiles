@@ -93,7 +93,17 @@ pub(crate) fn run_log_sort_stamp(path: &Path, filename_stamp: &str) -> String {
 }
 
 fn precise_header_stamp(path: &Path) -> Option<String> {
-    let file = fs::File::open(path).ok()?;
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.custom_flags(nix::libc::O_NONBLOCK | nix::libc::O_NOFOLLOW);
+    }
+    let file = options.open(path).ok()?;
+    if !file.metadata().ok()?.is_file() {
+        return None;
+    }
     let mut header = String::new();
     // A damaged or legacy first line must not require reading the whole log.
     std::io::BufReader::new(file.take(512))
@@ -504,6 +514,9 @@ fn prune_run_logs(dir: &Path, keep: usize) {
     let mut runs: Vec<(String, String)> = entries
         .flatten()
         .filter_map(|entry| {
+            if !entry.file_type().ok()?.is_file() {
+                return None;
+            }
             let name = entry.file_name().into_string().ok()?;
             let parsed = parse_run_log_file_name(&name)?;
             Some((run_log_sort_stamp(&entry.path(), parsed.stamp), name))
@@ -597,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    fn retention_continues_after_a_log_cannot_be_removed() {
+    fn nonregular_log_entries_do_not_count_toward_retention() {
         let fixture = tempfile::tempdir().unwrap();
         let blocked = fixture.path().join("20200101T000000Z-update-1.log");
         let removable = fixture.path().join("20200102T000000Z-update-2.log");
@@ -607,8 +620,8 @@ mod tests {
         prune_run_logs(fixture.path(), 1);
         assert!(blocked.join("keep").exists());
         assert!(
-            !removable.exists(),
-            "a failed deletion must not consume the pruning budget"
+            removable.exists(),
+            "unrelated directories must not reduce the number of retained logs"
         );
     }
 

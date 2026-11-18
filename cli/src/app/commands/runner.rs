@@ -484,6 +484,7 @@ mod root_tests {
         let repo = git2::Repository::init(root.path()).unwrap();
         let overlay = tempfile::tempdir().unwrap();
         let previous = root.path().join("previous-overlay");
+        std::fs::create_dir(&previous).unwrap();
         overlay_resolution::persist(root.path(), &previous).unwrap();
         let git_config = repo.path().join("config");
         let original = std::fs::read(&git_config).unwrap();

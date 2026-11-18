@@ -18,6 +18,86 @@ fn output(command: &mut std::process::Command, success: bool) -> String {
     text
 }
 
+#[test]
+fn missing_overlay_cannot_replace_the_saved_selection_or_apply_base_settings() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "git-config.toml",
+            "[base]\nsettings=[{key='core.editor',value='vim'}]\n",
+        )
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let overlay = tempfile::tempdir().unwrap();
+    std::fs::create_dir(overlay.path().join("conf")).unwrap();
+    std::fs::write(
+        overlay.path().join("conf/git-config.toml"),
+        "[base]\nsettings=[{key='core.editor',value='nano'}]\n",
+    )
+    .unwrap();
+    let run = |selected_overlay, success| {
+        output(
+            &mut common::cli_command(
+                repo.root_path(),
+                home.path(),
+                selected_overlay,
+                "update",
+                "git",
+            ),
+            success,
+        )
+    };
+    run(Some(overlay.path()), true);
+    let message = run(Some(&overlay.path().join("missing")), false);
+    assert!(
+        message.contains("cannot read overlay directory"),
+        "{message}"
+    );
+    let checkout = git2::Repository::open(repo.root_path()).unwrap();
+    assert_eq!(
+        checkout
+            .config()
+            .unwrap()
+            .get_path("dotfiles.overlay")
+            .unwrap(),
+        overlay.path()
+    );
+    let global = git2::Config::open(&home.path().join(".gitconfig")).unwrap();
+    assert_eq!(global.get_string("core.editor").unwrap(), "nano");
+}
+
+#[cfg(unix)]
+#[test]
+fn nonregular_log_entries_cannot_block_update() {
+    let repo = common::IntegrationTestContext::new();
+    let home = tempfile::tempdir().unwrap();
+    let logs = home.path().join("logs");
+    std::fs::create_dir(&logs).unwrap();
+    let fifo = logs.join("20250101T010101Z-update-7.log");
+    nix::unistd::mkfifo(&fifo, nix::sys::stat::Mode::S_IRUSR).unwrap();
+    let mut update = common::cli_command(repo.root_path(), home.path(), None, "update", "git")
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        if let Some(status) = update.try_wait().unwrap() {
+            assert!(status.success(), "update failed with {status}");
+            assert!(
+                fifo.exists(),
+                "retention must leave nonregular log entries alone"
+            );
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    update.kill().unwrap();
+    let status = update.wait().unwrap();
+    assert!(
+        status.success(),
+        "update stalled while scanning nonregular logs"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn shell_path_migrates_the_legacy_export_before_an_early_return() {
@@ -124,8 +204,91 @@ fn extension_deferral_requires_a_configured_enabled_consumer_and_records_the_pro
     assert!(
         std::fs::read_to_string(marker)
             .unwrap()
-            .contains("DOTFILES_PROFILE=base\n")
+            .contains("DOTFILES_PROFILE=\"base\"\n")
     );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn first_login_replays_the_overlay_and_extensions_recorded_in_its_marker() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let unit = "dotfiles-first-login.service";
+    let source = format!("config/systemd/user/{unit}");
+    let repo = common::TestContextBuilder::new()
+        .with_config_file("systemd-units.toml", &format!("[base]\nunits=['{unit}']\n"))
+        .with_config_file("symlinks.toml", &format!("[base]\nsymlinks=['{source}']\n"))
+        .with_symlink_source_content(&source, "[Install]\nWantedBy=graphical-session.target\n")
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let overlay = tempfile::tempdir().unwrap();
+    let overlay_config = overlay.path().join("conf/vscode-extensions.toml");
+    std::fs::create_dir_all(overlay_config.parent().unwrap()).unwrap();
+    std::fs::write(&overlay_config, "[base]\nextensions=['fixture.private']\n").unwrap();
+    let unit_dir = home.path().join(".config/systemd/user");
+    let wants = unit_dir.join("graphical-session.target.wants");
+    std::fs::create_dir_all(&wants).unwrap();
+    std::os::unix::fs::symlink(
+        repo.root_path().join("symlinks").join(source),
+        unit_dir.join(unit),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(unit_dir.join(unit), wants.join(unit)).unwrap();
+
+    let update = || {
+        common::cli_command(
+            repo.root_path(),
+            home.path(),
+            None,
+            "update",
+            "vscode-extensions",
+        )
+    };
+    output(
+        update()
+            .env("DOTFILES_PROVISIONING", "arch-chroot")
+            .env("DOTFILES_OVERLAY", overlay.path()),
+        true,
+    );
+    let marker = home
+        .path()
+        .join(".local/state/dotfiles/deferred-vscode-extensions");
+    let content = std::fs::read_to_string(&marker).unwrap();
+    let variables: std::collections::BTreeMap<_, _> = content
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .map(|(key, value)| (key, serde_json::from_str::<String>(value).unwrap()))
+        .collect();
+    assert_eq!(
+        variables.get("DOTFILES_OVERLAY").map(String::as_str),
+        overlay.path().to_str()
+    );
+    let installed = home.path().join("bin/code");
+    std::fs::create_dir_all(installed.parent().unwrap()).unwrap();
+    std::fs::write(
+        &installed,
+        "#!/bin/sh\ntest \"$1\" = --list-extensions || exit 9\nprintf 'fixture.private\\n'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&installed, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::remove_file(overlay_config).unwrap();
+    let observed = output(
+        update()
+            .envs(&variables)
+            .env("DOTFILES_RESUME_VSCODE_EXTENSIONS", "1")
+            .env("PATH", installed.parent().unwrap())
+            .args(["--fail-on-skip", "--verbose"]),
+        true,
+    );
+    assert!(observed.contains("ok fixture.private"), "{observed}");
+    let missing = output(
+        update()
+            .env("DOTFILES_RESUME_VSCODE_EXTENSIONS", "1")
+            .arg("--fail-on-skip"),
+        false,
+    );
+    assert!(missing.contains("list is empty"), "{missing}");
+    assert_eq!(std::fs::read_to_string(marker).unwrap(), content);
 }
 
 #[cfg(target_os = "linux")]

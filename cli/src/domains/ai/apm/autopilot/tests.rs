@@ -60,7 +60,7 @@ fn cron_skips_calendar_fields_and_bounds_impossible_schedules() {
         .unwrap();
     let loop_line = helpers
         .lines()
-        .position(|line| line.trim() == "if candidate.month not in months:")
+        .position(|line| line.trim() == "if date.month not in months:")
         .unwrap()
         + 1;
     let script = format!("{helpers}\nloop_line = {loop_line}\n");
@@ -563,6 +563,20 @@ for name, current, expected in [
         "SELECT next_run_at FROM workflows WHERE id='apm--future'"
     ).fetchone()[0] == "2099-01-01T00:00:00.000Z"
     connection.close()
+helpers = source.split("\ncon = sqlite3.connect", 1)[0]
+scope = {}
+with patch("datetime.datetime", LocalDateTime):
+    exec(compile(helpers, "workflow_autopilot.py", "exec"), scope)
+for wall_time, expected in [
+    (LocalDateTime(2026, 11, 1, 1, 15, fold=0), "2026-11-01T08:30:00.000Z"),
+    (LocalDateTime(2026, 11, 1, 1, 45, fold=0), "2026-11-01T09:30:00.000Z"),
+    (LocalDateTime(2026, 11, 1, 1, 15, fold=1), "2026-11-01T09:30:00.000Z"),
+]:
+    actual = scope["compute_next_run"]("manual", "30 1 * * *", 0, 0, 0, wall_time)
+    assert actual == expected, (wall_time, wall_time.fold, actual, expected)
+assert scope["compute_next_run"](
+    "manual", "30 2 * * *", 0, 0, 0, LocalDateTime(2026, 3, 8, 1, 45)
+) == "2026-03-09T09:30:00.000Z"
 print("spring and fall schedule repairs passed")
 "#,
         &[WORKFLOW_AUTOPILOT_SCRIPT],

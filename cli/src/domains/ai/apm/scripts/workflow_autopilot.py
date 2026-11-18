@@ -81,41 +81,41 @@ def compute_next_cron(expression, now_local):
     month_day_any = month_day_text == "*"
     week_day_any = week_day_text == "*"
 
-    candidate = now_local.replace(second=0, microsecond=0) + timedelta(minutes=1)
-    deadline = candidate + timedelta(days=8 * 366)
-    while candidate < deadline:
-        if candidate.month not in months:
-            if candidate.month == 12:
-                candidate = candidate.replace(year=candidate.year + 1, month=1, day=1, hour=0, minute=0)
-            else:
-                candidate = candidate.replace(month=candidate.month + 1, day=1, hour=0, minute=0)
+    now_utc = now_local.astimezone(timezone.utc)
+    date = now_local.replace(hour=0, minute=0, second=0, microsecond=0, fold=0)
+    deadline = date + timedelta(days=8 * 366)
+    while date < deadline:
+        if date.month not in months:
+            date = (date.replace(day=28) + timedelta(days=4)).replace(day=1)
             continue
-        month_day_matches = candidate.day in month_days
-        week_day_matches = ((candidate.weekday() + 1) % 7) in week_days
+        month_day_matches = date.day in month_days
+        week_day_matches = ((date.weekday() + 1) % 7) in week_days
         if month_day_any:
             day_matches = week_day_matches
         elif week_day_any:
             day_matches = month_day_matches
         else:
             day_matches = month_day_matches or week_day_matches
-        if not day_matches:
-            candidate = candidate.replace(hour=0, minute=0) + timedelta(days=1)
-            continue
-        if candidate.hour not in hours:
-            next_hour = next((hour for hour in sorted(hours) if hour > candidate.hour), None)
-            if next_hour is None:
-                candidate = candidate.replace(hour=0, minute=0) + timedelta(days=1)
-            else:
-                candidate = candidate.replace(hour=next_hour, minute=0)
-            continue
-        if candidate.minute not in minutes:
-            next_minute = next((minute for minute in sorted(minutes) if minute > candidate.minute), None)
-            if next_minute is None:
-                candidate = candidate.replace(minute=0) + timedelta(hours=1)
-            else:
-                candidate = candidate.replace(minute=next_minute)
-            continue
-        return candidate
+        if day_matches:
+            next_utc = None
+            next_local = None
+            # A fall-back hour has two instants per wall time. A spring-forward
+            # gap has none, which the round trip detects. Compare UTC instants
+            # across the whole matching day to account for both passes.
+            for hour in hours:
+                for minute in minutes:
+                    candidate = date.replace(hour=hour, minute=minute)
+                    for fold in (0, 1):
+                        local_time = candidate.replace(fold=fold)
+                        instant = local_time.astimezone(timezone.utc)
+                        if instant <= now_utc or (next_utc is not None and instant >= next_utc):
+                            continue
+                        if instant.astimezone().replace(tzinfo=None) == candidate:
+                            next_utc = instant
+                            next_local = local_time
+            if next_local is not None:
+                return next_local
+        date += timedelta(days=1)
     raise ValueError(f"cron has no occurrence in the next eight years: {expression!r}")
 
 

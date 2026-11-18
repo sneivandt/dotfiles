@@ -338,6 +338,7 @@ changed, pass the original `--profile` and `--overlay` explicitly.
 Home-link actions read `copy <home path> from <source>`. Links that point
 directly to their configured checkout entries become independent copies.
 Hard links within a directory copy still share a file inside that copy.
+Linux preserves holes in sparse files when the source filesystem reports those extents.
 Links through another home path are preserved. On Linux, if the destination
 cannot preserve a source ACL or extended attribute, removal reports the
 failure and leaves the corresponding link in place.

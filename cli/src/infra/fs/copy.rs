@@ -104,7 +104,7 @@ fn copy_tree(
             }
             let mut destination = std::fs::File::create(&dst_path)
                 .with_context(|| format!("create {}", dst_path.display()))?;
-            std::io::copy(&mut source, &mut destination).with_context(|| {
+            copy_regular_contents(&mut source, &mut destination).with_context(|| {
                 format!("copying {} to {}", src_path.display(), dst_path.display())
             })?;
             preserve_copy_metadata(&source, &destination)
@@ -122,6 +122,65 @@ fn copy_tree(
             .with_context(|| format!("preserving metadata for {}", src.display()))?;
     }
     Ok(())
+}
+
+/// Copy regular file contents, preserving sparse extents on supporting Linux filesystems.
+pub(crate) fn copy_regular_contents(
+    source: &mut std::fs::File,
+    destination: &mut std::fs::File,
+) -> Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        let metadata = source.metadata()?;
+        if metadata.blocks().saturating_mul(512) < metadata.len()
+            && copy_sparse_contents(source, destination, metadata.len())?
+        {
+            return Ok(());
+        }
+    }
+    std::io::copy(source, destination)?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn copy_sparse_contents(
+    source: &mut std::fs::File,
+    destination: &mut std::fs::File,
+    length: u64,
+) -> Result<bool> {
+    use rustix::fs::{SeekFrom, seek};
+    use rustix::io::Errno;
+    use std::io::{Read as _, Seek as _};
+
+    let mut data = match seek(&*source, SeekFrom::Data(0)) {
+        Ok(offset) => offset,
+        Err(Errno::NXIO) => length,
+        Err(Errno::INVAL | Errno::NOTSUP) => {
+            source.rewind()?;
+            return Ok(false);
+        }
+        Err(error) => return Err(error.into()),
+    };
+    while data < length {
+        let hole = seek(&*source, SeekFrom::Hole(data))?.min(length);
+        anyhow::ensure!(hole > data, "invalid sparse file extent");
+        seek(&*source, SeekFrom::Start(data))?;
+        seek(&*destination, SeekFrom::Start(data))?;
+        let count = hole - data;
+        let copied = std::io::copy(&mut (&mut *source).take(count), destination)?;
+        anyhow::ensure!(
+            copied == count,
+            "source changed while copying a sparse extent"
+        );
+        data = match seek(&*source, SeekFrom::Data(hole)) {
+            Ok(offset) => offset,
+            Err(Errno::NXIO) => break,
+            Err(error) => return Err(error.into()),
+        };
+    }
+    destination.set_len(length)?;
+    Ok(true)
 }
 
 /// Preserve metadata before publishing a staged copy.

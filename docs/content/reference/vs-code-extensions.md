@@ -33,7 +33,8 @@ edition. There is no editor-selection key in this declaration.
 
 Arch chroot provisioning defers installation when the selected profile
 configures and enables `dotfiles-first-login.service`. The service retries
-with that profile in a real user session. If the service is unavailable, run
+with the recorded profile, overlay, and extension list in a real user session.
+If the service is unavailable, run
 the extension task manually after login.
 
 ## Configuration

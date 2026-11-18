@@ -125,7 +125,7 @@ fn require_managed_link(source: &Path, target: &Path, entry: &Path) -> Result<()
 fn copy_file_into_place(source: &Path, target: &Path, allow_missing: bool) -> Result<()> {
     let (mut guard, mut staged_file) = create_staged_file(target)?;
     let mut source_file = crate::infra::fs::open_regular_source(source)?;
-    std::io::copy(&mut source_file, &mut staged_file)
+    crate::infra::fs::copy_regular_contents(&mut source_file, &mut staged_file)
         .with_context(|| format!("copy source file {}", source.display()))?;
     crate::infra::fs::preserve_copy_metadata(&source_file, &staged_file)
         .with_context(|| format!("preserve metadata for {}", source.display()))?;

@@ -435,6 +435,56 @@ fn removal_preserves_hard_links_within_the_copy_and_severs_source_identity() {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn removal_preserves_sparse_extents_in_top_level_and_nested_files() {
+    use std::io::{Seek as _, SeekFrom, Write as _};
+    use std::os::unix::fs::{MetadataExt as _, symlink};
+
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "symlinks.toml",
+            "[base]\nsymlinks=['sparse', 'directory']\n",
+        )
+        .with_symlink_source_content("directory/fixture", "fixture")
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let sources = repo.root_path().join("symlinks");
+    for path in ["sparse", "directory/nested"] {
+        let source = sources.join(path);
+        let mut file = std::fs::File::create(source).unwrap();
+        file.write_all(b"first extent").unwrap();
+        file.seek(SeekFrom::Start(2 * 1024 * 1024)).unwrap();
+        file.write_all(b"second extent").unwrap();
+        file.set_len(4 * 1024 * 1024).unwrap();
+    }
+    symlink(sources.join("sparse"), home.path().join(".sparse")).unwrap();
+    symlink(sources.join("directory"), home.path().join(".directory")).unwrap();
+    let result = common::cli_command(repo.root_path(), home.path(), None, "remove", "symlinks")
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "{result:?}");
+    for (source, target) in [
+        ("sparse", ".sparse"),
+        ("directory/nested", ".directory/nested"),
+    ] {
+        let source = sources.join(source);
+        let target = home.path().join(target);
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            std::fs::read(&source).unwrap()
+        );
+        if rustix::fs::seek(
+            std::fs::File::open(&source).unwrap(),
+            rustix::fs::SeekFrom::Hole(0),
+        )
+        .is_ok_and(|offset| offset < source.metadata().unwrap().len())
+        {
+            assert!(target.metadata().unwrap().blocks() * 512 < target.metadata().unwrap().len());
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn materialization_preserves_linux_acls_and_extended_attributes() {
     use rustix::fs::{XattrFlags, getxattr, setxattr};
     use std::os::unix::fs::{MetadataExt as _, symlink};

@@ -152,6 +152,34 @@ impl Task for DetailTask {
     }
 }
 
+fn task_start_positions(contents: &str, task: &dyn Task) -> Vec<usize> {
+    let task_id = task.log_key();
+    contents
+        .lines()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let stored = logging::records::StoredRecord::from_line(line)?;
+            (stored.context == task_id
+                && matches!(stored.record, logging::records::Record::TaskStart { name, selector }
+                    if name == task.name() && selector == task.selector()))
+            .then_some(index)
+        })
+        .collect()
+}
+
+fn assert_task_starts_before(contents: &str, task: &dyn Task, event: &str) {
+    let positions = task_start_positions(contents, task);
+    let [position] = positions.as_slice() else {
+        panic!("expected one start for {}: {contents}", task.name());
+    };
+    let event_line = contents.lines().position(|line| line.contains(event));
+    assert!(
+        event_line.is_some_and(|line| *position < line),
+        "{} must start before {event}: {contents}",
+        task.name(),
+    );
+}
+
 #[test]
 fn starts_precede_stats_and_results_and_durations_are_recorded_once() {
     for verbose in [false, true] {
@@ -187,13 +215,8 @@ fn starts_precede_stats_and_results_and_durations_are_recorded_once() {
                 log.print_summary(logging::CompletionDisposition::Succeeded);
                 let contents = std::fs::read_to_string(log.log_path().expect("run log")).unwrap();
                 for (task, &(_, count)) in stats.iter().zip(&cases) {
-                    let stage = format!("[task_start] {}", task.name());
-                    assert_eq!(contents.matches(&stage).count(), 1, "{stage}: {contents}");
                     let info = format!("0 changed, {count} already ok");
-                    assert!(
-                        contents.find(&stage).unwrap() < contents.find(&info).expect("stats info"),
-                        "{stage} must precede its statistics: {contents}"
-                    );
+                    assert_task_starts_before(&contents, task, &info);
                 }
                 assert_eq!(
                     contents.matches("install demo-package").count(),
@@ -231,14 +254,9 @@ fn starts_precede_stats_and_results_and_durations_are_recorded_once() {
                         1
                     );
                 }
-                let empty_stage = "[task_start] empty-config";
-                assert_eq!(contents.matches(empty_stage).count(), 1);
+                assert_task_starts_before(&contents, &empty, "nothing configured");
                 assert!(
-                    contents.find(empty_stage).unwrap()
-                        < contents.find("nothing configured").expect("empty outcome")
-                );
-                assert!(
-                    !contents.contains("[task_start] no-stage"),
+                    task_start_positions(&contents, &inapplicable).is_empty(),
                     "inapplicable work has no start"
                 );
                 assert!(

@@ -186,7 +186,7 @@ fn index_log(reader: &mut impl BufRead, task: Option<&str>) -> Result<LogIndex> 
         };
         if !matches!(
             metadata.kind.as_str(),
-            "task_result" | "task_duration" | "message"
+            "task_start" | "task_result" | "task_duration" | "message"
         ) {
             continue;
         }
@@ -194,6 +194,15 @@ fn index_log(reader: &mut impl BufRead, task: Option<&str>) -> Result<LogIndex> 
             continue;
         };
         match stored.record {
+            Record::TaskStart { selector, name } => {
+                if let (Some(identities), Some(normalized)) =
+                    (&mut index.selected_task_ids, &normalized)
+                    && crate::app::filter::normalize_task_filter(&selector) == *normalized
+                {
+                    identities.insert(stored.context.clone());
+                }
+                index.task_names.insert(stored.context, name);
+            }
             Record::TaskResult {
                 task_id,
                 selector,
@@ -454,12 +463,10 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
             ),
         ),
         Record::TaskResult {
-            task_id: _,
-            selector: _,
             name,
             status,
             reason,
-            actions: _,
+            ..
         } => (
             "task_result",
             format!(
@@ -468,10 +475,11 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
                 reason.map_or_else(String::new, |reason| format!(": {reason}"))
             ),
         ),
+        Record::TaskStart { name, .. } if verbose => ("task_start", name),
         Record::TaskDuration { elapsed_us, .. } if verbose => {
             ("task_timing", format_duration(elapsed_us))
         }
-        Record::TaskDuration { .. } => return None,
+        Record::TaskStart { .. } | Record::TaskDuration { .. } => return None,
         Record::Action {
             message, planned, ..
         } => (
@@ -811,6 +819,7 @@ fn read_run_metadata(run: &mut RunEntry) -> Result<()> {
                     run.elapsed_us = Some(elapsed_us);
                 }
                 Record::RunScope { .. }
+                | Record::TaskStart { .. }
                 | Record::TaskResult { .. }
                 | Record::TaskDuration { .. }
                 | Record::Action { .. }
@@ -1429,6 +1438,29 @@ mod tests {
         let selected = String::from_utf8(selected).unwrap();
         assert!(selected.contains("cause"));
         assert!(!selected.contains("warning"));
+    }
+
+    #[test]
+    fn task_selector_resolves_diagnostics_before_a_result_is_recorded() {
+        let content = record(
+            "internal-id",
+            Record::TaskStart {
+                selector: "repository".into(),
+                name: "Dotfiles repository".into(),
+            },
+        ) + "000002 +10 stamp [internal-id] [debug] fetching upstream\n"
+            + "000003 +11 stamp [another-task] [warn] unrelated\n";
+        for selector in ["repository", "internal-id"] {
+            let mut out = Vec::new();
+            write_selected_contents(&content, true, false, Some(selector), &mut out).unwrap();
+            let output = String::from_utf8(out).unwrap();
+            assert!(
+                output.contains("[task_start] Dotfiles repository"),
+                "{output}"
+            );
+            assert!(output.contains("fetching upstream"), "{output}");
+            assert!(!output.contains("unrelated"), "{output}");
+        }
     }
 
     #[test]

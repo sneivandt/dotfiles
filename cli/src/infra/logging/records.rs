@@ -87,6 +87,10 @@ pub(crate) enum Record {
         elapsed_us: u64,
         exit_code: i32,
     },
+    TaskStart {
+        selector: String,
+        name: String,
+    },
     TaskResult {
         task_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -154,6 +158,10 @@ impl Record {
                 }
             }
             Self::RunFinish { .. } => {}
+            Self::TaskStart { selector, name } => {
+                text(selector);
+                text(name);
+            }
             Self::TaskResult {
                 task_id,
                 selector,

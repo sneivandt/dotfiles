@@ -1448,18 +1448,20 @@ fn retired_nautilus_cleanup_preserves_local_units_and_removes_owned_dangling_lin
 }
 
 #[test]
-fn indirect_units_do_not_confirm_persistent_enablement() {
-    let resource = queried_unit(
-        "fixture.service",
-        UnitScope::User,
-        true,
-        ExecResult::success("indirect\n"),
-        None,
-    );
-    assert!(matches!(
-        resource.current_state().unwrap(),
-        ResourceState::Invalid { reason } if reason.contains("declare the unit with direct install links")
-    ));
+fn indirect_units_are_rejected_for_both_desired_states() {
+    for enabled in [true, false] {
+        let resource = queried_unit(
+            "fixture.service",
+            UnitScope::User,
+            enabled,
+            ExecResult::success("indirect\n"),
+            None,
+        );
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Invalid { reason } if reason.contains("declare the unit with direct install links")
+        ));
+    }
 }
 
 #[test]

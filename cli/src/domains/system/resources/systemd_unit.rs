@@ -180,9 +180,9 @@ impl SystemdUnitResource {
                         .into(),
                 };
             }
-            if self.enabled && state == "indirect" {
+            if state == "indirect" {
                 return ResourceState::Invalid {
-                    reason: "indirect unit does not confirm persistent enablement; declare the unit with direct install links".into(),
+                    reason: "indirect unit has ambiguous enablement; declare the unit with direct install links".into(),
                 };
             }
             return if self.enabled || state == "static" {

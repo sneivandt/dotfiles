@@ -67,7 +67,8 @@ pub(super) enum RepositorySetReadiness {
 /// A repository and the exact commit eligible for a fast-forward.
 #[derive(Debug)]
 pub(super) struct RepositoryUpdatePlan {
-    pub(super) target: UpdateTarget,
+    pub(super) repository: CheckedRepository,
+    pub(super) original_head: String,
     pub(super) commit: Option<String>,
 }
 

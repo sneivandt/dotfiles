@@ -55,14 +55,23 @@ pub(super) fn apply_repository_updates(
         };
         tracked.push((repository, remote, reference));
     }
+    let mut original_heads = Vec::with_capacity(repositories.len());
+    for repository in repositories {
+        let Some(head) = checkout_head(ctx, repository)? else {
+            return Ok(TaskResult::unmet(checkout_changed(repository)));
+        };
+        original_heads.push(head);
+    }
     let commits = match fetch_all(ctx, &tracked)? {
         Ok(commits) => commits,
         Err(reason) => return Ok(TaskResult::Failed(reason)),
     };
 
     let mut plans = Vec::with_capacity(repositories.len());
-    for (repository, commit) in repositories.iter().zip(&commits) {
-        match plan_repository_update(ctx, repository, commit)? {
+    for ((repository, original_head), commit) in
+        repositories.iter().zip(original_heads).zip(&commits)
+    {
+        match plan_repository_update(ctx, repository, original_head, commit)? {
             RepositoryPlanReadiness::Ready(plan) => plans.push(plan),
             RepositoryPlanReadiness::Skipped(reason) => return Ok(TaskResult::unmet(reason)),
         }
@@ -73,9 +82,19 @@ pub(super) fn apply_repository_updates(
         .iter()
         .filter_map(|plan| Some((plan, plan.commit.as_deref()?)))
     {
+        let repository = &plan.repository;
+        let target = &repository.target;
+        if checkout_head(ctx, repository)?.as_deref() != Some(plan.original_head.as_str()) {
+            let reason = checkout_changed(repository);
+            return Ok(if changed.is_empty() {
+                TaskResult::unmet(reason)
+            } else {
+                TaskResult::Failed(partial_merge_reason(&reason, &changed))
+            });
+        }
         let result = ctx.executor().execute(git_command(
             ctx,
-            &plan.target.root,
+            &target.root,
             &["merge", "--ff-only", "--no-overwrite-ignore", commit],
         ));
         match result {
@@ -84,26 +103,19 @@ pub(super) fn apply_repository_updates(
                     .debug(format!("git merge output: {}", r.stdout.trim()));
                 ctx.log().action(
                     "update",
-                    plan.target.description(),
+                    target.description(),
                     false,
-                    &format!("update {}", plan.target.description()),
+                    &format!("update {}", target.description()),
                 );
                 repo_updated.mark_updated();
-                changed.push(plan.target.description());
+                changed.push(target.description());
             }
             Err(e) => {
                 if e.is_cancelled() {
                     return Err(e.into());
                 }
-                let merge_failure = plan.target.reason("git merge --ff-only failed");
-                let reason = if changed.is_empty() {
-                    merge_failure
-                } else {
-                    format!(
-                        "{merge_failure}. Already advanced {}. Resolve the failed merge and retry update",
-                        changed.join(", ")
-                    )
-                };
+                let merge_failure = target.reason("git merge --ff-only failed");
+                let reason = partial_merge_reason(&merge_failure, &changed);
                 ctx.log().warn(format!("{reason}: {e:#}"));
                 return Ok(TaskResult::Failed(reason));
             }
@@ -115,6 +127,40 @@ pub(super) fn apply_repository_updates(
         TaskResult::Ok
     } else {
         TaskStats::from_counts(u32::try_from(changed).unwrap_or(u32::MAX), 0, 0, 0).finish()
+    })
+}
+
+fn checkout_changed(repository: &CheckedRepository) -> String {
+    repository
+        .target
+        .reason("checkout branch or commit changed during update; retry")
+}
+
+fn partial_merge_reason(reason: &str, changed: &[&str]) -> String {
+    if changed.is_empty() {
+        reason.to_owned()
+    } else {
+        format!(
+            "{reason}. Already advanced {}. Review the remaining checkout and retry update",
+            changed.join(", ")
+        )
+    }
+}
+
+fn checkout_head(ctx: &Context, repository: &CheckedRepository) -> Result<Option<String>> {
+    // rev-parse applies --symbolic-full-name only to arguments that follow it.
+    // Detached HEAD has an object ID but no matching branch ref.
+    let head = ctx.executor().execute(git_command(
+        ctx,
+        &repository.target.root,
+        &["rev-parse", "HEAD", "--symbolic-full-name", "HEAD"],
+    ))?;
+    let mut lines = head.stdout.lines();
+    Ok(match (lines.next(), lines.next()) {
+        (Some(oid), Some(reference)) if reference.trim() == repository.head_ref => {
+            Some(oid.trim().to_owned())
+        }
+        _ => None,
     })
 }
 
@@ -268,12 +314,15 @@ const fn fetch_retry_delay(_attempt: u32) -> Duration {
 fn plan_repository_update(
     ctx: &Context,
     repository: &CheckedRepository,
+    original_head: String,
     upstream_sha: &str,
 ) -> Result<RepositoryPlanReadiness> {
     let root = &repository.target.root;
-    let head = ctx
-        .executor()
-        .execute(git_command(ctx, root, &["rev-parse", "HEAD"]))?;
+    if checkout_head(ctx, repository)?.as_deref() != Some(original_head.as_str()) {
+        return Ok(RepositoryPlanReadiness::Skipped(checkout_changed(
+            repository,
+        )));
+    }
     let upstream = ctx.executor().execute(git_command(
         ctx,
         root,
@@ -284,7 +333,7 @@ fn plan_repository_update(
         ],
     ))?;
     let upstream = upstream.stdout.trim();
-    let commit = match compare_commits(ctx, root, head.stdout.trim(), upstream)? {
+    let commit = match compare_commits(ctx, root, &original_head, upstream)? {
         CommitRelationship::AlreadyCurrent => {
             ctx.log().debug(format!(
                 "{} already up to date",
@@ -309,7 +358,8 @@ fn plan_repository_update(
         }
     };
     Ok(RepositoryPlanReadiness::Ready(RepositoryUpdatePlan {
-        target: repository.target.clone(),
+        repository: repository.clone(),
+        original_head,
         commit,
     }))
 }

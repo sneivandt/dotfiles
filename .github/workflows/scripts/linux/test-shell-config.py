@@ -922,16 +922,17 @@ class ShellConfigTests(unittest.TestCase):
                 if "ZSH_COMPDUMP" not in self.env:
                     self.prepare_completion()
                 cache = self.home / ".cache/zsh/hosts.cache"
-                self.write(cache, "typeset -ga hosts=(localhost)\n")
-                changed = self.write(self.home / ".ssh" / source, contents)
-                stamp = int(time.time()) - 20
-                os.utime(cache, (stamp, stamp))
-                os.utime(changed, (stamp + 2, stamp + 2))
+                changed = self.write(self.home / ".ssh" / source, "")
                 script = (
                     'setopt extendedglob\n'
                     'source "$ROOT/symlinks/config/zsh/completion.zsh" || exit $?\n'
                     'print -rl -- "${hosts[@]}"\n'
                 )
+                self.run_shell(script)
+                self.write(changed, contents)
+                stamp = int(time.time()) - 20
+                os.utime(cache, (stamp, stamp))
+                os.utime(changed, (stamp + 2, stamp + 2))
                 result = self.run_shell(script)
                 candidates = result.stdout.splitlines()
                 for hostname in hostnames:
@@ -941,6 +942,10 @@ class ShellConfigTests(unittest.TestCase):
                 self.run_shell(script)
                 self.assertEqual(cache.stat().st_mtime_ns, updated,
                                  "unchanged sources should reuse the refreshed cache")
+                changed.unlink()
+                candidates = self.run_shell(script).stdout.splitlines()
+                for hostname in hostnames:
+                    self.assertNotIn(hostname, candidates)
 
     def test_docker_clean_preserves_each_failure(self):
         for failed in ("container", "network", "image", "none"):

@@ -383,6 +383,21 @@ pub trait Output: Send + Sync {
         }
     }
 
+    /// Record a task's public selector before it begins emitting diagnostics.
+    fn record_task_start(&self, task_id: &str, selector: &str, name: &str) {
+        if let Some(run_log) = self.run_log() {
+            run_log.record_in_context(
+                task_id,
+                super::records::Record::TaskStart {
+                    selector: selector.into(),
+                    name: name.into(),
+                },
+            );
+        } else {
+            self.run_task_event(LogEvent::TaskStart, task_id, name);
+        }
+    }
+
     /// Record an action and its ready-to-render console message.
     ///
     /// The message includes any contextual suffix; consumers do not infer action

@@ -72,19 +72,24 @@ zstyle ':completion:*:processes' command 'ps -u "$USER" -o pid,tty,time,args'
 # use /etc/hosts and known_hosts for hostname completion
 typeset -g _ZSH_HOSTS_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/hosts.cache"
 
-# Reuse the daily cache only while its input files are unchanged.
-_zsh_hosts_fresh=false
-if [[ -f "$_ZSH_HOSTS_CACHE" && -n ${_ZSH_HOSTS_CACHE}(#qNmh-24) ]]; then
-  _zsh_hosts_fresh=true
-  for _zsh_hosts_source in /etc/hosts /etc/ssh/ssh_known_hosts ~/.ssh/known_hosts ~/.ssh/config; do
+# Track readable inputs so removal invalidates the cache as well as edits.
+_zsh_hosts_inputs='# Inputs '
+_zsh_hosts_newer=false
+for _zsh_hosts_source in /etc/hosts /etc/ssh/ssh_known_hosts ~/.ssh/known_hosts ~/.ssh/config; do
+  if [[ -r "$_zsh_hosts_source" ]]; then
+    _zsh_hosts_inputs+=1
     if [[ "$_zsh_hosts_source" -nt "$_ZSH_HOSTS_CACHE" ]]; then
-      _zsh_hosts_fresh=false
-      break
+      _zsh_hosts_newer=true
     fi
-  done
-fi
+  else
+    _zsh_hosts_inputs+=0
+  fi
+done
 
-if [[ "$_zsh_hosts_fresh" == true ]]; then
+if [[ $_zsh_hosts_newer == false && -f "$_ZSH_HOSTS_CACHE" &&
+      -n ${_ZSH_HOSTS_CACHE}(#qNmh-24) ]] &&
+   IFS= read -r _zsh_hosts_cached_inputs < "$_ZSH_HOSTS_CACHE" &&
+   [[ $_zsh_hosts_cached_inputs == "$_zsh_hosts_inputs" ]]; then
   source "$_ZSH_HOSTS_CACHE"
 else
   _known_hosts=()
@@ -109,6 +114,7 @@ else
   if mkdir -p "${_ZSH_HOSTS_CACHE:h}"; then
     tmp_hosts_cache="$(mktemp "${_ZSH_HOSTS_CACHE}.XXXXXX")" || return 1
     {
+      print -r -- "$_zsh_hosts_inputs"
       print -r -- "typeset -ga hosts=("
       for host in "${hosts[@]}"; do
         print -r -- "  ${(qqq)host}"
@@ -118,5 +124,5 @@ else
     mv "$tmp_hosts_cache" "$_ZSH_HOSTS_CACHE"
   fi
 fi
-unset _zsh_hosts_fresh _zsh_hosts_source _zsh_hosts_line _zsh_hosts_field _known_hosts
+unset _zsh_hosts_inputs _zsh_hosts_newer _zsh_hosts_cached_inputs _zsh_hosts_source _zsh_hosts_line _zsh_hosts_field _known_hosts
 zstyle ':completion:*:hosts' hosts $hosts

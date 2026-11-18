@@ -157,6 +157,7 @@ const FETCH_MAIN: &[&str] = &[
     "origin",
     "refs/heads/main",
 ];
+const HEAD_SNAPSHOT: &[&str] = &["rev-parse", "HEAD", "--symbolic-full-name", "HEAD"];
 const REMOTE_MAIN: &[&str] = &["config", "--get", "branch.main.remote"];
 const MERGE_MAIN: &[&str] = &["config", "--get", "branch.main.merge"];
 const MAIN_NEW: &str = fixture_oid(&[b'1'; 40]);
@@ -175,6 +176,10 @@ fn fetch_output(commit: &str) -> String {
 
 fn verify_fetched(commit: &str) -> String {
     format!("{commit}^{{commit}}")
+}
+
+fn snapshot(oid: &str) -> String {
+    format!("{oid}\nrefs/heads/main\n")
 }
 
 fn tracking_script(executor: ScriptedExecutor, root: &Path) -> ScriptedExecutor {
@@ -213,8 +218,9 @@ fn run_classifies_repository_state_from_git_output() {
                 .git(root, &["status", "--porcelain", "--untracked-files=no"], ""),
             root,
         )
+        .git(root, HEAD_SNAPSHOT, snapshot(head))
         .git(root, FETCH_MAIN, fetch_output(MAIN_NEW))
-        .git(root, &["rev-parse", "HEAD"], head)
+        .git(root, HEAD_SNAPSHOT, snapshot(head))
         .git(
             root,
             &["rev-parse", "--verify", &verify_fetched(MAIN_NEW)],
@@ -225,6 +231,7 @@ fn run_classifies_repository_state_from_git_output() {
             if behind {
                 executor = executor
                     .git(root, &["merge-base", "--is-ancestor", head, MAIN_NEW], "")
+                    .git(root, HEAD_SNAPSHOT, snapshot(head))
                     .git(
                         root,
                         &["merge", "--ff-only", "--no-overwrite-ignore", MAIN_NEW],
@@ -271,6 +278,54 @@ fn ancestor_command(root: &Path, older: &str, newer: &str) -> CommandSpec {
 }
 
 #[test]
+fn a_changed_checkout_never_reaches_the_merge() {
+    for change in [
+        "old\nrefs/heads/work\n",
+        "old\nHEAD\n",
+        "changed\nrefs/heads/main\n",
+    ] {
+        for before_merge in [false, true] {
+            let fixture = tempfile::tempdir().unwrap();
+            let root = fixture.path();
+            let mut executor = tracking_script(
+                ScriptedExecutor::new()
+                    .git(
+                        root,
+                        &["symbolic-ref", "--quiet", "HEAD"],
+                        "refs/heads/main",
+                    )
+                    .git(root, &["status", "--porcelain", "--untracked-files=no"], ""),
+                root,
+            )
+            .git(root, HEAD_SNAPSHOT, snapshot("old"))
+            .git(root, FETCH_MAIN, fetch_output(MAIN_NEW));
+            if before_merge {
+                executor = executor
+                    .git(root, HEAD_SNAPSHOT, snapshot("old"))
+                    .git(
+                        root,
+                        &["rev-parse", "--verify", &verify_fetched(MAIN_NEW)],
+                        MAIN_NEW,
+                    )
+                    .git(root, &["merge-base", "--is-ancestor", "old", MAIN_NEW], "");
+            }
+            let ctx = make_update_context(
+                root.to_path_buf(),
+                None,
+                executor.git(root, HEAD_SNAPSHOT, change),
+            );
+            let signal = UpdateSignal::new();
+            let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
+            assert!(
+                matches!(result, TaskResult::Skipped { reason, .. } if reason.contains("checkout branch or commit changed")),
+                "{change:?}, before_merge={before_merge}",
+            );
+            assert!(!signal.was_updated());
+        }
+    }
+}
+
+#[test]
 fn fetch_output_without_a_unique_object_blocks_the_merge() {
     for output in [
         String::new(),
@@ -289,6 +344,7 @@ fn fetch_output_without_a_unique_object_blocks_the_merge() {
                 .git(root, &["status", "--porcelain", "--untracked-files=no"], ""),
             root,
         )
+        .git(root, HEAD_SNAPSHOT, snapshot("old"))
         .git(root, FETCH_MAIN, output);
         let ctx = make_update_context(root.to_path_buf(), None, executor);
         let signal = UpdateSignal::new();
@@ -354,6 +410,7 @@ fn run_returns_failed_when_fetch_fails() {
         .ok("")
         .ok("origin")
         .ok("refs/heads/main")
+        .ok(snapshot(MAIN_NEW))
         .err(git_error("simulated fetch failure"));
     let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
     let repo_updated = UpdateSignal::new();
@@ -370,6 +427,7 @@ fn run_propagates_fetch_cancellation() {
         .ok("")
         .ok("origin")
         .ok("refs/heads/main")
+        .ok(snapshot(MAIN_NEW))
         .err(cancelled_git_error());
     let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
 
@@ -388,6 +446,7 @@ fn run_does_not_retry_cancelled_fetch_with_transient_output() {
     let root = tempfile::tempdir_in(".").unwrap();
     let mut mock = MockExecutor::new();
     let mut sequence = mockall::Sequence::new();
+    let head = snapshot("old");
     for (args, result) in [
         (
             &["symbolic-ref", "--quiet", "HEAD"][..],
@@ -399,6 +458,7 @@ fn run_does_not_retry_cancelled_fetch_with_transient_output() {
         ),
         (REMOTE_MAIN, Ok(ExecResult::success("origin"))),
         (MERGE_MAIN, Ok(ExecResult::success("refs/heads/main"))),
+        (HEAD_SNAPSHOT, Ok(ExecResult::success(head))),
         (
             FETCH_MAIN,
             Err(ExecError::Cancelled {
@@ -432,12 +492,13 @@ fn run_retries_transient_fetch_failure() {
         .ok("")
         .ok("origin")
         .ok("refs/heads/main")
+        .ok(snapshot(MAIN_NEW))
         .err(git_error(
             "mux_client_request_session: read from master failed: Connection reset by peer\n\
              Failed to connect to new control master",
         ))
         .ok(fetch_output(MAIN_NEW))
-        .ok(MAIN_NEW)
+        .ok(snapshot(MAIN_NEW))
         .ok(MAIN_NEW);
     let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
     let repo_updated = UpdateSignal::new();
@@ -456,6 +517,7 @@ fn run_stops_after_transient_fetch_retries_are_exhausted() {
         .ok("")
         .ok("origin")
         .ok("refs/heads/main")
+        .ok(snapshot(MAIN_NEW))
         .err(git_error("connection reset by peer"))
         .err(git_error("connection reset by peer"))
         .err(git_error("connection reset by peer"));
@@ -542,15 +604,17 @@ fn run_updates_overlay_repository_when_behind_upstream() {
             "",
         );
     let exec = tracking_script(tracking_script(exec, &main_root), &overlay_root)
+        .git(&main_root, HEAD_SNAPSHOT, snapshot(MAIN_NEW))
+        .git(&overlay_root, HEAD_SNAPSHOT, snapshot("def456"))
         .git(main_root.clone(), FETCH_MAIN, fetch_output(MAIN_NEW))
         .git(overlay_root.clone(), FETCH_MAIN, fetch_output(OVERLAY_NEW))
-        .git(&main_root, &["rev-parse", "HEAD"], MAIN_NEW)
+        .git(&main_root, HEAD_SNAPSHOT, snapshot(MAIN_NEW))
         .git(
             main_root,
             &["rev-parse", "--verify", &verify_fetched(MAIN_NEW)],
             MAIN_NEW,
         )
-        .git(overlay_root.clone(), &["rev-parse", "HEAD"], "def456")
+        .git(overlay_root.clone(), HEAD_SNAPSHOT, snapshot("def456"))
         .git(
             overlay_root.clone(),
             &["rev-parse", "--verify", &verify_fetched(OVERLAY_NEW)],
@@ -561,6 +625,7 @@ fn run_updates_overlay_repository_when_behind_upstream() {
             &["merge-base", "--is-ancestor", "def456", OVERLAY_NEW],
             "",
         )
+        .git(&overlay_root, HEAD_SNAPSHOT, snapshot("def456"))
         .git(
             overlay_root,
             &["merge", "--ff-only", "--no-overwrite-ignore", OVERLAY_NEW],
@@ -613,6 +678,9 @@ fn parallel_fetch_visits_every_repository() {
                     .push(spec.working_dir().unwrap().to_path_buf());
                 Ok(ExecResult::success(fetch_output(MAIN_NEW)))
             }
+            Some("rev-parse") if spec.arguments() == HEAD_SNAPSHOT => {
+                Ok(ExecResult::success(snapshot(MAIN_NEW)))
+            }
             Some("rev-parse") => Ok(ExecResult::success(MAIN_NEW)),
             _ => panic!("unexpected git call {:?}", spec.arguments()),
         }
@@ -647,6 +715,7 @@ fn parallel_fetch_failure_reports_the_first_declared_repository() {
             Some("config") if spec.arguments() == MERGE_MAIN => {
                 Ok(ExecResult::success("refs/heads/main"))
             }
+            Some("rev-parse") => Ok(ExecResult::success(snapshot(MAIN_NEW))),
             Some("fetch") => Err(git_error("simulated fetch failure")),
             _ => panic!("unexpected git call {:?}", spec.arguments()),
         }
@@ -677,7 +746,7 @@ fn parallel_fetch_cancellation_takes_precedence_over_another_repository_failure(
             main_root
         };
         let mut mock = MockExecutor::new();
-        mock.expect_execute().times(10).returning(move |spec| {
+        mock.expect_execute().times(12).returning(move |spec| {
             assert_eq!(spec.program(), "git");
             assert!(spec.is_checked());
             match spec.arguments().first().and_then(|arg| arg.to_str()) {
@@ -697,6 +766,10 @@ fn parallel_fetch_cancellation_takes_precedence_over_another_repository_failure(
                 }
                 Some("config") if spec.arguments() == MERGE_MAIN => {
                     Ok(ExecResult::success("refs/heads/main"))
+                }
+                Some("rev-parse") => {
+                    assert_eq!(spec.arguments(), HEAD_SNAPSHOT);
+                    Ok(ExecResult::success(snapshot(MAIN_NEW)))
                 }
                 Some("fetch") => {
                     assert_eq!(spec.arguments(), FETCH_MAIN);
@@ -739,7 +812,7 @@ fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_sign
         let overlay_root = root.path().join("overlay");
         let config = overlay_config(&main_root, &overlay_root);
         let executor = ready_repositories_script(&main_root, &overlay_root)
-            .git(&main_root, &["rev-parse", "HEAD"], "main-old")
+            .git(&main_root, HEAD_SNAPSHOT, snapshot("main-old"))
             .git(
                 &main_root,
                 &["rev-parse", "--verify", &verify_fetched(MAIN_NEW)],
@@ -750,7 +823,7 @@ fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_sign
                 &["merge-base", "--is-ancestor", "main-old", MAIN_NEW],
                 "",
             )
-            .git(&overlay_root, &["rev-parse", "HEAD"], "overlay-old")
+            .git(&overlay_root, HEAD_SNAPSHOT, snapshot("overlay-old"))
             .git(
                 &overlay_root,
                 &["rev-parse", "--verify", &verify_fetched(OVERLAY_NEW)],
@@ -761,11 +834,13 @@ fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_sign
                 &["merge-base", "--is-ancestor", "overlay-old", OVERLAY_NEW],
                 "",
             )
+            .git(&main_root, HEAD_SNAPSHOT, snapshot("main-old"))
             .git(
                 &main_root,
                 &["merge", "--ff-only", "--no-overwrite-ignore", MAIN_NEW],
                 "updated",
             )
+            .git(&overlay_root, HEAD_SNAPSHOT, snapshot("overlay-old"))
             .command(
                 CommandSpec::new("git")
                     .args(&["merge", "--ff-only", "--no-overwrite-ignore", OVERLAY_NEW])
@@ -815,6 +890,9 @@ fn ready_repositories_script(main: &Path, overlay: &Path) -> ScriptedExecutor {
     for root in [main, overlay] {
         executor = tracking_script(executor, root);
     }
+    for (root, oid) in [(main, "main-old"), (overlay, "overlay-old")] {
+        executor = executor.git(root, HEAD_SNAPSHOT, snapshot(oid));
+    }
     for (root, commit) in [(main, MAIN_NEW), (overlay, OVERLAY_NEW)] {
         executor = executor.git(root, FETCH_MAIN, fetch_output(commit));
     }
@@ -838,7 +916,7 @@ fn unsafe_overlay_plan_prevents_merging_an_otherwise_ready_main_repository() {
         let overlay_root = root.path().join("overlay");
         let config = overlay_config(&main_root, &overlay_root);
         let executor = ready_repositories_script(&main_root, &overlay_root)
-            .git(&main_root, &["rev-parse", "HEAD"], "main-old")
+            .git(&main_root, HEAD_SNAPSHOT, snapshot("main-old"))
             .git(
                 &main_root,
                 &["rev-parse", "--verify", &verify_fetched(MAIN_NEW)],
@@ -849,7 +927,7 @@ fn unsafe_overlay_plan_prevents_merging_an_otherwise_ready_main_repository() {
                 &["merge-base", "--is-ancestor", "main-old", MAIN_NEW],
                 "",
             )
-            .git(&overlay_root, &["rev-parse", "HEAD"], "overlay-old")
+            .git(&overlay_root, HEAD_SNAPSHOT, snapshot("overlay-old"))
             .git(
                 &overlay_root,
                 &["rev-parse", "--verify", &verify_fetched(OVERLAY_NEW)],
@@ -899,8 +977,9 @@ fn repeat_update_after_fast_forward_does_not_merge_or_request_another_restart() 
                 "",
             );
         executor = tracking_script(executor, root.path())
+            .git(root.path(), HEAD_SNAPSHOT, snapshot(head))
             .git(root.path(), FETCH_MAIN, fetch_output(MAIN_NEW))
-            .git(root.path(), &["rev-parse", "HEAD"], head)
+            .git(root.path(), HEAD_SNAPSHOT, snapshot(head))
             .git(
                 root.path(),
                 &["rev-parse", "--verify", &verify_fetched(MAIN_NEW)],
@@ -913,6 +992,7 @@ fn repeat_update_after_fast_forward_does_not_merge_or_request_another_restart() 
                     &["merge-base", "--is-ancestor", "old", MAIN_NEW],
                     "",
                 )
+                .git(root.path(), HEAD_SNAPSHOT, snapshot(head))
                 .git(
                     root.path(),
                     &["merge", "--ff-only", "--no-overwrite-ignore", MAIN_NEW],
@@ -1135,15 +1215,18 @@ fn merge_failure_or_cancellation_does_not_signal_a_successful_update() {
         let mut sequence = mockall::Sequence::new();
         let fetch = fetch_output(MAIN_NEW);
         let verification = verify_fetched(MAIN_NEW);
+        let head = snapshot("old");
         for (args, stdout) in [
             (vec!["symbolic-ref", "--quiet", "HEAD"], "refs/heads/main"),
             (vec!["status", "--porcelain", "--untracked-files=no"], ""),
             (REMOTE_MAIN.to_vec(), "origin"),
             (MERGE_MAIN.to_vec(), "refs/heads/main"),
+            (HEAD_SNAPSHOT.to_vec(), head.as_str()),
             (FETCH_MAIN.to_vec(), fetch.as_str()),
-            (vec!["rev-parse", "HEAD"], "old"),
+            (HEAD_SNAPSHOT.to_vec(), head.as_str()),
             (vec!["rev-parse", "--verify", &verification], MAIN_NEW),
             (vec!["merge-base", "--is-ancestor", "old", MAIN_NEW], ""),
+            (HEAD_SNAPSHOT.to_vec(), head.as_str()),
         ] {
             expect_git(
                 &mut mock,

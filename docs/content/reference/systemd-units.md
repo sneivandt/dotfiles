@@ -75,14 +75,15 @@ the task before service changes rather than assuming it is safe to start.
 With a live manager:
 
 - `enabled = true` means persistently enabled and, when its graphical policy permits,
-  started. Runtime-only enablement is not sufficient. Declare the unit with
-  direct install links when systemd reports an indirect unit. Static units have
+  started. Runtime-only enablement is not sufficient. Static units have
   no install instructions and cannot satisfy this declaration. Dotfiles retries
   a start previously skipped by a condition so systemd can evaluate it again.
   Retrying a system unit can require sudo even if the condition still prevents
   it from starting.
 - `enabled = false` means disabled and stopped, including stopping a static
   unit that has no enablement links.
+- If systemd reports an indirect unit, declare the unit that owns the install
+  links. Disabling an indirect unit can remove links for another unit.
 - Disabling is not masking: another unit may start it later.
 - When a locally installed user unit already has enablement links, Dotfiles can reconcile
   changed `WantedBy` and `RequiredBy` targets using the same directive support as offline

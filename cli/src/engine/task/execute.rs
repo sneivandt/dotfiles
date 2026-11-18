@@ -78,7 +78,7 @@ pub(crate) fn execute_assessed(
     }
 
     ctx.log()
-        .run_task_event(LogEvent::TaskStart, &recording.task_id, task.name());
+        .record_task_start(&recording.task_id, task.selector(), task.name());
     let started = std::time::Instant::now();
     let execution = recording.record_run_outcome();
     let elapsed = started.elapsed();

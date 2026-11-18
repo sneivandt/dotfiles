@@ -63,6 +63,32 @@ fn install_staged_binary(path: &Path, staged: &Path) -> Result<()> {
     Ok(())
 }
 
+// Both launchers understand this journal: nonempty means publication hasn't
+// been confirmed. Keep the inode even when clean so all processes lock it.
+fn begin_replacement(bin: &Path) -> Result<fs::File> {
+    let name = bin
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("invalid binary name")?;
+    let journal = fs::File::options()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(bin.with_file_name(format!(".{name}.update-state")))
+        .context("opening self-update journal")?;
+    journal
+        .try_lock()
+        .context("another process is installing or recovering the CLI; retry")?;
+    anyhow::ensure!(
+        journal.metadata()?.len() == 0,
+        "unfinished self-update; run the checkout wrapper to recover before retrying"
+    );
+    journal.set_len(1).context("marking self-update pending")?;
+    journal.sync_all().context("saving self-update journal")?;
+    Ok(journal)
+}
+
 /// Replace the binary at `path` with a verified staging file.
 ///
 /// Retain the current binary at [`old_binary_name`] for smoke-test rollback.
@@ -212,20 +238,25 @@ fn download_and_install_with_gh(
     );
     verify_provenance(gh, policy, asset, staged.path())?;
 
+    let journal = begin_replacement(&bin)?;
     replace_binary(&bin, staged.path())?;
     staged.persist();
     if let Err(smoke_err) = smoke_test_binary(&bin) {
         let old = old_binary_path(root);
-        if old.exists()
-            && let Err(restore_err) = fs::rename(&old, &bin)
-        {
-            tracing::warn!(
-                "CRITICAL: smoke-test failed and automatic rollback also failed ({restore_err:#}). \
-                 Manual intervention required: restore {old:?} to {bin:?}"
-            );
+        if old.try_exists()? {
+            fs::rename(&old, &bin).with_context(|| {
+                format!(
+                    "{smoke_err:#}; restoring {} also failed; retry using the checkout wrapper",
+                    old.display()
+                )
+            })?;
+            journal
+                .set_len(0)
+                .context("finishing self-update rollback")?;
         }
         return Err(smoke_err);
     }
+    journal.set_len(0).context("confirming self-update")?;
     write_cache_best_effort(root, tag);
 
     Ok(())
@@ -532,8 +563,16 @@ mod tests {
         );
         assert_eq!(
             fs::read_dir(&bin_dir).unwrap().count(),
-            2,
-            "only the binary and version cache remain"
+            3,
+            "only the binary, clean update journal and version cache remain"
+        );
+        assert_eq!(
+            fs::metadata(bin_dir.join(format!(
+            ".{}.update-state", binary_path(dir.path()).file_name().unwrap().to_str().unwrap()
+        )))
+            .unwrap()
+            .len(),
+            0
         );
         let cache = fs::read_to_string(cache_path(dir.path())).unwrap();
         assert!(cache.starts_with(&format!("{}\nv1.0.0\n", super::super::REPO)));
@@ -738,6 +777,106 @@ mod tests {
             fs::read(dir.path().join(".dotfiles.old")).unwrap(),
             b"old-content"
         );
+    }
+
+    #[test]
+    fn checkout_wrapper_recovers_only_unlocked_unfinished_updates() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let good = version_capable_binary();
+        #[cfg(unix)]
+        let bad = b"#!/bin/sh\nexit 1\n".to_vec();
+        #[cfg(windows)]
+        let bad = fs::read(
+            PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32/where.exe"),
+        )
+        .unwrap();
+        for wrapper in ["dotfiles.sh", "dotfiles.ps1"] {
+            let shell = if wrapper == "dotfiles.sh" {
+                if cfg!(windows) {
+                    continue;
+                }
+                which::which("sh").unwrap()
+            } else if let Ok(pwsh) = which::which("pwsh") {
+                pwsh
+            } else if cfg!(windows) {
+                which::which("powershell").unwrap()
+            } else {
+                continue;
+            };
+            for phase in ["missing", "failed", "healthy", "both-failed", "legacy"] {
+                let root = tempfile::tempdir_in(".").unwrap();
+                let bin = binary_path(root.path());
+                let old = old_binary_path(root.path());
+                fs::create_dir(bin.parent().unwrap()).unwrap();
+                let wrapper_path = root.path().join(wrapper);
+                fs::copy(repo.join(wrapper), &wrapper_path).unwrap();
+                let write_image = |path, data| {
+                    fs::write(path, data).unwrap();
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt as _;
+                        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+                    }
+                };
+                write_image(
+                    &old,
+                    if matches!(phase, "healthy" | "both-failed") {
+                        &bad
+                    } else {
+                        &good
+                    },
+                );
+                if !matches!(phase, "missing" | "legacy") {
+                    write_image(&bin, if phase == "healthy" { &good } else { &bad });
+                }
+                let run = || {
+                    let mut command = std::process::Command::new(&shell);
+                    if wrapper == "dotfiles.ps1" {
+                        command.args(["-NoProfile", "-NonInteractive", "-File"]);
+                    }
+                    command
+                        .arg(&wrapper_path)
+                        .arg("--version")
+                        .output()
+                        .unwrap()
+                };
+                if phase != "legacy" {
+                    let active = begin_replacement(&bin).unwrap();
+                    if phase == "missing" {
+                        let output = run();
+                        assert!(
+                            !output.status.success(),
+                            "{wrapper} ignored update lock: {output:?}"
+                        );
+                        assert!(!bin.exists());
+                        assert_eq!(fs::read(&old).unwrap(), good);
+                    }
+                    drop(active); // process exit without confirming the installation
+                }
+                let output = run();
+                assert_eq!(
+                    output.status.success(),
+                    phase != "both-failed",
+                    "{wrapper} {phase}: {output:?}"
+                );
+                match phase {
+                    "legacy" => {
+                        assert!(!bin.exists());
+                        assert_eq!(fs::read(old).unwrap(), good);
+                    }
+                    "both-failed" => {
+                        assert_eq!(fs::read(&bin).unwrap(), bad);
+                        assert_eq!(fs::read(old).unwrap(), bad);
+                        assert!(begin_replacement(&bin).is_err());
+                    }
+                    _ => {
+                        assert_eq!(fs::read(&bin).unwrap(), good);
+                        assert_eq!(old.exists(), phase == "healthy");
+                        begin_replacement(&bin).unwrap(); // next update no longer requires recovery
+                    }
+                }
+            }
+        }
     }
 
     #[test]

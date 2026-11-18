@@ -80,13 +80,15 @@ if [ -L "$2" ] || { [ -e "$2" ] && [ ! -f "$2" ]; }; then
     printf 'Refusing to replace a non-regular system file: %s\n' "$2" >&2
     exit 1
 fi
-if [ -f "$2" ]; then
-    cp --attributes-only --preserve=mode,ownership,xattr -- "$2" "$replacement"
-fi
 if [ -f "$3" ]; then
+    # ctime covers owner, mode and xattrs; include inode identity for replacements.
+    signature='%d:%i:%u:%g:%f:%z'
+    before=$(stat -c "$signature" -- "$2")
+    cp --attributes-only --preserve=mode,ownership,xattr -- "$2" "$replacement"
     expected=$(sha256sum < "$3")
     if [ -L "$2" ] || [ ! -f "$2" ] ||
-        ! actual=$(sha256sum < "$2") || [ "$actual" != "$expected" ]; then
+        ! actual=$(sha256sum < "$2") || [ "$actual" != "$expected" ] ||
+        ! after=$(stat -c "$signature" -- "$2") || [ "$after" != "$before" ]; then
         printf 'System file changed or could not be verified while preparing update: %s; retry the update\n' "$2" >&2
         exit 1
     fi
@@ -2198,7 +2200,10 @@ esac
         use std::os::unix::fs::PermissionsExt as _;
 
         for existing in [false, true] {
-            for failure in ["copy", "publish", "conflict", "none"] {
+            for failure in ["copy", "publish", "conflict", "chmod", "none"] {
+                if !existing && failure == "chmod" {
+                    continue;
+                }
                 let root = tempfile::tempdir_in(".").unwrap();
                 let root_path = root.path().canonicalize().unwrap();
                 let tools = root.path().join("tools");
@@ -2224,6 +2229,17 @@ esac
                 let original = fs::metadata(&target).ok();
                 let install = tools.join("install");
                 fs::write(&install, INSTALL_FIXTURE).unwrap();
+                let cp = tools.join("cp");
+                fs::write(
+                    &cp,
+                    r#"#!/bin/sh
+set -eu
+"$REAL_CP" "$@"
+if [ "$1" = --attributes-only ] && [ "$FAILURE" = chmod ]; then chmod 0400 -- "$TARGET"; fi
+"#,
+                )
+                .unwrap();
+                fs::set_permissions(cp, fs::Permissions::from_mode(0o755)).unwrap();
                 for tool in ["mv", "ln"] {
                     let publish = tools.join(tool);
                     fs::write(&publish, PUBLISH_FIXTURE).unwrap();
@@ -2246,6 +2262,7 @@ esac
                     .env("PATH", path)
                     .env("FAILURE", failure)
                     .env("TARGET", &target)
+                    .env("REAL_CP", which::which("cp").unwrap())
                     .env("REAL_INSTALL", which::which("install").unwrap())
                     .env("REAL_MV", which::which("mv").unwrap())
                     .env("REAL_LN", which::which("ln").unwrap())
@@ -2269,6 +2286,13 @@ esac
                     assert_eq!(
                         fs::metadata(&target).unwrap().permissions().mode() & 0o777,
                         if existing { 0o600 } else { 0o644 }
+                    );
+                } else if failure == "chmod" {
+                    assert!(String::from_utf8_lossy(&result.stderr).contains("retry the update"));
+                    assert_eq!(fs::read(&target).unwrap(), b"original content\n");
+                    assert_eq!(
+                        fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+                        0o400
                     );
                 } else if failure == "conflict" {
                     assert_eq!(fs::read(&target).unwrap(), b"intervening edit\n");

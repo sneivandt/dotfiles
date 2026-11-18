@@ -276,6 +276,30 @@ download_binary() {(
   echo "Downloaded · checksum verified · $BINARY" >&2
 )}
 
+state="$BIN_DIR/.dotfiles.update-state"
+backup="$BIN_DIR/.dotfiles.old"
+if [ -s "$state" ]; then
+  (
+    flock -xn 9 || { echo "ERROR: CLI update in progress; retry shortly." >&2; exit 1; }
+    if [ -s "$state" ]; then
+      if ! "$BINARY" --version >/dev/null 2>&1; then
+        if ! "$backup" --version >/dev/null 2>&1; then
+          echo "ERROR: Neither the installed CLI nor its backup starts; inspect $BIN_DIR before retrying." >&2
+          exit 1
+        fi
+        mv -fT -- "$backup" "$BINARY"
+        echo "Restored previous CLI after interrupted update." >&2
+      fi
+      : > "$state"
+    fi
+  ) 9<>"$state"
+elif [ ! -e "$BINARY" ] && [ -f "$backup" ]; then
+  # Older updaters have no journal lock. Do not move their running image.
+  "$backup" --version >/dev/null
+  echo "Using previous CLI; restore $backup to $BINARY when no update is running." >&2
+  exec "$backup" "$@"
+fi
+
 # Bootstrap when no usable binary is cached.
 # Subsequent updates are handled by the binary itself.
 if [ ! -x "$BINARY" ]; then

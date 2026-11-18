@@ -409,6 +409,11 @@ impl Operation for PackageInstallOperation {
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         plan.report_unavailable(ctx);
+        if self.manager == PackageManager::Pacman && !plan.missing.is_empty() {
+            ctx.log().warn(
+                "Installing missing packages with pacman -Syu will sync package databases and may upgrade other installed packages.",
+            );
+        }
         for resource in &plan.missing {
             let description = resource.description();
             ctx.log().action(

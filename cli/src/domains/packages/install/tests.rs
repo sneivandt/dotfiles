@@ -1118,7 +1118,7 @@ fn install_packages_all_already_installed_returns_ok() {
 #[test]
 fn install_packages_dry_run_reports_missing_packages() {
     let root = tempfile::tempdir_in(".").unwrap();
-    let packages = packages(&[("git", false)]);
+    let packages = packages(&[("git", false), ("vim", false)]);
     // which("pacman") → true
     // pacman inventory → nothing installed
     let mut mock = MockExecutor::new();
@@ -1127,9 +1127,14 @@ fn install_packages_dry_run_reports_missing_packages() {
         .once()
         .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("")));
-    let mut ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock);
-    ctx = ctx.with_dry_run(true);
+    let output = Arc::new(CapturingOutput::default());
+    let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock)
+        .with_log(Arc::<CapturingOutput>::clone(&output))
+        .with_dry_run(true);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
+    let warnings = output.messages_of(crate::infra::logging::MsgKind::Warn);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("may upgrade other installed packages"));
     let stats = task_batch(&result);
     assert_eq!(
         (
@@ -1137,7 +1142,7 @@ fn install_packages_dry_run_reports_missing_packages() {
             stats.already_ok_count(),
             stats.failed_count()
         ),
-        (1, 0, 0)
+        (2, 0, 0)
     );
 }
 

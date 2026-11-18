@@ -96,7 +96,8 @@ even if the same filters work for the scheduled refresh.
 ::: warning Installing a missing package can upgrade the system
 Pacman installation uses `pacman -Syu --needed --noconfirm`. It can synchronize
 databases and upgrade other installed packages as well as install missing ones.
-Review the transaction's possible system effects before applying.
+Dry-run warns about this once per batch; its package list names only the missing
+packages, not every package pacman might upgrade.
 :::
 
 When every selected native package is already installed, dotfiles does not run

@@ -367,6 +367,47 @@ function Get-Binary
     }
 }
 
+function Test-CliStartup([string]$Path)
+{
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    try {
+        & $Path --version *> $null
+        return ($LASTEXITCODE -eq 0)
+    } catch [System.Management.Automation.ApplicationFailedException] {
+        return $false
+    }
+}
+
+$statePath = Join-Path $BinDir ".$BinaryName.update-state"
+$backupName = if (Test-IsWindows) { '.dotfiles-old.exe' } else { '.dotfiles.old' }
+$backup = Join-Path $BinDir $backupName
+if ((Test-Path -LiteralPath $statePath -PathType Leaf) -and (Get-Item -Force -LiteralPath $statePath).Length -gt 0)
+{
+    # FileShare.None uses flock on Unix and excludes open updater handles on Windows.
+    $state = [IO.File]::Open($statePath, 'Open', 'ReadWrite', 'None')
+    try {
+        if ($state.Length -gt 0) {
+            if (-not (Test-CliStartup $Binary)) {
+                if (-not (Test-CliStartup $backup)) {
+                    throw "Neither the installed CLI nor its backup starts; inspect $BinDir before retrying."
+                }
+                if ([IO.Directory]::Exists($Binary)) { throw "Binary path is a directory: $Binary" }
+                Move-Item -Force -LiteralPath $backup -Destination $Binary
+                [Console]::Error.WriteLine('Restored previous CLI after interrupted update.')
+            }
+            $state.SetLength(0)
+        }
+    } finally {
+        $state.Dispose()
+    }
+} elseif (-not (Test-Path -LiteralPath $Binary) -and (Test-Path -LiteralPath $backup -PathType Leaf)) {
+    # Do not move the running image of a pre-journal updater.
+    if (-not (Test-CliStartup $backup)) { throw "Previous CLI failed its startup check: $backup" }
+    [Console]::Error.WriteLine("Using previous CLI; restore $backup to $Binary when no update is running.")
+    & $backup @CliArgs
+    exit $LASTEXITCODE
+}
+
 # Bootstrap when no usable binary is cached.
 $binaryReady = Test-Path -LiteralPath $Binary -PathType Leaf
 if ($binaryReady -and ($IsLinux -or $IsMacOS))

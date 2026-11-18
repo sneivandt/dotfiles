@@ -92,15 +92,28 @@ pub(super) fn apply_repository_updates(
                 TaskResult::Failed(partial_merge_reason(&reason, &changed))
             });
         }
+        // A branch's mergeOptions can enable squash even with --ff-only.
         let result = ctx.executor().execute(git_command(
             ctx,
             &target.root,
-            &["merge", "--ff-only", "--no-overwrite-ignore", commit],
+            &[
+                "merge",
+                "--ff-only",
+                "--no-squash",
+                "--no-overwrite-ignore",
+                commit,
+            ],
         ));
         match result {
             Ok(r) => {
                 ctx.log()
                     .debug(format!("git merge output: {}", r.stdout.trim()));
+                if checkout_head(ctx, repository)?.as_deref() != Some(commit) {
+                    let reason = target.reason(
+                        "git merge did not leave the expected branch at the fetched commit; inspect the checkout before retrying",
+                    );
+                    return Ok(TaskResult::Failed(partial_merge_reason(&reason, &changed)));
+                }
                 ctx.log().action(
                     "update",
                     target.description(),

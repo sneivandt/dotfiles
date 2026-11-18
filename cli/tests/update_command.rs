@@ -1351,6 +1351,7 @@ fn repository_only_update_recovers_bad_config_and_refuses_a_deleted_upstream() {
     let fixed = git(&root, &["rev-parse", "HEAD"]);
     git(&root, &["push", "origin", "main"]);
     git(&root, &["reset", "--hard", &broken]);
+    git(&root, &["config", "branch.main.mergeOptions", "--squash"]);
 
     let overlay = tempfile::tempdir().unwrap();
     let update = || {
@@ -1403,12 +1404,12 @@ fn repository_only_update_recovers_bad_config_and_refuses_a_deleted_upstream() {
     assert_eq!(
         git(&root, &["rev-parse", "HEAD"]),
         fixed,
-        "must reach the repair commit"
+        "must fast-forward to the repair commit even with squash configured"
     );
-    assert!(
-        std::fs::read(&config).unwrap().is_empty(),
-        "must restore the valid config"
-    );
+    let status = git(&root, &["status", "--porcelain", "-uno"]);
+    assert!(status.is_empty(), "expected a clean checkout: {status}");
+    let content = std::fs::read(&config).unwrap();
+    assert!(content.is_empty(), "must restore the valid config");
 
     git(&root, &["reset", "--hard", &broken]);
     git(&remote, &["update-ref", "-d", "refs/heads/main"]);

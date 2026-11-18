@@ -163,6 +163,16 @@ const MERGE_MAIN: &[&str] = &["config", "--get", "branch.main.merge"];
 const MAIN_NEW: &str = fixture_oid(&[b'1'; 40]);
 const OVERLAY_NEW: &str = fixture_oid(&[b'2'; 40]);
 
+const fn merge_args(commit: &str) -> [&str; 5] {
+    [
+        "merge",
+        "--ff-only",
+        "--no-squash",
+        "--no-overwrite-ignore",
+        commit,
+    ]
+}
+
 const fn fixture_oid(hex: &'static [u8; 40]) -> &'static str {
     match std::str::from_utf8(hex) {
         Ok(oid) => oid,
@@ -232,11 +242,8 @@ fn run_classifies_repository_state_from_git_output() {
                 executor = executor
                     .git(root, &["merge-base", "--is-ancestor", head, MAIN_NEW], "")
                     .git(root, HEAD_SNAPSHOT, snapshot(head))
-                    .git(
-                        root,
-                        &["merge", "--ff-only", "--no-overwrite-ignore", MAIN_NEW],
-                        "",
-                    );
+                    .git(root, &merge_args(MAIN_NEW), "")
+                    .git(root, HEAD_SNAPSHOT, snapshot(MAIN_NEW));
                 changed = true;
             } else {
                 executor = executor
@@ -627,10 +634,11 @@ fn run_updates_overlay_repository_when_behind_upstream() {
         )
         .git(&overlay_root, HEAD_SNAPSHOT, snapshot("def456"))
         .git(
-            overlay_root,
-            &["merge", "--ff-only", "--no-overwrite-ignore", OVERLAY_NEW],
+            &overlay_root,
+            &merge_args(OVERLAY_NEW),
             "Updating def456..fed654\nFast-forward",
-        );
+        )
+        .git(&overlay_root, HEAD_SNAPSHOT, snapshot(OVERLAY_NEW));
 
     let ctx = make_update_context(config.root, config.overlay, exec);
     let repo_updated = UpdateSignal::new();
@@ -835,15 +843,12 @@ fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_sign
                 "",
             )
             .git(&main_root, HEAD_SNAPSHOT, snapshot("main-old"))
-            .git(
-                &main_root,
-                &["merge", "--ff-only", "--no-overwrite-ignore", MAIN_NEW],
-                "updated",
-            )
+            .git(&main_root, &merge_args(MAIN_NEW), "updated")
+            .git(&main_root, HEAD_SNAPSHOT, snapshot(MAIN_NEW))
             .git(&overlay_root, HEAD_SNAPSHOT, snapshot("overlay-old"))
             .command(
                 CommandSpec::new("git")
-                    .args(&["merge", "--ff-only", "--no-overwrite-ignore", OVERLAY_NEW])
+                    .args(&merge_args(OVERLAY_NEW))
                     .current_dir(&overlay_root),
                 Err(error),
             );
@@ -993,11 +998,8 @@ fn repeat_update_after_fast_forward_does_not_merge_or_request_another_restart() 
                     "",
                 )
                 .git(root.path(), HEAD_SNAPSHOT, snapshot(head))
-                .git(
-                    root.path(),
-                    &["merge", "--ff-only", "--no-overwrite-ignore", MAIN_NEW],
-                    "updated",
-                );
+                .git(root.path(), &merge_args(MAIN_NEW), "updated")
+                .git(root.path(), HEAD_SNAPSHOT, snapshot(MAIN_NEW));
         }
     }
     let ctx = make_update_context(root.path().to_path_buf(), None, executor);
@@ -1208,8 +1210,19 @@ fn dry_run_only_treats_documented_probe_exits_as_absence() {
 }
 
 #[test]
-fn merge_failure_or_cancellation_does_not_signal_a_successful_update() {
-    for cancelled in [false, true] {
+fn only_a_verified_fast_forward_signals_a_successful_update() {
+    for (merge, expected_failure) in [
+        (
+            Err(git_non_zero("merge rejected")),
+            Some("git merge --ff-only failed"),
+        ),
+        (Err(cancelled_git_error()), None),
+        (
+            Ok(ExecResult::success("")),
+            Some("git merge did not leave the expected branch at the fetched commit"),
+        ),
+    ] {
+        let verify = merge.is_ok();
         let root = tempfile::tempdir_in(".").unwrap();
         let mut mock = MockExecutor::new();
         let mut sequence = mockall::Sequence::new();
@@ -1240,31 +1253,42 @@ fn merge_failure_or_cancellation_does_not_signal_a_successful_update() {
             &mut mock,
             &mut sequence,
             root.path(),
-            &["merge", "--ff-only", "--no-overwrite-ignore", MAIN_NEW],
-            Err(if cancelled {
-                cancelled_git_error()
-            } else {
-                git_non_zero("merge rejected")
-            }),
+            &merge_args(MAIN_NEW),
+            merge,
         );
-        let ctx = make_update_context(root.path().to_path_buf(), None, mock);
+        if verify {
+            expect_git(
+                &mut mock,
+                &mut sequence,
+                root.path(),
+                HEAD_SNAPSHOT,
+                Ok(ExecResult::success(head)),
+            );
+        }
         let signal = UpdateSignal::new();
+        let log = Arc::new(CapturingOutput::default());
+        let ctx = make_update_context(root.path().to_path_buf(), None, mock);
+        let ctx = ctx.with_log(Arc::<CapturingOutput>::clone(&log));
         let result = UpdateRepository::new(signal.clone()).run(&ctx);
-        if cancelled {
+        if let Some(expected) = expected_failure {
+            assert!(
+                matches!(result.unwrap(), TaskResult::Failed(reason) if reason.contains(expected))
+            );
+        } else {
             assert!(
                 result
                     .unwrap_err()
                     .downcast_ref::<ExecError>()
                     .is_some_and(ExecError::is_cancelled)
             );
-        } else {
-            assert!(
-                matches!(result.unwrap(), TaskResult::Failed(reason) if reason == "git merge --ff-only failed")
-            );
         }
         assert!(
             !signal.was_updated(),
-            "a failed first merge must not request a restart"
+            "an unverified merge must not request a restart"
+        );
+        assert!(
+            log.actions().is_empty(),
+            "an unverified merge must not report an update"
         );
     }
 }

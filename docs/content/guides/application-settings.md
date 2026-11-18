@@ -235,8 +235,8 @@ extensions without changing the shared declaration.
 
 On Arch, the managed Insiders launcher and URL handler use GNOME libsecret.
 See [GNOME Keyring troubleshooting](troubleshooting.md#gnome-keyring-stays-locked)
-for credential failures. Chroot setup defers extension installation until a
-graphical login; `dotfiles-first-login.service` retries until it succeeds.
+for credential failures. When the selected profile enables the first-login
+service, chroot setup defers extension installation until a graphical login.
 
 For failures, use `dotfiles log --id <run-id> --task vscode-extensions --verbose`,
 replacing `<run-id>` with the failure's stable ID.

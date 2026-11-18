@@ -13,6 +13,8 @@ pub const ARCH_CHROOT: &str = "arch-chroot";
 
 /// Marker path relative to the user's home directory.
 pub const DEFERRED_EXTENSIONS_MARKER: &str = ".local/state/dotfiles/deferred-vscode-extensions";
+pub(crate) const FIRST_LOGIN_UNIT: &str = "dotfiles-first-login.service";
+pub(crate) const FIRST_LOGIN_UNIT_PATH: &str = ".config/systemd/user/dotfiles-first-login.service";
 
 /// Filesystem state of the deferred extension provisioning marker.
 #[derive(Debug)]

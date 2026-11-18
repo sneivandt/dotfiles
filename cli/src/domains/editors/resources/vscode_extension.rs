@@ -131,15 +131,75 @@ fn nonempty_output(output: &str) -> &str {
 ///
 /// Returns an error if an available launcher cannot be resolved. That failure
 /// must not silently select a different VS Code installation.
-pub fn find_code_command(executor: &dyn Executor) -> Result<Option<String>> {
+pub fn find_code_command(
+    executor: &dyn Executor,
+    skip_insiders: impl Fn(&std::path::Path) -> bool,
+) -> Result<Option<String>> {
     for command in CODE_COMMANDS {
         if executor.which(command) {
-            return executor
-                .which_path(command)
-                .map(|path| Some(path.to_string_lossy().into_owned()));
+            let path = executor.which_path(command)?;
+            if command == CODE_COMMANDS[0] && skip_insiders(&path) {
+                continue;
+            }
+            return Ok(Some(path.to_string_lossy().into_owned()));
         }
     }
     Ok(None)
+}
+
+/// A tracked Insiders launcher can survive removal of the editor package.
+#[cfg(target_os = "linux")]
+pub(crate) fn managed_insiders_unavailable(
+    path: &std::path::Path,
+    root: &std::path::Path,
+    home: &std::path::Path,
+) -> bool {
+    insiders_unavailable(
+        path,
+        root,
+        home,
+        std::path::Path::new("/usr/bin/code-insiders"),
+    )
+}
+
+#[cfg(not(target_os = "linux"))]
+pub(crate) const fn managed_insiders_unavailable(
+    _path: &std::path::Path,
+    _root: &std::path::Path,
+    _home: &std::path::Path,
+) -> bool {
+    false
+}
+
+#[cfg(target_os = "linux")]
+fn insiders_unavailable(
+    path: &std::path::Path,
+    root: &std::path::Path,
+    home: &std::path::Path,
+    backing: &std::path::Path,
+) -> bool {
+    use std::os::unix::fs::PermissionsExt as _;
+    !std::fs::metadata(backing)
+        .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+        && is_managed_insiders(path, root, home)
+}
+
+#[cfg(target_os = "linux")]
+fn is_managed_insiders(
+    path: &std::path::Path,
+    root: &std::path::Path,
+    home: &std::path::Path,
+) -> bool {
+    let source = root.join("symlinks/local/bin/code-insiders");
+    if let Ok(expected) = source.canonicalize()
+        && path.canonicalize().is_ok_and(|found| found == expected)
+    {
+        return true;
+    }
+    // Removal can materialize the managed shim while keeping its exact bytes.
+    path == home.join(".local/bin/code-insiders")
+        && std::fs::read(&source)
+            .is_ok_and(|expected| std::fs::read(path).is_ok_and(|contents| contents == expected))
 }
 
 /// Run a VS Code CLI command. On Windows, `.cmd` wrappers need `cmd.exe /C`.
@@ -166,6 +226,46 @@ mod tests {
     use super::*;
     use crate::engine::resource::SkipKind;
     use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_orphaned_managed_insiders_shim_yields_to_stable_code() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path();
+        let home = root.join("home");
+        let shim = root.join("symlinks/local/bin/code-insiders");
+        let installed = home.join(".local/bin/code-insiders");
+        let stable = home.join(".local/bin/code");
+        let backing = root.join("missing-package-binary");
+        std::fs::create_dir_all(shim.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(installed.parent().unwrap()).unwrap();
+        std::fs::write(&shim, "managed shim").unwrap();
+        for materialized in [false, true] {
+            if materialized {
+                std::fs::remove_file(&installed).unwrap();
+                std::fs::copy(&shim, &installed).unwrap();
+            } else {
+                std::os::unix::fs::symlink(&shim, &installed).unwrap();
+            }
+            let mut executor = MockExecutor::new();
+            executor.expect_which().return_const(true);
+            for (command, path) in [("code-insiders", &installed), ("code", &stable)] {
+                let path = path.clone();
+                executor
+                    .expect_which_path()
+                    .with(mockall::predicate::eq(command))
+                    .once()
+                    .return_once(move |_| Ok(path));
+            }
+            let chosen = find_code_command(&executor, |path| {
+                insiders_unavailable(path, root, &home, &backing)
+            })
+            .unwrap();
+            assert_eq!(chosen.as_deref(), stable.to_str());
+        }
+        std::fs::write(&installed, "custom launcher").unwrap();
+        assert!(!insiders_unavailable(&installed, root, &home, &backing));
+    }
 
     fn expect_code_command(
         mock: &mut MockExecutor,
@@ -226,7 +326,7 @@ mod tests {
             });
 
         assert_eq!(
-            find_code_command(&mock).unwrap().as_deref(),
+            find_code_command(&mock, |_| false).unwrap().as_deref(),
             expected.to_str(),
             "the platform-specific Code Insiders launcher should be preferred"
         );
@@ -257,7 +357,7 @@ mod tests {
             });
 
         assert_eq!(
-            find_code_command(&mock).unwrap().as_deref(),
+            find_code_command(&mock, |_| false).unwrap().as_deref(),
             expected.to_str(),
             "the platform-specific stable launcher should be used as fallback"
         );
@@ -280,7 +380,7 @@ mod tests {
                 )
                 .into())
             });
-        let error = find_code_command(&mock).unwrap_err();
+        let error = find_code_command(&mock, |_| false).unwrap_err();
         assert_eq!(
             error.downcast_ref::<std::io::Error>().unwrap().kind(),
             std::io::ErrorKind::PermissionDenied,

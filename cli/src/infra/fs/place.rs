@@ -7,7 +7,7 @@
 
 use anyhow::{Context as _, Result};
 use std::io::Write as _;
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "linux")))]
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
@@ -58,9 +58,21 @@ pub fn write_atomic_checked(
     ensure_parent_dir(path)?;
 
     #[cfg(unix)]
-    let mode = super::symlink_metadata_optional(path, "read atomic-write target permissions")?
-        .filter(std::fs::Metadata::is_file)
-        .map(|metadata| metadata.permissions().mode() & 0o777);
+    let existing = super::symlink_metadata_optional(path, "read atomic-write target permissions")?
+        .filter(std::fs::Metadata::is_file);
+    #[cfg(all(unix, not(target_os = "linux")))]
+    let mode = existing.map(|metadata| metadata.permissions().mode() & 0o777);
+    #[cfg(target_os = "linux")]
+    let source = existing
+        .map(|_| {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK)
+                .open(path)
+                .with_context(|| format!("open metadata source {}", path.display()))
+        })
+        .transpose()?;
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let (mut guard, mut staged_file) =
         TempGuard::create_unique_file_with_mode(parent, ".dotfiles-write", "tmp", 0o600)
@@ -68,11 +80,25 @@ pub fn write_atomic_checked(
     staged_file
         .write_all(content.as_ref())
         .with_context(|| format!("write temporary file beside {}", path.display()))?;
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "linux")))]
     if let Some(mode) = mode {
         staged_file
             .set_permissions(std::fs::Permissions::from_mode(mode))
             .with_context(|| format!("preserve access permissions for {}", path.display()))?;
+    }
+    #[cfg(target_os = "linux")]
+    if let Some(source) = source {
+        anyhow::ensure!(
+            source.metadata()?.is_file(),
+            "metadata source is no longer a regular file: {}",
+            path.display()
+        );
+        super::copy::preserve_replacement_metadata(&source, &staged_file).with_context(|| {
+            format!(
+                "preserve access permissions and attributes for {}",
+                path.display()
+            )
+        })?;
     }
     drop(staged_file);
 
@@ -85,6 +111,8 @@ pub fn write_atomic_checked(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use std::os::unix::fs::PermissionsExt as _;
 
     #[test]
     fn write_atomic_creates_missing_parents() {

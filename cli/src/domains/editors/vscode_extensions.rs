@@ -2,18 +2,38 @@
 use crate::domains::editors::resources::deferred_extensions::DeferredExtensionsResource;
 use crate::domains::editors::resources::vscode_extension::{
     VsCodeExtensionResource, find_code_command, get_installed_extensions,
+    managed_insiders_unavailable,
 };
 use crate::engine::{
     Context, ProcessOpts, Requirement, RequirementState, Task, TaskResult, process_requirement,
     process_resources, process_resources_with_cache, task_metadata,
 };
 use crate::infra::logging::OutputExt as _;
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use std::collections::HashSet;
 
-crate::engine::config_task! {
-    /// Install VS Code extensions.
-    pub struct InstallVsCodeExtensions(Vec<String>);
+/// Install VS Code extensions.
+#[derive(Debug)]
+pub struct InstallVsCodeExtensions {
+    config: crate::infra::ConfigHandle<Vec<String>>,
+    first_login_profile: Option<String>,
+}
+
+impl InstallVsCodeExtensions {
+    /// Create a task for the selected profile's extension declarations.
+    #[must_use]
+    pub const fn new(config: crate::infra::ConfigHandle<Vec<String>>) -> Self {
+        Self {
+            config,
+            first_login_profile: None,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn with_first_login_profile(mut self, profile: Option<String>) -> Self {
+        self.first_login_profile = profile;
+        self
+    }
 }
 
 impl Task for InstallVsCodeExtensions {
@@ -32,13 +52,19 @@ impl Task for InstallVsCodeExtensions {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref()) {
+            let profile = self.first_login_profile.as_deref().context(
+                "VS Code extensions require a real user session; this profile has no configured dotfiles-first-login service",
+            )?;
+            if !ctx.dry_run() {
+                ensure_first_login_enabled(ctx.home())?;
+            }
             ctx.log().warn(
                 "VS Code extensions deferred: Arch chroot provisioning has no real user session; verified Marketplace installation is scheduled for first graphical login",
             );
             return process_resources(
                 ctx,
-                std::iter::once(DeferredExtensionsResource::new(ctx.home())),
-                &ProcessOpts::install_missing("defer").sequential(),
+                std::iter::once(DeferredExtensionsResource::new(ctx.home(), profile)),
+                &ProcessOpts::strict("defer").sequential(),
             );
         }
         process_requirement(ctx, &launcher_requirement(), |cmd| {
@@ -85,6 +111,31 @@ impl Task for InstallVsCodeExtensions {
     }
 }
 
+fn ensure_first_login_enabled(home: &std::path::Path) -> Result<()> {
+    use crate::infra::provisioning::{FIRST_LOGIN_UNIT, FIRST_LOGIN_UNIT_PATH};
+    let installed = home.join(FIRST_LOGIN_UNIT_PATH);
+    let definition = installed
+        .canonicalize()
+        .context("install the dotfiles-first-login service before deferring VS Code extensions")?;
+    anyhow::ensure!(
+        definition.is_file(),
+        "the dotfiles-first-login service has no regular unit file"
+    );
+    let directory = installed.parent().context("missing user unit directory")?;
+    for relationship in [
+        "graphical-session.target.wants",
+        "graphical-session.target.requires",
+    ] {
+        let link = directory.join(relationship).join(FIRST_LOGIN_UNIT);
+        if std::fs::symlink_metadata(&link).is_ok_and(|meta| meta.is_symlink())
+            && link.canonicalize().is_ok_and(|path| path == definition)
+        {
+            return Ok(());
+        }
+    }
+    anyhow::bail!("enable the dotfiles-first-login service before deferring VS Code extensions")
+}
+
 fn launcher_requirement() -> Requirement<'static, String> {
     Requirement::new("vscode-launcher", |ctx, _| {
         if crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref()) {
@@ -92,7 +143,10 @@ fn launcher_requirement() -> Requirement<'static, String> {
                 "VS Code extensions require a real user session",
             ));
         }
-        Ok(find_code_command(ctx.executor())?.map_or_else(
+        Ok(find_code_command(ctx.executor(), |path| {
+            managed_insiders_unavailable(path, ctx.root(), ctx.home())
+        })?
+        .map_or_else(
             || RequirementState::unsatisfied("VS Code CLI not found"),
             RequirementState::Satisfied,
         ))
@@ -287,6 +341,34 @@ mod tests {
         .with_home(home.path().to_path_buf())
         .with_env(env);
         let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![ext()]));
+        assert!(
+            task.run(&ctx)
+                .unwrap_err()
+                .to_string()
+                .contains("no configured")
+        );
+        let task = task.with_first_login_profile(Some("base".to_string()));
+        assert!(
+            task.run(&ctx)
+                .unwrap_err()
+                .to_string()
+                .contains("install the dotfiles-first-login")
+        );
+        let unit = home
+            .path()
+            .join(crate::infra::provisioning::FIRST_LOGIN_UNIT_PATH);
+        let wants = unit
+            .parent()
+            .unwrap()
+            .join("graphical-session.target.wants");
+        std::fs::create_dir_all(&wants).unwrap();
+        std::fs::write(&unit, "unit fixture").unwrap();
+        crate::infra::fs::create_native_symlink(
+            &unit,
+            &wants.join(unit.file_name().unwrap()),
+            false,
+        )
+        .unwrap();
         let first = task.run(&ctx).unwrap();
         assert!(
             matches!(first, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
@@ -304,6 +386,7 @@ mod tests {
         let preserved_content = "pending extensions; preserve first-session notes\n";
         std::fs::write(&marker, preserved_content).unwrap();
 
+        assert_eq!(task_batch(&task.run(&ctx).unwrap()).changed_count(), 1);
         let result = task.run(&ctx).unwrap();
 
         assert!(
@@ -314,7 +397,10 @@ mod tests {
             ),
             "rerunning provisioning should preserve the existing deferral: {result:?}"
         );
-        assert_eq!(std::fs::read_to_string(marker).unwrap(), preserved_content);
+        assert_eq!(
+            std::fs::read_to_string(marker).unwrap(),
+            format!("{preserved_content}DOTFILES_PROFILE=base\n")
+        );
     }
 
     #[test]
@@ -336,7 +422,8 @@ mod tests {
                 )
                 .into_handle(),
         );
-        let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![ext()]));
+        let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![ext()]))
+            .with_first_login_profile(Some("desktop".to_string()));
 
         assert_eq!(task_batch(&task.run(&ctx).unwrap()).changed_count(), 1);
         assert!(

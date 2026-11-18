@@ -95,7 +95,7 @@ fn inactive_profile_mentions_do_not_satisfy_path_state() {
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
         let installed = std::fs::read_to_string(&profile).unwrap();
         assert!(
-            installed.starts_with(existing),
+            installed.contains(existing),
             "preserve existing profile text"
         );
         assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
@@ -117,7 +117,7 @@ fn whitespace_around_managed_profile_line_preserves_idempotence() {
 }
 
 #[test]
-fn apply_appends_to_profile() {
+fn apply_preserves_profile_content_between_path_checks() {
     let tmp = TempDir::new().unwrap();
     let profile = tmp.path().join(".profile");
     std::fs::write(&profile, "# existing config\n").unwrap();
@@ -135,7 +135,8 @@ fn apply_appends_to_profile() {
         content.contains("export PATH=\"$HOME/.local/bin:$PATH\""),
         "missing export in: {content}"
     );
-    assert!(content.starts_with("# existing config\n"));
+    assert!(content.contains("# existing config\n"));
+    assert_eq!(content.matches("# Added by dotfiles").count(), 2);
 }
 
 #[test]

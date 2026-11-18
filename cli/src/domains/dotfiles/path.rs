@@ -67,7 +67,7 @@ mod tests {
                     let _result = result.unwrap();
                     assert!(profile.is_symlink());
                     let content = std::fs::read_to_string(&outside).unwrap();
-                    assert!(content.starts_with("# user content\n"));
+                    assert!(content.contains("# user content\n"));
                     assert_eq!(content.contains("export PATH="), !preview);
                     if !preview {
                         assert_eq!(
@@ -147,7 +147,13 @@ mod tests {
                 "{case}: apply"
             );
             let expected = if needs_change {
-                format!("{}\n# Added by dotfiles\n{export}\n", initial.unwrap_or(""))
+                let block = format!(
+                    "# Added by dotfiles\ncase \":$PATH:\" in\n    *\":$HOME/.local/bin:\"*) ;;\n    *) {export} ;;\nesac\n"
+                );
+                initial.map_or_else(
+                    || block.clone(),
+                    |content| format!("{block}{content}\n{block}"),
+                )
             } else {
                 initial.unwrap().to_string()
             };

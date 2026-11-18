@@ -7,12 +7,12 @@ use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::exec::{CommandSpec, Executor};
 use crate::infra::provisioning::{
-    DEFERRED_EXTENSIONS_MARKER, DeferredExtensionsState, deferred_extensions_state,
+    DEFERRED_EXTENSIONS_MARKER, DeferredExtensionsState, FIRST_LOGIN_UNIT,
+    deferred_extensions_state,
 };
 
 const THUNAR_SETTINGS_UNIT: &str = "thunar-view-settings.service";
 const THUNAR_SETTINGS_SCRIPT: &str = ".config/Thunar/managed-view-settings.sh";
-const FIRST_LOGIN_UNIT: &str = "dotfiles-first-login.service";
 
 /// A systemd unit resource that converges its configured enablement state.
 #[derive(Debug)]

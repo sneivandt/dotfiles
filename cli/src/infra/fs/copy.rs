@@ -1,5 +1,6 @@
 use anyhow::{Context as _, Result};
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 /// Recursively copy a directory tree, preserving Unix directory permissions.
 ///
@@ -22,6 +23,15 @@ use std::path::Path;
 /// entry cannot be read, a file cannot be copied, a symlink cannot be recreated,
 /// or (on Unix) directory permissions cannot be preserved.
 pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
+    copy_tree(src, dst, skip_git, &mut HashMap::new())
+}
+
+fn copy_tree(
+    src: &Path,
+    dst: &Path,
+    skip_git: bool,
+    hard_links: &mut HashMap<(u64, u64), PathBuf>,
+) -> Result<()> {
     let source_metadata = std::fs::metadata(src)
         .with_context(|| format!("reading directory metadata for {}", src.display()))?;
     anyhow::ensure!(
@@ -72,7 +82,7 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
             #[cfg(target_os = "linux")]
             preserve_link_attributes(&src_path, &dst_path)?;
         } else if meta.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path, skip_git)?;
+            copy_tree(&src_path, &dst_path, skip_git, hard_links)?;
         } else {
             reject_destination_link(&dst_path)?;
             anyhow::ensure!(
@@ -81,6 +91,17 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
                 src_path.display()
             );
             let mut source = open_regular_source(&src_path)?;
+            let identity = super::mutation::shared_file_identity(&source)?;
+            if let Some(previous) = identity.and_then(|identity| hard_links.get(&identity)) {
+                std::fs::hard_link(previous, &dst_path).with_context(|| {
+                    format!(
+                        "preserve hard link {} to {}",
+                        dst_path.display(),
+                        previous.display()
+                    )
+                })?;
+                continue;
+            }
             let mut destination = std::fs::File::create(&dst_path)
                 .with_context(|| format!("create {}", dst_path.display()))?;
             std::io::copy(&mut source, &mut destination).with_context(|| {
@@ -88,6 +109,9 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
             })?;
             preserve_copy_metadata(&source, &destination)
                 .with_context(|| format!("preserving metadata for {}", src_path.display()))?;
+            if let Some(identity) = identity {
+                hard_links.insert(identity, dst_path);
+            }
         }
     }
     #[cfg(unix)]
@@ -106,6 +130,33 @@ pub(crate) fn preserve_copy_metadata(
     destination: &std::fs::File,
 ) -> Result<()> {
     #[cfg(target_os = "linux")]
+    preserve_attributes(source, destination, |_| true)?;
+    destination.set_permissions(source.metadata()?.permissions())?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn preserve_replacement_metadata(
+    source: &std::fs::File,
+    destination: &std::fs::File,
+) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    // Content signatures and capabilities must not be attached to new bytes.
+    preserve_attributes(source, destination, |name| {
+        name.starts_with(b"user.") || name.starts_with(b"system.posix_acl_")
+    })?;
+    let mode = source.metadata()?.permissions().mode() & 0o777;
+    destination.set_permissions(std::fs::Permissions::from_mode(mode))?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn preserve_attributes(
+    source: &std::fs::File,
+    destination: &std::fs::File,
+    preserve: impl Fn(&[u8]) -> bool,
+) -> Result<()> {
+    #[cfg(target_os = "linux")]
     {
         use rustix::fs::{
             XattrFlags, fgetxattr, fgetxattr_query, flistxattr, flistxattr_query, fremovexattr,
@@ -119,7 +170,7 @@ pub(crate) fn preserve_copy_metadata(
         })?;
         let names: Vec<_> = names
             .split(|byte| *byte == 0)
-            .filter(|name| !name.is_empty())
+            .filter(|name| !name.is_empty() && preserve(name))
             .collect();
         for acl in ["system.posix_acl_access", "system.posix_acl_default"] {
             if !names.contains(&acl.as_bytes()) {
@@ -148,7 +199,6 @@ pub(crate) fn preserve_copy_metadata(
                 .with_context(|| format!("copy extended attribute {}", name.to_string_lossy()))?;
         }
     }
-    destination.set_permissions(source.metadata()?.permissions())?;
     Ok(())
 }
 

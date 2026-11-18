@@ -20,6 +20,167 @@ fn output(command: &mut std::process::Command, success: bool) -> String {
 
 #[cfg(unix)]
 #[test]
+fn shell_path_migrates_the_legacy_export_before_an_early_return() {
+    let repo = common::IntegrationTestContext::new();
+    let home = tempfile::tempdir().unwrap();
+    let profile = home.path().join(".profile");
+    let original = "#!/bin/sh\nexport FIXTURE_SETTING=kept\nreturn 0\n";
+    let export = "export PATH=\"$HOME/.local/bin:$PATH\"";
+    let legacy = format!("{original}\n# Added by dotfiles\n{export}\n");
+    std::fs::write(&profile, &legacy).unwrap();
+    let update = || {
+        common::cli_command(
+            repo.root_path(),
+            home.path(),
+            None,
+            "update",
+            "launcher,path",
+        )
+    };
+    output(update().arg("--dry-run"), true);
+    assert_eq!(std::fs::read_to_string(&profile).unwrap(), legacy);
+    output(&mut update(), true);
+    let configured = std::fs::read_to_string(&profile).unwrap();
+    assert_eq!(configured.matches(export).count(), 2);
+    assert!(configured.starts_with("#!/bin/sh\n"));
+    assert!(configured.contains("export FIXTURE_SETTING=kept\nreturn 0\n"));
+    let shell = std::process::Command::new("/bin/sh")
+        .env_clear()
+        .env("HOME", home.path())
+        .env("PATH", "/usr/bin:/bin")
+        .args([
+            "-c",
+            ". \"$HOME/.profile\"; test \"$FIXTURE_SETTING\" = kept && command -v dotfiles",
+        ])
+        .output()
+        .unwrap();
+    assert!(shell.status.success(), "{shell:?}");
+    assert_eq!(
+        String::from_utf8(shell.stdout).unwrap().trim(),
+        home.path().join(".local/bin/dotfiles").to_str().unwrap()
+    );
+    output(&mut update(), true);
+    assert_eq!(std::fs::read_to_string(profile).unwrap(), configured);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn extension_deferral_requires_a_configured_enabled_consumer_and_records_the_profile() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "vscode-extensions.toml",
+            "[base]\nextensions=['fixture.extension']\n",
+        )
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let marker = home
+        .path()
+        .join(".local/state/dotfiles/deferred-vscode-extensions");
+    let unit = "dotfiles-first-login.service";
+    let directory = home.path().join(".config/systemd/user");
+    let run = |success| {
+        output(
+            common::cli_command(
+                repo.root_path(),
+                home.path(),
+                None,
+                "update",
+                "vscode-extensions",
+            )
+            .env("DOTFILES_PROVISIONING", "arch-chroot"),
+            success,
+        )
+    };
+    assert!(run(false).contains("no configured dotfiles-first-login"));
+    assert!(!marker.exists());
+
+    let config = repo.root_path().join("conf");
+    std::fs::write(
+        config.join("systemd-units.toml"),
+        format!("[base]\nunits=['{unit}']\n"),
+    )
+    .unwrap();
+    let source = format!("config/systemd/user/{unit}");
+    std::fs::write(
+        config.join("symlinks.toml"),
+        format!("[base]\nsymlinks=['{source}']\n"),
+    )
+    .unwrap();
+    let source_path = repo.root_path().join("symlinks").join(source);
+    std::fs::create_dir_all(source_path.parent().unwrap()).unwrap();
+    std::fs::write(
+        &source_path,
+        "[Install]\nWantedBy=graphical-session.target\n",
+    )
+    .unwrap();
+    let wants = directory.join("graphical-session.target.wants");
+    std::fs::create_dir_all(&wants).unwrap();
+    let installed = directory.join(unit);
+    std::os::unix::fs::symlink(source_path, &installed).unwrap();
+    assert!(run(false).contains("enable the dotfiles-first-login"));
+    assert!(!marker.exists());
+    std::os::unix::fs::symlink(&installed, wants.join(unit)).unwrap();
+    assert!(run(true).contains("scheduled for first graphical login"));
+    assert!(
+        std::fs::read_to_string(marker)
+            .unwrap()
+            .contains("DOTFILES_PROFILE=base\n")
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn rewriting_global_git_config_preserves_linux_access_metadata() {
+    use rustix::fs::{XattrFlags, getxattr, setxattr};
+    use std::os::unix::fs::MetadataExt as _;
+
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "git-config.toml",
+            "[base]\nsettings = [{key='core.editor',value='vim'}]\n",
+        )
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let config = home.path().join(".gitconfig");
+    std::fs::write(&config, "[core]\n editor = nano\n").unwrap();
+    let mut acl = 2_u32.to_le_bytes().to_vec();
+    let uid = config.metadata().unwrap().uid();
+    for (tag, permissions, id) in [
+        (1_u16, 6_u16, u32::MAX),
+        (2, 4, uid),
+        (4, 0, u32::MAX),
+        (16, 4, u32::MAX),
+        (32, 0, u32::MAX),
+    ] {
+        acl.extend(tag.to_le_bytes());
+        acl.extend(permissions.to_le_bytes());
+        acl.extend(id.to_le_bytes());
+    }
+    let attributes = [
+        ("system.posix_acl_access", acl.as_slice()),
+        ("user.dotfiles_fixture", b"keep annotation".as_slice()),
+    ];
+    for (name, value) in attributes {
+        setxattr(&config, name, value, XattrFlags::empty()).unwrap();
+    }
+    output(
+        &mut common::cli_command(repo.root_path(), home.path(), None, "update", "git"),
+        true,
+    );
+    assert!(std::fs::read_to_string(&config).unwrap().contains("vim"));
+    for (name, value) in attributes {
+        let mut observed = vec![0; value.len()];
+        assert_eq!(
+            getxattr(&config, name, observed.as_mut_slice()).unwrap(),
+            value.len(),
+            "{name}"
+        );
+        assert_eq!(observed, value, "{name}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn global_git_update_honors_the_selected_file_and_later_conditional_includes() {
     let repo = common::TestContextBuilder::new()
         .with_config_file(

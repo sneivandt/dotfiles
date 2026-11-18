@@ -21,8 +21,9 @@ shell, or repair every application's PATH configuration.
 
 ## What it does
 
-Requires the launcher. Adds `~/.local/bin` through a managed export in `~/.profile` on
-Linux, or the user PATH on Windows. Open a new shell to use the persisted change.
+Requires the launcher. On Linux, the managed export runs at the start of
+`~/.profile`. On Windows, the task updates the user PATH. Open a new shell to
+use the persisted change.
 
 Existing PATH entries are preserved. Remove leaves the PATH addition in place.
 On Linux, an existing working `~/.profile` symlink is preserved and its destination
@@ -32,7 +33,9 @@ file permissions and replace the content atomically.
 
 Open a new terminal to use the updated PATH. Existing processes keep the
 environment they inherited at startup. On Linux, loading also depends on the
-shell's startup files. The [Bash invocation reference](https://www.gnu.org/software/bash/manual/html_node/Invoking-Bash.html)
+shell's startup files. Dotfiles also checks PATH at the end of the profile.
+If your profile replaces PATH and then returns early, include
+`~/.local/bin` in that assignment. The [Bash invocation reference](https://www.gnu.org/software/bash/manual/html_node/Invoking-Bash.html)
 explains login and interactive shell modes; the managed
 [shell configuration](../guides/application-settings.md#shell-configuration) supplies
 the repository-specific startup behavior.

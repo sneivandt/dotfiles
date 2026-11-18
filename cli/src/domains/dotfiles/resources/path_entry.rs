@@ -109,10 +109,55 @@ impl PathEntryResource {
         Self { dir, strategy }
     }
 
-    fn shell_profile_contains_managed_line(path: &Path, line: &str) -> Result<bool> {
-        Ok(Self::shell_profile_contents(path)?
-            .1
-            .is_some_and(|content| content.lines().any(|existing| existing.trim() == line)))
+    fn shell_profile_is_current(content: &str, line: &str) -> bool {
+        let block = Self::shell_profile_block(line);
+        let body = Self::split_shebang(content).1;
+        if body.starts_with(&block) && body.ends_with(&block) {
+            return true;
+        }
+        let mut commands = body
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && !s.starts_with('#'));
+        commands.next() == Some(line) && commands.next().is_none()
+    }
+
+    fn split_shebang(content: &str) -> (&str, &str) {
+        if content.starts_with("#!") {
+            content.split_once('\n').unwrap_or((content, ""))
+        } else {
+            ("", content)
+        }
+    }
+
+    fn shell_profile_block(line: &str) -> String {
+        format!(
+            "# Added by dotfiles\ncase \":$PATH:\" in\n    *\":$HOME/.local/bin:\"*) ;;\n    *) {line} ;;\nesac\n"
+        )
+    }
+
+    fn shell_profile_with_export(content: &str, line: &str) -> String {
+        let block = Self::shell_profile_block(line);
+        // Migrate the exact block written by previous releases. Preserve all
+        // other content, including identical exports in user code or here-docs.
+        let suffix = format!("\n# Added by dotfiles\n{line}\n");
+        let original = content.strip_suffix(&suffix).unwrap_or(content);
+        let (shebang, body) = Self::split_shebang(original);
+        let body = body.strip_prefix(&block).unwrap_or(body);
+        let mut updated = String::new();
+        if !shebang.is_empty() {
+            updated.push_str(shebang);
+            updated.push('\n');
+        }
+        updated.push_str(&block);
+        if !body.is_empty() {
+            updated.push_str(body);
+            // Reassert after profiles that assign a replacement PATH. The
+            // guard prevents duplicates when the first block is still effective.
+            updated.push('\n');
+            updated.push_str(&block);
+        }
+        updated
     }
 
     #[allow(
@@ -159,17 +204,11 @@ impl Resource for PathEntryResource {
         match &self.strategy {
             PathStrategy::ShellProfile { path, line } => {
                 let before = Self::shell_profile_contents(path)?;
-                if before
-                    .1
-                    .as_ref()
-                    .is_some_and(|content| content.lines().any(|existing| existing.trim() == line))
-                {
+                let original = before.1.as_deref().unwrap_or_default();
+                if Self::shell_profile_is_current(original, line) {
                     return Ok(ResourceChange::AlreadyCorrect);
                 }
-                let content = format!(
-                    "{}\n# Added by dotfiles\n{line}\n",
-                    before.1.as_deref().unwrap_or_default()
-                );
+                let content = Self::shell_profile_with_export(original, line);
                 Self::publish_shell_profile(path, &before, content)?;
             }
             PathStrategy::WindowsRegistry {
@@ -207,7 +246,10 @@ impl IntrinsicState for PathEntryResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
         match &self.strategy {
             PathStrategy::ShellProfile { path, line } => {
-                if Self::shell_profile_contains_managed_line(path, line)? {
+                if Self::shell_profile_contents(path)?
+                    .1
+                    .is_some_and(|content| Self::shell_profile_is_current(&content, line))
+                {
                     Ok(ResourceState::Correct)
                 } else {
                     Ok(ResourceState::Missing)

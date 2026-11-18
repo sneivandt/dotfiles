@@ -91,6 +91,7 @@ pub(crate) fn update_tasks_for_run(
     repo_updated: &RepositoryUpdateSignal,
     apm_mode: ApmPackageMode,
 ) -> Vec<Box<dyn Task>> {
+    use crate::infra::provisioning::{FIRST_LOGIN_UNIT, FIRST_LOGIN_UNIT_PATH};
     let conditional_packages =
         |inner: Box<dyn Task>, blocking: &[TaskId], ordering: &[TaskId]| -> Box<dyn Task> {
             Box::new(
@@ -109,11 +110,23 @@ pub(crate) fn update_tasks_for_run(
         id::<InstallAurPackages>(),
         id::<InstallSymlinks>(),
     ];
-    if store.units.get().iter().any(|unit| {
-        unit.enabled && unit.scope == UnitScope::User && unit.name == "dotfiles-first-login.service"
-    }) {
+    let enables_first_login =
+        store.units.get().iter().any(|unit| {
+            unit.enabled && unit.scope == UnitScope::User && unit.name == FIRST_LOGIN_UNIT
+        });
+    if enables_first_login {
         systemd_ordering.push(id::<InstallWrapper>());
     }
+    let mut extension_ordering = vec![id::<InstallPackages>(), id::<InstallAurPackages>()];
+    let first_login_profile = (enables_first_login
+        && store.symlinks.get().iter().any(|link| {
+            use crate::domains::files::config::symlinks::{path_identity, target_identity};
+            target_identity(link) == path_identity(std::path::Path::new(FIRST_LOGIN_UNIT_PATH))
+        }))
+    .then(|| {
+        extension_ordering.push(id::<ConfigureSystemd>());
+        store.aggregate.get().profile.name.clone()
+    });
 
     vec![
         Box::new(EnableDeveloperMode),
@@ -147,11 +160,12 @@ pub(crate) fn update_tasks_for_run(
         ),
         Box::new(ApplyRegistry::new(store.registry.clone())),
         conditional_packages(
-            Box::new(InstallVsCodeExtensions::new(
-                store.vscode_extensions.clone(),
-            )),
+            Box::new(
+                InstallVsCodeExtensions::new(store.vscode_extensions.clone())
+                    .with_first_login_profile(first_login_profile),
+            ),
             &[],
-            &[id::<InstallPackages>(), id::<InstallAurPackages>()],
+            &extension_ordering,
         ),
         conditional_packages(
             Box::new(InstallApmPackages::new(

@@ -403,6 +403,36 @@ fn removal_only_plans_and_copies_links_directly_to_the_checkout() {
     );
 }
 
+#[test]
+fn removal_preserves_hard_links_within_the_copy_and_severs_source_identity() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file("symlinks.toml", "[base]\nsymlinks = ['directory']\n")
+        .with_symlink_source_content("directory/nested/primary", "original")
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let source = repo.root_path().join("symlinks/directory");
+    std::fs::hard_link(source.join("nested/primary"), source.join("alias")).unwrap();
+    let target = home.path().join(".directory");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&source, &target).unwrap();
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_dir(&source, &target).unwrap();
+    let output = common::cli_command(repo.root_path(), home.path(), None, "remove", "symlinks")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(target.is_dir() && !target.is_symlink());
+    std::fs::write(target.join("nested/primary"), "local update").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(target.join("alias")).unwrap(),
+        "local update"
+    );
+    assert_eq!(
+        std::fs::read_to_string(source.join("alias")).unwrap(),
+        "original"
+    );
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn materialization_preserves_linux_acls_and_extended_attributes() {

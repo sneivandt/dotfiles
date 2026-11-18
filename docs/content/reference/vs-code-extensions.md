@@ -26,12 +26,15 @@ installs missing ones. After installing, Dotfiles queries the inventory again an
 any extensions that are still missing. If no CLI is available, the task is skipped.
 
 The search prefers `code-insiders` over `code` on Linux, and
-`code-insiders.cmd` over `code.cmd` on Windows. The selected CLI receives all
+`code-insiders.cmd` over `code.cmd` on Windows. On Linux, a Dotfiles
+Insiders shim whose editor has been removed is skipped. The selected CLI receives all
 configured extensions; having stable Code open does not make it the selected
 edition. There is no editor-selection key in this declaration.
 
-Arch chroot provisioning instead defers installation to `dotfiles-first-login.service`,
-which retries until configured extensions are installed in a real user session.
+Arch chroot provisioning defers installation when the selected profile
+configures and enables `dotfiles-first-login.service`. The service retries
+with that profile in a real user session. If the service is unavailable, run
+the extension task manually after login.
 
 ## Configuration
 

@@ -42,6 +42,20 @@ fn ensure_single_link(file: &File) -> Result<()> {
     anyhow::bail!("cannot verify in-place target link count on this platform");
 }
 
+/// Identify an already-open file only when it has multiple directory entries.
+pub(super) fn shared_file_identity(file: &File) -> Result<Option<(u64, u64)>> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        let metadata = file.metadata()?;
+        Ok((metadata.nlink() > 1).then(|| (metadata.dev(), metadata.ino())))
+    }
+    #[cfg(windows)]
+    {
+        windows::shared_file_identity(file)
+    }
+}
+
 /// Refuse an inode whose permissions or bytes are shared with other entries.
 #[cfg(unix)]
 pub(crate) fn require_single_link(metadata: &std::fs::Metadata) -> Result<()> {

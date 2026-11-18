@@ -1,23 +1,20 @@
 //! Tasks: install and uninstall Git hooks.
+use std::collections::BTreeSet;
+use std::ffi::OsString;
+use std::io::ErrorKind;
+use std::path::Path;
+
 use anyhow::{Context as _, Result};
 
-use crate::domains::git::resources::hook::HookFileResource;
+use crate::domains::git::resources::hook::{HookFileResource, OWNERSHIP_EXTENSION};
 use crate::engine::{
     Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove,
     task_metadata,
 };
 
-/// Discover hook file resources from the `hooks/` directory.
-///
-/// Returns one [`HookFileResource`] per file that has no extension (i.e.
-/// conventional hook scripts such as `pre-commit`, `commit-msg`), pairing
-/// each source file with its destination in Git's configured hooks directory.
-///
-/// # Errors
-///
-/// Returns an error if the `hooks/` directory cannot be read.
+/// Discover current sources and, for removal, installed copies of retired hooks.
 fn discover_hooks(ctx: &Context, installing: bool) -> Result<Vec<HookFileResource>> {
-    let hooks_src = ctx.hooks_dir().to_path_buf();
+    let hooks_src = ctx.hooks_dir();
     let repository =
         git2::Repository::open(ctx.root()).context("opening repository for Git hooks")?;
     let config = repository.config()?;
@@ -39,27 +36,66 @@ fn discover_hooks(ctx: &Context, installing: bool) -> Result<Vec<HookFileResourc
         Err(error) => return Err(error).context("reading core.hooksPath"),
     };
 
-    let mut resources = Vec::new();
-    for entry in std::fs::read_dir(&hooks_src)
-        .with_context(|| format!("reading hooks directory: {}", hooks_src.display()))?
-    {
-        let entry =
-            entry.with_context(|| format!("reading hooks directory: {}", hooks_src.display()))?;
+    let mut names = BTreeSet::new();
+    for entry in read_hooks_directory(hooks_src, !installing)? {
+        let entry = entry?;
         let path = entry.path();
         // Extensionless files are hook entry points; helpers and directories stay out.
-        if path.is_file() && path.extension().is_none() {
-            let resource = HookFileResource::new(path, hooks_dst.join(entry.file_name()));
-            // A user-owned hooksPath can execute the tracked sources directly.
-            if resource.targets_source()? {
-                if installing {
-                    check_direct_hook(&resource)?;
-                }
-            } else {
-                resources.push(resource);
+        if path.extension().is_none() && path.is_file() {
+            names.insert(entry.file_name());
+        }
+    }
+    if !installing {
+        add_recorded_hooks(&hooks_dst, &mut names)?;
+    }
+
+    let mut resources = Vec::new();
+    for name in names {
+        let resource = HookFileResource::new(hooks_src.join(&name), hooks_dst.join(&name));
+        // A user-owned hooksPath can execute the tracked sources directly.
+        if resource.targets_source()? {
+            if installing {
+                check_direct_hook(&resource)?;
             }
+        } else {
+            resources.push(resource);
         }
     }
     Ok(resources)
+}
+
+fn read_hooks_directory(
+    path: &Path,
+    allow_missing: bool,
+) -> Result<impl Iterator<Item = std::io::Result<std::fs::DirEntry>>> {
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => Some(entries),
+        Err(error) if allow_missing && error.kind() == ErrorKind::NotFound => None,
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("reading hooks directory: {}", path.display()));
+        }
+    };
+    Ok(entries.into_iter().flatten())
+}
+
+fn add_recorded_hooks(directory: &Path, names: &mut BTreeSet<OsString>) -> Result<()> {
+    for entry in read_hooks_directory(directory, true)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let record = Path::new(&name);
+        if record
+            .extension()
+            .is_some_and(|ext| ext == OWNERSHIP_EXTENSION)
+            && let Some(stem) = record.file_stem()
+            && Path::new(stem).file_name() == Some(stem)
+            && Path::new(stem).extension().is_none()
+            && entry.file_type()?.is_file()
+        {
+            names.insert(stem.to_owned());
+        }
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -128,7 +164,7 @@ impl Task for UninstallGitHooks {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.hooks_dir().exists() && ctx.root().join(".git").exists()
+        ctx.root().join(".git").exists()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -142,7 +178,7 @@ mod tests {
     use super::*;
     use crate::test_helpers::make_linux_context;
 
-    fn init_repo(root: &std::path::Path) -> git2::Repository {
+    fn init_repo(root: &Path) -> git2::Repository {
         let repository = git2::Repository::init(root).unwrap();
         repository
             .config()
@@ -160,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn applicability_requires_hooks_and_git_paths_for_both_actions() {
+    fn only_installation_requires_the_source_directory() {
         for hooks in [false, true] {
             for git in [false, true] {
                 let dir = tempfile::tempdir().unwrap();
@@ -171,13 +207,9 @@ mod tests {
                     std::fs::create_dir(dir.path().join(".git")).unwrap();
                 }
                 let ctx = make_linux_context(dir.path().to_path_buf(), None);
+                assert_eq!(InstallGitHooks.should_run(&ctx), hooks && git);
+                assert_eq!(UninstallGitHooks.should_run(&ctx), git);
                 for task in tasks() {
-                    assert_eq!(
-                        task.should_run(&ctx),
-                        hooks && git,
-                        "{}: hooks={hooks}, git={git}",
-                        task.name()
-                    );
                     assert!(task.dependencies().is_empty());
                 }
             }
@@ -288,6 +320,51 @@ mod tests {
         );
     }
 
+    #[test]
+    fn uninstall_removes_retired_owned_hooks_and_preserves_other_files() {
+        for remove_source_directory in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            init_repo(dir.path());
+            let source = dir.path().join("hooks");
+            let destination = dir.path().join(".git/hooks");
+            std::fs::create_dir(&source).unwrap();
+            for name in ["pre-commit", "commit-msg"] {
+                std::fs::write(source.join(name), "#!/bin/sh\nexit 0\n").unwrap();
+            }
+            let ctx = make_linux_context(dir.path().to_path_buf(), None);
+            crate::test_helpers::assert_task_changed(&InstallGitHooks.run(&ctx).unwrap());
+
+            for name in ["pre-commit", "commit-msg"] {
+                std::fs::remove_file(source.join(name)).unwrap();
+            }
+            if remove_source_directory {
+                std::fs::remove_dir(&source).unwrap();
+            }
+            let retired = destination.join("pre-commit");
+            let record = destination.join("pre-commit.dotfiles-owned");
+            let modified = destination.join("commit-msg");
+            let modified_record = destination.join("commit-msg.dotfiles-owned");
+            let foreign = destination.join("post-commit");
+            std::fs::write(&modified, "user edit").unwrap();
+            std::fs::write(&foreign, "foreign hook").unwrap();
+
+            assert!(UninstallGitHooks.should_run(&ctx));
+            let preview = UninstallGitHooks.run(&ctx.with_dry_run(true)).unwrap();
+            assert_eq!(crate::test_helpers::task_batch(&preview).changed_count(), 1);
+            assert!(retired.is_file() && record.is_file());
+
+            let result = UninstallGitHooks.run(&ctx).unwrap();
+            assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);
+            assert!(!retired.exists() && !record.exists());
+            assert_eq!(std::fs::read_to_string(&modified).unwrap(), "user edit");
+            assert!(modified_record.is_file());
+            assert_eq!(std::fs::read_to_string(&foreign).unwrap(), "foreign hook");
+
+            let retry = UninstallGitHooks.run(&ctx).unwrap();
+            assert_eq!(crate::test_helpers::task_batch(&retry).changed_count(), 0);
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn direct_source_hook_requires_execute_access_and_is_preserved_on_removal() {
@@ -339,9 +416,7 @@ mod tests {
             std::fs::create_dir(dir.path().join("hooks")).unwrap();
             std::fs::write(dir.path().join("hooks/pre-commit"), "#!/bin/sh\nexit 0\n").unwrap();
             let mut index = repository.index().unwrap();
-            index
-                .add_path(std::path::Path::new("hooks/pre-commit"))
-                .unwrap();
+            index.add_path(Path::new("hooks/pre-commit")).unwrap();
             let tree = repository.find_tree(index.write_tree().unwrap()).unwrap();
             let signature = git2::Signature::now("Fixture", "fixture@example.invalid").unwrap();
             repository

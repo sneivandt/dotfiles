@@ -6,6 +6,8 @@ use crate::engine::{
     IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
 };
 
+pub(crate) const OWNERSHIP_EXTENSION: &str = "dotfiles-owned";
+
 /// A git hook file resource that can be checked, installed, and removed.
 #[derive(Debug, Clone)]
 pub struct HookFileResource {
@@ -34,7 +36,7 @@ impl HookFileResource {
     }
 
     fn ownership_path(&self) -> PathBuf {
-        self.target.with_extension("dotfiles-owned")
+        self.target.with_extension(OWNERSHIP_EXTENSION)
     }
 
     fn owned(&self, contents: &[u8]) -> ResourceResult<bool> {

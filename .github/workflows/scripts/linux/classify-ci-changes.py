@@ -51,8 +51,7 @@ def documentation(path: str) -> bool:
 def site_input(path: str) -> bool:
     return path.startswith("docs/") or path in {
         ".github/workflows/pages.yml", LINUX + "test-docs.sh",
-        LINUX + "check-doc-site.py", LINUX + "check-doc-audit.py",
-        LINUX + "docs-publication-base.py",
+        LINUX + "check-doc-site.py", LINUX + "docs-publication-base.py",
     }
 
 
@@ -142,7 +141,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
         elif path == LINUX + "test-workflows.sh":
             pass  # Always executed by classify-changes.
         elif path in {LINUX + "test-docs.sh", LINUX + "check-doc-links.py", LINUX + "check-doc-site.py",
-                      LINUX + "check-doc-audit.py", LINUX + "docs-publication-base.py"}:
+                      LINUX + "docs-publication-base.py"}:
             pass
         elif path == LINUX + "test-static-analysis.sh":
             linters.update(LINTERS)

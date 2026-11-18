@@ -198,13 +198,7 @@ The build targets Safari 14.1 or newer because patched esbuild cannot lower
 destructuring for Safari 14.0. Other browser targets retain Vite 6 defaults.
 Run `npm audit` after dependency changes and the full site checks before pushing.
 CI audits the docs dependencies on docs changes and in the weekly dependency
-security workflow. The docs CI gate has a
-[time-limited picomatch exception](content/development/ci-and-releases.md#scheduled-dependency-checks);
-the weekly audit remains strict. To reproduce the CI audit policy locally, run
-`python3 -B .github/workflows/scripts/linux/check-doc-audit.py` from the repository
-root (`python` on Windows).
-
-Dependabot groups security fixes separately from routine
+security workflow. Dependabot groups security fixes separately from routine
 version updates. Vite major updates stay on the tested Vite 6 line while stable
 VitePress uses Rollup hooks that break with Vite 8's Rolldown bundler.
 TypeScript major updates stay on hold while Vue's checker

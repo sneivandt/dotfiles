@@ -162,33 +162,8 @@ pushing or a survivor fix, use [local mutation testing](testing.md#focused-mutat
 runs `cargo audit`, `cargo deny check all`, and a separate npm audit of the docs
 lockfile weekly and on manual dispatch, independently of changed paths. The
 Rust policy check still runs after an advisory failure unless the workflow is
-cancelled. The docs CI job also audits the lockfile before building the site.
-Advisories at any severity fail these audits, except for the temporary CI
-exception below. Audit errors and incomplete reports still fail.
-
-Until **24 November 2026 at 19:00 UTC**, the docs CI gate accepts only
-[GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) in
-picomatch through 4.0.7 and dependency findings caused exclusively by that
-advisory. The exception expires automatically; other advisories still block
-publication, including new findings in the same packages. The audit prints
-the full report and a warning when it uses the exception.
-
-No patched release was available when the exception was added on 17 November.
-The picomatch maintainer disputes the advisory and closed the proposed fix
-without merging it. He argues that glob patterns behave like regular expressions
-and callers should prevent untrusted users from supplying them.
-[Upstream fix discussion](https://github.com/micromatch/picomatch/pull/235)
-
-The affected dependency paths are documentation build and type-check tooling.
-The public site serves static files. Builds still process repository input, so
-keep pull-request jobs unprivileged and treat untrusted glob patterns as a
-denial-of-service risk.
-
-The weekly security audit remains strict and continues reporting the advisory.
-Upgrade when a patched release is available, remove the exception, and run the
-strict audit and site checks. If no patch is available at expiry, CI blocks
-again; extending the deadline requires a new review rather than happening
-automatically.
+cancelled. The docs CI job also runs `npm audit` before building the site;
+advisories at any severity fail these audits.
 
 This separate workflow neither satisfies `ci-success` nor triggers a release.
 Enable Actions failure notifications and configure Dependabot alerts/security

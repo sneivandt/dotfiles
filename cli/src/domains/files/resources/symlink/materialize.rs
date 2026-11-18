@@ -127,7 +127,8 @@ fn copy_file_into_place(source: &Path, target: &Path, allow_missing: bool) -> Re
     let mut source_file = crate::infra::fs::open_regular_source(source)?;
     std::io::copy(&mut source_file, &mut staged_file)
         .with_context(|| format!("copy source file {}", source.display()))?;
-    std::fs::set_permissions(guard.path(), source_file.metadata()?.permissions())?;
+    crate::infra::fs::preserve_copy_metadata(&source_file, &staged_file)
+        .with_context(|| format!("preserve metadata for {}", source.display()))?;
     drop(staged_file);
 
     publish(

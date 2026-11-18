@@ -341,6 +341,139 @@ fn missing_symlink_targets_are_only_materialized_on_request() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn removal_only_plans_and_copies_links_directly_to_the_checkout() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "symlinks.toml",
+            "[base]\nsymlinks = [{source='settings',target='.first'}, {source='settings/nested',target='.second'}, {source='settings',target='.third'}]\n",
+        )
+        .with_symlink_source_content("settings/nested", "original")
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let first = home.path().join(".first");
+    let second = home.path().join(".second");
+    let third = home.path().join(".third");
+    let source = repo.root_path().join("symlinks/settings");
+    std::os::unix::fs::symlink(&source, &first).unwrap();
+    std::os::unix::fs::symlink(".first/nested", &second).unwrap();
+    std::os::unix::fs::symlink(".first", &third).unwrap();
+
+    let update = common::cli_command(repo.root_path(), home.path(), None, "update", "symlinks")
+        .arg("--dry-run")
+        .output()
+        .unwrap();
+    assert!(!update.status.success(), "{update:?}");
+    for (preview, copies) in [(true, true), (false, true), (false, false)] {
+        let mut command =
+            common::cli_command(repo.root_path(), home.path(), None, "remove", "symlinks");
+        command.args(["--no-parallel", "--verbose"]);
+        if preview {
+            command.arg("--dry-run");
+        }
+        let output = command.output().unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(stdout.contains("copy  ~/.first"), copies, "{stdout}");
+        assert!(!stdout.contains("copy  ~/.second"), "{stdout}");
+        assert!(!stdout.contains("copy  ~/.third"), "{stdout}");
+        assert_eq!(first.is_symlink(), preview);
+        assert_eq!(
+            std::fs::read_link(&second).unwrap(),
+            std::path::Path::new(".first/nested")
+        );
+        assert_eq!(
+            std::fs::read_link(&third).unwrap(),
+            std::path::Path::new(".first")
+        );
+    }
+    std::fs::write(first.join("nested"), "independent content").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(source.join("nested")).unwrap(),
+        "original"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn materialization_preserves_linux_acls_and_extended_attributes() {
+    use rustix::fs::{XattrFlags, getxattr, setxattr};
+    use std::os::unix::fs::{MetadataExt as _, symlink};
+
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "symlinks.toml",
+            "[base]\nsymlinks = ['single', 'directory', 'plain']\n",
+        )
+        .with_symlink_source_content("single", "top-level content")
+        .with_symlink_source_content("directory/nested", "nested content")
+        .with_symlink_source_content("plain", "content without an ACL")
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let source = repo.root_path().join("symlinks");
+    let directory = source.join("directory");
+    let uid = directory.metadata().unwrap().uid();
+    // Linux POSIX ACL xattrs encode a version followed by tag/permission/ID
+    // entries. The group ACL entry is intentionally different from the mask.
+    let acl = |owner, named, mask| {
+        let mut bytes = 2_u32.to_le_bytes().to_vec();
+        for (tag, permissions, id) in [
+            (1_u16, owner, u32::MAX),
+            (2, named, uid),
+            (4, 0, u32::MAX),
+            (16, mask, u32::MAX),
+            (32, 0, u32::MAX),
+        ] {
+            bytes.extend(tag.to_le_bytes());
+            bytes.extend(u16::to_le_bytes(permissions));
+            bytes.extend(id.to_le_bytes());
+        }
+        bytes
+    };
+    let file_acl = acl(6, 4, 4);
+    let directory_acl = acl(7, 5, 5);
+    let attribute = "user.dotfiles_fixture";
+    let access = "system.posix_acl_access";
+    let default = "system.posix_acl_default";
+    for path in [source.join("single"), directory.join("nested")] {
+        setxattr(&path, access, &file_acl, XattrFlags::empty()).unwrap();
+        setxattr(&path, attribute, b"fixture metadata", XattrFlags::empty()).unwrap();
+    }
+    for name in [access, default] {
+        setxattr(&directory, name, &directory_acl, XattrFlags::empty()).unwrap();
+    }
+    setxattr(home.path(), default, &directory_acl, XattrFlags::empty()).unwrap();
+    symlink(source.join("single"), home.path().join(".single")).unwrap();
+    symlink(&directory, home.path().join(".directory")).unwrap();
+    symlink(source.join("plain"), home.path().join(".plain")).unwrap();
+    let output = common::cli_command(repo.root_path(), home.path(), None, "remove", "symlinks")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let read_attribute = |path: &std::path::Path, name| {
+        let mut buffer = vec![0; 128];
+        let size = getxattr(path, name, buffer.as_mut_slice()).unwrap();
+        buffer.truncate(size);
+        buffer
+    };
+    let copied_directory = home.path().join(".directory");
+    for name in [access, default] {
+        assert_eq!(read_attribute(&copied_directory, name), directory_acl);
+    }
+    for path in [home.path().join(".single"), copied_directory.join("nested")] {
+        assert_eq!(read_attribute(&path, access), file_acl);
+        assert_eq!(read_attribute(&path, attribute), b"fixture metadata");
+    }
+    assert!(!copied_directory.is_symlink());
+    assert!(!home.path().join(".single").is_symlink());
+    assert_eq!(
+        getxattr(home.path().join(".plain"), access, &mut [0; 128][..]),
+        Err(rustix::io::Errno::NODATA),
+        "a copy must not inherit a destination ACL absent from the source"
+    );
+}
+
 #[test]
 fn materialization_refuses_nested_absolute_links_to_the_active_overlay() {
     let repo = common::TestContextBuilder::new()

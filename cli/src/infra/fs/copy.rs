@@ -33,8 +33,6 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
     reject_recursive_destination(src, dst)?;
     std::fs::create_dir_all(dst)
         .with_context(|| format!("creating directory {}", dst.display()))?;
-    #[cfg(unix)]
-    let permissions = source_metadata.permissions();
     // Keep staged contents private while copying, and defer the source mode
     // until children are populated so read-only directories can be copied.
     #[cfg(unix)]
@@ -71,6 +69,8 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
                         link_target.display()
                     )
                 })?;
+            #[cfg(target_os = "linux")]
+            preserve_link_attributes(&src_path, &dst_path)?;
         } else if meta.is_dir() {
             copy_dir_recursive(&src_path, &dst_path, skip_git)?;
         } else {
@@ -86,12 +86,116 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
             std::io::copy(&mut source, &mut destination).with_context(|| {
                 format!("copying {} to {}", src_path.display(), dst_path.display())
             })?;
-            destination.set_permissions(source.metadata()?.permissions())?;
+            preserve_copy_metadata(&source, &destination)
+                .with_context(|| format!("preserving metadata for {}", src_path.display()))?;
         }
     }
     #[cfg(unix)]
-    std::fs::set_permissions(dst, permissions)
-        .with_context(|| format!("preserving directory permissions for {}", dst.display()))?;
+    {
+        let source = std::fs::File::open(src)?;
+        let destination = std::fs::File::open(dst)?;
+        preserve_copy_metadata(&source, &destination)
+            .with_context(|| format!("preserving metadata for {}", src.display()))?;
+    }
+    Ok(())
+}
+
+/// Preserve metadata before publishing a staged copy.
+pub(crate) fn preserve_copy_metadata(
+    source: &std::fs::File,
+    destination: &std::fs::File,
+) -> Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        use rustix::fs::{
+            XattrFlags, fgetxattr, fgetxattr_query, flistxattr, flistxattr_query, fremovexattr,
+            fsetxattr,
+        };
+        use rustix::io::Errno;
+        use std::os::unix::fs::MetadataExt as _;
+
+        let names = read_attribute_names(flistxattr_query(source), |buffer| {
+            flistxattr(source, buffer)
+        })?;
+        let names: Vec<_> = names
+            .split(|byte| *byte == 0)
+            .filter(|name| !name.is_empty())
+            .collect();
+        for acl in ["system.posix_acl_access", "system.posix_acl_default"] {
+            if !names.contains(&acl.as_bytes()) {
+                match fremovexattr(destination, acl) {
+                    Ok(()) | Err(Errno::NODATA | Errno::NOTSUP) => {}
+                    Err(error) => {
+                        return Err(error).with_context(|| format!("clear inherited {acl}"));
+                    }
+                }
+            }
+        }
+        if names.contains(&b"system.posix_acl_access".as_slice()) {
+            let source = source.metadata()?;
+            let destination = destination.metadata()?;
+            anyhow::ensure!(
+                (source.uid(), source.gid()) == (destination.uid(), destination.gid()),
+                "the staged copy has a different owner or group and would change ACL access"
+            );
+        }
+        for name in names {
+            let name = std::ffi::OsStr::from_bytes(name);
+            let mut value = vec![0; fgetxattr_query(source, name)?.max(1)];
+            let size = fgetxattr(source, name, value.as_mut_slice())?;
+            value.truncate(size);
+            fsetxattr(destination, name, &value, XattrFlags::empty())
+                .with_context(|| format!("copy extended attribute {}", name.to_string_lossy()))?;
+        }
+    }
+    destination.set_permissions(source.metadata()?.permissions())?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+use std::os::unix::ffi::OsStrExt as _;
+
+#[cfg(target_os = "linux")]
+fn read_attribute_names(
+    size: rustix::io::Result<usize>,
+    read: impl FnOnce(&mut [u8]) -> rustix::io::Result<usize>,
+) -> rustix::io::Result<Vec<u8>> {
+    match size {
+        Err(rustix::io::Errno::NOTSUP) => Ok(Vec::new()),
+        other => {
+            let mut names = vec![0; other?.max(1)];
+            let used = read(&mut names)?;
+            names.truncate(used);
+            Ok(names)
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn preserve_link_attributes(source: &Path, destination: &Path) -> Result<()> {
+    use rustix::fs::{
+        XattrFlags, lgetxattr, lgetxattr_query, llistxattr, llistxattr_query, lsetxattr,
+    };
+
+    let names = read_attribute_names(llistxattr_query(source), |buffer| {
+        llistxattr(source, buffer)
+    })?;
+    for name in names
+        .split(|byte| *byte == 0)
+        .filter(|name| !name.is_empty())
+    {
+        let name = std::ffi::OsStr::from_bytes(name);
+        let mut value = vec![0; lgetxattr_query(source, name)?.max(1)];
+        let size = lgetxattr(source, name, value.as_mut_slice())?;
+        value.truncate(size);
+        lsetxattr(destination, name, &value, XattrFlags::empty()).with_context(|| {
+            format!(
+                "copy extended attribute {} on {}",
+                name.to_string_lossy(),
+                source.display()
+            )
+        })?;
+    }
     Ok(())
 }
 

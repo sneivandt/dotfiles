@@ -30,6 +30,7 @@ fn stage_config(
 }
 
 fn open_file(path: &std::path::Path) -> Result<git2::Config> {
+    require_regular_config(path)?;
     // libgit2's relative-include resolver recognizes '/' separators, including
     // on Windows. Native backslashes can otherwise make an include appear absent.
     #[cfg(windows)]
@@ -42,6 +43,27 @@ fn open_file(path: &std::path::Path) -> Result<git2::Config> {
     }
     #[cfg(not(windows))]
     Ok(git2::Config::open(path)?)
+}
+
+fn require_regular_config(path: &std::path::Path) -> Result<()> {
+    match std::fs::metadata(path) {
+        Ok(metadata) => anyhow::ensure!(
+            metadata.is_file(),
+            "Git config is not a regular file: {}",
+            path.display()
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error).with_context(|| format!("inspecting Git config {}", path.display()));
+        }
+    }
+    Ok(())
+}
+
+fn is_include(key: &str) -> bool {
+    key.rsplit_once('.').is_some_and(|(section, name)| {
+        name == "path" && (section == "include" || section.starts_with("includeif."))
+    })
 }
 
 use crate::engine::{
@@ -148,15 +170,15 @@ impl GitConfigResource {
                 ResourceState::Correct
             });
         }
+        let after_includes = self.include_order(config)?.1;
         Ok(
-            if self.desired.as_ref().is_some_and(|desired| {
-                values
-                    .iter()
-                    .all(|value| value.as_deref() == Some(desired.as_str()))
-                    && config.get_entry(&self.key).is_ok_and(|entry| {
-                        entry.has_value() && entry.value().is_ok_and(|value| value == desired)
-                    })
-            }) {
+            if after_includes
+                && self.desired.as_ref().is_some_and(|desired| {
+                    values
+                        .iter()
+                        .all(|value| value.as_deref() == Some(desired.as_str()))
+                })
+            {
                 ResourceState::Correct
             } else {
                 ResourceState::Incorrect {
@@ -203,14 +225,28 @@ impl GitConfigResource {
         Ok(ResourceChange::Applied)
     }
 
-    fn has_includes(&self, config: &git2::Config) -> Result<bool> {
-        let mut entries = config.multivar(&self.key, None)?;
+    // A conditional include can be active in Git even when opening the global
+    // file by itself leaves it inactive. Treat the directive as an ordering
+    // boundary regardless of which included values libgit2 can see here.
+    fn include_order(&self, config: &git2::Config) -> Result<(bool, bool)> {
+        let managed = crate::domains::git::config::git_config::target_key(&self.key);
+        let mut entries = config.entries(None)?;
+        let mut includes = false;
+        let mut after_includes = true;
         while let Some(entry) = entries.next() {
-            if entry?.include_depth() != 0 {
-                return Ok(true);
+            let entry = entry?;
+            if entry.include_depth() != 0 {
+                continue;
+            }
+            let name = entry.name()?;
+            if name == managed {
+                after_includes = true;
+            } else if is_include(name) {
+                includes = true;
+                after_includes = false;
             }
         }
-        Ok(false)
+        Ok((includes, after_includes))
     }
 
     fn apply_transaction(&self) -> Result<ResourceChange> {
@@ -249,7 +285,7 @@ impl GitConfigResource {
         let config = open_file(&path)?;
         let parent = path.parent().context("global Git config has no parent")?;
         let (_stage, stage_path) = stage_config(parent, before.as_deref().unwrap_or_default())?;
-        let replacement = if self.has_includes(&config)? {
+        let replacement = if self.include_order(&config)?.0 {
             {
                 let mut staged = open_file(&stage_path)?;
                 let values = self.values_from_config(&config)?;
@@ -315,6 +351,7 @@ impl Resource for GitConfigResource {
 }
 
 fn read_config_bytes(path: &std::path::Path) -> Result<Option<Vec<u8>>> {
+    require_regular_config(path)?;
     match std::fs::read(path) {
         Ok(bytes) => Ok(Some(bytes)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -345,13 +382,8 @@ mod tests {
             read_config_bytes(&missing).unwrap(),
             Some(b"fixture".to_vec())
         );
-        let expected = std::fs::read(dir.path()).unwrap_err().kind();
         let error = read_config_bytes(dir.path()).unwrap_err();
-        assert_eq!(
-            error.downcast_ref::<std::io::Error>().unwrap().kind(),
-            expected
-        );
-        assert!(format!("{error:#}").contains("reading Git config"));
+        assert!(format!("{error:#}").contains("Git config is not a regular file"));
     }
 
     #[test]

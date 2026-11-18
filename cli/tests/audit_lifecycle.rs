@@ -18,6 +18,77 @@ fn output(command: &mut std::process::Command, success: bool) -> String {
     text
 }
 
+#[cfg(unix)]
+#[test]
+fn global_git_update_honors_the_selected_file_and_later_conditional_includes() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "git-config.toml",
+            "[base]\nsettings = [{key='core.editor',value='vim'}]\n",
+        )
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let default = home.path().join(".gitconfig");
+    let selected = home.path().join("selected.gitconfig");
+    let included = home.path().join("included.gitconfig");
+    let untouched_default = "[core]\n editor = existing-default\n";
+    let untouched_include = "[core]\n editor = existing-override\n";
+    std::fs::write(&default, untouched_default).unwrap();
+    std::fs::write(&included, untouched_include).unwrap();
+    std::fs::write(
+        &selected,
+        format!(
+            "[core]\n editor = vim\n[includeIf \"gitdir:{}/.git\"]\n path = included.gitconfig\n",
+            repo.root_path().display()
+        ),
+    )
+    .unwrap();
+    let git_update = || {
+        let mut command = common::cli_command(repo.root_path(), home.path(), None, "update", "git");
+        command.env("GIT_CONFIG_GLOBAL", &selected).arg("--verbose");
+        command
+    };
+    let mut command = git_update();
+    let native_value = || {
+        let result = std::process::Command::new("git")
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap())
+            .env("HOME", home.path())
+            .env("GIT_CONFIG_GLOBAL", &selected)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .current_dir(repo.root_path())
+            .args(["config", "--get", "core.editor"])
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "{result:?}");
+        String::from_utf8(result.stdout).unwrap().trim().to_owned()
+    };
+    assert_eq!(native_value(), "existing-override");
+    let before = std::fs::read(&selected).unwrap();
+    let preview = output(command.arg("--dry-run"), true);
+    assert!(
+        preview.contains("configure  core.editor = vim"),
+        "{preview}"
+    );
+    assert_eq!(std::fs::read(&selected).unwrap(), before);
+
+    let mut apply = git_update();
+    output(&mut apply, true);
+    assert_eq!(native_value(), "vim");
+    assert_eq!(
+        std::fs::read_to_string(&default).unwrap(),
+        untouched_default
+    );
+    assert_eq!(
+        std::fs::read_to_string(&included).unwrap(),
+        untouched_include
+    );
+    let after = std::fs::read(&selected).unwrap();
+    let text = output(&mut apply, true);
+    assert!(text.contains("ok core.editor = vim"), "{text}");
+    assert_eq!(std::fs::read(&selected).unwrap(), after);
+}
+
 #[test]
 fn checks_reject_hard_linked_locks_without_overwriting_user_data() {
     let repo = common::IntegrationTestContext::new();

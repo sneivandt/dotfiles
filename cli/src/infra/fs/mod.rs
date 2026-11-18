@@ -18,8 +18,8 @@ mod mutation;
 mod place;
 mod temp;
 
-pub(crate) use copy::open_regular_source;
 pub use copy::{copy_dir_recursive, reject_destination_link};
+pub(crate) use copy::{open_regular_source, preserve_copy_metadata};
 pub(crate) use directories::checked_directory_chain;
 pub(crate) use mutation::open_in_place;
 #[cfg(unix)]

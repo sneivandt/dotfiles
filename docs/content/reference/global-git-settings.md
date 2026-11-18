@@ -21,9 +21,10 @@ installing this repository's contributor hooks.
 
 ## What it does
 
-Applies `conf/git-config.toml` values to **global** Git configuration. Repeated
-occurrences of managed keys are handled without altering unrelated keys. Profile/overlay
-persistence instead uses repository-local configuration.
+Applies `conf/git-config.toml` values to **global** Git configuration. Set
+`GIT_CONFIG_GLOBAL` to select a different file. Repeated occurrences of
+managed keys are handled without altering unrelated keys. Profile and overlay
+selections are stored in repository-local configuration.
 
 On Unix, updates stage content privately and preserve the existing file's access
 mode; new configuration files are owner-only. Dotfiles respects Git's `.lock` file;

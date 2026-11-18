@@ -335,8 +335,11 @@ changed, pass the original `--profile` and `--overlay` explicitly.
 | Managed Git hooks and launcher | Removed only if they still match their managed state |
 | Active overlay scripts | Their removal actions run when their checks find managed state |
 
-Home-link actions read `copy <home path> from <source>`. Existing managed links
-are replaced with independent copies; the repository sources are not changed.
+Home-link actions read `copy <home path> from <source>`. Links that point
+directly to their configured checkout entries become independent copies.
+Links through another home path are preserved. On Linux, if the destination
+cannot preserve a source ACL or extended attribute, removal reports the
+failure and leaves the corresponding link in place.
 
 **Remove is not rollback.** The copies contain current configured content,
 not your pre-install files. Missing targets stay missing. Use

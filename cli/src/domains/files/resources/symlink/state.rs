@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use super::SymlinkResource;
 use crate::engine::{ResourceResult, ResourceState};
@@ -63,7 +63,32 @@ pub(super) fn link_points_to_source(target: &Path, existing: &Path, source: &Pat
             .unwrap_or_else(|| Path::new("."))
             .join(existing)
     };
-    paths_equal(&resolved, source)
+    // Ownership follows the configured checkout entry, even if that entry is
+    // itself a link. Following a different home link here would let removal of
+    // that link change whether this one is managed during the same batch.
+    let identity = |path: &Path| -> Option<Vec<std::ffi::OsString>> {
+        let absolute = std::path::absolute(dunce::simplified(path)).ok()?;
+        let mut lexical = PathBuf::new();
+        for part in absolute.components() {
+            if part == Component::ParentDir {
+                lexical.pop();
+            } else {
+                lexical.push(part);
+            }
+        }
+        Some(crate::domains::files::config::symlinks::path_identity(
+            &lexical,
+        ))
+    };
+    let Some(referenced) = identity(&resolved) else {
+        return false;
+    };
+    let configured = identity(source);
+    let canonical = crate::infra::fs::resolve_target_entry(source)
+        .ok()
+        .and_then(|path| identity(&path));
+    (configured.as_ref() == Some(&referenced) || canonical.as_ref() == Some(&referenced))
+        && same_entry(source, &resolved)
 }
 
 /// Compare entry locations without following the final link.

@@ -57,7 +57,13 @@ impl Task for ConfigureGit {
             return Ok(TaskResult::NotApplicable("no Git settings".into()));
         }
         let config_path = self.config_path.clone().map_or_else(
-            || global_config_path(git2::Config::find_global(), ctx.home()),
+            || {
+                if let Some(path) = ctx.env().var_os("GIT_CONFIG_GLOBAL") {
+                    anyhow::ensure!(!path.is_empty(), "GIT_CONFIG_GLOBAL is empty");
+                    return Ok(std::path::absolute(path)?);
+                }
+                Ok(global_config_path(git2::Config::find_global(), ctx.home())?)
+            },
             Ok,
         )?;
         let resources = settings

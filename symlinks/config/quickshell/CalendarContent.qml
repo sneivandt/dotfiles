@@ -13,7 +13,7 @@ ColumnLayout {
     property int monthOffset: 0
     readonly property date referenceDate: currentDate
     readonly property date shownMonth: new Date(referenceDate.getFullYear(), referenceDate.getMonth() + monthOffset, 1, 12)
-    readonly property int firstWeekday: (shownMonth.getDay() + 6) % 7
+    readonly property int firstWeekday: shownMonth.getDay()
 
     function utcTime() {
         return String(currentDate.getUTCHours()).padStart(2, "0") + ":" + String(currentDate.getUTCMinutes()).padStart(2, "0");
@@ -137,7 +137,8 @@ ColumnLayout {
                 rowSpacing: 2
 
                 Repeater {
-                    model: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                    objectName: "weekdayHeaders"
+                    model: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
                     Text {
                         required property string modelData

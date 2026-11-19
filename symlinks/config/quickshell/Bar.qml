@@ -174,7 +174,7 @@ PanelWindow {
             implicitWidth: clockButton.implicitWidth
             BarBlock {
                 id: clockButton
-                text: Qt.formatDateTime(bar.currentDate, bar.width < 800 ? "HH:mm" : "MMM dd  HH:mm")
+                text: Qt.formatDateTime(bar.currentDate, bar.width < 800 ? "HH:mm" : "ddd MMM dd  HH:mm")
                 tooltip: Qt.formatDate(bar.currentDate, "dddd, MMMM d")
                 selected: calendarMenu.visible && !calendarMenu.closing
                 onActivated: bar.toggleMenu(calendarMenu)

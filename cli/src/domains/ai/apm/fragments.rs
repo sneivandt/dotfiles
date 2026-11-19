@@ -33,6 +33,7 @@ impl ApmFragmentSource {
 /// Returns an empty vector if the directory does not exist.  Results are
 /// sorted by path so the merged manifest is deterministic regardless of the
 /// filesystem's enumeration order.
+#[cfg(test)]
 pub(super) fn discover_fragment_files(home: &Path) -> Result<Vec<PathBuf>> {
     discover_yaml_files(&home.join(".apm").join("config"))
 }
@@ -45,18 +46,40 @@ pub(super) fn discover_fragment_files(home: &Path) -> Result<Vec<PathBuf>> {
 pub(super) fn discover_effective_fragment_files(
     home: &Path,
     managed: &[ApmFragmentSource],
+    inactive: &[ApmFragmentSource],
 ) -> Result<Vec<PathBuf>> {
-    if managed.is_empty() {
-        return discover_fragment_files(home);
-    }
-
     let mut fragments: BTreeMap<_, _> = managed
         .iter()
         .map(|fragment| (fragment.target_name.clone(), fragment.source.clone()))
         .collect();
     let home_fragments = discover_yaml_files_filtered(&home.join(".apm").join("config"), |path| {
-        path.file_name()
-            .is_some_and(|name| fragments.contains_key(name))
+        let Some(name) = path.file_name() else {
+            return Ok(false);
+        };
+        if fragments.contains_key(name) {
+            return Ok(true);
+        }
+        let mut matching = inactive
+            .iter()
+            .filter(|fragment| fragment.target_name == name)
+            .peekable();
+        if matching.peek().is_none() {
+            return Ok(false);
+        }
+        let metadata = std::fs::symlink_metadata(path)
+            .with_context(|| format!("checking retained APM fragment {}", path.display()))?;
+        if !metadata.file_type().is_symlink() {
+            return Ok(false);
+        }
+        let source = std::fs::read_link(path)
+            .with_context(|| format!("reading retained APM fragment {}", path.display()))?;
+        Ok(matching.any(|fragment| {
+            crate::domains::files::resources::symlink::link_points_to_source(
+                path,
+                &source,
+                &fragment.source,
+            )
+        }))
     })?;
     for path in home_fragments {
         if let Some(name) = path.file_name() {
@@ -69,12 +92,12 @@ pub(super) fn discover_effective_fragment_files(
 
 /// Discover YAML files in an APM fragment directory.
 pub(super) fn discover_yaml_files(config_dir: &Path) -> Result<Vec<PathBuf>> {
-    discover_yaml_files_filtered(config_dir, |_| false)
+    discover_yaml_files_filtered(config_dir, |_| Ok(false))
 }
 
 fn discover_yaml_files_filtered(
     config_dir: &Path,
-    skip: impl Fn(&Path) -> bool,
+    skip: impl Fn(&Path) -> Result<bool>,
 ) -> Result<Vec<PathBuf>> {
     let entries = match std::fs::read_dir(config_dir) {
         Ok(entries) => entries,
@@ -90,7 +113,7 @@ fn discover_yaml_files_filtered(
         let entry = entry
             .with_context(|| format!("reading directory entry in {}", config_dir.display()))?;
         let path = entry.path();
-        if !is_yaml_fragment(&path) || skip(&path) {
+        if !is_yaml_fragment(&path) || skip(&path)? {
             continue;
         }
         let metadata = std::fs::metadata(&path).with_context(|| {
@@ -387,14 +410,27 @@ mod tests {
         let unmanaged = config.join("user.yml");
         std::fs::write(&unmanaged, "description: user\n").expect("write unmanaged fragment");
 
-        assert!(discover_effective_fragment_files(&home, &[]).is_err());
+        assert!(discover_effective_fragment_files(&home, &[], &[]).is_err());
         let effective = discover_effective_fragment_files(
             &home,
             &[ApmFragmentSource::new(source.clone(), "base.yml".into())],
+            &[],
         )
         .expect("managed source must mask the stale home entry");
 
         assert_eq!(effective, [source, unmanaged]);
+        assert_eq!(std::fs::read_link(&stale_link).unwrap(), missing);
+
+        let inactive = [ApmFragmentSource::new(missing.clone(), "base.yml".into())];
+        assert_eq!(
+            discover_effective_fragment_files(&home, &[], &inactive).unwrap(),
+            [config.join("user.yml")]
+        );
+        std::fs::write(&missing, "description: inactive desktop\n").unwrap();
+        assert_eq!(
+            discover_effective_fragment_files(&home, &[], &inactive).unwrap(),
+            [config.join("user.yml")]
+        );
         assert_eq!(std::fs::read_link(&stale_link).unwrap(), missing);
     }
 

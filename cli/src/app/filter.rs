@@ -55,34 +55,69 @@ pub(crate) fn selected_task_ids(
     skip: &[String],
     with_dependencies: bool,
 ) -> Result<HashSet<TaskId>> {
-    let unmatched_only = unmatched_filters(tasks, only);
-    let unmatched_skip = unmatched_filters(tasks, skip);
-    reject_unmatched_filters(tasks, &unmatched_only, "--only")?;
-    reject_unmatched_filters(tasks, &unmatched_skip, "--skip")?;
-
-    let mut selected = tasks
-        .iter()
-        .filter(|task| task_passes_filters(**task, only, &[]))
-        .map(|task| task.task_id())
-        .collect::<HashSet<_>>();
+    let requested = resolve_filters(tasks, only, "--only")?;
+    let excluded = resolve_filters(tasks, skip, "--skip")?;
+    let mut selected = if only.is_empty() {
+        tasks.iter().map(|task| task.task_id()).collect()
+    } else {
+        requested
+    };
     if with_dependencies {
         ResolvedTaskGraph::resolve(tasks)?
             .extend_dependency_closure(&mut selected, DependencyEdges::All);
     }
-    let selected = tasks
-        .iter()
-        .filter_map(|task| {
-            let id = task.task_id();
-            (selected.contains(&id) && task_passes_filters(*task, &[], skip)).then_some(id)
-        })
-        .collect::<HashSet<_>>();
+    selected.retain(|id| !excluded.contains(id));
     if selected.is_empty() && (!only.is_empty() || !skip.is_empty()) {
         bail!("task filters selected no tasks; adjust --only or --skip");
     }
     Ok(selected)
 }
 
+pub(crate) fn resolve_filters(
+    tasks: &[&dyn Task],
+    filters: &[String],
+    flag: &str,
+) -> Result<HashSet<TaskId>> {
+    let mut selected = HashSet::new();
+    let mut unmatched = Vec::new();
+    for filter in filters {
+        let normalized = normalize_task_filter(filter);
+        let mut matches: Vec<_> = tasks
+            .iter()
+            .filter(|task| {
+                task.visibility().is_visible()
+                    && !normalized.is_empty()
+                    && normalize_task_filter(task.selector()) == normalized
+            })
+            .collect();
+        if matches.is_empty() {
+            matches.extend(
+                tasks
+                    .iter()
+                    .filter(|task| task_matches_filter(**task, filter)),
+            );
+        }
+        match matches.as_slice() {
+            [task] => {
+                selected.insert(task.task_id());
+            }
+            [] => unmatched.push(filter.as_str()),
+            _ => bail!(
+                "{flag} selector '{filter}' is ambiguous; use one of: {}",
+                matches
+                    .iter()
+                    .map(|task| task.selector())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        }
+    }
+    reject_unmatched_filters(tasks, &unmatched, flag)?;
+    Ok(selected)
+}
+
 /// Return filters that do not match any known task.
+#[cfg(test)]
 pub(crate) fn unmatched_filters<'a>(tasks: &[&dyn Task], filters: &'a [String]) -> Vec<&'a str> {
     filters
         .iter()
@@ -128,6 +163,7 @@ fn closest_selector<'a>(tasks: &[&'a dyn Task], filter: &str) -> Option<&'a str>
 
 /// Return whether a task passes both the inclusion and exclusion filters.
 #[must_use]
+#[cfg(test)]
 pub(crate) fn task_passes_filters(task: &dyn Task, only: &[String], skip: &[String]) -> bool {
     let included = only.is_empty() || only.iter().any(|filter| task_matches_filter(task, filter));
     let excluded = skip.iter().any(|filter| task_matches_filter(task, filter));
@@ -252,9 +288,27 @@ mod tests {
             selector: "ordering-dependent",
             ordering: [SampleTask],
         }
+        OverlayCollisionTask {
+            name: "Symlinks",
+            selector: "script-symlinks",
+        }
     }
 
     use crate::test_helpers::CapturingOutput;
+
+    #[test]
+    fn canonical_selector_wins_for_both_includes_and_exclusions() {
+        let tasks: [&dyn Task; 2] = [&SampleTask, &OverlayCollisionTask];
+        let selector = ["symlinks".to_string()];
+        assert_eq!(
+            selected_task_ids(&tasks, &selector, &[], false).unwrap(),
+            HashSet::from([SampleTask.task_id()])
+        );
+        assert_eq!(
+            selected_task_ids(&tasks, &[], &selector, false).unwrap(),
+            HashSet::from([OverlayCollisionTask.task_id()])
+        );
+    }
 
     #[test]
     fn task_matches_filter_uses_explicit_selector() {

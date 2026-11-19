@@ -153,6 +153,10 @@ case "$url" in
     printf '%s\n' "$out" > "$DOTFILES_ROOT/download-path"
     cat > "$out" <<'BIN'
 #!/bin/sh
+if [ "$1" = --version ]; then
+  printf 'dotfiles v9.9.9\n'
+  exit 0
+fi
 printf '%s\n' "$DOTFILES_ROOT" > "$DOTFILES_ROOT/root.txt"
 printf '%s\n' "$DOTFILES_WRAPPER" > "$DOTFILES_ROOT/wrapper.txt"
 printf '%s\n' "$@" > "$DOTFILES_ROOT/args.txt"
@@ -544,6 +548,8 @@ case "$url" in
     cat > "$out" <<'BIN'
 #!/bin/sh
 printf '%s\n' "$GH_PROMPT_DISABLED" "$DBUS_SESSION_BUS_ADDRESS" > "$DOTFILES_ROOT/child-env"
+[ "${WRAPPER_BAD_BINARY:-0}" = 0 ] || exit 42
+printf 'dotfiles v9.9.9\n'
 BIN
     ;;
   *)
@@ -580,6 +586,14 @@ EOF
   grep -q 'GH_TOKEN/GITHUB_TOKEN' "$tmpdir/stderr" ||
     log_error "Verification failure did not explain non-interactive credentials"
   log_verbose "✓ Default policy rejects unverified downloads"
+
+  if PATH="$tmpdir/fake-bin:$PATH" DOTFILES_SKIP_ATTESTATION=0 WRAPPER_GH_EXIT=0 \
+    WRAPPER_BAD_BINARY=1 GH_PROMPT_DISABLED=caller DBUS_SESSION_BUS_ADDRESS=caller \
+    "$tmpdir/dotfiles.sh" --version > "$tmpdir/stdout" 2> "$tmpdir/stderr"; then
+    log_error "Bootstrap accepted a verified executable that failed to start"
+  fi
+  [ ! -e "$tmpdir/bin/dotfiles" ] || log_error "Failed smoke check published an executable"
+  grep -q 'Downloaded CLI did not start' "$tmpdir/stderr" || log_error "Failed smoke check was not explained"
 
   PATH="$tmpdir/fake-bin:$PATH" DOTFILES_SKIP_ATTESTATION=0 WRAPPER_GH_EXIT=0 \
     GH_PROMPT_DISABLED=caller DBUS_SESSION_BUS_ADDRESS=caller \

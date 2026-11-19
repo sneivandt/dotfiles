@@ -54,6 +54,15 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     /// Returns an error if the installation command fails.
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange>;
 
+    /// Return the install result and whether the package needs a reboot.
+    fn install_with_reboot_status(
+        &self,
+        name: &str,
+        executor: &dyn Executor,
+    ) -> Result<(ResourceChange, bool)> {
+        self.install(name, executor).map(|change| (change, false))
+    }
+
     /// Build a single command invocation that installs every name in `names`.
     ///
     /// Providers whose package manager resolves an entire set in one solver
@@ -142,25 +151,35 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
         let mut report = PackageInstallReport::new();
         for (index, resource) in resources.iter().enumerate() {
             progress(&resource.name);
-            match self.install(&resource.name, executor) {
-                Ok(ResourceChange::Applied) => {
-                    report.record_applied(resource.name.clone());
+            match self.install_with_reboot_status(&resource.name, executor) {
+                Ok((ResourceChange::Applied, reboot_required)) => {
+                    if reboot_required {
+                        report.record_pending_reboot(resource.name.clone());
+                    } else {
+                        report.record_applied(resource.name.clone());
+                    }
                 }
-                Ok(ResourceChange::AlreadyCorrect) => {
+                Ok((ResourceChange::AlreadyCorrect, _)) => {
                     report.record_already_correct(resource.name.clone());
                 }
-                Ok(ResourceChange::Skipped {
-                    reason,
-                    kind: crate::engine::SkipKind::UnmetWork,
-                }) => {
+                Ok((
+                    ResourceChange::Skipped {
+                        reason,
+                        kind: crate::engine::SkipKind::UnmetWork,
+                    },
+                    _,
+                )) => {
                     report.record_failure(resource.name.clone(), reason);
                 }
                 // A benign skip is neither an install nor a failure, so it
                 // contributes to neither bucket in the report.
-                Ok(ResourceChange::Skipped {
-                    kind: crate::engine::SkipKind::Benign,
-                    ..
-                }) => {}
+                Ok((
+                    ResourceChange::Skipped {
+                        kind: crate::engine::SkipKind::Benign,
+                        ..
+                    },
+                    _,
+                )) => {}
                 Err(err) => {
                     if err
                         .downcast_ref::<ExecError>()

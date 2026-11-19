@@ -20,23 +20,13 @@ pub enum WrapperType {
 }
 
 impl WrapperType {
-    /// Detect the wrapper type from the `DOTFILES_WRAPPER` environment
-    /// variable, falling back to platform heuristics.
+    /// Select a launcher format the target OS can execute.
     #[must_use]
-    pub fn detect(
-        env: &dyn crate::infra::env::Env,
-        platform: crate::infra::platform::Platform,
-    ) -> Self {
-        match env.var("DOTFILES_WRAPPER").as_deref() {
-            Some("sh") => Self::Sh,
-            Some("pwsh") => Self::Pwsh,
-            _ => {
-                if platform.is_windows() {
-                    Self::Pwsh
-                } else {
-                    Self::Sh
-                }
-            }
+    pub const fn detect(platform: crate::infra::platform::Platform) -> Self {
+        if platform.is_windows() {
+            Self::Pwsh
+        } else {
+            Self::Sh
         }
     }
 }

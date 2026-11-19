@@ -271,7 +271,12 @@ download_binary() {(
   fi
 
   chmod +x "$staged_binary"
-  mv -f "$staged_binary" "$BINARY"
+  if ! staged_version=$("$staged_binary" --version) ||
+    [ "$staged_version" != "dotfiles $tag" ]; then
+    echo "ERROR: Downloaded CLI did not start as dotfiles $tag; it was not installed." >&2
+    exit 1
+  fi
+  mv -fT -- "$staged_binary" "$BINARY"
 
   echo "Downloaded · checksum verified · $BINARY" >&2
 )}
@@ -302,6 +307,10 @@ fi
 
 # Bootstrap when no usable binary is cached.
 # Subsequent updates are handled by the binary itself.
+if [ -e "$BINARY" ] && [ ! -f "$BINARY" ]; then
+  echo "ERROR: CLI cache path is not a regular file: $BINARY" >&2
+  exit 1
+fi
 if [ ! -x "$BINARY" ]; then
   download_binary
 fi

@@ -278,7 +278,7 @@ function Get-Binary
     {
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
-    $stagedBinary = "$Binary.download-$PID"
+    $stagedBinary = if (Test-IsWindows) { "$Binary.download-$PID.exe" } else { "$Binary.download-$PID" }
     if (Test-Path -LiteralPath $stagedBinary) { Remove-Item -LiteralPath $stagedBinary -Force }
 
     try
@@ -351,6 +351,15 @@ function Get-Binary
 
         try
         {
+            $stagedVersion = @(& $stagedBinary --version)
+            if ($LASTEXITCODE -ne 0 -or $stagedVersion.Count -ne 1 -or $stagedVersion[0] -cne "dotfiles $tag")
+            {
+                throw "Downloaded CLI did not start as dotfiles $tag."
+            }
+            if ((Test-Path -LiteralPath $Binary) -and -not (Test-Path -LiteralPath $Binary -PathType Leaf))
+            {
+                throw "CLI cache path is not a regular file: $Binary"
+            }
             Move-Item -LiteralPath $stagedBinary -Destination $Binary -Force
         }
         catch
@@ -409,6 +418,11 @@ if ((Test-Path -LiteralPath $statePath -PathType Leaf) -and (Get-Item -Force -Li
 }
 
 # Bootstrap when no usable binary is cached.
+if ((Test-Path -LiteralPath $Binary) -and -not (Test-Path -LiteralPath $Binary -PathType Leaf))
+{
+    Write-Error "CLI cache path is not a regular file: $Binary"
+    exit 1
+}
 $binaryReady = Test-Path -LiteralPath $Binary -PathType Leaf
 if ($binaryReady -and ($IsLinux -or $IsMacOS))
 {

@@ -250,9 +250,20 @@ pub(super) fn merged_manifest_needs_write(target: &Path, content: &str) -> Resul
             let existing = std::fs::read(target).with_context(|| {
                 format!("reading existing merged manifest {}", target.display())
             })?;
-            Ok(existing != content.as_bytes())
+            if existing == content.as_bytes() {
+                return Ok(false);
+            }
+            anyhow::ensure!(
+                existing.starts_with(super::GENERATED_HEADER.as_bytes()),
+                "refusing to replace an unmanaged APM manifest at {}; back it up and move its settings into ~/.apm/config before retrying",
+                target.display()
+            );
+            Ok(true)
         }
-        Ok(_) => Ok(true),
+        Ok(_) => anyhow::bail!(
+            "merged manifest target is not a regular file: {}",
+            target.display()
+        ),
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(true),
         Err(err) => Err(err)
             .with_context(|| format!("reading metadata for merged manifest {}", target.display())),
@@ -443,6 +454,25 @@ dependencies:
             meta.file_type().is_symlink(),
             "symlink should be left untouched"
         );
+    }
+
+    #[test]
+    fn write_merged_manifest_preserves_user_content_and_updates_managed_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("apm.yml");
+        let desired = format!("{}name: dotfiles\n", super::super::GENERATED_HEADER);
+        std::fs::write(&target, "name: personal\n").unwrap();
+        let error = write_merged_manifest(&target, &desired).unwrap_err();
+        assert!(error.to_string().contains("unmanaged APM manifest"));
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "name: personal\n"
+        );
+
+        let previous = format!("{}name: previous\n", super::super::GENERATED_HEADER);
+        std::fs::write(&target, previous).unwrap();
+        write_merged_manifest(&target, &desired).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), desired);
     }
 
     #[test]

@@ -168,10 +168,10 @@ pub(crate) fn update_tasks_for_run(
             &extension_ordering,
         ),
         conditional_packages(
-            Box::new(InstallApmPackages::new(
-                store.apm_fragments.clone(),
-                apm_mode,
-            )),
+            Box::new(
+                InstallApmPackages::new(store.apm_fragments.clone(), apm_mode)
+                    .with_inactive_fragments(store.inactive_apm_fragments.clone()),
+            ),
             &[id::<InstallSymlinks>()],
             &[id::<InstallPackages>(), id::<InstallAurPackages>()],
         ),

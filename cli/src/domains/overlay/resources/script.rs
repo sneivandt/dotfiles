@@ -182,6 +182,16 @@ impl RemovableResource for ScriptResource {
 
 impl IntrinsicState for ScriptResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
+        self.check("--check")
+    }
+}
+
+impl ScriptResource {
+    pub(crate) fn check_removal_state(&self) -> ResourceResult<ResourceState> {
+        self.check("--check-remove")
+    }
+
+    fn check(&self, flag: &str) -> ResourceResult<ResourceState> {
         if !self.script_exists()? {
             return Ok(ResourceState::Invalid {
                 reason: format!("script not found: {}", self.script_path.display()),
@@ -191,7 +201,7 @@ impl IntrinsicState for ScriptResource {
 
         let result = self
             .executor
-            .execute(self.command(Some("--check"))?.unchecked())
+            .execute(self.command(Some(flag))?.unchecked())
             .with_context(|| format!("checking script state: {}", self.name))?;
 
         match (result.success, result.code) {
@@ -506,6 +516,7 @@ mod tests {
             name: "Setup database".to_string(),
             path: "scripts/setup-db.ps1".to_string(),
             description: None,
+            check_remove: false,
         };
         let resource = ScriptResource::from_entry(&entry, Path::new("/overlay"), mock)
             .expect("relative script path should create resource");
@@ -523,6 +534,7 @@ mod tests {
             name: "Setup database".to_string(),
             path: "../setup-db.ps1".to_string(),
             description: None,
+            check_remove: false,
         };
         let err = ScriptResource::from_entry(&entry, Path::new("/overlay"), mock)
             .expect_err("path traversal should be rejected");

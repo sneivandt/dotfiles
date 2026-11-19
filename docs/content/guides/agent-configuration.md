@@ -280,7 +280,12 @@ flowchart TB
 Dotfiles reads the selected source fragments directly, so previews use your
 edits even if a fragment's home link is missing or broken. Other YAML files
 already in `~/.apm/config/` also contribute unless a selected source has the
-same filename.
+same filename. Links still pointing to a declared but inactive source do not
+contribute; dotfiles leaves those links in place.
+
+If you already maintain `~/.apm/apm.yml`, dotfiles will not replace it.
+Back it up outside `~/.apm/config/`, move the settings you want to keep into
+a fragment, and move the original manifest aside before retrying.
 
 Fragments merge in filename order. A private fragment has no special priority:
 `private.yml` sorts after `base.yml`, but `90-private.yml` sorts before it.

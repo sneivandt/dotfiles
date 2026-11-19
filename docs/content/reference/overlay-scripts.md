@@ -65,6 +65,11 @@ the same check: 0 means something to remove, 1 means nothing. A remove dry run c
 and reports removal but invokes neither `--remove` nor `--dryrun`. Missing or unreadable
 scripts fail, including disappearance between inspection and execution.
 
+For a script that can leave partial state, set `check_remove = true` on its
+entry and implement `--check-remove`. Return 0 whenever there is managed
+state to clean up, including after a failed apply; return 1 only when it is
+absent. Other failures stop removal. The probe must not modify state.
+
 ## Preview and remove
 
 With an [active overlay](../guides/private-overlays.md#select-and-preview), use the selector

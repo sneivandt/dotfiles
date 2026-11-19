@@ -16,6 +16,7 @@ pub struct PackageInstallFailure {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PackageInstallReport {
     applied: Vec<String>,
+    pending_reboot: Vec<String>,
     already_correct: Vec<String>,
     failures: Vec<PackageInstallFailure>,
 }
@@ -26,6 +27,7 @@ impl PackageInstallReport {
     pub const fn new() -> Self {
         Self {
             applied: Vec::new(),
+            pending_reboot: Vec::new(),
             already_correct: Vec::new(),
             failures: Vec::new(),
         }
@@ -34,7 +36,7 @@ impl PackageInstallReport {
     /// Number of packages successfully applied.
     #[must_use]
     pub const fn applied_count(&self) -> usize {
-        self.applied.len()
+        self.applied.len() + self.pending_reboot.len()
     }
 
     /// Number of requested packages that were already installed.
@@ -47,6 +49,10 @@ impl PackageInstallReport {
     #[must_use]
     pub fn failures(&self) -> &[PackageInstallFailure] {
         &self.failures
+    }
+
+    pub(crate) fn pending_reboot(&self) -> &[String] {
+        &self.pending_reboot
     }
 
     /// Whether any package failed.
@@ -88,11 +94,18 @@ impl PackageInstallReport {
         for failure in self.failures {
             error = error.context(format!("{}: {}", failure.package, failure.reason));
         }
+        for package in self.pending_reboot {
+            error = error.context(format!("{package} requires a reboot to finish installing"));
+        }
         error.context(report)
     }
 
     pub(super) fn record_applied(&mut self, package: String) {
         self.applied.push(package);
+    }
+
+    pub(super) fn record_pending_reboot(&mut self, package: String) {
+        self.pending_reboot.push(package);
     }
 
     pub(super) fn record_already_correct(&mut self, package: String) {

@@ -215,6 +215,13 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 apps.update(("vim", "nvim"))
             if path.startswith("symlinks/config/powershell/"):
                 enable("prompt")
+            if path == "symlinks/config/powershell/Microsoft.PowerShell_profile.ps1" or (
+                path.startswith("symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_")
+                and path.endswith("/LocalState/settings.json")
+            ):
+                enable("roundtrip_windows")
+            if path == "symlinks/config/systemd/user/dotfiles-first-login.service":
+                enable("rust_checks", "roundtrip_linux")
             if (
                 path.startswith(("symlinks/config/hypr/scripts/", "symlinks/config/hypr/conf/"))
                 or path == "symlinks/config/hypr/hypridle.conf"

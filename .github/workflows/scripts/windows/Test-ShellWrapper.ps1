@@ -364,7 +364,7 @@ function Test-IsolatedWrapperPath {
     $originalLocation = Get-Location
     $savedEnvironment = @{}
     foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'DOTFILES_SKIP_ATTESTATION', 'DOTFILES_REEXEC_GUARD', 'DOTFILES_RELEASE_REPO',
-            'WRAPPER_TEST_BUILD_EXIT', 'WRAPPER_TEST_BAD_CHECKSUM', 'WRAPPER_TEST_GH_EXIT',
+            'WRAPPER_TEST_BUILD_EXIT', 'WRAPPER_TEST_BAD_CHECKSUM', 'WRAPPER_TEST_BAD_BINARY', 'WRAPPER_TEST_GH_EXIT',
             'GH_PROMPT_DISABLED', 'DBUS_SESSION_BUS_ADDRESS')) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
@@ -377,6 +377,11 @@ function Test-IsolatedWrapperPath {
             @'
 #!/usr/bin/env python3
 import json, os, sys
+if sys.argv[1:] == ["--version"]:
+    if os.environ.get("WRAPPER_TEST_BAD_BINARY") == "1":
+        sys.exit(42)
+    print("dotfiles v2026.09.17-1")
+    sys.exit(0)
 print(json.dumps({"Cwd": os.getcwd(), "Arguments": sys.argv[1:], "Root": os.environ["DOTFILES_ROOT"], "Wrapper": os.environ["DOTFILES_WRAPPER"], "Guard": os.environ["DOTFILES_REEXEC_GUARD"]}))
 sys.exit(7)
 '@
@@ -394,12 +399,18 @@ sys.exit(7)
                 ConvertTo-Json -Compress
             $global:LASTEXITCODE = 7
         }
+        $download = if ($IsLinux) { "$binary.download-$PID" } else { "$binary.download-$PID.exe" }
         if ($IsLinux) {
             & chmod +x $binary $buildBinary
             if ($LASTEXITCODE -ne 0) { throw 'Cannot make native fixture executable' }
         } else {
             Set-Item -LiteralPath "Function:$binary" -Value $child
             Set-Item -LiteralPath "Function:$buildBinary" -Value $child
+            Set-Item -LiteralPath "Function:$download" -Value {
+                if ($args.Count -ne 1 -or $args[0] -cne '--version') { throw 'Unexpected smoke check arguments' }
+                $global:LASTEXITCODE = if ($env:WRAPPER_TEST_BAD_BINARY -eq '1') { 42 } else { 0 }
+                'dotfiles v2026.09.17-1'
+            }
         }
         Set-Item Function:cargo -Value {
             [System.IO.File]::WriteAllText(
@@ -429,7 +440,6 @@ sys.exit(7)
                 return @{ Content = '{"tag_name":"v2026.09.17-1"}' }
             }
             if ($Uri.EndsWith('/checksums.sha256')) {
-                $download = "$Binary.download-$PID"
                 $hash = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash
                 if ($env:WRAPPER_TEST_BAD_CHECKSUM -eq '1') { $hash = '0' * 64 }
                 return @{ Content = "$hash  $(Get-TargetAssetName)" }
@@ -446,6 +456,7 @@ sys.exit(7)
         $env:DOTFILES_RELEASE_REPO = 'fixture/releases'
         $env:WRAPPER_TEST_BUILD_EXIT = '0'
         $env:WRAPPER_TEST_BAD_CHECKSUM = '0'
+        $env:WRAPPER_TEST_BAD_BINARY = '0'
         $env:WRAPPER_TEST_GH_EXIT = '0'
         $env:GH_PROMPT_DISABLED = 'caller'
         $env:DBUS_SESSION_BUS_ADDRESS = 'caller'
@@ -500,7 +511,7 @@ sys.exit(7)
         if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
             throw 'Failed verification changed the caller credential environment'
         }
-        if ((Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath "$binary.download-$PID")) {
+        if ((Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath $download)) {
             throw 'Failed verification left a downloaded binary'
         }
         [System.IO.File]::WriteAllText($binary, 'fixture')
@@ -516,10 +527,22 @@ sys.exit(7)
             $rejected = $true
         }
         if (-not $rejected) { throw 'Wrapper accepted a mismatched checksum' }
-        if ((Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath "$binary.download-$PID")) {
+        if ((Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath $download)) {
             throw 'Rejected download was not removed from the literal path'
         }
         $env:WRAPPER_TEST_BAD_CHECKSUM = '0'
+        $env:WRAPPER_TEST_BAD_BINARY = '1'
+        $rejected = $false
+        try {
+            & $wrapper --version | Out-Null
+        } catch {
+            if ($_ -notmatch 'Downloaded CLI did not start') { throw }
+            $rejected = $true
+        }
+        if (-not $rejected -or (Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath $download)) {
+            throw 'Bootstrap published or leaked a verified binary that did not start'
+        }
+        $env:WRAPPER_TEST_BAD_BINARY = '0'
         $env:WRAPPER_TEST_GH_EXIT = 'throw'
         $rejected = $false
         try {
@@ -529,7 +552,7 @@ sys.exit(7)
             $rejected = $true
         }
         if (-not $rejected) { throw 'Wrapper ignored an attestation invocation error' }
-        if (Test-Path -LiteralPath "$binary.download-$PID") {
+        if (Test-Path -LiteralPath $download) {
             throw 'Unexpected verification failure leaked the downloaded binary'
         }
         if ([System.IO.File]::ReadAllText($binary) -cne 'concurrent fixture') {

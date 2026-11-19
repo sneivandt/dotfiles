@@ -120,6 +120,14 @@ jobs:
       - name: Rename binary
         run: cp cli/target/release/dotfiles "${{ matrix.artifact }}"
 
+      - name: Check release binary starts with the expected version
+        env:
+          EXPECTED_VERSION: ${{ needs.version.outputs.version }}
+          ASSET: ${{ matrix.artifact }}
+        run: |
+          version=$("./$ASSET" --version)
+          test "$version" = "dotfiles $EXPECTED_VERSION"
+
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -152,6 +160,15 @@ jobs:
 
       - name: Rename binary
         run: Copy-Item cli\target\release\dotfiles.exe dotfiles-windows-x86_64.exe
+
+      - name: Check release binary starts with the expected version
+        env:
+          EXPECTED_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          $version = @(& .\dotfiles-windows-x86_64.exe --version)
+          if ($LASTEXITCODE -ne 0 -or $version.Count -ne 1 -or $version[0] -cne "dotfiles $env:EXPECTED_VERSION") {
+            throw "Release binary did not start with the expected version: $version"
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

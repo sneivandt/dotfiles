@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::domains::shell::resources::shell::DefaultShellResource;
+use crate::domains::shell::resources::shell::{DefaultShellResource, SYSTEM_ZSH};
 use crate::engine::{
     Context, ProcessOpts, Requirement, Task, TaskResult, process_requirement, run_resource_task,
     task_metadata,
@@ -27,7 +27,11 @@ impl Task for ConfigureShell {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         process_requirement(
             ctx,
-            &Requirement::command("login-shell", "zsh", "zsh not found in PATH"),
+            &Requirement::command(
+                "login-shell",
+                SYSTEM_ZSH,
+                "system zsh not found at /usr/bin/zsh",
+            ),
             |()| {
                 run_resource_task(
                     ctx,
@@ -69,7 +73,7 @@ mod tests {
         assert!(ConfigureShell.should_run(&ctx));
         assert!(matches!(
             ConfigureShell.run(&ctx).unwrap(),
-            TaskResult::Skipped { reason, .. } if reason == "zsh not found in PATH"
+            TaskResult::Skipped { reason, .. } if reason == "system zsh not found at /usr/bin/zsh"
         ));
     }
 
@@ -89,7 +93,7 @@ mod tests {
         executor
             .expect_which()
             .once()
-            .withf(|program| program == "zsh")
+            .withf(|program| program == SYSTEM_ZSH)
             .returning(move |_| {
                 assert!(
                     readiness.load(Ordering::SeqCst),
@@ -100,7 +104,7 @@ mod tests {
         executor
             .expect_which()
             .once()
-            .withf(|program| program == "/usr/bin/zsh")
+            .withf(|program| program == SYSTEM_ZSH)
             .return_const(true);
         executor
             .expect_execute()

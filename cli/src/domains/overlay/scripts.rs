@@ -81,7 +81,12 @@ impl Operation for OverlayScriptTask {
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         let resource = self.resource(ctx)?;
-        Ok(match (self.mode, resource.current_state()?) {
+        let state = if self.mode == ScriptTaskMode::Remove && self.entry.check_remove {
+            resource.check_removal_state()?
+        } else {
+            resource.current_state()?
+        };
+        Ok(match (self.mode, state) {
             (ScriptTaskMode::Apply, ResourceState::Correct)
             | (ScriptTaskMode::Remove, ResourceState::Missing) => OperationState::Complete,
             (ScriptTaskMode::Apply, ResourceState::Missing | ResourceState::Incorrect { .. })

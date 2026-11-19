@@ -107,8 +107,8 @@ mod exit_code {
 /// How the package task should treat a winget exit code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InstallVerdict {
-    /// The package is installed; nothing more to do.
-    Installed,
+    /// Installation made progress but requires a reboot to finish.
+    PendingReboot,
     /// Winget reports the package was already present despite list discovery.
     AlreadyInstalled,
     /// The requested scope has no installer; retry without `--scope`.
@@ -132,7 +132,7 @@ const fn classify_install(code: Option<i32>) -> InstallVerdict {
             | exit_code::INSTALL_ALREADY_INSTALLED
             | exit_code::UPDATE_NOT_APPLICABLE,
         ) => InstallVerdict::AlreadyInstalled,
-        Some(exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH) => InstallVerdict::Installed,
+        Some(exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH) => InstallVerdict::PendingReboot,
         Some(exit_code::COMMAND_REQUIRES_ADMIN) => InstallVerdict::Skipped(
             "requires administrator; re-run `dotfiles update --only packages` from an elevated shell",
         ),
@@ -208,6 +208,15 @@ impl PackageProvider for WingetProvider {
     /// report `NO_APPLICABLE_INSTALLER`, and are retried unscoped so winget can
     /// raise its own elevation prompt for just that package.
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
+        self.install_with_reboot_status(name, executor)
+            .map(|(change, _)| change)
+    }
+
+    fn install_with_reboot_status(
+        &self,
+        name: &str,
+        executor: &dyn Executor,
+    ) -> Result<(ResourceChange, bool)> {
         let mut result = executor.execute(
             CommandSpec::new("winget")
                 .args(&install_args(name, Some("user")))
@@ -223,14 +232,14 @@ impl PackageProvider for WingetProvider {
         }
 
         if result.success {
-            return Ok(ResourceChange::Applied);
+            return Ok((ResourceChange::Applied, false));
         }
 
         match classify_install(result.code) {
-            InstallVerdict::Installed => Ok(ResourceChange::Applied),
-            InstallVerdict::AlreadyInstalled => Ok(ResourceChange::AlreadyCorrect),
+            InstallVerdict::PendingReboot => Ok((ResourceChange::Applied, true)),
+            InstallVerdict::AlreadyInstalled => Ok((ResourceChange::AlreadyCorrect, false)),
             InstallVerdict::Skipped(reason) => {
-                Ok(ResourceChange::unusable(format!("{name}: {reason}")))
+                Ok((ResourceChange::unusable(format!("{name}: {reason}")), false))
             }
             InstallVerdict::RetryWithoutScope | InstallVerdict::Failed => {
                 let detail = if result.stderr.trim().is_empty() {
@@ -238,9 +247,10 @@ impl PackageProvider for WingetProvider {
                 } else {
                     format!("{}\n{}", result.stdout.trim(), result.stderr.trim())
                 };
-                Ok(ResourceChange::unusable(format!(
-                    "winget install failed: {detail}"
-                )))
+                Ok((
+                    ResourceChange::unusable(format!("winget install failed: {detail}")),
+                    false,
+                ))
             }
         }
     }
@@ -475,15 +485,31 @@ mod tests {
     }
 
     #[test]
-    fn winget_install_reboot_required_counts_as_applied() {
-        assert_eq!(
-            install_with_result(ExecResult::failure(
-                "",
-                "",
-                Some(exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH),
-            )),
-            ResourceChange::Applied,
-        );
+    fn winget_distinguishes_a_pending_reboot_from_completed_installation() {
+        for (result, pending) in [
+            (ExecResult::success(""), false),
+            (
+                ExecResult::failure("", "", Some(exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH)),
+                true,
+            ),
+        ] {
+            let mut mock = MockExecutor::new();
+            mock.expect_execute().once().return_once(move |spec| {
+                assert_install_command(&spec, true);
+                Ok(result)
+            });
+            let resource = crate::domains::packages::resources::package::PackageResource::new(
+                "Git.Git".into(),
+                crate::domains::packages::resources::package::PackageManager::Winget,
+                std::sync::Arc::new(MockExecutor::new()),
+            );
+            let report = WingetProvider
+                .install_missing(&[&resource], &mock, &|_| {})
+                .unwrap();
+            assert_eq!(report.applied_count(), 1);
+            let expected: &[&str] = if pending { &["Git.Git"] } else { &[] };
+            assert_eq!(report.pending_reboot(), expected);
+        }
     }
 
     #[test]

@@ -27,6 +27,7 @@ macro_rules! define_config_store {
             pub aggregate: ConfigHandle<Config>,
             /// Resolved APM fragment sources derived from managed symlinks.
             pub(crate) apm_fragments: ConfigHandle<Vec<ApmFragmentSource>>,
+            pub(crate) inactive_apm_fragments: ConfigHandle<Vec<ApmFragmentSource>>,
             /// Selected source for the generated Paru configuration.
             pub(crate) paru_base: ConfigHandle<Option<ParuBase>>,
             $(
@@ -39,7 +40,11 @@ macro_rules! define_config_store {
             /// Split an aggregate [`Config`] into per-domain handles.
             #[must_use]
             pub fn from_config(config: Config) -> Self {
-                let apm_fragments = apm_fragment_sources(&config);
+                let apm_fragments = apm_fragment_sources(&config.symlinks, &config.root);
+                let inactive_apm_fragments = apm_fragment_sources(&config.validation_symlinks, &config.root)
+                    .into_iter()
+                    .filter(|fragment| !apm_fragments.contains(fragment))
+                    .collect();
                 let paru_target = path_identity(Path::new(".config/paru/paru.conf.base"));
                 let paru_base = config.symlinks.iter().find_map(|link| {
                     (target_identity(link) == paru_target)
@@ -51,6 +56,7 @@ macro_rules! define_config_store {
                 Self {
                     $($field: ConfigHandle::new(config.$field.clone()),)+
                     apm_fragments: ConfigHandle::new(apm_fragments),
+                    inactive_apm_fragments: ConfigHandle::new(inactive_apm_fragments),
                     paru_base: ConfigHandle::new(paru_base),
                     aggregate: ConfigHandle::new(config),
                 }
@@ -61,13 +67,12 @@ macro_rules! define_config_store {
 
 config_section_inventory!(define_config_store);
 
-fn apm_fragment_sources(config: &Config) -> Vec<ApmFragmentSource> {
-    config
-        .symlinks
+fn apm_fragment_sources(symlinks: &[Symlink], root: &Path) -> Vec<ApmFragmentSource> {
+    symlinks
         .iter()
         .filter_map(|symlink| {
             let target_name = apm_fragment_target_name(symlink)?;
-            let source = resolve_symlinks_dir(symlink, &config.root).join(&symlink.source);
+            let source = resolve_symlinks_dir(symlink, root).join(&symlink.source);
             Some(ApmFragmentSource::new(source, target_name))
         })
         .collect()

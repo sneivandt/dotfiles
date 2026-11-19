@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashSet};
 use crate::app::cli::{DiscoveryFormat, ListOpts, TaskGraphCommand};
 use crate::app::config::Config;
 use crate::app::config::store::ConfigStore;
-use crate::app::filter::{selected_task_ids, task_matches_filter};
+use crate::app::filter::{resolve_filters, selected_task_ids};
 use crate::domains::ai::apm::ApmPackageMode;
 use crate::domains::files::chmod::ApplyFilePermissions;
 use crate::domains::repository::update::RepositoryUpdateSignal;
@@ -192,6 +192,8 @@ fn collect_graph(
     let task_refs = tasks.iter().map(Box::as_ref).collect::<Vec<_>>();
     let graph = ResolvedTaskGraph::resolve(&task_refs)?;
     let selected = selected_task_ids(&task_refs, only, skip, with_deps)?;
+    let requested = resolve_filters(&task_refs, only, "--only")?;
+    let excluded = resolve_filters(&task_refs, skip, "--skip")?;
     Ok(graph
         .execution_order()
         .map(|index| {
@@ -212,7 +214,7 @@ fn collect_graph(
                 internal: task.visibility() == TaskVisibility::Internal,
                 blocking,
                 after,
-                selection: selection_reason(task, &selected, only, skip),
+                selection: selection_reason(task, &selected, &requested, &excluded),
             }
         })
         .collect())
@@ -221,16 +223,16 @@ fn collect_graph(
 fn selection_reason(
     task: &dyn Task,
     selected: &HashSet<TaskId>,
-    only: &[String],
-    skip: &[String],
+    requested: &HashSet<TaskId>,
+    excluded: &HashSet<TaskId>,
 ) -> GraphSelection {
-    if skip.iter().any(|filter| task_matches_filter(task, filter)) {
+    if excluded.contains(&task.task_id()) {
         GraphSelection::Skipped
     } else if !selected.contains(&task.task_id()) {
         GraphSelection::Filtered
-    } else if only.is_empty() {
+    } else if requested.is_empty() {
         GraphSelection::Default
-    } else if only.iter().any(|filter| task_matches_filter(task, filter)) {
+    } else if requested.contains(&task.task_id()) {
         GraphSelection::Requested
     } else {
         GraphSelection::Dependency
@@ -639,6 +641,7 @@ mod tests {
             name: "Private tools".to_string(),
             path: "scripts/tools.sh".to_string(),
             description: None,
+            check_remove: false,
         }];
         let store = ConfigStore::from_config(config);
         let overlay = std::path::Path::new("/tmp/overlay");

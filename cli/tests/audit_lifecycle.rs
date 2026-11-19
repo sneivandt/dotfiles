@@ -526,7 +526,13 @@ fn non_interactive_login_shell_never_calls_an_authentication_prompt() {
         .env("USER", "fixture")
         .arg("--fail-on-skip");
     let text = output(&mut command, false);
-    assert!(text.contains("authentication"), "{text}");
+    // Runners without the system package must decline the PATH-only fixture.
+    assert!(
+        text.contains("authentication")
+            || text.contains("system zsh not found at /usr/bin/zsh")
+            || text.contains("is not registered in /etc/shells"),
+        "{text}"
+    );
     assert!(
         !prompt_marker.exists(),
         "non-interactive execution must not invoke chsh"
@@ -563,7 +569,10 @@ fn launcher_preserves_user_files_and_modified_installations() {
     );
     assert!(!target.exists(), "preview must not install a launcher");
     output(
-        &mut common::cli_command(repo.root_path(), home.path(), None, "update", "launcher"),
+        common::cli_command(repo.root_path(), home.path(), None, "update", "launcher").env(
+            "DOTFILES_WRAPPER",
+            if cfg!(windows) { "sh" } else { "pwsh" },
+        ),
         true,
     );
     let installed = std::fs::read(&target).unwrap();

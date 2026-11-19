@@ -4,9 +4,7 @@
 //! repository's wrapper (`dotfiles.sh` or `dotfiles.ps1`), allowing the
 //! user to run `dotfiles` from any directory.
 //!
-//! The wrapper type is chosen by the `DOTFILES_WRAPPER` environment
-//! variable (set by the wrapper scripts themselves), falling back to
-//! platform detection when the variable is absent.
+//! The installed launcher format follows the target OS.
 
 use crate::domains::dotfiles::resources::wrapper::{WrapperResource, WrapperType};
 use crate::engine::{
@@ -25,7 +23,7 @@ impl Task for InstallWrapper {
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {
-        let wrapper_type = WrapperType::detect(ctx.env().as_ref(), ctx.platform());
+        let wrapper_type = WrapperType::detect(ctx.platform());
         let resource = WrapperResource::new(wrapper_type, ctx.root(), ctx.home());
         process_resources(
             ctx,
@@ -46,8 +44,16 @@ impl Task for UninstallWrapper {
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {
-        let wrapper_type = WrapperType::detect(ctx.env().as_ref(), ctx.platform());
+        let wrapper_type = WrapperType::detect(ctx.platform());
         let resource = WrapperResource::new(wrapper_type, ctx.root(), ctx.home());
-        process_resources_remove(ctx, std::iter::once(resource), "remove")
+        let mut resources = vec![resource];
+        if wrapper_type == WrapperType::Sh {
+            resources.push(WrapperResource::new(
+                WrapperType::Pwsh,
+                ctx.root(),
+                ctx.home(),
+            ));
+        }
+        process_resources_remove(ctx, resources, "remove")
     }
 }

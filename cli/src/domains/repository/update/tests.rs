@@ -158,16 +158,19 @@ const FETCH_MAIN: &[&str] = &[
     "refs/heads/main",
 ];
 const HEAD_SNAPSHOT: &[&str] = &["rev-parse", "HEAD", "--symbolic-full-name", "HEAD"];
+const TRACKED_STATUS: &[&str] = &["status", "--porcelain", "--untracked-files=no"];
+const UNMERGED_INDEX: &[&str] = &["ls-files", "--unmerged"];
 const REMOTE_MAIN: &[&str] = &["config", "--get", "branch.main.remote"];
 const MERGE_MAIN: &[&str] = &["config", "--get", "branch.main.merge"];
 const MAIN_NEW: &str = fixture_oid(&[b'1'; 40]);
 const OVERLAY_NEW: &str = fixture_oid(&[b'2'; 40]);
 
-const fn merge_args(commit: &str) -> [&str; 5] {
+const fn merge_args(commit: &str) -> [&str; 6] {
     [
         "merge",
         "--ff-only",
         "--no-squash",
+        "--no-autostash",
         "--no-overwrite-ignore",
         commit,
     ]
@@ -242,8 +245,10 @@ fn run_classifies_repository_state_from_git_output() {
                 executor = executor
                     .git(root, &["merge-base", "--is-ancestor", head, MAIN_NEW], "")
                     .git(root, HEAD_SNAPSHOT, snapshot(head))
+                    .git(root, TRACKED_STATUS, "")
                     .git(root, &merge_args(MAIN_NEW), "")
-                    .git(root, HEAD_SNAPSHOT, snapshot(MAIN_NEW));
+                    .git(root, HEAD_SNAPSHOT, snapshot(MAIN_NEW))
+                    .git(root, UNMERGED_INDEX, "");
                 changed = true;
             } else {
                 executor = executor
@@ -324,7 +329,7 @@ fn a_changed_checkout_never_reaches_the_merge() {
             let signal = UpdateSignal::new();
             let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
             assert!(
-                matches!(result, TaskResult::Skipped { reason, .. } if reason.contains("checkout branch or commit changed")),
+                matches!(result, TaskResult::Skipped { reason, .. } if reason.contains("checkout branch, commit, or tracked files changed")),
                 "{change:?}, before_merge={before_merge}",
             );
             assert!(!signal.was_updated());
@@ -633,12 +638,14 @@ fn run_updates_overlay_repository_when_behind_upstream() {
             "",
         )
         .git(&overlay_root, HEAD_SNAPSHOT, snapshot("def456"))
+        .git(&overlay_root, TRACKED_STATUS, "")
         .git(
             &overlay_root,
             &merge_args(OVERLAY_NEW),
             "Updating def456..fed654\nFast-forward",
         )
-        .git(&overlay_root, HEAD_SNAPSHOT, snapshot(OVERLAY_NEW));
+        .git(&overlay_root, HEAD_SNAPSHOT, snapshot(OVERLAY_NEW))
+        .git(&overlay_root, UNMERGED_INDEX, "");
 
     let ctx = make_update_context(config.root, config.overlay, exec);
     let repo_updated = UpdateSignal::new();
@@ -843,9 +850,12 @@ fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_sign
                 "",
             )
             .git(&main_root, HEAD_SNAPSHOT, snapshot("main-old"))
+            .git(&main_root, TRACKED_STATUS, "")
             .git(&main_root, &merge_args(MAIN_NEW), "updated")
             .git(&main_root, HEAD_SNAPSHOT, snapshot(MAIN_NEW))
+            .git(&main_root, UNMERGED_INDEX, "")
             .git(&overlay_root, HEAD_SNAPSHOT, snapshot("overlay-old"))
+            .git(&overlay_root, TRACKED_STATUS, "")
             .command(
                 CommandSpec::new("git")
                     .args(&merge_args(OVERLAY_NEW))
@@ -998,8 +1008,10 @@ fn repeat_update_after_fast_forward_does_not_merge_or_request_another_restart() 
                     "",
                 )
                 .git(root.path(), HEAD_SNAPSHOT, snapshot(head))
+                .git(root.path(), TRACKED_STATUS, "")
                 .git(root.path(), &merge_args(MAIN_NEW), "updated")
-                .git(root.path(), HEAD_SNAPSHOT, snapshot(MAIN_NEW));
+                .git(root.path(), HEAD_SNAPSHOT, snapshot(MAIN_NEW))
+                .git(root.path(), UNMERGED_INDEX, "");
         }
     }
     let ctx = make_update_context(root.path().to_path_buf(), None, executor);
@@ -1240,6 +1252,7 @@ fn only_a_verified_fast_forward_signals_a_successful_update() {
             (vec!["rev-parse", "--verify", &verification], MAIN_NEW),
             (vec!["merge-base", "--is-ancestor", "old", MAIN_NEW], ""),
             (HEAD_SNAPSHOT.to_vec(), head.as_str()),
+            (TRACKED_STATUS.to_vec(), ""),
         ] {
             expect_git(
                 &mut mock,

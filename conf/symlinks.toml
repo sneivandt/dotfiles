@@ -46,8 +46,6 @@ symlinks = [
   "gnupg/gpg-agent.conf",
   "vim",
   { source = "vim", target = ".config/nvim" },
-  # Login shell setup for zsh. The uwsm graphical-session launch inside is
-  # guarded on `command -v uwsm` and tty1, so it is inert off arch-desktop.
   "zprofile",
   "zshrc",
 ]

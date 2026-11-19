@@ -27,6 +27,24 @@ fn linux_context(home: &Path, executor: MockExecutor) -> Context {
 }
 
 #[test]
+fn agent_package_update_never_invokes_apm_to_replace_a_personal_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+    write_default_home_fragment(dir.path());
+    let manifest = dir.path().join(".apm/apm.yml");
+    let contents = b"name: my-existing-packages\n";
+    std::fs::write(&manifest, contents).unwrap();
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    let ctx = linux_context(dir.path(), mock);
+    let error = update_task().run(&ctx).unwrap_err();
+    assert!(
+        error.to_string().contains("unmanaged APM manifest"),
+        "{error:#}"
+    );
+    assert_eq!(std::fs::read(manifest).unwrap(), contents);
+}
+
+#[test]
 fn apm_apply_refuses_a_shared_home_lock_before_invoking_apm() {
     let dir = tempfile::tempdir().unwrap();
     write_default_home_fragment(dir.path());
@@ -655,7 +673,8 @@ fn update_dry_run_uses_native_apm_plan() {
 #[test]
 fn stale_or_missing_manifest_previews_preserve_all_managed_target_state() {
     for update in [false, true] {
-        for manifest in [None, Some("# stale manifest\nname: previous\n")] {
+        let previous_owned = format!("{GENERATED_HEADER}name: previous\n");
+        for manifest in [None, Some(previous_owned.as_str())] {
             let dir = tempfile::tempdir_in(".").unwrap();
             write_default_home_fragment(dir.path());
             let manifest_path = dir.path().join(".apm/apm.yml");

@@ -164,6 +164,8 @@ For a desktop-to-base transition, plan cleanup before changing the saved role:
    a backup location. Repeat the base preview until it proposes the intended
    links without conflicts, then apply it. Keep desktop-only copies you still
    need; do not delete a whole configuration directory to clear conflicts.
+   To stop starting Hyprland from tty1, move the retained
+   `~/.config/shell/profile-arch-desktop.sh` aside.
 3. Remove unwanted package declarations and deliberately uninstall packages
    with the native package manager. Review dependency removals. Registry,
    system-file, and other persistent settings need separate manual decisions.

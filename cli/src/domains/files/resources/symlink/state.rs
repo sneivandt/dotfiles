@@ -54,7 +54,7 @@ pub(super) fn invalid_source_reason(
         .then(|| "target aliases the source entry through its parent directory".to_string()))
 }
 
-pub(super) fn link_points_to_source(target: &Path, existing: &Path, source: &Path) -> bool {
+pub(crate) fn link_points_to_source(target: &Path, existing: &Path, source: &Path) -> bool {
     let resolved = if existing.is_absolute() {
         existing.to_path_buf()
     } else {

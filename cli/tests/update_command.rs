@@ -875,6 +875,179 @@ fn ignored_overlay_file_blocks_merge_and_survives_retry() {
     check_partial_repository_refresh(true);
 }
 
+#[cfg(unix)]
+#[test]
+fn repository_update_preserves_tracked_edits_made_during_fetch_with_autostash_enabled() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let fixture = tempfile::tempdir().unwrap();
+    let home = fixture.path().join("home");
+    let root = fixture.path().join("main");
+    let bin = fixture.path().join("bin");
+    std::fs::create_dir(&home).unwrap();
+    std::fs::create_dir(&bin).unwrap();
+    common::setup_minimal_repo(&root);
+    git(fixture.path(), &["init", "--bare", "-b", "main", "origin"]);
+    git(&root, &["init", "-b", "main"]);
+    git(&root, &["remote", "add", "origin", "../origin"]);
+    std::fs::write(root.join("settings"), "initial\n").unwrap();
+    git(&root, &["add", "."]);
+    git(&root, &["commit", "-m", "initial"]);
+    git(&root, &["push", "-u", "origin", "main"]);
+    let initial = git(&root, &["rev-parse", "HEAD"]);
+    git(&root, &["config", "merge.autoStash", "true"]);
+    git(fixture.path(), &["clone", "origin", "publisher"]);
+    let publisher = fixture.path().join("publisher");
+    std::fs::write(publisher.join("settings"), "upstream\n").unwrap();
+    git(&publisher, &["commit", "-am", "change settings"]);
+    git(&publisher, &["push", "origin", "main"]);
+
+    let path = std::env::var_os("PATH").unwrap();
+    let real_git = std::env::split_paths(&path)
+        .find_map(|dir| dir.join("git").canonicalize().ok())
+        .unwrap();
+    let wrapped_git = bin.join("git");
+    std::fs::write(
+        &wrapped_git,
+        r#"#!/bin/sh
+if [ "$1" = fetch ]; then
+    "$FIXTURE_GIT" "$@" || exit "$?"
+    printf 'local edit after fetch\n' > settings
+else
+    exec "$FIXTURE_GIT" "$@"
+fi
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(wrapped_git, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path =
+        std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
+    let output = common::isolated_cli_command(&root, &home, None, "update", "repository", true)
+        .env("PATH", path)
+        .env("FIXTURE_GIT", real_git)
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        text.contains("tracked files changed during update"),
+        "{text}"
+    );
+    assert_eq!(git(&root, &["rev-parse", "HEAD"]), initial);
+    assert_eq!(git(&root, &["stash", "list"]), "");
+    assert_eq!(git(&root, &["ls-files", "--unmerged"]), "");
+    assert_eq!(
+        std::fs::read_to_string(root.join("settings")).unwrap(),
+        "local edit after fetch\n"
+    );
+}
+
+#[test]
+fn restarted_overlay_update_keeps_a_validated_exclusion_when_its_script_is_retired() {
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path().join("main");
+    let overlay = fixture.path().join("overlay");
+    let home = fixture.path().join("home");
+    std::fs::create_dir(&home).unwrap();
+    common::setup_minimal_repo(&root);
+    std::fs::create_dir_all(overlay.join("conf")).unwrap();
+    for (repo, remote) in [(&root, "main-origin"), (&overlay, "overlay-origin")] {
+        git(fixture.path(), &["init", "--bare", "-b", "main", remote]);
+        git(repo, &["init", "-b", "main"]);
+        let path = fixture.path().join(remote);
+        git(repo, &["remote", "add", "origin", path.to_str().unwrap()]);
+    }
+
+    let overlay_scripts = overlay.join("conf/scripts.toml");
+    std::fs::write(
+        &overlay_scripts,
+        "[base]\nscripts = [{ name = 'Retire fixture', path = 'retired.sh' }]\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        std::fs::create_dir(overlay.join("symlinks")).unwrap();
+        std::fs::write(
+            overlay.join("conf/symlinks.toml"),
+            "[base]\nsymlinks = ['retired-source', 'foreign-replacement']\n",
+        )
+        .unwrap();
+        for name in ["retired-source", "foreign-replacement"] {
+            std::fs::write(overlay.join("symlinks").join(name), "managed\n").unwrap();
+        }
+        std::os::unix::fs::symlink(
+            overlay.join("symlinks/retired-source"),
+            home.join(".retired-source"),
+        )
+        .unwrap();
+        std::fs::write(home.join("foreign-source"), "personal\n").unwrap();
+        std::os::unix::fs::symlink("foreign-source", home.join(".foreign-replacement")).unwrap();
+    }
+    for repo in [&root, &overlay] {
+        git(repo, &["add", "."]);
+        git(repo, &["commit", "-m", "initial"]);
+        git(repo, &["push", "-u", "origin", "main"]);
+    }
+    let initial = git(&overlay, &["rev-parse", "HEAD"]);
+    // Publish the retirement from a separate clone so the tested checkout remains clean.
+    git(fixture.path(), &["clone", "overlay-origin", "publisher"]);
+    let publisher = fixture.path().join("publisher");
+    std::fs::write(publisher.join("conf/scripts.toml"), "").unwrap();
+    #[cfg(unix)]
+    git(
+        &publisher,
+        &[
+            "rm",
+            "conf/symlinks.toml",
+            "symlinks/retired-source",
+            "symlinks/foreign-replacement",
+        ],
+    );
+    git(&publisher, &["commit", "-am", "retire fixture script"]);
+    git(&publisher, &["push", "origin", "main"]);
+
+    let output = common::isolated_cli_command(
+        &root,
+        &home,
+        Some(&overlay),
+        "update",
+        "repository,launcher",
+        true,
+    )
+    .args(["--skip", "script-retire-fixture"])
+    .output()
+    .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_ne!(git(&overlay, &["rev-parse", "HEAD"]), initial);
+    #[cfg(unix)]
+    {
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(text.contains("points to a missing source"), "{text}");
+        assert!(!text.contains("foreign-replacement"), "{text}");
+        assert_eq!(
+            std::fs::read_link(home.join(".retired-source")).unwrap(),
+            overlay.join("symlinks/retired-source"),
+        );
+        assert_eq!(
+            std::fs::read_to_string(home.join(".foreign-replacement")).unwrap(),
+            "personal\n",
+        );
+    }
+    let launcher = if cfg!(windows) {
+        "dotfiles.cmd"
+    } else {
+        "dotfiles"
+    };
+    assert!(home.join(".local/bin").join(launcher).is_file());
+}
+
 #[allow(
     clippy::too_many_lines,
     reason = "real Git remotes and update recovery"

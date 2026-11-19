@@ -128,7 +128,9 @@ Run `paccache -d -k2` to preview the files eligible for removal.
 
 ### Windows
 
-Winget uses exact IDs and installs missing packages. Dotfiles does not run
+Winget uses exact IDs and installs missing packages. If an installer needs a
+reboot to finish, dotfiles names the package in the update output. Reboot before
+retrying tasks that use it. Dotfiles does not run
 `winget upgrade --all`; use winget separately to review and upgrade installed
 applications. A declaration is an installation requirement, not a version pin.
 

@@ -6,7 +6,7 @@ use anyhow::Result;
 use crate::engine::{Context, TaskResult, TaskStats};
 use crate::infra::exec::ExecError;
 
-use super::discovery::{compare_commits, upstream};
+use super::discovery::{compare_commits, upstream, worktree_has_local_changes};
 use super::models::{
     CheckedRepository, CommitRelationship, RepositoryPlanReadiness, RepositoryUpdatePlan,
 };
@@ -76,7 +76,14 @@ pub(super) fn apply_repository_updates(
             RepositoryPlanReadiness::Skipped(reason) => return Ok(TaskResult::unmet(reason)),
         }
     }
+    advance_worktrees(ctx, &plans, repo_updated)
+}
 
+fn advance_worktrees(
+    ctx: &Context,
+    plans: &[RepositoryUpdatePlan],
+    repo_updated: &RepositoryUpdateSignal,
+) -> Result<TaskResult> {
     let mut changed = Vec::new();
     for (plan, commit) in plans
         .iter()
@@ -84,7 +91,9 @@ pub(super) fn apply_repository_updates(
     {
         let repository = &plan.repository;
         let target = &repository.target;
-        if checkout_head(ctx, repository)?.as_deref() != Some(plan.original_head.as_str()) {
+        if checkout_head(ctx, repository)?.as_deref() != Some(plan.original_head.as_str())
+            || worktree_has_local_changes(ctx, &target.root)?
+        {
             let reason = checkout_changed(repository);
             return Ok(if changed.is_empty() {
                 TaskResult::unmet(reason)
@@ -100,6 +109,7 @@ pub(super) fn apply_repository_updates(
                 "merge",
                 "--ff-only",
                 "--no-squash",
+                "--no-autostash",
                 "--no-overwrite-ignore",
                 commit,
             ],
@@ -114,14 +124,20 @@ pub(super) fn apply_repository_updates(
                     );
                     return Ok(TaskResult::Failed(partial_merge_reason(&reason, &changed)));
                 }
+                repo_updated.mark_updated();
+                changed.push(target.description());
+                if index_is_unmerged(ctx, &target.root)? {
+                    let reason = target.reason(
+                        "unmerged paths remain after fast-forward; inspect the checkout before retrying",
+                    );
+                    return Ok(TaskResult::Failed(partial_merge_reason(&reason, &changed)));
+                }
                 ctx.log().action(
                     "update",
                     target.description(),
                     false,
                     &format!("update {}", target.description()),
                 );
-                repo_updated.mark_updated();
-                changed.push(target.description());
             }
             Err(e) => {
                 if e.is_cancelled() {
@@ -143,10 +159,17 @@ pub(super) fn apply_repository_updates(
     })
 }
 
+fn index_is_unmerged(ctx: &Context, root: &std::path::Path) -> Result<bool> {
+    let result = ctx
+        .executor()
+        .execute(git_command(ctx, root, &["ls-files", "--unmerged"]))?;
+    Ok(!result.stdout.is_empty())
+}
+
 fn checkout_changed(repository: &CheckedRepository) -> String {
     repository
         .target
-        .reason("checkout branch or commit changed during update; retry")
+        .reason("checkout branch, commit, or tracked files changed during update; retry")
 }
 
 fn partial_merge_reason(reason: &str, changed: &[&str]) -> String {

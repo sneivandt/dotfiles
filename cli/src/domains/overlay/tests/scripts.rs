@@ -18,6 +18,7 @@ fn script_entry(name: &str, path: &str) -> ScriptEntry {
         name: name.to_string(),
         path: path.to_string(),
         description: None,
+        check_remove: false,
     }
 }
 
@@ -62,7 +63,7 @@ fn expect_shell_script(
             spec.working_dir() == Some(overlay.as_path())
                 && spec.program() == "sh"
                 && spec.arguments() == args
-                && spec.is_checked() == (flag != Some("--check"))
+                && spec.is_checked() != matches!(flag, Some("--check" | "--check-remove"))
         })
         .return_once(move |_| Ok(result));
 }
@@ -116,6 +117,7 @@ fn script_task_name_matches_entry() {
         name: "Setup database".to_string(),
         path: "scripts/setup-db.ps1".to_string(),
         description: None,
+        check_remove: false,
     };
     let task = OverlayScriptTask::new(entry, PathBuf::from("/overlay"));
     assert_eq!(task.name(), "Setup database");
@@ -129,6 +131,7 @@ fn script_task_should_run_false_without_overlay() {
         name: "test".to_string(),
         path: "scripts/test.sh".to_string(),
         description: None,
+        check_remove: false,
     };
     let task = OverlayScriptTask::new(entry, PathBuf::from("/overlay"));
     assert!(!task.should_run(&ctx));
@@ -143,6 +146,7 @@ fn script_task_should_run_true_with_overlay() {
         name: "test".to_string(),
         path: "scripts/test.sh".to_string(),
         description: None,
+        check_remove: false,
     };
     let task = OverlayScriptTask::new(entry, PathBuf::from("/overlay"));
     assert!(task.should_run(&ctx));
@@ -155,11 +159,13 @@ fn overlay_script_tasks_creates_one_per_entry() {
             name: "A".to_string(),
             path: "a.sh".to_string(),
             description: None,
+            check_remove: false,
         },
         ScriptEntry {
             name: "B".to_string(),
             path: "b.ps1".to_string(),
             description: None,
+            check_remove: false,
         },
     ];
     let tasks = overlay_script_tasks(&scripts, Path::new("/overlay"));
@@ -209,6 +215,46 @@ fn removal_task_skips_when_script_reports_absent_state() {
     let task =
         OverlayScriptTask::with_mode(entry, overlay.path().to_path_buf(), ScriptTaskMode::Remove);
     assert!(matches!(task.run(&ctx).unwrap(), TaskResult::Ok));
+}
+
+#[test]
+fn opt_in_removal_probe_can_detect_partial_state_without_touching_a_preview() {
+    for (state, dry_run) in [(0, false), (0, true), (1, false), (42, false)] {
+        let (overlay, mut entry, script_arg) = shell_script_fixture();
+        entry.check_remove = true;
+        let mut mock = MockExecutor::new();
+        expect_shell_script(
+            &mut mock,
+            overlay.path(),
+            &script_arg,
+            Some("--check-remove"),
+            if state == 0 {
+                ExecResult::success("")
+            } else {
+                ExecResult::failure("", "", Some(state))
+            },
+        );
+        if state == 0 && !dry_run {
+            expect_shell_script(
+                &mut mock,
+                overlay.path(),
+                &script_arg,
+                Some("--remove"),
+                ExecResult::success("removed partial state"),
+            );
+        }
+        let ctx = context_with_executor(overlay.path(), mock).with_dry_run(dry_run);
+        let task = OverlayScriptTask::with_mode(
+            entry,
+            overlay.path().to_path_buf(),
+            ScriptTaskMode::Remove,
+        );
+        match state {
+            0 => assert_task_changed(&task.run(&ctx).unwrap()),
+            1 => assert!(matches!(task.run(&ctx).unwrap(), TaskResult::Ok)),
+            _ => assert!(task.run(&ctx).is_err()),
+        }
+    }
 }
 
 #[test]
@@ -327,16 +373,19 @@ fn overlay_script_tasks_have_unique_task_ids() {
             name: "A".to_string(),
             path: "a.sh".to_string(),
             description: None,
+            check_remove: false,
         },
         ScriptEntry {
             name: "B".to_string(),
             path: "b.ps1".to_string(),
             description: None,
+            check_remove: false,
         },
         ScriptEntry {
             name: "C".to_string(),
             path: "c.sh".to_string(),
             description: None,
+            check_remove: false,
         },
     ];
     let tasks = overlay_script_tasks(&scripts, Path::new("/overlay"));

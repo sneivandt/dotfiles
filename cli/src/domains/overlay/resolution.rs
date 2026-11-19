@@ -402,6 +402,7 @@ mod tests {
             name: "Fixture".to_string(),
             path: "script.sh".to_string(),
             description: None,
+            check_remove: false,
         };
         let resource = ScriptResource::from_entry(&entry, &selected, std::sync::Arc::new(mock))
             .expect("script resource");

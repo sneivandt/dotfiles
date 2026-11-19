@@ -29,6 +29,9 @@ pub struct ScriptEntry {
     /// Optional description shown in log output.
     #[serde(default)]
     pub description: Option<String>,
+    /// Use `--check-remove`, whose success means any managed state remains.
+    #[serde(default)]
+    pub check_remove: bool,
 }
 
 config_section!(field: "scripts", ty: ScriptEntry);
@@ -175,16 +178,19 @@ scripts = [
                 name: " ".to_string(),
                 path: String::new(),
                 description: None,
+                check_remove: false,
             },
             ScriptEntry {
                 name: "Duplicate".to_string(),
                 path: "../escape.sh".to_string(),
                 description: None,
+                check_remove: false,
             },
             ScriptEntry {
                 name: "Duplicate".to_string(),
                 path: "../escape.sh".to_string(),
                 description: None,
+                check_remove: false,
             },
         ];
 
@@ -205,11 +211,13 @@ scripts = [
                 name: "Set up DB".to_string(),
                 path: "scripts/setup-db.sh".to_string(),
                 description: None,
+                check_remove: false,
             },
             ScriptEntry {
                 name: "Set-up DB".to_string(),
                 path: "scripts/setup-db-alt.sh".to_string(),
                 description: None,
+                check_remove: false,
             },
         ];
 
@@ -230,6 +238,7 @@ scripts = [
             name: "test".to_string(),
             path: "scripts/test.ps1".to_string(),
             description: None,
+            check_remove: false,
         };
         let resolved = resolve_script_path(&entry, Path::new("/overlay"))
             .expect("relative script path should resolve");
@@ -242,6 +251,7 @@ scripts = [
             name: "test".to_string(),
             path: "/tmp/test.ps1".to_string(),
             description: None,
+            check_remove: false,
         };
         let err = resolve_script_path(&entry, Path::new("/overlay"))
             .expect_err("absolute script path should be rejected");
@@ -254,6 +264,7 @@ scripts = [
             name: "test".to_string(),
             path: r"C:\tmp\test.ps1".to_string(),
             description: None,
+            check_remove: false,
         };
         let err = resolve_script_path(&entry, Path::new("/overlay"))
             .expect_err("Windows absolute script path should be rejected");
@@ -266,6 +277,7 @@ scripts = [
             name: "test".to_string(),
             path: "scripts/../test.ps1".to_string(),
             description: None,
+            check_remove: false,
         };
         let err = resolve_script_path(&entry, Path::new("/overlay"))
             .expect_err("parent-directory traversal should be rejected");

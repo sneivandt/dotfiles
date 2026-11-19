@@ -48,6 +48,7 @@ impl ApmPackageMode {
 #[derive(Debug)]
 pub struct InstallApmPackages {
     fragments: ConfigHandle<Vec<ApmFragmentSource>>,
+    inactive: Option<ConfigHandle<Vec<ApmFragmentSource>>>,
     mode: ApmPackageMode,
 }
 
@@ -59,7 +60,23 @@ impl InstallApmPackages {
         fragments: ConfigHandle<Vec<ApmFragmentSource>>,
         mode: ApmPackageMode,
     ) -> Self {
-        Self { fragments, mode }
+        Self {
+            fragments,
+            mode,
+            inactive: None,
+        }
+    }
+
+    pub(crate) fn with_inactive_fragments(
+        mut self,
+        fragments: ConfigHandle<Vec<ApmFragmentSource>>,
+    ) -> Self {
+        self.inactive = Some(fragments);
+        self
+    }
+
+    fn inactive_fragments(&self) -> &[ApmFragmentSource] {
+        self.inactive.as_ref().map_or(&[], |handle| handle.get())
     }
 }
 
@@ -71,7 +88,7 @@ impl Task for InstallApmPackages {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        apm_task_should_run(ctx, self.fragments.get())
+        apm_task_should_run(ctx, self.fragments.get(), self.inactive_fragments())
     }
 
     fn ordering_requirements(&self) -> Vec<Requirement<'_>> {
@@ -88,7 +105,11 @@ impl Task for InstallApmPackages {
                     "Agent packages",
                 )?)
             };
-            let fragments = discover_effective_fragment_files(ctx.home(), self.fragments.get())?;
+            let fragments = discover_effective_fragment_files(
+                ctx.home(),
+                self.fragments.get(),
+                self.inactive_fragments(),
+            )?;
             if fragments.is_empty() {
                 return Ok(skip("no manifest fragments found under ~/.apm/config/"));
             }
@@ -268,8 +289,12 @@ fn dependency_summary(verb: &str, count: usize) -> String {
 }
 
 /// Whether an APM task should run on this machine.
-pub(super) fn apm_task_should_run(ctx: &Context, fragments: &[ApmFragmentSource]) -> bool {
-    match discover_effective_fragment_files(ctx.home(), fragments) {
+fn apm_task_should_run(
+    ctx: &Context,
+    fragments: &[ApmFragmentSource],
+    inactive: &[ApmFragmentSource],
+) -> bool {
+    match discover_effective_fragment_files(ctx.home(), fragments, inactive) {
         Ok(fragments) => !fragments.is_empty(),
         Err(err) => {
             ctx.log().warn(format!(

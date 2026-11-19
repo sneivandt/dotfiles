@@ -128,6 +128,9 @@ pub(super) fn build_reexec_command(
 /// Restart the current binary after the repository checkout changed.
 pub(crate) fn re_exec_after_repository_update(
     root: &std::path::Path,
+    profile: &str,
+    overlay: Option<&std::path::Path>,
+    exclusions: &str,
     log: &crate::infra::logging::Logger,
 ) -> ! {
     let exe = match std::env::current_exe() {
@@ -139,10 +142,21 @@ pub(crate) fn re_exec_after_repository_update(
             std::process::exit(finish_reexec(log, 1));
         }
     };
-    let command = build_reexec_command(&exe, &reexec_args(log), REPOSITORY_REEXEC_GUARD_VAR);
+    let mut command = build_reexec_command(&exe, &reexec_args(log), REPOSITORY_REEXEC_GUARD_VAR);
+    command
+        .env(REPOSITORY_PROFILE_VAR, profile)
+        .env(
+            REPOSITORY_OVERLAY_VAR,
+            overlay.unwrap_or_else(|| std::path::Path::new("")),
+        )
+        .env(REPOSITORY_EXCLUSIONS_VAR, exclusions);
     log.transition("Repository synced · restarting to load configuration");
     run_reexec(command, root, log)
 }
+
+pub(super) const REPOSITORY_PROFILE_VAR: &str = "DOTFILES_RESTART_PROFILE";
+pub(super) const REPOSITORY_OVERLAY_VAR: &str = "DOTFILES_RESTART_OVERLAY";
+pub(super) const REPOSITORY_EXCLUSIONS_VAR: &str = "DOTFILES_RESTART_EXCLUSIONS";
 
 pub(super) const fn should_check_self_update(runtime: &RuntimePolicy<'_>) -> bool {
     !runtime.execution.elevated_child

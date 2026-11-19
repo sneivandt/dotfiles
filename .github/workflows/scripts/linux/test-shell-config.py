@@ -109,20 +109,31 @@ class ShellConfigTests(unittest.TestCase):
                 for suffix in (".local/bin", ".bin", "src/go/bin", ".cargo/bin"):
                     self.assertEqual(paths.count(str(self.home / suffix)), 1)
 
-    def test_uwsm_inherits_login_path(self):
+    def test_uwsm_needs_arch_desktop_and_falls_back_to_shell(self):
         self.install_profile()
         self.write(
             self.home / ".local/bin/uwsm",
             "#!/bin/sh\n"
-            'case "$1" in check) exit 0;; start) printf "%s\\n" "$PATH";; esac\n',
+            'case "$1" in check) exit 0;; start) printf "%s\\n" "$PATH"; exit "${UWSM_STATUS:-0}";; esac\n',
             executable=True,
         )
-        result = self.run_shell(
+        script = (
             'tty() { [ "$1" = -s ] || printf "/dev/tty1\\n"; }\n'
             'source "$ROOT/symlinks/zprofile"\n'
-            'exit 99\n'
+            'echo shell-ready\n'
         )
-        self.assertIn(str(self.home / ".local/bin"), result.stdout.strip().split(":"))
+        self.assertEqual(self.run_shell(script).stdout, "shell-ready\n")
+        (self.home / ".config/shell/profile-arch-desktop.sh").symlink_to(
+            ROOT / "symlinks/config/shell/profile-arch-desktop.sh"
+        )
+        for status in ("0", "42"):
+            with self.subTest(status=status):
+                self.env["UWSM_STATUS"] = status
+                result = self.run_shell(script)
+                path, shell = result.stdout.splitlines()
+                self.assertIn(str(self.home / ".local/bin"), path.split(":"))
+                self.assertEqual(shell, "shell-ready")
+                self.assertEqual("Could not start Hyprland" in result.stderr, status != "0")
 
     def test_path_finds_cargo_commands_in_custom_cargo_home(self):
         cargo_home = self.fixture / "custom cargo home"

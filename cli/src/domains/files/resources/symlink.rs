@@ -19,6 +19,7 @@ use crate::infra::fs::{resolve_directory, resolve_target_entry};
 use materialize::copy_into_place;
 use platform::{create_symlink, is_link_like};
 use state::current_state;
+pub(crate) use state::link_points_to_source;
 
 /// A symlink resource that can be checked and applied.
 #[derive(Debug, Clone)]
@@ -41,6 +42,21 @@ pub struct SymlinkResource {
 }
 
 impl SymlinkResource {
+    /// Identify an installed link whose declared checkout entry disappeared.
+    pub(crate) fn has_missing_managed_source(&self) -> anyhow::Result<bool> {
+        let target = self.checked_target()?;
+        let Some(metadata) = crate::infra::fs::symlink_metadata_optional(&target, "stat target")?
+        else {
+            return Ok(false);
+        };
+        if !metadata.file_type().is_symlink() {
+            return Ok(false);
+        }
+        let linked_source = std::fs::read_link(&target)?;
+        Ok(link_points_to_source(&target, &linked_source, &self.source)
+            && crate::infra::fs::symlink_metadata_optional(&self.source, "stat source")?.is_none())
+    }
+
     /// Create a new symlink resource.
     #[must_use]
     pub fn new(
@@ -211,7 +227,7 @@ impl RemovableResource for SymlinkResource {
         if let Some(meta) = &metadata {
             let managed = is_link_like(&target, meta)
                 && !state::same_entry(&self.source, &target)
-                && state::link_points_to_source(
+                && link_points_to_source(
                     &target,
                     &std::fs::read_link(&target)
                         .with_context(|| format!("read link: {}", target.display()))?,

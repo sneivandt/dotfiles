@@ -476,6 +476,11 @@ impl Operation for PackageInstallOperation {
             }
         };
 
+        for package in report.pending_reboot() {
+            ctx.log().warn(format!(
+                "{package} requires a reboot to finish installing; reboot before retrying dependent tasks"
+            ));
+        }
         for failure in report.failures() {
             ctx.log().warn(format!(
                 "failed to install {} with {}: {}",

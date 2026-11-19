@@ -97,12 +97,22 @@ impl CommandRunner {
         let platform = Platform::detect();
         let root = resolve_root(runtime)?;
         let env = &runtime.env;
-        let overlay = overlay_resolution::resolve_from_args(
-            runtime.global.overlay.as_deref(),
-            &root,
-            env.as_ref(),
-            runtime.execution.non_interactive,
-        )?;
+        // The command lock was verified before entering a repository restart.
+        let overlay = if runtime.repository_child && !runtime.execution.elevated_child {
+            let path = env
+                .var_os(super::reexec::REPOSITORY_OVERLAY_VAR)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("repository restart is missing accepted overlay; retry update")
+                })?;
+            (!path.is_empty()).then(|| (PathBuf::from(path), OverlaySource::Environment))
+        } else {
+            overlay_resolution::resolve_from_args(
+                runtime.global.overlay.as_deref(),
+                &root,
+                env.as_ref(),
+                runtime.execution.non_interactive,
+            )?
+        };
         let overlay_path = overlay.as_ref().map(|(path, _)| path.as_path());
         let (profile, source) =
             resolve_profile(runtime, &root, platform, overlay_path, log, prompt)?;
@@ -202,6 +212,23 @@ impl CommandRunner {
     #[must_use]
     pub fn config_handle(&self) -> ConfigHandle<Config> {
         self.store.aggregate.clone()
+    }
+
+    pub(super) fn warn_missing_managed_sources(&self) {
+        let resources =
+            crate::domains::files::symlinks::build_resources(&self.ctx, self.store.symlinks.get());
+        for resource in resources {
+            match resource.has_missing_managed_source() {
+                Ok(true) => self.log.warn(format!(
+                    "managed link {} still points to a missing source {}; use the checkout's pre-update revision to recover it",
+                    resource.target.display(), resource.source.display(),
+                )),
+                Ok(false) => {}
+                Err(error) => self.log.debug(format!(
+                    "could not check {} for a retired source: {error:#}", resource.target.display(),
+                )),
+            }
+        }
     }
 
     /// Create dynamic overlay script tasks from the current configuration.
@@ -323,8 +350,22 @@ fn resolve_profile(
 ) -> Result<(profiles::Profile, profiles::ProfileSource)> {
     // Run-log only: the startup header must be the first console line.
     log.run_event(LogEvent::Stage, "resolving profile");
+    let restart_profile = if runtime.repository_child && !runtime.execution.elevated_child {
+        Some(
+            runtime
+                .env
+                .var(super::reexec::REPOSITORY_PROFILE_VAR)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("repository restart is missing accepted profile; retry update")
+                })?,
+        )
+    } else {
+        None
+    };
     let (profile, source) = profiles::resolve_from_args(
-        runtime.global.profile.as_deref(),
+        restart_profile
+            .as_deref()
+            .or(runtime.global.profile.as_deref()),
         root,
         platform,
         runtime.env.as_ref(),
@@ -554,6 +595,7 @@ mod root_tests {
                     name: "fixture".into(),
                     path: "scripts/fixture.sh".into(),
                     description: None,
+                    check_remove: false,
                 });
             let (ctx, log) = crate::test_helpers::make_static_context(
                 config.root.clone(),

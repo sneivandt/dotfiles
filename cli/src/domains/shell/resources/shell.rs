@@ -5,6 +5,8 @@ use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, Re
 use crate::infra::env::Env;
 use crate::infra::exec::{CommandSpec, ExecResult, Executor};
 
+pub(crate) const SYSTEM_ZSH: &str = "/usr/bin/zsh";
+
 /// A resource for configuring the current account's default login shell.
 #[derive(Debug)]
 pub struct DefaultShellResource {
@@ -13,6 +15,8 @@ pub struct DefaultShellResource {
     env: Arc<dyn Env>,
     running_as_root: bool,
     allow_prompt: bool,
+    #[cfg(test)]
+    allowed_shells: Option<&'static str>,
 }
 
 impl DefaultShellResource {
@@ -25,6 +29,8 @@ impl DefaultShellResource {
             env,
             running_as_root: process_is_root(),
             allow_prompt: false,
+            #[cfg(test)]
+            allowed_shells: None,
         }
     }
 
@@ -39,6 +45,7 @@ impl DefaultShellResource {
     #[must_use]
     const fn with_root(mut self, running_as_root: bool) -> Self {
         self.running_as_root = running_as_root;
+        self.allowed_shells = Some("/bin/sh\n/usr/bin/zsh\n");
         self
     }
 
@@ -78,16 +85,41 @@ impl DefaultShellResource {
                 reason: format!("getent returned no passwd entry for {user}"),
             });
         };
-        let current_name = std::path::Path::new(shell)
-            .file_name()
-            .and_then(|name| name.to_str());
-        if current_name == Some(&self.target_shell) && self.executor.which(shell) {
+        let system_alias = format!("/bin/{}", self.target_shell);
+        if (shell == self.system_shell() || shell == system_alias) && self.executor.which(shell) {
             Ok(ResourceState::Correct)
         } else {
             Ok(ResourceState::Incorrect {
                 current: shell.to_string(),
             })
         }
+    }
+
+    fn system_shell(&self) -> String {
+        format!("/usr/bin/{}", self.target_shell)
+    }
+
+    fn registered_system_shell(&self) -> anyhow::Result<std::path::PathBuf> {
+        use anyhow::Context as _;
+
+        let shell = self.executor.which_path(&self.system_shell())?;
+        let allowed = || {
+            std::fs::read_to_string("/etc/shells")
+                .context("reading allowed login shells from /etc/shells")
+        };
+        #[cfg(test)]
+        let allowed = || {
+            self.allowed_shells
+                .map_or_else(allowed, |shells| Ok(shells.into()))
+        };
+        anyhow::ensure!(
+            allowed()?
+                .lines()
+                .any(|line| std::path::Path::new(line.trim()) == shell),
+            "{} is not registered in /etc/shells",
+            shell.display(),
+        );
+        Ok(shell)
     }
 
     fn non_interactive_sudo_available(&self, shell: &str, user: &str) -> ResourceResult<bool> {
@@ -141,7 +173,7 @@ impl Resource for DefaultShellResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        let shell_path = self.executor.which_path(&self.target_shell)?;
+        let shell_path = self.registered_system_shell()?;
         let shell_str = shell_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("non-UTF-8 shell path: {}", shell_path.display()))?;
@@ -188,6 +220,25 @@ mod tests {
     use crate::infra::env::MapEnv;
     use crate::infra::exec::{ExecError, MockExecutor};
     use std::path::PathBuf;
+
+    #[test]
+    fn root_cannot_set_an_unregistered_login_shell() {
+        let mut mock = MockExecutor::new();
+        mock.expect_which_path()
+            .withf(|program| program == SYSTEM_ZSH)
+            .once()
+            .returning(|_| Ok(PathBuf::from(SYSTEM_ZSH)));
+        let mut resource =
+            DefaultShellResource::new("zsh".into(), Arc::new(mock), env_for("stuart"))
+                .with_root(true);
+        resource.allowed_shells = Some("/bin/bash\n# /usr/bin/zsh\n/usr/local/bin/zsh\n");
+        let error = resource.apply().unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("is not registered in /etc/shells")
+        );
+    }
 
     #[test]
     fn non_interactive_authentication_never_invokes_chsh() {
@@ -346,14 +397,10 @@ mod tests {
                         && !spec.is_checked()
                 })
                 .returning(|_| Ok(ExecResult::success(passwd("stuart", "/removed/bin/zsh"))));
-            mock.expect_which()
-                .once()
-                .withf(|program| program == "/removed/bin/zsh")
-                .return_const(false);
             if !dry_run {
                 mock.expect_which_path()
                     .once()
-                    .withf(|program| program == "zsh")
+                    .withf(|program| program == SYSTEM_ZSH)
                     .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
                 mock.expect_which()
                     .once()
@@ -533,8 +580,8 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_which_path()
             .once()
-            .withf(|program| program == "zsh")
-            .returning(|program| Ok(PathBuf::from(format!("/usr/bin/{program}"))));
+            .withf(|program| program == SYSTEM_ZSH)
+            .returning(|program| Ok(PathBuf::from(program)));
         mock.expect_execute()
             .once()
             .withf(|spec| {
@@ -559,7 +606,7 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_which_path()
             .once()
-            .withf(|program| program == "zsh")
+            .withf(|program| program == SYSTEM_ZSH)
             .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
         mock.expect_which()
             .once()
@@ -597,7 +644,7 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_which_path()
             .once()
-            .withf(|program| program == "zsh")
+            .withf(|program| program == SYSTEM_ZSH)
             .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
         mock.expect_which()
             .once()
@@ -635,7 +682,7 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_which_path()
             .once()
-            .withf(|program| program == "zsh")
+            .withf(|program| program == SYSTEM_ZSH)
             .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
         mock.expect_which()
             .once()
@@ -662,7 +709,7 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_which_path()
             .once()
-            .withf(|program| program == "zsh")
+            .withf(|program| program == SYSTEM_ZSH)
             .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
         mock.expect_execute()
             .once()
@@ -715,7 +762,7 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_which_path()
             .once()
-            .withf(|program| program == "zsh")
+            .withf(|program| program == SYSTEM_ZSH)
             .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
         mock.expect_which()
             .once()

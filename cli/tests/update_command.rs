@@ -1632,15 +1632,8 @@ fn repository_only_update_recovers_bad_config_and_refuses_a_deleted_upstream() {
     git(&root, &["config", "branch.main.mergeOptions", "--squash"]);
 
     let overlay = tempfile::tempdir().unwrap();
-    let update = || {
-        common::isolated_cli_command(
-            &root,
-            &home,
-            Some(overlay.path()),
-            "update",
-            "repository",
-            true,
-        )
+    let update = |selector| {
+        common::isolated_cli_command(&root, &home, Some(overlay.path()), "update", selector, true)
     };
     let config_file = std::fs::File::options().write(true).open(&config).unwrap();
     config_file
@@ -1651,7 +1644,7 @@ fn repository_only_update_recovers_bad_config_and_refuses_a_deleted_upstream() {
     drop(config_file);
     let index = root.join(".git/index");
     let index_before = std::fs::read(&index).unwrap();
-    let preview = update().arg("--dry-run").output().unwrap();
+    let preview = update("repository").arg("--dry-run").output().unwrap();
     assert!(preview.status.success(), "{preview:?}");
     let settings = git2::Repository::open(&root).unwrap().config().unwrap();
     assert_eq!(
@@ -1673,7 +1666,7 @@ fn repository_only_update_recovers_bad_config_and_refuses_a_deleted_upstream() {
         broken,
         "this operation must leave HEAD at its original commit"
     );
-    let repair = update().output().unwrap();
+    let repair = update("Dotfiles repository").output().unwrap();
     assert!(repair.status.success(), "{repair:?}");
     assert!(
         String::from_utf8_lossy(&repair.stdout).contains("Tasks · 1 changed"),
@@ -1696,7 +1689,7 @@ fn repository_only_update_recovers_bad_config_and_refuses_a_deleted_upstream() {
         fixed,
         "the deleted branch must remain available through the stale tracking ref"
     );
-    let missing = update().output().unwrap();
+    let missing = update("repository").output().unwrap();
     assert!(!missing.status.success(), "{missing:?}");
     assert_eq!(
         git(&root, &["rev-parse", "HEAD"]),

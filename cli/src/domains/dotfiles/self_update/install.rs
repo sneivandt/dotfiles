@@ -879,6 +879,62 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn powershell_recovery_restores_backup_when_cached_binary_is_not_executable() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let Ok(pwsh) = which::which("pwsh") else {
+            return;
+        };
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let bin = binary_path(&root);
+        let backup = old_binary_path(&root);
+        fs::create_dir(bin.parent().unwrap()).unwrap();
+        fs::write(&bin, b"#!/bin/sh\nexit 9\n").unwrap();
+        fs::set_permissions(&bin, fs::Permissions::from_mode(0o644)).unwrap();
+        let healthy = b"#!/bin/sh\necho 'dotfiles fixture'\n";
+        fs::write(&backup, healthy).unwrap();
+        fs::set_permissions(&backup, fs::Permissions::from_mode(0o755)).unwrap();
+        let wrapper = root.join("dotfiles.ps1");
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        fs::copy(repo.join("dotfiles.ps1"), &wrapper).unwrap();
+        let opener = root.join("xdg-open");
+        fs::write(
+            &opener,
+            b"#!/bin/sh\n: > \"$DOTFILES_TEST_OPENER_MARKER\"\n",
+        )
+        .unwrap();
+        fs::set_permissions(opener, fs::Permissions::from_mode(0o755)).unwrap();
+        let opener_marker = root.join("opener-called");
+        let path = std::env::join_paths(
+            std::iter::once(root).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap())),
+        )
+        .unwrap();
+        drop(begin_replacement(&bin).unwrap());
+
+        let output = std::process::Command::new(pwsh)
+            .args(["-NoProfile", "-NonInteractive", "-Command"])
+            .arg("$global:LASTEXITCODE = 0; & $env:DOTFILES_TEST_WRAPPER --version")
+            .env("PATH", path)
+            .env("DOTFILES_TEST_WRAPPER", wrapper)
+            .env("DOTFILES_TEST_OPENER_MARKER", &opener_marker)
+            .env("DOTFILES_RELEASE_REPO", "invalid")
+            .output()
+            .unwrap();
+
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(output.stdout, b"dotfiles fixture\n");
+        assert_eq!(fs::read(&bin).unwrap(), healthy);
+        assert!(!backup.exists());
+        assert!(
+            !opener_marker.exists(),
+            "startup must never open a document"
+        );
+        begin_replacement(&bin).unwrap(); // the recovered journal is clean
+    }
+
     #[test]
     fn smoke_test_binary_uses_supported_version_flag() {
         let dir = tempfile::tempdir().unwrap();

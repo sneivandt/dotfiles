@@ -5,7 +5,9 @@ use std::sync::Arc;
 use super::RuntimePolicy;
 use super::execution::BoundaryAction;
 use crate::app::cli::UpdateOpts;
-use crate::app::filter::{apply_task_filters, normalize_task_filter, resolve_filters};
+use crate::app::filter::{
+    apply_task_filters, normalize_task_filter, resolve_filters, task_matches_filter,
+};
 use crate::domains::ai::apm::ApmPackageMode;
 use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::engine::Task;
@@ -37,21 +39,20 @@ pub fn run(
     let repository_task = repository_only.task_id();
     let is_repository_selector =
         |selector: &str| normalize_task_filter(selector) == repository_only.selector();
-    if runtime.global.no_repo_update {
-        reject_disabled_repository_selection(
-            opts.filters.only.iter().any(|s| is_repository_selector(s)),
-        )?;
-    }
-    let run_lock = super::prepare_self_update(runtime, log)?;
-    if !runtime.repository_child
-        && !opts.filters.only.is_empty()
+    let repository_only_selected = !opts.filters.only.is_empty()
         && opts.filters.skip.is_empty()
         && opts
             .filters
             .only
             .iter()
-            .all(|selector| is_repository_selector(selector))
-    {
+            .all(|selector| task_matches_filter(&repository_only, selector));
+    if runtime.global.no_repo_update {
+        reject_disabled_repository_selection(
+            repository_only_selected || opts.filters.only.iter().any(|s| is_repository_selector(s)),
+        )?;
+    }
+    let run_lock = super::prepare_self_update(runtime, log)?;
+    if !runtime.repository_child && repository_only_selected {
         return super::CommandRunner::run_repository(runtime, log, token, &repository_only);
     }
 

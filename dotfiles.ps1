@@ -379,11 +379,24 @@ function Get-Binary
 function Test-CliStartup([string]$Path)
 {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new($Path, '--version')
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
     try {
-        & $Path --version *> $null
-        return ($LASTEXITCODE -eq 0)
-    } catch [System.Management.Automation.ApplicationFailedException] {
+        $process = [System.Diagnostics.Process]::Start($startInfo)
+    } catch [System.ComponentModel.Win32Exception] {
         return $false
+    }
+    try {
+        $stdout = $process.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)
+        $stderr = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+        $process.WaitForExit()
+        [void]$stdout.GetAwaiter().GetResult()
+        [void]$stderr.GetAwaiter().GetResult()
+        return ($process.ExitCode -eq 0)
+    } finally {
+        $process.Dispose()
     }
 }
 

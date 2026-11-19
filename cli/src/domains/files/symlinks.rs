@@ -33,10 +33,38 @@ fn build_resource(
         .err()
         .map(|e| e.to_string())
         .or_else(|| placeholders.and_then(|cache| cache.reason(&source, source_root)));
+    let legacy_source = legacy_editor_source(s, repo_root).map(|path| symlinks_dir.join(path));
     SymlinkResource::new(source, target, Arc::clone(executor))
+        .with_legacy_source(legacy_source)
         .with_display_roots(home, source_root)
         .with_external_target_allowed(s.allow_external_target)
         .with_validation_error(validation_error)
+}
+
+/// Forwarding entries retired by 3c39f434. Match both ends of the
+/// public declaration so an overlay or another target gains no ownership.
+fn legacy_editor_source<'a>(s: &'a Symlink, root: &Path) -> Option<&'a str> {
+    if s.origin.as_deref().is_some_and(|origin| origin != root) {
+        return None;
+    }
+    match (s.source.as_str(), s.target.as_deref()?) {
+        ("vim", ".config/nvim") => Some("config/nvim"),
+        ("config/Code/User/keybindings.json", ".config/Code - Insiders/User/keybindings.json") => {
+            Some("config/Code - Insiders/User/keybindings.json")
+        }
+        ("config/Code/User/settings.json", ".config/Code - Insiders/User/settings.json") => {
+            Some("config/Code - Insiders/User/settings.json")
+        }
+        (
+            "config/Code/User/keybindings.json",
+            target @ "AppData/Roaming/Code - Insiders/User/keybindings.json",
+        )
+        | (
+            "config/Code/User/settings.json",
+            target @ "AppData/Roaming/Code - Insiders/User/settings.json",
+        ) => Some(target),
+        _ => None,
+    }
 }
 
 /// Build [`SymlinkResource`] instances from a symlink configuration slice.
@@ -124,7 +152,11 @@ fn install_resources(
     }
 
     let (unavailable, runnable): (Vec<_>, Vec<_>) = resources.into_iter().partition(|resource| {
-        resource.source.is_file() && matches!(resource.current_state(), Ok(ResourceState::Missing))
+        resource.source.is_file()
+            && matches!(
+                resource.current_state(),
+                Ok(ResourceState::Missing | ResourceState::Incorrect { .. })
+            )
     });
     let result = run_resource_task(ctx, runnable, &ProcessOpts::strict("link"))?;
     if unavailable.is_empty() {

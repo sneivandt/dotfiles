@@ -1,7 +1,8 @@
 use anyhow::{Context as _, Result};
 use std::path::{Component, Path};
 
-use super::platform::{is_link_like, rename_noreplace};
+use super::platform::{create_symlink, is_link_like, rename_noreplace};
+use crate::infra::exec::Executor;
 use crate::infra::fs::{TempGuard, ensure_parent_dir};
 use crate::infra::fs::{link_points_to_source, paths_equal, same_entry};
 
@@ -9,16 +10,36 @@ use crate::infra::fs::{link_points_to_source, paths_equal, same_entry};
 pub(super) fn copy_into_place(
     source: &Path,
     target: &Path,
+    managed_source: &Path,
     repositories: &[&Path],
     allow_missing: bool,
 ) -> Result<()> {
     ensure_parent_dir(target)?;
 
     if source.is_dir() {
-        copy_dir_into_place(source, target, repositories, allow_missing)
+        copy_dir_into_place(source, target, managed_source, repositories, allow_missing)
     } else {
-        copy_file_into_place(source, target, allow_missing)
+        copy_file_into_place(source, target, managed_source, allow_missing)
     }
+}
+
+/// Stage the new link before moving the historical entry out of the way.
+pub(super) fn replace_link(
+    source: &Path,
+    target: &Path,
+    legacy_source: &Path,
+    executor: &dyn Executor,
+) -> Result<()> {
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let staging =
+        TempGuard::create_unique_dir_with_mode(parent, ".dotfiles-migrate-link", "tmp", 0o700)
+            .with_context(|| format!("stage replacement link beside {}", target.display()))?;
+    let staged = staging.path().join("link");
+    // The replacement moves out of the staging directory, so its referent
+    // must be absolute.
+    let source = std::path::absolute(source)?;
+    create_symlink(&source, &staged, executor)?;
+    publish(legacy_source, &staged, target, false, rename_noreplace)
 }
 
 fn recovery_directory(target: &Path) -> std::path::PathBuf {
@@ -36,7 +57,7 @@ pub(super) fn check_recovery(target: &Path) -> Result<()> {
         .is_some()
     {
         anyhow::bail!(
-            "unfinished removal for {}. Check {}. If the target is missing and the directory contains original, move original back to the target. If both entries exist, inspect them and move original somewhere safe before retrying. Remove the empty recovery directory when finished",
+            "unfinished removal or link replacement for {}. Check {}. If the target is missing and the directory contains original, move original back to the target. If both entries exist, inspect them and move original somewhere safe before retrying. Remove the empty recovery directory when finished",
             target.display(),
             recovery.display()
         );
@@ -51,15 +72,16 @@ fn publish(
     staged: &Path,
     target: &Path,
     allow_missing: bool,
-    publish_copy: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+    place_staged: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
 ) -> Result<()> {
     anyhow::ensure!(
         !same_entry(source, target),
-        "refusing to replace the source entry while copying: {}",
+        "refusing to replace the source entry: {}",
         target.display()
     );
-    let publish_copy = || {
-        publish_copy(staged, target).with_context(|| format!("place copy at {}", target.display()))
+    let place_staged = || {
+        place_staged(staged, target)
+            .with_context(|| format!("place replacement at {}", target.display()))
     };
     check_recovery(target)?;
     if crate::infra::fs::symlink_metadata_optional(target, "stat target")?.is_none() {
@@ -68,7 +90,7 @@ fn publish(
             "managed link disappeared while preparing its copy: {}",
             target.display()
         );
-        return publish_copy();
+        return place_staged();
     }
     require_managed_link(source, target, target)?;
 
@@ -91,7 +113,7 @@ fn publish(
 
     // Another writer could have replaced the link between inspection and the
     // move. Recheck the saved entry before letting the guard dispose of it.
-    let result = require_managed_link(source, target, &saved).and_then(|()| publish_copy());
+    let result = require_managed_link(source, target, &saved).and_then(|()| place_staged());
     if let Err(error) = result {
         if let Err(restore) = rename_noreplace(&saved, target) {
             backup.persist();
@@ -122,7 +144,12 @@ fn require_managed_link(source: &Path, target: &Path, entry: &Path) -> Result<()
     Ok(())
 }
 
-fn copy_file_into_place(source: &Path, target: &Path, allow_missing: bool) -> Result<()> {
+fn copy_file_into_place(
+    source: &Path,
+    target: &Path,
+    managed_source: &Path,
+    allow_missing: bool,
+) -> Result<()> {
     let (mut guard, mut staged_file) = create_staged_file(target)?;
     let mut source_file = crate::infra::fs::open_regular_source(source)?;
     crate::infra::fs::copy_regular_contents(&mut source_file, &mut staged_file)
@@ -132,7 +159,7 @@ fn copy_file_into_place(source: &Path, target: &Path, allow_missing: bool) -> Re
     drop(staged_file);
 
     publish(
-        source,
+        managed_source,
         guard.path(),
         target,
         allow_missing,
@@ -151,6 +178,7 @@ fn create_staged_file(target: &Path) -> Result<(TempGuard, std::fs::File)> {
 pub(super) fn copy_dir_into_place(
     source: &Path,
     target: &Path,
+    managed_source: &Path,
     repositories: &[&Path],
     allow_missing: bool,
 ) -> Result<()> {
@@ -169,7 +197,7 @@ pub(super) fn copy_dir_into_place(
         .with_context(|| format!("cannot safely copy directory {}", source.display()))?;
 
     publish(
-        source,
+        managed_source,
         guard.path(),
         target,
         allow_missing,
@@ -291,10 +319,10 @@ mod tests {
         let source = root.join("source");
         let target = root.join("target");
         std::fs::write(&source, "source").unwrap();
-        let error = copy_into_place(&source, &target, &[root], false).unwrap_err();
+        let error = copy_into_place(&source, &target, &source, &[root], false).unwrap_err();
         assert!(format!("{error:#}").contains("managed link disappeared"));
         assert!(!target.exists());
-        copy_into_place(&source, &target, &[root], true).unwrap();
+        copy_into_place(&source, &target, &source, &[root], true).unwrap();
         assert_eq!(std::fs::read_to_string(target).unwrap(), "source");
     }
 
@@ -391,7 +419,7 @@ mod tests {
         rustix::fs::mkfifoat(rustix::fs::CWD, &pipe, rustix::fs::Mode::RUSR).unwrap();
         for error in [
             validate_source(&source, &[root]).unwrap_err(),
-            copy_dir_into_place(&source, &root.join("target"), &[root], true).unwrap_err(),
+            copy_dir_into_place(&source, &root.join("target"), &source, &[root], true).unwrap_err(),
             crate::infra::fs::open_regular_source(&pipe).unwrap_err(),
         ] {
             assert!(format!("{error:#}").contains("unsupported special file"));
@@ -415,7 +443,7 @@ mod tests {
         })
         .unwrap_err();
 
-        assert!(error.to_string().contains("place copy"));
+        assert!(error.to_string().contains("place replacement"));
         assert_eq!(std::fs::read_link(&target).unwrap(), referent);
         assert_eq!(std::fs::read_dir(fixture.path()).unwrap().count(), 3);
         publish(&source, &staged, &target, true, rename_noreplace).unwrap();
@@ -479,7 +507,7 @@ mod tests {
             std::fs::write(content(&source), "managed content").unwrap();
             std::fs::write(content(&target), "user replacement").unwrap();
 
-            let error = copy_into_place(&source, &target, &[&source], true).unwrap_err();
+            let error = copy_into_place(&source, &target, &source, &[&source], true).unwrap_err();
 
             assert!(
                 error
@@ -509,7 +537,7 @@ mod tests {
         let source = fixture.path().join("source");
         std::fs::write(&source, "source must survive").unwrap();
 
-        let error = copy_into_place(&source, &source, &[&source], true).unwrap_err();
+        let error = copy_into_place(&source, &source, &source, &[&source], true).unwrap_err();
 
         assert!(
             error
@@ -537,7 +565,7 @@ mod tests {
         std::fs::remove_dir(&source).unwrap();
         std::fs::write(&source, "changed source").unwrap();
 
-        let error = copy_dir_into_place(&source, &target, &[&root], true).unwrap_err();
+        let error = copy_dir_into_place(&source, &target, &source, &[&root], true).unwrap_err();
 
         assert!(error.to_string().contains("recursive copy"), "{error:#}");
         assert_eq!(std::fs::read_link(&target).unwrap(), original_link);
@@ -547,7 +575,7 @@ mod tests {
         std::fs::remove_file(&source).unwrap();
         std::fs::create_dir(&source).unwrap();
         std::fs::write(source.join("content"), "restored directory").unwrap();
-        copy_dir_into_place(&source, &target, &[&root], true).unwrap();
+        copy_dir_into_place(&source, &target, &source, &[&root], true).unwrap();
         assert!(std::fs::read_link(&target).is_err());
         assert_eq!(
             std::fs::read_to_string(target.join("content")).unwrap(),
@@ -585,7 +613,7 @@ mod tests {
         std::fs::write(&source, "managed content").unwrap();
         std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o640)).unwrap();
 
-        copy_into_place(&source, &target, &[&source], true).unwrap();
+        copy_into_place(&source, &target, &source, &[&source], true).unwrap();
 
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "managed content");
         assert_eq!(

@@ -982,3 +982,135 @@ fn git_update_lock_contention_retry_and_fresh_home_converge() {
         assert!(!lock.exists());
     }
 }
+
+#[cfg(unix)]
+const HISTORICAL_EDITOR_LINKS: &[(&str, &str, &str, Option<&str>)] = &[
+    ("vim", ".config/nvim", "config/nvim", Some("init.vim")),
+    (
+        "config/Code/User/settings.json",
+        ".config/Code - Insiders/User/settings.json",
+        "config/Code - Insiders/User/settings.json",
+        None,
+    ),
+    (
+        "config/Code/User/keybindings.json",
+        ".config/Code - Insiders/User/keybindings.json",
+        "config/Code - Insiders/User/keybindings.json",
+        None,
+    ),
+];
+#[cfg(windows)]
+const HISTORICAL_EDITOR_LINKS: &[(&str, &str, &str, Option<&str>)] = &[
+    (
+        "config/Code/User/settings.json",
+        "AppData/Roaming/Code - Insiders/User/settings.json",
+        "AppData/Roaming/Code - Insiders/User/settings.json",
+        None,
+    ),
+    (
+        "config/Code/User/keybindings.json",
+        "AppData/Roaming/Code - Insiders/User/keybindings.json",
+        "AppData/Roaming/Code - Insiders/User/keybindings.json",
+        None,
+    ),
+];
+
+#[test]
+fn historical_editor_links_migrate_or_materialize_without_claiming_unrelated_entries() {
+    use std::path::Path;
+
+    fn link(source: &Path, target: &Path, directory: bool) {
+        #[cfg(unix)]
+        {
+            let _ = directory;
+            std::os::unix::fs::symlink(source, target).unwrap();
+        }
+        #[cfg(windows)]
+        if directory {
+            std::os::windows::fs::symlink_dir(source, target).unwrap();
+        } else {
+            std::os::windows::fs::symlink_file(source, target).unwrap();
+        }
+    }
+
+    for &(source, target, old, config_file) in HISTORICAL_EDITOR_LINKS {
+        let content = "canonical configuration\n";
+        let source_file =
+            config_file.map_or_else(|| source.to_string(), |file| format!("{source}/{file}"));
+        let repo = common::TestContextBuilder::new()
+            .with_config_file(
+                "symlinks.toml",
+                &format!("[base]\nsymlinks=[{{ source='{source}', target='{target}' }}]\n"),
+            )
+            .with_symlink_source_content(&source_file, content)
+            .build();
+        let home = tempfile::tempdir().unwrap();
+        let target = home.path().join(target);
+        let source = repo.root_path().join("symlinks").join(source);
+        let old = repo.root_path().join("symlinks").join(old);
+        let directory = config_file.is_some();
+        let target_file = config_file.map_or_else(|| target.clone(), |file| target.join(file));
+        let run = |verb| common::cli_command(repo.root_path(), home.path(), None, verb, "symlinks");
+        let assert_link = |referent: &Path| {
+            let actual = std::fs::read_link(&target).unwrap();
+            assert_eq!(dunce::simplified(&actual), dunce::simplified(referent));
+        };
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+
+        // A currently existing legacy path might contain user data.
+        std::fs::create_dir_all(old.parent().unwrap()).unwrap();
+        if directory {
+            std::fs::create_dir(&old).unwrap();
+        } else {
+            std::fs::write(&old, "user data").unwrap();
+        }
+        link(&old, &target, directory);
+        output(&mut run("update"), false);
+        output(&mut run("remove"), true);
+        assert_link(&old);
+        if directory {
+            std::fs::remove_dir(&old).unwrap();
+        } else {
+            std::fs::remove_file(&old).unwrap();
+        }
+        assert!(!target.exists());
+
+        output(run("update").arg("--dry-run"), true);
+        assert_link(&old);
+        output(&mut run("update"), true);
+        assert_link(&source);
+        assert_eq!(std::fs::read_to_string(&target_file).unwrap(), content);
+        output(&mut run("update"), true);
+        assert_link(&source);
+        output(&mut run("remove"), true);
+        assert!(!target.is_symlink());
+        assert_eq!(std::fs::read_to_string(&target_file).unwrap(), content);
+
+        if directory {
+            std::fs::remove_dir_all(&target).unwrap();
+        } else {
+            std::fs::remove_file(&target).unwrap();
+        }
+        link(&old, &target, directory);
+        output(run("remove").arg("--dry-run"), true);
+        assert_link(&old);
+        output(&mut run("remove"), true);
+        assert!(!target.is_symlink());
+        assert_eq!(std::fs::read_to_string(&target_file).unwrap(), content);
+        output(&mut run("remove"), true);
+        assert_eq!(std::fs::read_to_string(&target_file).unwrap(), content);
+        output(&mut run("update"), false);
+        assert_eq!(std::fs::read_to_string(&target_file).unwrap(), content);
+
+        if directory {
+            std::fs::remove_dir_all(&target).unwrap();
+        } else {
+            std::fs::remove_file(&target).unwrap();
+        }
+        let unrelated = old.with_extension("user");
+        link(&unrelated, &target, directory);
+        output(&mut run("update"), false);
+        output(&mut run("remove"), true);
+        assert_link(&unrelated);
+    }
+}

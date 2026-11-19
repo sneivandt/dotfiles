@@ -40,6 +40,7 @@ pub struct SymlinkResource {
     source_root: Option<PathBuf>,
     other_root: Option<PathBuf>,
     restore_missing: bool,
+    legacy_source: Option<PathBuf>,
 }
 
 impl SymlinkResource {
@@ -75,6 +76,7 @@ impl SymlinkResource {
             source_root: None,
             other_root: None,
             restore_missing: false,
+            legacy_source: None,
         }
     }
 
@@ -112,6 +114,32 @@ impl SymlinkResource {
     pub(crate) const fn with_restore_missing(mut self, restore_missing: bool) -> Self {
         self.restore_missing = restore_missing;
         self
+    }
+
+    pub(crate) fn with_legacy_source(mut self, source: Option<PathBuf>) -> Self {
+        self.legacy_source = source;
+        self
+    }
+
+    fn legacy_link(&self, target: &Path, existing: &Path) -> ResourceResult<Option<&Path>> {
+        let Some(source) = self.legacy_source.as_deref() else {
+            return Ok(None);
+        };
+        if link_points_to_source(target, existing, source)
+            && crate::infra::fs::symlink_metadata_optional(source, "stat legacy source")?.is_none()
+        {
+            return Ok(Some(source));
+        }
+        Ok(None)
+    }
+
+    fn managed_source(&self, target: &Path) -> ResourceResult<Option<&Path>> {
+        let existing = std::fs::read_link(target)
+            .with_context(|| format!("read link: {}", target.display()))?;
+        if link_points_to_source(target, &existing, &self.source) {
+            return Ok(Some(&self.source));
+        }
+        self.legacy_link(target, &existing)
     }
 
     fn checkout_roots(&self) -> Vec<&Path> {
@@ -192,9 +220,18 @@ impl Resource for SymlinkResource {
         match current_state(self, &target)? {
             ResourceState::Correct => return Ok(ResourceChange::AlreadyCorrect),
             ResourceState::Missing => {}
-            ResourceState::Invalid { reason }
-            | ResourceState::Unknown { reason }
-            | ResourceState::Incorrect { current: reason } => {
+            ResourceState::Incorrect { .. } => {
+                let existing = std::fs::read_link(&target)?;
+                let legacy = self.legacy_link(&target, &existing)?.with_context(|| {
+                    format!(
+                        "historical link changed while inspecting {}",
+                        target.display()
+                    )
+                })?;
+                materialize::replace_link(&self.source, &target, legacy, &*self.executor)?;
+                return Ok(ResourceChange::Applied);
+            }
+            ResourceState::Invalid { reason } | ResourceState::Unknown { reason } => {
                 return Err(crate::engine::resource::ResourceError::conflicting_state(
                     target.display().to_string(),
                     "an absent target or the correct managed link",
@@ -228,12 +265,7 @@ impl RemovableResource for SymlinkResource {
         if let Some(meta) = &metadata {
             let managed = is_link_like(&target, meta)
                 && !same_entry(&self.source, &target)
-                && link_points_to_source(
-                    &target,
-                    &std::fs::read_link(&target)
-                        .with_context(|| format!("read link: {}", target.display()))?,
-                    &self.source,
-                );
+                && self.managed_source(&target)?.is_some();
             if !managed {
                 return Ok(ResourceState::Incorrect {
                     current: "target is not a managed link".into(),
@@ -265,8 +297,18 @@ impl RemovableResource for SymlinkResource {
                 "invalid symlink will not be replaced with a copy",
             ));
         }
-        match crate::infra::fs::symlink_metadata_optional(&target, "stat target")? {
-            Some(meta) if is_link_like(&target, &meta) => {}
+        let managed_source = match crate::infra::fs::symlink_metadata_optional(
+            &target,
+            "stat target",
+        )? {
+            Some(meta) if is_link_like(&target, &meta) => {
+                self.managed_source(&target)?.with_context(|| {
+                    format!(
+                        "refusing to replace link that no longer points to the managed source: {}",
+                        target.display()
+                    )
+                })?
+            }
             Some(_) => {
                 return Ok(ResourceChange::skipped(format!(
                     "target is not a symlink and will not be overwritten: {}",
@@ -274,14 +316,20 @@ impl RemovableResource for SymlinkResource {
                 )));
             }
             None if !self.restore_missing => return Ok(ResourceChange::AlreadyCorrect),
-            None => {}
-        }
+            None => &self.source,
+        };
 
         // Stage source content before replacing the managed link.
         let roots = self.checkout_roots();
         materialize::validate_source(&self.source, &roots)?;
-        copy_into_place(&self.source, &target, &roots, self.restore_missing)
-            .with_context(|| format!("copy {} to {}", self.source.display(), target.display()))?;
+        copy_into_place(
+            &self.source,
+            &target,
+            managed_source,
+            &roots,
+            self.restore_missing,
+        )
+        .with_context(|| format!("copy {} to {}", self.source.display(), target.display()))?;
         Ok(ResourceChange::Applied)
     }
 }
@@ -310,7 +358,7 @@ pub(super) fn copy_dir_into_place(
     target: &Path,
     repository: &Path,
 ) -> anyhow::Result<()> {
-    materialize::copy_dir_into_place(source, target, &[repository], true)
+    materialize::copy_dir_into_place(source, target, source, &[repository], true)
 }
 
 #[cfg(test)]

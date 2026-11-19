@@ -29,6 +29,10 @@ pub(super) fn current_state(
         |existing| {
             if link_points_to_source(target, &existing, &resource.source) {
                 Ok(ResourceState::Correct)
+            } else if resource.legacy_link(target, &existing)?.is_some() {
+                Ok(ResourceState::Incorrect {
+                    current: format!("historical managed link to {}", existing.display()),
+                })
             } else {
                 Ok(ResourceState::Invalid {
                     reason: format!(

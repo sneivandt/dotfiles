@@ -554,6 +554,45 @@ mod chmod {
 
     #[cfg(unix)]
     #[test]
+    fn recursive_modes_leave_ipc_endpoints_and_their_other_names_untouched() {
+        use nix::sys::stat::Mode;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir().unwrap();
+        let tree = fixture.path().join("tree");
+        let external = fixture.path().join("external-pipe");
+        let endpoint = tree.join("endpoint");
+        let config = tree.join("config");
+        std::fs::create_dir(&tree).unwrap();
+        std::fs::write(&config, "custom").unwrap();
+        std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
+        nix::unistd::mkfifo(&external, Mode::S_IRWXU).unwrap();
+        std::fs::hard_link(&external, &endpoint).unwrap();
+        let bits = |path: &std::path::Path| path.metadata().unwrap().permissions().mode() & 0o777;
+        let original_mode = bits(&external);
+        let recursive = ChmodResource::new(tree, mode("640"));
+        let direct = ChmodResource::new(endpoint.clone(), mode("640"));
+        assert!(matches!(
+            direct.current_state().unwrap(),
+            ResourceState::Invalid { .. }
+        ));
+        assert!(direct.apply().is_err());
+        assert_eq!(recursive.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(bits(&config), 0o640);
+        assert_eq!(bits(&endpoint), original_mode);
+        assert_eq!(bits(&external), original_mode);
+        assert_eq!(recursive.current_state().unwrap(), ResourceState::Correct);
+        assert_eq!(recursive.apply().unwrap(), ResourceChange::AlreadyCorrect);
+
+        std::fs::remove_file(&endpoint).unwrap();
+        std::fs::write(&endpoint, "now a regular file").unwrap();
+        direct.apply().unwrap();
+        assert_eq!(bits(&endpoint), 0o640);
+        assert_eq!(bits(&external), original_mode);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn current_state_skips_symlinks_inside_directory() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -780,9 +819,12 @@ mod symlink {
         );
 
         let error = resource.remove().unwrap_err();
+        let detail = format!("{error:#}");
         assert!(
-            format!("{error:#}").contains("inspect copy source"),
-            "{error:#}"
+            detail.contains("inspect copy source")
+                && detail.contains("source does not exist")
+                && detail.contains(&source.display().to_string()),
+            "{detail}"
         );
         assert_eq!(std::fs::read_link(&target).unwrap(), original_link);
         assert_eq!(
@@ -881,6 +923,54 @@ mod symlink {
             std::fs::read_to_string(sources.join("managed")).unwrap(),
             "source content"
         );
+    }
+
+    #[test]
+    fn retired_parent_link_cannot_turn_checkout_entries_into_home_targets() {
+        let fixture = tempfile::tempdir().unwrap();
+        let home = fixture.path().canonicalize().unwrap();
+        let repo = home.join("checkout");
+        let sources = repo.join("symlinks");
+        let source = sources.join("settings");
+        let old_source = sources.join("old-directory");
+        let old_parent = home.join(".app");
+        std::fs::create_dir_all(&old_source).unwrap();
+        std::fs::write(&source, "managed").unwrap();
+        crate::infra::fs::create_native_symlink(&old_source, &old_parent, true).unwrap();
+        let tracked_link = old_source.join("existing");
+        let referent = Path::new("../settings");
+        crate::infra::fs::create_native_symlink(referent, &tracked_link, false).unwrap();
+        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::MockExecutor::new());
+
+        for name in ["existing", "absent"] {
+            let target = old_parent.join(name);
+            let resource = SymlinkResource::new(&source, &target, Arc::clone(&executor))
+                .with_display_roots(&home, &repo)
+                .with_restore_missing(true)
+                .with_external_target_allowed(true);
+            assert!(
+                matches!(resource.current_state().unwrap(), ResourceState::Invalid { reason }
+                if reason.contains("managed source tree"))
+            );
+            assert!(matches!(
+                resource.removal_state().unwrap(),
+                ResourceState::Unknown { .. }
+            ));
+            assert!(resource.apply().is_err());
+            assert!(resource.remove().is_err());
+            assert_eq!(std::fs::read_link(&tracked_link).unwrap(), referent);
+            assert_eq!(std::fs::read_dir(&old_source).unwrap().count(), 1);
+        }
+
+        std::fs::rename(&old_parent, home.join(".app.previous")).unwrap();
+        let target = old_parent.join("existing");
+        let resource =
+            SymlinkResource::new(&source, &target, executor).with_display_roots(&home, &repo);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(resource.remove().unwrap(), ResourceChange::Applied);
+        assert!(!target.is_symlink());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "managed");
+        assert_eq!(std::fs::read_link(&tracked_link).unwrap(), referent);
     }
 
     #[test]

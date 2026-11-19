@@ -75,6 +75,10 @@ Applying this task replaces the whole destination document, not just its
 generated repository sections. Unrelated preferences in that document are not
 merged or backed up. Review and back up an existing configuration before
 applying, and put durable preferences in the tracked base file.
+If the destination changes during preparation, Dotfiles reports a conflict.
+Review the changed file and transfer any preferences you want to keep to
+the base before retrying. A retry plans against the new contents; it does
+not merge them.
 :::
 
 The destination is `PARU_CONF` when set, otherwise

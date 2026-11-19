@@ -41,29 +41,19 @@ set nobackup
 set noerrorbells
 set noswapfile
 let s:legacy_undodir = expand('~/.cache/vim/undo')
-let s:state_home = empty($XDG_STATE_HOME) ? expand('~/.local/state') : $XDG_STATE_HOME
+let s:state_home = $XDG_STATE_HOME =~# '^/' ? $XDG_STATE_HOME : expand('~/.local/state')
 let s:undo_dir = s:state_home . '/vim/undo'
 try
   if !isdirectory(s:undo_dir)
     call mkdir(s:undo_dir, 'p', 0700)
   endif
-  " Copy missing undo files, leaving old sessions and newer state intact.
-  for s:undo_file in glob(s:legacy_undodir . '/*', 0, 1)
-    let s:undo_target = s:undo_dir . '/' . fnamemodify(s:undo_file, ':t')
-    if filereadable(s:undo_file) && getftype(s:undo_target) ==# ''
-      if writefile(readfile(s:undo_file, 'b'), s:undo_target, 'b') != 0
-        throw 'Could not migrate Vim undo history'
-      endif
-      call setfperm(s:undo_target, 'rw-------')
-    endif
-  endfor
 catch
-  let s:undo_dir = s:legacy_undodir
   echohl WarningMsg
-  echom 'Could not migrate Vim undo history; keeping the previous location.'
+  echom 'Could not create the Vim undo directory; using the previous location.'
   echohl None
 endtry
-let &undodir = escape(s:undo_dir, ',')
+" Read existing legacy history in place; only writing a buffer creates new history.
+let &undodir = join(map([s:undo_dir, s:legacy_undodir], 'escape(v:val, ",")'), ',')
 set undofile
 set nonumber
 set preserveindent

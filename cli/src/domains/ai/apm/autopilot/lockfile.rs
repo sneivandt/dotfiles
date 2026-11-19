@@ -31,46 +31,50 @@ pub(super) fn read_deployed_workflow_ids(ctx: &Context) -> Result<Option<BTreeSe
                 .with_context(|| format!("reading workflow ownership {}", lock.display()));
         }
     };
-    let value: crate::infra::yaml::Value =
-        crate::infra::yaml::from_str(&content).context("parsing workflow ownership")?;
-    anyhow::ensure!(value.is_object(), "workflow ownership must be a mapping");
-    if let Some(dependencies) = value.get("dependencies") {
-        anyhow::ensure!(
-            dependencies.is_array(),
-            "workflow dependencies must be a sequence"
-        );
-    }
-    Ok(Some(parse_deployed_workflow_ids(&content)))
+    parse_deployed_workflow_ids(&content)
+        .map(Some)
+        .with_context(|| format!("reading workflow ownership {}", lock.display()))
 }
 
 /// Extract the dotfiles-deployed workflow ids from APM lockfile text.
 ///
 /// Walks `dependencies[*].deployed_files[*]` and collects every entry that
 /// starts with [`COPILOT_APP_WORKFLOW_URI_PREFIX`], stripped to the bare
-/// workflow id. Any parse failure or unexpected shape yields an empty set.
-pub(super) fn parse_deployed_workflow_ids(lockfile: &str) -> BTreeSet<String> {
+/// workflow id. Reject malformed ownership rather than inferring no deployments.
+pub(super) fn parse_deployed_workflow_ids(lockfile: &str) -> Result<BTreeSet<String>> {
     use crate::infra::yaml::Value;
 
     let mut ids = BTreeSet::new();
-    let Ok(value) = crate::infra::yaml::from_str::<Value>(lockfile) else {
-        return ids;
+    let value: Value =
+        crate::infra::yaml::from_str(lockfile).context("parsing workflow ownership")?;
+    let root = value
+        .as_object()
+        .context("workflow ownership must be a mapping")?;
+    let Some(deps) = root.get("dependencies") else {
+        return Ok(ids);
     };
-    let Some(deps) = value.get("dependencies").and_then(Value::as_array) else {
-        return ids;
-    };
-    for dep in deps {
-        let Some(files) = dep.get("deployed_files").and_then(Value::as_array) else {
+    for dep in deps
+        .as_array()
+        .context("workflow dependencies must be a sequence")?
+    {
+        let dep = dep
+            .as_object()
+            .context("workflow dependency must be a mapping")?;
+        let Some(files) = dep.get("deployed_files") else {
             continue;
         };
-        for file in files {
-            if let Some(id) = file
+        for file in files
+            .as_array()
+            .context("deployed_files must be a sequence")?
+        {
+            let file = file
                 .as_str()
-                .and_then(|s| s.strip_prefix(COPILOT_APP_WORKFLOW_URI_PREFIX))
-                && !id.is_empty()
-            {
+                .context("deployed_files entry must be a string")?;
+            if let Some(id) = file.strip_prefix(COPILOT_APP_WORKFLOW_URI_PREFIX) {
+                anyhow::ensure!(!id.is_empty(), "empty deployed workflow id");
                 ids.insert(id.to_owned());
             }
         }
     }
-    ids
+    Ok(ids)
 }

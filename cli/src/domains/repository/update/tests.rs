@@ -266,6 +266,12 @@ fn run_classifies_repository_state_from_git_output() {
                     );
             }
         }
+        if ancestry.is_none() {
+            executor =
+                executor
+                    .git(root, HEAD_SNAPSHOT, snapshot(head))
+                    .git(root, TRACKED_STATUS, "");
+        }
         let ctx = make_update_context(root.to_path_buf(), None, executor);
         let signal = UpdateSignal::new();
         let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
@@ -329,11 +335,57 @@ fn a_changed_checkout_never_reaches_the_merge() {
             let signal = UpdateSignal::new();
             let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
             assert!(
-                matches!(result, TaskResult::Skipped { reason, .. } if reason.contains("checkout branch, commit, or tracked files changed")),
+                matches!(result, TaskResult::Failed(reason) if reason.contains("checkout branch, commit, or tracked files changed")),
                 "{change:?}, before_merge={before_merge}",
             );
             assert!(!signal.was_updated());
+            assert!(
+                signal.recovery_required(),
+                "stale inputs must stop the remaining tasks"
+            );
         }
+    }
+}
+
+#[test]
+fn current_upstream_does_not_authorize_continuing_with_changed_or_unreadable_inputs() {
+    for status in [
+        Ok(ExecResult::success(" M conf/git-config.toml")),
+        Err(git_error("status failed")),
+    ] {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path();
+        let executor = tracking_script(
+            ScriptedExecutor::new()
+                .git(
+                    root,
+                    &["symbolic-ref", "--quiet", "HEAD"],
+                    "refs/heads/main",
+                )
+                .git(root, TRACKED_STATUS, ""),
+            root,
+        )
+        .git(root, HEAD_SNAPSHOT, snapshot(MAIN_NEW))
+        .git(root, FETCH_MAIN, fetch_output(MAIN_NEW))
+        .git(root, HEAD_SNAPSHOT, snapshot(MAIN_NEW))
+        .git(
+            root,
+            &["rev-parse", "--verify", &verify_fetched(MAIN_NEW)],
+            MAIN_NEW,
+        )
+        .git(root, HEAD_SNAPSHOT, snapshot(MAIN_NEW))
+        .command(
+            CommandSpec::new("git")
+                .args(TRACKED_STATUS)
+                .current_dir(root),
+            status,
+        );
+        let ctx = make_update_context(root.to_path_buf(), None, executor);
+        let signal = UpdateSignal::new();
+        let result = UpdateRepository::new(signal.clone()).run(&ctx);
+        assert!(matches!(result, Ok(TaskResult::Failed(_)) | Err(_)));
+        assert!(signal.recovery_required());
+        assert!(!signal.was_updated());
     }
 }
 
@@ -357,7 +409,9 @@ fn fetch_output_without_a_unique_object_blocks_the_merge() {
             root,
         )
         .git(root, HEAD_SNAPSHOT, snapshot("old"))
-        .git(root, FETCH_MAIN, output);
+        .git(root, FETCH_MAIN, output)
+        .git(root, HEAD_SNAPSHOT, snapshot("old"))
+        .git(root, TRACKED_STATUS, "");
         let ctx = make_update_context(root.to_path_buf(), None, executor);
         let signal = UpdateSignal::new();
         let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
@@ -413,23 +467,88 @@ fn apply_requires_both_configured_upstream_values() {
 }
 
 #[test]
-fn run_returns_failed_when_fetch_fails() {
-    // 1. symbolic-ref → on a branch
-    // 2. status → clean worktree
-    // 3. fetch → fails
-    let exec = ScriptedExecutor::new()
-        .ok("refs/heads/main")
-        .ok("")
-        .ok("origin")
-        .ok("refs/heads/main")
-        .ok(snapshot(MAIN_NEW))
-        .err(git_error("simulated fetch failure"));
-    let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
-    let repo_updated = UpdateSignal::new();
-    let task = UpdateRepository::new(repo_updated);
+fn failed_fetch_does_not_authorize_using_configuration_edited_while_offline() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let root = fixture.path();
+    let config_file = root.join("tracked-config");
+    std::fs::write(&config_file, "original").unwrap();
+    let tracked = config_file.clone();
+    let mut mock = MockExecutor::new();
+    mock.expect_execute().returning(move |spec| {
+        let args = spec.arguments();
+        let output = if args == ["symbolic-ref", "--quiet", "HEAD"] {
+            "refs/heads/main".to_string()
+        } else if args == TRACKED_STATUS {
+            if std::fs::read_to_string(&tracked).unwrap() == "edited" {
+                " M tracked-config".to_string()
+            } else {
+                String::new()
+            }
+        } else if args == REMOTE_MAIN {
+            "origin".to_string()
+        } else if args == MERGE_MAIN {
+            "refs/heads/main".to_string()
+        } else if args == HEAD_SNAPSHOT {
+            snapshot(MAIN_NEW)
+        } else if args == FETCH_MAIN {
+            std::fs::write(&tracked, "edited").unwrap();
+            return Err(git_non_zero("remote access denied"));
+        } else {
+            panic!("unexpected command: {args:?}");
+        };
+        Ok(ExecResult::success(output))
+    });
+    let ctx = make_update_context(root.to_path_buf(), None, mock);
+    let signal = UpdateSignal::new();
+    let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
+    assert!(matches!(result, TaskResult::Failed(_)));
+    assert!(!signal.was_updated());
+    assert!(
+        signal.recovery_required(),
+        "stale configuration must stop the run"
+    );
 
-    let result = task.run(&ctx).unwrap();
-    assert!(matches!(result, TaskResult::Failed(ref s) if s.contains("git fetch failed")));
+    // A new invocation sees the user's edit and does not fetch or merge over it.
+    let retry = UpdateRepository::new(UpdateSignal::new())
+        .run(&ctx)
+        .unwrap();
+    assert!(
+        matches!(retry, TaskResult::Skipped { ref reason, .. } if reason.contains("local changes present"))
+    );
+    assert_eq!(std::fs::read_to_string(config_file).unwrap(), "edited");
+}
+
+#[test]
+fn failed_fetch_only_allows_independent_tasks_when_checkout_can_be_verified() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let root = fixture.path();
+    for readable in [true, false] {
+        let exec = ScriptedExecutor::new()
+            .ok("refs/heads/main")
+            .git(root, TRACKED_STATUS, "")
+            .git(root, REMOTE_MAIN, "origin")
+            .git(root, MERGE_MAIN, "refs/heads/main")
+            .git(root, HEAD_SNAPSHOT, snapshot(MAIN_NEW))
+            .err(git_error("remote access denied"))
+            .git(root, HEAD_SNAPSHOT, snapshot(MAIN_NEW));
+        let exec = if readable {
+            exec.git(root, TRACKED_STATUS, "")
+        } else {
+            exec.err(git_error("cannot read status"))
+        };
+        let ctx = make_update_context(root.to_path_buf(), None, exec);
+        let signal = UpdateSignal::new();
+        let result = UpdateRepository::new(signal.clone()).run(&ctx);
+        if readable {
+            assert!(matches!(result, Ok(TaskResult::Failed(s)) if s == "git fetch failed"));
+        } else {
+            let err = result.unwrap_err();
+            assert!(format!("{err:#}").contains("cannot read status"));
+            assert!(err.downcast_ref::<ExecError>().is_some());
+        }
+        assert_eq!(signal.recovery_required(), !readable);
+        assert!(!signal.was_updated());
+    }
 }
 
 #[test]
@@ -511,7 +630,9 @@ fn run_retries_transient_fetch_failure() {
         ))
         .ok(fetch_output(MAIN_NEW))
         .ok(snapshot(MAIN_NEW))
-        .ok(MAIN_NEW);
+        .ok(MAIN_NEW)
+        .ok(snapshot(MAIN_NEW))
+        .ok("");
     let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated.clone());
@@ -532,7 +653,9 @@ fn run_stops_after_transient_fetch_retries_are_exhausted() {
         .ok(snapshot(MAIN_NEW))
         .err(git_error("connection reset by peer"))
         .err(git_error("connection reset by peer"))
-        .err(git_error("connection reset by peer"));
+        .err(git_error("connection reset by peer"))
+        .ok(snapshot(MAIN_NEW))
+        .ok("");
     let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
     let task = UpdateRepository::new(UpdateSignal::new());
 
@@ -622,7 +745,7 @@ fn run_updates_overlay_repository_when_behind_upstream() {
         .git(overlay_root.clone(), FETCH_MAIN, fetch_output(OVERLAY_NEW))
         .git(&main_root, HEAD_SNAPSHOT, snapshot(MAIN_NEW))
         .git(
-            main_root,
+            &main_root,
             &["rev-parse", "--verify", &verify_fetched(MAIN_NEW)],
             MAIN_NEW,
         )
@@ -637,6 +760,8 @@ fn run_updates_overlay_repository_when_behind_upstream() {
             &["merge-base", "--is-ancestor", "def456", OVERLAY_NEW],
             "",
         )
+        .git(&main_root, HEAD_SNAPSHOT, snapshot(MAIN_NEW))
+        .git(&main_root, TRACKED_STATUS, "")
         .git(&overlay_root, HEAD_SNAPSHOT, snapshot("def456"))
         .git(&overlay_root, TRACKED_STATUS, "")
         .git(
@@ -1020,6 +1145,10 @@ fn repeat_update_after_fast_forward_does_not_merge_or_request_another_restart() 
                 .git(root.path(), &merge_args(MAIN_NEW), "updated")
                 .git(root.path(), HEAD_SNAPSHOT, snapshot(MAIN_NEW))
                 .git(root.path(), UNMERGED_INDEX, "");
+        } else {
+            executor = executor
+                .git(root.path(), HEAD_SNAPSHOT, snapshot(head))
+                .git(root.path(), TRACKED_STATUS, "");
         }
     }
     let ctx = make_update_context(root.path().to_path_buf(), None, executor);

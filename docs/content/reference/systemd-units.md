@@ -30,9 +30,10 @@ even if one failed. The first-login user service runs the launcher at
 when both tasks are selected.
 
 It needs systemctl, is excluded in CI, and inside WSL requires systemd already running
-or degraded. System units can require sudo. Without a user manager, including Arch
-chroot provisioning, it creates per-user enablement links for the next real login
-instead of running services inside the chroot. See [Unit configuration](#configuration).
+or degraded. System units can require sudo. Without a user manager, it creates per-user
+enablement links for the next login. During Arch chroot provisioning it also configures
+system-unit links for the next boot, without querying, reloading, or starting a manager
+inside the chroot.
 
 Enabling a unit arranges activation through its install relationships, often
 at a later boot or login. Starting a unit activates it now. A timer can be
@@ -84,7 +85,12 @@ With a live manager:
   unit that has no enablement links.
 - If systemd reports an indirect unit, declare the unit that owns the install
   links. Disabling an indirect unit can remove links for another unit.
-- Disabling is not masking: another unit may start it later.
+- Disabling is not masking: another unit may start it later. If an administrator
+  has enabled a user unit for all users, a per-user disable cannot prevent its
+  next login start. Ask the administrator before changing that global setting.
+  A temporary mask hides whether the unit will start after the mask expires.
+  Dotfiles cannot confirm permanent disablement until then; retry after expiry
+  or after the administrator lifts the mask.
 - When a locally installed user unit already has enablement links, Dotfiles can reconcile
   changed `WantedBy` and `RequiredBy` targets using the same directive support as offline
   enablement. Other units use native systemctl enablement.
@@ -95,7 +101,9 @@ User unit files usually arrive through symlinks; packages may provide others.
 An enabled first-login service (`dotfiles-first-login.service`) can stay idle
 once the deferred VS Code extensions marker is gone. If the marker exists,
 Dotfiles queues the idle service. The service waits for the current update to
-release its locks, then installs the deferred extensions.
+release its locks, then installs the deferred extensions. It reads a regular
+marker file, not a symlink. If the marker contents change while installation
+is running, the service leaves the new queue for a retry.
 When the managed Thunar settings service has already run, Dotfiles checks its
 two managed preferences and reruns the service if either differs. Both the check
 and the service use the installed helper, including an overlay replacement.
@@ -104,13 +112,18 @@ degraded; changing `wsl.conf` cannot start it in the current session.
 
 Enabled units can execute consequential actions, including scheduled cleanup.
 Inspect their commands and drop-ins before enabling an unfamiliar unit.
+On filesystems that update directory access times, the daily `~/tmp` scan can
+keep empty directories from reaching the eight-day cleanup threshold. Scanning
+directory entries does not refresh the access times of the regular files inside.
 To stop managing a service and also stop it running, first apply an explicit `enabled =
 false` declaration. Deleting its entry alone does not disable it.
 
 Without a user manager, the task prepares per-user enablement links for the next login
-rather than starting services. Disabling a unit removes its matching enablement links
-even if the unit file is gone. When a global user enablement link keeps the unit enabled
-for all users, ask an administrator to disable it globally. Enablement links still work after managed home links are
+rather than starting services. If access to the manager is denied or its state cannot
+be determined, the task stops rather than changing links offline. A masked unit
+cannot be enabled offline, even if a drop-in supplies install targets.
+Disabling a unit removes its matching enablement links
+even if the unit file is gone. Enablement links still work after managed home links are
 replaced with local copies during removal. Offline enablement honors unit-specific
 drop-ins for `WantedBy` and `RequiredBy`. When those targets change, Dotfiles installs
 the requested links and removes obsolete links that point to the unit.

@@ -276,7 +276,21 @@ download_binary() {(
     echo "ERROR: Downloaded CLI did not start as dotfiles $tag; it was not installed." >&2
     exit 1
   fi
-  mv -fT -- "$staged_binary" "$BINARY"
+  if [ "$repair_cached" = true ]; then
+    # A non-executable cache entry may be repaired, but never downgrade a
+    # working CLI that arrived while this bootstrap was downloading.
+    if [ -x "$BINARY" ]; then
+      echo "ERROR: CLI cache changed during bootstrap; retry." >&2
+      exit 1
+    fi
+    mv -fT -- "$staged_binary" "$BINARY"
+  else
+    mv -nT -- "$staged_binary" "$BINARY"
+    if [ -e "$staged_binary" ]; then
+      echo "ERROR: CLI cache changed during bootstrap; retry." >&2
+      exit 1
+    fi
+  fi
 
   echo "Downloaded · checksum verified · $BINARY" >&2
 )}
@@ -311,6 +325,8 @@ if [ -e "$BINARY" ] && [ ! -f "$BINARY" ]; then
   echo "ERROR: CLI cache path is not a regular file: $BINARY" >&2
   exit 1
 fi
+repair_cached=false
+if [ -f "$BINARY" ]; then repair_cached=true; fi
 if [ ! -x "$BINARY" ]; then
   download_binary
 fi

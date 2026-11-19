@@ -31,9 +31,9 @@ State comes from the account database, not `$SHELL`. Apply uses `usermod` as roo
 Non-interactive runs report unmet work when authentication would require a prompt.
 The sudo permission check targets the exact `usermod` command, so a scoped
 passwordless rule does not need to authorize unrelated commands.
-A matching shell name
-with a missing/unusable executable still needs repair. Your currently running terminal
-shell is not replaced.
+A matching shell name with a missing executable or a path not registered in
+`/etc/shells` still needs repair. Both `/usr/bin/zsh` and `/bin/zsh` can be
+registered. Your currently running terminal shell is not replaced.
 
 After applying, a new login session is the meaningful check, not the current
 value of `$SHELL`. If zsh cannot be found, resolve its package installation

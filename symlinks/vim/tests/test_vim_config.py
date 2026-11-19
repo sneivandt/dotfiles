@@ -352,6 +352,47 @@ end
 
 
 class VimConfigTests(unittest.TestCase):
+    def check_undo_fallback(self, editor):
+        executable = shutil.which(editor)
+        if executable is None:
+            self.skipTest(f"{editor} is not available")
+        with tempfile.TemporaryDirectory(prefix=".undo-test-", dir=Path.cwd()) as directory:
+            root = Path(directory)
+            home = root / "home"
+            legacy = home / ".cache/vim/undo"
+            legacy.mkdir(parents=True)
+            env = {"PATH": os.defpath, "LC_ALL": "C.UTF-8", "HOME": str(home), "XDG_STATE_HOME": "relative",
+                   "TMPDIR": str(root), "DOTFILES_VIM_CONFIG": str(CONFIG / "vimrc")}
+            # Avoid any installed user configuration and third-party plugins.
+            base = [executable, "-u", "NONE", "-i", "NONE", "-n", "--noplugin"]
+            base += ["--headless"] if editor == "nvim" else ["-N", "-es"]
+            def run(*commands):
+                args = [arg for cmd in commands for arg in ("-c", cmd)]
+                result = subprocess.run(base + args + ["-c", "qa!"], cwd=root,
+                                        env=env, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+            old_config = "let &undodir = expand('~/.cache/vim/undo') | set undofile"
+            new_config = "execute 'source ' . fnameescape($DOTFILES_VIM_CONFIG)"
+            run(old_config, "edit note", "call setline(1, 'first')", "write")
+            run(new_config)  # Opening an unrelated session must not snapshot stale undo.
+            run(old_config, "edit note", "call setline(1, 'second')", "write")
+            old_file, = legacy.iterdir()
+            old_history = old_file.read_bytes()
+            run(new_config, "edit note", "normal! u", "write")
+            self.assertEqual((root / "note").read_text(), "first\n")
+            self.assertEqual(old_file.read_bytes(), old_history)
+            self.assertTrue((home / ".local/state/vim/undo" / old_file.name).is_file())
+            self.assertFalse((root / "relative/vim/undo").exists())
+            run(new_config, "edit note", r'execute "normal! \<C-R>"', "write")
+            self.assertEqual((root / "note").read_text(), "second\n")
+
+    def test_vim_legacy_undo_fallback(self):
+        self.check_undo_fallback("vim")
+
+    def test_neovim_legacy_undo_fallback(self):
+        self.check_undo_fallback("nvim")
+
     def test_bootstrap_matches_lockfile(self):
         bootstrap = (CONFIG / "lua/lazy-bootstrap.lua").read_text()
         match = re.search(r'local lazy_commit = "([0-9a-f]{40})"', bootstrap)

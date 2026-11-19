@@ -123,18 +123,16 @@ impl WrapperResource {
         if contents == self.content.as_bytes() {
             return Ok(true);
         }
-        self.recorded(contents)
+        let hash = crate::infra::fs::content_hash(contents);
+        Ok(self.ownership_record()?.lines().any(|line| line == hash))
     }
 
-    fn recorded(&self, contents: &[u8]) -> Result<bool> {
-        let recorded = match std::fs::read_to_string(self.ownership_path()) {
-            Ok(recorded) => recorded,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-            Err(error) => return Err(error.into()),
-        };
-        Ok(recorded
-            .lines()
-            .any(|line| line == crate::infra::fs::content_hash(contents)))
+    fn ownership_record(&self) -> Result<String> {
+        match std::fs::read_to_string(self.ownership_path()) {
+            Ok(recorded) => Ok(recorded),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+            Err(error) => Err(error.into()),
+        }
     }
 
     fn verify_baseline(&self, before: Option<&[u8]>) -> Result<()> {
@@ -266,7 +264,15 @@ impl IntrinsicState for WrapperResource {
         #[cfg(not(unix))]
         let permissions_correct = true;
 
-        if current == self.content && permissions_correct && self.recorded(current.as_bytes())? {
+        // A pending two-hash record must be finalized on retry, even after
+        // the launcher bytes themselves were successfully published.
+        if current == self.content
+            && permissions_correct
+            && self
+                .ownership_record()?
+                .lines()
+                .eq([crate::infra::fs::content_hash(&current).as_str()])
+        {
             Ok(ResourceState::Correct)
         } else {
             Ok(ResourceState::Incorrect {
@@ -541,6 +547,16 @@ mod tests {
             .unwrap();
             assert!(new.owned(old.content.as_bytes()).unwrap());
             assert!(new.owned(new.content.as_bytes()).unwrap());
+            assert!(matches!(
+                new.current_state().unwrap(),
+                ResourceState::Incorrect { .. }
+            ));
+            new.apply().unwrap();
+            assert_eq!(new.current_state().unwrap(), ResourceState::Correct);
+            std::fs::write(&new.target, &old.content).unwrap();
+            assert_eq!(new.remove().unwrap(), ResourceChange::AlreadyCorrect);
+            assert_eq!(std::fs::read_to_string(&new.target).unwrap(), old.content);
+            std::fs::write(&new.target, &new.content).unwrap();
             assert_eq!(new.remove().unwrap(), ResourceChange::Applied);
             assert!(!new.ownership_path().exists());
             std::fs::write(&new.target, &new.content).unwrap();

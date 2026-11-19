@@ -227,8 +227,9 @@ flowchart TB
 
 These packages use distinct `*-dotfiles` names and can replace/conflict with
 their former packages. Review Paru's replacement prompt. PowerShell's lifecycle
-script also adds `/usr/bin/pwsh` to `/etc/shells` on install/upgrade and removes
-it on uninstall. Review lifecycle scripts as part of the package transaction.
+script adds `/usr/bin/pwsh` to `/etc/shells` if missing. Uninstall removes only
+the entry the script marked as its own. Existing and older unmarked entries
+remain for administrator review.
 
 ::: warning Preparation executes recipes and replaces Paru preferences
 A normal Arch update prepares every managed recipe, not just selected packages.

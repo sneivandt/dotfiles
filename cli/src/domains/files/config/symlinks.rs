@@ -1,5 +1,5 @@
 //! Symlink configuration loading.
-use anyhow::{Result, bail};
+use anyhow::{Context as _, Result, bail};
 use serde::Deserialize;
 use std::path::{Component, Path, PathBuf};
 
@@ -14,6 +14,7 @@ crate::infra::config::diagnostic_codes! {
     SYMLINK_PARENT_IN_SOURCE => "parent-in-source",
     SYMLINK_PARENT_IN_TARGET => "parent-in-target",
     SYMLINK_SOURCE_MISSING => "source-missing",
+    SYMLINK_SOURCE_INSPECTION => "source-inspection",
     SYMLINK_SOURCE_OUTSIDE_ROOT => "source-outside-root",
     SYMLINK_ROOT_SOURCE => "root-source",
     SYMLINK_ROOT_TARGET => "root-target",
@@ -230,34 +231,32 @@ pub(crate) fn validate_paths(symlink: &Symlink) -> Result<()> {
     Ok(())
 }
 
-fn source_containment_error(symlink: &Symlink, fallback: &Path) -> Option<String> {
-    let symlinks_dir = resolve_symlinks_dir(symlink, fallback);
-    let resolved_root = std::fs::canonicalize(&symlinks_dir).ok()?;
-    let source = symlinks_dir.join(&symlink.source);
-    let resolved_source = std::fs::canonicalize(&source).ok()?;
-    (!resolved_source.starts_with(&resolved_root)).then(|| {
-        format!(
-            "source resolves outside its symlinks directory: {} -> {}",
-            source.display(),
-            resolved_source.display()
-        )
-    })
+pub(crate) enum InspectedSource {
+    Available(PathBuf),
+    Missing(String),
+    Outside(String),
 }
 
-/// Reject a configured source that resolves outside its owning `symlinks/` tree.
-///
-/// Missing sources are handled separately by resource state discovery and do
-/// not produce a containment error.
-///
-/// # Errors
-///
-/// Returns an error when the source canonicalizes outside the resolved
-/// `symlinks/` directory.
-pub(crate) fn validate_source_containment(symlink: &Symlink, fallback: &Path) -> Result<()> {
-    if let Some(message) = source_containment_error(symlink, fallback) {
-        bail!(message);
+pub(crate) fn inspect_source(source: &Path, directory: Option<&Path>) -> Result<InspectedSource> {
+    let resolved = match dunce::canonicalize(source) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(InspectedSource::Missing(format!(
+                "source does not exist: {}",
+                source.display()
+            )));
+        }
+        result => result.with_context(|| format!("inspect source: {}", source.display()))?,
+    };
+    if let Some(directory) = directory
+        && !resolved.starts_with(crate::infra::fs::canonicalize(directory)?)
+    {
+        return Ok(InspectedSource::Outside(format!(
+            "source resolves outside its symlinks directory: {} -> {}",
+            source.display(),
+            resolved.display()
+        )));
     }
-    Ok(())
+    Ok(InspectedSource::Available(resolved))
 }
 
 fn is_absolute_like(path: &str) -> bool {
@@ -310,7 +309,18 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
             |s| {
                 let symlinks_dir = resolve_symlinks_dir(s, root);
                 let source_path = symlinks_dir.join(&s.source);
-                let containment_error = source_containment_error(s, root);
+                let source_check = match inspect_source(&source_path, Some(&symlinks_dir)) {
+                    Ok(InspectedSource::Available(_)) => None,
+                    Ok(InspectedSource::Missing(reason)) => {
+                        check(true, SYMLINK_SOURCE_MISSING, reason)
+                    }
+                    Ok(InspectedSource::Outside(reason)) => {
+                        check_error(true, SYMLINK_SOURCE_OUTSIDE_ROOT, reason)
+                    }
+                    Err(error) => {
+                        check_error(true, SYMLINK_SOURCE_INSPECTION, format!("{error:#}"))
+                    }
+                };
                 let target_checks: Vec<CheckItem> = s.target.as_ref().map_or_else(Vec::new, |t| {
                     vec![
                         check(
@@ -331,11 +341,7 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
                     ]
                 });
                 let mut checks: Vec<CheckItem> = vec![
-                    check(
-                        !source_path.exists(),
-                        SYMLINK_SOURCE_MISSING,
-                        format!("source file does not exist: {}", source_path.display()),
-                    ),
+                    source_check,
                     check(
                         is_absolute_like(&s.source),
                         SYMLINK_ABSOLUTE_SOURCE,
@@ -350,13 +356,6 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
                         points_to_root(&s.source),
                         SYMLINK_ROOT_SOURCE,
                         "source must name a file or directory below symlinks/",
-                    ),
-                    check_error(
-                        containment_error.is_some(),
-                        SYMLINK_SOURCE_OUTSIDE_ROOT,
-                        containment_error.unwrap_or_else(|| {
-                            "source must resolve inside its symlinks directory".to_string()
-                        }),
                     ),
                 ];
                 checks.extend(target_checks);
@@ -700,7 +699,37 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
             "symlink.source-outside-root"
         );
         assert!(diagnostics[0].message.contains("outside"));
-        assert!(validate_source_containment(&symlink, temp_dir.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn inaccessible_source_is_not_reported_as_missing_and_recovers_after_access_is_restored() {
+        use crate::infra::config::Severity;
+        use std::os::unix::fs::PermissionsExt as _;
+        let fixture = tempfile::tempdir().unwrap();
+        let dir = fixture.path().join("symlinks/locked");
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("config");
+        std::fs::write(&source, "custom").unwrap();
+        let entries = [symlink("locked/config", None)];
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let diagnostics = validate(&entries, fixture.path());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let [diagnostic] = diagnostics.as_slice() else {
+            panic!("expected one source inspection error, got {diagnostics:?}");
+        };
+        assert_eq!(diagnostic.code, SYMLINK_SOURCE_INSPECTION);
+        assert_eq!(diagnostic.severity, Severity::Error);
+        assert_eq!(diagnostic.source, "symlinks.toml");
+        assert_eq!(diagnostic.item, "locked/config");
+        assert!(diagnostic.message.contains(&source.display().to_string()));
+        assert!(validate(&entries, fixture.path()).is_empty());
+        assert_eq!(std::fs::read_to_string(&source).unwrap(), "custom");
+        std::fs::remove_file(source).unwrap();
+        assert_eq!(
+            validate(&entries, fixture.path())[0].code,
+            SYMLINK_SOURCE_MISSING
+        );
     }
 
     #[cfg(unix)]

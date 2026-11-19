@@ -39,14 +39,12 @@ impl HookFileResource {
         self.target.with_extension(OWNERSHIP_EXTENSION)
     }
 
-    fn owned(&self, contents: &[u8]) -> ResourceResult<bool> {
-        let recorded = match std::fs::read_to_string(self.ownership_path()) {
-            Ok(recorded) => recorded,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-            Err(error) => return Err(error.into()),
-        };
-        let hash = content_hash(contents);
-        Ok(recorded.lines().any(|line| line == hash))
+    fn ownership_record(&self) -> ResourceResult<String> {
+        match std::fs::read_to_string(self.ownership_path()) {
+            Ok(recorded) => Ok(recorded),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+            Err(error) => Err(error.into()),
+        }
     }
 
     fn target_contents(&self) -> ResourceResult<Option<Vec<u8>>> {
@@ -66,6 +64,17 @@ impl HookFileResource {
     }
 }
 
+#[cfg(unix)]
+fn git_can_execute(path: &std::path::Path) -> ResourceResult<bool> {
+    match nix::unistd::access(path, nix::unistd::AccessFlags::X_OK) {
+        Ok(()) => Ok(true),
+        Err(nix::errno::Errno::EACCES) => Ok(false),
+        Err(error) => Err(anyhow::Error::new(error)
+            .context(format!("checking hook execute access: {}", path.display()))
+            .into()),
+    }
+}
+
 impl Resource for HookFileResource {
     fn description(&self) -> String {
         self.target.file_name().map_or_else(
@@ -82,7 +91,10 @@ impl Resource for HookFileResource {
         let before = self.target_contents()?;
         if let Some(contents) = &before
             && *contents != source
-            && !self.owned(contents)?
+            && !self
+                .ownership_record()?
+                .lines()
+                .any(|line| line == content_hash(contents))
         {
             return Err(anyhow::anyhow!(
                 "preserving foreign or modified hook {}; back it up and move it aside before installing",
@@ -100,7 +112,16 @@ impl Resource for HookFileResource {
         std::fs::write(staged.path(), &source)?;
 
         #[cfg(unix)]
-        crate::infra::fs::set_executable(staged.path())?;
+        {
+            crate::infra::fs::set_executable(staged.path())?;
+            if !git_can_execute(staged.path())? {
+                return Err(anyhow::anyhow!(
+                    "Git cannot execute hooks in {}; check directory access and mount options",
+                    parent.display()
+                )
+                .into());
+            }
+        }
 
         if self.target_contents()? != before {
             return Err(anyhow::anyhow!(
@@ -135,7 +156,8 @@ impl RemovableResource for HookFileResource {
         let Some(contents) = self.target_contents()? else {
             return Ok(ResourceState::Missing);
         };
-        if self.owned(&contents)?
+        let hash = content_hash(&contents);
+        if self.ownership_record()?.lines().any(|line| line == hash)
             || (self.source.try_exists()?
                 && crate::infra::fs::read_bytes(&self.source)? == contents)
         {
@@ -185,35 +207,33 @@ impl IntrinsicState for HookFileResource {
         }
         let src_content = crate::infra::fs::read_bytes(&self.source)?;
         let dst_content = crate::infra::fs::read_bytes(&self.target)?;
-        let owned = self.owned(&dst_content)?;
+        let record = self.ownership_record()?;
+        let hash = content_hash(&dst_content);
+        let owned = record.lines().any(|line| line == hash);
         if src_content != dst_content && !owned {
             return Ok(ResourceState::Invalid {
                 reason: "foreign or modified hook; back it up and move it aside before installing dotfiles hooks".into(),
             });
         }
 
-        // On Unix, verify the installed hook has the executable bit set
         #[cfg(unix)]
-        {
-            use anyhow::Context as _;
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&self.target)
-                .with_context(|| format!("read target metadata: {}", self.target.display()))?
-                .permissions()
-                .mode();
-            if mode & 0o111 == 0 {
-                return Ok(ResourceState::Incorrect {
-                    current: "not executable".to_string(),
-                });
-            }
+        if !git_can_execute(&self.target)? {
+            return Ok(ResourceState::Incorrect {
+                current: "not executable".to_string(),
+            });
         }
 
-        // Compare file contents
-        if src_content == dst_content && (owned || self.targets_source()?) {
+        // A two-hash record is only a pending publication, even if the new
+        // bytes are already visible. Retry must retire the previous hash.
+        if src_content == dst_content
+            && (record.lines().eq([hash.as_str()]) || self.targets_source()?)
+        {
             Ok(ResourceState::Correct)
         } else {
             Ok(ResourceState::Incorrect {
-                current: if owned {
+                current: if owned && src_content == dst_content {
+                    "ownership update incomplete"
+                } else if owned {
                     "content differs"
                 } else {
                     "ownership not recorded"
@@ -541,5 +561,94 @@ mod tests {
         assert_eq!(resource.removal_state().unwrap(), ResourceState::Correct);
         assert_eq!(resource.remove().unwrap(), ResourceChange::Applied);
         assert!(!resource.ownership_path().exists());
+    }
+
+    #[test]
+    fn retry_finalizes_hook_ownership_on_either_side_of_publication() {
+        for published in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let resource =
+                HookFileResource::new(dir.path().join("source"), dir.path().join("hook"));
+            std::fs::write(&resource.source, b"old").unwrap();
+            resource.apply().unwrap();
+            std::fs::write(&resource.source, b"new").unwrap();
+            let pending = format!("{}\n{}\n", content_hash(b"new"), content_hash(b"old"));
+            std::fs::write(resource.ownership_path(), &pending).unwrap();
+            if published {
+                std::fs::write(&resource.target, b"new").unwrap();
+            }
+            assert!(matches!(
+                resource.current_state().unwrap(),
+                ResourceState::Incorrect { .. }
+            ));
+            assert_eq!(
+                std::fs::read_to_string(resource.ownership_path()).unwrap(),
+                pending
+            );
+            resource.apply().unwrap();
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+            assert_eq!(std::fs::read(&resource.target).unwrap(), b"new");
+            std::fs::write(&resource.target, b"old").unwrap(); // user restores an older copy
+            assert_eq!(resource.remove().unwrap(), ResourceChange::AlreadyCorrect);
+            assert_eq!(std::fs::read(&resource.target).unwrap(), b"old");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copied_hook_with_owner_execute_removed_runs_helpers_after_repair() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let helpers = root.join("hooks");
+        std::fs::create_dir(&helpers).unwrap();
+        for check in ["check-sensitive.sh", "check-rust.sh"] {
+            std::fs::write(helpers.join(check), format!("echo {check} >> ran\n")).unwrap();
+        }
+        std::fs::write(
+            root.join("git"),
+            "#!/bin/sh\n[ \"$*\" = 'rev-parse --show-toplevel' ] || exit 99\npwd\n",
+        )
+        .unwrap();
+        crate::infra::fs::set_executable(&root.join("git")).unwrap();
+        std::os::unix::fs::symlink("/bin/sh", root.join("sh")).unwrap();
+        let source = helpers.join("pre-commit");
+        std::fs::copy(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../hooks/pre-commit"),
+            &source,
+        )
+        .unwrap();
+        let resource = HookFileResource::new(source, root.join("installed/pre-commit"));
+        resource.apply().unwrap();
+        let run = || {
+            std::process::Command::new(&resource.target)
+                .current_dir(&root)
+                .env_clear()
+                .env("PATH", &root)
+                .status()
+        };
+        // Root may execute a file with any execute bit; ordinary owners cannot.
+        let mode = if nix::unistd::getuid().is_root() {
+            0o644
+        } else {
+            0o655
+        };
+        std::fs::set_permissions(&resource.target, std::fs::Permissions::from_mode(mode)).unwrap();
+        assert_eq!(
+            run().unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
+        assert!(!root.join("ran").exists());
+        resource.apply().unwrap();
+        assert!(run().unwrap().success());
+        assert_eq!(
+            std::fs::read_to_string(root.join("ran")).unwrap(),
+            "check-sensitive.sh\ncheck-rust.sh\n"
+        );
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 }

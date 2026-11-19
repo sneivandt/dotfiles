@@ -41,8 +41,14 @@ fn discover_hooks(ctx: &Context, installing: bool) -> Result<Vec<HookFileResourc
         let entry = entry?;
         let path = entry.path();
         // Extensionless files are hook entry points; helpers and directories stay out.
-        if path.extension().is_none() && path.is_file() {
-            names.insert(entry.file_name());
+        if path.extension().is_none() {
+            let metadata = std::fs::metadata(&path)
+                .with_context(|| format!("inspecting hook source {}", path.display()))?;
+            if metadata.is_file() {
+                names.insert(entry.file_name());
+            } else if !metadata.is_dir() {
+                anyhow::bail!("hook source is not a regular file: {}", path.display());
+            }
         }
     }
     if !installing {
@@ -173,6 +179,10 @@ impl Task for UninstallGitHooks {
     }
 }
 
+#[cfg(all(test, unix))]
+#[path = "tests/template_hooks.rs"]
+mod template_hooks;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,6 +264,30 @@ mod tests {
             let error = task.run(&ctx).unwrap_err();
             assert!(error.to_string().contains("reading hooks directory"));
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn broken_hook_source_aborts_discovery_before_any_publication() {
+        let dir = tempfile::tempdir().unwrap();
+        let repository = init_repo(dir.path());
+        let hooks = dir.path().join("hooks");
+        std::fs::create_dir(&hooks).unwrap();
+        std::fs::write(hooks.join("pre-commit"), "new").unwrap();
+        std::os::unix::fs::symlink("missing", hooks.join("commit-msg")).unwrap();
+        let target = repository.path().join("hooks/pre-commit");
+        let ctx = make_linux_context(dir.path().to_path_buf(), None);
+        assert!(
+            InstallGitHooks
+                .run(&ctx)
+                .unwrap_err()
+                .to_string()
+                .contains("inspecting hook source")
+        );
+        assert!(!target.exists());
+        std::fs::write(hooks.join("missing"), "recovered").unwrap();
+        assert!(InstallGitHooks.run(&ctx).is_ok());
+        assert_eq!(std::fs::read(target).unwrap(), b"new");
     }
 
     #[test]

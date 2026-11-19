@@ -63,6 +63,25 @@ impl Task for ConfigureParu {
     }
 }
 
+fn preparation_cancelled() -> crate::infra::exec::ExecError {
+    crate::infra::exec::ExecError::Cancelled {
+        command: "custom package preparation".into(),
+        result: crate::infra::exec::ExecResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            success: false,
+            code: None,
+        },
+    }
+}
+
+fn check_publication(ctx: &Context) -> Result<()> {
+    if ctx.is_cancelled() {
+        return Err(preparation_cancelled().into());
+    }
+    Ok(())
+}
+
 /// Evaluate independent recipes in bounded workers; publication stays ordered.
 fn map_recipes<T: Sync, R: Send>(
     ctx: &Context,
@@ -74,16 +93,7 @@ fn map_recipes<T: Sync, R: Send>(
     let cancelled = AtomicBool::new(false);
     let evaluate = |item: &T| {
         if ctx.is_cancelled() || cancelled.load(Ordering::Acquire) {
-            return Err(crate::infra::exec::ExecError::Cancelled {
-                command: "custom package preparation".into(),
-                result: crate::infra::exec::ExecResult {
-                    stdout: String::new(),
-                    stderr: String::new(),
-                    success: false,
-                    code: None,
-                },
-            }
-            .into());
+            return Err(preparation_cancelled().into());
         }
         let result = work(item);
         if result
@@ -121,10 +131,38 @@ struct ParuConfig<'a> {
 
 struct ParuPlan {
     config: String,
-    previous_config: Option<String>,
+    previous_config: ConfigBaseline,
     snapshots: Vec<SnapshotPlan>,
     config_path: PathBuf,
     failures: Vec<String>,
+}
+
+#[derive(PartialEq, Eq)]
+struct ConfigBaseline {
+    contents: Option<String>,
+    link: Option<PathBuf>,
+}
+
+impl ConfigBaseline {
+    fn read(path: &Path) -> Result<Self> {
+        let link = crate::infra::fs::symlink_metadata_optional(path, "inspect Paru configuration")?
+            .filter(std::fs::Metadata::is_symlink)
+            .map(|_| std::fs::read_link(path))
+            .transpose()?;
+        Ok(Self {
+            contents: read_optional(path)?,
+            link,
+        })
+    }
+
+    fn verify(&self, path: &Path) -> Result<()> {
+        ensure!(
+            Self::read(path)? == *self,
+            "Paru configuration {} changed during preparation; preserve your preferences in paru.conf.base before retrying",
+            path.display()
+        );
+        Ok(())
+    }
 }
 
 struct SnapshotPlan {
@@ -211,7 +249,9 @@ impl Operation for ParuConfig<'_> {
         for (directory, source) in recipes(ctx)? {
             let prepared =
                 Snapshot::plan(&build_root, &source.package_base, &directory, ctx.dry_run())
-                    .and_then(|snapshot| Ok((snapshot.needs_write()?, snapshot)));
+                    .and_then(|snapshot| {
+                        Ok((snapshot.validated_metadata(&source)?.is_none(), snapshot))
+                    });
             match prepared {
                 Ok((changed, snapshot)) => {
                     content.push_str(&repository_section(&source.package_base, &snapshot.path)?);
@@ -232,20 +272,11 @@ impl Operation for ParuConfig<'_> {
             }
         }
         let config_path = paru_config_path(ctx)?;
-        let previous_config = read_optional(&config_path)?;
-        let mut snapshots_current = true;
-        for prepared in &snapshots {
-            if prepared.changed
-                || prepared
-                    .snapshot
-                    .validated_metadata(&prepared.source)?
-                    .is_none()
-            {
-                snapshots_current = false;
-                break;
-            }
-        }
-        if previous_config.as_deref() == Some(&content) && snapshots_current && failures.is_empty()
+        let previous_config = ConfigBaseline::read(&config_path)?;
+        let snapshots_current = snapshots.iter().all(|prepared| !prepared.changed);
+        if previous_config.contents.as_deref() == Some(&content)
+            && snapshots_current
+            && failures.is_empty()
         {
             return Ok(OperationState::Complete);
         }
@@ -272,7 +303,7 @@ impl Operation for ParuConfig<'_> {
                 &format!("refresh {}", prepared.recipe),
             );
         }
-        let config_changed = plan.previous_config.as_deref() != Some(&plan.config);
+        let config_changed = plan.previous_config.contents.as_deref() != Some(&plan.config);
         if config_changed {
             ctx.log()
                 .debug(format!("write {}", plan.config_path.display()));
@@ -307,15 +338,33 @@ impl Operation for ParuConfig<'_> {
         let validations = map_recipes(ctx, &plan.snapshots, |prepared| {
             prepared.snapshot.validate_metadata(ctx, &prepared.source)
         });
+        // Every validation has finished. An interrupted worker stops publication,
+        // including earlier recipes whose validations happened to succeed.
+        let validations: Vec<_> = validations
+            .into_iter()
+            .map(|result| match result {
+                Err(error)
+                    if error
+                        .downcast_ref::<crate::infra::exec::ExecError>()
+                        .is_some_and(crate::infra::exec::ExecError::is_cancelled) =>
+                {
+                    Err(error)
+                }
+                other => Ok(other),
+            })
+            .collect::<Result<_>>()?;
+        check_publication(ctx)?;
+        plan.previous_config.verify(&plan.config_path)?;
         for (prepared, validation) in plan.snapshots.iter().zip(validations) {
+            check_publication(ctx)?;
             let snapshot = &prepared.snapshot;
             let result = validation.and_then(|srcinfo| {
-                let snapshot_changed = prepared.changed || snapshot.metadata_changed(&srcinfo);
-                if snapshot_changed {
+                let write_inputs = snapshot.metadata_changed(&srcinfo) || snapshot.needs_write()?;
+                if write_inputs {
                     snapshot.apply(&srcinfo)?;
                 }
                 snapshot.record_validation(&prepared.source, &srcinfo)?;
-                Ok(snapshot_changed)
+                Ok(write_inputs || prepared.changed)
             });
             match result {
                 Ok(snapshot_changed) => {
@@ -332,12 +381,6 @@ impl Operation for ParuConfig<'_> {
                     }
                 }
                 Err(error) => {
-                    if error
-                        .downcast_ref::<crate::infra::exec::ExecError>()
-                        .is_some_and(crate::infra::exec::ExecError::is_cancelled)
-                    {
-                        return Err(error);
-                    }
                     let base = snapshot
                         .path
                         .file_name()
@@ -348,9 +391,14 @@ impl Operation for ParuConfig<'_> {
                 }
             }
         }
-        if plan.previous_config.as_deref() != Some(&content) {
+        check_publication(ctx)?;
+        if plan.previous_config.contents.as_deref() == Some(&content) {
+            plan.previous_config.verify(&plan.config_path)?;
+        } else {
             let path = &plan.config_path;
-            write_atomic(path, &content)?;
+            crate::infra::fs::write_atomic_checked(path, &content, || {
+                plan.previous_config.verify(path)
+            })?;
             changed += 1;
             ctx.log().debug(format!("write {}", path.display()));
             ctx.log().action(
@@ -586,10 +634,12 @@ impl Operation for ReleaseUpdates {
     }
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        check_publication(ctx)?;
         plan.cache.persist();
         let mut failures = plan.failures.clone();
         let mut changed = 0;
         for pins in &plan.files {
+            check_publication(ctx)?;
             let path = &pins.path;
             match write_atomic(path, &pins.content) {
                 Ok(()) => {

@@ -148,6 +148,31 @@ pub(super) fn copilot_app_db_path(ctx: &Context) -> PathBuf {
 /// Invalid or unreadable persisted configuration is not an absent override:
 /// falling back could deploy skills into a different directory.
 pub(super) fn copilot_cowork_skills_path(ctx: &Context) -> Result<Option<PathBuf>> {
+    let Some(target) = configured_cowork_path(ctx)? else {
+        return Ok(None);
+    };
+    // Both trees can have missing suffixes on a first install. Resolve existing
+    // parents (including aliases) before allowing APM or the copier to run.
+    let source = crate::infra::fs::resolve_directory(&ctx.home().join(".agents/skills"))?;
+    let destination = crate::infra::fs::resolve_directory(&target)?;
+    anyhow::ensure!(
+        !destination
+            .components()
+            .any(|part| part == std::path::Component::ParentDir),
+        "cannot resolve Copilot Cowork destination {}; use a path without unresolved '..' components",
+        target.display()
+    );
+    let source = crate::infra::fs::path_identity(&source);
+    let destination = crate::infra::fs::path_identity(&destination);
+    anyhow::ensure!(
+        !destination.starts_with(&source) && !source.starts_with(&destination),
+        "Copilot Cowork destination {} overlaps the shared skills directory; choose a separate directory",
+        target.display()
+    );
+    Ok(Some(target))
+}
+
+fn configured_cowork_path(ctx: &Context) -> Result<Option<PathBuf>> {
     if let Some(path) = ctx
         .env()
         .var_os(COWORK_OVERRIDE)
@@ -157,14 +182,11 @@ pub(super) fn copilot_cowork_skills_path(ctx: &Context) -> Result<Option<PathBuf
     }
 
     let config_path = ctx.home().join(".apm").join("config.json");
-    let raw = match std::fs::read_to_string(&config_path) {
-        Ok(raw) => Some(raw),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => {
-            return Err(error).with_context(|| format!("reading {}", config_path.display()));
-        }
-    };
-    if let Some(raw) = raw {
+    if crate::infra::fs::symlink_metadata_optional(&config_path, "checking APM configuration")?
+        .is_some()
+    {
+        let raw = std::fs::read_to_string(&config_path)
+            .with_context(|| format!("reading {}", config_path.display()))?;
         let config: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&raw)
             .with_context(|| format!("parsing {}", config_path.display()))?;
         match config.get("copilot_cowork_skills_dir") {

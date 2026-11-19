@@ -7,6 +7,26 @@ use crate::infra::exec::{CommandSpec, ExecResult, Executor};
 
 pub(crate) const SYSTEM_ZSH: &str = "/usr/bin/zsh";
 
+#[derive(Debug)]
+enum RegisteredShells {
+    File(std::path::PathBuf),
+    #[cfg(test)]
+    Fixture(&'static str),
+}
+
+impl RegisteredShells {
+    fn read(&self) -> anyhow::Result<String> {
+        use anyhow::Context as _;
+
+        match self {
+            Self::File(path) => std::fs::read_to_string(path)
+                .with_context(|| format!("reading allowed login shells from {}", path.display())),
+            #[cfg(test)]
+            Self::Fixture(text) => Ok((*text).to_owned()),
+        }
+    }
+}
+
 /// A resource for configuring the current account's default login shell.
 #[derive(Debug)]
 pub struct DefaultShellResource {
@@ -15,8 +35,7 @@ pub struct DefaultShellResource {
     env: Arc<dyn Env>,
     running_as_root: bool,
     allow_prompt: bool,
-    #[cfg(test)]
-    allowed_shells: Option<&'static str>,
+    allowed_shells: RegisteredShells,
 }
 
 impl DefaultShellResource {
@@ -29,8 +48,10 @@ impl DefaultShellResource {
             env,
             running_as_root: process_is_root(),
             allow_prompt: false,
+            #[cfg(not(test))]
+            allowed_shells: RegisteredShells::File("/etc/shells".into()),
             #[cfg(test)]
-            allowed_shells: None,
+            allowed_shells: RegisteredShells::Fixture("/bin/sh\n/usr/bin/zsh\n/bin/zsh\n"),
         }
     }
 
@@ -45,7 +66,6 @@ impl DefaultShellResource {
     #[must_use]
     const fn with_root(mut self, running_as_root: bool) -> Self {
         self.running_as_root = running_as_root;
-        self.allowed_shells = Some("/bin/sh\n/usr/bin/zsh\n");
         self
     }
 
@@ -86,7 +106,10 @@ impl DefaultShellResource {
             });
         };
         let system_alias = format!("/bin/{}", self.target_shell);
-        if (shell == self.system_shell() || shell == system_alias) && self.executor.which(shell) {
+        if (shell == self.system_shell() || shell == system_alias)
+            && self.executor.which(shell)
+            && shell_is_listed(&self.allowed_shells.read()?, shell)
+        {
             Ok(ResourceState::Correct)
         } else {
             Ok(ResourceState::Incorrect {
@@ -100,26 +123,15 @@ impl DefaultShellResource {
     }
 
     fn registered_system_shell(&self) -> anyhow::Result<std::path::PathBuf> {
-        use anyhow::Context as _;
-
-        let shell = self.executor.which_path(&self.system_shell())?;
-        let allowed = || {
-            std::fs::read_to_string("/etc/shells")
-                .context("reading allowed login shells from /etc/shells")
-        };
-        #[cfg(test)]
-        let allowed = || {
-            self.allowed_shells
-                .map_or_else(allowed, |shells| Ok(shells.into()))
-        };
-        anyhow::ensure!(
-            allowed()?
-                .lines()
-                .any(|line| std::path::Path::new(line.trim()) == shell),
-            "{} is not registered in /etc/shells",
-            shell.display(),
-        );
-        Ok(shell)
+        let allowed = self.allowed_shells.read()?;
+        let preferred = self.system_shell();
+        let alias = format!("/bin/{}", self.target_shell);
+        for candidate in [&preferred, &alias] {
+            if shell_is_listed(&allowed, candidate) {
+                return self.executor.which_path(candidate);
+            }
+        }
+        anyhow::bail!("{preferred} is not registered in /etc/shells (also checked {alias})")
     }
 
     fn non_interactive_sudo_available(&self, shell: &str, user: &str) -> ResourceResult<bool> {
@@ -143,6 +155,10 @@ fn process_is_root() -> bool {
 #[cfg(not(unix))]
 const fn process_is_root() -> bool {
     false
+}
+
+fn shell_is_listed(allowed: &str, shell: &str) -> bool {
+    allowed.lines().any(|line| line.trim() == shell)
 }
 
 fn passwd_shell<'a>(line: &'a str, expected_user: &str) -> Option<&'a str> {
@@ -223,21 +239,102 @@ mod tests {
 
     #[test]
     fn root_cannot_set_an_unregistered_login_shell() {
-        let mut mock = MockExecutor::new();
-        mock.expect_which_path()
-            .withf(|program| program == SYSTEM_ZSH)
-            .once()
-            .returning(|_| Ok(PathBuf::from(SYSTEM_ZSH)));
-        let mut resource =
-            DefaultShellResource::new("zsh".into(), Arc::new(mock), env_for("stuart"))
-                .with_root(true);
-        resource.allowed_shells = Some("/bin/bash\n# /usr/bin/zsh\n/usr/local/bin/zsh\n");
+        let mut resource = DefaultShellResource::new(
+            "zsh".into(),
+            Arc::new(MockExecutor::new()),
+            env_for("stuart"),
+        )
+        .with_root(true);
+        resource.allowed_shells =
+            RegisteredShells::Fixture("/bin/bash\n# /usr/bin/zsh\n/usr/local/bin/zsh\n");
         let error = resource.apply().unwrap_err();
         assert!(
             error
                 .to_string()
                 .contains("is not registered in /etc/shells")
         );
+    }
+
+    #[test]
+    fn repair_uses_the_registered_system_alias_and_converges_on_the_next_login() {
+        let mut mock = MockExecutor::new();
+        let mut sequence = mockall::Sequence::new();
+        for (installed, mutate) in [(SYSTEM_ZSH, true), ("/bin/zsh", false)] {
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .withf(|spec| spec.program() == "getent" && spec.arguments() == ["passwd", "kiosk"])
+                .returning(move |_| Ok(ExecResult::success(passwd("kiosk", installed))));
+            mock.expect_which()
+                .once()
+                .in_sequence(&mut sequence)
+                .withf(move |program| program == installed)
+                .return_const(true);
+            if mutate {
+                mock.expect_which_path()
+                    .once()
+                    .in_sequence(&mut sequence)
+                    .withf(|program| program == "/bin/zsh")
+                    .returning(|program| Ok(PathBuf::from(program)));
+                mock.expect_execute()
+                    .once()
+                    .in_sequence(&mut sequence)
+                    .withf(|spec| {
+                        spec.program() == "usermod"
+                            && spec.is_checked()
+                            && spec.arguments() == ["-s", "/bin/zsh", "kiosk"]
+                    })
+                    .returning(|_| Ok(ExecResult::success("")));
+            }
+        }
+        let mut resource =
+            DefaultShellResource::new("zsh".into(), Arc::new(mock), env_for("kiosk"))
+                .with_root(true);
+        resource.allowed_shells =
+            RegisteredShells::Fixture("# site-managed shell list\n/bin/bash\n/bin/zsh\n");
+        assert_eq!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect {
+                current: SYSTEM_ZSH.into()
+            }
+        );
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[test]
+    fn missing_shell_registry_blocks_an_account_write_until_the_file_is_restored() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let path = fixture.path().join("shells");
+        let mut mock = MockExecutor::new();
+        mock.expect_which_path()
+            .withf(|program| program == "/bin/zsh")
+            .once()
+            .returning(|program| Ok(PathBuf::from(program)));
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "usermod"
+                    && spec.arguments() == ["-s", "/bin/zsh", "kiosk"]
+                    && spec.is_checked()
+            })
+            .returning(|_| Ok(ExecResult::success("")));
+        let mut resource =
+            DefaultShellResource::new("zsh".into(), Arc::new(mock), env_for("kiosk"))
+                .with_root(true);
+        resource.allowed_shells = RegisteredShells::File(path.clone());
+        assert!(
+            resource
+                .apply()
+                .unwrap_err()
+                .to_string()
+                .contains("reading allowed login shells")
+        );
+        assert!(!path.exists());
+        let restored = "# restored administrator policy\n/bin/sh\n/bin/zsh\n";
+        std::fs::write(&path, restored).unwrap();
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(std::fs::read_to_string(path).unwrap(), restored);
     }
 
     #[test]

@@ -133,12 +133,12 @@ fn nonempty_output(output: &str) -> &str {
 /// must not silently select a different VS Code installation.
 pub fn find_code_command(
     executor: &dyn Executor,
-    skip_insiders: impl Fn(&std::path::Path) -> bool,
+    skip_insiders: impl Fn(&std::path::Path) -> Result<bool>,
 ) -> Result<Option<String>> {
     for command in CODE_COMMANDS {
         if executor.which(command) {
             let path = executor.which_path(command)?;
-            if command == CODE_COMMANDS[0] && skip_insiders(&path) {
+            if command == CODE_COMMANDS[0] && skip_insiders(&path)? {
                 continue;
             }
             return Ok(Some(path.to_string_lossy().into_owned()));
@@ -153,22 +153,20 @@ pub(crate) fn managed_insiders_unavailable(
     path: &std::path::Path,
     root: &std::path::Path,
     home: &std::path::Path,
-) -> bool {
-    insiders_unavailable(
-        path,
-        root,
-        home,
-        std::path::Path::new("/usr/bin/code-insiders"),
-    )
+) -> Result<bool> {
+    insiders_unavailable(path, root, home, || {
+        std::fs::metadata("/usr/bin/code-insiders")
+    })
 }
 
 #[cfg(not(target_os = "linux"))]
+#[allow(clippy::unnecessary_wraps, reason = "matches the fallible Linux probe")]
 pub(crate) const fn managed_insiders_unavailable(
     _path: &std::path::Path,
     _root: &std::path::Path,
     _home: &std::path::Path,
-) -> bool {
-    false
+) -> Result<bool> {
+    Ok(false)
 }
 
 #[cfg(target_os = "linux")]
@@ -176,12 +174,26 @@ fn insiders_unavailable(
     path: &std::path::Path,
     root: &std::path::Path,
     home: &std::path::Path,
-    backing: &std::path::Path,
-) -> bool {
+    probe_backing: impl FnOnce() -> std::io::Result<std::fs::Metadata>,
+) -> Result<bool> {
+    use anyhow::Context as _;
     use std::os::unix::fs::PermissionsExt as _;
-    !std::fs::metadata(backing)
-        .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-        && is_managed_insiders(path, root, home)
+    if !is_managed_insiders(path, root, home) {
+        return Ok(false);
+    }
+    match probe_backing() {
+        Ok(meta) => {
+            anyhow::ensure!(
+                meta.is_file() && meta.permissions().mode() & 0o111 != 0,
+                "managed Insiders launcher requires an executable /usr/bin/code-insiders"
+            );
+            Ok(false)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(error) => {
+            Err(error).context("checking /usr/bin/code-insiders for managed Insiders launcher")
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -258,13 +270,80 @@ mod tests {
                     .return_once(move |_| Ok(path));
             }
             let chosen = find_code_command(&executor, |path| {
-                insiders_unavailable(path, root, &home, &backing)
+                insiders_unavailable(path, root, &home, || std::fs::metadata(&backing))
             })
             .unwrap();
             assert_eq!(chosen.as_deref(), stable.to_str());
         }
         std::fs::write(&installed, "custom launcher").unwrap();
-        assert!(!insiders_unavailable(&installed, root, &home, &backing));
+        assert!(
+            !insiders_unavailable(&installed, root, &home, || panic!(
+                "custom launchers do not require the packaged binary"
+            ))
+            .unwrap()
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn installed_insiders_with_a_nonexecutable_backing_does_not_redirect_extensions() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path();
+        let home = root.join("home");
+        let shim = root.join("symlinks/local/bin/code-insiders");
+        let installed = home.join(".local/bin/code-insiders");
+        let backing = root.join("insiders-binary");
+        std::fs::create_dir_all(shim.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(installed.parent().unwrap()).unwrap();
+        std::fs::write(
+            &shim,
+            include_bytes!("../../../../../symlinks/local/bin/code-insiders"),
+        )
+        .unwrap();
+        std::fs::copy(&shim, &installed).unwrap();
+        std::fs::write(&backing, "installed").unwrap();
+        for (mode, denied) in [(0o700, true), (0o600, false), (0o700, false)] {
+            std::fs::set_permissions(&backing, std::fs::Permissions::from_mode(mode)).unwrap();
+            let mut executor = MockExecutor::new();
+            executor
+                .expect_which()
+                .with(mockall::predicate::eq("code-insiders"))
+                .once()
+                .return_const(true);
+            let resolved = installed.clone();
+            executor
+                .expect_which_path()
+                .with(mockall::predicate::eq("code-insiders"))
+                .once()
+                .return_once(move |_| Ok(resolved));
+            let chosen = find_code_command(&executor, |path| {
+                insiders_unavailable(path, root, &home, || {
+                    if denied {
+                        Err(std::io::ErrorKind::PermissionDenied.into())
+                    } else {
+                        std::fs::metadata(&backing)
+                    }
+                })
+            });
+            if denied {
+                let error = chosen.unwrap_err();
+                assert_eq!(
+                    error.downcast_ref::<std::io::Error>().unwrap().kind(),
+                    std::io::ErrorKind::PermissionDenied
+                );
+            } else if mode == 0o700 {
+                assert_eq!(chosen.unwrap().as_deref(), installed.to_str());
+            } else {
+                assert!(
+                    chosen
+                        .unwrap_err()
+                        .to_string()
+                        .contains("/usr/bin/code-insiders")
+                );
+            }
+        }
     }
 
     fn expect_code_command(
@@ -326,7 +405,7 @@ mod tests {
             });
 
         assert_eq!(
-            find_code_command(&mock, |_| false).unwrap().as_deref(),
+            find_code_command(&mock, |_| Ok(false)).unwrap().as_deref(),
             expected.to_str(),
             "the platform-specific Code Insiders launcher should be preferred"
         );
@@ -357,7 +436,7 @@ mod tests {
             });
 
         assert_eq!(
-            find_code_command(&mock, |_| false).unwrap().as_deref(),
+            find_code_command(&mock, |_| Ok(false)).unwrap().as_deref(),
             expected.to_str(),
             "the platform-specific stable launcher should be used as fallback"
         );
@@ -380,7 +459,7 @@ mod tests {
                 )
                 .into())
             });
-        let error = find_code_command(&mock, |_| false).unwrap_err();
+        let error = find_code_command(&mock, |_| Ok(false)).unwrap_err();
         assert_eq!(
             error.downcast_ref::<std::io::Error>().unwrap().kind(),
             std::io::ErrorKind::PermissionDenied,

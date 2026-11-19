@@ -64,7 +64,8 @@ Copying the entrypoint does not copy its toolchain. A hook can run while an
 optional analyzer is unavailable, so inspect its reported skips and use the
 documented pre-push checks for complete coverage. If a changed entrypoint
 seems not to run, compare the installed copy and ownership record with the
-tracked source before changing Git's hook configuration.
+tracked source. Check whether your user can execute files in the hooks
+directory before changing Git's hook configuration.
 
 ## Preview and apply
 

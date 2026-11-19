@@ -309,7 +309,11 @@ fn gtk_service_migration_previews_then_removes_retired_links_once() {
     for _ in 0..3 {
         executor = executor.command(
             systemctl(&["--user", "show-environment"]),
-            Ok(ExecResult::failure("", "No user manager", Some(1))),
+            Ok(ExecResult::failure(
+                "",
+                "Failed to connect to bus: No medium found",
+                Some(1),
+            )),
         );
     }
     let ctx = make_context(
@@ -564,6 +568,68 @@ fn run_enables_user_units_offline_when_the_user_manager_is_unavailable() {
 
 #[cfg(unix)]
 #[test]
+fn rejected_user_manager_probe_preserves_login_links_until_access_recovers() {
+    let home = tempfile::tempdir().unwrap();
+    let name = "fixture-user-bus.service";
+    let user_dir = home.path().join(".config/systemd/user");
+    let wants = user_dir.join("default.target.wants");
+    std::fs::create_dir_all(&wants).unwrap();
+    let unit = user_dir.join(name);
+    std::fs::write(&unit, "[Install]\nWantedBy=default.target\n").unwrap();
+    let link = wants.join(name);
+    std::os::unix::fs::symlink(&unit, &link).unwrap();
+    let task = systemd_task(name, UnitScope::User, false);
+    let probe = systemctl(&["--user", "show-environment"]);
+
+    for diagnostic in [
+        "Failed to connect to bus: Permission denied",
+        "Failed to connect to user scope bus via local transport: Connection refused",
+        "Failed to get environment: Message recipient disconnected",
+    ] {
+        for dry_run in [true, false] {
+            let executor = script().command(
+                probe.clone(),
+                Ok(ExecResult::failure("PRIVATE=value", diagnostic, Some(1))),
+            );
+            let ctx = context(executor)
+                .with_home(home.path().to_path_buf())
+                .with_dry_run(dry_run);
+            let error = task.run(&ctx).unwrap_err().to_string();
+            assert!(error.contains(diagnostic), "{error}");
+            assert!(!error.contains("PRIVATE"));
+            assert_eq!(std::fs::read_link(&link).unwrap(), unit);
+        }
+    }
+
+    let ctx = context(script().command(probe, Ok(ExecResult::success("PRIVATE=value"))))
+        .with_home(home.path().to_path_buf());
+    assert!(user_manager_available(&ctx, task.config.get()).unwrap());
+}
+
+#[test]
+fn user_manager_absence_diagnostics_are_recognized_in_the_c_locale() {
+    for error in [
+        "Failed to connect to bus: No such file or directory",
+        "Failed to connect to bus: No medium found",
+        "Failed to connect to user scope bus via local transport: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined (consider using --machine=...)",
+    ] {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["--user", "show-environment"]
+                    && !spec.is_checked()
+                    && spec.environment() == [("LC_ALL".into(), "C".into())]
+            })
+            .returning(move |_| Ok(ExecResult::failure("", error, Some(1))));
+        let task = systemd_task("fixture.service", UnitScope::User, true);
+        assert!(!user_manager_available(&context(mock), task.config.get()).unwrap());
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn arch_chroot_provisioning_never_probes_the_user_manager() {
     let home = tempfile::tempdir().unwrap();
     let unit_dir = home.path().join(".config/systemd/user");
@@ -628,6 +694,76 @@ fn system_unit_elevation_follows_enablement_and_runtime_state() {
             crate::engine::requires_elevation(&task, &context(executor)),
             expected,
             "{name}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn arch_chroot_system_units_change_only_persistent_enablement_and_retry_without_a_bus() {
+    let name = "fixture.timer";
+    for (enabled, action, before, after) in [
+        (
+            true,
+            "enable",
+            disabled_result(),
+            ExecResult::success("enabled"),
+        ),
+        (
+            false,
+            "disable",
+            ExecResult::success("enabled"),
+            disabled_result(),
+        ),
+    ] {
+        let task = systemd_task(name, UnitScope::System, enabled);
+        let probe = || systemctl(&["--root=/", "is-enabled", name]);
+        let change = || {
+            CommandSpec::new("sudo")
+                .args(&["systemctl", "--root=/", action, name])
+                .unchecked()
+        };
+        let executor = script()
+            .command(probe(), Ok(before.clone())) // elevation
+            .command(probe(), Ok(before.clone())) // preview
+            .command(probe(), Ok(before.clone()))
+            .command(
+                change(),
+                Ok(ExecResult::failure("", "fixture interruption", Some(1))),
+            )
+            .command(probe(), Ok(before))
+            .command(change(), Ok(ExecResult::success("")))
+            .command(probe(), Ok(after.clone())) // readiness
+            .command(probe(), Ok(after)); // repeat apply
+        let ctx = context(executor).with_env(
+            MapEnv::new()
+                .with(
+                    crate::infra::provisioning::ENV_VAR,
+                    crate::infra::provisioning::ARCH_CHROOT,
+                )
+                .into_handle(),
+        );
+        assert!(task.needs_elevation(&ctx));
+        assert_eq!(
+            crate::test_helpers::task_batch(&task.run(&ctx.with_dry_run(true)).unwrap())
+                .changed_count(),
+            1
+        );
+        assert_eq!(
+            crate::test_helpers::task_batch(&task.run(&ctx).unwrap()).failed_count(),
+            1
+        );
+        assert_eq!(
+            crate::test_helpers::task_batch(&task.run(&ctx).unwrap()).changed_count(),
+            1
+        );
+        assert!(crate::engine::requirement::ordering_requirements_satisfied(
+            &ctx,
+            &task.ordering_requirements()
+        ));
+        assert_eq!(
+            crate::test_helpers::task_batch(&task.run(&ctx).unwrap()).already_ok_count(),
+            1
         );
     }
 }

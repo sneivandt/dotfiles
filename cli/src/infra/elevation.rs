@@ -173,12 +173,14 @@ pub(crate) fn build_elevated_child_script(exe: &str, args: &[String], cwd: &str)
              throw\n\
          }}\n\
          if ($null -eq $p) {{ throw 'Elevated process did not return a process handle' }}\n\
-         exit $p.ExitCode\n"
+         $exitCode = $p.ExitCode\n\
+         if ($null -eq $exitCode) {{ throw 'Cannot determine elevated process exit code' }}\n\
+         exit $exitCode\n"
     )
 }
 
 /// Result of delegating work to an elevated child process.
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ElevationOutcome {
     /// The elevated child ran to completion successfully.
@@ -487,7 +489,7 @@ mod escaping_tests {
             "the parent must block on the elevated child: {script}"
         );
         assert!(
-            script.contains("exit $p.ExitCode"),
+            script.contains("exit $exitCode"),
             "the child exit code must reach the parent: {script}"
         );
         assert!(
@@ -575,10 +577,18 @@ mod escaping_tests {
                 1,
             ),
             ("missing process handle", "$null", 1),
+            // PowerShell returns null when a Process property getter fails.
+            ("exit code not available", "Get-Process -Id $PID", 1),
         ] {
+            // Use an ordinary name containing the quote characters recognized by
+            // PowerShell. The fake validates all three strings without elevating.
+            let cwd = r"C:\O’Brien\‘2026‚‛";
             let script = format!(
-                "function Start-Process {{ {behavior} }}\n{}",
-                build_elevated_child_script("unused-fixture-executable", &[], ".")
+                "function Start-Process {{ param($FilePath, $WorkingDirectory, $ArgumentList, \
+                  $Verb, [switch]$Wait, [switch]$PassThru)\n\
+                  if ($WorkingDirectory -cne \"{cwd}\" -or $FilePath -cne \"{cwd}\\fixture.exe\" \
+                      -or $ArgumentList -cne '\"' + \"{cwd}\" + '\"') {{ exit 99 }}\n{behavior} }}\n{}",
+                build_elevated_child_script(&format!(r"{cwd}\fixture.exe"), &[cwd.into()], cwd)
             );
             let result = executor
                 .execute(

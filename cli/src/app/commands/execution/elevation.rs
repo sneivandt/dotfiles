@@ -306,7 +306,7 @@ fn prepare_windows_elevation(
     names: &[&str],
     selectors: &[&str],
 ) -> ElevationPlan {
-    use crate::infra::elevation::{ElevationOutcome, run_elevated_child};
+    use crate::infra::elevation::run_elevated_child;
 
     if selectors.is_empty() {
         return ElevationPlan::Ready;
@@ -337,7 +337,7 @@ fn prepare_windows_elevation(
         Ok(paths) => paths,
         Err(error) => {
             log.error(format!("failed to resolve elevated child paths: {error}"));
-            return ElevationPlan::Unavailable {
+            return ElevationPlan::Failed {
                 reason: "elevated child paths unavailable",
             };
         }
@@ -352,7 +352,17 @@ fn prepare_windows_elevation(
     log.always("A UAC prompt will open; the rest of this run stays unelevated.");
     drop(std::io::Write::flush(&mut std::io::stdout()));
 
-    match run_elevated_child(ctx.executor(), &**log, &child_args) {
+    windows_elevation_result(log, run_elevated_child(ctx.executor(), &**log, &child_args))
+}
+
+#[cfg(any(windows, test))]
+fn windows_elevation_result(
+    log: &Logger,
+    result: anyhow::Result<crate::infra::elevation::ElevationOutcome>,
+) -> ElevationPlan {
+    use crate::infra::elevation::ElevationOutcome;
+
+    match result {
         Ok(ElevationOutcome::Completed) => {
             log.always("Elevated step finished.");
             ElevationPlan::Delegated
@@ -374,8 +384,8 @@ fn prepare_windows_elevation(
         Err(error) => {
             log.separate_from_startup();
             log.error(format!("failed to request elevation: {error:#}"));
-            ElevationPlan::Unavailable {
-                reason: "elevation unavailable",
+            ElevationPlan::Failed {
+                reason: "failed to request elevation",
             }
         }
     }
@@ -450,6 +460,36 @@ pub(super) fn build_elevated_child_args(
 mod tests {
     use super::*;
     use crate::test_helpers::make_static_context;
+
+    #[test]
+    fn elevation_helper_failure_is_not_a_benign_skip() {
+        use crate::infra::elevation::ElevationOutcome;
+
+        let (_, log) = make_static_context("fixture-root".into(), None);
+        for (result, expected) in [
+            (Ok(ElevationOutcome::Completed), ElevationPlan::Delegated),
+            (
+                Ok(ElevationOutcome::Declined),
+                ElevationPlan::Unavailable {
+                    reason: "elevation declined",
+                },
+            ),
+            (
+                Ok(ElevationOutcome::Failed(7)),
+                ElevationPlan::Failed {
+                    reason: "elevated step failed",
+                },
+            ),
+            (
+                Err(anyhow::anyhow!("fixture: helper unavailable")),
+                ElevationPlan::Failed {
+                    reason: "failed to request elevation",
+                },
+            ),
+        ] {
+            assert_eq!(windows_elevation_result(&log, result), expected);
+        }
+    }
 
     #[cfg(windows)]
     #[test]

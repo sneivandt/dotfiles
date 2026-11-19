@@ -359,6 +359,8 @@ The destination is the first available value in this order:
 Set `APM_COPILOT_COWORK_SKILLS_DIR` to choose a destination explicitly,
 including on Linux. Dotfiles copies selected skills from `~/.agents/skills`
 while preserving the destination directories and their Windows permissions.
+Choose a directory separate from `~/.agents/skills`: neither path can be
+inside the other, including through a directory link.
 If a package restricts its targets, include `copilot-cowork` to send its skills
 here.
 

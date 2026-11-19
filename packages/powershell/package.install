@@ -1,9 +1,17 @@
 #!/bin/sh
 
 post_install() {
-  if ! grep -Fxq '/usr/bin/pwsh' etc/shells; then
-    printf '%s\n' '/usr/bin/pwsh' >> etc/shells
+  if grep -Fxq '/usr/bin/pwsh' etc/shells; then
+    return 0
+  else
+    [ "$?" -eq 1 ] || return 1
   fi
+  # Never concatenate a new entry onto an existing, unterminated shell path.
+  last=$(tail -c 1 etc/shells) || return 1
+  if [ -n "$last" ]; then
+    printf '\n' >> etc/shells || return 1
+  fi
+  printf '%s\n' '# Registered by powershell-dotfiles' '/usr/bin/pwsh' >> etc/shells
 }
 
 post_upgrade() {
@@ -11,5 +19,15 @@ post_upgrade() {
 }
 
 pre_remove() {
-  sed -i '\|^/usr/bin/pwsh$|d' etc/shells
+  if grep -Fxq '# Registered by powershell-dotfiles' etc/shells; then
+    # Remove only the marked pair, never a pre-existing or migrated registration.
+    sed --follow-symlinks -i '/^# Registered by powershell-dotfiles$/{
+      N
+      \|^# Registered by powershell-dotfiles\n/usr/bin/pwsh$|d
+      P
+      D
+    }' etc/shells
+  else
+    [ "$?" -eq 1 ]
+  fi
 }

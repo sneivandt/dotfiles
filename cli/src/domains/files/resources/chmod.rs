@@ -479,11 +479,12 @@ fn check_dir_recursive(
         let entry = entry.with_context(|| format!("reading entry in {}", path.display()))?;
         let entry_path = entry.path();
 
-        if is_excluded(&entry_path)? || entry_path.is_symlink() {
+        let kind = entry.file_type()?;
+        if !(kind.is_dir() || kind.is_file()) || is_excluded(&entry_path)? {
             continue;
         }
 
-        if entry_path.is_dir() {
+        if kind.is_dir() {
             if let recursive_state @ ResourceState::Incorrect { .. } =
                 check_dir_recursive(&entry_path, base_mode, is_excluded)?
             {
@@ -519,10 +520,11 @@ fn apply_recursive(
         {
             let entry = entry.with_context(|| format!("reading entry in {}", path.display()))?;
             let entry_path = entry.path();
-            if is_excluded(&entry_path)? || entry_path.is_symlink() {
+            let kind = entry.file_type()?;
+            if !(kind.is_dir() || kind.is_file()) || is_excluded(&entry_path)? {
                 continue;
             }
-            if entry_path.is_dir() {
+            if kind.is_dir() {
                 changed |=
                     apply_recursive(&entry_path, dir_mode, file_mode, is_excluded, recovered)?;
             } else {
@@ -556,11 +558,11 @@ fn set_permissions(path: &std::path::Path, mode: u32) -> ResourceResult<()> {
     use std::os::unix::fs::PermissionsExt;
 
     let metadata = std::fs::symlink_metadata(path)?;
-    if metadata.is_file() {
-        crate::infra::fs::require_single_link(&metadata)?;
-    }
     if metadata.is_symlink() {
         return Err(anyhow::anyhow!("chmod target became a symlink: {}", path.display()).into());
+    }
+    if !metadata.is_dir() {
+        crate::infra::fs::require_single_link(&metadata)?;
     }
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).map_err(|error| {
         if error.kind() == std::io::ErrorKind::PermissionDenied {
@@ -580,7 +582,7 @@ fn permission_tree_reason(
     prepare_directory: &mut impl FnMut(&std::path::Path, &std::fs::Metadata) -> ResourceResult<bool>,
 ) -> ResourceResult<Option<String>> {
     let metadata = std::fs::symlink_metadata(path)?;
-    if metadata.is_file() {
+    if !metadata.is_dir() && !metadata.is_symlink() {
         return Ok(crate::infra::fs::require_single_link(&metadata)
             .err()
             .map(|error| format!("{}: {error}", path.display())));
@@ -589,7 +591,8 @@ fn permission_tree_reason(
         for entry in std::fs::read_dir(path)? {
             let entry = entry?;
             let child = entry.path();
-            if is_excluded(&child)? {
+            let kind = entry.file_type()?;
+            if !(kind.is_dir() || kind.is_file()) || is_excluded(&child)? {
                 continue;
             }
             if let Some(reason) = permission_tree_reason(&child, is_excluded, prepare_directory)? {

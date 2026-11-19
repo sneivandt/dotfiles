@@ -29,7 +29,9 @@ impl Task for EnableDeveloperMode {
     fn needs_elevation(&self, ctx: &Context) -> bool {
         ctx.platform().is_windows()
             && !ctx.is_elevated()
-            && !crate::infra::platform::developer_mode_enabled()
+            // Report discovery failures through current_state in the parent;
+            // unknown state is not permission to request UAC.
+            && crate::infra::platform::developer_mode_flag().is_ok_and(|flag| !flag.enabled())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

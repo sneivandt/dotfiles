@@ -136,7 +136,16 @@ impl PowerShellCommand {
 
 /// Wrap a value in `PowerShell` single quotes, doubling embedded quotes.
 pub(crate) fn powershell_single_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
+    let mut quoted = String::from("'");
+    for ch in value.chars() {
+        // PowerShell treats typographic apostrophes as string delimiters too.
+        if matches!(ch, '\'' | '\u{2018}'..='\u{201b}') {
+            quoted.push(ch);
+        }
+        quoted.push(ch);
+    }
+    quoted.push('\'');
+    quoted
 }
 
 /// Build one Windows command-line string for `Start-Process -ArgumentList`.

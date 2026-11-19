@@ -665,7 +665,7 @@ case "$url" in
     fi
     ;;
   */dotfiles-linux-x86_64)
-    printf '#!/bin/sh\nexit 99\n' > "$out"
+    printf '#!/bin/sh\nprintf "dotfiles v9.9.9\\n"\n' > "$out"
     printf '%s\n' "$out" > "$DOTFILES_ROOT/download-path"
     # Another bootstrap finished after this one observed a missing cache.
     printf '#!/bin/sh\nexit 0\n' > "$DOTFILES_ROOT/bin/dotfiles"
@@ -675,11 +675,14 @@ case "$url" in
   *) exit 1 ;;
 esac
 EOF
-  printf '#!/bin/sh\nexit 1\n' > "$fixture/fake-bin/gh"
+  cat > "$fixture/fake-bin/gh" <<'EOF'
+#!/bin/sh
+[ "$WRAPPER_FAILURE" = publication ]
+EOF
   printf '#!/bin/sh\nprintf "x86_64\\n"\n' > "$fixture/fake-bin/uname"
   chmod +x "$fixture/fake-bin/"*
   expected=$(printf '#!/bin/sh\nexit 0\n')
-  for failure in download checksum attestation; do
+  for failure in download checksum attestation publication; do
     if PATH="$fixture/fake-bin:$PATH" WRAPPER_FAILURE="$failure" DOTFILES_SKIP_ATTESTATION=0 \
       "$fixture/dotfiles.sh" --version > "$fixture/stdout" 2> "$fixture/stderr"; then
       log_error "$failure failure was accepted"
@@ -689,6 +692,10 @@ EOF
       log_error "$failure modified the concurrent binary"
     [ "$(find "$fixture/bin" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ] ||
       log_error "$failure leaked staging files"
+    if [ "$failure" = publication ]; then
+      grep -q 'changed during bootstrap' "$fixture/stderr" || log_error "Wrong publication failure"
+      "$fixture/dotfiles.sh" --version || log_error "Retry did not use the concurrent binary"
+    fi
     rm "$fixture/bin/dotfiles"
   done
 )}

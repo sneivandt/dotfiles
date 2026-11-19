@@ -200,6 +200,43 @@ fn configured_source_validation_rejects_missing_chmod_source() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn configured_source_validation_inspects_each_terminal_glob_match_before_passing() {
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path();
+    let sources = root.join("symlinks");
+    let tools = sources.join("tools");
+    let matched = tools.join("editor");
+    std::fs::create_dir_all(&tools).unwrap();
+    std::fs::write(tools.join("valid"), "managed").unwrap();
+    let outside = root.join("custom");
+    std::fs::write(&outside, "custom").unwrap();
+    let mut config = empty_config(root.to_path_buf());
+    // Not selected by the current profile, but check still covers this declaration.
+    config.validation_symlinks = vec![crate::test_helpers::symlink("tools/*", None)];
+    let task = ValidateSymlinkSources::new(ConfigHandle::new(config));
+    let ctx = make_linux_context(root.to_path_buf(), None).with_home(root.join("home"));
+    std::os::unix::fs::symlink("../missing", &matched).unwrap();
+    assert_eq!(
+        task.run(&ctx).unwrap_err().to_string(),
+        "1 configured source(s) missing"
+    );
+    std::fs::remove_file(&matched).unwrap();
+    std::os::unix::fs::symlink(&outside, &matched).unwrap();
+    let error = task.run(&ctx).unwrap_err();
+    assert!(error.to_string().contains("outside its symlinks directory"));
+    assert_eq!(std::fs::read_link(&matched).unwrap(), outside);
+    std::fs::remove_file(&matched).unwrap();
+    std::os::unix::fs::symlink("valid", &matched).unwrap();
+    assert!(matches!(
+        task.run(&ctx).unwrap(),
+        crate::engine::TaskResult::CheckPassed
+    ));
+    assert_eq!(std::fs::read_to_string(&outside).unwrap(), "custom");
+    assert!(!ctx.home().exists());
+}
+
 #[test]
 fn configured_source_validation_keeps_overlay_origins_and_unfiltered_sources() {
     use crate::domains::files::config::symlinks::Symlink;
@@ -265,6 +302,24 @@ fn discovers_apm_plugin_dirs() {
     assert_eq!(found, vec![plugins.join("dot-code")]);
 }
 
+#[cfg(unix)]
+#[test]
+fn broken_apm_manifest_is_not_a_passing_empty_inventory() {
+    let fixture = tempfile::tempdir().unwrap();
+    let plugins = fixture.path().join("plugins");
+    let plugin = plugins.join("custom");
+    std::fs::create_dir_all(&plugin).unwrap();
+    let manifest = plugin.join("apm.yml");
+    std::os::unix::fs::symlink("local-policy.yml", &manifest).unwrap();
+    assert!(discover_apm_plugin_dirs(&plugins).is_err());
+    assert_eq!(
+        std::fs::read_link(&manifest).unwrap(),
+        std::path::Path::new("local-policy.yml")
+    );
+    std::fs::write(plugin.join("local-policy.yml"), "name: custom\n").unwrap();
+    assert_eq!(discover_apm_plugin_dirs(&plugins).unwrap(), [plugin]);
+}
+
 #[test]
 fn apm_validation_checks_each_plugin_and_aggregates_findings() {
     let dir = tempfile::tempdir_in(".").unwrap();
@@ -277,7 +332,6 @@ fn apm_validation_checks_each_plugin_and_aggregates_findings() {
         )
         .unwrap();
     }
-
     for has_findings in [false, true] {
         let mut executor = MockExecutor::new();
         executor

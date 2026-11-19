@@ -109,6 +109,60 @@ class ShellConfigTests(unittest.TestCase):
                 for suffix in (".local/bin", ".bin", "src/go/bin", ".cargo/bin"):
                     self.assertEqual(paths.count(str(self.home / suffix)), 1)
 
+    def test_installed_bash_login_keeps_the_users_previously_selected_profile(self):
+        profile = self.write(
+            self.home / ".profile",
+            'export EDITOR="site-editor"\nexport PATH="$HOME/site tools:$PATH"\n'
+            'printf "profile\\n" >> "$HOME/load-order"\n',
+        )
+        login = self.home / ".bash_login"
+        site_login = self.fixture / "site policies/bash-login"
+        login.symlink_to(site_login)  # unavailable until the site's profile is restored
+        entry = self.home / ".bash_profile"
+        entry.symlink_to(ROOT / "symlinks/bash_profile")
+        # A controlled PATH prevents optional host integrations from being loaded.
+        self.install_profile()
+        script = (
+            'PATH="$HOME/empty-bin"\ntty() { return 1; }\n'
+            '. "$HOME/.bash_profile"\n. "$HOME/.bash_profile"\n'
+            'printf "%s\\n%s\\n" "$EDITOR" "$PATH"\n'
+        )
+        editor, path = self.run_shell(script, shell="bash").stdout.splitlines()
+        self.assertEqual(editor, "site-editor")
+        self.assertEqual(path.split(":").count(str(self.home / "site tools")), 1)
+        self.assertEqual((self.home / "load-order").read_text(), "profile\n")
+        # Bash prefers .bash_login over .profile. Do not double-load both.
+        self.write(site_login, 'export EDITOR="login-editor"\nprintf "bash_login\\n" >> "$HOME/load-order"\n')
+        editor, path = self.run_shell(script, shell="bash").stdout.splitlines()
+        self.assertEqual(editor, "login-editor")
+        self.assertNotIn(str(self.home / "site tools"), path.split(":"))
+        self.assertEqual((self.home / "load-order").read_text(), "profile\nbash_login\n")
+        self.assertIn('export EDITOR="site-editor"', profile.read_text())
+
+    def test_installed_bash_login_does_not_duplicate_unmanaged_interactive_startup(self):
+        (self.home / ".bash_profile").symlink_to(ROOT / "symlinks/bash_profile")
+        rc = self.write(self.home / ".bashrc", 'printf "rc\\n" >> "$HOME/load-order"\n')
+        profile = self.write(self.home / ".profile", '. "$HOME/.bashrc"\n')
+        script = '. "$HOME/.bash_profile"\n. "$HOME/.bash_profile"\n'
+        self.run_shell(script, shell="bash", interactive=True)
+        log = self.home / "load-order"
+        self.assertEqual(log.read_text(), "rc\n")
+        # A profile with only a PATH export should still get the real managed
+        # rc. Hide vendor integrations; don't load machine startup files.
+        profile.write_text('export PATH="$HOME/site tools:$PATH"\n')
+        rc.unlink()
+        rc.symlink_to(ROOT / "symlinks/bashrc")
+        self.write(self.home / ".cache/bash/history", "record-from-previous-login\n")
+        prefix = (
+            'tty() { return 1; }\n'
+            'function [ { case "$*" in *"/usr/share/"*) return 1;; esac; builtin [ "$@"; }\n'
+            'command() { if [[ $1 == -v ]]; then return 1; fi; builtin command "$@"; }\n'
+        )
+        self.run_shell(prefix + script, shell="bash", interactive=True)
+        history = self.home / ".local/state/bash/history"
+        self.assertIn("record-from-previous-login\n", history.read_text())
+        self.assertEqual(log.read_text(), "rc\n")
+
     def test_uwsm_needs_arch_desktop_and_falls_back_to_shell(self):
         self.install_profile()
         self.write(
@@ -304,6 +358,38 @@ class ShellConfigTests(unittest.TestCase):
                     '[ "${LANGUAGE+x}" != x ] && [ "${SHELLCHECK_OPTS+x}" != x ]\n',
                     shell=shell,
                 )
+
+    def test_history_migration_never_publishes_a_partial_copy(self):
+        body = "# recognizable history\noperator-kept-first\noperator-kept-last\n"
+        for shell, rc in (("bash", "bashrc"), ("zsh", "zshrc")):
+            with self.subTest(shell=shell):
+                old = self.write(self.home / f".cache/{shell}/history", body)
+                new = self.home / f".local/state/{shell}/history"
+                # Exercise just the history section (no host plugins or prompts).
+                text = (ROOT / "symlinks" / rc).read_text()
+                name = f"_{shell}_legacy_history"
+                script = text[text.index(name + "="):text.index("unset " + name)]
+                report = '\nprintf "%s\\n" "$HISTFILE"\n'
+                failed = self.run_shell(
+                    'cp() { printf interrupted > "$3"; return 1; }\n' + script + report,
+                    shell=shell,
+                )
+                self.assertEqual(failed.stdout.rstrip(), str(old))
+                self.assertEqual(list(new.parent.iterdir()), [])
+                self.assertEqual(old.read_text(), body)
+                retry = self.run_shell(script + report, shell=shell)
+                self.assertEqual(retry.stdout.rstrip(), str(new))
+                self.assertEqual(new.read_text(), body)
+                self.assertEqual(new.stat().st_mode & 0o777, 0o600)
+                new.unlink()
+                self.run_shell(
+                    'ln() { printf parallel-login > "$4"; return 1; }\n' + script + report,
+                    shell=shell,
+                )
+                self.assertEqual(new.read_text(), "parallel-login")
+                self.run_shell(script + report, shell=shell)
+                self.assertEqual(new.read_text(), "parallel-login")
+                self.assertEqual(old.read_text(), body)
 
     def test_history_retains_duplicate_expiration_headroom(self):
         result = self.run_shell(
@@ -616,10 +702,37 @@ class ShellConfigTests(unittest.TestCase):
         )
         self.assertEqual((self.home / ".ssh/github").resolve(), keys)
 
+    def test_ssh_wsl_rejects_bad_override_before_changing_ssh(self):
+        relative = self.fixture / "Windows profile"
+        (relative / ".ssh/github").mkdir(parents=True)
+        ssh = self.home / ".ssh"
+        ssh.mkdir()
+        ssh.chmod(0o750)
+        marker = self.write(ssh / "operator-note", "keep this SSH customization\n")
+        for override in (relative.name, str(relative / "missing")):
+            with self.subTest(override=override):
+                self.env["WINHOME"] = override
+                result = self.run_shell(
+                    'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+                    'autoload -Uz ssh-wsl\nwslpath() { return 1; }\nssh-wsl\n',
+                    expected=1,
+                )
+                self.assertIn("existing absolute", result.stderr)
+                self.assertEqual(ssh.stat().st_mode & 0o777, 0o750)
+                self.assertEqual(list(ssh.iterdir()), [marker])
+        self.env["WINHOME"] = str(relative)
+        self.run_shell(
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz ssh-wsl\nwslpath() { return 1; }\nssh-wsl && ssh-wsl\n'
+        )
+        self.assertEqual((ssh / "github").resolve(strict=True), relative / ".ssh/github")
+        self.assertEqual(marker.read_text(), "keep this SSH customization\n")
+
     def test_ssh_helpers_secure_existing_directories(self):
         ssh = self.home / ".ssh"
         github = ssh / "github"
         github.mkdir(parents=True)
+        (self.home / "windows").mkdir()
         for helper in ("ssh-keygen-github", "ssh-wsl"):
             with self.subTest(helper=helper):
                 ssh.chmod(0o777)
@@ -640,6 +753,7 @@ class ShellConfigTests(unittest.TestCase):
     def test_ssh_helpers_do_not_chmod_linked_directories(self):
         outside = self.fixture / "linked-directory"
         outside.mkdir(mode=0o755)
+        (self.home / "windows").mkdir()
         for helper, link in (("ssh-keygen-github", ".ssh"),
                              ("ssh-keygen-github", ".ssh/github"),
                              ("ssh-wsl", ".ssh")):

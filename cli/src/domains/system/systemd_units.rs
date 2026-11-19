@@ -10,7 +10,7 @@ use crate::engine::{
     Context, IntrinsicState, ProcessOpts, Requirement, RequirementState, ResourceState, Task,
     TaskMeta, TaskResult, process_requirement, process_resources,
 };
-use crate::infra::exec::CommandSpec;
+use crate::infra::exec::{CommandSpec, OutputLog};
 use crate::infra::logging::OutputExt as _;
 
 crate::engine::config_task! {
@@ -57,7 +57,7 @@ impl Task for ConfigureSystemd {
                         entry,
                         ctx.executor_arc(),
                         ctx.home(),
-                        user_manager,
+                        target_manager_available(ctx, &entry.scope, user_manager),
                         graphical_session,
                     )
                     .current_state()
@@ -104,7 +104,9 @@ impl Task for ConfigureSystemd {
 
             let user_manager_available = user_manager_available(ctx, units)?;
             let graphical_session = graphical_session_active(ctx, units, user_manager_available)?;
-            let system_reload_required = system_unit_needs_change(ctx, units);
+            let system_reload_required =
+                !crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref())
+                    && system_unit_needs_change(ctx, units);
             reload_daemons(ctx, user_manager_available, system_reload_required)?;
 
             let executor = ctx.executor_arc();
@@ -120,7 +122,7 @@ impl Task for ConfigureSystemd {
                     entry,
                     Arc::clone(&executor),
                     ctx.home(),
-                    user_manager_available,
+                    target_manager_available(ctx, &entry.scope, user_manager_available),
                     graphical_session,
                 )
             });
@@ -145,6 +147,14 @@ fn systemctl_requirement() -> Requirement<'static> {
     Requirement::command("systemctl", "systemctl", "systemctl unavailable")
 }
 
+fn target_manager_available(ctx: &Context, scope: &UnitScope, user_manager: bool) -> bool {
+    match scope {
+        UnitScope::System => !crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref()),
+        UnitScope::User => user_manager,
+        UnitScope::Invalid(_) => false,
+    }
+}
+
 fn system_unit_needs_change(ctx: &Context, units: &[SystemdUnit]) -> bool {
     let executor = ctx.executor_arc();
     units
@@ -156,7 +166,7 @@ fn system_unit_needs_change(ctx: &Context, units: &[SystemdUnit]) -> bool {
                     unit,
                     Arc::clone(&executor),
                     ctx.home(),
-                    true,
+                    target_manager_available(ctx, &unit.scope, false),
                     false
                 )
                 .current_state(),
@@ -195,19 +205,29 @@ fn user_manager_available(ctx: &Context, units: &[SystemdUnit]) -> Result<bool> 
     let result = ctx.executor().execute(
         CommandSpec::new("systemctl")
             .args(&["--user", "show-environment"])
+            .env("LC_ALL", "C")
+            .output_log(OutputLog::Omit)
             .unchecked(),
     )?;
     anyhow::ensure!(
         result.code.is_some(),
         "user systemd manager probe terminated without an exit code"
     );
-    let available = result.success;
-    if !available {
-        ctx.log().debug(
-            "user systemd manager unavailable; enabling user units offline for the next login",
-        );
+    if result.success {
+        return Ok(true);
     }
-    Ok(available)
+    let error = result.stderr.trim();
+    // Offline links cannot stop or start a running service. Only fall back
+    // when the local bus is absent, not when it rejects or times out a query.
+    let no_bus = error.split_once(": ").is_some_and(|(operation, reason)| {
+        operation.starts_with("Failed to connect to ")
+            && (matches!(reason, "No medium found" | "No such file or directory")
+                || reason.starts_with("$DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined"))
+    });
+    anyhow::ensure!(no_bus, "cannot inspect the user systemd manager: {error}");
+    ctx.log()
+        .debug("user systemd manager unavailable; enabling user units offline for the next login");
+    Ok(false)
 }
 
 fn graphical_session_active(

@@ -5,6 +5,8 @@
 //! settings persist a single string value to the repository's local git
 //! config so future runs reuse the same selection without re-prompting or
 //! requiring a CLI flag.  These functions centralise that read/write logic.
+//! The caller already selected the dotfiles root. Do not search its ancestors:
+//! an exported tree may be inside an unrelated repository.
 use anyhow::{Context as _, Result};
 use std::path::Path;
 
@@ -14,9 +16,9 @@ use std::path::Path;
 ///
 /// # Errors
 ///
-/// Returns an error when repository discovery or configuration reading fails.
+/// Returns an error when opening the selected repository or reading its configuration fails.
 pub fn read_local(root: &Path, key: &str) -> Result<Option<String>> {
-    let repo = match git2::Repository::discover(root) {
+    let repo = match git2::Repository::open(root) {
         Ok(repo) => repo,
         Err(error)
             if error.code() == git2::ErrorCode::NotFound
@@ -24,7 +26,7 @@ pub fn read_local(root: &Path, key: &str) -> Result<Option<String>> {
         {
             return Ok(None);
         }
-        Err(error) => return Err(error).context("finding git repository"),
+        Err(error) => return Err(error).context("opening git repository at dotfiles root"),
     };
     let config = repo.config().context("opening git config")?;
     let local = config
@@ -41,10 +43,10 @@ pub fn read_local(root: &Path, key: &str) -> Result<Option<String>> {
 ///
 /// # Errors
 ///
-/// Returns an error if the repository cannot be discovered or the config
+/// Returns an error if the repository at the dotfiles root cannot be opened or the config
 /// cannot be written.
 pub fn persist_local(root: &Path, key: &str, value: &str) -> Result<()> {
-    let repo = git2::Repository::discover(root).context("finding git repository")?;
+    let repo = git2::Repository::open(root).context("opening git repository at dotfiles root")?;
     let config = repo.config().context("opening git config")?;
     let mut local = config
         .open_level(git2::ConfigLevel::Local)
@@ -90,7 +92,7 @@ mod tests {
         std::fs::write(dir.path().join(".git"), "not a git directory").unwrap();
         assert!(read_local(dir.path(), "dotfiles.example").is_err());
         let error = persist_local(dir.path(), "dotfiles.example", "value").unwrap_err();
-        assert_eq!(error.to_string(), "finding git repository");
+        assert_eq!(error.to_string(), "opening git repository at dotfiles root");
         assert!(error.downcast_ref::<git2::Error>().is_some());
     }
 
@@ -124,16 +126,63 @@ mod tests {
     #[test]
     fn empty_values_are_unset_but_whitespace_and_unicode_are_preserved() {
         let (_dir, root) = init_test_repo();
-        let nested = root.join("nested");
-        std::fs::create_dir(&nested).unwrap();
         for value in ["", " ", "日本語 path with spaces"] {
-            persist_local(&nested, "dotfiles.example", value).unwrap();
+            persist_local(&root, "dotfiles.example", value).unwrap();
             assert_eq!(
                 read_local(&root, "dotfiles.example").unwrap(),
                 (!value.is_empty()).then(|| value.to_string()),
                 "{value:?}"
             );
         }
+    }
+
+    #[test]
+    fn exported_root_never_inherits_or_persists_parent_repository_selections() {
+        let (_dir, outer) = init_test_repo();
+        let export = outer.join("vendor/dotfiles");
+        std::fs::create_dir_all(export.join("conf")).unwrap();
+        std::fs::create_dir(export.join("symlinks")).unwrap();
+        let config = outer.join(".git/config");
+        let mut bytes = std::fs::read(&config).unwrap();
+        bytes.extend_from_slice(b"\n# my repository preferences\n[dotfiles]\n\tprofile = desktop\n\toverlay = personal\n");
+        std::fs::write(&config, &bytes).unwrap();
+        for (key, replacement) in [
+            ("dotfiles.profile", "base"),
+            ("dotfiles.overlay", "fixture"),
+        ] {
+            assert_eq!(read_local(&export, key).unwrap(), None);
+            assert!(persist_local(&export, key, replacement).is_err());
+            assert_eq!(std::fs::read(&config).unwrap(), bytes);
+        }
+        assert!(!export.join(".git").exists());
+    }
+
+    #[test]
+    fn linked_worktree_gitfile_retains_the_repository_local_selection() {
+        let (_dir, main) = init_test_repo();
+        let tree = main.join("linked tree");
+        let admin = main.join(".git/worktrees/linked");
+        std::fs::create_dir_all(&admin).unwrap();
+        std::fs::create_dir(&tree).unwrap();
+        std::fs::write(tree.join(".git"), "gitdir: ../.git/worktrees/linked\n").unwrap();
+        std::fs::write(admin.join("commondir"), "../..\n").unwrap();
+        std::fs::write(
+            admin.join("gitdir"),
+            format!("{}\n", tree.join(".git").display()),
+        )
+        .unwrap();
+        std::fs::copy(main.join(".git/HEAD"), admin.join("HEAD")).unwrap();
+        assert!(git2::Repository::open(&tree).unwrap().is_worktree());
+        persist_local(&main, "dotfiles.profile", "desktop").unwrap();
+        assert_eq!(
+            read_local(&tree, "dotfiles.profile").unwrap().as_deref(),
+            Some("desktop")
+        );
+        persist_local(&tree, "dotfiles.profile", "base").unwrap();
+        assert_eq!(
+            read_local(&main, "dotfiles.profile").unwrap().as_deref(),
+            Some("base")
+        );
     }
 
     #[test]

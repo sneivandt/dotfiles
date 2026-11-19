@@ -142,6 +142,26 @@ impl SystemFileResource {
             .map_err(Into::into)
     }
 
+    pub(in crate::domains::system) fn installation_state(&self) -> ResourceResult<ResourceState> {
+        match self.current_state()? {
+            // A later declaration may reference this dedicated file. Never publish
+            // such a reference when its prerequisite belongs to the administrator.
+            ResourceState::Invalid { reason } if self.entry.merge == MergeStrategy::CreateOnly => {
+                Err(crate::engine::resource::ResourceError::conflicting_state(
+                    self.description(),
+                    "a missing or identical dedicated file",
+                    reason,
+                ))
+            }
+            // Read protected destinations only inside the scoped installer.
+            ResourceState::Unknown { reason } => Ok(ResourceState::Incorrect { current: reason }),
+            state @ (ResourceState::Correct
+            | ResourceState::Missing
+            | ResourceState::Incorrect { .. }
+            | ResourceState::Invalid { .. }) => Ok(state),
+        }
+    }
+
     fn checked_target(&self) -> anyhow::Result<PathBuf> {
         let root = dunce::canonicalize(&self.target_root)?;
         let target = crate::infra::fs::resolve_target_entry(&self.entry.target)?;
@@ -226,6 +246,7 @@ impl SystemFileResource {
             MergeStrategy::Toml => merge_toml(current, fragment),
             MergeStrategy::Ini => merge_ini(current, fragment),
             MergeStrategy::Pam => merge_pam(current, fragment),
+            MergeStrategy::CreateOnly => Ok(fragment.to_owned()),
         }
     }
 
@@ -234,6 +255,7 @@ impl SystemFileResource {
             MergeStrategy::Toml => contains_toml(current, fragment),
             MergeStrategy::Ini => contains_ini(current, fragment),
             MergeStrategy::Pam => Ok(merge_pam(current, fragment)? == current),
+            MergeStrategy::CreateOnly => Ok(current == fragment),
         }
     }
 
@@ -261,6 +283,12 @@ impl SystemFileResource {
             },
             Ok(_) if matches!(current, CurrentFile::Missing) => ResourceState::Missing,
             Ok(true) => ResourceState::Correct,
+            Ok(false) if self.entry.merge == MergeStrategy::CreateOnly => ResourceState::Invalid {
+                reason: format!(
+                    "{} already exists with different content; review the existing file before retrying",
+                    self.entry.target.display()
+                ),
+            },
             Ok(false) => ResourceState::Incorrect {
                 current: "managed content differs".to_string(),
             },
@@ -316,6 +344,7 @@ impl Resource for SystemFileResource {
                         MergeStrategy::Toml => "toml",
                         MergeStrategy::Ini => "ini",
                         MergeStrategy::Pam => "pam",
+                        MergeStrategy::CreateOnly => "create-only",
                     })
                     .arg(crate::infra::fs::content_hash(fragment.as_bytes()))
                     .redact_arguments()
@@ -431,6 +460,7 @@ fn prepare_contents(
         "toml" => MergeStrategy::Toml,
         "ini" => MergeStrategy::Ini,
         "pam" => MergeStrategy::Pam,
+        "create-only" => MergeStrategy::CreateOnly,
         _ => bail!("unknown merge strategy"),
     };
     let resource = SystemFileResource::new(
@@ -733,6 +763,7 @@ pub(crate) fn validate_fragment(merge: MergeStrategy, fragment: &str) -> anyhow:
         MergeStrategy::Toml => parse_toml(fragment).map(drop),
         MergeStrategy::Ini => ini_settings(fragment, true).map(drop),
         MergeStrategy::Pam => validate_pam_rules(fragment),
+        MergeStrategy::CreateOnly => Ok(()),
     }
 }
 
@@ -746,7 +777,28 @@ fn pam_rules(fragment: &str) -> impl Iterator<Item = anyhow::Result<(&str, &str,
                 pam_continued(rule).is_none(),
                 "PAM fragment rules must occupy one line"
             );
-            pam_rule_identity(pam_code(rule)).map(|(facility, module)| (rule, facility, module))
+            let code = pam_code(rule);
+            let (facility, module) = pam_rule_identity(code)?;
+            anyhow::ensure!(
+                ["auth", "account", "password", "session"]
+                    .iter()
+                    .any(|known| same_pam_facility(facility, known)),
+                "unknown PAM fragment facility: {facility}"
+            );
+            let fields = code
+                .strip_prefix(facility)
+                .context("missing PAM facility")?
+                .trim_start();
+            if !fields.starts_with('[') {
+                let (control, _) = pam_control_and_module(fields).context("missing PAM control")?;
+                anyhow::ensure!(
+                    ["required", "requisite", "sufficient", "optional"]
+                        .iter()
+                        .any(|known| control.eq_ignore_ascii_case(known)),
+                    "unknown PAM fragment control: {control}"
+                );
+            }
+            Ok((rule, facility, module))
         })
 }
 
@@ -804,6 +856,26 @@ fn pam_has_jump(control: &str) -> bool {
     })
 }
 
+// Ignore alignment between PAM fields, not whitespace inside an extended
+// control or module argument (e.g. a bracketed path containing spaces).
+fn same_pam_rule(left: &str, right: &str) -> bool {
+    fn fields(line: &str) -> Option<(&str, bool, &str, &str, &str)> {
+        let (facility, fields) = line.trim().split_once(char::is_whitespace)?;
+        let fields = fields.trim_start();
+        let (control, rest) = pam_control_and_module(fields)?;
+        let rest = rest.trim_start();
+        let (module, args) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+        Some((
+            facility,
+            fields.starts_with('['),
+            control,
+            module,
+            args.trim_start(),
+        ))
+    }
+    fields(left).is_some_and(|parsed| fields(right) == Some(parsed))
+}
+
 fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
     validate_pam_rules(fragment)?;
     let mut lines = pam_service_lines(current)?;
@@ -854,7 +926,7 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
             }
             [index] => {
                 let installed = lines.get_mut(*index).context("missing matched PAM rule")?;
-                if installed.code.trim() != replacement.code {
+                if !same_pam_rule(&installed.code, &replacement.code) {
                     *installed = replacement;
                 }
             }
@@ -863,7 +935,7 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
                 anyhow::ensure!(
                     matching.iter().any(|index| lines
                         .get(*index)
-                        .is_some_and(|line| line.code.trim() == replacement.code)),
+                        .is_some_and(|line| same_pam_rule(&line.code, &replacement.code))),
                     "multiple PAM {facility} rules use {module}, and none matches the fragment. Review the installed rules and the fragment before retrying"
                 );
             }
@@ -1433,6 +1505,58 @@ mod tests {
         assert!(error.contains("none matches the fragment"), "{error}");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn pam_retry_preserves_equivalent_site_layout_and_adds_only_missing_session_rule() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+        const LOGIN: &str = include_str!("../../../../../system/pam.d/login");
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let target = root.join("login");
+        let stage = root.join("stage");
+        fs::create_dir(&stage).unwrap();
+        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
+        let owner = fs::metadata(&root).unwrap().uid();
+        let legacy = "auth\toptional\tpam_gnome_keyring.so # local tty policy\n";
+        let site = "auth optional pam_gnome_keyring.so only_if=gdm # graphical login\n\
+                    session include system-login\n";
+        let ambiguous = format!("auth optional pam_gnome_keyring.so only_if=login\n{site}");
+        fs::write(&target, &ambiguous).unwrap();
+        let prepare = || prepare_in_private_stage(&target, LOGIN, "pam", &stage, owner);
+        assert!(prepare().is_err());
+        assert_eq!(fs::read_to_string(&target).unwrap(), ambiguous);
+        assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+
+        let reviewed = format!("{legacy}{site}");
+        fs::write(&target, &reviewed).unwrap();
+        assert_eq!(prepare().unwrap(), "prepared");
+        let session = LOGIN
+            .lines()
+            .find(|line| line.starts_with("session"))
+            .unwrap();
+        let expected = format!("{reviewed}{session}\n");
+        assert_eq!(fs::read_to_string(stage.join("input")).unwrap(), expected);
+        assert_eq!(
+            fs::read_to_string(stage.join("original")).unwrap(),
+            reviewed
+        );
+        fs::rename(stage.join("input"), &target).unwrap();
+        fs::remove_file(stage.join("original")).unwrap();
+        assert_eq!(prepare().unwrap(), "already-correct");
+        assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+        assert_eq!(fs::read_to_string(&target).unwrap(), expected);
+
+        let argument = "auth optional site.so [config=/etc/kiosk  site]";
+        assert!(!same_pam_rule(
+            argument,
+            &argument.replace("kiosk  site", "kiosk site")
+        ));
+        assert_eq!(
+            merge_pam(legacy, LOGIN.lines().next().unwrap()).unwrap(),
+            legacy
+        );
+    }
+
     #[test]
     fn pam_merge_preserves_the_rule_a_numeric_jump_skips() {
         let before = "# retain layout and comments\n\
@@ -1576,6 +1700,7 @@ mod tests {
         ] {
             assert_eq!(pam_rule_identity(rule).unwrap(), ("auth", "keyring.so"));
         }
+
         for rule in [
             "auth optional script keyring.so",
             "auth include keyring.so",
@@ -1589,6 +1714,186 @@ mod tests {
                 "a stack name or argument is not a module field: {rule}"
             );
         }
+    }
+
+    #[test]
+    fn typo_in_fragment_control_cannot_replace_a_working_login_rule() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let target = root.join("login");
+        let installed = "# kiosk login policy\nauth required pam_permit.so\n";
+        fs::write(&target, installed).unwrap();
+        fs::create_dir(root.join("system")).unwrap();
+        let fragment = root.join("system/login");
+        let resource = fixture_resource(
+            entry(&root, &target, "login", MergeStrategy::Pam),
+            Arc::new(MockExecutor::new()),
+        );
+        for rule in [
+            "auth requried pam_permit.so\n",
+            "aut required pam_permit.so\n",
+        ] {
+            fs::write(&fragment, rule).unwrap();
+            assert!(validate_fragment(MergeStrategy::Pam, rule).is_err());
+            assert!(matches!(
+                resource.current_state().unwrap(),
+                ResourceState::Invalid { .. }
+            ));
+            assert!(resource.apply().is_err());
+            assert_eq!(fs::read_to_string(&target).unwrap(), installed);
+        }
+        fs::write(fragment, "auth required pam_permit.so\n").unwrap();
+        assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn paccache_drop_in_never_replaces_custom_environment_lists() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+        const DROP_IN: &str =
+            include_str!("../../../../../system/systemd/system/paccache.service.d/retention.conf");
+        const ENV_FILE: &str =
+            include_str!("../../../../../system/systemd/system/paccache.service.d/retention.env");
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let stage = root.join("stage");
+        fs::create_dir(&stage).unwrap();
+        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
+        let owner = fs::metadata(&root).unwrap().uid();
+        let previous = "[Service]\nEnvironmentFile=\nEnvironment=PACCACHE_ARGS=-k2\n";
+        let custom = "[Service]\nEnvironment=SITE=blue\nEnvironmentFile=/srv/site/cache.env\n\
+                      EnvironmentFile=-/srv/mirror.env\nNice=7\n";
+        let directives: Vec<_> = DROP_IN
+            .lines()
+            .filter(|line| line.starts_with("EnvironmentFile="))
+            .collect();
+        assert_eq!(
+            directives,
+            ["EnvironmentFile=/etc/systemd/system/paccache.service.d/retention.env"]
+        );
+        assert!(DROP_IN.contains(
+            "\nConditionPathExists=/etc/systemd/system/paccache.service.d/retention.env\n"
+        ));
+        assert_eq!(ENV_FILE.trim(), "PACCACHE_ARGS=-k2");
+        for (name, desired, conflicts) in [
+            ("retention.conf", DROP_IN, [previous, custom]),
+            (
+                "retention.env",
+                ENV_FILE,
+                ["", "# operator override\nCACHE=/srv/private\n"],
+            ),
+        ] {
+            let target = root.join(name);
+            for existing in conflicts {
+                fs::write(&target, existing).unwrap();
+                assert!(
+                    prepare_in_private_stage(&target, desired, "create-only", &stage, owner)
+                        .is_err()
+                );
+                assert_eq!(fs::read_to_string(&target).unwrap(), existing);
+                assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+            }
+            let backup = root.join(format!("{name}.before-review"));
+            fs::rename(&target, &backup).unwrap();
+            assert_eq!(
+                prepare_in_private_stage(&target, desired, "create-only", &stage, owner).unwrap(),
+                "prepared"
+            );
+            assert!(!target.exists());
+            fs::rename(stage.join("input"), &target).unwrap();
+            assert_eq!(fs::read_to_string(&target).unwrap(), desired);
+            assert_eq!(
+                prepare_in_private_stage(&target, desired, "create-only", &stage, owner).unwrap(),
+                "already-correct"
+            );
+            assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+            assert_eq!(fs::read_to_string(backup).unwrap(), conflicts[1]);
+        }
+    }
+
+    #[test]
+    fn paccache_policy_file_is_required_before_publishing_its_drop_in() {
+        use crate::engine::{ProcessOpts, process_resources_with_cache};
+        use crate::test_helpers::make_linux_context;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let mut entries = super::super::super::config::system_files::load_all(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../conf/system-files.toml"),
+        )
+        .unwrap();
+        entries.retain(|entry| {
+            entry
+                .source
+                .starts_with("systemd/system/paccache.service.d")
+        });
+        assert_eq!(entries.len(), 2);
+        for entry in &mut entries {
+            entry.origin = Some(root.clone());
+            entry.target = root.join(entry.source.file_name().unwrap());
+            let src = entry.source_path();
+            fs::create_dir_all(src.parent().unwrap()).unwrap();
+            fs::copy(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../system")
+                    .join(&entry.source),
+                src,
+            )
+            .unwrap();
+        }
+        let env_path = root.join("retention.env");
+        let drop_in = root.join("retention.conf");
+        let customized = "# site-specific mirror cache\nPACCACHE_ARGS=-k10\n";
+        fs::write(&env_path, customized).unwrap();
+        let run = || {
+            process_resources_with_cache(
+                &make_linux_context(root.clone(), None),
+                entries
+                    .iter()
+                    .cloned()
+                    .map(|entry| fixture_resource(entry, Arc::new(MockExecutor::new()))),
+                &(),
+                |resource, ()| resource.installation_state(),
+                &ProcessOpts::strict("configure").sequential(),
+            )
+        };
+        assert!(run().is_err());
+        assert!(
+            !drop_in.exists(),
+            "must not activate custom cleanup arguments"
+        );
+        assert_eq!(fs::read_to_string(&env_path).unwrap(), customized);
+        // After the first installation step is interrupted the old service still
+        // has no reference to the new env file, and retry need only add the drop-in.
+        fs::write(&env_path, "PACCACHE_ARGS=-k2\n").unwrap();
+        let states: Vec<_> = entries
+            .iter()
+            .cloned()
+            .map(|entry| {
+                fixture_resource(entry, Arc::new(MockExecutor::new()))
+                    .installation_state()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(states, [ResourceState::Correct, ResourceState::Missing]);
+        let previous = "[Service]\nEnvironmentFile=\nEnvironment=PACCACHE_ARGS=-k2\n";
+        fs::write(&drop_in, previous).unwrap();
+        assert!(run().is_err());
+        assert_eq!(fs::read_to_string(&drop_in).unwrap(), previous);
+        // Operator review: keep the complete old file outside the active drop-ins.
+        fs::rename(&drop_in, root.join("reviewed-old.conf.bak")).unwrap();
+        fs::copy(entries.last().unwrap().source_path(), &drop_in).unwrap();
+        assert!(run().is_ok());
+        fs::write(&drop_in, "# post-install operator revision\n").unwrap();
+        assert!(run().is_err());
+        assert_eq!(
+            fs::read_to_string(&drop_in).unwrap(),
+            "# post-install operator revision\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("reviewed-old.conf.bak")).unwrap(),
+            previous
+        );
     }
 
     #[cfg(unix)]

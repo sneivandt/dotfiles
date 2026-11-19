@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 // Keep the ownership protocol stable so existing snapshots remain reusable.
 const MARKER: &str = "dotfiles local PKGBUILD snapshot v1\n";
 const ATTRIBUTES: &str = "* -text\n";
+const OPTIONAL_INPUTS: [&str; 3] = ["package.install", "LICENSE", "NOTICE"];
 
 pub(super) struct Snapshot {
     pub path: PathBuf,
@@ -90,7 +91,7 @@ impl Snapshot {
         if let Some(pins) = pins {
             files.push(("version.sh", pins));
         }
-        for name in ["package.install", "LICENSE", "NOTICE"] {
+        for name in OPTIONAL_INPUTS {
             if let Some(content) = read_optional(&source.join(name))? {
                 files.push((name, content));
             }
@@ -176,6 +177,13 @@ impl Snapshot {
         let Some(repo) = self.open_owned()? else {
             return Ok(true);
         };
+        for path in self.retired_inputs() {
+            if crate::infra::fs::symlink_metadata_optional(&path, "inspect retired snapshot input")?
+                .is_some()
+            {
+                return Ok(true);
+            }
+        }
         if read_optional(&repo.path().join("info/attributes"))?.as_deref() != Some(ATTRIBUTES) {
             return Ok(true);
         }
@@ -226,6 +234,13 @@ impl Snapshot {
         self.srcinfo.as_deref() != Some(srcinfo)
     }
 
+    fn retired_inputs(&self) -> impl Iterator<Item = PathBuf> {
+        OPTIONAL_INPUTS
+            .into_iter()
+            .filter(|name| !self.files.iter().any(|(input, _)| input == name))
+            .map(|name| self.path.join(name))
+    }
+
     fn inputs<'a>(&'a self, srcinfo: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> {
         self.files
             .iter()
@@ -262,6 +277,11 @@ impl Snapshot {
             }
             Err(error) => return Err(error).context("reading custom package snapshot parent"),
         };
+        // Removing a path from the Git index does not remove its working copy.
+        // Clean only supported inputs, not unrelated Paru build artifacts.
+        for path in self.retired_inputs() {
+            crate::infra::fs::remove_file_if_present(&path, "remove retired snapshot input")?;
+        }
         for (name, content) in self.inputs(srcinfo) {
             crate::infra::fs::write_atomic(&self.path.join(name), content)?;
         }

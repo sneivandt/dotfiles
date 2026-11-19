@@ -497,6 +497,71 @@ fn config_paths_must_survive_paru_whitespace_and_comment_parsing() {
 
 #[cfg(unix)]
 #[test]
+fn paru_preparation_preserves_config_changes_made_after_discovery() {
+    for config_write_planned in [false, true] {
+        let dir = fixture();
+        let ctx = snapshot_context(dir.path());
+        let _installed = configure_paru(&ctx).unwrap();
+        let config = paru_config_path(&ctx).unwrap();
+        let original = std::fs::read_to_string(&config).unwrap();
+        let cache = build_root(&ctx).unwrap().join("tool-bin/PKGBUILD");
+        let before = std::fs::read(&cache).unwrap();
+        let recipe = "pkgname=tool-bin\n# updated\n";
+        std::fs::write(dir.path().join("packages/tool-bin/PKGBUILD"), recipe).unwrap();
+        if config_write_planned {
+            std::fs::write(&config, "[options]\nDevel\n").unwrap();
+        }
+        let base = ctx.symlinks_dir().join("config/paru/paru.conf.base");
+        let op = ParuConfig { base: &base };
+        let OperationState::NeedsRun { plan } = op.current_state(&ctx).unwrap() else {
+            panic!("new recipe must require preparation")
+        };
+        let saved = dir.path().join("saved.conf");
+        let preferences = "[options]\nBottomUp\n";
+        if config_write_planned {
+            // A user saves additional preferences after the old file was read.
+            std::fs::write(&config, preferences).unwrap();
+        } else {
+            // A user restores a managed link to a byte-identical backup.
+            std::fs::write(&saved, &original).unwrap();
+            std::fs::remove_file(&config).unwrap();
+            std::os::unix::fs::symlink(&saved, &config).unwrap();
+        }
+        let error = op.apply(&ctx, &plan).unwrap_err();
+        assert!(
+            error.to_string().contains("changed during preparation"),
+            "{error:#}"
+        );
+        assert_eq!(std::fs::read(&cache).unwrap(), before);
+        assert_eq!(config.is_symlink(), !config_write_planned);
+        assert_eq!(
+            std::fs::read_to_string(&config).unwrap(),
+            if config_write_planned {
+                preferences
+            } else {
+                &original
+            }
+        );
+
+        std::fs::write(&base, preferences).unwrap();
+        let retry = configure_paru(&ctx).unwrap();
+        assert_eq!(task_batch(&retry).changed_count(), 2);
+        assert!(!config.is_symlink());
+        assert!(
+            std::fs::read_to_string(&config)
+                .unwrap()
+                .contains(preferences)
+        );
+        if !config_write_planned {
+            assert_eq!(std::fs::read_to_string(saved).unwrap(), original);
+        }
+        assert_eq!(std::fs::read_to_string(cache).unwrap(), recipe);
+        assert!(matches!(configure_paru(&ctx).unwrap(), TaskResult::Ok));
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn config_migrates_old_link_without_overwriting_tracked_source() {
     let dir = tempfile::tempdir().unwrap();
     let ctx = ContextBuilder::new(dir.path().into())
@@ -825,6 +890,57 @@ fn snapshot_commits_install_script_and_refreshes_changes_for_cleanup() {
         .find_blob(tree.get_name("package.install").unwrap().id())
         .unwrap();
     assert_eq!(blob.content(), b"post_install() { echo updated; }\n");
+}
+
+#[test]
+fn retiring_optional_snapshot_inputs_cleans_only_the_managed_slots() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    let source = dir.path().join("packages/tool-bin");
+    let cache = build_root(&ctx).unwrap().join("tool-bin");
+    std::fs::write(
+        source.join("package.install"),
+        "obsolete lifecycle script\n",
+    )
+    .unwrap();
+    assert_eq!(
+        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
+        2
+    );
+    std::fs::remove_file(source.join("package.install")).unwrap();
+    std::fs::write(cache.join("artifact"), "keep\n").unwrap();
+    let preview = configure_paru(&ctx.with_dry_run(true)).unwrap();
+    assert_eq!(task_batch(&preview).changed_count(), 1);
+    assert!(cache.join("package.install").exists());
+    assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+    assert_eq!(
+        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
+        1
+    );
+    let repo = git2::Repository::open(&cache).unwrap();
+    let tree = repo.head().unwrap().peel_to_tree().unwrap();
+    assert!(tree.get_name("package.install").is_none());
+    assert!(!cache.join("package.install").exists());
+
+    // Older versions could already have dropped the file from HEAD and the
+    // index without unlinking it. A directory is not safe to delete recursively.
+    std::fs::create_dir(cache.join("NOTICE")).unwrap();
+    std::fs::write(cache.join("NOTICE/keep"), "user data\n").unwrap();
+    assert_eq!(task_batch(&configure_paru(&ctx).unwrap()).failed_count(), 1);
+    assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+    std::fs::rename(cache.join("NOTICE"), cache.join("saved")).unwrap();
+    std::fs::write(cache.join("NOTICE"), "retired notice\n").unwrap();
+    assert_eq!(
+        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
+        2
+    );
+    assert!(!cache.join("NOTICE").exists());
+    assert_eq!(
+        std::fs::read(cache.join("saved/keep")).unwrap(),
+        b"user data\n"
+    );
+    assert_eq!(std::fs::read(cache.join("artifact")).unwrap(), b"keep\n");
+    assert!(matches!(configure_paru(&ctx).unwrap(), TaskResult::Ok));
 }
 
 #[test]
@@ -1183,29 +1299,42 @@ fn add_recipe(root: &Path, base: &str) -> PathBuf {
 }
 
 fn release_failure_executor(retained: bool) -> MockExecutor {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let batch_installed = Arc::new(AtomicBool::new(false));
     let mut mock = MockExecutor::new();
     mock.expect_which()
         .withf(|program| program == "gh")
         .return_const(false);
     expect_metadata(&mut mock);
     mock.expect_execute()
-        .once()
+        .times(2)
         .withf(|spec| {
             spec.program() == "pacman" && spec.arguments() == ["-Q", "paru"] && !spec.is_checked()
         })
         .returning(|_| Ok(ExecResult::success("paru 2.1.0")));
     mock.expect_execute()
-        .once()
+        .times(2)
         .withf(|spec| {
             spec.program() == "/usr/bin/paru"
                 && spec.arguments() == ["--version"]
                 && spec.is_checked()
         })
         .returning(|_| Ok(ExecResult::success("paru 2.1.0")));
+    let installed = Arc::clone(&batch_installed);
     mock.expect_execute()
-        .once()
+        .times(3)
         .withf(|spec| spec.program() == "pacman" && spec.arguments() == ["-Q"] && spec.is_checked())
-        .returning(|_| Ok(ExecResult::success("")));
+        .returning(move |_| {
+            let mut inventory = String::from("existing 0.9\n");
+            if installed.load(Ordering::Acquire) {
+                inventory.push_str("tool-bin 1.2.3\nunrelated-aur 1\n");
+                if retained {
+                    inventory.push_str("broken-bin 1.2.3\n");
+                }
+            }
+            Ok(ExecResult::success(inventory))
+        });
     mock.expect_execute()
         .once()
         .withf(move |spec| {
@@ -1223,17 +1352,17 @@ fn release_failure_executor(retained: bool) -> MockExecutor {
             };
             spec.program() == "/usr/bin/paru" && spec.arguments() == expected && spec.is_checked()
         })
-        .returning(|_| Ok(ExecResult::success("installed")));
+        .returning(move |_| {
+            batch_installed.store(true, Ordering::Release);
+            Ok(ExecResult::success("installed"))
+        });
     mock
 }
 
 #[test]
 fn failed_release_does_not_block_other_updates_or_aur_installs() {
-    use crate::domains::packages::config::packages::Package;
-    use crate::domains::packages::install::InstallAurPackages;
     use crate::engine::TaskAssessment;
     use crate::engine::graph::ResolvedTaskGraph;
-    use crate::infra::ConfigHandle;
     use crate::infra::logging::TaskStatus;
     use std::collections::HashMap;
 
@@ -1262,15 +1391,7 @@ fn failed_release_does_not_block_other_updates_or_aur_installs() {
             .with_parallel(parallel);
             let versions = UpdateCustomPackageVersions;
             let config = paru_task(&ctx);
-            let install = InstallAurPackages::new(ConfigHandle::new(
-                ["broken-bin", "tool-bin", "unrelated-aur"]
-                    .into_iter()
-                    .map(|name| Package {
-                        name: name.into(),
-                        is_aur: true,
-                    })
-                    .collect(),
-            ));
+            let install = release_failure_install();
             // Reverse the intended order to ensure dependency edges schedule it.
             let tasks: Vec<&dyn Task> = vec![&install, &config, &versions];
             let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
@@ -1298,9 +1419,17 @@ fn failed_release_does_not_block_other_updates_or_aur_installs() {
                 .iter()
                 .find(|entry| entry.name == "AUR packages")
                 .unwrap();
-            if !retained {
-                assert_eq!(install_entry.status, TaskStatus::Failed);
-            }
+            assert_eq!(
+                install_entry.status,
+                if retained {
+                    TaskStatus::Changed
+                } else {
+                    TaskStatus::Failed
+                }
+            );
+            assert_eq!(install_entry.actions.applied, if retained { 3 } else { 2 });
+            assert_eq!(install_entry.actions.failed, u32::from(!retained));
+            assert_aur_retry(&install.run(&ctx).unwrap(), retained);
             assert_eq!(
                 std::fs::read_to_string(dir.path().join("packages/tool-bin/version.sh")).unwrap(),
                 old_pins
@@ -1324,6 +1453,32 @@ fn failed_release_does_not_block_other_updates_or_aur_installs() {
                 );
             }
         }
+    }
+}
+
+fn release_failure_install() -> crate::domains::packages::install::InstallAurPackages {
+    use crate::domains::packages::config::packages::Package;
+    use crate::domains::packages::install::InstallAurPackages;
+    use crate::infra::ConfigHandle;
+    InstallAurPackages::new(ConfigHandle::new(
+        ["broken-bin", "tool-bin", "unrelated-aur", "existing"]
+            .into_iter()
+            .map(|name| Package {
+                name: name.into(),
+                is_aur: true,
+            })
+            .collect(),
+    ))
+}
+
+fn assert_aur_retry(result: &TaskResult, retained: bool) {
+    if retained {
+        assert!(matches!(result, TaskResult::Ok));
+    } else {
+        let retry = task_batch(result);
+        assert_eq!(retry.changed_count(), 0);
+        assert_eq!(retry.already_ok_count(), 3);
+        assert_eq!(retry.failed_count(), 1);
     }
 }
 
@@ -1538,6 +1693,152 @@ fn cancellation_aborts_discovery_without_publishing_pending_updates() {
     );
     assert!(!other.join("version.sh").exists());
     assert!(!dir.path().join("bin/.github-releases-v1").exists());
+}
+
+#[test]
+fn interruption_after_release_discovery_does_not_publish_pins_or_cache() {
+    let dir = fixture();
+    let ctx = release_context(dir.path(), false);
+    let OperationState::NeedsRun { plan } = ReleaseUpdates.current_state(&ctx).unwrap() else {
+        panic!("fresh release must produce a plan")
+    };
+    ctx.cancellation_token().cancel();
+    let error = ReleaseUpdates.apply(&ctx, &plan).unwrap_err();
+    assert!(
+        error
+            .downcast_ref::<crate::infra::exec::ExecError>()
+            .unwrap()
+            .is_cancelled()
+    );
+    let pins = dir.path().join("packages/tool-bin/version.sh");
+    assert_eq!(std::fs::read(&pins).unwrap(), b"original pins\n");
+    assert!(!dir.path().join("bin/.github-releases-v1").exists());
+    assert_eq!(
+        task_batch(&task().run(&release_context(dir.path(), false)).unwrap()).changed_count(),
+        1
+    );
+    assert_eq!(
+        std::fs::read_to_string(pins).unwrap(),
+        release_pins(&source(), &release()).unwrap()
+    );
+}
+
+#[test]
+fn interrupted_second_validation_leaves_the_published_first_snapshot_usable() {
+    let dir = fixture();
+    let setup = snapshot_context(dir.path());
+    let _installed = configure_paru(&setup).unwrap();
+    let path = build_root(&setup).unwrap().join("tool-bin");
+    let config = paru_config_path(&setup).unwrap();
+    let before_config = std::fs::read(&config).unwrap();
+    let before_recipe = std::fs::read(path.join("PKGBUILD")).unwrap();
+    let changed = "pkgname=tool-bin\n# updated\n";
+    std::fs::write(dir.path().join("packages/tool-bin/PKGBUILD"), changed).unwrap();
+    std::fs::write(add_recipe(dir.path(), "z-bin").join("version.sh"), "pins\n").unwrap();
+
+    let mut mock = MockExecutor::new();
+    mock.expect_execute().times(2).returning(|spec| {
+        assert_eq!(spec.program(), "makepkg");
+        assert_eq!(spec.arguments(), ["--printsrcinfo"]);
+        let recipe = std::fs::read_to_string(spec.working_dir().unwrap().join("PKGBUILD")).unwrap();
+        if recipe.contains("pkgname=z-bin\n") {
+            return Err(crate::infra::exec::ExecError::Cancelled {
+                command: "z-bin metadata".into(),
+                result: ExecResult::failure("", "interrupted", None),
+            });
+        }
+        assert_eq!(recipe, "pkgname=tool-bin\n# updated\n");
+        Ok(ExecResult::success(
+            "pkgbase = tool-bin\n\tarch = x86_64\npkgname = tool-bin\n",
+        ))
+    });
+    let ctx = make_context(
+        dir.path().into(),
+        None,
+        Platform::new(Os::Linux, true),
+        Arc::new(mock),
+    )
+    .with_home(setup.home().to_path_buf())
+    .with_env(crate::infra::env::MapEnv::new().into_handle())
+    .with_parallel(false);
+    let error = configure_paru(&ctx).unwrap_err();
+    assert!(
+        error
+            .downcast_ref::<crate::infra::exec::ExecError>()
+            .unwrap()
+            .is_cancelled()
+    );
+    assert_eq!(std::fs::read(path.join("PKGBUILD")).unwrap(), before_recipe);
+    assert_eq!(std::fs::read(&config).unwrap(), before_config);
+    assert!(!build_root(&ctx).unwrap().join("z-bin").exists());
+    assert_eq!(
+        task_batch(&configure_paru(&setup).unwrap()).changed_count(),
+        3
+    );
+    assert_eq!(
+        std::fs::read_to_string(path.join("PKGBUILD")).unwrap(),
+        changed
+    );
+    assert!(matches!(configure_paru(&setup).unwrap(), TaskResult::Ok));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn powershell_package_hooks_preserve_existing_login_shell_registrations() {
+    let dir = tempfile::tempdir().unwrap();
+    let etc = dir.path().join("etc");
+    std::fs::create_dir(&etc).unwrap();
+    let shells = etc.join("shells");
+    let script =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../packages/powershell/package.install");
+    let hook = |name: &str| {
+        std::process::Command::new("/bin/sh")
+            .args(["-c", ". \"$1\" && \"$2\"", "fixture"])
+            .arg(&script)
+            .arg(name)
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .current_dir(dir.path())
+            .output()
+            .unwrap()
+            .status
+            .success()
+    };
+    assert!(
+        !hook("post_install"),
+        "an unreadable/missing registry is not an empty list"
+    );
+    assert!(!shells.exists());
+    let existing = "/bin/sh\n/usr/bin/pwsh";
+    std::fs::write(&shells, existing).unwrap();
+    for action in ["post_install", "post_upgrade", "pre_remove"] {
+        assert!(hook(action));
+        assert_eq!(std::fs::read_to_string(&shells).unwrap(), existing);
+    }
+
+    let target = etc.join("login-shells");
+    std::fs::rename(&shells, &target).unwrap();
+    std::os::unix::fs::symlink("login-shells", &shells).unwrap();
+    std::fs::write(&target, "/bin/sh").unwrap();
+    assert!(hook("post_install"));
+    let registered = std::fs::read_to_string(&target).unwrap();
+    assert_eq!(
+        registered
+            .lines()
+            .filter(|s| s.starts_with('/'))
+            .collect::<Vec<_>>(),
+        ["/bin/sh", "/usr/bin/pwsh"]
+    );
+    assert!(hook("post_upgrade"));
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), registered);
+    std::fs::write(&target, format!("{registered}# local\n/usr/bin/pwsh\n")).unwrap();
+    assert!(hook("pre_remove"));
+    assert_eq!(
+        std::fs::read_to_string(&target).unwrap(),
+        "/bin/sh\n# local\n/usr/bin/pwsh\n"
+    );
+    assert!(shells.is_symlink());
+    assert!(hook("pre_remove"));
 }
 
 #[test]
@@ -1787,7 +2088,7 @@ fn successful_metadata_validation_is_reused_only_for_identical_intact_inputs() {
     std::fs::write(descriptor, content).unwrap();
     let _descriptor = configure_paru(&ctx).unwrap();
     assert_eq!(calls.load(Ordering::SeqCst), 5);
-    std::fs::remove_file(stamp).unwrap();
+    std::fs::remove_file(&stamp).unwrap();
     assert!(matches!(
         ParuConfig {
             base: &ctx.symlinks_dir().join("config/paru/paru.conf.base")
@@ -1796,7 +2097,18 @@ fn successful_metadata_validation_is_reused_only_for_identical_intact_inputs() {
         .unwrap(),
         OperationState::NeedsRun { .. }
     ));
-    let _missing_stamp = configure_paru(&ctx).unwrap();
+    let preview = configure_paru(&ctx.with_dry_run(true)).unwrap();
+    assert_eq!(task_batch(&preview).changed_count(), 1);
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        5,
+        "preview must not evaluate recipes"
+    );
+    assert!(!stamp.exists());
+    assert_eq!(
+        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
+        1
+    );
     assert_eq!(calls.load(Ordering::SeqCst), 6);
 }
 

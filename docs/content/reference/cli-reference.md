@@ -91,7 +91,9 @@ See [Task discovery output](#task-discovery-output) for graph markers and
 
 `--root .` selects the checkout you are standing in. Without `--root`, dotfiles
 tries `DOTFILES_ROOT`, candidate paths relative to its executable, then the
-current directory. Wrappers set `DOTFILES_ROOT` to their own checkout.
+current directory. A directly invoked `bin/dotfiles` prefers its own checkout,
+even when it is nested inside another checkout. Wrappers set `DOTFILES_ROOT`
+to their own checkout.
 
 `--root` chooses configuration, **not the executable**. An installed launcher
 can still obtain a binary from another checkout. Use the intended checkout's
@@ -228,8 +230,9 @@ output is marked truncated and is not accepted as a complete inventory.
 
 Each restarted or elevated process has a separate log linked to its parent.
 `unfinished` means no finish record exists; the process may still be running.
-Retention targets the newest 50 logs without deleting active ones. Reading
-logs does not start another logged run.
+Retention targets the newest 50 Dotfiles logs without deleting active ones.
+Files without a readable Dotfiles header are left alone, even if their names
+match the log naming pattern. Reading logs does not start another logged run.
 
 ### Log locations
 

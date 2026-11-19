@@ -18,6 +18,8 @@ pub enum MergeStrategy {
     Ini,
     /// Insert PAM module rules at the end of their matching facility stacks.
     Pam,
+    /// Install a dedicated fragment only if the destination does not already exist.
+    CreateOnly,
 }
 
 /// One tracked source fragment and its privileged target.
@@ -78,7 +80,7 @@ config_section! {
 
 /// Load every configured entry without applying category selectors.
 #[cfg(test)]
-fn load_all(path: &Path) -> Result<Vec<SystemFile>> {
+pub(in crate::domains::system) fn load_all(path: &Path) -> Result<Vec<SystemFile>> {
     Ok(
         crate::infra::config::toml_loader::with_optional_document(path, decode)?
             .into_iter()

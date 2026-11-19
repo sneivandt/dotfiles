@@ -62,6 +62,9 @@ are serialized as strings. DWORD `14` and `"0x0E"` represent the same desired va
 Configuration diagnostics check registry paths and DWORD ranges on every platform.
 On Windows, registry previews and updates reject invalid paths or DWORD values
 before processing entries. Updates preserve existing undeclared values.
+If a value cannot be read, Dotfiles leaves it alone and reports the failure.
+Other readable settings can still be applied. After restoring access, retry
+the update; it checks the current values again.
 
 Check the application's expected value type as well as its name: a numeric
 string is not interchangeable with a DWORD. Dotfiles writes the declaration

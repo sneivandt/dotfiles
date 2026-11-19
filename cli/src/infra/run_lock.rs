@@ -317,7 +317,13 @@ pub(crate) fn repository_state_path(
     platform: Platform,
     filename: &str,
 ) -> Result<PathBuf> {
-    if let Ok(repository) = git2::Repository::discover(root) {
+    // Exported dotfiles trees can live inside an unrelated repository.
+    // Only the selected root's Git metadata can own its shared lock.
+    if crate::infra::fs::symlink_metadata_optional(&root.join(".git"), "inspect repository marker")?
+        .is_some()
+    {
+        let repository = git2::Repository::open(root)
+            .with_context(|| format!("opening selected repository {}", root.display()))?;
         return Ok(repository.commondir().join(filename));
     }
 
@@ -731,14 +737,34 @@ mod tests {
     }
 
     #[test]
+    fn exported_tree_never_replaces_ancestor_lock_or_falls_back_on_bad_metadata() {
+        let fixture = tempfile::tempdir().unwrap();
+        let outer = git2::Repository::init(fixture.path()).unwrap();
+        let outer_lock = outer.commondir().join(LOCK_NAME);
+        std::fs::write(&outer_lock, "outer state").unwrap();
+        let export = fixture.path().join("export");
+        std::fs::create_dir(&export).unwrap();
+        let env = MapEnv::new().with("HOME", fixture.path().join("fixture-home"));
+        let platform = Platform::new(Os::Linux, false);
+        let marker = export.join(".git");
+        std::fs::write(&marker, "gitdir: unavailable\n").unwrap();
+        assert!(RunLock::acquire(&export, &env, platform, "check").is_err());
+        assert!(!fixture.path().join("fixture-home").exists());
+        std::fs::remove_file(marker).unwrap();
+        let holder = RunLock::acquire(&export, &env, platform, "check").unwrap();
+        assert!(RunLock::acquire(&export, &env, platform, "retry").is_err());
+        drop(holder);
+        drop(RunLock::acquire(&export, &env, platform, "retry").unwrap());
+        assert_eq!(std::fs::read(outer_lock).unwrap(), b"outer state");
+    }
+
+    #[test]
     fn non_repository_state_paths_use_platform_precedence_and_repository_identity() {
         let root = tempfile::tempdir().unwrap();
         let first = root.path().join("first");
         let second = root.path().join("second");
         for path in [&first, &second] {
             std::fs::create_dir(path).unwrap();
-            // Stop discovery at the fixture even when TMPDIR is inside a checkout.
-            std::fs::write(path.join(".git"), "not a git directory").unwrap();
         }
         let local = root.path().join("local");
         let state = root.path().join("state");
@@ -841,7 +867,6 @@ mod tests {
     fn non_repository_locks_ignore_blank_and_relative_state_directories() {
         let fixture = tempfile::tempdir_in(".").unwrap();
         let root = std::path::absolute(fixture.path()).unwrap();
-        std::fs::write(root.join(".git"), "not a git directory").unwrap();
         let home = root.join("home");
 
         for (os, state_key, home_key) in [
@@ -865,7 +890,6 @@ mod tests {
     fn non_repository_locks_reject_missing_absolute_home_and_state_directories() {
         let fixture = tempfile::tempdir_in(".").unwrap();
         let root = std::path::absolute(fixture.path()).unwrap();
-        std::fs::write(root.join(".git"), "not a git directory").unwrap();
 
         for (os, state_key, home_key) in [
             (Os::Linux, "XDG_STATE_HOME", "HOME"),
@@ -889,7 +913,6 @@ mod tests {
     fn blank_state_override_and_home_fallback_contend_for_the_same_run_lock() {
         let fixture = tempfile::tempdir_in(".").unwrap();
         let root = std::path::absolute(fixture.path()).unwrap();
-        std::fs::write(root.join(".git"), "not a git directory").unwrap();
         for (os, state_key, home_key) in [
             (Os::Linux, "XDG_STATE_HOME", "HOME"),
             (Os::Windows, "LOCALAPPDATA", "USERPROFILE"),

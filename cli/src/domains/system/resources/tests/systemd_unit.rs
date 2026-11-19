@@ -378,6 +378,12 @@ fn current_state_combines_enablement_and_requested_runtime() {
             Some("ActiveState=inactive\n"),
         ),
         (
+            UnitScope::User,
+            false,
+            ExecResult::failure("masked\n", "", Some(1)),
+            Some("ActiveState=inactive\n"),
+        ),
+        (
             UnitScope::System,
             true,
             ExecResult::success(""),
@@ -820,6 +826,68 @@ fn offline_lookup_preserves_override_precedence_and_masks() {
 
 #[cfg(unix)]
 #[test]
+fn a_mask_with_install_dropins_preserves_links_until_unmasked() {
+    for dev_null in [false, true] {
+        let fixture = tempfile::tempdir().unwrap();
+        let home = fixture.path().join("home");
+        let name = "example.service";
+        let mut resource = offline_unit(&home, name, true);
+        let user_dir = home.join(".config/systemd/user");
+        let vendor = fixture.path().join("usr/lib/systemd/user");
+        resource.system_user_unit_dirs = vec![vendor.clone()];
+        let dropin = user_dir.join(format!("{name}.d"));
+        let old_target = user_dir.join("default.target.wants");
+        for dir in [&vendor, &dropin, &old_target] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let source = vendor.join(name);
+        let installed = user_dir.join(name);
+        let old = old_target.join(name);
+        let desired = user_dir
+            .join("graphical-session.target.requires")
+            .join(name);
+        std::fs::write(&source, "[Service]\nExecStart=/bin/true\n").unwrap();
+        std::fs::write(
+            dropin.join("install.conf"),
+            "[Install]\nRequiredBy=graphical-session.target\n",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(&source, &old).unwrap();
+        if dev_null {
+            std::os::unix::fs::symlink("/dev/null", &installed).unwrap();
+        } else {
+            std::fs::write(&installed, "").unwrap();
+        }
+
+        assert!(matches!(
+            resource.current_state(),
+            Err(ResourceError::ConflictingState { .. })
+        ));
+        assert!(matches!(
+            resource.apply(),
+            Err(ResourceError::ConflictingState { .. })
+        ));
+        assert_eq!(std::fs::read_link(&old).unwrap(), source);
+        assert!(!desired.is_symlink());
+        if dev_null {
+            assert_eq!(
+                std::fs::read_link(&installed).unwrap(),
+                Path::new("/dev/null")
+            );
+        } else {
+            assert!(std::fs::read(&installed).unwrap().is_empty());
+        }
+
+        std::fs::remove_file(&installed).unwrap();
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(std::fs::read_link(&desired).unwrap(), source);
+        assert!(!old.is_symlink());
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn offline_enablement_repairs_checkout_links_and_accepts_relative_installed_links() {
     let home = tempfile::tempdir().unwrap();
     let source = home.path().join("checkout/example.service");
@@ -1164,7 +1232,7 @@ fn live_user_enablement_reconciles_changed_targets_and_preserves_foreign_links()
     let executor: Arc<dyn Executor> = Arc::new(scripted);
     let resource = || {
         let mut resource = offline_unit(&home, name, true);
-        resource.user_manager_available = true;
+        resource.manager_available = true;
         resource.start = false;
         resource.executor = Arc::clone(&executor);
         resource.system_user_unit_dirs.clear();
@@ -1200,7 +1268,7 @@ fn live_user_enablement_reconciles_changed_targets_and_preserves_foreign_links()
 
 #[cfg(unix)]
 #[test]
-fn offline_disable_reports_global_enablement_and_preserves_the_admin_link() {
+fn disable_reports_global_enablement_and_preserves_the_admin_link_online_and_offline() {
     let fixture = tempfile::tempdir().unwrap();
     let home = fixture.path().join("home");
     let admin = fixture.path().join("etc/systemd/user");
@@ -1213,22 +1281,95 @@ fn offline_disable_reports_global_enablement_and_preserves_the_admin_link() {
     std::os::unix::fs::symlink("../example.service", &link).unwrap();
     let mut resource = offline_unit(&home, name, false);
     resource.system_user_unit_dirs = vec![admin];
-    assert!(matches!(
-        resource.current_state().unwrap(),
-        ResourceState::Invalid { reason } if reason.contains("ask an administrator")
-    ));
-    assert_eq!(
-        resource.apply().unwrap(),
-        ResourceChange::unusable(format!(
-            "{name} is enabled for all users by {}; ask an administrator to disable it",
-            link.display()
-        ))
-    );
+    for live in [false, true] {
+        resource.manager_available = live;
+        if live {
+            resource.executor = Arc::new(
+                crate::test_helpers::ScriptedExecutor::new().command(
+                    CommandSpec::new("systemctl")
+                        .args(&["--user", "is-enabled", name])
+                        .unchecked(),
+                    Ok(ExecResult::success("enabled")),
+                ),
+            );
+        }
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Invalid { reason } if reason.contains("ask an administrator")
+        ));
+        assert_eq!(
+            resource.apply().unwrap(),
+            ResourceChange::unusable(format!(
+                "{name} is enabled for all users by {}; ask an administrator to disable it",
+                link.display()
+            ))
+        );
+    }
     assert_eq!(
         std::fs::read_link(&link).unwrap(),
         Path::new("../example.service")
     );
     assert!(!home.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn temporary_mask_cannot_confirm_persistent_disable_until_it_expires() {
+    use crate::engine::{ProcessOpts, process_resources};
+    use crate::test_helpers::{ContextBuilder, task_batch};
+
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let home = fixture.path().join("home");
+    let admin = fixture.path().join("etc/systemd/user");
+    let runtime = fixture.path().join("run/user/1000/systemd/user");
+    let name = "fixture.service";
+    let wants = admin.join("default.target.wants");
+    std::fs::create_dir_all(&wants).unwrap();
+    std::fs::create_dir_all(&runtime).unwrap();
+    let mask = runtime.join(name);
+    let link = wants.join(name);
+    std::fs::write(admin.join(name), "[Install]\nWantedBy=default.target\n").unwrap();
+    std::os::unix::fs::symlink("../fixture.service", &link).unwrap();
+    std::os::unix::fs::symlink("/dev/null", &mask).unwrap();
+    let resource = || {
+        let (enablement, active) = if mask.is_symlink() {
+            (ExecResult::failure("masked-runtime\n", "", Some(1)), None)
+        } else if link.is_symlink() {
+            (ExecResult::success("enabled\n"), None)
+        } else {
+            (
+                ExecResult::failure("disabled\n", "", Some(1)),
+                Some("ActiveState=inactive\n"),
+            )
+        };
+        let mut unit = queried_unit(name, UnitScope::User, false, enablement, active);
+        unit.home = Some(home.clone());
+        unit.system_user_unit_dirs = vec![admin.clone()];
+        unit
+    };
+
+    let ctx = ContextBuilder::new(home.clone()).overlay(None).build();
+    for dry_run in [true, false] {
+        let result = process_resources(
+            &ctx.with_dry_run(dry_run),
+            [resource()],
+            &ProcessOpts::lenient("configure"),
+        )
+        .unwrap();
+        assert_eq!(task_batch(&result).failed_count(), 1);
+        assert_eq!(std::fs::read_link(&mask).unwrap(), Path::new("/dev/null"));
+        assert_eq!(
+            std::fs::read_link(&link).unwrap(),
+            Path::new("../fixture.service")
+        );
+    }
+    // The mask expires at logout/boot; the admin's persistent link remains.
+    std::fs::remove_file(mask.as_path()).unwrap();
+    assert!(
+        matches!(resource().current_state().unwrap(), ResourceState::Invalid { reason } if reason.contains("enabled for all users"))
+    );
+    std::fs::remove_file(link.as_path()).unwrap();
+    assert_eq!(resource().current_state().unwrap(), ResourceState::Correct);
 }
 
 #[cfg(unix)]

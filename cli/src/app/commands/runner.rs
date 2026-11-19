@@ -118,9 +118,18 @@ impl CommandRunner {
             resolve_profile(runtime, &root, platform, overlay_path, log, prompt)?;
         let config = load_config(&root, &profile, platform, overlay_path, log)?;
 
-        let overlay = overlay.map(|selection| save_explicit_overlay(&root, selection));
+        // UAC forwards the parent's resolved overlay as --overlay even when it
+        // came from the environment. Only the original invocation may save it.
+        let overlay = overlay.map(|selection| {
+            if runtime.execution.elevated_child {
+                selection.0
+            } else {
+                save_explicit_overlay(&root, selection)
+            }
+        });
         #[allow(clippy::print_stderr, reason = "intentional user-facing warning")]
-        if source == profiles::ProfileSource::Prompt
+        if !runtime.execution.elevated_child
+            && source == profiles::ProfileSource::Prompt
             && let Err(e) = profiles::persist(&root, &profile.name)
         {
             eprintln!("warning: could not persist profile to git config: {e}");
@@ -309,14 +318,9 @@ fn resolve_root_from_dir(
     }
 
     if let Ok(exe) = std::env::current_exe()
-        && let Some(parent) = exe.parent()
+        && let Some(root) = root_from_executable(&exe)?
     {
-        let candidates = [parent.join("../../.."), parent.join("..")];
-        for candidate in &candidates {
-            if candidate.join("conf").exists() && candidate.join("symlinks").exists() {
-                return crate::infra::fs::canonicalize(candidate);
-            }
-        }
+        return Ok(root);
     }
 
     if let Some(cwd) = cwd
@@ -327,6 +331,20 @@ fn resolve_root_from_dir(
     }
 
     anyhow::bail!("cannot determine dotfiles root. Use --root or set DOTFILES_ROOT env var");
+}
+
+fn root_from_executable(exe: &Path) -> Result<Option<PathBuf>> {
+    let Some(parent) = exe.parent() else {
+        return Ok(None);
+    };
+    // An installed bin/ can sit in a worktree nested inside another checkout.
+    // Look for its own checkout before trying the deeper Cargo build layout.
+    for candidate in [parent.join(".."), parent.join("../../..")] {
+        if candidate.join("conf").try_exists()? && candidate.join("symlinks").try_exists()? {
+            return crate::infra::fs::canonicalize(&candidate).map(Some);
+        }
+    }
+    Ok(None)
 }
 
 #[allow(clippy::print_stderr, reason = "intentional user-facing warning")]
@@ -519,6 +537,42 @@ mod root_tests {
     }
 
     #[test]
+    fn delegated_overlay_is_not_a_new_saved_selection() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(root.path()).unwrap();
+        let previous = tempfile::tempdir().unwrap();
+        let one_run = tempfile::tempdir().unwrap();
+        overlay_resolution::persist(root.path(), previous.path()).unwrap();
+        let config_path = repo.path().join("config");
+        let before = std::fs::read(&config_path).unwrap();
+        let conf = root.path().join("conf");
+        std::fs::create_dir(&conf).unwrap();
+        for file in crate::app::config::REQUIRED_CONFIG_FILES {
+            std::fs::write(conf.join(file), "").unwrap();
+        }
+
+        let mut global = super::super::tests::global(&["--elevated-child"]);
+        global.root = Some(root.path().to_path_buf());
+        global.overlay = Some(one_run.path().to_path_buf());
+        let env = MapEnv::new()
+            .with("HOME", root.path())
+            .with("USERPROFILE", root.path());
+        let runtime = RuntimePolicy::new(&global, false, env.into_handle(), true, true);
+        for _ in 0..2 {
+            let runner = CommandRunner::new_with_profile_prompt(
+                &runtime,
+                &Arc::new(Logger::test()),
+                &crate::engine::CancellationToken::new(),
+                None,
+                || Ok("base".into()),
+            )
+            .unwrap();
+            assert_eq!(runner.ctx.overlay(), Some(one_run.path()));
+            assert_eq!(std::fs::read(&config_path).unwrap(), before);
+        }
+    }
+
+    #[test]
     fn startup_saves_selections_only_after_configuration_loads() {
         let root = tempfile::tempdir().unwrap();
         let repo = git2::Repository::init(root.path()).unwrap();
@@ -676,6 +730,31 @@ mod root_tests {
         let root = tempfile::tempdir().unwrap();
         let error = resolve_root_from_dir(None, Some(root.path()), &MapEnv::new()).unwrap_err();
         assert!(error.to_string().contains("cannot determine dotfiles root"));
+    }
+
+    #[test]
+    fn nested_executable_uses_its_own_checkout_for_installed_and_cargo_layouts() {
+        let outer = tempfile::tempdir().unwrap();
+        let nested = outer.path().join("worktrees/desktop");
+        for (root, label) in [
+            (outer.path(), "outer settings"),
+            (&nested, "nested settings"),
+        ] {
+            std::fs::create_dir_all(root.join("conf")).unwrap();
+            std::fs::create_dir(root.join("symlinks")).unwrap();
+            std::fs::write(root.join("conf/selection"), label).unwrap();
+        }
+        for bin in ["bin", "cli/target/debug"] {
+            let dir = nested.join(bin);
+            std::fs::create_dir_all(&dir).unwrap();
+            let resolved = root_from_executable(&dir.join("dotfiles"))
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                std::fs::read(resolved.join("conf/selection")).unwrap(),
+                b"nested settings"
+            );
+        }
     }
 
     #[test]

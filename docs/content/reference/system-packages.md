@@ -22,17 +22,20 @@ rules, not a universal package namespace.
 
 ## What it does
 
-Installs missing non-AUR declarations using pacman on Linux or winget on Windows. It
-does not install packages through apt or dnf. A missing package manager leaves the task
-skipped; if the installed-package query fails, the task stops rather than assuming every
-package is missing. After a failed batch transaction, it checks again to report packages
-that did install; the transaction still counts as a failure.
+Installs missing non-AUR declarations using pacman on Arch Linux or winget on
+Windows. Other Linux distributions are unsupported, even if a `pacman`
+executable is on `PATH`. If selected packages have no supported or available
+manager, the task reports unmet work. If the inventory query fails, it stops
+rather than assuming every package is missing. After a failed Arch batch
+transaction, it checks again to report packages that did install; the
+transaction still counts as a failure.
 
 **Installing missing Arch packages can upgrade the whole system.** The command is
 `pacman -Syu --needed --noconfirm`. If all declared packages are already present, this
 task does not run an upgrade solely because the command is named update.
 
-Windows installs missing IDs through winget. Installer failures fail the task, even if
+Windows uses winget's `--no-upgrade` option so an application installed since the
+inventory check is left at its current version. Installer failures fail the task, even if
 other packages succeed; installers can request their own UAC consent. See [Windows
 package behavior](../guides/package-management.md#windows) for user-scope fallback and failure
 handling, and [Windows elevation](../guides/windows-and-wsl.md#elevation) before an elevated

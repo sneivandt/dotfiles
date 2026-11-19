@@ -230,8 +230,12 @@ Edit the tracked
 not an installed copy.
 The profile provides a path and Git-aware prompt, command history, and
 history-based suggestions when the installed PSReadLine supports them.
+If a startup fragment fails, the profile warns and continues loading the
+remaining fragments. Fix the named fragment or its missing command, then
+reload the profile to retry it.
 `dot` is shorthand for `dotfiles`, and `code` selects VS Code Insiders when
-available.
+available. The profile leaves read-only and constant `code` and `ai` aliases
+in place.
 
 Open a new session after editing the profile. Dotfiles command completion is
 installed separately by the [completions task](commands-and-usage.md#shell-completions).

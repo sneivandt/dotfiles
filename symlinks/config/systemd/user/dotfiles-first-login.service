@@ -2,6 +2,7 @@
 Description=Finish deferred dotfiles provisioning
 Documentation=https://github.com/sneivandt/dotfiles
 ConditionPathExists=%h/.local/state/dotfiles/deferred-vscode-extensions
+PartOf=graphical-session.target
 After=graphical-session.target
 
 [Service]
@@ -9,9 +10,20 @@ Type=oneshot
 Environment=DOTFILES_FIRST_LOGIN_WAIT_FOR_LOCK=1
 Environment=DOTFILES_PROFILE=desktop
 Environment=DOTFILES_RESUME_VSCODE_EXTENSIONS=1
-EnvironmentFile=-%h/.local/state/dotfiles/deferred-vscode-extensions
+# systemd reads EnvironmentFile again before each command. Stage the regular
+# marker before the launcher runs; it may wait for a different update's locks.
+RuntimeDirectory=dotfiles-first-login
+RuntimeDirectoryMode=0700
+EnvironmentFile=-%t/dotfiles-first-login/queue.env
+ExecStartPre=/usr/bin/test ! -L %h/.local/state/dotfiles/deferred-vscode-extensions
+ExecStartPre=/usr/bin/test -f %h/.local/state/dotfiles/deferred-vscode-extensions
+ExecStartPre=/usr/bin/install -m 0600 -- %h/.local/state/dotfiles/deferred-vscode-extensions %t/dotfiles-first-login/queue.env
 ExecStart=%h/.local/bin/dotfiles update --non-interactive --only vscode-extensions --fail-on-skip --verbose
-ExecStartPost=/usr/bin/rm -f %h/.local/state/dotfiles/deferred-vscode-extensions
+# A replacement queue belongs to the next attempt, not the completed one.
+ExecStartPost=/usr/bin/test ! -L %h/.local/state/dotfiles/deferred-vscode-extensions
+ExecStartPost=/usr/bin/test -f %h/.local/state/dotfiles/deferred-vscode-extensions
+ExecStartPost=/usr/bin/cmp -s -- %t/dotfiles-first-login/queue.env %h/.local/state/dotfiles/deferred-vscode-extensions
+ExecStartPost=/usr/bin/rm -- %h/.local/state/dotfiles/deferred-vscode-extensions
 Restart=on-failure
 RestartSec=5min
 StandardOutput=journal

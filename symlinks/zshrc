@@ -36,7 +36,14 @@ HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history"
 if mkdir -p "${HISTFILE:h}"; then
   # Seed persistent state once. Keep the old file for shells still using it.
   if [[ ! -e $HISTFILE && -f $_zsh_legacy_history ]]; then
-    if ! (umask 077; cp -n -- "$_zsh_legacy_history" "$HISTFILE"); then
+    if ! (
+      umask 077
+      stage=$HISTFILE.migrate.$$
+      mkdir -- "$stage" || exit 1
+      trap 'rm -f -- "$stage/history"; rmdir -- "$stage"' EXIT
+      cp -- "$_zsh_legacy_history" "$stage/history" &&
+        { ln -T -- "$stage/history" "$HISTFILE" || [[ -f $HISTFILE ]]; }
+    ); then
       print -u2 -- "Could not migrate Zsh history; keeping the previous location."
       HISTFILE="$_zsh_legacy_history"
     fi

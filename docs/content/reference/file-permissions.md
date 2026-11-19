@@ -50,7 +50,8 @@ normalize; absolute paths, parent traversal and home itself are invalid.
 
 Missing targets are not created. A directory entry applies recursively: directories
 gain execute bits for each permission class with read access, and ordinary files have
-execute bits cleared. Give executable files their own entries. Explicit descendant
+execute bits cleared. Recursion leaves sockets, named pipes, and other special
+files alone. Give executable files their own entries. Explicit descendant
 entries are excluded from recursive ancestors regardless of ordering or parallel
 execution, including when a parent is reached through a symlink. Parent modes must
 still allow owner traversal for separate descendant entries to be checked.

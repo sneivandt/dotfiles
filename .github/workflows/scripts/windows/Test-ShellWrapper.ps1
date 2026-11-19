@@ -431,6 +431,11 @@ sys.exit(7)
                 [System.IO.File]::WriteAllText($Binary, 'concurrent fixture')
                 throw 'Fixture attestation process could not start'
             }
+            if ($env:WRAPPER_TEST_GH_EXIT -eq 'publish') {
+                [System.IO.File]::WriteAllText($Binary, 'concurrent fixture')
+                $global:LASTEXITCODE = 0
+                return
+            }
             $global:LASTEXITCODE = [int]$env:WRAPPER_TEST_GH_EXIT
         }
         $downloadCapture = @{ Count = 0 }
@@ -543,6 +548,17 @@ sys.exit(7)
             throw 'Bootstrap published or leaked a verified binary that did not start'
         }
         $env:WRAPPER_TEST_BAD_BINARY = '0'
+        $env:WRAPPER_TEST_GH_EXIT = 'publish'
+        $rejected = $false
+        try {
+            & $wrapper --version | Out-Null
+        } catch {
+            if ($_ -notmatch 'Failed to install downloaded binary') { throw }
+            $rejected = $true
+        }
+        if (-not $rejected -or [System.IO.File]::ReadAllText($binary) -cne 'concurrent fixture' -or
+            (Test-Path -LiteralPath $download)) { throw 'Bootstrap overwrote a concurrently installed CLI' }
+        Remove-Item -LiteralPath $binary
         $env:WRAPPER_TEST_GH_EXIT = 'throw'
         $rejected = $false
         try {

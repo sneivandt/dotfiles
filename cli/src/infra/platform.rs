@@ -197,9 +197,39 @@ pub const DEVELOPER_MODE_SUBKEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVers
 #[cfg(windows)]
 pub const DEVELOPER_MODE_VALUE: &str = "AllowDevelopmentWithoutDevLicense";
 
-/// Read the raw Windows Developer Mode registry flag.
+/// Observed Developer Mode policy. A readable value of the wrong type or size
+/// is repairable, unlike an actual registry read failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    not(any(windows, test)),
+    allow(
+        dead_code,
+        reason = "only Missing can be observed without the Windows registry"
+    )
+)]
+pub(crate) enum DeveloperModeFlag {
+    Missing,
+    Dword(u32),
+    Invalid,
+}
+
+impl DeveloperModeFlag {
+    #[cfg(any(windows, test))]
+    pub(crate) fn from_bytes(is_dword: bool, bytes: &[u8]) -> Self {
+        match <[u8; 4]>::try_from(bytes) {
+            Ok(bytes) if is_dword => Self::Dword(u32::from_le_bytes(bytes)),
+            _ => Self::Invalid,
+        }
+    }
+
+    pub(crate) const fn enabled(self) -> bool {
+        matches!(self, Self::Dword(1))
+    }
+}
+
+/// Read the Windows Developer Mode registry flag.
 ///
-/// Returns `Ok(None)` when the key or value is absent, which is the normal
+/// Returns `Missing` when the key or value is absent, which is the normal
 /// state on a machine where Developer Mode has never been enabled.
 ///
 /// # Errors
@@ -207,20 +237,31 @@ pub const DEVELOPER_MODE_VALUE: &str = "AllowDevelopmentWithoutDevLicense";
 /// Returns an error when the registry can be reached but the read fails for a
 /// reason other than the value being missing.
 #[cfg(windows)]
-pub fn developer_mode_flag() -> std::io::Result<Option<u32>> {
+pub(crate) fn developer_mode_flag() -> std::io::Result<DeveloperModeFlag> {
     use winreg::RegKey;
-    use winreg::enums::HKEY_LOCAL_MACHINE;
+    use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, REG_DWORD};
 
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    match hklm.open_subkey(DEVELOPER_MODE_SUBKEY) {
-        Ok(key) => match key.get_value::<u32, _>(DEVELOPER_MODE_VALUE) {
-            Ok(value) => Ok(Some(value)),
-            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e),
-        },
-        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+    match hklm
+        .open_subkey_with_flags(DEVELOPER_MODE_SUBKEY, KEY_QUERY_VALUE)
+        .and_then(|key| key.get_raw_value(DEVELOPER_MODE_VALUE))
+    {
+        Ok(raw) => Ok(DeveloperModeFlag::from_bytes(
+            raw.vtype == REG_DWORD,
+            &raw.bytes,
+        )),
+        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(DeveloperModeFlag::Missing),
         Err(e) => Err(e),
     }
+}
+
+#[cfg(not(windows))]
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "matches the fallible Windows probe"
+)]
+pub(crate) const fn developer_mode_flag() -> std::io::Result<DeveloperModeFlag> {
+    Ok(DeveloperModeFlag::Missing)
 }
 
 /// Return whether Windows Developer Mode is enabled.
@@ -230,22 +271,8 @@ pub fn developer_mode_flag() -> std::io::Result<Option<u32>> {
 /// exist, so the answer is always `false` and callers fall back to the
 /// platform's native symlink support.
 #[must_use]
-#[cfg_attr(
-    not(windows),
-    allow(
-        clippy::missing_const_for_fn,
-        reason = "the Windows body reads the registry, so this cannot be const on every platform"
-    )
-)]
 pub fn developer_mode_enabled() -> bool {
-    #[cfg(windows)]
-    {
-        matches!(developer_mode_flag(), Ok(Some(1)))
-    }
-    #[cfg(not(windows))]
-    {
-        false
-    }
+    developer_mode_flag().is_ok_and(DeveloperModeFlag::enabled)
 }
 
 #[cfg(test)]

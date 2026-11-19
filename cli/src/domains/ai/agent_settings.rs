@@ -361,17 +361,20 @@ mod tests {
                 },
             ]));
 
-            let error = task
-                .run(&ctx)
-                .expect_err("incompatible parent must stop the batch");
-            assert!(
-                format!("{error:#}").contains("footer.showBranch"),
-                "{error:#}"
-            );
-            let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
-            assert_eq!(report.stats().changed_count(), 0);
-            assert_eq!(report.stats().failed_count(), 1);
-            assert_eq!(report.not_attempted_count(), 0);
+            for dry_run in [true, false] {
+                let error = task
+                    .run(&ctx.with_dry_run(dry_run))
+                    .expect_err("incompatible parent must stop the batch");
+                assert!(
+                    format!("{error:#}").contains("footer.showBranch"),
+                    "{error:#}"
+                );
+                let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
+                assert_eq!(report.stats().changed_count(), 0);
+                assert_eq!(report.stats().failed_count(), 1);
+                assert_eq!(report.not_attempted_count(), 0);
+                assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+            }
             let contents = std::fs::read_to_string(&path).unwrap();
             assert_eq!(contents, before);
             match target {

@@ -74,7 +74,7 @@ if (Get-Module PSReadLine)
     Set-PSReadLineOption -BellStyle None
     Set-PSReadLineOption -HistorySearchCursorMovesToEnd
     Set-PSReadLineOption -MaximumHistoryCount 100000
-    # Older bundled PSReadLine versions may not support predictions.
+    # Older bundled PSReadLine versions lack some display options.
     $psReadLineParameters = (Get-Command Set-PSReadLineOption).Parameters
     if ($psReadLineParameters.ContainsKey('PredictionSource'))
     {
@@ -84,26 +84,38 @@ if (Get-Module PSReadLine)
     {
         Set-PSReadLineOption -PredictionViewStyle InlineView
     }
-    Set-PSReadLineOption -Colors @{
-        "Command"   = "#7aa2f7"
-        "Comment"   = "#565f89"
-        "Default"   = "#c0caf5"
-        "Emphasis"  = "#bb9af7"
-        "Error"     = "#f7768e"
-        "Keyword"   = "#bb9af7"
-        "Member"    = "#7dcfff"
-        "Number"    = "#ff9e64"
-        "Operator"  = "#7dcfff"
-        "Parameter" = "#e0af68"
-        "String"    = "#9ece6a"
-        "Type"      = "#7dcfff"
-        "Variable"  = "#7aa2f7"
+    if ($psReadLineParameters.ContainsKey('Colors'))
+    {
+        Set-PSReadLineOption -Colors @{
+            "Command"   = "#7aa2f7"
+            "Comment"   = "#565f89"
+            "Default"   = "#c0caf5"
+            "Emphasis"  = "#bb9af7"
+            "Error"     = "#f7768e"
+            "Keyword"   = "#bb9af7"
+            "Member"    = "#7dcfff"
+            "Number"    = "#ff9e64"
+            "Operator"  = "#7dcfff"
+            "Parameter" = "#e0af68"
+            "String"    = "#9ece6a"
+            "Type"      = "#7dcfff"
+            "Variable"  = "#7aa2f7"
+        }
     }
 }
 
 $Global:GitExists = [bool](Get-Command "git" -ErrorAction SilentlyContinue)
 
-if (Get-Command "code-insiders" -ErrorAction SilentlyContinue)
+function Test-DotfilesAliasWritable
+{
+    param([string] $Name)
+
+    $existing = Get-Alias -Name $Name -ErrorAction SilentlyContinue
+    $protected = [System.Management.Automation.ScopedItemOptions]'ReadOnly, Constant'
+    return $null -eq $existing -or -not ($existing.Options -band $protected)
+}
+
+if ((Get-Command "code-insiders" -ErrorAction SilentlyContinue) -and (Test-DotfilesAliasWritable 'code'))
 {
     Set-Alias -Name code -Value code-insiders
 }
@@ -203,6 +215,11 @@ function Prompt
                 $branchName = $null
             }
         }
+        catch
+        {
+            # Native-command errors can be terminating, including outside a worktree.
+            $branchName = $null
+        }
         finally
         {
             $global:LASTEXITCODE = $origLastExitCode
@@ -226,7 +243,7 @@ function Prompt
 }
 
 # AI CLI aliases
-if (Get-Command "codex" -ErrorAction SilentlyContinue)
+if ((Get-Command "codex" -ErrorAction SilentlyContinue) -and (Test-DotfilesAliasWritable 'ai'))
 {
     function Invoke-CodexChat
     {
@@ -243,6 +260,14 @@ if (Test-Path -LiteralPath $profileDir -PathType Container)
     Get-ChildItem -LiteralPath $profileDir -Filter "*.ps1" -File |
         Sort-Object -Property FullName |
         ForEach-Object {
-            . $_.FullName
+            $fragment = $_.FullName
+            try
+            {
+                . $fragment
+            }
+            catch
+            {
+                Write-Warning "Could not load PowerShell profile fragment '${fragment}': $_"
+            }
         }
 }

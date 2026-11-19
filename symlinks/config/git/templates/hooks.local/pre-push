@@ -1,7 +1,18 @@
 #!/bin/sh
 set -eu
 
-github_user=$(git config github.user 2>/dev/null || git config github.username 2>/dev/null || true)
+optional_config() {
+  # Git config exits 1 for an absent key. An unreadable or malformed config
+  # is not evidence that no branches are protected.
+  git config "$@" || {
+    status=$?
+    [ "$status" -eq 1 ] || exit "$status"
+  }
+}
+github_user=$(optional_config github.user)
+if [ -z "$github_user" ]; then
+  github_user=$(optional_config github.username)
+fi
 remote=${2:-}
 remote_owner=
 
@@ -26,17 +37,24 @@ then
   exit 0
 fi
 
-# Prefer the destination remote's cached default; never substitute origin.
+# Use a tracking ref only for the endpoint it describes.
 remote_name=${1:-}
-default_ref=$(git symbolic-ref --quiet "refs/remotes/$remote_name/HEAD" 2>/dev/null || true)
-default_branch=${default_ref#"refs/remotes/$remote_name/"}
-if [ -z "$default_ref" ]; then
-  # Newly added remotes may not have a cached HEAD. Do not consume push input
-  # or open a second interactive credential prompt during discovery.
-  default_branch=$(GIT_TERMINAL_PROMPT=0 git ls-remote --symref -- "$remote" HEAD </dev/null 2>/dev/null |
-    sed -n 's/^ref: refs\/heads\/\(.*\)[[:space:]]HEAD$/\1/p')
-fi
-protected_branches=$(git config --get-all dotfiles.protectedBranch 2>/dev/null || true)
+read_protection() {
+  if default_ref=$(git symbolic-ref --quiet "refs/remotes/$remote_name/HEAD" 2>/dev/null) &&
+    [ "${default_ref#"refs/remotes/$remote_name/"}" != "$default_ref" ] &&
+    fetch_url=$(git remote get-url -- "$remote_name" 2>/dev/null) &&
+    [ "$fetch_url" = "$remote" ]; then
+    default_branch=${default_ref#"refs/remotes/$remote_name/"}
+  else
+    # Do not consume push input. Check Git's status before parsing stdout.
+    remote_head=$(GIT_TERMINAL_PROMPT=0 git ls-remote --symref -- "$remote" HEAD </dev/null) || {
+      echo "Cannot check the destination's default branch; retry the push after fixing remote access." >&2
+      exit 1
+    }
+    default_branch=$(printf '%s\n' "$remote_head" | sed -n 's/^ref: refs\/heads\/\(.*\)[[:space:]]HEAD$/\1/p')
+  fi
+  protected_branches=$(optional_config --get-all dotfiles.protectedBranch)
+}
 
 is_protected() {
   case "$1" in
@@ -44,14 +62,26 @@ is_protected() {
   esac
   [ -n "$default_branch" ] && [ "$1" = "$default_branch" ] && return 0
   # One exact branch name per config value; no glob interpretation.
-  printf '%s\n' "$protected_branches" | grep -Fxq -- "$1"
+  case "
+$protected_branches
+" in
+    *"
+$1
+"*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 # Block updates to protected branches on repositories you do not own.
+protection_loaded=false
 while read -r _local_ref _local_sha remote_ref _remote_sha
 do
   case "$remote_ref" in
     refs/heads/*)
+      if [ "$protection_loaded" = false ]; then
+        read_protection
+        protection_loaded=true
+      fi
       branch=${remote_ref#refs/heads/}
       if is_protected "$branch"; then
         echo "You are pushing to protected branch $branch." >&2

@@ -681,6 +681,7 @@ fn winget_task_uses_exact_ids_and_installs_each_missing_package() {
                     "--id",
                     "Microsoft.PowerShell",
                     "--exact",
+                    "--no-upgrade",
                     "--source",
                     "winget",
                     "--accept-source-agreements",

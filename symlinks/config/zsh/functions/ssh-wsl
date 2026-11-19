@@ -17,11 +17,14 @@ if [[ -z "$winhome" ]]; then
   fi
   windows_profile=${windows_profile%$'\r'}
   if [[ "$windows_profile" != \"?*\" ]] ||
-     ! winhome=$(wslpath -a -u "${windows_profile[2,-2]}") ||
-     [[ "$winhome" != /* || ! -d "$winhome" ]]; then
+     ! winhome=$(wslpath -a -u "${windows_profile[2,-2]}"); then
     echo "ERROR: Cannot find the Windows profile. Set WINHOME to its WSL path." >&2
     return 1
   fi
+fi
+if [[ "$winhome" != /* || ! -d "$winhome" ]]; then
+  echo "ERROR: WINHOME must be an existing absolute WSL directory." >&2
+  return 1
 fi
 
 local i source_path target_path

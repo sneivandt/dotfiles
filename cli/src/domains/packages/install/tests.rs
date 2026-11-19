@@ -137,11 +137,33 @@ fn install_packages_run_reports_the_missing_native_manager() {
         (Os::Windows, "Git.Git", "winget"),
     ] {
         let packages = packages(&[(package, false)]);
-        let ctx = make_platform_context_with_which(PathBuf::from("/repo"), None, os, false, false);
+        let ctx = make_platform_context_with_which(
+            PathBuf::from("/repo"),
+            None,
+            os,
+            os == Os::Linux,
+            false,
+        );
         let result = InstallPackages::new(packages).run(&ctx).unwrap();
         let reason = task_skipped(&result);
         assert_eq!(reason, format!("{manager} not found"), "{os:?}");
     }
+}
+
+#[test]
+fn pacman_on_path_does_not_authorize_an_upgrade_on_non_arch_linux() {
+    let task = InstallPackages::new(packages(&[("git", false)]));
+    let ctx = make_package_context(
+        PathBuf::from("fixture-repository"),
+        None,
+        Os::Linux,
+        false,
+        MockExecutor::new(),
+    );
+    assert_eq!(
+        task_skipped(&task.run(&ctx).unwrap()),
+        "native package installation requires Arch Linux or Windows"
+    );
 }
 
 #[test]
@@ -1110,7 +1132,7 @@ fn install_packages_all_already_installed_returns_ok() {
         .once()
         .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("git 2.40\n")));
-    let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, false, mock);
+    let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     assert_task_ok(&result);
 }
@@ -1434,6 +1456,7 @@ fn winget_per_package_install_preserves_changed_and_already_current_counts() {
                             "--id",
                             "Git.Git",
                             "--exact",
+                            "--no-upgrade",
                             "--source",
                             "winget",
                             "--accept-source-agreements",

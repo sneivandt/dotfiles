@@ -25,7 +25,7 @@ fn backup_current_binary(path: &Path) -> Result<Option<PathBuf>> {
     let dir = path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("binary path has no parent directory"))?;
-    if path.exists() {
+    if path.try_exists().context("inspecting current binary")? {
         let old = dir.join(old_binary_name());
         remove_stale_backup(&old)?;
         // Unix can atomically replace the installed entry. Keep that entry
@@ -96,13 +96,6 @@ fn begin_replacement(bin: &Path) -> Result<fs::File> {
 /// staged binary atomically replaces it. Windows renames the old executable
 /// first because a running executable cannot be replaced directly there.
 pub(super) fn replace_binary(path: &Path, staged: &Path) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(staged, fs::Permissions::from_mode(0o755))
-            .context("setting executable permission")?;
-    }
-
     if path.is_dir() {
         bail!("binary path points to a directory: {}", path.display());
     }
@@ -127,7 +120,7 @@ pub(super) fn replace_binary(path: &Path, staged: &Path) -> Result<()> {
 ///
 /// Returns an error if the process cannot be spawned or exits with a
 /// non-zero status code.
-pub(super) fn smoke_test_binary(path: &Path) -> Result<()> {
+fn smoke_test_binary(path: &Path) -> Result<String> {
     const MAX_RETRIES: u32 = 5;
     const BASE_DELAY_MS: u64 = 50;
 
@@ -175,7 +168,7 @@ pub(super) fn smoke_test_binary(path: &Path) -> Result<()> {
     };
 
     if result.success {
-        Ok(())
+        Ok(result.stdout)
     } else {
         bail!(
             "new binary failed smoke test (exit {:?}): {}",
@@ -202,15 +195,23 @@ pub(super) fn download_and_install(
     client: &dyn HttpClient,
     skip_attestation: bool,
 ) -> Result<()> {
-    download_and_install_with_gh(root, tag, client, &SystemGh, policy(skip_attestation))
+    install_release(
+        root,
+        tag,
+        client,
+        &SystemGh,
+        policy(skip_attestation),
+        smoke_test_binary,
+    )
 }
 
-fn download_and_install_with_gh(
+fn install_release(
     root: &Path,
     tag: &str,
     client: &dyn HttpClient,
     gh: &dyn GhCli,
     policy: Policy,
+    version_output: impl Fn(&Path) -> Result<String>,
 ) -> Result<()> {
     let asset = asset_name();
     let url = format!(
@@ -225,7 +226,9 @@ fn download_and_install_with_gh(
     let (mut staged, mut file) = crate::infra::fs::TempGuard::create_unique_file_with_mode(
         directory,
         ".dotfiles-update",
-        "tmp",
+        bin.extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("tmp"),
         0o600,
     )
     .context("creating staged download")?;
@@ -238,12 +241,30 @@ fn download_and_install_with_gh(
     );
     verify_provenance(gh, policy, asset, staged.path())?;
 
+    let expected_version = format!("dotfiles {tag}");
+    let verify_version = |path: &Path| -> Result<()> {
+        anyhow::ensure!(
+            version_output(path)?
+                .lines()
+                .eq([expected_version.as_str()]),
+            "binary smoke test did not report the expected release: {expected_version}"
+        );
+        Ok(())
+    };
+    #[cfg(unix)]
+    crate::infra::fs::set_executable(staged.path())?;
+    // Both launchers can recover a pending publication by checking startup.
+    // Do not make a runnable but wrong release eligible for that recovery.
+    verify_version(staged.path()).context("checking staged release")?;
     let journal = begin_replacement(&bin)?;
     replace_binary(&bin, staged.path())?;
     staged.persist();
-    if let Err(smoke_err) = smoke_test_binary(&bin) {
+    if let Err(smoke_err) = verify_version(&bin) {
         let old = old_binary_path(root);
-        if old.try_exists()? {
+        if old
+            .try_exists()
+            .with_context(|| format!("{smoke_err:#}; inspecting rollback backup"))?
+        {
             fs::rename(&old, &bin).with_context(|| {
                 format!(
                     "{smoke_err:#}; restoring {} also failed; retry using the checkout wrapper",
@@ -271,6 +292,19 @@ mod tests {
     use super::super::cache::cache_path;
     use super::super::http::test_support::MockHttpClient;
 
+    // Synthetic images contain the stdout their --version invocation would return.
+    fn download_and_install_with_gh(
+        root: &Path,
+        tag: &str,
+        client: &dyn HttpClient,
+        gh: &dyn GhCli,
+        policy: Policy,
+    ) -> Result<()> {
+        install_release(root, tag, client, gh, policy, |path| {
+            Ok(fs::read_to_string(path)?)
+        })
+    }
+
     fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
         let dir = path.parent().unwrap();
         fs::create_dir_all(dir)?;
@@ -278,6 +312,8 @@ mod tests {
             crate::infra::fs::TempGuard::create_unique_file(dir, ".fixture", "tmp")?;
         file.write_all(data)?;
         drop(file);
+        #[cfg(unix)]
+        crate::infra::fs::set_executable(staged.path())?;
         super::replace_binary(path, staged.path())?;
         staged.persist();
         Ok(())
@@ -390,6 +426,7 @@ mod tests {
             fs::write(&bin, old).unwrap();
             fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
             fs::write(&staged, new).unwrap();
+            crate::infra::fs::set_executable(&staged).unwrap();
             let original_inode = fs::metadata(&bin).unwrap().ino();
 
             let output = std::process::Command::new(std::env::current_exe().unwrap())
@@ -417,6 +454,7 @@ mod tests {
             // and retain the executable that was installed when retry began.
             let before_retry = fs::read(&bin).unwrap();
             fs::write(&staged, new).unwrap();
+            crate::infra::fs::set_executable(&staged).unwrap();
             super::replace_binary(&bin, &staged).unwrap();
             assert_eq!(fs::read(&bin).unwrap(), new);
             assert_eq!(fs::read(&backup).unwrap(), before_retry);
@@ -478,26 +516,70 @@ mod tests {
         );
     }
 
-    /// A real, self-contained executable that exits 0 for `--version`.
-    ///
-    /// `download_and_install` smoke-tests the binary it just wrote, so the
-    /// fixture has to be something the OS will actually execute from an
-    /// arbitrary directory.
+    /// A runnable fixture for the startup/recovery tests (not a release asset).
     fn version_capable_binary() -> Vec<u8> {
         #[cfg(unix)]
-        let path = which::which("true").expect("'true' binary not found on PATH");
+        {
+            b"#!/bin/sh\n[ \"$#:$1\" = 1:--version ] || exit 42\nprintf 'dotfiles fixture\\n'\n"
+                .to_vec()
+        }
         // Prefer the System32 copy explicitly: a `curl.exe` earlier on PATH
         // (for example the one shipped with Git for Windows) loads DLLs from
         // its own directory and would not run once copied elsewhere.
         #[cfg(windows)]
-        let path = {
+        {
             let system_root =
                 std::env::var_os("SystemRoot").expect("SystemRoot is not set on this system");
-            Path::new(&system_root).join("System32").join("curl.exe")
-        };
-        fs::read(&path).unwrap_or_else(|error| {
-            panic!("reading smoke-test fixture {}: {error}", path.display())
-        })
+            fs::read(Path::new(&system_root).join("System32").join("curl.exe")).unwrap()
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn wrong_version_preserves_last_good_state_and_corrected_release_can_retry() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let bin = binary_path(dir.path());
+        fs::create_dir(bin.parent().unwrap()).unwrap();
+        fs::write(&bin, b"last good").unwrap();
+        let old = old_binary_path(dir.path());
+        fs::write(&old, b"earlier backup").unwrap();
+        let cache = cache_path(dir.path());
+        fs::write(&cache, b"old cache").unwrap();
+        let tag = "v2026.11.19-2";
+        for output in ["dotfiles v2026.11.19-1", "dotfiles v2026.11.19-2"] {
+            let bytes =
+                format!("#!/bin/sh\n[ \"$#:$1\" = 1:--version ] || exit 42\necho '{output}'\n");
+            let hash = super::super::hex_encode(&Sha256::digest(bytes.as_bytes()));
+            let client = MockHttpClient::new(vec![
+                Ok(format!("{hash}  {}\n", asset_name()).into_bytes()),
+                Ok(bytes.clone().into_bytes()),
+            ]);
+            let result = install_release(
+                dir.path(),
+                tag,
+                &client,
+                &StubGh { verified: true },
+                Policy::Required,
+                smoke_test_binary,
+            );
+            if output.ends_with("-1") {
+                assert!(format!("{:#}", result.unwrap_err()).contains("expected release"));
+                assert_eq!(fs::read(&bin).unwrap(), b"last good");
+                assert_eq!(fs::read(&old).unwrap(), b"earlier backup");
+                assert_eq!(fs::read(&cache).unwrap(), b"old cache");
+                assert_eq!(fs::read_dir(bin.parent().unwrap()).unwrap().count(), 3);
+            } else {
+                result.unwrap();
+                assert_eq!(fs::read(&bin).unwrap(), bytes.as_bytes());
+                assert_eq!(fs::read(&old).unwrap(), b"last good");
+                assert!(
+                    fs::read_to_string(&cache)
+                        .unwrap()
+                        .lines()
+                        .any(|line| line == tag)
+                );
+            }
+        }
     }
 
     #[test]
@@ -534,11 +616,7 @@ mod tests {
         let bin_dir = dir.path().join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
 
-        // `download_and_install` smoke-tests the binary after writing it, so a
-        // shell script is not enough: CI runners may restrict shebang
-        // interpreter execution on the workspace filesystem, and Windows will
-        // not execute it at all.
-        let binary_data = version_capable_binary();
+        let binary_data = b"dotfiles v1.0.0\n".to_vec();
 
         let mut hasher = Sha256::new();
         hasher.update(&binary_data);
@@ -648,7 +726,7 @@ mod tests {
         fs::create_dir_all(cache_path(dir.path())).unwrap();
         let bin = binary_path(dir.path());
         fs::write(&bin, b"previous binary").unwrap();
-        let data = version_capable_binary();
+        let data = b"dotfiles v2026.07.25-1\n".to_vec();
         let hash = super::super::hex_encode(&Sha256::digest(&data));
         let checksums = format!("{hash}  {}\n", asset_name());
         let client = MockHttpClient::new(vec![Ok(checksums.into_bytes()), Ok(data.clone())]);
@@ -1007,9 +1085,7 @@ mod tests {
             fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
         }
 
-        // Not executable on any platform: Unix runs it and it exits 1, Windows
-        // refuses to spawn it.  Either way the smoke test must fail.
-        let bad_binary = b"#!/bin/sh\nexit 1\n";
+        let bad_binary = b"dotfiles v1.0.0\n";
         let mut hasher = Sha256::new();
         hasher.update(bad_binary);
         let hash = super::super::hex_encode(&hasher.finalize());
@@ -1017,14 +1093,20 @@ mod tests {
 
         let client = MockHttpClient::new(vec![Ok(checksums.into_bytes()), Ok(bad_binary.to_vec())]);
 
-        let result = download_and_install_with_gh(
+        let result = install_release(
             dir.path(),
             "v1.0.0",
             &client,
             &StubGh { verified: true },
             Policy::Required,
+            |path| {
+                if path == bin {
+                    anyhow::bail!("installed smoke failed");
+                }
+                Ok(fs::read_to_string(path)?)
+            },
         );
-        assert!(result.is_err(), "expected smoke-test failure");
+        assert!(format!("{:#}", result.unwrap_err()).contains("installed smoke failed"));
 
         let restored = fs::read(&bin).unwrap();
         assert_eq!(

@@ -68,6 +68,7 @@ root. Duplicate active destinations within a repository are errors.
 | `toml` | Keys, recursively merging tables |
 | `ini` | Assigned keys and bare flags within sections, including Pacman options |
 | `pam` | Update existing module rules in place or append new rules to their stack |
+| `create-only` | Install the exact text at a missing path; accept identical files, refuse to replace different ones |
 
 Unrelated settings are preserved. TOML updates preserve comments and formatting
 around existing keys; managed values and new keys can change formatting.
@@ -77,7 +78,23 @@ repeated assignments are allowed. Fragment keys and section names must be nonemp
 and section headers must have matching, non-nested brackets. Bare flags such as
 `Color` remain valid inside a section.
 
+The Arch `paccache` timer uses a dedicated drop-in and environment file. Systemd
+accumulates `EnvironmentFile=` directives; treating them as ordinary INI keys
+can discard administrator settings. The drop-in adds a file that sets only
+`PACCACHE_ARGS` instead of clearing the environment-file list. Both files are
+create-only. The environment file is installed first; an interruption at that
+point leaves the service using its previous configuration. Once the drop-in is
+loaded, a missing policy file skips cleanup rather than falling back to other
+retention settings. If the task reports a conflict, compare the installed files under
+`/etc/systemd/system/paccache.service.d/` with their `system/` sources. An older
+managed `retention.conf` contains an empty `EnvironmentFile=` reset. Back up
+that file outside the active `.conf` files before replacing it with the exact
+tracked `retention.conf`. Move any local overrides you still need into their
+own drop-in. Retry the task, then [reload the service manager and preview the
+retention policy](../guides/package-management.md).
+
 PAM needs an existing service file and a stack of the same type as each fragment rule.
+Unrecognized facilities and simple control names in fragments are rejected.
 An existing rule keeps its position. If several rules in a stack use the same
 module path, Dotfiles preserves all of them when one matches the fragment.
 Otherwise, it stops so you can review which installed rule should change.

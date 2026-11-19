@@ -59,10 +59,14 @@ pub(super) fn select_packages(packages: &[Package], is_aur: bool) -> Vec<Package
 /// The resolved manager is passed to installation without a second lookup.
 pub(super) fn native_manager_requirement() -> Requirement<'static, PackageManager> {
     Requirement::new("native-package-manager", |ctx, _| {
-        let manager = if ctx.platform().is_linux() {
+        let manager = if ctx.platform().uses_pacman() {
             PackageManager::Pacman
-        } else {
+        } else if ctx.platform().is_windows() {
             PackageManager::Winget
+        } else {
+            return Ok(RequirementState::unsatisfied(
+                "native package installation requires Arch Linux or Windows",
+            ));
         };
         ctx.log().debug(format!("using {manager} package manager"));
         Ok(if ctx.which(manager.provider().name()) {

@@ -88,11 +88,10 @@ pub(crate) fn parse_run_log_file_name(name: &str) -> Option<RunLogName<'_>> {
 /// Legacy, incomplete, or unreadable logs fall back to their filename stamp.
 /// Never use modification times: an older run may still be writing its log.
 pub(crate) fn run_log_sort_stamp(path: &Path, filename_stamp: &str) -> String {
-    precise_header_stamp(path)
-        .unwrap_or_else(|| format!("{}.000000Z", filename_stamp.trim_end_matches('Z')))
+    sort_stamp(read_dotfiles_header(path).as_deref(), filename_stamp)
 }
 
-fn precise_header_stamp(path: &Path) -> Option<String> {
+fn read_dotfiles_header(path: &Path) -> Option<String> {
     let mut options = fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -109,10 +108,17 @@ fn precise_header_stamp(path: &Path) -> Option<String> {
     std::io::BufReader::new(file.take(512))
         .read_line(&mut header)
         .ok()?;
-    let stamp = header
-        .strip_prefix("# Dotfiles ")?
-        .split_whitespace()
-        .next_back()?;
+    header.starts_with("# Dotfiles ").then_some(header)
+}
+
+fn sort_stamp(header: Option<&str>, filename_stamp: &str) -> String {
+    header
+        .and_then(precise_header_stamp)
+        .unwrap_or_else(|| format!("{}.000000Z", filename_stamp.trim_end_matches('Z')))
+}
+
+fn precise_header_stamp(header: &str) -> Option<String> {
+    let stamp = header.split_whitespace().next_back()?;
     if stamp.len() != 27
         || !stamp.bytes().enumerate().all(|(index, byte)| match index {
             4 | 7 => byte == b'-',
@@ -496,8 +502,8 @@ fn create_run_log_file(
 
 /// Delete the oldest run logs until at most `keep` remain.
 ///
-/// Only files matching the run-log naming pattern are considered, so
-/// unrelated files in the log directory are never touched. Active leases are
+/// Require a matching filename and a readable Dotfiles header before counting
+/// or pruning. The log directory override can be shared with other tools. Active leases are
 /// skipped even if that leaves more than `keep` logs. Cleanup failures are
 /// diagnostic-only: retention is housekeeping and must never fail a run.
 fn prune_run_logs(dir: &Path, keep: usize) {
@@ -519,7 +525,8 @@ fn prune_run_logs(dir: &Path, keep: usize) {
             }
             let name = entry.file_name().into_string().ok()?;
             let parsed = parse_run_log_file_name(&name)?;
-            Some((run_log_sort_stamp(&entry.path(), parsed.stamp), name))
+            let header = read_dotfiles_header(&entry.path())?;
+            Some((sort_stamp(Some(&header), parsed.stamp), name))
         })
         .collect();
     let mut excess = runs.len().saturating_sub(keep);
@@ -616,7 +623,7 @@ mod tests {
         let removable = fixture.path().join("20200102T000000Z-update-2.log");
         fs::create_dir(&blocked).unwrap();
         fs::write(blocked.join("keep"), "foreign content").unwrap();
-        fs::write(&removable, "finished").unwrap();
+        fs::write(&removable, "# Dotfiles test\nfinished").unwrap();
         prune_run_logs(fixture.path(), 1);
         assert!(blocked.join("keep").exists());
         assert!(
@@ -748,8 +755,11 @@ mod tests {
     fn prune_keeps_the_newest_runs() {
         let tmp = tempfile::tempdir().expect("tempdir");
         for stamp in ["20260731T154210Z", "20260731T154211Z", "20260731T154212Z"] {
-            fs::write(tmp.path().join(run_log_file_name("install", stamp, 1)), "x")
-                .expect("write log");
+            fs::write(
+                tmp.path().join(run_log_file_name("install", stamp, 1)),
+                "# Dotfiles test\n",
+            )
+            .expect("write log");
         }
 
         prune_run_logs(tmp.path(), 2);
@@ -769,22 +779,28 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let old = "20260730T154210Z-test-install-dry-run-1.log";
         let newest = "20260731T154210Z-behavioral-ci-2.log";
-        for name in [
-            old,
-            newest,
-            "backup-notes-1.log",
-            "20260731T154210Z-test-command-notapid.log",
-        ] {
-            fs::write(tmp.path().join(name), "fixture").unwrap();
+        for name in [old, newest] {
+            fs::write(tmp.path().join(name), "# Dotfiles test\n").unwrap();
         }
-        prune_run_logs(tmp.path(), 1);
-        assert!(!tmp.path().join(old).exists());
-        for name in [
-            newest,
+        let foreign = [
             "backup-notes-1.log",
             "20260731T154210Z-test-command-notapid.log",
-        ] {
-            assert!(tmp.path().join(name).exists(), "preserve {name}");
+            "20260101T100000Z-backup-7.log",
+        ];
+        for name in foreign {
+            fs::write(tmp.path().join(name), "my backup report").unwrap();
+        }
+        for _ in 0..2 {
+            prune_run_logs(tmp.path(), 1);
+            assert!(!tmp.path().join(old).exists());
+            assert!(tmp.path().join(newest).exists());
+            for name in foreign {
+                assert_eq!(
+                    fs::read_to_string(tmp.path().join(name)).unwrap(),
+                    "my backup report"
+                );
+                assert!(!lease_path(&tmp.path().join(name)).exists());
+            }
         }
     }
 
@@ -849,7 +865,7 @@ mod tests {
         fs::write(
             tmp.path()
                 .join(run_log_file_name("install", "20260731T154210Z", 1)),
-            "x",
+            "# Dotfiles test\n",
         )
         .expect("write log");
 
@@ -872,7 +888,7 @@ mod tests {
         fs::write(
             tmp.path()
                 .join(run_log_file_name("install", "20200101T000000Z", 1)),
-            "old",
+            "# Dotfiles test\nold",
         )
         .expect("write old log");
 
@@ -931,7 +947,11 @@ mod tests {
     fn retention_does_not_preserve_crashed_runs_forever() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("20200101T000000Z-update-1.log");
-        fs::write(&path, "unfinished run without a finish record").unwrap();
+        fs::write(
+            &path,
+            "# Dotfiles test\nunfinished run without a finish record",
+        )
+        .unwrap();
         drop(open_lock(&lease_path(&path)).unwrap());
         let current = RunLog::new_retaining("update", tmp.path(), Instant::now(), 1).unwrap();
         assert!(!path.exists(), "an unlocked lease is not live");

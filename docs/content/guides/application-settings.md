@@ -144,6 +144,8 @@ deletes eligible branches merged into `origin/HEAD` using `git branch -d`.
 It preserves the current and default branches, `main`, `master`, `dev`,
 `develop`, and branches used by any worktree. It never deletes remote branches,
 does nothing without `origin/HEAD`, and does not run after an amend.
+If Git cannot finish listing branches or worktrees, cleanup leaves every
+branch in place.
 
 The [push-protection hook](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/templates/hooks.local/pre-push)
 blocks updates to `main`, `master`, `develop`, and the destination remote's
@@ -151,6 +153,10 @@ default branch. Add exact names through repository-local
 `dotfiles.protectedBranch` values. GitHub remotes whose URL owner matches
 `github.user` or its fallback `github.username` are exempt; that is a local
 configured-name check, not a GitHub permission check.
+If the fetch and push URLs differ, the hook checks the push destination
+instead of trusting the fetch repository's cached default branch. If Git
+cannot read the destination or protection settings needed for a branch push,
+the hook stops the push. Restore access and retry.
 
 ## Shell configuration
 
@@ -170,6 +176,10 @@ the shared aliases. Put behavior common to Bash and Zsh in `config/shell/`,
 and shell-specific behavior in that shell's startup file. The
 [Windows guide](windows-and-wsl.md#powershell-configuration) covers PowerShell's
 separate profile.
+
+The managed Bash login profile first reads `~/.bash_login`, or `~/.profile` if
+there is no readable `~/.bash_login`. This keeps the login file Bash used
+before the managed `~/.bash_profile` was installed.
 
 The shared profile supplies defaults for XDG directories, the editor, locale,
 terminal information, and the `less` pager. It preserves existing values for

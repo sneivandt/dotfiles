@@ -690,6 +690,7 @@ fn winget_install_report_continues_after_individual_failures_without_losing_outc
                             "--id",
                             name,
                             "--exact",
+                            "--no-upgrade",
                             "--source",
                             "winget",
                             "--accept-source-agreements",

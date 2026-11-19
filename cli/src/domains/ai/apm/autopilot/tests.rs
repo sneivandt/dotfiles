@@ -348,7 +348,7 @@ dependencies:
   deployed_files:
   - copilot-app-db://workflows/apm--dotnet--diag--collect
 ";
-    let ids = parse_deployed_workflow_ids(lock);
+    let ids = parse_deployed_workflow_ids(lock).unwrap();
     let expected: BTreeSet<String> = [
         "apm--awesome-copilot--planning--triage",
         "apm--awesome-copilot--planning--report",
@@ -368,26 +368,48 @@ fn parse_deployed_workflow_ids_empty_cases() {
             "dependencies:\n- repo_url: _local/dot-code\n  deployed_files:\n  - \
              .agents/skills/project-hygiene\n",
         ),
-        // A bare scalar, a mapping without `dependencies`, and a dependency
-        // without `deployed_files` must all yield an empty set rather than
-        // panicking or erroring.
-        ("bare scalar", "lock\n"),
         ("mapping without dependencies", "name: x\nversion: 1\n"),
         (
             "dependency without deployed_files",
             "dependencies:\n- repo_url: a/b\n",
         ),
-        ("not yaml", ": : not yaml : :"),
-        // An entry that is exactly the prefix (empty id) must be dropped.
-        (
-            "bare prefix with no id",
-            "dependencies:\n- repo_url: a/b\n  deployed_files:\n  - \
-             copilot-app-db://workflows/\n",
-        ),
     ];
     for (case, lock) in cases {
-        assert!(parse_deployed_workflow_ids(lock).is_empty(), "case: {case}");
+        assert!(
+            parse_deployed_workflow_ids(lock).unwrap().is_empty(),
+            "case: {case}"
+        );
     }
+}
+
+#[test]
+fn malformed_workflow_ownership_is_not_a_successful_empty_repair() {
+    let home = tempfile::tempdir_in(".").unwrap();
+    let ctx = make_home_context_with_executor(home.path(), MockExecutor::new());
+    std::fs::create_dir(home.path().join(".apm")).unwrap();
+    let lock = home.path().join(".apm/apm.lock.yaml");
+    for input in [
+        "lock",
+        ": : not yaml : :",
+        "dependencies: {}",
+        "dependencies: [malformed]",
+        "dependencies: [{deployed_files: {}}]",
+        "dependencies: [{deployed_files: [false]}]",
+        "dependencies: [{deployed_files: [copilot-app-db://workflows/]}]",
+    ] {
+        std::fs::write(&lock, input).unwrap();
+        assert!(
+            super::apply_workflow_autopilot_fixup(&ctx, &DesiredApmWorkflows::FirstInstall)
+                .is_err(),
+            "{input}"
+        );
+        assert_eq!(std::fs::read_to_string(&lock).unwrap(), input);
+    }
+    std::fs::write(&lock, "dependencies: []").unwrap();
+    assert_eq!(
+        super::apply_workflow_autopilot_fixup(&ctx, &DesiredApmWorkflows::FirstInstall).unwrap(),
+        super::WorkflowRepair::NotApplicable
+    );
 }
 
 #[test]

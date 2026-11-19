@@ -183,27 +183,69 @@ pub(super) fn copy_dir_into_place(
     allow_missing: bool,
 ) -> Result<()> {
     let parent = target.parent().unwrap_or_else(|| Path::new("."));
-    let mut guard = TempGuard::create_unique_dir(parent, ".dotfiles-materialize-dir", "tmp")
-        .with_context(|| format!("create temporary directory beside {}", target.display()))?;
+    let staging =
+        TempGuard::create_unique_dir_with_mode(parent, ".dotfiles-materialize-dir", "tmp", 0o700)
+            .with_context(|| format!("create temporary directory beside {}", target.display()))?;
+    // Keep even the completed copy private until publication. Its source modes
+    // (including read-only directories) need not match the staging area.
+    let staged = staging.path().join("tree");
+    let result = (|| {
+        crate::infra::fs::copy_dir_recursive(source, &staged, false).with_context(|| {
+            format!(
+                "recursive copy {} to {}",
+                source.display(),
+                staged.display()
+            )
+        })?;
+        validate_relocated_links(&staged, &staged, repositories)
+            .with_context(|| format!("cannot safely copy directory {}", source.display()))?;
 
-    crate::infra::fs::copy_dir_recursive(source, guard.path(), false).with_context(|| {
-        format!(
-            "recursive copy {} to {}",
-            source.display(),
-            guard.path().display()
+        publish(
+            managed_source,
+            &staged,
+            target,
+            allow_missing,
+            rename_noreplace,
         )
-    })?;
-    validate_relocated_links(guard.path(), guard.path(), repositories)
-        .with_context(|| format!("cannot safely copy directory {}", source.display()))?;
+    })();
 
-    publish(
-        managed_source,
-        guard.path(),
-        target,
-        allow_missing,
-        rename_noreplace,
+    #[cfg(unix)]
+    if let Err(error) = result {
+        if let Err(cleanup) = discard_staged_tree(&staged) {
+            return Err(error.context(format!("cannot clean {}: {cleanup}", staged.display())));
+        }
+        return Err(error);
+    }
+    result
+}
+
+#[cfg(unix)]
+fn discard_staged_tree(path: &Path) -> Result<()> {
+    match std::fs::remove_dir_all(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            make_staged_directories_removable(path)?;
+            Ok(std::fs::remove_dir_all(path)?)
+        }
+        result => Ok(result?),
+    }
+}
+
+#[cfg(unix)]
+fn make_staged_directories_removable(path: &Path) -> Result<()> {
+    use nix::sys::stat::{FchmodatFlags, Mode, fchmodat};
+    fchmodat(
+        nix::fcntl::AT_FDCWD,
+        path,
+        Mode::S_IRWXU,
+        FchmodatFlags::NoFollowSymlink,
     )?;
-    guard.persist();
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            make_staged_directories_removable(&entry.path())?;
+        }
+    }
     Ok(())
 }
 
@@ -586,6 +628,47 @@ mod tests {
             "restored directory"
         );
         assert_eq!(std::fs::read_dir(root).unwrap().count(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_publication_cleans_read_only_staged_directories_before_retry() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path();
+        let source = root.join("source");
+        let destination = root.join("target");
+        let nested = source.join("nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("content"), "managed").unwrap();
+        // The helper sees a conflict after the copy has been prepared.
+        std::fs::write(&destination, "user replacement").unwrap();
+        std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let result = copy_dir_into_place(&source, &destination, &source, &[], false);
+        let source_mode = nested.metadata().unwrap().permissions().mode() & 0o777;
+        // Restore fixture access even when the regression assertion fails.
+        std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(format!("{:#}", result.unwrap_err()).contains("non-symlink"));
+        assert_eq!(source_mode, 0o555);
+        assert_eq!(
+            std::fs::read_to_string(&destination).unwrap(),
+            "user replacement"
+        );
+        assert_eq!(std::fs::read_dir(root).unwrap().count(), 2);
+
+        std::fs::rename(&destination, root.join("user-copy")).unwrap();
+        std::os::unix::fs::symlink(&source, &destination).unwrap();
+        copy_dir_into_place(&source, &destination, &source, &[], false).unwrap();
+        assert!(!destination.is_symlink());
+        assert_eq!(
+            std::fs::read_to_string(destination.join("nested/content")).unwrap(),
+            "managed"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("user-copy")).unwrap(),
+            "user replacement"
+        );
+        assert_eq!(std::fs::read_dir(root).unwrap().count(), 3);
     }
 
     #[cfg(unix)]

@@ -65,19 +65,7 @@ impl Task for ConfigureSystemFiles {
             ctx,
             self.resources(ctx),
             &(),
-            |resource, ()| {
-                resource.current_state().map(|state| match state {
-                    // Discovery cannot read protected destinations. Plan the scoped
-                    // assessment/merge, not a claim that their contents are incorrect.
-                    ResourceState::Unknown { reason } => {
-                        ResourceState::Incorrect { current: reason }
-                    }
-                    unchanged @ (ResourceState::Missing
-                    | ResourceState::Correct
-                    | ResourceState::Incorrect { .. }
-                    | ResourceState::Invalid { .. }) => unchanged,
-                })
-            },
+            |resource, ()| resource.installation_state(),
             &ProcessOpts::strict("configure").sequential(),
         )
     }

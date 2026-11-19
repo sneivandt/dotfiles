@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use super::SymlinkResource;
+use crate::domains::files::config::symlinks::InspectedSource;
 use crate::engine::{ResourceResult, ResourceState};
 use crate::infra::fs::{link_points_to_source, paths_equal, same_entry};
 
@@ -52,8 +53,11 @@ pub(super) fn invalid_source_reason(
     if let Some(reason) = &resource.validation_error {
         return Ok(Some(reason.clone()));
     }
-    if let Some(reason) = crate::infra::fs::missing_source_reason(&resource.source)? {
-        return Ok(Some(reason));
+    match resource.inspect_source()? {
+        InspectedSource::Available(_) => {}
+        InspectedSource::Missing(reason) | InspectedSource::Outside(reason) => {
+            return Ok(Some(reason));
+        }
     }
     Ok(same_entry(&resource.source, target)
         .then(|| "target aliases the source entry through its parent directory".to_string()))

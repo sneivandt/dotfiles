@@ -101,27 +101,26 @@ impl Task for ValidateSymlinkSources {
 
         let mut missing = 0u32;
 
-        for symlink in symlinks {
+        let expanded =
+            crate::domains::files::config::symlinks::expand_glob_patterns(symlinks, repo_root)?;
+        for symlink in &expanded {
+            use crate::domains::files::config::symlinks::{InspectedSource, inspect_source};
             let symlinks_dir =
                 crate::domains::files::config::symlinks::resolve_symlinks_dir(symlink, repo_root);
             let source = symlinks_dir.join(&symlink.source);
-            if symlink.source.contains('*') {
-                crate::domains::files::config::symlinks::expand_glob_patterns(
-                    std::slice::from_ref(symlink),
-                    repo_root,
-                )
-                .with_context(|| format!("validating symlink source glob {}", symlink.source))?;
-            } else if !source.exists() {
-                ctx.log()
-                    .error(format!("symlink source missing: {}", source.display()));
-                missing = missing.saturating_add(1);
+            match inspect_source(&source, Some(&symlinks_dir))? {
+                InspectedSource::Available(_) => {}
+                InspectedSource::Missing(_) => {
+                    ctx.log()
+                        .error(format!("symlink source missing: {}", source.display()));
+                    missing = missing.saturating_add(1);
+                }
+                InspectedSource::Outside(reason) => anyhow::bail!(reason),
             }
         }
 
         let main_sources = repo_root.join("symlinks");
         let overlay_sources = config.overlay.as_ref().map(|root| root.join("symlinks"));
-        let expanded =
-            crate::domains::files::config::symlinks::expand_glob_patterns(symlinks, repo_root)?;
         for entry in chmod {
             let target = crate::domains::files::config::chmod::target_path(&entry.path);
             let sources: Vec<_> = expanded

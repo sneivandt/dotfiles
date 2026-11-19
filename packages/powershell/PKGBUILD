@@ -2,7 +2,7 @@
 # shellcheck disable=SC2034
 # Maintained here; dotfiles update generates ignored version.sh release pins.
 pkgname=powershell-dotfiles
-pkgrel=1
+pkgrel=2
 pkgdesc='Cross-platform task automation and configuration shell (official binary)'
 arch=('x86_64' 'aarch64')
 url='https://github.com/PowerShell/PowerShell'

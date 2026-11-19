@@ -149,14 +149,16 @@ const fn classify_install(code: Option<i32>) -> InstallVerdict {
 /// Build the `winget install` argument list for `name`.
 ///
 /// `--disable-interactivity` suppresses winget's own prompts so a run cannot
-/// stall on a hidden question; it does not suppress an installer's UAC prompt,
-/// which Windows shows on the secure desktop.
+/// stall on a hidden question; it does not suppress an installer's UAC prompt.
+/// `--no-upgrade` keeps a missed inventory entry or concurrent install from
+/// turning this presence-only request into an application upgrade.
 fn install_args<'a>(name: &'a str, scope: Option<&'a str>) -> Vec<&'a str> {
     let mut args = vec![
         "install",
         "--id",
         name,
         "--exact",
+        "--no-upgrade",
         "--source",
         "winget",
         "--accept-source-agreements",
@@ -267,6 +269,7 @@ mod tests {
             "--id",
             "Git.Git",
             "--exact",
+            "--no-upgrade",
             "--source",
             "winget",
             "--accept-source-agreements",

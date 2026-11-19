@@ -179,6 +179,14 @@ foreach ($case in $cases)
                 throw 'A failed Git query must not display its stdout as a branch or change LASTEXITCODE.'
             }
             Write-Output 'PASS: failed Git stdout is excluded from the prompt'
+            function git { $global:LASTEXITCODE = 128; throw 'Synthetic terminating Git error' }
+            $text = Prompt
+            $expectedPath = Format-PromptPath -Path (Get-Location).Path -HomeDirectory $HOME
+            if (-not $text.Contains($expectedPath) -or $Global:LASTEXITCODE -ne 42)
+            {
+                throw 'A terminating Git error must still render the path and preserve LASTEXITCODE.'
+            }
+            Write-Output 'PASS: prompt still renders after a terminating Git error'
         }
         finally
         {
@@ -270,12 +278,37 @@ foreach ($case in $cases)
         }
         [IO.File]::WriteAllText((Join-Path $extensions '20-second.ps1'), '$script:ExtensionOrder += "second"')
         [IO.File]::WriteAllText((Join-Path $extensions '10-first.ps1'), '$script:ExtensionOrder += "first"')
+        [IO.File]::WriteAllText((Join-Path $extensions '15-completion.ps1'), 'dotfiles')
         $startupTest = {
             $ErrorActionPreference = 'Stop'
             Set-Variable -Name HOME -Value $env:PROFILE_TEST_HOME -Force
             $env:PATH = ''
+            # Emulate a loaded legacy module: it supports history options but
+            # has no -Colors or prediction parameters. Unknown parameters fail.
+            $legacyReadLine = New-Module -Name PSReadLine -ScriptBlock {
+                function Receive-FixtureReadLineOption {
+                    [CmdletBinding()]
+                    param([string]$BellStyle, [switch]$HistorySearchCursorMovesToEnd, [int]$MaximumHistoryCount)
+                    if ($PSBoundParameters.ContainsKey('MaximumHistoryCount'))
+                    {
+                        $script:FixtureHistoryLimit = $MaximumHistoryCount
+                    }
+                }
+                Set-Alias -Name Set-PSReadLineOption -Value Receive-FixtureReadLineOption
+                Export-ModuleMember -Function Receive-FixtureReadLineOption -Alias Set-PSReadLineOption
+            }
+            Import-Module $legacyReadLine
             $script:ExtensionOrder = @()
-            . $env:PROFILE_TEST_SOURCE
+            $warnings = @(. $env:PROFILE_TEST_SOURCE 3>&1)
+            if ($legacyReadLine.SessionState.PSVariable.GetValue('FixtureHistoryLimit') -ne 100000)
+            {
+                throw 'A legacy PSReadLine must still receive its supported history settings.'
+            }
+            if ($warnings.Count -ne 1 -or $warnings[0] -isnot [Management.Automation.WarningRecord] -or
+                $warnings[0].Message -notlike '*15-completion.ps1*dotfiles*')
+            {
+                throw 'An unavailable completion launcher must identify its fragment without stopping profile startup.'
+            }
             if (-not (Get-Variable -Name GitExists -Scope Global -ValueOnly) -or (Get-Alias code).Definition -ne 'code-insiders' -or
                 (Get-Alias ai).Definition -ne 'Invoke-CodexChat')
             {
@@ -295,10 +328,26 @@ foreach ($case in $cases)
                 throw 'Profile fragments beneath literal bracket paths must load in sorted order.'
             }
             $initialPath = $env:PATH
+            # Simulate the launcher returning before the profile is reloaded.
+            function dotfiles { $script:ExtensionOrder += 'completion' }
+            $script:ExtensionOrder = @()
             . $env:PROFILE_TEST_SOURCE
-            if ($env:PATH -cne $initialPath)
+            if ($env:PATH -cne $initialPath -or ($script:ExtensionOrder -join ',') -ne 'first,completion,second')
             {
-                throw 'Reloading the profile duplicated user bin directories.'
+                throw 'Reload must retry the repaired fragment in order and leave PATH unchanged.'
+            }
+            # An earlier all-hosts profile can protect these aliases, including
+            # before Insiders or Codex first becomes available.
+            Set-Alias -Name code -Value Get-Item -Option ReadOnly
+            Remove-Item -LiteralPath Alias:ai
+            function Invoke-CodexChat { "custom: $($args -join '|')" }
+            Set-Alias -Name ai -Value Invoke-CodexChat -Option Constant
+            $script:ExtensionOrder = @()
+            . $env:PROFILE_TEST_SOURCE
+            if ((Get-Alias code).Definition -ne 'Get-Item' -or (ai 'two words' 'x') -cne 'custom: two words|x' -or
+                ($script:ExtensionOrder -join ',') -ne 'first,completion,second')
+            {
+                throw 'Protected aliases must be preserved without aborting profile startup.'
             }
         }.ToString()
         foreach ($cargoHome in @('', $customCargo))

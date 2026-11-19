@@ -255,7 +255,7 @@ class GitHubDesktopEntryTests(ScriptFixture):
 
 
 @unittest.skipUnless(BASH, "Requires Bash (Git Bash on Windows)")
-class LauncherTests(unittest.TestCase):
+class LauncherTests(ScriptFixture):
     def launch(self, name, args, available, cwd=None, missing_insiders=False):
         # Python's Windows argv quoting does not protect literal newlines from
         # Git Bash. Set the fixture arguments inside Bash instead.
@@ -269,7 +269,7 @@ class LauncherTests(unittest.TestCase):
             timeout=10,
             cwd=cwd,
             env={
-                **os.environ,
+                **self.env,
                 "BASH_ENV": "",
                 "ENV": "",
                 "AVAILABLE": available,
@@ -293,11 +293,29 @@ class LauncherTests(unittest.TestCase):
             "choose-editor.sh", [], "code-insiders code gvim", ["code-insiders"]
         )
 
-    def test_missing_insiders_backing_binary_uses_stable_editor(self):
-        result = self.launch("choose-editor.sh", ["report.txt"], "code-insiders code",
-                             missing_insiders=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.split("\0")[:-1], ["code", "report.txt"])
+    def test_missing_insiders_backend_only_skips_the_managed_launcher(self):
+        source = SCRIPTS.parents[2] / "local/bin/code-insiders"
+        launcher = self.work / ".local/bin/code-insiders"
+        launcher.parent.mkdir(parents=True)
+        args = ["report 1.txt", "--wait", ""]
+        for install, expected in [("copy", "code"), ("link", "code"),
+                                  ("custom", "code-insiders")]:
+            with self.subTest(install=install):
+                if install == "link":
+                    if os.name == "nt":
+                        continue  # Non-elevated Windows may not create symlinks.
+                    launcher.symlink_to(source)
+                elif install == "copy":
+                    shutil.copyfile(source, launcher)
+                else:
+                    launcher.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                if not launcher.is_symlink():
+                    launcher.chmod(0o755)
+                result = self.launch("choose-editor.sh", args, "code-insiders code",
+                                     missing_insiders=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.split("\0")[:-1], [expected, *args])
+                launcher.unlink()
 
     def test_browser_aliases_still_open_apps(self):
         cases = [

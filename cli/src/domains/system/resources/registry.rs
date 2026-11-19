@@ -32,7 +32,7 @@ pub type RegistryTarget = (String, String);
 mod native {
     use anyhow::{Context as _, Result};
     use winreg::RegKey;
-    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE};
     use winreg::enums::{
         REG_BINARY, REG_DWORD, REG_DWORD_BIG_ENDIAN, REG_EXPAND_SZ, REG_FULL_RESOURCE_DESCRIPTOR,
         REG_LINK, REG_MULTI_SZ, REG_NONE, REG_QWORD, REG_RESOURCE_LIST,
@@ -54,7 +54,7 @@ mod native {
         value_name: &str,
     ) -> Result<Option<CurrentRegistryValue>> {
         let (root, subkey) = parse_path(key_path)?;
-        let key = match root.open_subkey(subkey) {
+        let key = match root.open_subkey_with_flags(subkey, KEY_QUERY_VALUE) {
             Ok(k) => k,
             Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(anyhow::Error::from(e).context(format!("opening {key_path}"))),
@@ -80,7 +80,7 @@ mod native {
     ) -> Result<()> {
         let (root, subkey) = parse_path(key_path)?;
         let (key, _) = root
-            .create_subkey(subkey)
+            .create_subkey_with_flags(subkey, KEY_SET_VALUE)
             .with_context(|| format!("creating {key_path}"))?;
 
         match value_type {
@@ -277,7 +277,7 @@ impl RegistryResource {
 
     /// Determine the resource state from a pre-fetched current value.
     ///
-    /// [`batch_check_values`] reads all values before convergence starts.
+    /// [`batch_check_states`] reads all values before convergence starts.
     #[must_use]
     pub fn state_from_cached(&self, current_value: Option<&CurrentRegistryValue>) -> ResourceState {
         current_value.map_or(ResourceState::Missing, |current| {
@@ -292,41 +292,34 @@ impl RegistryResource {
     }
 }
 
-/// Batch-check all registry values.
-///
-/// On Windows, reads each value directly via the `winreg` crate. Returns a map
-/// from `(key_path, value_name)` to the current typed value (`None` when the key
-/// or value does not exist).
-///
-/// # Errors
-///
-/// Returns an error if a registry value cannot be read.
-#[cfg(windows)]
-pub fn batch_check_values(
+/// Snapshot independent reads: a denied key must not hide another key's state.
+pub fn batch_check_states(
     resources: &[RegistryResource],
-) -> Result<HashMap<RegistryTarget, Option<CurrentRegistryValue>>> {
-    let mut map = HashMap::with_capacity(resources.len());
-    for res in resources {
-        let value = native::read_value(&res.key_path, &res.value_name)?;
-        map.insert(res.cache_key(), value);
-    }
-    Ok(map)
+) -> HashMap<RegistryTarget, ResourceState> {
+    #[cfg(windows)]
+    let read = native::read_value;
+    #[cfg(not(windows))]
+    let read =
+        |_: &str, _: &str| anyhow::bail!("registry operations are only supported on Windows");
+    batch_check_with(resources, read)
 }
 
-/// Stub for non-Windows platforms (registry operations are Windows-only).
-///
-/// # Errors
-///
-/// This function never returns an error on non-Windows platforms.
-#[cfg(not(windows))]
-#[allow(
-    clippy::unnecessary_wraps,
-    reason = "mirrors the fallible Windows implementation this stub replaces"
-)]
-pub fn batch_check_values(
-    _resources: &[RegistryResource],
-) -> Result<HashMap<RegistryTarget, Option<CurrentRegistryValue>>> {
-    Ok(HashMap::new())
+fn batch_check_with(
+    resources: &[RegistryResource],
+    mut read: impl FnMut(&str, &str) -> Result<Option<CurrentRegistryValue>>,
+) -> HashMap<RegistryTarget, ResourceState> {
+    resources
+        .iter()
+        .map(|res| {
+            let state = match read(&res.key_path, &res.value_name) {
+                Ok(value) => res.state_from_cached(value.as_ref()),
+                Err(error) => ResourceState::Unknown {
+                    reason: format!("{error:#}"),
+                },
+            };
+            (res.cache_key(), state)
+        })
+        .collect()
 }
 
 impl Resource for RegistryResource {
@@ -552,8 +545,45 @@ mod tests {
     }
 
     #[test]
-    fn batch_check_values_empty() {
-        let result = batch_check_values(&[]).unwrap();
-        assert!(result.is_empty());
+    fn denied_registry_key_does_not_hide_independent_reads_or_become_missing() {
+        let resources = ["Denied", "Pending", "Current"].map(|name| {
+            RegistryResource::new(
+                r"HKCU:\Example".into(),
+                name.into(),
+                "1".into(),
+                RegistryValueType::Dword,
+            )
+        });
+        let [denied, pending, current] = &resources;
+        let mut reads = Vec::new();
+        let cached = batch_check_with(&resources, |_, name| {
+            reads.push(name.to_owned());
+            match name {
+                "Denied" => anyhow::bail!("fixture: query denied"),
+                "Pending" => Ok(None),
+                "Current" => Ok(Some(CurrentRegistryValue::new(
+                    "1".into(),
+                    Some(RegistryValueType::Dword),
+                ))),
+                _ => panic!("unexpected read of {name}"),
+            }
+        });
+        assert_eq!(reads, ["Denied", "Pending", "Current"]);
+        assert_eq!(
+            cached[&denied.cache_key()],
+            ResourceState::Unknown {
+                reason: "fixture: query denied".into()
+            }
+        );
+        assert_eq!(cached[&pending.cache_key()], ResourceState::Missing);
+        assert_eq!(cached[&current.cache_key()], ResourceState::Correct);
+        let retry = batch_check_with(&resources, |_, _| {
+            Ok(Some(CurrentRegistryValue::new(
+                "1".into(),
+                Some(RegistryValueType::Dword),
+            )))
+        });
+        assert_eq!(retry.len(), resources.len());
+        assert!(retry.values().all(|state| *state == ResourceState::Correct));
     }
 }

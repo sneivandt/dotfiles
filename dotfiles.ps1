@@ -360,7 +360,18 @@ function Get-Binary
             {
                 throw "CLI cache path is not a regular file: $Binary"
             }
-            Move-Item -LiteralPath $stagedBinary -Destination $Binary -Force
+            if ($repairCached)
+            {
+                # Only Unix repairs existing non-executable cache entries.
+                & test -x $Binary
+                if ($LASTEXITCODE -eq 0) { throw 'CLI cache changed during bootstrap; retry.' }
+                Move-Item -LiteralPath $stagedBinary -Destination $Binary -Force
+            }
+            else
+            {
+                # Never replace a concurrently completed bootstrap on first install.
+                [IO.File]::Move($stagedBinary, $Binary)
+            }
         }
         catch
         {
@@ -437,6 +448,7 @@ if ((Test-Path -LiteralPath $Binary) -and -not (Test-Path -LiteralPath $Binary -
     exit 1
 }
 $binaryReady = Test-Path -LiteralPath $Binary -PathType Leaf
+$repairCached = $binaryReady
 if ($binaryReady -and ($IsLinux -or $IsMacOS))
 {
     & test -x $Binary

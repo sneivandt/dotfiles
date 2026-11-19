@@ -29,8 +29,8 @@ pub struct SystemdUnitResource {
     home: Option<PathBuf>,
     /// System-wide user unit directories, in lookup order.
     system_user_unit_dirs: Vec<PathBuf>,
-    /// Whether the live user service manager is reachable.
-    user_manager_available: bool,
+    /// Whether this unit's service manager is available in the target.
+    manager_available: bool,
     start: bool,
     retired_source: Option<PathBuf>,
     thunar_settings_script: Option<PathBuf>,
@@ -56,7 +56,7 @@ impl SystemdUnitResource {
             .into_iter()
             .map(PathBuf::from)
             .collect(),
-            user_manager_available: true,
+            manager_available: true,
             start: true,
             retired_source: None,
             thunar_settings_script: None,
@@ -69,13 +69,13 @@ impl SystemdUnitResource {
         entry: &crate::domains::system::config::systemd_units::SystemdUnit,
         executor: Arc<dyn Executor>,
         home: &Path,
-        user_manager_available: bool,
+        manager_available: bool,
         graphical_session_active: bool,
     ) -> Self {
         let mut resource = Self::new(entry.name.clone(), entry.scope.clone(), executor);
         resource.enabled = entry.enabled;
         resource.home = Some(home.to_path_buf());
-        resource.user_manager_available = user_manager_available;
+        resource.manager_available = manager_available;
         resource.start = !entry.graphical || graphical_session_active;
         if entry.enabled && entry.scope == UnitScope::User && entry.name == THUNAR_SETTINGS_UNIT {
             resource.thunar_settings_script = Some(home.join(THUNAR_SETTINGS_SCRIPT));
@@ -86,6 +86,9 @@ impl SystemdUnitResource {
     fn check_args<'a>(&'a self, args: &[&'a str]) -> ResourceResult<Vec<&'a str>> {
         match self.scope {
             UnitScope::User => Ok([&["--user"][..], args, &[&self.name]].concat()),
+            UnitScope::System if !self.manager_available => {
+                Ok([&["--root=/"][..], args, &[&self.name]].concat())
+            }
             UnitScope::System => Ok([args, &[&self.name]].concat()),
             UnitScope::Invalid(ref value) => Err(ResourceError::not_supported(format!(
                 "unsupported systemd scope '{value}'"
@@ -114,6 +117,10 @@ impl SystemdUnitResource {
     ) -> ResourceResult<(&'static str, Vec<&'a str>)> {
         match self.scope {
             UnitScope::User => Ok(("systemctl", [&["--user"][..], args, &[&self.name]].concat())),
+            UnitScope::System if !self.manager_available => Ok((
+                "sudo",
+                [&["systemctl", "--root=/"][..], args, &[&self.name]].concat(),
+            )),
             UnitScope::System => Ok(("sudo", [&["systemctl"][..], args, &[&self.name]].concat())),
             UnitScope::Invalid(ref value) => Err(ResourceError::not_supported(format!(
                 "unsupported systemd scope '{value}'"
@@ -162,11 +169,20 @@ impl SystemdUnitResource {
 
     fn state_from_is_enabled(&self, result: &crate::infra::exec::ExecResult) -> ResourceState {
         let output = command_output(result);
+        if !self.enabled && result.stdout.trim() == "masked-runtime" {
+            return ResourceState::Unknown {
+                reason: "a temporary mask hides persistent enablement; retry after the mask expires or is lifted"
+                    .into(),
+            };
+        }
         if result.success && result.stdout.trim() == "enabled-runtime" {
             // Runtime enablement disappears at reboot; enable without --runtime
             // to establish the persistent links required by desired state.
             return if self.enabled {
                 ResourceState::Missing
+            } else if !self.manager_available {
+                // No live target manager: the runtime links disappear on boot.
+                ResourceState::Correct
             } else {
                 ResourceState::Incorrect { current: output }
             };
@@ -224,6 +240,11 @@ impl SystemdUnitResource {
     }
 
     fn alias_state(&self) -> ResourceResult<ResourceState> {
+        if !self.manager_available {
+            return Ok(ResourceState::Invalid {
+                reason: format!("{} is an alias. Declare the canonical unit name", self.name),
+            });
+        }
         let args = self.check_args(&["show", "--property=Id", "--value"])?;
         let result = self
             .executor
@@ -257,6 +278,28 @@ impl SystemdUnitResource {
                 ),
             },
         })
+    }
+
+    fn marker_state_if_idle(&self, properties: &str) -> ResourceResult<Option<ResourceState>> {
+        // Start history can be stale or lost when the user manager restarts.
+        if self.enabled
+            && self.scope == UnitScope::User
+            && self.name == FIRST_LOGIN_UNIT
+            && systemd_property(properties, "ActiveState") == Some("inactive")
+            && let Some(home) = &self.home
+        {
+            let marker = home.join(DEFERRED_EXTENSIONS_MARKER);
+            return Ok(Some(match deferred_extensions_state(&marker)? {
+                DeferredExtensionsState::Absent => ResourceState::Correct,
+                DeferredExtensionsState::Pending => ResourceState::Incorrect {
+                    current: "VS Code extension provisioning is pending".into(),
+                },
+                DeferredExtensionsState::Invalid => ResourceState::Invalid {
+                    reason: format!("{} is not a regular file", marker.display()),
+                },
+            }));
+        }
+        Ok(None)
     }
 
     fn offline_enablement_links(&self) -> ResourceResult<Vec<(PathBuf, PathBuf)>> {
@@ -325,6 +368,16 @@ impl SystemdUnitResource {
         let directories: Vec<_> = std::iter::once(&user_dir)
             .chain(&self.system_user_unit_dirs)
             .collect();
+        // A mask takes precedence over install directives in all drop-ins.
+        // Refuse non-regular inputs before opening them (e.g. /dev/null).
+        let metadata = std::fs::metadata(unit)?;
+        if !metadata.is_file() || metadata.len() == 0 {
+            return Err(ResourceError::conflicting_state(
+                unit.display().to_string(),
+                "an unmasked unit file",
+                "an empty or non-regular file",
+            ));
+        }
         let mut contents = std::fs::read_to_string(unit)?;
         let mut dropins = std::collections::BTreeMap::new();
         let (stem, suffix) = self
@@ -841,12 +894,16 @@ impl Resource for SystemdUnitResource {
             }
             return Ok(ResourceChange::Applied);
         }
-        if self.scope == UnitScope::User && !self.user_manager_available {
-            return if self.enabled {
-                self.enable_offline()
-            } else {
-                self.disable_offline()
-            };
+        if !self.manager_available {
+            match self.scope {
+                UnitScope::User if self.enabled => return self.enable_offline(),
+                UnitScope::User => return self.disable_offline(),
+                UnitScope::System => {
+                    let action = if self.enabled { "enable" } else { "disable" };
+                    return self.change_live_unit(&[action]);
+                }
+                UnitScope::Invalid(_) => {}
+            }
         }
         if self.enabled {
             let link_state = self.live_user_link_state()?;
@@ -890,6 +947,14 @@ impl Resource for SystemdUnitResource {
             }
             return self.change_live_unit(&["enable", "--now"]);
         }
+        // Per-user disable succeeds with just a warning when a global link
+        // will activate the same unit again at the next login.
+        if self.scope == UnitScope::User
+            && self.home.is_some()
+            && let Some(ResourceState::Invalid { reason }) = self.global_enablement_conflict()?
+        {
+            return Ok(ResourceChange::unusable(reason));
+        }
         // systemctl scopes disable to one enablement directory at a time.
         let runtime = self.change_live_unit(&["disable", "--runtime"])?;
         if !matches!(runtime, ResourceChange::Applied) {
@@ -915,7 +980,7 @@ impl IntrinsicState for SystemdUnitResource {
                 reason: "unit name must be a single safe systemd name, not a path or option".into(),
             });
         }
-        if self.scope == UnitScope::User && !self.user_manager_available {
+        if self.scope == UnitScope::User && !self.manager_available {
             return self.offline_current_state();
         }
         let args = match self.check_args(&["is-enabled"]) {
@@ -933,6 +998,14 @@ impl IntrinsicState for SystemdUnitResource {
             return self.alias_state();
         }
         let enablement = self.state_from_is_enabled(&result);
+        if !self.enabled
+            && self.scope == UnitScope::User
+            && self.home.is_some()
+            && matches!(enablement, ResourceState::Incorrect { .. })
+            && let Some(conflict) = self.global_enablement_conflict()?
+        {
+            return Ok(conflict);
+        }
         if matches!(enablement, ResourceState::Correct)
             && let Some(state) = self.live_user_link_state()?
             && !matches!(state, ResourceState::Correct)
@@ -941,7 +1014,8 @@ impl IntrinsicState for SystemdUnitResource {
         }
         // Missing disabled units need no runtime probe. Ambiguous enablement
         // must keep its diagnostic instead of being treated as converged.
-        if !matches!(enablement, ResourceState::Correct)
+        if !self.manager_available
+            || !matches!(enablement, ResourceState::Correct)
             || (self.enabled && !self.start)
             || (!self.enabled
                 && (command_output(&result).contains("not-found")
@@ -976,24 +1050,8 @@ impl IntrinsicState for SystemdUnitResource {
                 current: "systemd has a stale unit definition".into(),
             });
         }
-        // The first-login service removes its marker after finishing deferred work.
-        // Start history can be stale or lost when the user manager restarts.
-        if self.enabled
-            && self.scope == UnitScope::User
-            && self.name == FIRST_LOGIN_UNIT
-            && systemd_property(properties, "ActiveState") == Some("inactive")
-            && let Some(home) = &self.home
-        {
-            let marker = home.join(DEFERRED_EXTENSIONS_MARKER);
-            return Ok(match deferred_extensions_state(&marker)? {
-                DeferredExtensionsState::Absent => ResourceState::Correct,
-                DeferredExtensionsState::Pending => ResourceState::Incorrect {
-                    current: "VS Code extension provisioning is pending".into(),
-                },
-                DeferredExtensionsState::Invalid => ResourceState::Invalid {
-                    reason: format!("{} is not a regular file", marker.display()),
-                },
-            });
+        if let Some(state) = self.marker_state_if_idle(properties)? {
+            return Ok(state);
         }
         let state = runtime_state(self.enabled, properties);
         if matches!(state, ResourceState::Correct)

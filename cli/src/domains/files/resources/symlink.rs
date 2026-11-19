@@ -3,6 +3,7 @@ use anyhow::Context as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::domains::files::config::symlinks::{InspectedSource, inspect_source};
 use crate::engine::{
     IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
 };
@@ -38,6 +39,7 @@ pub struct SymlinkResource {
     allow_external_target: bool,
     /// Owning repository, used for source display and relocation checks.
     source_root: Option<PathBuf>,
+    source_directory: Option<PathBuf>,
     other_root: Option<PathBuf>,
     restore_missing: bool,
     legacy_source: Option<PathBuf>,
@@ -74,6 +76,7 @@ impl SymlinkResource {
             display_home: None,
             allow_external_target: false,
             source_root: None,
+            source_directory: None,
             other_root: None,
             restore_missing: false,
             legacy_source: None,
@@ -109,6 +112,15 @@ impl SymlinkResource {
     pub(crate) fn with_other_checkout(mut self, other_root: Option<PathBuf>) -> Self {
         self.other_root = other_root;
         self
+    }
+
+    pub(crate) fn with_source_directory(mut self, directory: PathBuf) -> Self {
+        self.source_directory = Some(directory);
+        self
+    }
+
+    fn inspect_source(&self) -> anyhow::Result<InspectedSource> {
+        inspect_source(&self.source, self.source_directory.as_deref())
     }
 
     pub(crate) const fn with_restore_missing(mut self, restore_missing: bool) -> Self {
@@ -170,6 +182,17 @@ impl SymlinkResource {
             self.target.display(),
             resolved.display()
         );
+        // A directory link from an older selection can redirect a child into
+        // the checkout even when both the checkout and the target are in home.
+        for root in self.checkout_roots() {
+            let sources = resolve_directory(&root.join("symlinks"))?;
+            anyhow::ensure!(
+                !resolved.starts_with(sources),
+                "target {} resolves into a managed source tree at {}; move the redirecting parent aside before retrying",
+                self.target.display(),
+                resolved.display()
+            );
+        }
         Ok(resolved)
     }
 
@@ -321,9 +344,15 @@ impl RemovableResource for SymlinkResource {
 
         // Stage source content before replacing the managed link.
         let roots = self.checkout_roots();
-        materialize::validate_source(&self.source, &roots)?;
+        let source = match self.inspect_source()? {
+            InspectedSource::Available(path) => path,
+            InspectedSource::Missing(reason) | InspectedSource::Outside(reason) => {
+                return Err(anyhow::anyhow!("inspect copy source: {reason}").into());
+            }
+        };
+        materialize::validate_source(&source, &roots)?;
         copy_into_place(
-            &self.source,
+            &source,
             &target,
             managed_source,
             &roots,

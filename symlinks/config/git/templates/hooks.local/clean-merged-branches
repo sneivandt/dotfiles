@@ -1,28 +1,23 @@
 #!/bin/sh
 set -eu
 
-default_ref=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
+if ! default_ref=$(git symbolic-ref --quiet refs/remotes/origin/HEAD); then
+  # A repository need not have an origin or its default-branch symref.
+  exit 0
+fi
 case "$default_ref" in
   refs/remotes/origin/*) default_branch=${default_ref#refs/remotes/origin/} ;;
   *) exit 0 ;;
 esac
 current_branch=$(git branch --show-current 2>/dev/null)
-worktree_branches=$(
-  git worktree list --porcelain 2>/dev/null | while IFS= read -r line; do
-    case "$line" in
-      "branch refs/heads/"*)
-        printf '%s\n' "${line#branch refs/heads/}"
-        ;;
-    esac
-  done
-)
+worktrees=$(git worktree list --porcelain)
 
 is_worktree_branch() {
   case "
-$worktree_branches
+$worktrees
 " in
     *"
-$1
+branch refs/heads/$1
 "*)
       return 0
       ;;
@@ -32,8 +27,14 @@ $1
 }
 
 # Full refs keep branch names stable when tags have the same names.
-git for-each-ref --format='%(refname)' --merged="$default_ref" refs/heads/ | while IFS= read -r ref; do
-  branch=${ref#refs/heads/}
+# Finish both reads successfully before deleting anything. A pipe into the
+# loop would act on partial output and hide a failed Git process.
+refs=$(git for-each-ref --format='%(refname)' --merged="$default_ref" refs/heads/)
+while IFS= read -r ref; do
+  case "$ref" in
+    refs/heads/*) branch=${ref#refs/heads/} ;;
+    *) continue ;;
+  esac
   case "$branch" in
     ""|"$current_branch"|"$default_branch"|main|master|dev|develop)
       continue
@@ -45,4 +46,6 @@ git for-each-ref --format='%(refname)' --merged="$default_ref" refs/heads/ | whi
   fi
 
   git branch -d -- "$branch" || continue
-done
+done <<EOF
+$refs
+EOF

@@ -4,6 +4,19 @@
 [ -n "$BASH_PROFILE_LOADED" ] && return
 BASH_PROFILE_LOADED=1
 
+# Installing .bash_profile takes precedence over Bash's other login files.
+# Load the one Bash would otherwise have used, before setting managed defaults.
+_dotfiles_login_file=
+if [[ -f ~/.bash_login && -r ~/.bash_login ]]; then
+  _dotfiles_login_file=~/.bash_login
+elif [[ -f ~/.profile && -r ~/.profile ]]; then
+  _dotfiles_login_file=~/.profile
+fi
+if [[ -n $_dotfiles_login_file ]]; then
+  # shellcheck disable=SC1090,SC1091
+  . "$_dotfiles_login_file"
+fi
+
 # Profile
 # shellcheck disable=SC1090
 [ -r ~/.config/shell/profile.sh ] && . ~/.config/shell/profile.sh
@@ -17,7 +30,16 @@ BASH_PROFILE_LOADED=1
 [ -r ~/.config/shell/profile-arch-desktop.sh ] && . ~/.config/shell/profile-arch-desktop.sh
 
 # Interactive shell configuration
-if [[ $- == *i* ]]; then
-  # shellcheck disable=SC1090
-  [ -r ~/.bashrc ] && . ~/.bashrc
+if [[ $- == *i* && -f ~/.bashrc && -r ~/.bashrc && -z ${BASHRC_LOADED:-} ]]; then
+  # A distribution's .profile often already sourced an unmanaged .bashrc.
+  # Leave that choice to the user's login file. Our guarded rc is safe to
+  # load even if the user's login file didn't source it (also for copies).
+  if [[ -n $_dotfiles_login_file ]]; then
+    mapfile -tn 2 _dotfiles_rc_header < ~/.bashrc
+  fi
+  if [[ -z $_dotfiles_login_file || ${_dotfiles_rc_header[1]:-} == '# Dotfiles Bash interactive startup' ]]; then
+    # shellcheck disable=SC1090
+    . ~/.bashrc
+  fi
 fi
+unset _dotfiles_login_file _dotfiles_rc_header

@@ -283,6 +283,19 @@ fn set_editable_toml(
 }
 
 fn apply_document(settings: &[AgentSettingResource], path: &Path) -> Result<ResourceChange> {
+    let before = read_baseline(path)?;
+    let Some(serialized) = planned_document(settings, path, before.as_deref())? else {
+        return Ok(ResourceChange::AlreadyCorrect);
+    };
+    publish_document(settings, path, before.as_deref(), serialized)?;
+    Ok(ResourceChange::Applied)
+}
+
+fn planned_document(
+    settings: &[AgentSettingResource],
+    path: &Path,
+    before: Option<&[u8]>,
+) -> Result<Option<String>> {
     let first = settings.first().context("settings document has no keys")?;
     for setting in settings {
         anyhow::ensure!(
@@ -295,8 +308,7 @@ fn apply_document(settings: &[AgentSettingResource], path: &Path) -> Result<Reso
             "settings value contains NaN or infinity"
         );
     }
-    let before = read_baseline(path)?;
-    let contents = std::str::from_utf8(before.as_deref().unwrap_or_default())?;
+    let contents = std::str::from_utf8(before.unwrap_or_default())?;
     let mut serialized = match first.format {
         SettingsFormat::Json => {
             let mut document = if contents.trim().is_empty() {
@@ -304,14 +316,33 @@ fn apply_document(settings: &[AgentSettingResource], path: &Path) -> Result<Reso
             } else {
                 Value::Object(serde_json::from_str::<Map<String, Value>>(contents)?)
             };
+            let mut changed = false;
             for setting in settings {
-                setting.set_in_json_document(&mut document)?;
+                if setting.current_json_value(&document)
+                    != Some(&toml_value_to_json(&setting.desired_value))
+                {
+                    setting.set_in_json_document(&mut document)?;
+                    changed = true;
+                }
+            }
+            if !changed {
+                return Ok(None);
             }
             serde_json::to_string_pretty(&document)?
         }
         SettingsFormat::Toml => {
+            let current: toml::Table = toml::from_str(contents)?;
+            let mut changed = settings
+                .iter()
+                .filter(|setting| {
+                    setting.current_toml_value(&current) != Some(&setting.desired_value)
+                })
+                .peekable();
+            if changed.peek().is_none() {
+                return Ok(None);
+            }
             let mut document = contents.parse::<toml_edit::DocumentMut>()?;
-            for setting in settings {
+            for setting in changed {
                 set_editable_toml(&mut document, setting)?;
             }
             let serialized = document.to_string();
@@ -331,8 +362,7 @@ fn apply_document(settings: &[AgentSettingResource], path: &Path) -> Result<Reso
     if !serialized.ends_with('\n') {
         serialized.push('\n');
     }
-    publish_document(settings, path, before.as_deref(), serialized)?;
-    Ok(ResourceChange::Applied)
+    Ok(Some(serialized))
 }
 
 fn publish_document(
@@ -401,6 +431,13 @@ impl AgentSettingsDocument {
                 });
             }
         }
+        // A selected parent may replace an incompatible existing scalar. Apply
+        // it before an agreeing descendant regardless of declaration order.
+        for document in &mut documents {
+            document
+                .settings
+                .sort_by_key(|setting| setting.key.matches('.').count());
+        }
         Ok(documents)
     }
 }
@@ -428,49 +465,18 @@ impl Resource for AgentSettingsDocument {
 
 impl IntrinsicState for AgentSettingsDocument {
     fn current_state(&self) -> ResourceResult<ResourceState> {
-        let contents = read_baseline(&self.path)?.unwrap_or_default();
-        let contents = std::str::from_utf8(&contents).map_err(anyhow::Error::from)?;
-        let first = self
-            .settings
-            .first()
-            .context("settings document has no keys")?;
-        let json = if first.format == SettingsFormat::Json {
-            Some(if contents.trim().is_empty() {
-                Value::Object(Map::new())
+        let before = read_baseline(&self.path)?;
+        Ok(
+            if planned_document(&self.settings, &self.path, before.as_deref())?.is_none() {
+                ResourceState::Correct
+            } else if before.is_none() {
+                ResourceState::Missing
             } else {
-                Value::Object(
-                    serde_json::from_str::<Map<String, Value>>(contents)
-                        .map_err(anyhow::Error::from)?,
-                )
-            })
-        } else {
-            None
-        };
-        let toml = if first.format == SettingsFormat::Toml {
-            Some(if contents.trim().is_empty() {
-                toml::Table::new()
-            } else {
-                toml::from_str(contents).map_err(anyhow::Error::from)?
-            })
-        } else {
-            None
-        };
-        for setting in &self.settings {
-            if invalid_key(&setting.key) || !value_is_finite(&setting.desired_value) {
-                return Ok(ResourceState::Invalid {
-                    reason: "invalid settings key or value".into(),
-                });
-            }
-            let state = if let Some(document) = &json {
-                setting.state_from_json_document(document)
-            } else {
-                setting.state_from_toml_document(toml.as_ref().context("missing TOML document")?)
-            };
-            if state != ResourceState::Correct {
-                return Ok(state);
-            }
-        }
-        Ok(ResourceState::Correct)
+                ResourceState::Incorrect {
+                    current: "managed settings differ".into(),
+                }
+            },
+        )
     }
 }
 
@@ -601,6 +607,72 @@ mod tests {
         assert!(after.contains("# preferred model"));
         assert!(after.starts_with("# My settings\n"));
         assert!(after.ends_with("# Integration notes\n[mcp_servers.example]\ncommand = 'tool' # do not change\noptions = { x = 1, y = 2 }\n"));
+    }
+
+    #[test]
+    fn grouped_toml_change_preserves_comments_within_already_correct_settings() {
+        let home = tempfile::tempdir_in(".").unwrap();
+        let path = home.path().join("config.toml");
+        let array = "tools = [\n  'lint', # leave this explanation here\n]\n";
+        std::fs::write(&path, format!("{array}enabled = false\n")).unwrap();
+        let document = AgentSettingsDocument::group(
+            [
+                ("tools", toml::Value::Array(vec!["lint".into()])),
+                ("enabled", true.into()),
+            ]
+            .map(|(key, value)| {
+                AgentSettingResource::new(
+                    "codex".into(),
+                    key.into(),
+                    value,
+                    SettingsFormat::Toml,
+                    path.clone(),
+                )
+            })
+            .into(),
+        )
+        .unwrap()
+        .pop()
+        .unwrap();
+        assert_eq!(document.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(
+            std::fs::read_to_string(path).unwrap(),
+            format!("{array}enabled = true\n")
+        );
+        assert_eq!(document.apply().unwrap(), ResourceChange::AlreadyCorrect);
+    }
+
+    #[test]
+    fn compatible_whole_parent_replaces_scalar_even_when_child_is_declared_first() {
+        for (format, before) in [
+            (SettingsFormat::Json, r#"{"parent":false}"#),
+            (SettingsFormat::Toml, "parent = false\n"),
+        ] {
+            let home = tempfile::tempdir_in(".").unwrap();
+            let path = home.path().join("doc");
+            std::fs::write(&path, before).unwrap();
+            let parent: toml::Table = toml::from_str("child = true").unwrap();
+            let document = AgentSettingsDocument::group(
+                [("parent.child", true.into()), ("parent", parent.into())]
+                    .map(|(key, value)| {
+                        AgentSettingResource::new(
+                            "fixture".into(),
+                            key.into(),
+                            value,
+                            format,
+                            path.clone(),
+                        )
+                    })
+                    .into(),
+            )
+            .unwrap()
+            .pop()
+            .unwrap();
+            assert_ne!(document.current_state().unwrap(), ResourceState::Correct);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+            assert_eq!(document.apply().unwrap(), ResourceChange::Applied);
+            assert_eq!(document.current_state().unwrap(), ResourceState::Correct);
+        }
     }
 
     #[test]

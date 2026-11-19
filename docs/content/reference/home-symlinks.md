@@ -106,6 +106,11 @@ resolved destination and skips the entry. To manage that location intentionally,
 `allow_external_target = true` in the table entry. Keep `target` relative to home. The
 opt-in applies to installation and removal.
 
+The opt-in never allows a home entry to be placed inside the public or overlay
+`symlinks/` tree. If a parent directory is still linked into an old layout,
+move that link aside and create a real home directory before retrying. Do not
+delete the directory the link points to.
+
 See [Home symlinks](#what-it-does) and [Remove tasks](task-reference.md#remove-tasks)
 before taking over an existing application's configuration.
 

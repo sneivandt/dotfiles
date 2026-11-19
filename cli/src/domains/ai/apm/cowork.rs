@@ -299,6 +299,26 @@ fn prepare_skill_paths(
     Ok(())
 }
 
+fn selected_skill_inventory(source: &Path) -> Result<FileInventory> {
+    // The lock still selects this skill. An incomplete shared deployment
+    // must not retire the installed entry point or its owned assets.
+    let entry_point = source.join("SKILL.md");
+    let entry_meta = std::fs::metadata(&entry_point).with_context(|| {
+        format!(
+            "APM shared skill entry point {} is missing or inaccessible",
+            entry_point.display()
+        )
+    })?;
+    anyhow::ensure!(
+        entry_meta.is_file(),
+        "APM shared skill entry point {} is not a file",
+        entry_point.display()
+    );
+    let mut files = FileInventory::new();
+    inventory_files(source, source, &mut files)?;
+    Ok(files)
+}
+
 /// Reconcile APM's shared skill deployment into Cowork's protected skill tree.
 ///
 /// # Errors
@@ -319,13 +339,7 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
     for name in &desired {
         let source_skill = source.join(name);
         let target_skill = target.join(name);
-        anyhow::ensure!(
-            source_skill.is_dir(),
-            "APM shared skill {} is missing",
-            source_skill.display()
-        );
-        let mut files = FileInventory::new();
-        inventory_files(&source_skill, &source_skill, &mut files)?;
+        let files = selected_skill_inventory(&source_skill)?;
         let previous = inventory.get(name);
         prepare_skill_paths(&target_skill, previous, &files)?;
         if !skill_files_match(&source_skill, &target_skill)? {
@@ -1004,6 +1018,44 @@ mod tests {
     }
 
     #[test]
+    fn overlapping_cowork_destination_never_claims_or_prunes_shared_skills() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let home = fixture.path();
+        let (source, target, ctx) = setup_skill(home, "[agent-skills, copilot-cowork]");
+        let shared = source.parent().unwrap();
+        let lock = home.join(".apm/apm.lock.yaml");
+        let before = std::fs::read(&lock).unwrap();
+        let nested = source.join("missing/new");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(shared, home.join("alias")).unwrap();
+        for destination in [
+            shared.to_path_buf(),
+            home.join(".agents"),
+            nested.clone(),
+            #[cfg(unix)]
+            home.join("alias/example/nested"),
+        ] {
+            let bad = make_context_with_home(home, ctx.platform(), MockExecutor::new()).with_env(
+                MapEnv::new()
+                    .with("APM_COPILOT_COWORK_SKILLS_DIR", destination)
+                    .into_handle(),
+            );
+            assert!(super::super::targets::ApmTargets::detect(&bad).is_err());
+            assert!(reconcile_cowork_skills(&bad).is_err());
+            assert!(!shared.join(OWNERSHIP_FILE).exists());
+            assert!(!shared.join(FILE_OWNERSHIP_FILE).exists());
+            assert!(!nested.exists());
+            assert_eq!(std::fs::read(&lock).unwrap(), before);
+            assert_eq!(std::fs::read(source.join("SKILL.md")).unwrap(), b"current");
+        }
+        assert!(reconcile_cowork_skills(&ctx).unwrap());
+        std::fs::write(&lock, "dependencies: []\n").unwrap();
+        assert!(reconcile_cowork_skills(&ctx).unwrap());
+        assert!(!target.join("SKILL.md").exists());
+        assert_eq!(std::fs::read(source.join("SKILL.md")).unwrap(), b"current");
+    }
+
+    #[test]
     #[cfg(windows)]
     fn matching_and_copying_reject_a_junction_at_a_file_destination() {
         let dir = tempfile::tempdir_in(".").unwrap();
@@ -1056,6 +1108,75 @@ mod tests {
             std::fs::read_to_string(target.join("scripts/personal.py")).unwrap(),
             "unmanaged"
         );
+        assert!(!reconcile_cowork_skills(&ctx).unwrap());
+    }
+
+    #[test]
+    fn interrupted_shared_skill_preserves_the_installed_entry_point_until_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let (source, target, ctx) = setup_skill(dir.path(), "[copilot-cowork]");
+        std::fs::write(source.join("guide"), "previous").unwrap();
+        assert!(reconcile_cowork_skills(&ctx).unwrap());
+        std::fs::write(target.join("notes"), "my customization").unwrap();
+        let names = target.parent().unwrap().join(OWNERSHIP_FILE);
+        let files = target.parent().unwrap().join(FILE_OWNERSHIP_FILE);
+        let before_names = std::fs::read(&names).unwrap();
+        let before_files = std::fs::read(&files).unwrap();
+        std::fs::remove_file(source.join("SKILL.md")).unwrap();
+        std::fs::remove_file(source.join("guide")).unwrap();
+
+        assert!(reconcile_cowork_skills(&ctx).is_err());
+        assert_eq!(std::fs::read(target.join("SKILL.md")).unwrap(), b"current");
+        assert_eq!(std::fs::read(target.join("guide")).unwrap(), b"previous");
+        assert_eq!(std::fs::read(&names).unwrap(), before_names);
+        assert_eq!(std::fs::read(&files).unwrap(), before_files);
+        std::fs::write(source.join("SKILL.md"), "restored").unwrap();
+        assert!(reconcile_cowork_skills(&ctx).unwrap());
+        assert_eq!(std::fs::read(target.join("SKILL.md")).unwrap(), b"restored");
+        assert!(!target.join("guide").exists());
+        assert_eq!(
+            std::fs::read(target.join("notes")).unwrap(),
+            b"my customization"
+        );
+        assert!(!reconcile_cowork_skills(&ctx).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn disconnected_apm_config_does_not_redirect_skills_to_onedrive() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let (_, fallback, ctx) = setup_skill(home, "[copilot-cowork]");
+        let selected = home.join("selected");
+        let settings = home.join("settings.json");
+        let link = home.join(".apm/config.json");
+        std::os::unix::fs::symlink(&settings, &link).unwrap();
+        assert!(super::super::targets::ApmTargets::detect(&ctx).is_err());
+        assert!(reconcile_cowork_skills(&ctx).is_err());
+        assert!(!fallback.join("SKILL.md").exists());
+        assert!(!fallback.parent().unwrap().join(OWNERSHIP_FILE).exists());
+        let explicit = make_context_with_home(home, ctx.platform(), MockExecutor::new()).with_env(
+            MapEnv::new()
+                .with("APM_COPILOT_COWORK_SKILLS_DIR", &selected)
+                .into_handle(),
+        );
+        assert_eq!(
+            copilot_cowork_skills_path(&explicit).unwrap(),
+            Some(selected.clone())
+        );
+
+        std::fs::write(
+            &settings,
+            serde_json::json!({ "copilot_cowork_skills_dir": selected }).to_string(),
+        )
+        .unwrap();
+        assert!(reconcile_cowork_skills(&ctx).unwrap());
+        assert_eq!(
+            std::fs::read(selected.join("example/SKILL.md")).unwrap(),
+            b"current"
+        );
+        assert_eq!(std::fs::read_link(&link).unwrap(), settings);
+        assert!(!fallback.join("SKILL.md").exists());
         assert!(!reconcile_cowork_skills(&ctx).unwrap());
     }
 

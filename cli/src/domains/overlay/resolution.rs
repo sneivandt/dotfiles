@@ -38,12 +38,14 @@ pub fn read_persisted(root: &Path) -> Result<Option<PathBuf>> {
 /// # Errors
 ///
 /// Returns an error if the repository cannot be discovered or the config
-/// cannot be written.
+/// cannot be written, or the path cannot be stored without loss.
 pub fn persist(root: &Path, overlay_path: &Path) -> Result<()> {
     crate::infra::config::git_state::persist_local(
         root,
         OVERLAY_KEY,
-        &overlay_path.display().to_string(),
+        overlay_path
+            .to_str()
+            .context("cannot save a non-UTF-8 overlay path")?,
     )
 }
 
@@ -101,7 +103,7 @@ fn resolve_with_confirmation(
 ) -> Result<Option<(PathBuf, OverlaySource)>> {
     if let Some(path) = cli_overlay {
         let path = absolute_overlay_path(path)?;
-        if is_linked_worktree(&path) && !confirm(&path)? {
+        if is_linked_worktree(&path)? && !confirm(&path)? {
             bail!(
                 "overlay path {} is a linked Git worktree; selection cancelled",
                 path.display()
@@ -157,8 +159,19 @@ fn absolute_overlay_path(path: &Path) -> Result<PathBuf> {
     Ok(absolute)
 }
 
-fn is_linked_worktree(path: &Path) -> bool {
-    path.join(".git").is_file()
+fn is_linked_worktree(path: &Path) -> Result<bool> {
+    let marker = path.join(".git");
+    let Some(metadata) =
+        crate::infra::fs::symlink_metadata_optional(&marker, "inspect overlay .git")?
+    else {
+        return Ok(false);
+    };
+    if metadata.is_symlink() {
+        return Ok(std::fs::metadata(marker)
+            .context("resolve overlay .git")?
+            .is_file());
+    }
+    Ok(metadata.is_file())
 }
 
 #[allow(
@@ -227,6 +240,44 @@ mod tests {
         let result = read_persisted(&root).unwrap();
         assert_eq!(result, Some(overlay));
         drop(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unrepresentable_overlay_does_not_replace_previous_selection() {
+        use std::os::unix::ffi::OsStrExt as _;
+
+        let (_dir, root) = init_test_repo();
+        let previous = root.join("previous");
+        let current = root.join(std::ffi::OsStr::from_bytes(b"selected-\xff"));
+        let lossy = root.join("selected-\u{fffd}");
+        for path in [&previous, &current, &lossy] {
+            std::fs::create_dir(path).unwrap();
+        }
+        persist(&root, &previous).unwrap();
+        let env = crate::infra::env::MapEnv::new();
+        assert_eq!(
+            resolve_from_args(Some(&current), &root, &env, true).unwrap(),
+            Some((current.clone(), OverlaySource::Argument))
+        );
+        assert!(persist(&root, &current).is_err());
+        assert_eq!(
+            resolve_read_only(None, &root, &env).unwrap(),
+            Some(previous)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_worktree_marker_does_not_bypass_confirmation() {
+        let (_dir, root) = init_test_repo();
+        let overlay = root.join("overlay");
+        std::fs::create_dir(&overlay).unwrap();
+        std::os::unix::fs::symlink(".git", overlay.join(".git")).unwrap();
+        let env = crate::infra::env::MapEnv::new();
+        assert!(resolve_read_only(Some(&overlay), &root, &env).is_err());
+        assert!(resolve_from_args(Some(&overlay), &root, &env, true).is_err());
+        assert_eq!(read_persisted(&root).unwrap(), None);
     }
 
     #[test]
@@ -574,7 +625,7 @@ mod tests {
         std::fs::create_dir(overlay.path().join(".git")).expect("create git directory");
 
         assert!(
-            !is_linked_worktree(overlay.path()),
+            !is_linked_worktree(overlay.path()).unwrap(),
             "a primary checkout should not require linked-worktree confirmation"
         );
     }

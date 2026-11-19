@@ -27,14 +27,12 @@ fn build_resource(
     );
     let source_root = s.origin.as_deref().unwrap_or(repo_root);
     let validation_error = crate::domains::files::config::symlinks::validate_paths(s)
-        .and_then(|()| {
-            crate::domains::files::config::symlinks::validate_source_containment(s, repo_root)
-        })
         .err()
         .map(|e| e.to_string())
         .or_else(|| placeholders.and_then(|cache| cache.reason(&source, source_root)));
     let legacy_source = legacy_editor_source(s, repo_root).map(|path| symlinks_dir.join(path));
     SymlinkResource::new(source, target, Arc::clone(executor))
+        .with_source_directory(symlinks_dir)
         .with_legacy_source(legacy_source)
         .with_display_roots(home, source_root)
         .with_external_target_allowed(s.allow_external_target)
@@ -837,6 +835,70 @@ mod tests {
             TaskResult::Batch(stats) if stats.failed_count() == 1
         ));
         assert!(!home_dir.path().join(".escaped").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn historical_editor_migration_rechecks_a_retargeted_source_and_can_retry() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let home = root.join("home");
+        let sources = root.join("symlinks");
+        let editor = sources.join("vim");
+        let managed = sources.join("managed-editor");
+        let outside = root.join("user-editor");
+        let historical = sources.join("config/nvim");
+        let installed = home.join(".config/nvim");
+        std::fs::create_dir_all(historical.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(installed.parent().unwrap()).unwrap();
+        for (dir, text) in [(&managed, "managed"), (&outside, "custom")] {
+            std::fs::create_dir(dir).unwrap();
+            std::fs::write(dir.join("init.vim"), text).unwrap();
+        }
+        std::os::unix::fs::symlink(&managed, &editor).unwrap();
+        std::os::unix::fs::symlink(&historical, &installed).unwrap();
+        let ctx = make_linux_context(root, None).with_home(home);
+        let resource = build_resources(&ctx, &[symlink("vim", Some(".config/nvim"))])
+            .pop()
+            .unwrap();
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
+        assert_eq!(resource.removal_state().unwrap(), ResourceState::Correct);
+
+        // A checkout edit between planning and mutation is not authorization
+        // to link to or import the user's separate editor configuration.
+        std::fs::remove_file(&editor).unwrap();
+        std::os::unix::fs::symlink(&outside, &editor).unwrap();
+        for result in [resource.apply(), resource.remove()] {
+            assert!(
+                format!("{:#}", result.unwrap_err()).contains("outside its symlinks directory")
+            );
+            assert_eq!(std::fs::read_link(&installed).unwrap(), historical);
+        }
+        assert_eq!(
+            std::fs::read_to_string(outside.join("init.vim")).unwrap(),
+            "custom"
+        );
+        assert_eq!(
+            std::fs::read_dir(installed.parent().unwrap())
+                .unwrap()
+                .count(),
+            1
+        );
+
+        std::fs::remove_file(&editor).unwrap();
+        std::os::unix::fs::symlink(&managed, &editor).unwrap();
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(std::fs::read_link(&installed).unwrap(), editor);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+        assert_eq!(resource.remove().unwrap(), ResourceChange::Applied);
+        assert!(!installed.is_symlink());
+        assert_eq!(
+            std::fs::read_to_string(installed.join("init.vim")).unwrap(),
+            "managed"
+        );
     }
 
     #[cfg(unix)]

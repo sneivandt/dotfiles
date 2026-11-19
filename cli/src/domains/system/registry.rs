@@ -3,7 +3,7 @@
 use anyhow::Result;
 
 use crate::domains::system::config::registry::{RegistryEntry, validate};
-use crate::domains::system::resources::registry::{RegistryResource, batch_check_values};
+use crate::domains::system::resources::registry::{RegistryResource, batch_check_states};
 use crate::engine::{
     Context, ProcessOpts, Task, TaskResult, run_batch_resource_task, task_metadata,
 };
@@ -43,10 +43,15 @@ impl Task for ApplyRegistry {
         run_batch_resource_task(
             ctx,
             resources,
-            |resources, _ctx| batch_check_values(resources),
+            |resources, _ctx| Ok(batch_check_states(resources)),
             |r, cached| {
-                let val = cached.get(&r.cache_key()).and_then(Option::as_ref);
-                Ok(r.state_from_cached(val))
+                Ok(cached.get(&r.cache_key()).cloned().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "registry inventory omitted {}\\{}",
+                        r.key_path,
+                        r.value_name
+                    )
+                })?)
             },
             &ProcessOpts::lenient("configure"),
         )
@@ -122,15 +127,7 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
-    fn run_with_entries_on_non_windows_skips_gracefully() {
-        // On non-Windows, batch_check_values() returns an empty map.
-        // Every entry therefore has state Missing, and apply() returns an
-        // error ("registry operations are only supported on Windows").
-        // Because ProcessOpts is lenient, each error is caught and counted
-        // as a non-fatal failure rather than propagating the error.
-        // Use a Windows-platform context so the task logic runs (should_run
-        // would normally gate this, but run() is called directly in unit tests).
-
+    fn unavailable_registry_is_counted_as_failed_not_missing() {
         let ctx = make_windows_context(PathBuf::from("/tmp"), None);
         let result = ApplyRegistry::new(ConfigHandle::new(vec![entry()]))
             .run(&ctx)

@@ -2,8 +2,8 @@ use anyhow::{Context as _, Result};
 use std::path::{Component, Path};
 
 use super::platform::{is_link_like, rename_noreplace};
-use super::state::{link_points_to_source, paths_equal, same_entry};
 use crate::infra::fs::{TempGuard, ensure_parent_dir};
+use crate::infra::fs::{link_points_to_source, paths_equal, same_entry};
 
 /// Stage a copy beside the target before replacing its managed link.
 pub(super) fn copy_into_place(

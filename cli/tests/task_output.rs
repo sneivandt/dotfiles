@@ -55,7 +55,12 @@ fn completions_report_changes_then_current() {
                 },
                 "1",
             );
-            if self_update_child {
+            if repository_child {
+                command
+                    .env("DOTFILES_RESTART_PROFILE", "base")
+                    .env("DOTFILES_RESTART_OVERLAY", overlay.path())
+                    .env("DOTFILES_RESTART_EXCLUSIONS", "[]");
+            } else if self_update_child {
                 let start = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
                 command
                     .env("DOTFILES_STARTUP_TRANSITION", "CLI upgraded · old → new")

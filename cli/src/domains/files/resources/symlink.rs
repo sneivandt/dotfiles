@@ -14,12 +14,13 @@ mod state;
 
 #[cfg(test)]
 use crate::infra::fs::resolve_directory_with;
-use crate::infra::fs::{resolve_directory, resolve_target_entry};
+use crate::infra::fs::{
+    link_points_to_source, resolve_directory, resolve_target_entry, same_entry,
+};
 
 use materialize::copy_into_place;
 use platform::{create_symlink, is_link_like};
 use state::current_state;
-pub(crate) use state::link_points_to_source;
 
 /// A symlink resource that can be checked and applied.
 #[derive(Debug, Clone)]
@@ -226,7 +227,7 @@ impl RemovableResource for SymlinkResource {
         let metadata = crate::infra::fs::symlink_metadata_optional(&target, "stat target")?;
         if let Some(meta) = &metadata {
             let managed = is_link_like(&target, meta)
-                && !state::same_entry(&self.source, &target)
+                && !same_entry(&self.source, &target)
                 && link_points_to_source(
                     &target,
                     &std::fs::read_link(&target)
@@ -259,7 +260,7 @@ impl RemovableResource for SymlinkResource {
 
     fn remove(&self) -> ResourceResult<ResourceChange> {
         let target = self.checked_target()?;
-        if self.validation_error.is_some() || state::same_entry(&self.source, &target) {
+        if self.validation_error.is_some() || same_entry(&self.source, &target) {
             return Ok(ResourceChange::skipped(
                 "invalid symlink will not be replaced with a copy",
             ));
@@ -314,7 +315,7 @@ pub(super) fn copy_dir_into_place(
 
 #[cfg(test)]
 pub(super) fn paths_equal(a: &Path, b: &Path) -> bool {
-    state::paths_equal(a, b)
+    crate::infra::fs::paths_equal(a, b)
 }
 
 #[cfg(windows)]

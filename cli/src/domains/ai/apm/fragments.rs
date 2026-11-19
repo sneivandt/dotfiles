@@ -74,11 +74,7 @@ pub(super) fn discover_effective_fragment_files(
         let source = std::fs::read_link(path)
             .with_context(|| format!("reading retained APM fragment {}", path.display()))?;
         Ok(matching.any(|fragment| {
-            crate::domains::files::resources::symlink::link_points_to_source(
-                path,
-                &source,
-                &fragment.source,
-            )
+            crate::infra::fs::link_points_to_source(path, &source, &fragment.source)
         }))
     })?;
     for path in home_fragments {

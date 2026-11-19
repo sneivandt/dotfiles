@@ -1,7 +1,9 @@
 use super::Symlink;
 use anyhow::{Result, bail};
 use std::ffi::OsString;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
+
+use crate::infra::fs::path_identity;
 
 pub(super) fn validate_unique_targets(symlinks: &[Symlink]) -> Result<()> {
     validate_target_paths(
@@ -44,23 +46,6 @@ pub(crate) fn validate_target_paths(
 
 pub(crate) fn target_identity(symlink: &Symlink) -> Vec<OsString> {
     path_identity(Path::new(&target_key(symlink)))
-}
-
-pub(crate) fn path_identity(path: &Path) -> Vec<OsString> {
-    path.components()
-        .filter(|component| !matches!(component, Component::CurDir))
-        .map(|component| {
-            let segment = component.as_os_str();
-            #[cfg(windows)]
-            {
-                segment.to_string_lossy().to_lowercase().into()
-            }
-            #[cfg(not(windows))]
-            {
-                segment.to_os_string()
-            }
-        })
-        .collect()
 }
 
 fn is_ancestor(parent: &[OsString], child: &[OsString]) -> bool {

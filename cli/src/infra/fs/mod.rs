@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 
 mod copy;
 mod directories;
+mod identity;
 mod mutation;
 mod place;
 mod temp;
@@ -21,6 +22,7 @@ mod temp;
 pub use copy::{copy_dir_recursive, reject_destination_link};
 pub(crate) use copy::{copy_regular_contents, open_regular_source, preserve_copy_metadata};
 pub(crate) use directories::checked_directory_chain;
+pub(crate) use identity::{link_points_to_source, path_identity, paths_equal, same_entry};
 pub(crate) use mutation::open_in_place;
 #[cfg(unix)]
 pub(crate) use mutation::require_single_link;

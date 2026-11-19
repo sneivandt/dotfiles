@@ -24,7 +24,8 @@ mod glob_expansion;
 mod target_capture;
 mod target_validation;
 
-pub(crate) use target_validation::{path_identity, target_identity};
+pub(crate) use crate::infra::fs::path_identity;
+pub(crate) use target_validation::target_identity;
 
 /// A symlink to create: source (in symlinks/) → target (in $HOME).
 #[derive(Debug, Clone)]

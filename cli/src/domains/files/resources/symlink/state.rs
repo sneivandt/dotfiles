@@ -1,7 +1,8 @@
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 
 use super::SymlinkResource;
 use crate::engine::{ResourceResult, ResourceState};
+use crate::infra::fs::{link_points_to_source, paths_equal, same_entry};
 
 pub(super) fn current_state(
     resource: &SymlinkResource,
@@ -52,107 +53,4 @@ pub(super) fn invalid_source_reason(
     }
     Ok(same_entry(&resource.source, target)
         .then(|| "target aliases the source entry through its parent directory".to_string()))
-}
-
-pub(crate) fn link_points_to_source(target: &Path, existing: &Path, source: &Path) -> bool {
-    let resolved = if existing.is_absolute() {
-        existing.to_path_buf()
-    } else {
-        target
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(existing)
-    };
-    // Ownership follows the configured checkout entry, even if that entry is
-    // itself a link. Following a different home link here would let removal of
-    // that link change whether this one is managed during the same batch.
-    let identity = |path: &Path| -> Option<Vec<std::ffi::OsString>> {
-        let absolute = std::path::absolute(dunce::simplified(path)).ok()?;
-        let mut lexical = PathBuf::new();
-        for part in absolute.components() {
-            if part == Component::ParentDir {
-                lexical.pop();
-            } else {
-                lexical.push(part);
-            }
-        }
-        Some(crate::domains::files::config::symlinks::path_identity(
-            &lexical,
-        ))
-    };
-    let configured = identity(source);
-    let canonical = crate::infra::fs::resolve_target_entry(source)
-        .ok()
-        .and_then(|path| identity(&path));
-    let matches_entry = |path: &Path| {
-        identity(path).is_some_and(|referenced| {
-            (configured.as_ref() == Some(&referenced) || canonical.as_ref() == Some(&referenced))
-                && same_entry(source, path)
-        })
-    };
-    if matches_entry(&resolved) {
-        return true;
-    }
-    #[cfg(windows)]
-    {
-        // Short names represent the same directory entry. Expand the spelling
-        // without canonicalizing away a link in the path.
-        super::platform::expand_short_path(&resolved)
-            .is_some_and(|expanded| matches_entry(&expanded))
-    }
-    #[cfg(not(windows))]
-    {
-        false
-    }
-}
-
-/// Compare entry locations without following the final link.
-pub(super) fn same_entry(source: &Path, target: &Path) -> bool {
-    let same_name =
-        source
-            .file_name()
-            .zip(target.file_name())
-            .is_some_and(|(source_name, target_name)| {
-                #[cfg(windows)]
-                {
-                    source_name.to_string_lossy().to_lowercase()
-                        == target_name.to_string_lossy().to_lowercase()
-                }
-                #[cfg(not(windows))]
-                {
-                    source_name == target_name
-                }
-            });
-    same_name
-        && paths_equal(
-            source.parent().unwrap_or_else(|| Path::new(".")),
-            target.parent().unwrap_or_else(|| Path::new(".")),
-        )
-}
-
-/// Compare two paths for equality, canonicalizing when possible.
-///
-/// Attempts `fs::canonicalize` on both paths so that symlinks in the path,
-/// case differences (Windows), and `\\?\` UNC prefixes are resolved before
-/// comparison. Falls back to raw comparison when canonicalization fails
-/// (e.g., dangling paths).
-pub(super) fn paths_equal(a: &Path, b: &Path) -> bool {
-    if a == b {
-        return true;
-    }
-
-    let canon_a = std::fs::canonicalize(a).unwrap_or_else(|_| a.to_path_buf());
-    let canon_b = std::fs::canonicalize(b).unwrap_or_else(|_| b.to_path_buf());
-
-    #[cfg(windows)]
-    {
-        let sa = canon_a.to_string_lossy().to_lowercase();
-        let sb = canon_b.to_string_lossy().to_lowercase();
-        sa == sb
-    }
-
-    #[cfg(not(windows))]
-    {
-        canon_a == canon_b
-    }
 }

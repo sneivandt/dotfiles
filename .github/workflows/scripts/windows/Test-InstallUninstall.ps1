@@ -130,7 +130,7 @@ function Assert-ProfileStartup {
 }
 
 # ---------------------------------------------------------------------------
-# Test the full install -> uninstall round-trip for the base profile.
+# Test the base round-trip and desktop-only Terminal settings across a profile change.
 # ---------------------------------------------------------------------------
 
 function Test-InstallUninstallBaseProfile {
@@ -175,8 +175,7 @@ function Test-InstallUninstallBaseProfile {
         Assert-Symlink $gitConfig $gitConfigSource
         Assert-Symlink $psProfile $psProfileSource
         Assert-Symlink $legacyProfile $psProfileSource
-        Assert-Symlink $terminal $terminalSource
-        Copy-Item -LiteralPath $terminal -Destination $terminalSnapshot -Force
+        if (Test-Path -LiteralPath $terminal) { throw 'Base install linked desktop-only Terminal settings' }
         $version = & $env:BINARY_PATH --version
         if ($LASTEXITCODE -ne 0) { throw 'Fixture CLI did not report its version' }
         $launcherVersion = @(& $launcher --version)
@@ -208,6 +207,11 @@ function Test-InstallUninstallBaseProfile {
         Assert-InstalledUnchanged $gitConfig $gitConfigSource $gitConfigSnapshot $gitConfigState
         Assert-InstalledUnchanged $psProfile $psProfileSource $psProfileSnapshot $psProfileState
 
+        & $env:BINARY_PATH update --no-repo-update --root $env:DIR -p desktop --only symlinks
+        if ($LASTEXITCODE -ne 0) { throw "Desktop symlink install failed with exit code $LASTEXITCODE" }
+        Assert-Symlink $terminal $terminalSource
+        Copy-Item -LiteralPath $terminal -Destination $terminalSnapshot -Force
+
         Write-Information "Running uninstall..." -InformationAction Continue
         & $env:BINARY_PATH remove --root $env:DIR -p base
         if ($LASTEXITCODE -ne 0) {
@@ -218,8 +222,12 @@ function Test-InstallUninstallBaseProfile {
         Assert-Materialized $gitConfig $gitConfigSource $gitConfigSnapshot
         Assert-Materialized $psProfile $psProfileSource $psProfileSnapshot
         Assert-Materialized $legacyProfile $psProfileSource $psProfileSnapshot
-        Assert-Materialized $terminal $terminalSource $terminalSnapshot
         if (Test-Path -LiteralPath $launcher) { throw 'Removal left the installed launcher' }
+        Assert-Symlink $terminal $terminalSource
+
+        & $env:BINARY_PATH remove --root $env:DIR -p desktop --only symlinks
+        if ($LASTEXITCODE -ne 0) { throw "Desktop symlink removal failed with exit code $LASTEXITCODE" }
+        Assert-Materialized $terminal $terminalSource $terminalSnapshot
     }
     finally {
         Remove-Item -LiteralPath $gitConfigSnapshot, $psProfileSnapshot, $terminalSnapshot -Force -ErrorAction SilentlyContinue

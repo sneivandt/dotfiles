@@ -1073,6 +1073,7 @@ fn historical_editor_links_migrate_or_materialize_without_claiming_unrelated_ent
         } else {
             std::fs::remove_file(&old).unwrap();
         }
+        std::fs::remove_dir(old.parent().unwrap()).unwrap();
         assert!(!target.exists());
 
         output(run("update").arg("--dry-run"), true);

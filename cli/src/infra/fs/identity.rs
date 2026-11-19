@@ -110,11 +110,30 @@ pub(crate) fn paths_equal(a: &Path, b: &Path) -> bool {
 }
 
 #[cfg(windows)]
+fn expand_short_path(path: &Path) -> Option<PathBuf> {
+    for prefix in path.ancestors() {
+        if let Some(expanded) = long_path_name(prefix) {
+            let suffix = path.strip_prefix(prefix).ok()?;
+            return Some(expanded.join(suffix));
+        }
+        // GetLongPathNameW requires existing entries. A retired link source
+        // can have a short-name ancestor and a long suffix that is now missing.
+        // Keep the suffix verbatim and stop climbing on other lookup failures.
+        if !std::fs::symlink_metadata(prefix)
+            .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+        {
+            return None;
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
 #[allow(
     unsafe_code,
     reason = "Win32 provides the long spelling of an existing path without resolving links"
 )]
-fn expand_short_path(path: &Path) -> Option<PathBuf> {
+fn long_path_name(path: &Path) -> Option<PathBuf> {
     use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
     use windows_sys::Win32::Storage::FileSystem::GetLongPathNameW;
 

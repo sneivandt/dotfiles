@@ -446,12 +446,13 @@ test_pre_push_protection() {
   git init -q "$repo"
   git -C "$repo" config github.user ci-owner
   git -C "$repo" remote add origin https://github.com/ci-owner/repo.git
+  git -C "$repo" remote add upstream "$repo/offline.git"
   git -C "$repo" symbolic-ref refs/remotes/upstream/HEAD refs/remotes/upstream/main
 
   if (
     cd "$repo"
     printf "refs/heads/feature %s refs/heads/main %s\n" "$sha" "$zero" |
-      sh "$hook" upstream https://github.com/upstream/repo.git >/dev/null 2>&1
+      sh "$hook" upstream "$repo/offline.git" >/dev/null 2>&1
   ); then
     fail "Pre-push hook allowed a protected branch on the actual upstream remote"
   else
@@ -471,7 +472,7 @@ test_pre_push_protection() {
   if (
     cd "$repo"
     printf "refs/heads/feature %s refs/heads/feature %s\n" "$sha" "$zero" |
-      sh "$hook" upstream https://github.com/upstream/repo.git >/dev/null 2>&1
+      sh "$hook" upstream "$repo/offline.git" >/dev/null 2>&1
   ); then
     pass "Pre-push hook allows non-protected branches"
   else

@@ -44,6 +44,7 @@ class GitTemplatesTests(unittest.TestCase):
                               text=True, capture_output=True).returncode
 
     def test_destination_default_and_configured_branches(self):
+        self.git("remote", "add", "upstream", str(self.root / "missing-remote"))
         self.git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
         self.git("symbolic-ref", "refs/remotes/upstream/HEAD", "refs/remotes/upstream/trunk")
         self.git("config", "--add", "dotfiles.protectedBranch", "release/stable")
@@ -62,6 +63,19 @@ class GitTemplatesTests(unittest.TestCase):
         self.git("push", "-q", str(remote), "main:trunk")
         self.assertEqual(self.push("trunk", url=str(remote)), 1)
         self.assertEqual(self.push("feature", url=str(remote)), 0)
+
+    def test_split_push_destination_ignores_fetch_default(self):
+        destination = self.root / "destination.git"
+        self.git("remote", "add", "upstream", str(self.root / "fetch.git"))
+        self.git("remote", "set-url", "--push", "upstream", str(destination))
+        self.git("symbolic-ref", "refs/remotes/upstream/HEAD", "refs/remotes/upstream/trunk")
+        self.assertEqual(self.push("feature", url=str(destination)), 1)
+
+        self.git("init", "--bare", "-q", "-b", "stable", str(destination))
+        self.git("--git-dir=" + str(destination), "fetch", "-q", str(self.repo), "main:refs/heads/stable")
+        self.assertEqual(self.push("stable", url=str(destination)), 1)
+        self.assertEqual(self.push("trunk", url=str(destination)), 0)
+        self.assertEqual(self.push("feature", url=str(destination)), 0)
 
     def test_owned_github_repository_is_exempt(self):
         self.git("config", "github.user", "test-owner")

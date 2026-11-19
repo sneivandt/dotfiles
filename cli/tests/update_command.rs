@@ -875,6 +875,111 @@ fn ignored_overlay_file_blocks_merge_and_survives_retry() {
     check_partial_repository_refresh(true);
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn failed_fast_forward_with_partial_write_stops_apply_until_checkout_is_repaired() {
+    use std::os::unix::fs::{PermissionsExt as _, symlink};
+
+    let fixture = tempfile::tempdir().unwrap();
+    let home = fixture.path().join("home");
+    let repo = fixture.path().join("main");
+    let publisher = fixture.path().join("publisher");
+    let bin = fixture.path().join("bin");
+    std::fs::create_dir(&home).unwrap();
+    std::fs::create_dir(&bin).unwrap();
+    common::setup_minimal_repo(&repo);
+    std::fs::write(
+        repo.join("conf/symlinks.toml"),
+        "[base]\nsymlinks=['app-settings']\n",
+    )
+    .unwrap();
+    let source = "symlinks/app-settings";
+    let original = br#"{"appearance":"dark"}"#;
+    std::fs::write(repo.join(source), original).unwrap();
+    let link = home.join(".app-settings");
+    symlink(repo.join(source), &link).unwrap();
+
+    git(fixture.path(), &["init", "--bare", "-b", "main", "origin"]);
+    git(&repo, &["init", "-b", "main"]);
+    git(&repo, &["remote", "add", "origin", "../origin"]);
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-m", "initial"]);
+    git(&repo, &["push", "-u", "origin", "main"]);
+    let initial = git(&repo, &["rev-parse", "HEAD"]);
+    git(fixture.path(), &["clone", "origin", "publisher"]);
+    let upstream = format!(
+        r#"{{"appearance":"dark","longSetting":"{}"}}"#,
+        "x".repeat(180_000)
+    );
+    std::fs::write(publisher.join(source), &upstream).unwrap();
+    git(&publisher, &["commit", "-am", "expand settings"]);
+    git(&publisher, &["push", "origin", "main"]);
+
+    let path = std::env::var_os("PATH").unwrap();
+    let real_git = std::env::split_paths(&path)
+        .find_map(|dir| dir.join("git").canonicalize().ok())
+        .unwrap();
+    let wrapper = bin.join("git");
+    std::fs::write(
+        &wrapper,
+        r#"#!/bin/bash
+if [[ $1 == merge ]]; then
+    trap '' XFSZ
+    ulimit -f 4 || exit
+fi
+exec "$FIXTURE_GIT" "$@"
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let wrapped_path =
+        std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
+    let run = |tasks| common::isolated_cli_command(&repo, &home, None, "update", tasks, true);
+    let failed = run("repository,symlinks,launcher")
+        .env("PATH", wrapped_path)
+        .env("FIXTURE_GIT", real_git)
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&failed.stdout),
+        String::from_utf8_lossy(&failed.stderr)
+    );
+    assert!(!failed.status.success(), "{text}");
+    assert!(
+        text.contains("the checkout changed during the failed merge"),
+        "{text}"
+    );
+    assert!(
+        text.contains("git status --short") && text.contains("git diff"),
+        "{text}"
+    );
+    assert!(!home.join(".local/bin/dotfiles").exists(), "{text}");
+    assert!(!text.contains("Home symlinks"), "{text}");
+    assert_eq!(git(&repo, &["rev-parse", "HEAD"]), initial);
+    assert_eq!(std::fs::read_link(&link).unwrap(), repo.join(source));
+    assert_eq!(std::fs::read(&link).unwrap(), upstream.as_bytes()[..4096]);
+
+    let retry = run("repository").arg("--fail-on-skip").output().unwrap();
+    assert!(!retry.status.success(), "{retry:?}");
+    assert!(
+        String::from_utf8_lossy(&retry.stdout).contains("local changes present"),
+        "{retry:?}"
+    );
+    assert_eq!(std::fs::read(&link).unwrap(), upstream.as_bytes()[..4096]);
+
+    git(&repo, &["restore", "--source=HEAD", "--", source]);
+    assert_eq!(std::fs::read(&link).unwrap(), original);
+    let recovered = run("repository,symlinks,launcher").output().unwrap();
+    assert!(recovered.status.success(), "{recovered:?}");
+    assert_eq!(
+        git(&repo, &["rev-parse", "HEAD"]),
+        git(&publisher, &["rev-parse", "HEAD"])
+    );
+    assert_eq!(std::fs::read(&link).unwrap(), upstream.as_bytes());
+    assert!(home.join(".local/bin/dotfiles").is_file());
+}
+
 #[cfg(unix)]
 #[test]
 fn repository_update_preserves_tracked_edits_made_during_fetch_with_autostash_enabled() {

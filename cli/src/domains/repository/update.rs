@@ -25,6 +25,7 @@ use self::discovery::worktree_has_local_changes;
 #[derive(Debug, Clone, Default)]
 pub struct RepositoryUpdateSignal {
     flag: crate::infra::atomic_flag::AtomicFlag,
+    recovery_required: crate::infra::atomic_flag::AtomicFlag,
 }
 
 impl RepositoryUpdateSignal {
@@ -36,6 +37,14 @@ impl RepositoryUpdateSignal {
 
     fn mark_updated(&self) {
         self.flag.set();
+    }
+
+    fn mark_recovery_required(&self) {
+        self.recovery_required.set();
+    }
+
+    pub(crate) fn recovery_required(&self) -> bool {
+        self.recovery_required.get()
     }
 
     /// Return whether a repository was updated during this command.

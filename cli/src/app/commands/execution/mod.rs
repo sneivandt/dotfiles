@@ -17,8 +17,14 @@ use elevation::build_elevated_child_args;
 pub(crate) use elevation::validate_elevated_child_command;
 use phase::PreparedPhase;
 
-type RestartCondition<'a> = Box<dyn FnOnce() -> bool + 'a>;
+type BoundaryDecision<'a> = Box<dyn FnOnce() -> BoundaryAction + 'a>;
 type RestartAction<'a> = Box<dyn FnOnce() + 'a>;
+
+pub(super) enum BoundaryAction {
+    Continue,
+    Restart,
+    Stop,
+}
 
 /// A complete application execution plan.
 ///
@@ -32,7 +38,7 @@ pub(crate) struct ExecutionPlan<'a> {
 
 struct RestartPlan<'a> {
     boundary: TaskId,
-    requested: RestartCondition<'a>,
+    decide: BoundaryDecision<'a>,
     action: RestartAction<'a>,
 }
 
@@ -46,17 +52,17 @@ impl<'a> ExecutionPlan<'a> {
     }
 
     /// Build a plan that may restart after `boundary` completes.
-    pub(crate) fn with_restart(
+    pub(super) fn with_restart(
         tasks: impl IntoIterator<Item = &'a dyn Task>,
         boundary: TaskId,
-        requested: impl FnOnce() -> bool + 'a,
+        decide: impl FnOnce() -> BoundaryAction + 'a,
         action: impl FnOnce() + 'a,
     ) -> Self {
         Self {
             tasks: tasks.into_iter().collect(),
             restart: Some(RestartPlan {
                 boundary,
-                requested: Box::new(requested),
+                decide: Box::new(decide),
                 action: Box::new(action),
             }),
         }
@@ -121,12 +127,17 @@ impl<'a> RunCoordinator<'a> {
             summary.outcome(&restart.boundary),
             Some(crate::engine::TaskOutcome::Satisfied)
         );
-        if (restart.requested)() {
-            if boundary_satisfied && summary.failure_count() == 0 && !self.ctx.is_cancelled() {
+        match (restart.decide)() {
+            BoundaryAction::Continue => {}
+            BoundaryAction::Restart
+                if boundary_satisfied
+                    && summary.failure_count() == 0
+                    && !self.ctx.is_cancelled() =>
+            {
                 (restart.action)();
                 return Ok(None);
             }
-            return Ok(Some(summary));
+            BoundaryAction::Stop | BoundaryAction::Restart => return Ok(Some(summary)),
         }
 
         let next = run_task_graph(remaining, self.ctx, self.log, Some(&summary))?;
@@ -164,7 +175,16 @@ pub(crate) fn run_tasks_to_completion_with_restart<'a>(
     action: impl FnOnce() + 'a,
 ) -> Result<()> {
     RunCoordinator::new(ctx, log).execute(ExecutionPlan::with_restart(
-        tasks, boundary, requested, action,
+        tasks,
+        boundary,
+        || {
+            if requested() {
+                BoundaryAction::Restart
+            } else {
+                BoundaryAction::Continue
+            }
+        },
+        action,
     ))
 }
 

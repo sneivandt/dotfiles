@@ -862,6 +862,13 @@ fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_sign
                     .current_dir(&overlay_root),
                 Err(error),
             );
+        let executor = if cancelled {
+            executor
+        } else {
+            executor
+                .git(&overlay_root, HEAD_SNAPSHOT, snapshot("overlay-old"))
+                .git(&overlay_root, TRACKED_STATUS, "")
+        };
         let ctx = make_update_context(config.root, config.overlay, executor);
         let signal = UpdateSignal::new();
 
@@ -884,6 +891,7 @@ fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_sign
                 "the overlay failure must remain a failed update: {result:?}"
             );
         }
+        assert_eq!(signal.recovery_required(), !cancelled);
         assert!(
             signal.was_updated(),
             "a successful first merge must prevent later tasks from using stale configuration"
@@ -1235,6 +1243,7 @@ fn only_a_verified_fast_forward_signals_a_successful_update() {
         ),
     ] {
         let verify = merge.is_ok();
+        let merge_failed = merge.as_ref().is_err_and(|error| !error.is_cancelled());
         let root = tempfile::tempdir_in(".").unwrap();
         let mut mock = MockExecutor::new();
         let mut sequence = mockall::Sequence::new();
@@ -1269,13 +1278,22 @@ fn only_a_verified_fast_forward_signals_a_successful_update() {
             &merge_args(MAIN_NEW),
             merge,
         );
-        if verify {
+        if verify || merge_failed {
             expect_git(
                 &mut mock,
                 &mut sequence,
                 root.path(),
                 HEAD_SNAPSHOT,
                 Ok(ExecResult::success(head)),
+            );
+        }
+        if merge_failed {
+            expect_git(
+                &mut mock,
+                &mut sequence,
+                root.path(),
+                TRACKED_STATUS,
+                Ok(ExecResult::success("")),
             );
         }
         let signal = UpdateSignal::new();

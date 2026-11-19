@@ -118,7 +118,11 @@ fn advance_worktrees(
             Ok(r) => {
                 ctx.log()
                     .debug(format!("git merge output: {}", r.stdout.trim()));
-                if checkout_head(ctx, repository)?.as_deref() != Some(commit) {
+                let head = checkout_head(ctx, repository).inspect_err(|_| {
+                    repo_updated.mark_recovery_required();
+                })?;
+                if head.as_deref() != Some(commit) {
+                    repo_updated.mark_recovery_required();
                     let reason = target.reason(
                         "git merge did not leave the expected branch at the fetched commit; inspect the checkout before retrying",
                     );
@@ -143,9 +147,33 @@ fn advance_worktrees(
                 if e.is_cancelled() {
                     return Err(e.into());
                 }
+                // An unsuccessful merge can write files before updating HEAD
+                // or the index. Stop even if Git reports no tracked changes:
+                // files introduced by the merge may be untracked or ignored.
+                repo_updated.mark_recovery_required();
                 let merge_failure = target.reason("git merge --ff-only failed");
-                let reason = partial_merge_reason(&merge_failure, &changed);
-                ctx.log().warn(format!("{reason}: {e:#}"));
+                ctx.log().warn(format!("{merge_failure}: {e:#}"));
+                let state = checkout_head(ctx, repository).and_then(|head| {
+                    Ok(head.as_deref() != Some(plan.original_head.as_str())
+                        || worktree_has_local_changes(ctx, &target.root)?)
+                });
+                let detail = match state {
+                    Ok(true) => "the checkout changed during the failed merge",
+                    Ok(false) => "the failed merge may have left untracked files",
+                    Err(error) if ctx.is_cancelled() => return Err(error),
+                    Err(error) => {
+                        ctx.log()
+                            .warn(format!("could not inspect checkout: {error:#}"));
+                        "the checkout state could not be verified"
+                    }
+                };
+                let reason = partial_merge_reason(
+                    &format!(
+                        "{merge_failure}: {detail}. Further tasks stopped. In {}, inspect 'git status --short --ignored', 'git diff', and 'git diff --cached'. Preserve any edits you need, then repair the checkout before retrying",
+                        target.root.display(),
+                    ),
+                    &changed,
+                );
                 return Ok(TaskResult::Failed(reason));
             }
         }

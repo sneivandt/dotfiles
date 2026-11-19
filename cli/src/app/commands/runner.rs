@@ -15,7 +15,7 @@ use crate::infra::logging::{Log, LogEvent, Logger};
 use crate::infra::platform::Platform;
 
 use super::RuntimePolicy;
-use super::execution::{ExecutionPlan, RunCoordinator};
+use super::execution::{BoundaryAction, ExecutionPlan, RunCoordinator};
 use crate::infra::logging::Output as _;
 use crate::infra::logging::OutputExt as _;
 /// Shared orchestration helper that combines setup and task execution.
@@ -263,16 +263,15 @@ impl CommandRunner {
     /// # Errors
     ///
     /// Returns an error if graph validation fails or one or more tasks fail.
-    pub fn run_with_restart<'a>(
+    pub(super) fn run_with_restart<'a>(
         &'a self,
         tasks: impl IntoIterator<Item = &'a dyn Task>,
         boundary: TaskId,
-        requested: impl FnOnce() -> bool + 'a,
+        decide: impl FnOnce() -> BoundaryAction + 'a,
         action: impl FnOnce() + 'a,
     ) -> Result<()> {
-        RunCoordinator::new(&self.ctx, &self.log).execute(ExecutionPlan::with_restart(
-            tasks, boundary, requested, action,
-        ))
+        RunCoordinator::new(&self.ctx, &self.log)
+            .execute(ExecutionPlan::with_restart(tasks, boundary, decide, action))
     }
 }
 

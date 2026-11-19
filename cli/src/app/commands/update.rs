@@ -3,6 +3,7 @@ use anyhow::Result;
 use std::sync::Arc;
 
 use super::RuntimePolicy;
+use super::execution::BoundaryAction;
 use crate::app::cli::UpdateOpts;
 use crate::app::filter::{apply_task_filters, normalize_task_filter, resolve_filters};
 use crate::domains::ai::apm::ApmPackageMode;
@@ -109,7 +110,11 @@ pub fn run(
     runner.run_with_restart(
         filtered,
         repository_task,
-        move || runtime.restart_after_repository_update(repository_update.was_updated()),
+        move || match repository_update.was_updated() {
+            _ if repository_update.recovery_required() => BoundaryAction::Stop,
+            updated if runtime.restart_after_repository_update(updated) => BoundaryAction::Restart,
+            _ => BoundaryAction::Continue,
+        },
         || {
             runner.warn_missing_managed_sources();
             super::re_exec_after_repository_update(

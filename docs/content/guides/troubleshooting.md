@@ -311,8 +311,13 @@ Check remote URLs for credentials before sharing the output.
 | Authentication/network failure | Inspect the failed Git command and credentials |
 | Fast-forward merge failure | Protect local content, including untracked files that collide |
 
-Untracked files do not fail the readiness check, but can still prevent a merge.
-Main and overlay updates are not one transaction.
+Untracked files can prevent a merge even after the readiness check passes.
+A failed fast-forward stops the remaining tasks for that run. Git can write files
+before advancing the branch, including files linked into your home directory.
+In the checkout named in the error, use `git status --short --ignored`,
+`git diff`, and `git diff --cached` to inspect what changed. Preserve any edits
+you need, repair the affected files, and retry. If the main checkout advanced
+before the overlay failed, it stays at the new commit.
 
 Use `--no-repo-update` when you deliberately want to apply the current checkout.
 It does not discard changes or suppress other network activity.

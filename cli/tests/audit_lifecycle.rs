@@ -1046,7 +1046,10 @@ fn historical_editor_links_migrate_or_materialize_without_claiming_unrelated_ent
             .build();
         let home = tempfile::tempdir().unwrap();
         let target = home.path().join(target);
-        let source = repo.root_path().join("symlinks").join(source);
+        // The CLI loads the canonical checkout root. Keep the historical
+        // referent in its original spelling so the test exercises both.
+        let canonical_root = dunce::canonicalize(repo.root_path()).unwrap();
+        let source = canonical_root.join("symlinks").join(source);
         let old = repo.root_path().join("symlinks").join(old);
         let directory = config_file.is_some();
         let target_file = config_file.map_or_else(|| target.clone(), |file| target.join(file));

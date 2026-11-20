@@ -13,6 +13,57 @@
 mod common;
 
 #[test]
+fn ambiguous_copilot_members_survive_preview_apply_and_retry() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "agent-settings.toml",
+            "[base]\nsettings = [\
+             {target='copilot', key='model', value='requested'},\
+             {target='copilot', key='footer.showBranch', value=true}]\n",
+        )
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().join(".copilot/settings.json");
+    std::fs::create_dir(path.parent().unwrap()).unwrap();
+    let original = r#"{"model":"old","footer":{"note":"first","n\u006fte":"second"}}"#;
+    std::fs::write(&path, original).unwrap();
+    let run = |preview| {
+        let mut command = common::cli_command(
+            repo.root_path(),
+            home.path(),
+            None,
+            "update",
+            "agent-settings",
+        );
+        if preview {
+            command.arg("--dry-run");
+        }
+        command.output().unwrap()
+    };
+    for preview in [true, false] {
+        let result = run(preview);
+        assert!(!result.status.success(), "{result:?}");
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(text.contains("duplicate JSON member"), "{text}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    }
+
+    std::fs::write(&path, r#"{"model":"old","footer":{"note":"retained"}}"#).unwrap();
+    assert!(run(false).status.success());
+    let applied = std::fs::read(&path).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&applied).unwrap(),
+        serde_json::json!({"model":"requested","footer":{"note":"retained","showBranch":true}})
+    );
+    assert!(run(false).status.success());
+    assert_eq!(std::fs::read(&path).unwrap(), applied);
+}
+
+#[test]
 fn agent_settings_overlay_preview_and_repeat_preserve_unmanaged_values() {
     for with_overlay in [false, true] {
         let test = common::TestContextBuilder::new()

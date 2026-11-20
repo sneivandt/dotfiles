@@ -135,6 +135,11 @@ if ($Build)
         Write-Error "Cargo did not report a dotfiles executable."
         exit 1
     }
+    if ($IsLinux) {
+        # PowerShell can open a non-executable as a document instead of running it.
+        & test -f $BuildBinary -a -x $BuildBinary
+        if ($LASTEXITCODE -ne 0) { throw "Cargo artifact is not an executable file: $BuildBinary" }
+    }
     & $BuildBinary @CliArgs
     exit $LASTEXITCODE
 }

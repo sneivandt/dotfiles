@@ -468,7 +468,7 @@ These use fixture tools rather than bootstrapping or installing the real CLI:
 ```sh
 sh .github/workflows/scripts/linux/test-hook-inputs.sh \
   test_staged_ci_guards test_staged_ci_guard_deletions
-sh .github/workflows/scripts/linux/test-shell-wrapper.sh \
+DIR="$PWD" sh .github/workflows/scripts/linux/test-shell-wrapper.sh \
   test_wrapper_preserves_runtime_context test_wrapper_uses_cargo_artifact
 ```
 

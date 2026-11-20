@@ -58,6 +58,10 @@ rather than being replaced with empty ones. Updates replace the document atomica
 the settings path is a symlink, the task updates the file it points to and preserves the
 link.
 
+If a JSON object on a managed key's path contains duplicate names, preview and apply
+stop without rewriting the document. Resolve the duplicate without discarding the
+value you want, then retry.
+
 Numbers must be finite, including inside arrays or tables. Overlapping keys must agree:
 `footer = { showBranch = true }` conflicts with `footer.showBranch = false`, but agrees
 with `footer.showBranch = true`. Conflicts within either source are rejected before

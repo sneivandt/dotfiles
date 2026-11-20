@@ -87,6 +87,9 @@ Removal deletes hooks whose ownership can be verified. Modified hooks, unrelated
 filenames, and a destination that is the tracked source itself are preserved. Preview
 with `dotfiles remove --only git-hooks --dry-run` before applying.
 
+A missing `hooks/` directory does not prevent removal of recorded copies. A broken
+link or unreadable directory is different: fix the directory error before retrying.
+
 Removal moves each hook to a sibling `.dotfiles-removing` path and checks the
 moved entry before deleting it. If removal is interrupted, inspect that path.
 Restore it to the original hook name if the hook is missing. If both exist,

@@ -18,6 +18,48 @@ fn output(command: &mut std::process::Command, success: bool) -> String {
     text
 }
 
+#[cfg(unix)]
+#[test]
+fn broken_hook_directory_is_not_an_empty_or_retired_source() {
+    let repo = common::TestContextBuilder::new()
+        .with_hook_source("pre-commit", "first version\n")
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let hooks = repo.root_path().join("hooks");
+    let saved = repo.root_path().join("saved-hooks");
+    let installed = repo.root_path().join(".git/hooks/pre-commit");
+    let run = |verb, dry_run, success| {
+        let mut command =
+            common::cli_command(repo.root_path(), home.path(), None, verb, "git-hooks");
+        if dry_run {
+            command.arg("--dry-run");
+        }
+        output(&mut command, success)
+    };
+    run("update", false, true);
+    let owner = installed.with_extension("dotfiles-owned");
+    let record = std::fs::read(&owner).unwrap();
+    std::fs::rename(&hooks, &saved).unwrap();
+    for destination in ["missing", "hooks"] {
+        std::os::unix::fs::symlink(destination, &hooks).unwrap();
+        for verb in ["update", "remove"] {
+            for preview in [true, false] {
+                let message = run(verb, preview, false);
+                assert!(message.contains("reading hooks directory"), "{message}");
+                assert_eq!(std::fs::read(&installed).unwrap(), b"first version\n");
+                assert_eq!(std::fs::read(&owner).unwrap(), record);
+            }
+        }
+        std::fs::remove_file(&hooks).unwrap();
+    }
+    std::fs::rename(saved, &hooks).unwrap();
+    std::fs::write(hooks.join("pre-commit"), "updated version\n").unwrap();
+    run("update", false, true);
+    assert_eq!(std::fs::read(&installed).unwrap(), b"updated version\n");
+    run("remove", false, true);
+    assert!(!installed.exists() && !owner.exists());
+}
+
 #[test]
 fn missing_overlay_cannot_replace_the_saved_selection_or_apply_base_settings() {
     let repo = common::TestContextBuilder::new()

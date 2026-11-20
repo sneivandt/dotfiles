@@ -662,7 +662,7 @@ function Test-CargoArtifactPath {
     $caller = Join-Path $fixture 'caller directory'
     $originalLocation = Get-Location
     $savedEnvironment = @{}
-    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'CARGO_TARGET_DIR')) {
+    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'CARGO_TARGET_DIR', 'PATH')) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
     try {
@@ -709,8 +709,18 @@ function Test-CargoArtifactPath {
             }
             $artifact = Join-Path $target "custom-triple/dev-opt/$binaryName"
             [void][System.IO.Directory]::CreateDirectory((Split-Path $artifact))
-            [System.IO.File]::WriteAllText($artifact, 'new')
-            Set-Item -LiteralPath "Function:$artifact" -Value $child
+            if ($IsLinux) {
+                [System.IO.File]::WriteAllText($artifact, @'
+#!/usr/bin/env python3
+import json, os, sys
+print(json.dumps({"Cwd": os.getcwd(), "Arguments": sys.argv[1:]}))
+sys.exit(7)
+'@)
+                & chmod +x $artifact
+            } else {
+                [System.IO.File]::WriteAllText($artifact, 'new')
+                Set-Item -LiteralPath "Function:$artifact" -Value $child
+            }
             $arguments = @('--version', 'space value', '')
             $output = @(& $wrapper --build @arguments)
             if ($LASTEXITCODE -ne 7 -or $output.Count -ne 1) { throw "$mode did not run only the reported artifact" }
@@ -719,6 +729,22 @@ function Test-CargoArtifactPath {
             if (($actual.Arguments | ConvertTo-Json -Compress) -cne ($arguments | ConvertTo-Json -Compress)) {
                 throw "$mode changed child arguments"
             }
+        }
+        if ($IsLinux) {
+            # Never launch a real desktop application, even if the guard regresses.
+            $opener = Join-Path $fixture 'xdg-open'
+            [IO.File]::WriteAllText($opener, "#!/bin/sh`nexit 0`n")
+            & chmod +x $opener
+            $env:PATH = "${fixture}:$env:PATH"
+            & chmod a-x $artifact
+            $rejected = $false
+            try {
+                & $wrapper --build --version | Out-Null
+            } catch {
+                if ($_ -notmatch 'not an executable file') { throw }
+                $rejected = $true
+            }
+            if (-not $rejected) { throw 'Build mode accepted a non-executable artifact' }
         }
         Write-TestPass 'Build mode executes only the reported Cargo artifact from the caller directory'
         return $true

@@ -78,13 +78,23 @@ fn read_hooks_directory(
 ) -> Result<impl Iterator<Item = std::io::Result<std::fs::DirEntry>>> {
     let entries = match std::fs::read_dir(path) {
         Ok(entries) => Some(entries),
-        Err(error) if allow_missing && error.kind() == ErrorKind::NotFound => None,
+        Err(error)
+            if allow_missing && error.kind() == ErrorKind::NotFound && !entry_may_exist(path) =>
+        {
+            None
+        }
         Err(error) => {
             return Err(error)
                 .with_context(|| format!("reading hooks directory: {}", path.display()));
         }
     };
     Ok(entries.into_iter().flatten())
+}
+
+// Only an absent entry makes the task inapplicable. Let discovery report
+// unreadable entries and dangling links instead of treating them as retired.
+fn entry_may_exist(path: &Path) -> bool {
+    !matches!(path.symlink_metadata(), Err(error) if error.kind() == ErrorKind::NotFound)
 }
 
 fn add_recorded_hooks(directory: &Path, names: &mut BTreeSet<OsString>) -> Result<()> {
@@ -143,7 +153,7 @@ impl Task for InstallGitHooks {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.hooks_dir().exists() && ctx.root().join(".git").exists()
+        entry_may_exist(ctx.hooks_dir()) && entry_may_exist(&ctx.root().join(".git"))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -171,7 +181,7 @@ impl Task for UninstallGitHooks {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.root().join(".git").exists()
+        entry_may_exist(&ctx.root().join(".git"))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

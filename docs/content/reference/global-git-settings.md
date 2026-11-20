@@ -22,7 +22,9 @@ installing this repository's contributor hooks.
 ## What it does
 
 Applies `conf/git-config.toml` values to **global** Git configuration. Set
-`GIT_CONFIG_GLOBAL` to select a different file. Repeated occurrences of
+`GIT_CONFIG_GLOBAL` to select a different file. By default the task writes to
+the user's `.gitconfig`, not the shared `~/.config/git/config` linked from the
+checkout. Repeated occurrences of
 managed keys are handled without altering unrelated keys. Profile and overlay
 selections are stored in repository-local configuration.
 

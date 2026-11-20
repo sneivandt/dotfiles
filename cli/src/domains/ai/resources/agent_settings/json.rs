@@ -31,7 +31,10 @@ fn members(object: &str) -> Result<BTreeMap<String, &str>> {
         let mut values = Deserializer::from_str(rest).into_iter::<IgnoredAny>();
         let _value = values.next().context("missing JSON member value")??;
         let (raw, tail) = rest.split_at(values.byte_offset());
-        fields.insert(key, raw);
+        anyhow::ensure!(
+            fields.insert(key, raw).is_none(),
+            "duplicate JSON member in settings object; resolve the duplicate before updating"
+        );
         let Some(next) = tail.trim_start().strip_prefix(',') else {
             break;
         };

@@ -10,9 +10,9 @@ bindkey '\e[1~' beginning-of-line
 bindkey '\e[4~' end-of-line
 bindkey '\e[3~' delete-char
 if zmodload zsh/terminfo 2>/dev/null; then
-  [[ -z ${terminfo[khome]} ]] || bindkey "${terminfo[khome]}" beginning-of-line
-  [[ -z ${terminfo[kend]} ]] || bindkey "${terminfo[kend]}" end-of-line
-  [[ -z ${terminfo[kdch1]} ]] || bindkey "${terminfo[kdch1]}" delete-char
+  [[ -z ${terminfo[khome]:-} ]] || bindkey "${terminfo[khome]}" beginning-of-line
+  [[ -z ${terminfo[kend]:-} ]] || bindkey "${terminfo[kend]}" end-of-line
+  [[ -z ${terminfo[kdch1]:-} ]] || bindkey "${terminfo[kdch1]}" delete-char
 fi
 
 # Modified keys lack portable terminfo entries. Retain rxvt and CSI conventions.
@@ -27,7 +27,7 @@ bindkey '\e[3;5~' kill-word
 bindkey '\e[1;5D' backward-word
 bindkey '\e[1;5C' forward-word
 # tmux reserves C-h for pane navigation; ESC DEL works inside and outside tmux.
-[[ "$TERM" == (screen*|tmux*) ]] || bindkey '^H' backward-kill-word
+[[ "${TERM:-}" == (screen*|tmux*) ]] || bindkey '^H' backward-kill-word
 
 # Ctrl + Backspace (ESC DEL).
 # The bare ^H bindings above only work outside tmux: tmux claims C-h at the

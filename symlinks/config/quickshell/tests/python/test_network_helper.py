@@ -366,6 +366,16 @@ class NetworkTests(unittest.TestCase):
         self.assertEqual({entry["device"] for entry in entries}, {"wlan0", "wlan1"})
         self.assertTrue(all(entry["saved"] for entry in entries))
         self.assertEqual(entries[0]["name"], ssid)
+        self.assertFalse(any(entry.get("profileLabel") for entry in entries))
+
+    def test_saved_choices_on_the_same_ap_keep_their_profile_names(self):
+        profiles = [profile(name="Desk", uuid="work-id"), profile(name="Guest", uuid="guest-id")]
+        entries = network.build_networks(
+            [["", profiles[0]["ssid"], "AA:BB", "74", "WPA2", "wlan0"]],
+            [{"name": "wlan0", "managed": True}], profiles, {},
+        )
+        self.assertEqual({row["profileLabel"]: row["uuid"] for row in entries},
+                         {"Desk": "work-id", "Guest": "guest-id"})
 
     def test_bssid_pinned_saved_profile_is_preserved(self):
         adapters = [{"name": "wlan0", "managed": True}]
@@ -387,6 +397,7 @@ class NetworkTests(unittest.TestCase):
         self.assertEqual(len(entries), 2)
         self.assertEqual(len({entry["id"] for entry in entries}), 2)
         self.assertEqual({entry["uuid"]: entry["bssid"] for entry in entries}, {"first": "AA:BB", "second": "AA:CC"})
+        self.assertEqual({row["profileLabel"]: row["uuid"] for row in entries}, {"AA:BB": "first", "AA:CC": "second"})
         self.assertTrue(all(entry["saved"] and entry["available"] for entry in entries))
         self.assertEqual([entry["uuid"] for entry in entries if entry["active"]], ["second"])
 
@@ -398,6 +409,8 @@ class NetworkTests(unittest.TestCase):
         self.assertEqual(len(entries), 2)
         self.assertEqual(len({entry["id"] for entry in entries}), 2)
         self.assertEqual({entry["uuid"]: entry["bssid"] for entry in entries}, {"first": "AA:BB", "second": "AA:CC"})
+        # A scan can select a different AP; it isn't a stable profile label.
+        self.assertTrue(all(row["profileLabel"] == row["uuid"] for row in entries))
         self.assertTrue(all(entry["saved"] and entry["available"] for entry in entries))
         self.assertEqual([entry["uuid"] for entry in entries if entry["active"]], ["second"])
 

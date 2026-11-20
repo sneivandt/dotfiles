@@ -4,7 +4,7 @@
 [[ -o interactive ]] || return
 
 # Guard against multiple sourcing
-[ -n "$ZSHRC_LOADED" ] && return
+[ -n "${ZSHRC_LOADED:-}" ] && return
 ZSHRC_LOADED=1
 
 # A new terminal or tmux pane must not retain the parent shell's GPG tty.

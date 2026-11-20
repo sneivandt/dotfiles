@@ -110,8 +110,11 @@ tray items, and controls alongside them. Use the bar as follows:
 
 Only one bar popup opens at a time across monitors. The bar reserves space for
 tiled windows, sits below floating windows and hides on fullscreen workspaces.
-NetworkManager handles connections; configure enterprise Wi-Fi in the
-connection editor rather than the bar menu.
+If you have several saved profiles for the same Wi-Fi network on one adapter,
+look below the network name for the profile name. If the names repeat, the menu
+shows the pinned access point address or the profile UUID instead. If the text
+is cut off, hover over the row or tab to it to read the full label. Configure
+enterprise Wi-Fi in the NetworkManager connection editor rather than the bar menu.
 
 ### Tray applications
 

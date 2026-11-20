@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Guard against multiple sourcing
-[ -n "$BASH_PROFILE_LOADED" ] && return
+[ -n "${BASH_PROFILE_LOADED:-}" ] && return
 BASH_PROFILE_LOADED=1
 
 # Installing .bash_profile takes precedence over Bash's other login files.

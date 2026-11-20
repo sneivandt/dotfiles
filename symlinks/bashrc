@@ -6,7 +6,7 @@
 [[ $- != *i* ]] && return
 
 # Guard against multiple sourcing
-[ -n "$BASHRC_LOADED" ] && return
+[ -n "${BASHRC_LOADED:-}" ] && return
 BASHRC_LOADED=1
 
 # A new terminal or tmux pane must not retain the parent shell's GPG tty.

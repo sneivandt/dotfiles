@@ -148,6 +148,37 @@ class GitTemplatesTests(unittest.TestCase):
         tags = self.git("for-each-ref", "--format=%(refname)", "refs/tags/")
         self.assertEqual(tags.splitlines(), ["refs/tags/merged-feature", "refs/tags/origin/release"])
 
+    def test_manual_cleanup_uses_exact_branch_names_and_only_merged_tips(self):
+        self.git("config", "include.path", str(ROOT / "symlinks/config/git/aliases"))
+        self.git("branch", "release")
+        self.git("tag", "release")
+        self.git("switch", "-qc", "work-in-progress")
+        self.git("commit", "--allow-empty", "-qm", "unmerged work")
+        self.git("switch", "-q", "main")
+        self.git("delete-merged")
+        self.assertEqual(self.git("for-each-ref", "--format=%(refname)").splitlines(), [
+            "refs/heads/main", "refs/heads/work-in-progress", "refs/tags/release",
+        ])
+
+    def test_manual_cleanup_preserves_branches_when_enumeration_fails(self):
+        self.git("config", "include.path", str(ROOT / "symlinks/config/git/aliases"))
+        self.git("branch", "topic")
+        real_git = shutil.which("git")
+        bindir = self.root / "bin"
+        bindir.mkdir()
+        fake_git = bindir / "git"
+        fake_git.write_text(
+            "#!/bin/sh\nif [ \"$1\" = for-each-ref ]; then\n"
+            "  printf 'topic\\n'\n  echo 'fixture: incomplete ref list' >&2\n  exit 1\nfi\n"
+            f"exec {shlex.quote(real_git)} \"$@\"\n"
+        )
+        fake_git.chmod(0o755)
+        result = subprocess.run([real_git, "delete-merged"], cwd=self.repo, capture_output=True,
+                                env={**self.env, "GIT_EXEC_PATH": str(bindir)})
+        self.assertIn(b"fixture: incomplete ref list", result.stderr)
+        self.assertEqual(self.git("branch", "--list", "topic"), "topic")
+        self.assertNotEqual(result.returncode, 0)
+
 
 class CleanupTests(unittest.TestCase):
     def test_retention_for_files_links_and_directories(self):

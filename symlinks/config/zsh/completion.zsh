@@ -34,7 +34,7 @@ _dotfiles_complete() {
 # The generated dynamic registration is a source script, not a #compdef file.
 if [[ -r ~/.config/zsh/completions/_dotfiles ]] && command -v dotfiles >/dev/null 2>&1; then
   source ~/.config/zsh/completions/_dotfiles
-  if [[ ${_comps[dotfiles]} == _clap_dynamic_completer_dotfiles ]]; then
+  if [[ ${_comps[dotfiles]:-} == _clap_dynamic_completer_dotfiles ]]; then
     compdef _dotfiles_complete dotfiles
   fi
 fi
@@ -46,7 +46,7 @@ unsetopt flowcontrol
 unsetopt menu_complete
 
 zstyle ':completion:*' group-name ''
-zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
+zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS:-}
 zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' 'r:|[._-]=* r:|=*' 'l:|=* r:|=*'
 zstyle ':completion:*' menu select=2
 zstyle ':completion:*' rehash true

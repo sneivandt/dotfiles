@@ -215,6 +215,7 @@ ShellPopup {
                 }
 
                 Repeater {
+                    objectName: "networkChoices"
                     model: !root.enteringCredentials && root.network.wifiEnabled ? root.network.networks : []
 
                     delegate: MenuButton {
@@ -226,6 +227,8 @@ ShellPopup {
                         label: modelData.name
                         detail: {
                             const parts = [];
+                            if (modelData.profileLabel)
+                                parts.push(modelData.profileLabel);
                             if (modelData.advanced)
                                 parts.push("Opens Advanced settings");
                             else if (modelData.saved && !modelData.active && modelData.available)
@@ -240,6 +243,8 @@ ShellPopup {
                         selected: modelData.active
                         enabled: root.network.available && !root.network.working
                         clickable: !modelData.active
+                        hoverEnabled: clickable || !!modelData.profileLabel
+                        focusPolicy: hoverEnabled || activeFocus ? Qt.StrongFocus : Qt.NoFocus
                         showChevron: !modelData.active
                         onTriggered: root.selectNetwork(modelData)
                         onActiveFocusChanged: {
@@ -252,6 +257,11 @@ ShellPopup {
                                 viewport.contentY = networkButton.y;
                             else if (networkButton.y + height > viewport.contentY + viewport.height)
                                 viewport.contentY = networkButton.y + height - viewport.height;
+                        }
+
+                        ShellToolTip {
+                            text: networkButton.detail
+                            visible: !!networkButton.modelData.profileLabel && (networkButton.hovered || networkButton.visualFocus)
                         }
                     }
                 }

@@ -41,7 +41,7 @@ export LANG="${LANG:-en_US.UTF-8}"
 # subprocess per capability on every login shell, and less only needs the
 # handful of attributes below. ssubm/rsubm/ssupm/rsupm are dropped because
 # they are not standard terminfo capabilities and always resolved to empty.
-if [ -n "$TERM" ] && [ "$TERM" != dumb ]; then
+if [ -n "${TERM:-}" ] && [ "$TERM" != dumb ]; then
   _esc=$(printf '\033')
 
   LESS_TERMCAP_mb="${_esc}[1;32m"  # blink  -> bold green

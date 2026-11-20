@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 
 # Guard against multiple sourcing
-[ -n "$ZPROFILE_LOADED" ] && return
+[ -n "${ZPROFILE_LOADED:-}" ] && return
 ZPROFILE_LOADED=1
 
 # Login/session profile

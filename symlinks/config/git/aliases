@@ -110,7 +110,13 @@
   contributors  = "!f() { if [ \"$#\" -eq 0 ]; then set -- HEAD; fi; git shortlog --summary --numbered \"$@\"; }; f"
 
   # Delete merged branches
-  delete-merged = "!f() { current=$(git branch --show-current); git for-each-ref --format='%(refname:short)' refs/heads --merged HEAD | while IFS= read -r branch; do [ \"$branch\" = \"$current\" ] && continue; case \"$branch\" in main|master|dev|develop) continue ;; esac; git branch -d -- \"$branch\"; done; }; f"
+  # Git ref names cannot contain whitespace. Finish discovery before deleting anything.
+  delete-merged = "!f() { set -f; current=$(git branch --show-current) || return; \
+    branches=$(git for-each-ref --format='%(refname:lstrip=2)' --merged=HEAD refs/heads/) || return; \
+    status=0; for branch in $branches; do \
+      case \"$branch\" in \"$current\"|main|master|dev|develop) continue ;; esac; \
+      git branch -d -- \"$branch\" || status=1; \
+    done; return \"$status\"; }; f"
 
   # Who am I?
   whoami        = !git config user.email && git config user.name

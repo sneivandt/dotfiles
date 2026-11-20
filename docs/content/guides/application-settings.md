@@ -122,6 +122,11 @@ Run `git alias` to list all aliases. If a setting does not take effect, use
 `<key>` with the setting name. Included files and repository settings can
 override the shared configuration.
 
+`git delete-merged` deletes local branches merged into your current `HEAD`.
+It leaves tags, the current branch, `main`, `master`, `dev`, and `develop`
+alone. Git's normal `branch -d` checks still apply. Unlike the automatic
+template hook below, this shortcut does not use `origin/HEAD` as its baseline.
+
 On Windows, the base profile leaves editor selection to Git and the environment.
 The desktop profile adds `config/git/windows-desktop`, which selects the installed
 VS Code Insiders command. Switching back to base does not remove an already-installed

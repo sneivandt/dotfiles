@@ -3,12 +3,12 @@
 
 # Performance: Cache static checks that don't change during session
 _BASH_PROMPT_SSH=""
-if [ -n "$SSH_CONNECTION" ] || [ -e /.dockerenv ]; then
+if [ -n "${SSH_CONNECTION:-}" ] || [ -e /.dockerenv ]; then
   _BASH_PROMPT_SSH="$HOSTNAME "
 fi
 
 _BASH_PROMPT_SHELL=""
-if [ "$(readlink -f "$(command -v bash)")" != "$(readlink -f "$SHELL")" ]; then
+if [ "$(readlink -f "$(command -v bash)")" != "$(readlink -f "${SHELL:-}")" ]; then
   _BASH_PROMPT_SHELL="bash "
 fi
 

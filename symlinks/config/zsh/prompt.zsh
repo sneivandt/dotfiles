@@ -4,12 +4,12 @@ setopt PROMPT_SUBST
 
 # Performance: Cache static values that don't change during session
 typeset -g _ZSH_PROMPT_HOST=""
-if [ -n "$SSH_CONNECTION" ] || [ -e /.dockerenv ]; then
+if [ -n "${SSH_CONNECTION:-}" ] || [ -e /.dockerenv ]; then
   _ZSH_PROMPT_HOST="%F{cyan}%m%f "
 fi
 
 typeset -g _ZSH_PROMPT_SHELL=""
-if [ "$(readlink -f "$(command -v zsh)")" != "$(readlink -f "$SHELL")" ]; then
+if [ "$(readlink -f "$(command -v zsh)")" != "$(readlink -f "${SHELL:-}")" ]; then
   _ZSH_PROMPT_SHELL="%F{cyan}zsh%f "
 fi
 

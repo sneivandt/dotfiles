@@ -163,6 +163,42 @@ class ShellConfigTests(unittest.TestCase):
         self.assertIn("record-from-previous-login\n", history.read_text())
         self.assertEqual(log.read_text(), "rc\n")
 
+    def test_interactive_login_preserves_user_nounset(self):
+        managed = ROOT / "symlinks"
+        (self.home / ".config").mkdir()
+        for directory in ("shell", "bash", "zsh"):
+            (self.home / ".config" / directory).symlink_to(managed / "config" / directory)
+        # A retained Bash .profile and a Zsh user's .zshenv run before the managed rc.
+        self.write(self.home / ".profile", "set -u\n")
+        self.write(self.home / ".zshenv",
+                   "set -u\nfpath=(${^fpath}/compinit(N:h) ${^fpath}/select-word-style(N:h))\n")
+        # Only core utilities, no optional init commands or system plugin files.
+        bindir = self.fixture / "bin"
+        bindir.mkdir()
+        for name in ("bash", "zsh", "tty", "dirname", "mkdir", "readlink", "touch", "mktemp", "mv"):
+            (bindir / name).symlink_to(shutil.which(name, path=self.env["PATH"]))
+        self.env["PATH"] = str(bindir)
+        self.env["TERM"] = "dumb"
+        del self.env["SHELL"]
+        for shell, profile, helper in (("bash", "bash_profile", "__bash_git_prompt"),
+                                       ("zsh", "zprofile", "prompt_cmd")):
+            with self.subTest(shell=shell):
+                (self.home / ("." + profile)).symlink_to(managed / profile)
+                rc = shell + "rc"
+                self.write(self.home / ("." + rc), (managed / rc).read_text().replace(
+                    "/usr/share/", '"$HOME"/no-packages/'))
+                # Source the Bash login entry explicitly to skip the host's /etc/profile.
+                args = (["bash", "--noprofile", "--norc", "-lic"] if shell == "bash"
+                        else ["zsh", "-dlic"])
+                ready = (f'[[ -o nounset && $EDITOR == vim ]] && alias dot >/dev/null && '
+                         f'typeset -f {helper} >/dev/null')
+                script = ('. ~/.bash_profile\n' if shell == "bash" else "") + (
+                    f'{ready} || exit 1\n. ~/.{profile}\n. ~/.{rc}\n{ready}')
+                result = subprocess.run(args + [script], cwd=self.fixture, env=self.env,
+                                        text=True, capture_output=True, timeout=20)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotRegex(result.stderr, "unbound variable|parameter not set")
+
     def test_uwsm_needs_arch_desktop_and_falls_back_to_shell(self):
         self.install_profile()
         self.write(

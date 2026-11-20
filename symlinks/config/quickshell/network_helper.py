@@ -188,6 +188,23 @@ def profile_kind(profile):
     return "open" if not key else "unknown"
 
 
+def label_saved_choices(networks, profiles_by_id):
+    groups = {}
+    for row in networks:
+        if row["saved"]:
+            groups.setdefault((row["device"], row["name"]), []).append(row)
+    for choices in groups.values():
+        if len(choices) < 2:
+            continue
+        # Use the saved pin, not the strongest AP from this particular scan.
+        for field in ("name", "bssid", "uuid"):
+            labels = [profiles_by_id[row["uuid"]][field] for row in choices]
+            if all(labels) and len(set(labels)) == len(choices):
+                for row, label in zip(choices, labels):
+                    row["profileLabel"] = label
+                break
+
+
 def build_networks(aps, adapters, profiles, active_by_device):
     grouped = {}
     profiles_by_id = {profile["uuid"]: profile for profile in profiles}
@@ -266,6 +283,7 @@ def build_networks(aps, adapters, profiles, active_by_device):
                 "advanced": kind in ("enterprise", "legacy", "unknown"),
                 "available": False,
             })
+    label_saved_choices(networks, profiles_by_id)
     return sorted(networks, key=lambda entry: (not entry["active"], not entry["available"], -entry["signal"], entry["name"].casefold(), entry["device"]))
 
 

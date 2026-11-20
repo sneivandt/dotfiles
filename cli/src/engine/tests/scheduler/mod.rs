@@ -28,15 +28,13 @@ impl Mode {
         log: &Arc<Logger>,
         prior: Option<&ExecutionSummary>,
     ) -> ExecutionSummary {
+        let has_provider = |id: &TaskId| {
+            tasks.iter().any(|task| task.task_id() == *id)
+                || prior.is_some_and(|s| s.outcome(id).is_some())
+        };
         let assessments = tasks
             .iter()
-            .map(|task| {
-                let has_provider = |id: &TaskId| {
-                    tasks.iter().any(|task| task.task_id() == *id)
-                        || prior.is_some_and(|s| s.outcome(id).is_some())
-                };
-                (task.task_id(), task.assess(ctx, &has_provider))
-            })
+            .map(|task| (task.task_id(), task.assess(ctx, &has_provider)))
             .collect();
         let graph = ResolvedTaskGraph::resolve_assessed(tasks, &assessments).unwrap();
         let summary = run_tasks(tasks, &graph, &assessments, ctx, log, prior);

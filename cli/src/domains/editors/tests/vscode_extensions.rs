@@ -185,7 +185,7 @@ struct Editor {
 impl Editor {
     fn new(root: &Path) -> Self {
         let command = if cfg!(windows) { "code.cmd" } else { "code" };
-        let launcher = root.join(command);
+        let launcher = root.join("VS Code").join(command);
         let mut mock = MockExecutor::new();
         mock.expect_which()
             .returning(move |program| program == command);

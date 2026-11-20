@@ -129,7 +129,10 @@ impl<'a> Operation for ExtensionInstall<'a> {
             .iter()
             .map(String::as_str)
             .filter(|id| seen.insert(id.to_lowercase()))
-            .partition(|id| installed.contains(&id.to_lowercase()));
+            .partition::<Vec<_>, _>(|id| installed.contains(&id.to_lowercase()));
+        for id in &current {
+            ctx.debug_fmt(|| format!("ok {id}"));
+        }
         Ok(OperationState::needs_run(InstallPlan { current, missing }))
     }
 

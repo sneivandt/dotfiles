@@ -406,8 +406,10 @@ fn explain_rechecks_aliases_and_rejects_collisions_after_a_match() {
     let matched = explain("first/item");
     assert!(matched.status.success(), "{matched:?}");
     let text = String::from_utf8(matched.stdout).unwrap();
-    assert!(
-        text.contains(&format!("Target: {}", alias.join("item").display())),
+    let target = text.lines().find_map(|line| line.strip_prefix("Target: "));
+    assert_eq!(
+        target.map(std::path::Path::new),
+        Some(alias.join("item").as_path()),
         "{text}"
     );
 

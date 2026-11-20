@@ -182,11 +182,22 @@ fn systemd_available(ctx: &Context) -> Result<bool> {
                 .arg("is-system-running")
                 .unchecked(),
         )?;
-        anyhow::ensure!(
-            result.code.is_some(),
-            "systemd availability probe terminated without an exit code"
-        );
-        Ok(result.success || result.stdout.trim() == "degraded")
+        let code = result
+            .code
+            .context("systemd availability probe terminated without an exit code")?;
+        match (code, result.stdout.trim()) {
+            (0, "running") | (1.., "degraded") => Ok(true),
+            (1.., "offline" | "initializing" | "starting" | "maintenance" | "stopping") => {
+                Ok(false)
+            }
+            (0, state) => anyhow::bail!("unexpected systemctl is-system-running state: {state:?}"),
+            // Failed bus or property queries may print "unknown" or no state.
+            _ => Err(crate::infra::exec::ExecError::non_zero(
+                "systemctl is-system-running",
+                result,
+            ))
+            .context("checking WSL systemd state"),
+        }
     } else {
         Ok(true)
     }

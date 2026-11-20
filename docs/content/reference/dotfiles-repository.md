@@ -34,7 +34,9 @@ including a file Git normally ignores. A successfully changed checkout triggers
 the guarded [configuration
 restart](../development/architecture.md#repository-updates-are-a-restart-boundary) before later tasks
 run. The parent keeps the run lock. Updating two repositories is not a transaction: a
-later failure does not undo an earlier success.
+later failure does not undo an earlier success. If the main checkout advances
+but the overlay merge fails, the repository task reports one applied update
+and one failure.
 
 Dry-run may query remote refs with `git ls-remote`. If the upstream commit is missing
 locally, dry-run reports that it cannot verify a fast-forward. It leaves the local

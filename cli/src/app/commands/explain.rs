@@ -68,13 +68,17 @@ pub(crate) fn run(opts: &ExplainOpts) -> Result<()> {
         Ok(path) => writeln!(output, "Resolved target: {}", path.display())?,
         Err(error) => writeln!(output, "Target blocked: {error:#}")?,
     }
-    let update_state = resource.current_state()?;
-    let update_action =
-        match ApplyOperation::from_state(&update_state, &ProcessOpts::strict("link")) {
+    let update_action = if let Err(error) =
+        symlinks::check_install_config_home(&config.symlinks, &home, env.as_ref())
+    {
+        format!("blocked ({error})")
+    } else {
+        match ApplyOperation::from_state(&resource.current_state()?, &ProcessOpts::strict("link")) {
             ApplyOperation::Apply { .. } => "create managed link".into(),
             ApplyOperation::Noop => "already linked".into(),
             ApplyOperation::Skip { reason, .. } => format!("blocked ({reason})"),
-        };
+        }
+    };
     writeln!(output, "Update: {update_action}")?;
     let removal_action = match resource.removal_state() {
         Ok(state) => match RemoveOperation::from_state(&state, "copy") {

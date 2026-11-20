@@ -294,8 +294,8 @@ fn write_selected_log(
             if !verbose && let Some((text_context, event, message)) = text_record_parts(&line) {
                 write_rendered_record(out, text_context, &index.task_names, event, message, None)?;
             } else {
-                // Unrecognized lines and record schemas remain visible as stored.
-                writeln!(out, "{line}").context("writing log output")?;
+                // Include unrecognized lines and record schemas in human views too.
+                write_human_line(out, &line)?;
             }
             wrote_line = true;
         }
@@ -304,6 +304,17 @@ fn write_selected_log(
         anyhow::bail!("No records match the requested task selector or identity");
     }
     Ok(())
+}
+
+// Keep both decoded record payloads and legacy text safe for text tools.
+// Raw viewing and task matching use the original bytes and identities.
+fn write_human_line(out: &mut dyn std::io::Write, line: &str) -> Result<()> {
+    if line.contains('\0') {
+        writeln!(out, "{}", line.replace('\0', r"\0"))
+    } else {
+        writeln!(out, "{line}")
+    }
+    .context("writing log output")
 }
 
 fn write_rendered_record(
@@ -318,7 +329,7 @@ fn write_rendered_record(
         let prefix = line
             .split_once(" [record] ")
             .map_or("", |(prefix, _)| prefix);
-        return writeln!(out, "{prefix} [{event}] {message}").context("writing log output");
+        return write_human_line(out, &format!("{prefix} [{event}] {message}"));
     }
     let label = match event {
         "run_start" => "Run",
@@ -344,11 +355,10 @@ fn write_rendered_record(
         labels.push(label);
     }
     if labels.is_empty() {
-        writeln!(out, "{message}")
+        write_human_line(out, message)
     } else {
-        writeln!(out, "{}: {message}", labels.join(" · "))
+        write_human_line(out, &format!("{}: {message}", labels.join(" · ")))
     }
-    .context("writing log output")
 }
 
 fn text_record_parts(line: &str) -> Option<(&str, &str, &str)> {
@@ -1295,6 +1305,38 @@ mod tests {
         let mut output = Vec::new();
         write_selected_contents(content, true, false, None, &mut output).unwrap();
         assert_eq!(output, content.as_bytes());
+    }
+
+    #[test]
+    fn human_log_escapes_nuls_without_changing_raw_output_or_task_selection() {
+        let task_key = "Pause\0new.sh";
+        let content = record(
+            task_key,
+            Record::TaskStart {
+                selector: "script-pause".into(),
+                name: "Pause".into(),
+            },
+        ) + &record(
+            task_key,
+            Record::Message {
+                event: "warn".into(),
+                text: "one\0two".into(),
+            },
+        ) + "000003 +30 stamp [Pause\0new.sh] [warn] old\0text\n";
+        for verbose in [false, true] {
+            let mut out = Vec::new();
+            write_selected_contents(&content, verbose, false, Some("script-pause"), &mut out)
+                .unwrap();
+            let text = String::from_utf8(out).unwrap();
+            assert!(!text.contains('\0'));
+            assert!(
+                text.contains(r"one\0two") && text.contains(r"old\0text"),
+                "{text}"
+            );
+        }
+        let mut raw = Vec::new();
+        write_selected_contents(&content, false, true, Some("script-pause"), &mut raw).unwrap();
+        assert_eq!(raw, content.as_bytes());
     }
 
     #[test]

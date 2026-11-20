@@ -940,13 +940,15 @@ fn parallel_fetch_cancellation_takes_precedence_over_another_repository_failure(
 }
 
 #[test]
-fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_signal() {
-    for error in [
-        git_error("second merge could not start"),
-        git_non_zero("second merge failed"),
-        cancelled_git_error(),
+fn multi_repository_merge_records_verified_advances_and_preserves_restart_signal() {
+    for merge in [
+        Err(git_error("second merge could not start")),
+        Err(git_non_zero("second merge failed")),
+        Err(cancelled_git_error()),
+        Ok(ExecResult::success("updated")),
     ] {
-        let cancelled = error.is_cancelled();
+        let cancelled = merge.as_ref().is_err_and(ExecError::is_cancelled);
+        let success = merge.is_ok();
         let root = tempfile::tempdir_in(".").unwrap();
         let main_root = root.path().join("main");
         let overlay_root = root.path().join("overlay");
@@ -985,9 +987,13 @@ fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_sign
                 CommandSpec::new("git")
                     .args(&merge_args(OVERLAY_NEW))
                     .current_dir(&overlay_root),
-                Err(error),
+                merge,
             );
-        let executor = if cancelled {
+        let executor = if success {
+            executor
+                .git(&overlay_root, HEAD_SNAPSHOT, snapshot(OVERLAY_NEW))
+                .git(&overlay_root, UNMERGED_INDEX, "")
+        } else if cancelled {
             executor
         } else {
             executor
@@ -1000,23 +1006,23 @@ fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_sign
         let result = UpdateRepository::new(signal.clone()).run(&ctx);
 
         if cancelled {
-            assert!(
-                result
-                    .unwrap_err()
-                    .downcast_ref::<ExecError>()
-                    .unwrap()
-                    .is_cancelled()
-            );
+            let error = result.unwrap_err();
+            assert!(error.downcast_ref::<ExecError>().unwrap().is_cancelled());
+            let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
+            assert_eq!(report.stats().changed_count(), 1);
+            assert_eq!(report.interrupted_count(), 1);
         } else {
             let result = result.unwrap();
-            assert!(
-                matches!(&result, TaskResult::Failed(reason)
-                    if reason.contains("git merge --ff-only failed in overlay repository")
-                    && reason.contains("Already advanced repository")),
-                "the overlay failure must remain a failed update: {result:?}"
-            );
+            let stats = crate::test_helpers::task_batch(&result);
+            assert_eq!(stats.changed_count(), if success { 2 } else { 1 });
+            assert_eq!(stats.failed_count(), u32::from(!success));
+            if !success {
+                let reason = stats.message().unwrap();
+                assert!(reason.contains("git merge --ff-only failed in overlay repository"));
+                assert!(reason.contains("Already advanced repository"));
+            }
         }
-        assert_eq!(signal.recovery_required(), !cancelled);
+        assert_eq!(signal.recovery_required(), !cancelled && !success);
         assert!(
             signal.was_updated(),
             "a successful first merge must prevent later tasks from using stale configuration"

@@ -103,6 +103,11 @@ packages, not every package pacman might upgrade.
 When every selected native package is already installed, dotfiles does not run
 a system upgrade solely because the command is named `update`.
 
+If a pacman or Paru install times out, the task still fails. Dotfiles rechecks
+which requested packages were installed before reporting the result. A retry
+requests only the packages still missing. Investigate any failed install hook
+separately.
+
 Paru builds and installs AUR packages. The `paru` task prepares the helper and
 can repair a detected broken helper after library changes. Dotfiles runs Paru
 without an extra sudo wrapper; keep the main invocation under your normal user.

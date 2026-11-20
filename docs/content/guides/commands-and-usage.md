@@ -316,7 +316,9 @@ dotfiles explain .bashrc
 On Linux, `~/.bashrc` also works. The output shows the declaration, source,
 resolved target, and what update and remove would do. Use the same profile and
 overlay you use for updates. An existing CLI binary inspects the path without
-starting a task or writing a run log.
+starting a task or writing a run log. If a custom `XDG_CONFIG_HOME` blocks
+symlink installation, `explain` reports that under **Update** and still shows
+what **Remove** would do at the configured home path.
 
 ## Remove integrations
 

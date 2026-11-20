@@ -20,33 +20,48 @@ struct CompletionOperation<'a> {
     shell_name: &'static str,
 }
 
+#[derive(PartialEq, Eq)]
+struct CompletionSnapshot {
+    path: std::path::PathBuf,
+    content: Option<String>,
+}
+
+impl CompletionOperation<'_> {
+    fn snapshot(&self) -> Result<CompletionSnapshot> {
+        let path = crate::infra::fs::resolve_target_entry(&self.destination)?;
+        let metadata =
+            crate::infra::fs::symlink_metadata_optional(&path, "inspect completion destination")?;
+        let content = if let Some(metadata) = metadata {
+            anyhow::ensure!(
+                !metadata.is_symlink(),
+                "completion destination is a symlink: {}",
+                path.display()
+            );
+            anyhow::ensure!(
+                metadata.is_file(),
+                "not a regular completion file: {}",
+                path.display()
+            );
+            Some(
+                std::fs::read_to_string(&path)
+                    .with_context(|| format!("read completions: {}", path.display()))?,
+            )
+        } else {
+            None
+        };
+        Ok(CompletionSnapshot { path, content })
+    }
+}
+
 impl Operation for CompletionOperation<'_> {
-    type Plan = ();
+    type Plan = CompletionSnapshot;
 
     fn current_state(&self, _ctx: &Context) -> Result<OperationState<Self::Plan>> {
-        // Generated destinations are owned files. Refuse symlinks instead of
-        // writing through them or silently replacing a user's redirection.
-        if let Some(metadata) = crate::infra::fs::symlink_metadata_optional(
-            &self.destination,
-            "inspect completion destination",
-        )? && metadata.file_type().is_symlink()
-        {
-            anyhow::bail!(
-                "completion destination is a symlink: {}",
-                self.destination.display()
-            );
+        let before = self.snapshot()?;
+        if before.content.as_deref() == Some(self.content) {
+            return Ok(OperationState::Complete);
         }
-        match std::fs::read_to_string(&self.destination) {
-            Ok(existing) if existing == self.content => return Ok(OperationState::Complete),
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("read completions: {}", self.destination.display()));
-            }
-        }
-
-        Ok(OperationState::needs_run(()))
+        Ok(OperationState::needs_run(before))
     }
 
     fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
@@ -56,8 +71,15 @@ impl Operation for CompletionOperation<'_> {
         Ok(TaskStats::changed().finish())
     }
 
-    fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
-        crate::infra::fs::write_atomic(&self.destination, self.content)?;
+    fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        crate::infra::fs::write_atomic_checked(&plan.path, self.content, || {
+            anyhow::ensure!(
+                self.snapshot()? == *plan,
+                "completion destination {} changed during update; save any edits elsewhere before retrying",
+                self.destination.display()
+            );
+            Ok(())
+        })?;
         let subject = format!("{} completions", self.shell_name);
         ctx.log()
             .action("write", &subject, false, &format!("write {subject}"));
@@ -234,6 +256,39 @@ mod tests {
                     "{os:?}: current content must not be rewritten"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn stale_completion_plan_preserves_later_edits_and_rechecks_on_retry() {
+        for existing in [false, true] {
+            let (_dir, ctx, destination, expected) = completion_fixture(Os::Linux);
+            let parent = destination.parent().unwrap();
+            std::fs::create_dir_all(parent).unwrap();
+            let neighbor = parent.join("user-completion");
+            std::fs::write(&neighbor, "untouched").unwrap();
+            if existing {
+                std::fs::write(&destination, "outdated").unwrap();
+            }
+            let op = CompletionOperation {
+                content: expected,
+                destination: destination.clone(),
+                shell_name: "zsh",
+            };
+            let OperationState::NeedsRun { plan } = op.current_state(&ctx).unwrap() else {
+                panic!("expected a completion update");
+            };
+            std::fs::write(&destination, "editor save").unwrap();
+            let error = op.apply(&ctx, &plan).unwrap_err();
+            assert!(error.to_string().contains("changed"), "{error:#}");
+            assert_eq!(
+                std::fs::read_to_string(&destination).unwrap(),
+                "editor save"
+            );
+            assert_eq!(std::fs::read_dir(parent).unwrap().count(), 2);
+            crate::test_helpers::assert_task_changed(&task().run(&ctx).unwrap());
+            assert_eq!(std::fs::read_to_string(&destination).unwrap(), expected);
+            assert_eq!(std::fs::read_to_string(&neighbor).unwrap(), "untouched");
         }
     }
 

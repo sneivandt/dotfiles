@@ -114,9 +114,11 @@ explicit overlay path for future runs once configuration loads successfully.
 Check the resolved path and profile in the header.
 After reviewing the result, normal `dotfiles update` runs use the saved overlay.
 
-Check that the directory exists and contains the intended files. Missing
-optional configuration contributes nothing, so a mistyped path can look like
-an empty overlay rather than producing a missing-file error.
+Check that the directory exists and contains the intended files. An absent
+optional configuration file contributes nothing. If the file or its `conf/`
+directory is a broken symlink, configuration loading stops instead of falling
+back to the main declarations. Restore the link's destination, or remove the
+link if you no longer want that configuration.
 
 ::: warning Review overlay scripts before previewing
 `--check` and `--dryrun` execute overlay code with your access. They can use the

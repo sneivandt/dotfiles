@@ -219,9 +219,9 @@ are not current execution commands.
 
 Normal viewing shows actions, outcomes, warnings, context, and failed-command
 output with task names and readable labels. Verbose adds task starts, checks,
-timings, debug details, and stored event identifiers and contexts. Raw viewing
-preserves the original records. Unrecognized lines and record formats remain
-visible as stored rather than being reformatted.
+timings, debug details, and stored event identifiers and contexts. Both views
+show NUL bytes as `\0` so text tools can search the output. Unrecognized lines
+and record formats remain visible. Use `--raw` for the original stored records.
 An external command can return a nonzero exit code without failing its task
 when that code has an expected meaning, such as "not installed."
 Successful stdout is usually not saved;

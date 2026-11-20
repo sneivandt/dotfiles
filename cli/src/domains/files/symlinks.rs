@@ -110,6 +110,19 @@ pub(crate) fn validate_resolved_targets(resources: &[SymlinkResource]) -> Result
     }))
 }
 
+pub(crate) fn check_install_config_home(
+    symlinks: &[Symlink],
+    home: &Path,
+    env: &dyn crate::infra::env::Env,
+) -> Result<()> {
+    if let Some(diagnostic) =
+        crate::domains::files::config::symlinks::config_home_diagnostic(symlinks, home, env)
+    {
+        anyhow::bail!("{}: {}", diagnostic.code, diagnostic.message);
+    }
+    Ok(())
+}
+
 crate::engine::config_task! {
     /// Create symlinks from symlinks/ to $HOME.
     pub struct InstallSymlinks(Vec<Symlink>);
@@ -125,13 +138,7 @@ impl Task for InstallSymlinks {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let symlinks = self.config.get();
-        if let Some(diagnostic) = crate::domains::files::config::symlinks::config_home_diagnostic(
-            symlinks,
-            ctx.home(),
-            ctx.env().as_ref(),
-        ) {
-            anyhow::bail!("{}: {}", diagnostic.code, diagnostic.message);
-        }
+        check_install_config_home(symlinks, ctx.home(), ctx.env().as_ref())?;
         let resources = build_resources(ctx, symlinks);
         validate_resolved_targets(&resources)?;
         // UAC can switch accounts. Home mutations stay in the parent, and the

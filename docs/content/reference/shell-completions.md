@@ -53,6 +53,9 @@ dotfiles update --only completions --dry-run
 Expect the zsh path inside the checkout on Linux or the PowerShell profile
 fragment in home on Windows. Resolve a destination read error or unexpected
 symlink before [applying the change](task-reference.md#preview-and-apply).
+If the update reports that the registration changed while it was being generated,
+save any edits you want to keep elsewhere before retrying. The next update
+regenerates this file.
 Then start a new shell and try Tab after `dotfiles update --only `. If no
 selectors appear, check profile loading before editing generated content.
 

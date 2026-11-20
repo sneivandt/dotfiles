@@ -646,13 +646,27 @@ fn contains_ini(current: &str, fragment: &str) -> anyhow::Result<bool> {
 #[cfg(any(unix, test))]
 fn merge_ini(current: &str, fragment: &str) -> anyhow::Result<String> {
     ini_settings(current, false)?;
-    let mut lines = current.lines().map(str::to_string).collect::<Vec<_>>();
+    let newline = if current
+        .split_once('\n')
+        .is_some_and(|(first, _)| first.ends_with('\r'))
+    {
+        "\r\n"
+    } else {
+        "\n"
+    };
+    let mut lines = current
+        .split_inclusive('\n')
+        .map(str::to_string)
+        .collect::<Vec<_>>();
     for (section, key, value) in ini_settings(fragment, true)? {
-        ensure_ini_key(&mut lines, &section, &key, value.as_deref());
+        ensure_ini_key(&mut lines, &section, &key, value.as_deref(), newline);
     }
-    let mut rendered = lines.join("\n");
-    if !rendered.ends_with('\n') {
-        rendered.push('\n');
+    let mut rendered = String::new();
+    for line in lines {
+        if !rendered.is_empty() && !rendered.ends_with('\n') {
+            rendered.push_str(newline);
+        }
+        rendered.push_str(&line);
     }
     Ok(rendered)
 }
@@ -679,18 +693,29 @@ fn ini_line_key(line: &str) -> Option<&str> {
 }
 
 #[cfg(any(unix, test))]
-fn ensure_ini_key(lines: &mut Vec<String>, section: &str, key: &str, value: Option<&str>) {
-    let setting = value.map_or_else(|| key.to_string(), |value| format!("{key}={value}"));
+fn ensure_ini_key(
+    lines: &mut Vec<String>,
+    section: &str,
+    key: &str,
+    value: Option<&str>,
+    newline: &str,
+) {
+    let mut setting = value.map_or_else(|| key.to_string(), |value| format!("{key}={value}"));
     let Some(first) = lines.iter().position(|line| line.trim() == section) else {
-        if lines.last().is_some_and(|line| !line.is_empty()) {
-            lines.push(String::new());
+        if lines
+            .last()
+            .is_some_and(|line| !line.trim_end_matches(['\r', '\n']).is_empty())
+        {
+            lines.push(newline.to_owned());
         }
-        lines.push(section.to_string());
+        lines.push(format!("{section}{newline}"));
+        setting.push_str(newline);
         lines.push(setting);
         return;
     };
 
     let mut insertion_index = first.saturating_add(1);
+    let mut ending = newline;
     for (index, line) in lines
         .iter()
         .enumerate()
@@ -700,6 +725,13 @@ fn ensure_ini_key(lines: &mut Vec<String>, section: &str, key: &str, value: Opti
         if let Some(current_key) = ini_line_key(line) {
             if current_key == key {
                 insertion_index = index;
+                ending = if line.ends_with("\r\n") {
+                    "\r\n"
+                } else if line.ends_with('\n') {
+                    "\n"
+                } else {
+                    ""
+                };
                 break;
             }
             insertion_index = index.saturating_add(1);
@@ -715,6 +747,7 @@ fn ensure_ini_key(lines: &mut Vec<String>, section: &str, key: &str, value: Opti
         }
         !in_section || ini_line_key(line) != Some(key)
     });
+    setting.push_str(ending);
     lines.insert(insertion_index, setting);
 }
 
@@ -1102,6 +1135,12 @@ mod tests {
         use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
         for (strategy, original, fragment, expected) in [
+            (
+                "ini",
+                "# administrator\r\n[boot]\r\nsystemd=false\r\n\n[network]\r\n# retained",
+                "[boot]\nsystemd=true\n",
+                "# administrator\r\n[boot]\r\nsystemd=true\r\n\n[network]\r\n# retained",
+            ),
             (
                 "ini",
                 "# retained\n[options]\nkeep=private\nmanaged=no\n",
@@ -2419,7 +2458,7 @@ mod tests {
             (
                 "missing key follows last setting, not trailing comments",
                 "[options]\n# heading\nkeep=yes\n# trailing\n\n",
-                "[options]\n# heading\nkeep=yes\nmanaged=new\n# trailing\n",
+                "[options]\n# heading\nkeep=yes\nmanaged=new\n# trailing\n\n",
             ),
             (
                 "existing key stays before following settings",

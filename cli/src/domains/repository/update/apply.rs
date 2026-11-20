@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::{Context as _, Result};
 
-use crate::engine::{Context, TaskResult, TaskStats};
+use crate::engine::{BatchCompletion, BatchReport, Context, TaskResult, TaskStats};
 use crate::infra::exec::ExecError;
 
 use super::discovery::{compare_commits, upstream, worktree_has_local_changes};
@@ -58,7 +58,10 @@ pub(super) fn apply_repository_updates(
     let mut original_heads = Vec::with_capacity(repositories.len());
     for repository in repositories {
         let Some(head) = checkout_head(ctx, repository)? else {
-            return Ok(stop_changed_checkout(repository, repo_updated, &[]));
+            return Ok(TaskResult::Failed(stop_changed_checkout(
+                repository,
+                repo_updated,
+            )));
         };
         original_heads.push(head);
     }
@@ -77,7 +80,10 @@ pub(super) fn apply_repository_updates(
                         )
                     })?
                 {
-                    return Ok(stop_changed_checkout(repository, repo_updated, &[]));
+                    return Ok(TaskResult::Failed(stop_changed_checkout(
+                        repository,
+                        repo_updated,
+                    )));
                 }
             }
             return Ok(TaskResult::Failed(reason));
@@ -93,29 +99,61 @@ pub(super) fn apply_repository_updates(
             .as_deref()
             != Some(original_head.as_str())
         {
-            return Ok(stop_changed_checkout(repository, repo_updated, &[]));
+            return Ok(TaskResult::Failed(stop_changed_checkout(
+                repository,
+                repo_updated,
+            )));
         }
         match plan_repository_update(ctx, repository, original_head, commit)? {
             RepositoryPlanReadiness::Ready(plan) => plans.push(plan),
             RepositoryPlanReadiness::Skipped(reason) => return Ok(TaskResult::unmet(reason)),
         }
     }
-    advance_worktrees(ctx, &plans, repo_updated)
+    let mut changed = Vec::new();
+    let result = advance_worktrees(ctx, &plans, repo_updated, &mut changed);
+    let applied = u32::try_from(changed.len()).unwrap_or(u32::MAX);
+    match result {
+        Ok(None) if changed.is_empty() => Ok(TaskResult::Ok),
+        Ok(None) => Ok(TaskStats::from_counts(applied, 0, 0, 0).finish()),
+        Ok(Some(reason)) if changed.is_empty() => Ok(TaskResult::Failed(reason)),
+        Ok(Some(reason)) => Ok(TaskStats::from_counts(applied, 0, 0, 1)
+            .with_message(partial_merge_reason(&reason, &changed))
+            .finish()),
+        Err(error) if changed.is_empty() => Err(error),
+        Err(error) => {
+            let interrupted = error
+                .downcast_ref::<ExecError>()
+                .is_some_and(ExecError::is_cancelled);
+            let completion = if interrupted {
+                BatchCompletion::Interrupted
+            } else {
+                BatchCompletion::Failed
+            };
+            Err(error.context(BatchReport::new(
+                TaskStats::from_counts(applied, 0, 0, u32::from(!interrupted)),
+                completion,
+                u32::from(interrupted),
+                0,
+            )))
+        }
+    }
 }
 
+/// Append each verified update before inspecting the next checkout. A recovery
+/// reason or an execution error must not discard earlier successful advances.
 fn advance_worktrees(
     ctx: &Context,
     plans: &[RepositoryUpdatePlan],
     repo_updated: &RepositoryUpdateSignal,
-) -> Result<TaskResult> {
-    let mut changed = Vec::new();
+    changed: &mut Vec<&'static str>,
+) -> Result<Option<String>> {
     for plan in plans {
         let repository = &plan.repository;
         let target = &repository.target;
         if checkout_inputs_changed(ctx, repository, &plan.original_head)
             .inspect_err(|_| repo_updated.mark_recovery_required())?
         {
-            return Ok(stop_changed_checkout(repository, repo_updated, &changed));
+            return Ok(Some(stop_changed_checkout(repository, repo_updated)));
         }
         let Some(commit) = plan.commit.as_deref() else {
             continue;
@@ -145,16 +183,16 @@ fn advance_worktrees(
                     let reason = target.reason(
                         "git merge did not leave the expected branch at the fetched commit; inspect the checkout before retrying",
                     );
-                    return Ok(TaskResult::Failed(partial_merge_reason(&reason, &changed)));
+                    return Ok(Some(reason));
                 }
                 repo_updated.mark_updated();
-                changed.push(target.description());
                 if index_is_unmerged(ctx, &target.root)? {
                     let reason = target.reason(
                         "unmerged paths remain after fast-forward; inspect the checkout before retrying",
                     );
-                    return Ok(TaskResult::Failed(partial_merge_reason(&reason, &changed)));
+                    return Ok(Some(reason));
                 }
+                changed.push(target.description());
                 ctx.log().action(
                     "update",
                     target.description(),
@@ -186,24 +224,15 @@ fn advance_worktrees(
                         "the checkout state could not be verified"
                     }
                 };
-                let reason = partial_merge_reason(
-                    &format!(
-                        "{merge_failure}: {detail}. Further tasks stopped. In {}, inspect 'git status --short --ignored', 'git diff', and 'git diff --cached'. Preserve any edits you need, then repair the checkout before retrying",
-                        target.root.display(),
-                    ),
-                    &changed,
-                );
-                return Ok(TaskResult::Failed(reason));
+                return Ok(Some(format!(
+                    "{merge_failure}: {detail}. Further tasks stopped. In {}, inspect 'git status --short --ignored', 'git diff', and 'git diff --cached'. Preserve any edits you need, then repair the checkout before retrying",
+                    target.root.display(),
+                )));
             }
         }
     }
 
-    let changed = changed.len();
-    Ok(if changed == 0 {
-        TaskResult::Ok
-    } else {
-        TaskStats::from_counts(u32::try_from(changed).unwrap_or(u32::MAX), 0, 0, 0).finish()
-    })
+    Ok(None)
 }
 
 fn index_is_unmerged(ctx: &Context, root: &std::path::Path) -> Result<bool> {
@@ -216,28 +245,20 @@ fn index_is_unmerged(ctx: &Context, root: &std::path::Path) -> Result<bool> {
 fn stop_changed_checkout(
     repository: &CheckedRepository,
     repo_updated: &RepositoryUpdateSignal,
-    changed: &[&str],
-) -> TaskResult {
+) -> String {
     // Nothing was merged here, but the remaining tasks' configuration was
     // loaded before this change. Continuing is no safer than after a bad merge.
     repo_updated.mark_recovery_required();
-    TaskResult::Failed(partial_merge_reason(
-        &repository.target.reason(
+    repository.target.reason(
             "checkout branch, commit, or tracked files changed during update; further tasks stopped, retry",
-        ),
-        changed,
-    ))
+    )
 }
 
 fn partial_merge_reason(reason: &str, changed: &[&str]) -> String {
-    if changed.is_empty() {
-        reason.to_owned()
-    } else {
-        format!(
-            "{reason}. Already advanced {}. Review the remaining checkout and retry update",
-            changed.join(", ")
-        )
-    }
+    format!(
+        "{reason}. Already advanced {}. Review the remaining checkout and retry update",
+        changed.join(", ")
+    )
 }
 
 fn checkout_inputs_changed(

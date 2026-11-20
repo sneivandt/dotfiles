@@ -1326,6 +1326,114 @@ fn partial_package_batch_preserves_changed_and_already_installed_counts() {
 }
 
 #[test]
+fn native_batch_timeout_preserves_observed_progress_and_retries_only_missing_packages() {
+    let root = tempfile::tempdir_in(".").unwrap();
+    let packages = packages(&[("first", true), ("second", true), ("third", true)]);
+    let mut mock = MockExecutor::new();
+    let mut inventory = "";
+    mock.expect_execute().times(6).returning(move |spec| {
+        if is_native_inventory(&spec) {
+            return Ok(ExecResult::success(inventory));
+        }
+        assert_eq!(spec.program(), "/usr/bin/paru");
+        assert!(spec.is_checked());
+        if inventory.is_empty() {
+            assert_eq!(
+                spec.arguments(),
+                ["-S", "--needed", "--noconfirm", "first", "second", "third"]
+            );
+            inventory = "first 1\nthird 1\n";
+            Err(ExecError::TimedOut {
+                command: "fixture batch".into(),
+                timeout: std::time::Duration::from_secs(30),
+                result: ExecResult::failure("", "fixture timeout", None),
+            })
+        } else {
+            assert_eq!(
+                spec.arguments(),
+                ["-S", "--needed", "--noconfirm", "second"]
+            );
+            inventory = "first 1\nsecond 1\nthird 1\n";
+            Ok(ExecResult::success(""))
+        }
+    });
+    let ctx = make_package_context(root.path().into(), None, Os::Linux, true, mock);
+    let operation = PackageInstallOperation::new(packages.get().clone(), PackageManager::Paru);
+    let error = process_operation(&ctx, &operation).unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<ExecError>(),
+        Some(ExecError::TimedOut { .. })
+    ));
+    let report = error.downcast_ref::<BatchReport>().unwrap();
+    assert_eq!(report.completion(), BatchCompletion::Failed);
+    assert_eq!(report.stats().changed_count(), 2);
+    assert_eq!(report.stats().failed_count(), 1);
+    assert!(format!("{error:#}").contains("second"));
+
+    let retry = process_operation(&ctx, &operation).unwrap();
+    let stats = task_batch(&retry);
+    assert_eq!(stats.changed_count(), 1);
+    assert_eq!(stats.already_ok_count(), 2);
+    assert_eq!(stats.failed_count(), 0);
+}
+
+#[test]
+fn failed_timeout_recheck_preserves_the_timeout_or_new_cancellation() {
+    for cancelled in [false, true] {
+        let root = tempfile::tempdir_in(".").unwrap();
+        let mut mock = MockExecutor::new();
+        let mut calls = 0;
+        mock.expect_execute().times(3).returning(move |spec| {
+            calls += 1;
+            match calls {
+                1 => {
+                    assert!(is_native_inventory(&spec));
+                    Ok(ExecResult::success(""))
+                }
+                2 => {
+                    assert_eq!(spec.program(), "/usr/bin/paru");
+                    Err(ExecError::TimedOut {
+                        command: "fixture batch".into(),
+                        timeout: std::time::Duration::from_secs(30),
+                        result: ExecResult::failure("", "fixture timeout", None),
+                    })
+                }
+                _ => {
+                    assert!(is_native_inventory(&spec));
+                    let result = ExecResult::failure("", "fixture recheck failure", None);
+                    if cancelled {
+                        Err(ExecError::Cancelled {
+                            command: "pacman -Q".into(),
+                            result,
+                        })
+                    } else {
+                        Err(ExecError::non_zero("pacman -Q", result))
+                    }
+                }
+            }
+        });
+        let ctx = make_package_context(root.path().into(), None, Os::Linux, true, mock);
+        let operation = PackageInstallOperation::new(
+            packages(&[("missing", true)]).get().clone(),
+            PackageManager::Paru,
+        );
+        let error = process_operation(&ctx, &operation).unwrap_err();
+        let detail = format!("{error:#}");
+        assert!(detail.contains("fixture timeout") && detail.contains("fixture recheck failure"));
+        let report = error.downcast_ref::<BatchReport>().unwrap();
+        let cause = error.downcast_ref::<ExecError>().unwrap();
+        if cancelled {
+            assert!(cause.is_cancelled());
+            assert_eq!(report.completion(), BatchCompletion::Interrupted);
+        } else {
+            assert!(matches!(cause, ExecError::TimedOut { .. }));
+            assert_eq!(report.completion(), BatchCompletion::Failed);
+        }
+        assert_eq!(report.stats().changed_count(), 0);
+    }
+}
+
+#[test]
 fn install_packages_propagates_batch_cancellation() {
     let root = tempfile::tempdir_in(".").unwrap();
     let packages = packages(&[("git", false)]);

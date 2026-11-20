@@ -110,6 +110,12 @@ mod tests {
             let profile = root.path().join(".profile");
             if let Some(content) = initial {
                 std::fs::write(&profile, content).unwrap();
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt as _;
+                    std::fs::set_permissions(&profile, std::fs::Permissions::from_mode(0o750))
+                        .unwrap();
+                }
             }
             let ctx = make_linux_context(root.path().to_path_buf(), None)
                 .with_home(root.path().to_path_buf())
@@ -175,7 +181,56 @@ mod tests {
                 expected,
                 "{case}"
             );
+            #[cfg(unix)]
+            if initial.is_some() {
+                use std::os::unix::fs::PermissionsExt as _;
+                assert_eq!(
+                    std::fs::metadata(&profile).unwrap().permissions().mode() & 0o777,
+                    0o750,
+                    "{case}"
+                );
+            }
         }
+    }
+
+    #[test]
+    fn later_profile_edits_do_not_accumulate_path_blocks() {
+        let root = tempfile::tempdir().unwrap();
+        let profile = root.path().join(".profile");
+        let ctx = make_linux_context(root.path().to_path_buf(), None)
+            .with_home(root.path().to_path_buf());
+        std::fs::write(&profile, "export EDITOR=vim\n").unwrap();
+        assert_eq!(
+            task_batch(&ConfigurePath.run(&ctx).unwrap()).changed_count(),
+            1
+        );
+        let installed = std::fs::read_to_string(&profile).unwrap();
+        assert_eq!(installed.matches("# Added by dotfiles\n").count(), 2);
+        let annotated = format!("# personal settings\n{installed}  # user comment\r\n\t\n");
+        std::fs::write(&profile, &annotated).unwrap();
+        for dry_run in [true, false] {
+            let result = ConfigurePath.run(&ctx.with_dry_run(dry_run)).unwrap();
+            assert_eq!(task_batch(&result).already_ok_count(), 1);
+            assert_eq!(std::fs::read_to_string(&profile).unwrap(), annotated);
+        }
+        let active = format!("{annotated}export PATH=/fixture/bin\n");
+        std::fs::write(&profile, &active).unwrap();
+        for dry_run in [true, false] {
+            let error = ConfigurePath.run(&ctx.with_dry_run(dry_run)).unwrap_err();
+            assert!(format!("{error:#}").contains("between the leading and trailing"));
+            assert_eq!(std::fs::read_to_string(&profile).unwrap(), active);
+        }
+        let repaired = annotated.replacen(
+            "export EDITOR=vim",
+            "export PATH=/fixture/bin\nexport EDITOR=vim",
+            1,
+        );
+        std::fs::write(&profile, &repaired).unwrap();
+        assert_eq!(
+            task_batch(&ConfigurePath.run(&ctx).unwrap()).already_ok_count(),
+            1
+        );
+        assert_eq!(std::fs::read_to_string(&profile).unwrap(), repaired);
     }
 
     #[test]

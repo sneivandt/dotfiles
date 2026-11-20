@@ -374,3 +374,43 @@ fn explain_uses_the_active_overlay_declaration_without_writing_state() {
     assert!(!actual.join("settings").exists());
     assert!(!repo.root_path().join(".git/dotfiles-run.lock").exists());
 }
+
+#[test]
+fn explain_reports_install_config_home_guard_but_still_explains_removal() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "symlinks.toml",
+            "[base]\nsymlinks=['config/probe','other']\n",
+        )
+        .with_symlink_source_content("config/probe", "config")
+        .with_symlink_source_content("other", "other")
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let source = repo.root_path().join("symlinks/other");
+    let target = home.path().join(".other");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&source, &target).unwrap();
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(&source, &target).unwrap();
+
+    // The guard covers the whole install task, not just paths under .config.
+    for (path, removal) in [
+        (".other", "replace link with an independent copy"),
+        (".config/probe", "leave target as it is"),
+    ] {
+        let result = common::cli_command(repo.root_path(), home.path(), None, "explain", "")
+            .env("XDG_CONFIG_HOME", home.path().join("elsewhere"))
+            .arg(path)
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "{result:?}");
+        let text = String::from_utf8(result.stdout).unwrap();
+        assert!(
+            text.contains("Update: blocked (symlink.unsupported-config-home:"),
+            "{text}"
+        );
+        assert!(text.contains(&format!("Remove: {removal}")), "{text}");
+    }
+    assert_eq!(std::fs::read_link(target).unwrap(), source);
+    assert_eq!(std::fs::read_dir(home.path()).unwrap().count(), 1);
+}

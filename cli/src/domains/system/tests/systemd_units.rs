@@ -474,6 +474,31 @@ fn wsl_systemd_availability_accepts_running_or_degraded_managers() {
 }
 
 #[test]
+fn wsl_manager_inspection_errors_are_not_unavailable_states() {
+    let task = systemd_task("example.service", UnitScope::User, true);
+    for (stdout, stderr) in [
+        ("unknown\n", "Failed to query system state: Access denied"),
+        ("", "Failed to connect to bus: Permission denied"),
+    ] {
+        for dry_run in [false, true] {
+            let executor = script().command(
+                systemctl(&["is-system-running"]),
+                Ok(ExecResult::failure(stdout, stderr, Some(1))),
+            );
+            let ctx = make_context(
+                "/fixture".into(),
+                None,
+                Platform::new_wsl(),
+                Arc::new(executor),
+            )
+            .with_dry_run(dry_run);
+            let error = task.run(&ctx).unwrap_err();
+            assert!(format!("{error:#}").contains(stderr), "{error:#}");
+        }
+    }
+}
+
+#[test]
 fn run_skips_daemon_reload_in_dry_run() {
     let task = systemd_task("dunst.service", UnitScope::User, true);
     let executor = script()

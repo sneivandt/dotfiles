@@ -1254,6 +1254,16 @@ fn check_partial_repository_refresh(ignored: bool) {
     let (status, text) = update();
     assert!(!status.success(), "{text}");
     assert!(text.contains("Already advanced repository"), "{text}");
+    let history = read_retained_log(&home.join("logs"), &["--task", "repository", "--raw"]);
+    let outcome = history
+        .lines()
+        .filter_map(|line| line.split_once(" [record] "))
+        .map(|(_, json)| serde_json::from_str::<serde_json::Value>(json).unwrap())
+        .find(|r| r["type"] == "task_result")
+        .expect("recorded repository result");
+    assert_eq!(outcome["status"], "failed");
+    assert_eq!(outcome["actions"]["applied"], 1, "{outcome}");
+    assert_eq!(outcome["actions"]["failed"], 1);
     assert_ne!(
         git(&root, &["rev-parse", "HEAD"]),
         initial_main,

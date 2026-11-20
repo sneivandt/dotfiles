@@ -23,7 +23,9 @@ are present; it does not pin extension versions or configure their preferences.
 
 After waiting for package tasks, finds an editor CLI, reads installed extensions, and
 installs missing ones. After installing, Dotfiles queries the inventory again and reports
-any extensions that are still missing. If no CLI is available, the task is skipped.
+any extensions that are still missing. If only some installs succeeded, the task fails,
+counts the confirmed installs, and names the missing IDs. Retrying installs only the
+extensions still missing. If no CLI is available, the task is skipped.
 
 The search prefers `code-insiders` over `code` on Linux, and
 `code-insiders.cmd` over `code.cmd` on Windows. On Linux, a Dotfiles

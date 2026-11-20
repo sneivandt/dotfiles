@@ -189,6 +189,10 @@ pub fn log_thread_name() -> String {
     "?".to_string()
 }
 
+fn needs_structured_context(context: &str) -> bool {
+    context.contains([']', '\r', '\n', '\0'])
+}
+
 /// The run log: every event, in the order it actually happened.
 ///
 /// Written to one file per run in the dotfiles log directory
@@ -304,7 +308,7 @@ impl RunLog {
         match serde_json::to_string(&StoredRecord::new(context, record)) {
             Ok(message) => {
                 // The JSON envelope retains identities that cannot fit the text header.
-                let header_context = if context.contains([']', '\r', '\n']) {
+                let header_context = if needs_structured_context(context) {
                     "record-context"
                 } else {
                     context
@@ -334,7 +338,7 @@ impl RunLog {
         if !multiline && clean.trim().is_empty() {
             return;
         }
-        if multiline || context.contains([']', '\r', '\n']) {
+        if multiline || clean.contains('\0') || needs_structured_context(context) {
             self.record_in_context(
                 context,
                 Record::Message {
@@ -1244,7 +1248,11 @@ mod tests {
 
     #[test]
     fn run_log_preserves_contexts_with_record_delimiters_and_line_breaks() {
-        for context in ["overlay:before] [after", "overlay:first\r\nsecond"] {
+        for context in [
+            "overlay:before] [after",
+            "overlay:first\r\nsecond",
+            "script\0path",
+        ] {
             let (run_log, _tmp) = isolated_run_log();
             run_log.emit_task(LogEvent::Info, context, " \x1b[32msingle line\x1b[0m ");
             run_log.emit_task(LogEvent::Info, context, " \t ");
@@ -1258,6 +1266,7 @@ mod tests {
             );
 
             let content = fs::read_to_string(run_log.path()).unwrap();
+            assert!(!content.contains('\0'), "the log must remain a text file");
             let lines: Vec<_> = content
                 .lines()
                 .filter(|line| !line.starts_with('#'))
@@ -1277,6 +1286,16 @@ mod tests {
                     if task_id == context && *elapsed_us == 42)
             );
         }
+    }
+
+    #[test]
+    fn nul_in_single_line_message_is_retained_without_binary_log_bytes() {
+        let (log, _tmp) = isolated_run_log();
+        log.emit(LogEvent::Debug, "one\0two");
+        let contents = fs::read_to_string(log.path()).unwrap();
+        assert!(!contents.contains('\0'));
+        let stored = contents.lines().find_map(StoredRecord::from_line).unwrap();
+        assert!(matches!(stored.record, Record::Message { text, .. } if text == "one\0two"));
     }
 
     #[test]

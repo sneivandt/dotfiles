@@ -5,8 +5,8 @@ use crate::domains::editors::resources::vscode_extension::{
     managed_insiders_unavailable,
 };
 use crate::engine::{
-    Context, ProcessOpts, Requirement, RequirementState, Task, TaskResult, process_requirement,
-    process_resources, process_resources_with_cache, task_metadata,
+    Context, ProcessOpts, Requirement, RequirementState, Task, TaskResult, TaskStats,
+    process_requirement, process_resources, process_resources_with_cache, task_metadata,
 };
 use crate::infra::logging::OutputExt as _;
 use crate::infra::provisioning::{DEFERRED_EXTENSIONS_IDS, resuming_extensions};
@@ -117,14 +117,29 @@ impl Task for InstallVsCodeExtensions {
             if !ctx.dry_run()
                 && matches!(&result, TaskResult::Batch(stats) if stats.changed_count() > 0 && stats.failed_count() == 0)
             {
-                let observed = get_installed_extensions(&cmd, ctx.executor())?;
+                let observed = get_installed_extensions(&cmd, ctx.executor())
+                    .context("could not verify which VS Code extensions were installed")?;
                 let mut missing: Vec<_> = seen.difference(&observed).map(String::as_str).collect();
-                missing.sort_unstable();
-                anyhow::ensure!(
-                    missing.is_empty(),
-                    "VS Code did not report these extensions after installation: {}",
-                    missing.join(", ")
-                );
+                if !missing.is_empty() {
+                    missing.sort_unstable();
+                    let present = seen.len() - missing.len();
+                    let already_ok = seen
+                        .intersection(&observed)
+                        .filter(|id| installed.contains(*id))
+                        .count();
+                    let count = |n| u32::try_from(n).unwrap_or(u32::MAX);
+                    return Ok(TaskStats::from_counts(
+                        count(present - already_ok),
+                        count(already_ok),
+                        0,
+                        count(missing.len()),
+                    )
+                    .with_message(format!(
+                        "VS Code did not report these extensions after installation: {}",
+                        missing.join(", ")
+                    ))
+                    .finish());
+                }
             }
             Ok(result)
         })
@@ -216,6 +231,22 @@ mod tests {
             .returning(move |_| Ok(ExecResult::success(output)));
     }
 
+    fn assert_partial_install_record(task: &InstallVsCodeExtensions, ctx: &Context) {
+        use crate::test_helpers::CapturingOutput;
+        let output = Arc::new(CapturingOutput::default());
+        let status =
+            crate::engine::execute(task, &ctx.with_log(Arc::<CapturingOutput>::clone(&output)));
+        assert_eq!(status, crate::infra::logging::TaskStatus::Failed);
+        let records = output.records();
+        let [entry] = records.as_slice() else {
+            panic!("expected one task result")
+        };
+        assert_eq!((entry.actions.applied, entry.actions.failed), (1, 1));
+        assert!(entry.message.as_deref().unwrap().contains(
+            "VS Code did not report these extensions after installation: ms-python.python"
+        ));
+    }
+
     #[test]
     fn bulk_inventory_deduplicates_case_variants_and_converges() {
         for (dry_run, verified) in [(true, false), (false, true), (false, false)] {
@@ -260,11 +291,18 @@ mod tests {
                     &mut mock,
                     &mut sequence,
                     &launcher,
+                    &["--install-extension", "rust-lang.rust-analyzer", "--force"],
+                    "installed",
+                );
+                expect_code(
+                    &mut mock,
+                    &mut sequence,
+                    &launcher,
                     &["--list-extensions"],
                     if verified {
-                        "github.copilot\nMS-PYTHON.PYTHON\n"
+                        "github.copilot\nMS-PYTHON.PYTHON\nrust-lang.rust-analyzer\n"
                     } else {
-                        "github.copilot\n"
+                        "github.copilot\nrust-lang.rust-analyzer\n"
                     },
                 );
             }
@@ -274,7 +312,7 @@ mod tests {
                     &mut sequence,
                     &launcher,
                     &["--list-extensions"],
-                    "github.copilot\nMS-PYTHON.PYTHON\n",
+                    "github.copilot\nMS-PYTHON.PYTHON\nrust-lang.rust-analyzer\n",
                 );
             }
             let ctx = make_context(
@@ -284,22 +322,21 @@ mod tests {
                 Arc::new(mock),
             )
             .with_dry_run(dry_run)
-            .with_parallel(true);
+            .with_parallel(dry_run);
             let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![
                 "GitHub.Copilot".to_string(),
                 "github.copilot".to_string(),
                 "ms-python.python".to_string(),
                 "MS-PYTHON.PYTHON".to_string(),
+                "rust-lang.rust-analyzer".to_string(),
             ]));
 
-            let first = task.run(&ctx);
             if !dry_run && !verified {
-                let error = first.unwrap_err().to_string();
-                assert!(error.contains("did not report") && error.contains("ms-python.python"));
+                assert_partial_install_record(&task, &ctx);
                 continue;
             }
-            let first = first.unwrap();
-            assert_eq!(task_batch(&first).changed_count(), 1, "dry_run={dry_run}");
+            let first = task.run(&ctx).unwrap();
+            assert_eq!(task_batch(&first).changed_count(), 2, "dry_run={dry_run}");
             assert_eq!(
                 task_batch(&first).already_ok_count(),
                 1,
@@ -308,7 +345,7 @@ mod tests {
             if verified {
                 let repeated = task.run(&ctx).unwrap();
                 assert_eq!(task_batch(&repeated).changed_count(), 0);
-                assert_eq!(task_batch(&repeated).already_ok_count(), 2);
+                assert_eq!(task_batch(&repeated).already_ok_count(), 3);
             }
         }
     }

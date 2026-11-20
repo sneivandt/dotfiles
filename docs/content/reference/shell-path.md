@@ -34,6 +34,10 @@ file permissions and replace the content atomically.
 Open a new terminal to use the updated PATH. Existing processes keep the
 environment they inherited at startup. On Linux, loading also depends on the
 shell's startup files. Dotfiles also checks PATH at the end of the profile.
+Keep your shell commands between the two `# Added by dotfiles` blocks. Blank
+lines and comments after the last block are fine. If an edit moves a block
+into the middle of your code, the update asks you to put the commands back
+between the blocks rather than guessing which shell text it can remove.
 If your profile replaces PATH and then returns early, include
 `~/.local/bin` in that assignment. The [Bash invocation reference](https://www.gnu.org/software/bash/manual/html_node/Invoking-Bash.html)
 explains login and interactive shell modes; the managed

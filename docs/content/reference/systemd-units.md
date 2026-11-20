@@ -30,10 +30,11 @@ even if one failed. The first-login user service runs the launcher at
 when both tasks are selected.
 
 It needs systemctl, is excluded in CI, and inside WSL requires systemd already running
-or degraded. System units can require sudo. Without a user manager, it creates per-user
-enablement links for the next login. During Arch chroot provisioning it also configures
-system-unit links for the next boot, without querying, reloading, or starting a manager
-inside the chroot.
+or degraded. An offline WSL manager skips the task; a failed query reports an error
+instead of assuming the manager is offline. System units can require sudo. Without a
+user manager, it creates per-user enablement links for the next login. During Arch
+chroot provisioning it also configures system-unit links for the next boot, without
+querying, reloading, or starting a manager inside the chroot.
 
 Enabling a unit arranges activation through its install relationships, often
 at a later boot or login. Starting a unit activates it now. A timer can be

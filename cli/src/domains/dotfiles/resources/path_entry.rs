@@ -109,17 +109,37 @@ impl PathEntryResource {
         Self { dir, strategy }
     }
 
-    fn shell_profile_is_current(content: &str, line: &str) -> bool {
+    fn shell_profile_is_current(content: &str, line: &str) -> Result<bool> {
         let block = Self::shell_profile_block(line);
         let body = Self::split_shebang(content).1;
-        if body.starts_with(&block) && body.ends_with(&block) {
-            return true;
+        if let Some((before, after)) = body.rsplit_once(&block)
+            && (before.is_empty() || before.ends_with('\n'))
+        {
+            let only_comments = |text: &str| {
+                text.split('\n').all(|row| {
+                    let row = row.trim_start_matches([' ', '\t']);
+                    row.is_empty() || row.starts_with('#')
+                })
+            };
+            let managed_start = body.split_once(&block).is_some_and(|(leading, _)| {
+                (leading.is_empty() || leading.ends_with('\n')) && only_comments(leading)
+            });
+            let managed_end = only_comments(after);
+            if managed_start && managed_end {
+                return Ok(true);
+            }
+            // A single leading block is what we install into an empty profile.
+            // An interior match might be user shell code or here-document data.
+            anyhow::ensure!(
+                before.is_empty() || (!managed_start && !managed_end),
+                "a PATH block is no longer at the boundary of ~/.profile; place your shell commands between the leading and trailing '# Added by dotfiles' blocks before retrying"
+            );
         }
         let mut commands = body
             .lines()
             .map(str::trim)
             .filter(|s| !s.is_empty() && !s.starts_with('#'));
-        commands.next() == Some(line) && commands.next().is_none()
+        Ok(commands.next() == Some(line) && commands.next().is_none())
     }
 
     fn split_shebang(content: &str) -> (&str, &str) {
@@ -205,7 +225,7 @@ impl Resource for PathEntryResource {
             PathStrategy::ShellProfile { path, line } => {
                 let before = Self::shell_profile_contents(path)?;
                 let original = before.1.as_deref().unwrap_or_default();
-                if Self::shell_profile_is_current(original, line) {
+                if Self::shell_profile_is_current(original, line)? {
                     return Ok(ResourceChange::AlreadyCorrect);
                 }
                 let content = Self::shell_profile_with_export(original, line);
@@ -246,10 +266,8 @@ impl IntrinsicState for PathEntryResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
         match &self.strategy {
             PathStrategy::ShellProfile { path, line } => {
-                if Self::shell_profile_contents(path)?
-                    .1
-                    .is_some_and(|content| Self::shell_profile_is_current(&content, line))
-                {
+                let (_, content) = Self::shell_profile_contents(path)?;
+                if Self::shell_profile_is_current(content.as_deref().unwrap_or_default(), line)? {
                     Ok(ResourceState::Correct)
                 } else {
                     Ok(ResourceState::Missing)

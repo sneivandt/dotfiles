@@ -54,15 +54,22 @@ impl<'a> ConfigDocument<'a> {
 
 /// Read source text with the caller's required/optional absence policy.
 pub(crate) fn read_config(path: &Path, required: bool) -> Result<String> {
-    match std::fs::read_to_string(path) {
-        Ok(content) => Ok(content),
-        Err(error) if !required && error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(String::new())
-        }
-        Err(error) => {
-            Err(error).with_context(|| format!("Failed to read config file: {}", path.display()))
+    let result = std::fs::read_to_string(path);
+    if !required
+        && result
+            .as_ref()
+            .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+    {
+        // A broken conf/ link or declaration also reads as NotFound. Only a
+        // genuinely absent entry may fall back to the main configuration.
+        let entry = crate::infra::fs::resolve_target_entry(&std::path::absolute(path)?)
+            .with_context(|| format!("Failed to read config file: {}", path.display()))?;
+        if crate::infra::fs::symlink_metadata_optional(&entry, "inspect optional config")?.is_none()
+        {
+            return Ok(String::new());
         }
     }
+    result.with_context(|| format!("Failed to read config file: {}", path.display()))
 }
 
 #[cfg(test)]
@@ -120,6 +127,33 @@ mod tests {
             optional_error.to_string(),
             format!("Failed to parse TOML config: {}", path.display())
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn optional_config_follows_working_links_but_not_broken_ones() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let conf = root.path().join("conf");
+        let path = conf.join("settings.toml");
+        assert_eq!(read_config(&path, false).unwrap(), "");
+        symlink("declarations", &conf).unwrap();
+        let check_error = || {
+            let error = read_config(&path, false).expect_err("broken link is not optional");
+            assert!(format!("{error:#}").contains(&path.display().to_string()));
+            assert_eq!(
+                error.downcast_ref::<std::io::Error>().unwrap().kind(),
+                std::io::ErrorKind::NotFound
+            );
+        };
+        check_error();
+        std::fs::create_dir(root.path().join("declarations")).unwrap();
+        assert_eq!(read_config(&path, false).unwrap(), "");
+        symlink("active.toml", &path).unwrap();
+        check_error();
+        std::fs::write(conf.join("active.toml"), "[base]\n").unwrap();
+        assert_eq!(read_config(&path, false).unwrap(), "[base]\n");
     }
 
     #[test]

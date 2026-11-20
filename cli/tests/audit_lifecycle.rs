@@ -109,6 +109,57 @@ fn missing_overlay_cannot_replace_the_saved_selection_or_apply_base_settings() {
 
 #[cfg(unix)]
 #[test]
+fn dangling_optional_overlay_config_cannot_revert_an_installed_preference() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "agent-settings.toml",
+            "[base]\nsettings=[{target='copilot',key='model',value='base'}]\n",
+        )
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let overlay = tempfile::tempdir().unwrap();
+    let conf = overlay.path().join("conf");
+    std::fs::create_dir(&conf).unwrap();
+    let active = overlay.path().join("active.toml");
+    std::fs::write(
+        &active,
+        "[base]\nsettings=[{target='copilot',key='model',value='overlay'}]\n",
+    )
+    .unwrap();
+    std::os::unix::fs::symlink("../active.toml", conf.join("agent-settings.toml")).unwrap();
+    let update = |selection| {
+        common::cli_command(
+            repo.root_path(),
+            home.path(),
+            selection,
+            "update",
+            "agent-settings",
+        )
+    };
+    output(&mut update(Some(overlay.path())), true);
+    let document = home.path().join(".copilot/settings.json");
+    let installed = std::fs::read(&document).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&installed)
+            .unwrap()
+            .get("model")
+            .and_then(serde_json::Value::as_str),
+        Some("overlay")
+    );
+    std::fs::remove_file(active).unwrap();
+    for preview in [true, false] {
+        let mut command = update(None);
+        if preview {
+            command.arg("--dry-run");
+        }
+        let message = output(&mut command, false);
+        assert!(message.contains("conf/agent-settings.toml"), "{message}");
+        assert_eq!(std::fs::read(&document).unwrap(), installed);
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn nonregular_log_entries_cannot_block_update() {
     let repo = common::IntegrationTestContext::new();
     let home = tempfile::tempdir().unwrap();

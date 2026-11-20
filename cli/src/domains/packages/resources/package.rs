@@ -101,8 +101,8 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns an error if a batch cannot start, is cancelled, cannot be
-    /// reconciled, or fails after installing every requested package.
+    /// Returns an error if a batch cannot start, is cancelled, times out,
+    /// cannot be reconciled, or fails after installing every requested package.
     fn install_missing(
         &self,
         resources: &[&PackageResource],
@@ -122,11 +122,12 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
             }
             match executor.execute(CommandSpec::new(program).args(&args)) {
                 Ok(_) => {}
-                Err(error @ ExecError::NonZero { .. }) => {
-                    let installed = self.query_installed(executor).with_context(|| {
-                        format!("rechecking installed packages after batch failure: {error}")
-                    })?;
-                    return reconcile_failed_batch(resources, &installed, error);
+                Err(error @ (ExecError::NonZero { .. } | ExecError::TimedOut { .. })) => {
+                    return reconcile_failed_batch(
+                        resources,
+                        self.query_installed(executor),
+                        error,
+                    );
                 }
                 Err(error) => return Err(error.into()),
             }
@@ -201,13 +202,33 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
 
 fn reconcile_failed_batch(
     resources: &[&PackageResource],
-    installed: &HashSet<String>,
+    inventory: Result<HashSet<String>>,
     error: ExecError,
 ) -> Result<PackageInstallReport> {
     let mut report = PackageInstallReport::new();
+    let timed_out = matches!(error, ExecError::TimedOut { .. });
+    let installed = match inventory {
+        Ok(installed) => installed,
+        Err(cause) => {
+            if timed_out
+                && !cause
+                    .downcast_ref::<ExecError>()
+                    .is_some_and(ExecError::is_cancelled)
+            {
+                // No observed item counts. Keep both errors and fail the batch.
+                let cause = cause
+                    .context("rechecking installed packages")
+                    .context(error);
+                return Err(report.stopped(cause, 0, 0));
+            }
+            return Err(cause.context(format!(
+                "rechecking installed packages after batch failure: {error}"
+            )));
+        }
+    };
     for resource in resources {
         if matches!(
-            resource.state_from_installed(installed),
+            resource.state_from_installed(&installed),
             ResourceState::Correct
         ) {
             report.record_applied(resource.name.clone());
@@ -215,9 +236,9 @@ fn reconcile_failed_batch(
             report.record_failure(resource.name.clone(), error.to_string());
         }
     }
-    if !report.has_failures() {
-        // A post-transaction hook can fail after every requested package was
-        // installed. Do not turn that failed transaction into a successful task.
+    if timed_out || !report.has_failures() {
+        // Keep a timeout typed, and never turn a failed post-transaction hook
+        // into success just because all requested packages are now present.
         return Err(report.stopped(error.into(), 0, 0));
     }
     Ok(report)

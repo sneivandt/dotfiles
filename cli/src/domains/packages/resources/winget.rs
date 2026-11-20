@@ -244,15 +244,18 @@ impl PackageProvider for WingetProvider {
                 Ok((ResourceChange::unusable(format!("{name}: {reason}")), false))
             }
             InstallVerdict::RetryWithoutScope | InstallVerdict::Failed => {
-                let detail = if result.stderr.trim().is_empty() {
-                    result.stdout.trim().to_string()
-                } else {
-                    format!("{}\n{}", result.stdout.trim(), result.stderr.trim())
+                let status = match result.code {
+                    Some(code) if code < 0 => format!("exit {code}, {code:#010X}"),
+                    Some(code) => format!("exit {code}"),
+                    None => "no exit code".to_string(),
                 };
-                Ok((
-                    ResourceChange::unusable(format!("winget install failed: {detail}")),
-                    false,
-                ))
+                let reason = format!("winget install failed ({status})");
+                let reason = match (result.stdout.trim(), result.stderr.trim()) {
+                    ("", "") => reason,
+                    ("", text) | (text, "") => format!("{reason}: {text}"),
+                    (stdout, stderr) => format!("{reason}: {stdout}\n{stderr}"),
+                };
+                Ok((ResourceChange::unusable(reason), false))
             }
         }
     }
@@ -392,18 +395,23 @@ mod tests {
 
     #[test]
     fn winget_unrecognized_exit_preserves_diagnostics_without_retrying() {
-        for code in [Some(1), Some(-1), None] {
+        for (code, status) in [
+            (Some(73), "exit 73"),
+            (Some(-1), "exit -1, 0xFFFFFFFF"),
+            (None, "no exit code"),
+        ] {
             for (stdout, stderr, detail) in [
-                (" No package found \n", "", "No package found"),
+                ("", "", ""),
+                (" No package found \n", "", ": No package found"),
                 (
                     " Installer output \n",
                     " Access denied \n",
-                    "Installer output\nAccess denied",
+                    ": Installer output\nAccess denied",
                 ),
             ] {
                 assert_eq!(
                     install_with_result(ExecResult::failure(stdout, stderr, code)),
-                    ResourceChange::unusable(format!("winget install failed: {detail}")),
+                    ResourceChange::unusable(format!("winget install failed ({status}){detail}")),
                     "exit={code:?}, stderr={stderr:?}",
                 );
             }
@@ -436,7 +444,10 @@ mod tests {
                     "no applicable installer",
                     Some(exit_code::NO_APPLICABLE_INSTALLER),
                 ),
-                ResourceChange::unusable("winget install failed: \nno applicable installer"),
+                ResourceChange::unusable(format!(
+                    "winget install failed (exit {}, 0x8A150010): no applicable installer",
+                    exit_code::NO_APPLICABLE_INSTALLER
+                )),
             ),
         ] {
             assert_eq!(

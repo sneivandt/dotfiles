@@ -4,6 +4,8 @@
 //! resource owns one dot-separated key path and writes only that key, preserving
 //! unmanaged preferences and integration configuration.
 
+mod json;
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
@@ -117,35 +119,6 @@ impl AgentSettingResource {
             },
             None => ResourceState::Missing,
         }
-    }
-
-    fn set_in_json_document(&self, document: &mut Value) -> Result<()> {
-        let segments: Vec<&str> = self.key.split('.').collect();
-        let Some((last, parents)) = segments.split_last() else {
-            return Ok(());
-        };
-
-        let mut node = document;
-        for segment in parents {
-            let object = node
-                .as_object_mut()
-                .with_context(|| format!("settings key '{}' is not a JSON object", self.key))?;
-            node = object
-                .entry((*segment).to_string())
-                .or_insert_with(|| Value::Object(Map::new()));
-            if !node.is_object() {
-                anyhow::bail!(
-                    "cannot set '{}': '{segment}' is not a JSON object",
-                    self.key
-                );
-            }
-        }
-
-        let object = node
-            .as_object_mut()
-            .with_context(|| format!("settings key '{}' is not a JSON object", self.key))?;
-        object.insert((*last).to_string(), toml_value_to_json(&self.desired_value));
-        Ok(())
     }
 
     #[cfg(test)]
@@ -311,24 +284,10 @@ fn planned_document(
     let contents = std::str::from_utf8(before.unwrap_or_default())?;
     let mut serialized = match first.format {
         SettingsFormat::Json => {
-            let mut document = if contents.trim().is_empty() {
-                Value::Object(Map::new())
-            } else {
-                Value::Object(serde_json::from_str::<Map<String, Value>>(contents)?)
-            };
-            let mut changed = false;
-            for setting in settings {
-                if setting.current_json_value(&document)
-                    != Some(&toml_value_to_json(&setting.desired_value))
-                {
-                    setting.set_in_json_document(&mut document)?;
-                    changed = true;
-                }
-            }
-            if !changed {
+            let Some(serialized) = json::plan(contents, settings)? else {
                 return Ok(None);
-            }
-            serde_json::to_string_pretty(&document)?
+            };
+            serialized
         }
         SettingsFormat::Toml => {
             let current: toml::Table = toml::from_str(contents)?;
@@ -550,11 +509,71 @@ mod tests {
 
     #[test]
     fn json_set_preserves_nested_siblings() {
-        let mut document = serde_json::json!({ "footer": { "showQuota": false } });
         let resource = json_resource("footer.showBranch", toml::Value::Boolean(true));
-        resource.set_in_json_document(&mut document).unwrap();
+        let before = r#"{"f\u006foter":{"showQuota":false,"extra":[{"$serde_json::private::Number":"},\""},1.2300e+02]}}"#;
+        let updated = json::plan(before, &[resource]).unwrap().unwrap();
+        let document: Value = serde_json::from_str(&updated).unwrap();
         assert_eq!(document["footer"]["showQuota"], serde_json::json!(false));
         assert_eq!(document["footer"]["showBranch"], serde_json::json!(true));
+        assert_eq!(
+            document["footer"]["extra"][0]["$serde_json::private::Number"],
+            "},\""
+        );
+        assert!(updated.contains("1.2300e+02"), "{updated}");
+    }
+
+    #[test]
+    fn json_apply_preserves_unmanaged_numeric_tokens() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let path = dir.path().join("settings.json");
+        let scale = format!("1.{}1", "0".repeat(17));
+        let id = (u128::from(u64::MAX) + 2).to_string();
+        let before =
+            format!(r#"{{"footer":{{"showBranch":false,"scale":{scale}}},"integrationId":{id}}}"#);
+        std::fs::write(&path, &before).unwrap();
+        let document = AgentSettingsDocument::group(vec![AgentSettingResource::new(
+            "copilot".into(),
+            "footer.showBranch".into(),
+            true.into(),
+            SettingsFormat::Json,
+            path.clone(),
+        )])
+        .unwrap()
+        .pop()
+        .unwrap();
+        assert!(matches!(
+            document.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+        assert_eq!(document.apply().unwrap(), ResourceChange::Applied);
+
+        let after = std::fs::read_to_string(&path).unwrap();
+        let parsed: Value = serde_json::from_str(&after).unwrap();
+        assert_eq!(parsed["footer"]["showBranch"], true);
+        // Compare tokens, not numbers read back through the same lossy parser.
+        let fields: Vec<_> = after
+            .split(['{', '}', ','])
+            .filter_map(|field| field.split_once(':'))
+            .map(|(key, value)| (key.trim(), value.trim()))
+            .collect();
+        assert!(fields.contains(&(r#""scale""#, scale.as_str())), "{after}");
+        assert!(
+            fields.contains(&(r#""integrationId""#, id.as_str())),
+            "{after}"
+        );
+
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH)
+            .unwrap();
+        let modified = path.metadata().unwrap().modified().unwrap();
+        assert_eq!(document.current_state().unwrap(), ResourceState::Correct);
+        assert_eq!(document.apply().unwrap(), ResourceChange::AlreadyCorrect);
+        assert_eq!(path.metadata().unwrap().modified().unwrap(), modified);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), after);
     }
 
     #[test]

@@ -1,9 +1,9 @@
 use anyhow::{Context as _, Result};
 use std::path::{Component, Path};
 
-use super::platform::{create_symlink, is_link_like, rename_noreplace};
+use super::platform::{create_symlink, is_link_like};
 use crate::infra::exec::Executor;
-use crate::infra::fs::{TempGuard, ensure_parent_dir};
+use crate::infra::fs::{TempGuard, ensure_parent_dir, rename_noreplace};
 use crate::infra::fs::{link_points_to_source, paths_equal, same_entry};
 
 /// Stage a copy beside the target before replacing its managed link.

@@ -76,7 +76,9 @@ TOML and INI fragments are validated even when the destination is absent.
 INI cannot assign different values to the same key within one section. Identical
 repeated assignments are allowed. Fragment keys and section names must be nonempty,
 and section headers must have matching, non-nested brackets. Bare flags such as
-`Color` remain valid inside a section.
+`Color` remain valid inside a section. If an installed INI file has a malformed
+section header, fix the reported line before retrying. Dotfiles cannot tell which
+section owns the settings that follow it.
 
 The Arch `paccache` timer uses a dedicated drop-in and environment file. Systemd
 accumulates `EnvironmentFile=` directives; treating them as ordinary INI keys

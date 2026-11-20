@@ -26,6 +26,7 @@ pub(crate) use identity::{link_points_to_source, path_identity, paths_equal, sam
 pub(crate) use mutation::open_in_place;
 #[cfg(unix)]
 pub(crate) use mutation::require_single_link;
+pub(crate) use place::rename_noreplace;
 pub use place::{rename_into_place, write_atomic, write_atomic_checked};
 pub use temp::TempGuard;
 

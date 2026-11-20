@@ -582,18 +582,22 @@ fn ini_settings(
     let mut section = None::<String>;
     let mut settings = Vec::new();
     let mut desired_values = std::collections::BTreeMap::new();
-    for raw in content.lines() {
+    for (index, raw) in content.lines().enumerate() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with(['#', ';']) {
             continue;
         }
-        if strict && line.starts_with('[') {
-            let name = line
-                .strip_prefix('[')
-                .and_then(|rest| rest.strip_suffix(']'));
-            anyhow::ensure!(
-                name.is_some_and(|name| !name.trim().is_empty() && !name.contains(['[', ']'])),
-                "INI fragment contains an invalid section header: {line}"
+        if let Some(rest) = line.strip_prefix('[')
+            && !rest
+                .strip_suffix(']')
+                .is_some_and(|name| !name.trim().is_empty() && !name.contains(['[', ']']))
+        {
+            if strict {
+                bail!("INI fragment contains an invalid section header: {line}");
+            }
+            bail!(
+                "invalid section header in installed INI file at line {}",
+                index + 1
             );
         }
         if let Some(header) = ini_section(line) {
@@ -641,6 +645,7 @@ fn contains_ini(current: &str, fragment: &str) -> anyhow::Result<bool> {
 
 #[cfg(any(unix, test))]
 fn merge_ini(current: &str, fragment: &str) -> anyhow::Result<String> {
+    ini_settings(current, false)?;
     let mut lines = current.lines().map(str::to_string).collect::<Vec<_>>();
     for (section, key, value) in ini_settings(fragment, true)? {
         ensure_ini_key(&mut lines, &section, &key, value.as_deref());
@@ -2002,11 +2007,6 @@ mod tests {
                 "INI fragment contains a setting outside a section: Flag",
             ),
             (
-                "malformed section-like flag outside a section",
-                "\t[not-a-section\t\n",
-                "INI fragment contains an invalid section header: [not-a-section",
-            ),
-            (
                 "first invalid line wins",
                 "bad setting\nkey=value\n",
                 "INI fragment contains an invalid bare setting: bad setting",
@@ -2033,6 +2033,30 @@ mod tests {
                 )],
                 "{label}"
             );
+        }
+    }
+
+    #[test]
+    fn malformed_ini_section_cannot_claim_a_key_from_another_section() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = dunce::canonicalize(fixture.path()).unwrap();
+        fs::create_dir(root.join("system")).unwrap();
+        fs::write(root.join("system/fragment"), "[boot]\ncommand=managed\n").unwrap();
+        let target = root.join("wsl.conf");
+        let mut executor = MockExecutor::new();
+        executor.expect_execute().never();
+        let resource = fixture_resource(
+            entry(&root, &target, "fragment", MergeStrategy::Ini),
+            Arc::new(executor),
+        );
+        for value in ["managed", "site-local"] {
+            let original = format!("[boot]\n[other\ncommand={value}\n");
+            fs::write(&target, &original).unwrap();
+            assert!(merge_ini(&original, "[boot]\ncommand=managed\n").is_err());
+            assert!(matches!(resource.current_state().unwrap(),
+                ResourceState::Invalid { reason } if reason.contains("line 2")));
+            assert!(resource.apply().is_err());
+            assert_eq!(fs::read_to_string(&target).unwrap(), original);
         }
     }
 
@@ -2413,9 +2437,9 @@ mod tests {
                 "[options]\nkeep=yes\nmanaged=new\n# trailing\n[options]\n",
             ),
             (
-                "bare settings and malformed section-like lines keep their positions",
-                "[options]\n# managed=comment\nBareFlag\n[not-a-section\n; trailing\n",
-                "[options]\n# managed=comment\nBareFlag\n[not-a-section\nmanaged=new\n; trailing\n",
+                "bare settings keep their positions",
+                "[options]\n# managed=comment\nBareFlag\n; trailing\n",
+                "[options]\n# managed=comment\nBareFlag\nmanaged=new\n; trailing\n",
             ),
         ] {
             let fragment = "[options]\nmanaged=new\n";

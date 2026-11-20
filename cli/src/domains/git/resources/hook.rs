@@ -1,12 +1,14 @@
 //! Git hook resource.
-use crate::infra::fs::content_hash;
-use std::path::PathBuf;
+use crate::infra::fs::{content_hash, rename_noreplace};
+use anyhow::Context as _;
+use std::path::{Path, PathBuf};
 
 use crate::engine::{
     IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
 };
 
 pub(crate) const OWNERSHIP_EXTENSION: &str = "dotfiles-owned";
+pub(crate) const REMOVAL_EXTENSION: &str = "dotfiles-removing";
 
 /// A git hook file resource that can be checked, installed, and removed.
 #[derive(Debug, Clone)]
@@ -47,25 +49,34 @@ impl HookFileResource {
         }
     }
 
-    fn target_contents(&self) -> ResourceResult<Option<Vec<u8>>> {
-        let Some(metadata) =
-            crate::infra::fs::symlink_metadata_optional(&self.target, "stat hook")?
-        else {
+    fn check_pending_removal(&self) -> anyhow::Result<()> {
+        let saved = self.target.with_extension(REMOVAL_EXTENSION);
+        anyhow::ensure!(
+            crate::infra::fs::symlink_metadata_optional(&saved, "inspect saved hook")?.is_none(),
+            "unfinished removal of {}: inspect {} and restore it if the hook is missing, or move it somewhere safe before retrying",
+            self.target.display(),
+            saved.display()
+        );
+        Ok(())
+    }
+
+    fn target_contents(path: &Path) -> ResourceResult<Option<Vec<u8>>> {
+        let Some(metadata) = crate::infra::fs::symlink_metadata_optional(path, "stat hook")? else {
             return Ok(None);
         };
         if !metadata.is_file() || metadata.is_symlink() {
             return Err(anyhow::anyhow!(
                 "preserving foreign hook {}; move it aside before installing dotfiles hooks",
-                self.target.display()
+                path.display()
             )
             .into());
         }
-        Ok(Some(crate::infra::fs::read_bytes(&self.target)?))
+        Ok(Some(crate::infra::fs::read_bytes(path)?))
     }
 }
 
 #[cfg(unix)]
-fn git_can_execute(path: &std::path::Path) -> ResourceResult<bool> {
+fn git_can_execute(path: &Path) -> ResourceResult<bool> {
     match nix::unistd::access(path, nix::unistd::AccessFlags::X_OK) {
         Ok(()) => Ok(true),
         Err(nix::errno::Errno::EACCES) => Ok(false),
@@ -84,11 +95,12 @@ impl Resource for HookFileResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
+        self.check_pending_removal()?;
         if self.targets_source()? {
             return Ok(ResourceChange::AlreadyCorrect);
         }
         let source = crate::infra::fs::read_bytes(&self.source)?;
-        let before = self.target_contents()?;
+        let before = Self::target_contents(&self.target)?;
         if let Some(contents) = &before
             && *contents != source
             && !self
@@ -102,10 +114,7 @@ impl Resource for HookFileResource {
             ).into());
         }
         crate::infra::fs::ensure_parent_dir(&self.target)?;
-        let parent = self
-            .target
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."));
+        let parent = self.target.parent().unwrap_or_else(|| Path::new("."));
         let (mut staged, file) =
             crate::infra::fs::TempGuard::create_unique_file(parent, ".dotfiles-hook", "tmp")?;
         drop(file);
@@ -123,7 +132,7 @@ impl Resource for HookFileResource {
             }
         }
 
-        if self.target_contents()? != before {
+        if Self::target_contents(&self.target)? != before {
             return Err(anyhow::anyhow!(
                 "hook {} changed during installation; retry",
                 self.target.display()
@@ -150,10 +159,24 @@ impl Resource for HookFileResource {
 
 impl RemovableResource for HookFileResource {
     fn removal_state(&self) -> ResourceResult<ResourceState> {
+        self.check_pending_removal()?;
         if self.targets_source()? {
             return Ok(ResourceState::Missing);
         }
-        let Some(contents) = self.target_contents()? else {
+        self.ownership_state_at(&self.target)
+    }
+
+    fn remove(&self) -> ResourceResult<ResourceChange> {
+        if self.removal_state()? != ResourceState::Correct {
+            return Ok(ResourceChange::AlreadyCorrect);
+        }
+        self.remove_verified_hook()
+    }
+}
+
+impl HookFileResource {
+    fn ownership_state_at(&self, path: &Path) -> ResourceResult<ResourceState> {
+        let Some(contents) = Self::target_contents(path)? else {
             return Ok(ResourceState::Missing);
         };
         let hash = content_hash(&contents);
@@ -169,27 +192,48 @@ impl RemovableResource for HookFileResource {
         }
     }
 
-    fn remove(&self) -> ResourceResult<ResourceChange> {
-        if self.targets_source()? {
-            return Ok(ResourceChange::AlreadyCorrect);
-        }
-        if self.removal_state()? != ResourceState::Correct {
-            return Ok(ResourceChange::AlreadyCorrect);
-        }
-        if crate::infra::fs::remove_file_if_present(&self.target, "stat hook")? {
+    fn remove_verified_hook(&self) -> ResourceResult<ResourceChange> {
+        let saved = self.target.with_extension(REMOVAL_EXTENSION);
+        rename_noreplace(&self.target, &saved)
+            .with_context(|| format!("saving {} before removal", self.target.display()))?;
+        self.finish_removal(&saved)
+    }
+
+    fn finish_removal(&self, saved: &Path) -> ResourceResult<ResourceChange> {
+        // Check the entry we actually moved, not the name another writer can replace.
+        let remove = || -> anyhow::Result<()> {
+            anyhow::ensure!(
+                self.ownership_state_at(saved)? == ResourceState::Correct,
+                "hook {} changed during removal",
+                self.target.display()
+            );
             crate::infra::fs::remove_file_if_present(
                 &self.ownership_path(),
                 "stat hook ownership",
             )?;
-            Ok(ResourceChange::Applied)
-        } else {
-            Ok(ResourceChange::AlreadyCorrect)
+            Ok(())
+        };
+        if let Err(error) = remove() {
+            if let Err(restore) = rename_noreplace(saved, &self.target) {
+                return Err(error
+                    .context(format!(
+                        "could not restore {} ({restore}); original entry saved at {}",
+                        self.target.display(),
+                        saved.display()
+                    ))
+                    .into());
+            }
+            return Err(error.into());
         }
+        std::fs::remove_file(saved)
+            .with_context(|| format!("removing saved hook {}", saved.display()))?;
+        Ok(ResourceChange::Applied)
     }
 }
 
 impl IntrinsicState for HookFileResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
+        self.check_pending_removal()?;
         if let Some(reason) = crate::infra::fs::missing_source_reason(&self.source)? {
             return Ok(ResourceState::Invalid { reason });
         }
@@ -551,6 +595,61 @@ mod tests {
     }
 
     #[test]
+    fn removal_preserves_hook_replaced_after_ownership_check() {
+        let dir = tempfile::tempdir().unwrap();
+        let resource =
+            HookFileResource::new(dir.path().join("source"), dir.path().join("pre-commit"));
+        std::fs::write(&resource.source, "managed").unwrap();
+        resource.apply().unwrap();
+        assert_eq!(resource.removal_state().unwrap(), ResourceState::Correct);
+        std::fs::write(&resource.target, "locally replaced").unwrap();
+        let result = resource.remove_verified_hook();
+        assert_eq!(
+            std::fs::read(&resource.target).unwrap(),
+            b"locally replaced"
+        );
+        assert!(result.is_err());
+        assert!(resource.ownership_path().exists());
+    }
+
+    #[test]
+    fn removal_conflict_preserves_both_entries_and_blocks_retry_until_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let resource =
+            HookFileResource::new(dir.path().join("source"), dir.path().join("pre-commit"));
+        std::fs::write(&resource.source, "managed").unwrap();
+        resource.apply().unwrap();
+        let saved = resource.target.with_extension(REMOVAL_EXTENSION);
+        std::fs::rename(&resource.target, &saved).unwrap();
+        std::fs::write(&saved, "first local edit").unwrap();
+        std::fs::write(&resource.target, "second local edit").unwrap();
+        let error = resource.finish_removal(&saved).unwrap_err();
+        assert!(error.to_string().contains("original entry saved at"));
+        for result in [resource.current_state(), resource.removal_state()] {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("unfinished removal")
+            );
+        }
+        assert!(resource.apply().is_err());
+        assert!(resource.remove().is_err());
+        assert_eq!(std::fs::read(&saved).unwrap(), b"first local edit");
+        assert_eq!(
+            std::fs::read(&resource.target).unwrap(),
+            b"second local edit"
+        );
+        assert!(resource.ownership_path().is_file());
+        std::fs::rename(saved, dir.path().join("recovered")).unwrap();
+        assert_eq!(resource.remove().unwrap(), ResourceChange::AlreadyCorrect);
+        assert_eq!(
+            std::fs::read(&resource.target).unwrap(),
+            b"second local edit"
+        );
+    }
+
+    #[test]
     fn removal_recognizes_owned_hook_after_source_changes() {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("source");
@@ -614,7 +713,7 @@ mod tests {
         std::os::unix::fs::symlink("/bin/sh", root.join("sh")).unwrap();
         let source = helpers.join("pre-commit");
         std::fs::copy(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../hooks/pre-commit"),
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../hooks/pre-commit"),
             &source,
         )
         .unwrap();

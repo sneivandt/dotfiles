@@ -87,7 +87,7 @@ jobs:
           --exclude 'src/infra/run_lock/windows.rs'
           --exclude 'src/infra/fs/mutation/windows.rs'
           --exclude-re '^src/infra/fs/mutation\.rs:[0-9]+:[0-9]+: replace \| with \^ in open_in_place$'
-          --exclude-re '^src/domains/files/resources/symlink/platform\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported)\b'
+          --exclude-re '^src/infra/fs/place\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported)\b'
           --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b'
           --exclude-re '^src/app/commands/execution/elevation\.rs:.*\bprepare_windows_elevation\b'
           --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|append_user_path|user_path_contains)\b'

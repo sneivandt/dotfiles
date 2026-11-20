@@ -13,6 +13,58 @@ use std::path::Path;
 
 use super::{TempGuard, ensure_parent_dir};
 
+/// Move an entry without replacing an existing destination.
+#[cfg(any(target_os = "linux", target_vendor = "apple"))]
+pub(crate) fn rename_noreplace(source: &Path, target: &Path) -> std::io::Result<()> {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+    renameat_with(CWD, source, CWD, target, RenameFlags::NOREPLACE)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+#[allow(
+    unsafe_code,
+    reason = "Win32 provides the no-replace rename missing from std"
+)]
+pub(crate) fn rename_noreplace_windows(source: &Path, target: &Path) -> std::io::Result<()> {
+    use std::io;
+    use std::os::windows::ffi::OsStrExt as _;
+    use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
+
+    fn wide_path(path: &Path) -> io::Result<Vec<u16>> {
+        // Canonicalize only the parent to get a verbatim path for long names
+        // without following the final entry, which may itself be a link.
+        let parent = path.parent().unwrap_or_else(|| Path::new("."));
+        let name = path.file_name().ok_or(io::ErrorKind::InvalidInput)?;
+        let absolute_path = std::fs::canonicalize(parent)?.join(name);
+        let mut wide: Vec<_> = absolute_path.as_os_str().encode_wide().collect();
+        if wide.contains(&0) {
+            return Err(io::ErrorKind::InvalidInput.into());
+        }
+        wide.push(0);
+        Ok(wide)
+    }
+
+    let source = wide_path(source)?;
+    let target = wide_path(target)?;
+    // SAFETY: Both buffers are NUL-terminated and live throughout the call.
+    // Zero flags disallow replacing an entry or falling back to a copy.
+    if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), 0) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_vendor = "apple")))]
+pub(crate) fn rename_noreplace_unsupported(_source: &Path, _target: &Path) -> std::io::Result<()> {
+    Err(std::io::ErrorKind::Unsupported.into())
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_vendor = "apple")))]
+pub(crate) use rename_noreplace_unsupported as rename_noreplace;
+#[cfg(windows)]
+pub(crate) use rename_noreplace_windows as rename_noreplace;
+
 /// Rename `staged` over `target` with consistent path context.
 ///
 /// # Errors

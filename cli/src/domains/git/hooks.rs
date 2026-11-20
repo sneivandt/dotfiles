@@ -6,7 +6,9 @@ use std::path::Path;
 
 use anyhow::{Context as _, Result};
 
-use crate::domains::git::resources::hook::{HookFileResource, OWNERSHIP_EXTENSION};
+use crate::domains::git::resources::hook::{
+    HookFileResource, OWNERSHIP_EXTENSION, REMOVAL_EXTENSION,
+};
 use crate::engine::{
     Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove,
     task_metadata,
@@ -90,13 +92,12 @@ fn add_recorded_hooks(directory: &Path, names: &mut BTreeSet<OsString>) -> Resul
         let entry = entry?;
         let name = entry.file_name();
         let record = Path::new(&name);
-        if record
-            .extension()
-            .is_some_and(|ext| ext == OWNERSHIP_EXTENSION)
+        if let Some(ext) = record.extension()
+            && (ext == REMOVAL_EXTENSION
+                || (ext == OWNERSHIP_EXTENSION && entry.file_type()?.is_file()))
             && let Some(stem) = record.file_stem()
             && Path::new(stem).file_name() == Some(stem)
             && Path::new(stem).extension().is_none()
-            && entry.file_type()?.is_file()
         {
             names.insert(stem.to_owned());
         }

@@ -11,7 +11,9 @@ set -o nounset
 # The wrapper only handles bootstrap/build concerns and otherwise forwards
 # arguments to the Rust binary unchanged.
 
-DOTFILES_ROOT="$(dirname "$(readlink -f "$0")")"
+wrapper_path=$(readlink -f -- "$0")
+DOTFILES_ROOT=${wrapper_path%/*}
+DOTFILES_ROOT=${DOTFILES_ROOT:-/}
 export DOTFILES_ROOT
 DOTFILES_WRAPPER="sh"
 export DOTFILES_WRAPPER

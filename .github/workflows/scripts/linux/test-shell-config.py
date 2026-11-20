@@ -7,6 +7,7 @@ import http.server
 import os
 import pty
 from pathlib import Path
+import re
 import shutil
 import select
 import shlex
@@ -181,7 +182,7 @@ class ShellConfigTests(unittest.TestCase):
         self.env["TERM"] = "dumb"
         del self.env["SHELL"]
         for shell, profile, helper in (("bash", "bash_profile", "__bash_git_prompt"),
-                                       ("zsh", "zprofile", "prompt_cmd")):
+                                       ("zsh", "zprofile", "git_prompt_info")):
             with self.subTest(shell=shell):
                 (self.home / ("." + profile)).symlink_to(managed / profile)
                 rc = shell + "rc"
@@ -840,6 +841,47 @@ class ShellConfigTests(unittest.TestCase):
                 )
                 self.assertEqual(result.stdout, expected)
                 self.assertEqual(calls.read_text().splitlines(), ["rev-parse --abbrev-ref HEAD"])
+
+    def test_zsh_prompt_renders_current_branch_in_one_lookup(self):
+        result = self.run_shell(r'''
+            set -e
+            cd "$HOME"
+            git init -q --template= -b main repo
+            cd repo
+            print seed >tracked
+            git add tracked
+            git -c user.name=Fixture -c user.email=fixture@example.invalid commit -qm seed
+            source "$ROOT/symlinks/config/zsh/prompt.zsh"
+            git() {
+                print -r -- "$ZSH_SUBSHELL:$*" >> "$HOME/lookups"
+                command git "$@"
+            }
+            render() { false || print -Pr -- "${PROMPT}%?"; }
+            render
+            command git switch -qc 'topic%F{red}-$HOME'
+            render
+            print changed >tracked
+            render
+            unfunction git
+            PATH="$HOME/no-tools"
+            print -Pr -- "${PROMPT}%?"
+        ''')
+        raw = result.stdout.splitlines()
+        self.assertEqual(raw[2:4], raw[4:6], "dirtying a tracked file changed the prompt")
+        lines = re.sub(r'\x1b\[[\d;]*m', '', result.stdout).splitlines()
+        sigil = "#" if os.geteuid() == 0 else "$"
+        self.assertEqual(lines[1::2], [f"{sigil} {status}" for status in (1, 1, 1, 0)])
+        for line, branch in zip(lines[::2], (" main", " topic%F{red}-$HOME",
+                                              " topic%F{red}-$HOME", "")):
+            self.assertTrue(line.endswith("~/repo" + branch), line)
+        self.assertEqual(result.stderr, "")
+        # Only the branch segment and its Git lookup need command substitution.
+        calls = (self.home / "lookups").read_text().splitlines()
+        self.assertEqual(len(calls), 3)
+        for call in calls:
+            depth, arguments = call.split(":", 1)
+            self.assertLessEqual(int(depth), 2)
+            self.assertEqual(arguments, "rev-parse --abbrev-ref HEAD")
 
     def test_sudo_widget_preserves_command_and_adjusts_cursor(self):
         for buffer in ("echo fixture", "sudo echo fixture"):

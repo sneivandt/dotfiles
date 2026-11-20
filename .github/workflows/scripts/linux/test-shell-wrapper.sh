@@ -367,6 +367,7 @@ EOF
   DOTFILES_REEXEC_GUARD=1
   export PATH DOTFILES_REEXEC_GUARD
   cd "$tmpdir/caller dir"
+  ln -s ../dotfiles.sh 'wrapper link'
   for mode in cached build; do
     for arguments in empty complex; do
       set --
@@ -383,7 +384,7 @@ EOF
       [ "$mode" != build ] || set -- --build --build "$@"
       rm -f "$tmpdir/child-cwd" "$tmpdir/child-args"
       status=0
-      "$tmpdir/dotfiles.sh" "$@" > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
+      './wrapper link' "$@" > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
       [ "$status" -eq 7 ] || log_error "$mode/$arguments wrapper lost the child exit code"
       [ "$(cat "$tmpdir/child-cwd")" = "$PWD" ] || log_error "$mode wrapper changed the child cwd"
       [ "$(cat "$tmpdir/child-context")" = "$(printf '%s\n' "$tmpdir" sh 1)" ] || log_error "$mode wrapper changed runtime context"

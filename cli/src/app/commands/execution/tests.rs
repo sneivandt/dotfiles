@@ -651,7 +651,7 @@ impl Task for ProbeTask {
         true
     }
 
-    fn assess(&self, _ctx: &Context) -> TaskAssessment {
+    fn assess(&self, _ctx: &Context, _has_provider: &dyn Fn(&TaskId) -> bool) -> TaskAssessment {
         self.assessments.fetch_add(1, Ordering::SeqCst);
         TaskAssessment::applicable().with_elevation(self.requires_elevation)
     }
@@ -695,6 +695,61 @@ fn sequential_context() -> (Context, Arc<Logger>) {
 
 fn as_dyn(tasks: &[ProbeTask]) -> Vec<&dyn Task> {
     tasks.iter().map(|task| -> &dyn Task { task }).collect()
+}
+
+#[test]
+fn conditional_readiness_only_probes_for_current_or_prior_providers() {
+    use crate::engine::scheduler::ExecutionSummary;
+    use crate::engine::{Requirement, RequirementState, TaskWithExtraDeps};
+
+    struct Consumer(Arc<AtomicUsize>);
+
+    impl Task for Consumer {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("consumer")
+        }
+
+        fn ordering_requirements(&self) -> Vec<Requirement<'_>> {
+            vec![Requirement::new("ready", |_, _| {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(RequirementState::Satisfied(()))
+            })]
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    for (selected, ran_earlier) in [(false, false), (true, false), (false, true)] {
+        let (ctx, log) = sequential_context();
+        let provider = ProbeTask::new("provider", 1, &trace());
+        let providers = [numeric_task_id(99), provider.task_id()];
+        let probes = Arc::new(AtomicUsize::new(0));
+        let consumer =
+            TaskWithExtraDeps::new(Box::new(Consumer(Arc::clone(&probes))), &[], &providers)
+                .with_conditional_ordering(
+                    &providers,
+                    Requirement::new("stable", |_, _| Ok(RequirementState::Satisfied(()))),
+                );
+        let mut tasks: Vec<&dyn Task> = vec![&consumer];
+        if selected {
+            tasks.push(&provider);
+        }
+        let mut prior = ExecutionSummary::default();
+        if ran_earlier {
+            prior.record(provider.task_id(), provider.name(), TaskOutcome::Cancelled);
+        }
+        let summary = run_task_graph(tasks, &ctx, &log, Some(&prior)).unwrap();
+        assert_eq!(
+            probes.load(Ordering::SeqCst),
+            usize::from(selected || ran_earlier)
+        );
+        assert_eq!(
+            summary.outcome(&consumer.task_id()),
+            Some(TaskOutcome::Satisfied)
+        );
+    }
 }
 
 #[test]

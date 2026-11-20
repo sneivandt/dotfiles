@@ -32,24 +32,29 @@ pub(crate) fn run(opts: &ExplainOpts) -> Result<()> {
         &executor,
         &config.symlinks,
     );
-    symlinks::validate_resolved_targets(&resources)?;
     let identity = config::path_identity(&requested);
     let resolved_identity = resolve_target_entry(&requested)
         .map(|path| config::path_identity(&path))
         .ok();
-    let (entry, resource) = config
-        .symlinks
-        .iter()
-        .zip(resources)
-        .find(|(_, resource)| {
-            config::path_identity(&resource.target) == identity
-                || resource.checked_target().is_ok_and(|path| {
-                    resolved_identity.as_ref().is_some_and(|requested_path| {
-                        config::path_identity(&path) == *requested_path
-                    })
-                })
-        })
-        .with_context(|| format!("no active symlink manages {}", requested.display()))?;
+    let mut matched = None;
+    // Compare the same observation used to check collisions. A later collision
+    // must still fail the command, even after its requested target was found.
+    symlinks::validate_observed_targets(config.symlinks.iter().zip(&resources).map(
+        |(entry, resource)| {
+            let path = resource.checked_target().ok();
+            if matched.is_none()
+                && (config::path_identity(&resource.target) == identity
+                    || path.as_ref().zip(resolved_identity.as_ref()).is_some_and(
+                        |(path, requested_path)| config::path_identity(path) == *requested_path,
+                    ))
+            {
+                matched = Some((entry, resource));
+            }
+            (resource, path)
+        },
+    ))?;
+    let (entry, resource) =
+        matched.with_context(|| format!("no active symlink manages {}", requested.display()))?;
 
     let origin = entry.origin.as_deref().unwrap_or(&config.root);
     let section =

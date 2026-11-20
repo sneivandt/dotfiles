@@ -265,7 +265,7 @@ fn ready_dependents_reuse_a_free_worker_without_waiting_for_the_phase() {
     let tasks: [&dyn Task; 3] = [&release, &slow, &fast];
     let assessments = tasks
         .iter()
-        .map(|task| (task.task_id(), task.assess(&ctx)))
+        .map(|task| (task.task_id(), task.assess(&ctx, &|_| true)))
         .collect();
     let graph = ResolvedTaskGraph::resolve_assessed(&tasks, &assessments).unwrap();
 

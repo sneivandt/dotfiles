@@ -17,9 +17,9 @@ pub(super) fn command() -> clap::Command {
 fn command_for_words(words: &[OsString]) -> clap::Command {
     use clap::CommandFactory as _;
     let mut canonical = super::cli::Cli::command();
-    canonical.build();
     let mut normalized = words.to_vec();
-    super::cli::normalize_command_position(&mut normalized);
+    super::cli::normalize_command_position(&mut normalized, &canonical);
+    canonical.build();
     let explicit = normalized.get(1).and_then(|word| word.to_str());
     let Some(selected) = canonical
         .find_subcommand(explicit.unwrap_or("update"))
@@ -270,8 +270,9 @@ fn completion_words(args: Vec<OsString>) -> Vec<OsString> {
 }
 
 fn task_memberships(words: &[OsString]) -> &'static [&'static str] {
+    use clap::CommandFactory as _;
     let mut normalized = words.to_vec();
-    super::cli::normalize_command_position(&mut normalized);
+    super::cli::normalize_command_position(&mut normalized, &super::cli::Cli::command());
     match normalized.get(1).and_then(|word| word.to_str()) {
         Some("update") | None => &["update"],
         Some("remove") => &["remove"],

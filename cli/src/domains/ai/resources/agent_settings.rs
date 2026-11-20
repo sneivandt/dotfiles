@@ -6,6 +6,7 @@
 
 mod json;
 
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
@@ -336,7 +337,12 @@ fn publish_document(
             "settings document {} changed during update; retry",
             path.display()
         );
+        // Recheck each original spelling now, not against group-time evidence.
+        let mut checked = HashSet::new();
         for setting in settings {
+            if !checked.insert(setting.path.as_os_str()) {
+                continue;
+            }
             anyhow::ensure!(
                 document_path(&setting.path)? == path,
                 "settings destination changed during update; retry"
@@ -360,10 +366,23 @@ impl AgentSettingsDocument {
     ///
     /// Returns resolution errors or conflicting format errors before any writes.
     pub fn group(settings: Vec<AgentSettingResource>) -> Result<Vec<Self>> {
+        Self::group_with(settings, document_path)
+    }
+
+    fn group_with(
+        settings: Vec<AgentSettingResource>,
+        mut resolve: impl FnMut(&Path) -> Result<PathBuf>,
+    ) -> Result<Vec<Self>> {
         let mut documents = Vec::<Self>::new();
+        // Path equality normalizes some spellings; only identical OS strings
+        // are guaranteed to request the same filesystem lookup.
+        let mut resolved = HashMap::new();
         for setting in settings {
-            let path = document_path(&setting.path)?;
-            if let Some(document) = documents.iter_mut().find(|document| document.path == path) {
+            let path = match resolved.entry(setting.path.as_os_str().to_owned()) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => entry.insert(resolve(&setting.path)?),
+            };
+            if let Some(document) = documents.iter_mut().find(|document| document.path == *path) {
                 anyhow::ensure!(
                     document
                         .settings
@@ -385,7 +404,7 @@ impl AgentSettingsDocument {
                 document.settings.push(setting);
             } else {
                 documents.push(Self {
-                    path,
+                    path: path.clone(),
                     settings: vec![setting],
                 });
             }
@@ -749,6 +768,27 @@ variables = {}
         assert!(contents.contains("# shell preferences"));
     }
 
+    #[test]
+    fn grouping_resolves_each_exact_spelling_once() {
+        let paths = ["doc/file", "doc/./file", "doc/file", "doc//file"];
+        let settings = paths.map(|path| AgentSettingResource {
+            path: PathBuf::from(path),
+            ..json_resource("enabled", true.into())
+        });
+        let mut lookups = Vec::new();
+        let documents = AgentSettingsDocument::group_with(settings.into(), |path| {
+            lookups.push(path.as_os_str().to_owned());
+            Ok(PathBuf::from("resolved/file"))
+        })
+        .unwrap();
+        assert_eq!(
+            lookups,
+            ["doc/file", "doc/./file", "doc//file"].map(std::ffi::OsString::from)
+        );
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].settings.len(), paths.len());
+    }
+
     #[cfg(any(unix, windows))]
     #[test]
     fn aliased_paths_share_a_single_document_transaction() {
@@ -772,11 +812,11 @@ variables = {}
         let documents = AgentSettingsDocument::group(settings.into()).unwrap();
         assert_eq!(documents.len(), 1);
         documents[0].apply().unwrap();
-        let document: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let document: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(document, serde_json::json!({"one":true,"two":true}));
         assert!(alias.symlink_metadata().unwrap().is_symlink());
-        let conflicting = [(alias, true), (dir.path().join("settings.json"), false)].map(
-            |(destination, value)| {
+        let conflicting =
+            [(alias.clone(), true), (path.clone(), false)].map(|(destination, value)| {
                 AgentSettingResource::new(
                     "copilot".into(),
                     "one".into(),
@@ -784,9 +824,27 @@ variables = {}
                     SettingsFormat::Json,
                     destination,
                 )
-            },
-        );
+            });
         assert!(AgentSettingsDocument::group(conflicting.into()).is_err());
+
+        // A later alias change must still block publication to the old target.
+        let other = dir.path().join("other.json");
+        std::fs::write(&path, "{}").unwrap();
+        std::fs::write(&other, "{}").unwrap();
+        std::fs::remove_file(&alias).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&other, &alias).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&other, &alias).unwrap();
+        let error = documents[0].apply().unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("destination changed during update"),
+            "{error}"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), b"{}");
+        assert_eq!(std::fs::read(&other).unwrap(), b"{}");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! CLI argument definitions and top-level argument parsing.
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, CommandFactory as _, FromArgMatches as _, Parser, Subcommand, ValueEnum};
 
 /// Top-level CLI entry point for the dotfiles management engine.
 #[derive(Parser, Debug)]
@@ -67,16 +67,19 @@ impl Cli {
         T: Into<std::ffi::OsString> + Clone,
     {
         let mut args: Vec<std::ffi::OsString> = args.into_iter().map(Into::into).collect();
-        normalize_command_position(&mut args);
-        <Self as Parser>::try_parse_from(args)
+        let mut command = Self::command();
+        normalize_command_position(&mut args, &command);
+        let mut matches = command.try_get_matches_from_mut(args)?;
+        Self::from_arg_matches_mut(&mut matches).map_err(|error| error.format(&mut command))
     }
 }
 
 /// Move an explicit command ahead of its options, skipping option values.
 /// Derive value-taking options from Clap so command names used as values stay values.
-pub(super) fn normalize_command_position(args: &mut Vec<std::ffi::OsString>) {
-    use clap::CommandFactory as _;
-    let command = Cli::command();
+pub(super) fn normalize_command_position(
+    args: &mut Vec<std::ffi::OsString>,
+    command: &clap::Command,
+) {
     let options: Vec<_> = command
         .get_arguments()
         .chain(

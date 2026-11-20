@@ -1,6 +1,6 @@
 //! Tasks: install and uninstall symlinks.
 use anyhow::Result;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::domains::files::config::symlinks::{Symlink, default_target, validate_target_paths};
@@ -100,14 +100,17 @@ pub(crate) fn resources_for(
         .collect()
 }
 
-pub(crate) fn validate_resolved_targets(resources: &[SymlinkResource]) -> Result<()> {
-    validate_target_paths(resources.iter().filter_map(|resource| {
-        // Resource discovery reports individual paths that cannot be resolved.
-        resource
-            .checked_target()
-            .ok()
-            .map(|path| (path, resource.description()))
-    }))
+fn validate_resolved_targets(resources: &[SymlinkResource]) -> Result<()> {
+    validate_observed_targets(resources.iter().map(|r| (r, r.checked_target().ok())))
+}
+
+pub(crate) fn validate_observed_targets<'a>(
+    targets: impl Iterator<Item = (&'a SymlinkResource, Option<PathBuf>)>,
+) -> Result<()> {
+    // Resource discovery reports individual paths that cannot be resolved.
+    validate_target_paths(
+        targets.filter_map(|(resource, path)| path.map(|path| (path, resource.description()))),
+    )
 }
 
 pub(crate) fn check_install_config_home(
@@ -347,7 +350,7 @@ mod tests {
                 .with_dry_run(dry_run);
             assert!(!task.needs_elevation(&ctx), "{name}");
             assert!(
-                !task.assess(&ctx).requires_elevation(),
+                !task.assess(&ctx, &|_| false).requires_elevation(),
                 "{name}: phase assessment must not cache missing file capability"
             );
             let result =

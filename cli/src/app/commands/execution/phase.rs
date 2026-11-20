@@ -26,15 +26,18 @@ impl<'a> PreparedPhase<'a> {
         mut tasks: Vec<&'a dyn Task>,
         ctx: &Context,
         log: &Arc<Logger>,
+        prior: Option<&ExecutionSummary>,
     ) -> Result<(Self, ExecutionSummary)> {
         let task_count = tasks.len();
-        resolve_task_graph(&tasks, log)?;
+        let declared = resolve_task_graph(&tasks, log)?;
+        let has_provider =
+            |id: &TaskId| declared.contains(id) || prior.is_some_and(|s| s.outcome(id).is_some());
         let mut assessments = if ctx.is_cancelled() {
             HashMap::new()
         } else {
             tasks
                 .iter()
-                .map(|task| (task.task_id(), task.assess(ctx)))
+                .map(|task| (task.task_id(), task.assess(ctx, &has_provider)))
                 .collect()
         };
         let mut graph = ResolvedTaskGraph::resolve_assessed(&tasks, &assessments)?;

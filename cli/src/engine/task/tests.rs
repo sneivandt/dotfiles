@@ -493,7 +493,7 @@ fn precomputed_assessment_is_reused_during_execution() {
         ran: Arc::clone(&ran),
     };
 
-    let assessment = task.assess(&ctx);
+    let assessment = task.assess(&ctx, &|_| false);
     assert!(!assessment.requires_elevation());
     assert_eq!(
         execute_assessed(&task, &assessment, &ctx).status,
@@ -704,7 +704,11 @@ fn task_wrapper_forwards_custom_assessment_without_reassessing_hooks() {
             panic!("the custom assessment supersedes the default hooks")
         }
 
-        fn assess(&self, _ctx: &Context) -> TaskAssessment {
+        fn assess(
+            &self,
+            _ctx: &Context,
+            _has_provider: &dyn Fn(&TaskId) -> bool,
+        ) -> TaskAssessment {
             TaskAssessment::not_applicable(Some("custom gate"))
         }
 
@@ -882,7 +886,9 @@ fn conditional_ordering_is_assessed_once_without_changing_static_edges() {
                     })
                 }),
             );
-            let assessment = task.assess(&ctx);
+            assert!(!task.assess(&ctx, &|_| false).ordering_satisfied(&id));
+            assert_eq!(probes.load(Ordering::SeqCst), 0);
+            let assessment = task.assess(&ctx, &|provider| provider == &id);
             assert_eq!(
                 assessment.ordering_satisfied(&id),
                 consumer_ready && provider_ready
@@ -912,7 +918,7 @@ fn default_readiness_keeps_conditional_dependencies() {
             panic!("without consumer requirements, provider proof must not be queried")
         }),
     );
-    assert!(!task.assess(&ctx).ordering_satisfied(&dependency));
+    assert!(!task.assess(&ctx, &|_| true).ordering_satisfied(&dependency));
 }
 
 #[test]
@@ -949,7 +955,7 @@ fn unknown_consumer_or_provider_requirements_never_waive_ordering() {
                 anyhow::bail!("cannot inspect provider")
             }),
         );
-        assert!(!task.assess(&ctx).ordering_satisfied(&dependency));
+        assert!(!task.assess(&ctx, &|_| true).ordering_satisfied(&dependency));
         assert_eq!(calls.load(Ordering::SeqCst), usize::from(!consumer_unknown));
     }
 }

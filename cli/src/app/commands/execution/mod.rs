@@ -222,7 +222,7 @@ fn run_task_graph(
         return Ok(crate::engine::scheduler::ExecutionSummary::default());
     }
 
-    let (phase, mut summary) = PreparedPhase::prepare(tasks, ctx, log)?;
+    let (phase, mut summary) = PreparedPhase::prepare(tasks, ctx, log, prior)?;
     let mut combined_prior = prior.cloned().unwrap_or_default();
     combined_prior.merge(summary.clone());
     summary.merge(phase.run(ctx, log, &combined_prior));

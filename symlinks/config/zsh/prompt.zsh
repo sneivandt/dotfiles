@@ -25,10 +25,5 @@ git_prompt_info()
   fi
 }
 
-prompt_cmd()
-{
-  print -rn -- "%f${_ZSH_PROMPT_HOST}${_ZSH_PROMPT_SHELL}%F{yellow}%~%f$(git_prompt_info)%f"
-}
-
-PROMPT='$(prompt_cmd)
+PROMPT='%f${_ZSH_PROMPT_HOST}${_ZSH_PROMPT_SHELL}%F{yellow}%~%f$(git_prompt_info)%f
 %(!.#.$) '

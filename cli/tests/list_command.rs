@@ -376,6 +376,65 @@ fn explain_uses_the_active_overlay_declaration_without_writing_state() {
 }
 
 #[test]
+fn explain_rechecks_aliases_and_rejects_collisions_after_a_match() {
+    #[cfg(unix)]
+    use std::os::unix::fs::{symlink as link_dir, symlink as link_file};
+    #[cfg(windows)]
+    use std::os::windows::fs::{symlink_dir as link_dir, symlink_file as link_file};
+
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "symlinks.toml",
+            "[base]\nsymlinks=['fixture', {source='fixture', target='alias/item'}, \
+             {source='fixture', target='second/item'}]\n",
+        )
+        .with_symlink_source_content("fixture", "desired")
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let first = home.path().join("first");
+    let second = home.path().join("second");
+    let alias = home.path().join("alias");
+    std::fs::create_dir(&first).unwrap();
+    std::fs::create_dir(&second).unwrap();
+    link_dir(&first, &alias).unwrap();
+    let explain = |path: &str| {
+        common::cli_command(repo.root_path(), home.path(), None, "explain", "")
+            .arg(path)
+            .output()
+            .unwrap()
+    };
+    let matched = explain("first/item");
+    assert!(matched.status.success(), "{matched:?}");
+    let text = String::from_utf8(matched.stdout).unwrap();
+    assert!(
+        text.contains(&format!("Target: {}", alias.join("item").display())),
+        "{text}"
+    );
+
+    // The last component names the entry itself, not the thing it points at.
+    std::fs::write(home.path().join(".fixture"), "existing file").unwrap();
+    link_file(home.path().join(".fixture"), home.path().join("leaf")).unwrap();
+    let unknown = explain("leaf");
+    assert!(!unknown.status.success());
+    assert!(
+        String::from_utf8(unknown.stderr)
+            .unwrap()
+            .contains("no active symlink manages")
+    );
+
+    std::fs::rename(&alias, home.path().join("old-alias")).unwrap();
+    link_dir(&second, &alias).unwrap();
+    let collision = explain(".fixture");
+    assert!(!collision.status.success());
+    assert!(collision.stdout.is_empty(), "{collision:?}");
+    assert!(
+        String::from_utf8(collision.stderr)
+            .unwrap()
+            .contains("symlink target collision")
+    );
+}
+
+#[test]
 fn explain_reports_install_config_home_guard_but_still_explains_removal() {
     let repo = common::TestContextBuilder::new()
         .with_config_file(

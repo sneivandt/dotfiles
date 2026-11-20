@@ -154,8 +154,9 @@ pub trait Task: Send + Sync + 'static {
     ///
     /// The default preserves the existing task hooks while ensuring their
     /// filesystem and tool probes are evaluated only once before elevation
-    /// planning and scheduling.
-    fn assess(&self, ctx: &Context) -> TaskAssessment {
+    /// planning and scheduling. `has_provider` includes tasks selected in this
+    /// phase and providers whose outcomes carry over from an earlier phase.
+    fn assess(&self, ctx: &Context, _has_provider: &dyn Fn(&TaskId) -> bool) -> TaskAssessment {
         if !self.should_run(ctx) {
             return TaskAssessment::not_applicable(None::<String>);
         }
@@ -179,7 +180,7 @@ pub trait Task: Send + Sync + 'static {
 #[must_use]
 #[cfg(test)]
 pub fn requires_elevation(task: &dyn Task, ctx: &Context) -> bool {
-    let assessment = task.assess(ctx);
+    let assessment = task.assess(ctx, &|_| false);
     assessment.is_applicable() && assessment.requires_elevation()
 }
 
@@ -308,10 +309,11 @@ impl Task for TaskWithExtraDeps {
         self.inner.ordering_requirements()
     }
 
-    fn assess(&self, ctx: &Context) -> TaskAssessment {
-        let assessment = self.inner.assess(ctx);
+    fn assess(&self, ctx: &Context, has_provider: &dyn Fn(&TaskId) -> bool) -> TaskAssessment {
+        let assessment = self.inner.assess(ctx, has_provider);
         if assessment.is_applicable()
             && let Some(conditional) = &self.conditional_ordering
+            && conditional.ids.iter().any(has_provider)
             && ordering_requirements_satisfied(ctx, &self.inner.ordering_requirements())
             && ordering_requirements_satisfied(
                 ctx,

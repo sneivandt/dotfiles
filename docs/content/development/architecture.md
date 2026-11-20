@@ -246,7 +246,9 @@ ordering requirements, and the application adds a provider-stability
 requirement through `TaskWithExtraDeps`. All must be satisfied at the
 `Ordering` stage to waive the selected ordering-only waits. Empty declarations,
 missing inputs and unknown results retain the waits. Blocking edges are never
-waived.
+waived. If none of the conditional providers were selected, there is no wait
+to waive and neither readiness probe runs. A provider with a recorded outcome
+from an earlier execution phase still counts as selected.
 
 Only the edge assessment survives into dispatch. Execution checks requirements
 again after dependencies finish; it does not reuse startup evidence.

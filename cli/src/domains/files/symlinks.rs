@@ -1,6 +1,6 @@
 //! Tasks: install and uninstall symlinks.
 use anyhow::Result;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::domains::files::config::symlinks::{Symlink, default_target, validate_target_paths};
@@ -105,7 +105,7 @@ fn validate_resolved_targets(resources: &[SymlinkResource]) -> Result<()> {
 }
 
 pub(crate) fn validate_observed_targets<'a>(
-    targets: impl Iterator<Item = (&'a SymlinkResource, Option<PathBuf>)>,
+    targets: impl Iterator<Item = (&'a SymlinkResource, Option<std::path::PathBuf>)>,
 ) -> Result<()> {
     // Resource discovery reports individual paths that cannot be resolved.
     validate_target_paths(

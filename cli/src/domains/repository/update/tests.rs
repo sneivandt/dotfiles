@@ -1520,3 +1520,13 @@ fn only_a_verified_fast_forward_signals_a_successful_update() {
         );
     }
 }
+
+#[test]
+fn recovery_check_does_not_discover_a_marked_parent_of_an_export() {
+    let parent = tempfile::tempdir().unwrap();
+    let repo = git2::Repository::init(parent.path()).unwrap();
+    std::fs::write(repo.path().join("dotfiles-merge-in-progress"), "").unwrap();
+    let export = parent.path().join("export");
+    std::fs::create_dir(&export).unwrap();
+    ensure_recovery_clear(&export).unwrap();
+}

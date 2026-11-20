@@ -19,8 +19,8 @@ pub fn run(
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
     super::record_scope(log, &opts.filters, false, false);
-    let run_lock = super::prepare_self_update(runtime, log)?;
-    let runner = super::CommandRunner::new_with_lock(runtime, log, token, run_lock)?;
+    let startup = super::runner::CommandStartup::for_mutation(runtime, log)?;
+    let runner = super::CommandRunner::from_startup(runtime, log, token, startup)?;
     let tasks = runner.remove_tasks(opts.restore_missing);
     let overlay_tasks = runner.overlay_script_removal_tasks();
     let filtered = apply_task_filters(

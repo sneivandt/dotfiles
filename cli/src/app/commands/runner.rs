@@ -9,6 +9,7 @@ use crate::app::config::Config;
 use crate::app::config::profiles;
 use crate::app::config::store::ConfigStore;
 use crate::domains::overlay::resolution::{self as overlay_resolution, OverlaySource};
+use crate::domains::repository::update::ensure_recovery_clear;
 use crate::engine::{Context, Task, TaskId};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::{Log, LogEvent, Logger};
@@ -18,6 +19,53 @@ use super::RuntimePolicy;
 use super::execution::{BoundaryAction, ExecutionPlan, RunCoordinator};
 use crate::infra::logging::Output as _;
 use crate::infra::logging::OutputExt as _;
+
+/// Keep the accepted checkout selections and their command lock through startup.
+pub(super) struct CommandStartup {
+    root: PathBuf,
+    overlay: Option<(PathBuf, OverlaySource)>,
+    run_lock: Option<crate::infra::run_lock::CommandLocks>,
+}
+
+impl CommandStartup {
+    fn resolve(runtime: &RuntimePolicy<'_>, log: &Logger) -> Result<Self> {
+        let root = resolve_root(runtime)?;
+        let run_lock = CommandRunner::acquire_run_lock(runtime, &root, log)?;
+        let overlay = if runtime.repository_child && !runtime.execution.elevated_child {
+            let path = runtime
+                .env
+                .var_os(super::reexec::REPOSITORY_OVERLAY_VAR)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("repository restart is missing accepted overlay; retry update")
+                })?;
+            (!path.is_empty()).then(|| (PathBuf::from(path), OverlaySource::Environment))
+        } else {
+            overlay_resolution::resolve_from_args(
+                runtime.global.overlay.as_deref(),
+                &root,
+                runtime.env.as_ref(),
+                runtime.execution.non_interactive,
+            )?
+        };
+        Ok(Self {
+            root,
+            overlay,
+            run_lock,
+        })
+    }
+
+    pub(super) fn for_mutation(runtime: &RuntimePolicy<'_>, log: &Logger) -> Result<Self> {
+        let startup = Self::resolve(runtime, log)?;
+        // Task filters control synchronization, not permission to consume a partial checkout.
+        ensure_recovery_clear(&startup.root)?;
+        if let Some((overlay, _)) = &startup.overlay {
+            ensure_recovery_clear(overlay)?;
+        }
+        super::reexec::prepare_self_update(runtime, &startup.root, log)?;
+        Ok(startup)
+    }
+}
+
 /// Shared orchestration helper that combines setup and task execution.
 #[derive(Debug)]
 pub struct CommandRunner {
@@ -39,20 +87,20 @@ impl CommandRunner {
         log: &Arc<Logger>,
         token: &crate::engine::CancellationToken,
     ) -> Result<Self> {
-        let run_lock = Self::acquire_run_lock(runtime, log)?;
-        Self::new_with_lock(runtime, log, token, run_lock)
+        let startup = CommandStartup::resolve(runtime, log)?;
+        Self::from_startup(runtime, log, token, startup)
     }
 
-    pub(crate) fn acquire_run_lock(
+    fn acquire_run_lock(
         runtime: &RuntimePolicy<'_>,
-        log: &Arc<Logger>,
+        root: &Path,
+        log: &Logger,
     ) -> Result<Option<crate::infra::run_lock::CommandLocks>> {
         if runtime.execution.elevated_child {
             return Ok(None);
         }
 
         let platform = Platform::detect();
-        let root = resolve_root(runtime)?;
         let home = crate::engine::context::home_directory(runtime.env.as_ref(), platform)?;
         if let Some(marker) = runtime
             .env
@@ -60,7 +108,7 @@ impl CommandRunner {
             .filter(|marker| !marker.is_empty())
         {
             return crate::infra::run_lock::CommandLocks::restart(
-                &root,
+                root,
                 &home,
                 runtime.env.as_ref(),
                 platform,
@@ -69,7 +117,7 @@ impl CommandRunner {
             );
         }
         crate::infra::run_lock::CommandLocks::acquire(
-            &root,
+            root,
             &home,
             runtime.env.as_ref(),
             platform,
@@ -78,41 +126,28 @@ impl CommandRunner {
         .map(Some)
     }
 
-    pub(crate) fn new_with_lock(
+    pub(super) fn from_startup(
         runtime: &RuntimePolicy<'_>,
         log: &Arc<Logger>,
         token: &crate::engine::CancellationToken,
-        run_lock: Option<crate::infra::run_lock::CommandLocks>,
+        startup: CommandStartup,
     ) -> Result<Self> {
-        Self::new_with_profile_prompt(runtime, log, token, run_lock, profiles::prompt_interactive)
+        Self::new_with_profile_prompt(runtime, log, token, startup, profiles::prompt_interactive)
     }
 
     fn new_with_profile_prompt(
         runtime: &RuntimePolicy<'_>,
         log: &Arc<Logger>,
         token: &crate::engine::CancellationToken,
-        run_lock: Option<crate::infra::run_lock::CommandLocks>,
+        startup: CommandStartup,
         prompt: impl FnOnce() -> Result<String>,
     ) -> Result<Self> {
         let platform = Platform::detect();
-        let root = resolve_root(runtime)?;
-        let env = &runtime.env;
-        // The command lock was verified before entering a repository restart.
-        let overlay = if runtime.repository_child && !runtime.execution.elevated_child {
-            let path = env
-                .var_os(super::reexec::REPOSITORY_OVERLAY_VAR)
-                .ok_or_else(|| {
-                    anyhow::anyhow!("repository restart is missing accepted overlay; retry update")
-                })?;
-            (!path.is_empty()).then(|| (PathBuf::from(path), OverlaySource::Environment))
-        } else {
-            overlay_resolution::resolve_from_args(
-                runtime.global.overlay.as_deref(),
-                &root,
-                env.as_ref(),
-                runtime.execution.non_interactive,
-            )?
-        };
+        let CommandStartup {
+            root,
+            overlay,
+            run_lock,
+        } = startup;
         let overlay_path = overlay.as_ref().map(|(path, _)| path.as_path());
         let (profile, source) =
             resolve_profile(runtime, &root, platform, overlay_path, log, prompt)?;
@@ -149,15 +184,14 @@ impl CommandRunner {
         log: &Arc<Logger>,
         token: &crate::engine::CancellationToken,
         task: &dyn Task,
+        startup: CommandStartup,
     ) -> Result<()> {
         let platform = Platform::detect();
-        let root = resolve_root(runtime)?;
-        let overlay = overlay_resolution::resolve_from_args(
-            runtime.global.overlay.as_deref(),
-            &root,
-            runtime.env.as_ref(),
-            runtime.execution.non_interactive,
-        )?;
+        let CommandStartup {
+            root,
+            overlay,
+            run_lock: _run_lock,
+        } = startup;
         // Repository-only startup does not load aggregate configuration.
         let overlay = overlay.map(|selection| save_explicit_overlay(&root, selection));
         let preview = if runtime.execution.dry_run {
@@ -526,7 +560,7 @@ mod root_tests {
                     .with("HOME", root.path())
                     .with("USERPROFILE", root.path());
                 let runtime = RuntimePolicy::new(&global, false, env.into_handle(), true, true);
-                let lock = CommandRunner::acquire_run_lock(&runtime, &log).unwrap();
+                let lock = CommandRunner::acquire_run_lock(&runtime, root.path(), &log).unwrap();
                 assert_eq!(
                     lock.is_some(),
                     !elevated,
@@ -563,7 +597,7 @@ mod root_tests {
                 &runtime,
                 &Arc::new(Logger::test()),
                 &crate::engine::CancellationToken::new(),
-                None,
+                CommandStartup::resolve(&runtime, &Logger::test()).unwrap(),
                 || Ok("base".into()),
             )
             .unwrap();
@@ -600,9 +634,13 @@ mod root_tests {
         let log = Arc::new(Logger::test());
         let token = crate::engine::CancellationToken::new();
         let start = || {
-            CommandRunner::new_with_profile_prompt(&runtime, &log, &token, None, || {
-                Ok("desktop".into())
-            })
+            CommandRunner::new_with_profile_prompt(
+                &runtime,
+                &log,
+                &token,
+                CommandStartup::resolve(&runtime, &log)?,
+                || Ok("desktop".into()),
+            )
         };
 
         let error = start().expect_err("invalid TOML should stop startup");
@@ -623,6 +661,7 @@ mod root_tests {
             Some("desktop")
         );
 
+        drop(runner);
         let saved = std::fs::read(&git_config).unwrap();
         global.overlay = None;
         let overrides = MapEnv::new()
@@ -631,7 +670,7 @@ mod root_tests {
             .with("DOTFILES_PROFILE", "base")
             .with("DOTFILES_OVERLAY", &previous);
         let unattended = RuntimePolicy::new(&global, false, overrides.into_handle(), false, false);
-        let overridden = CommandRunner::new_with_lock(&unattended, &log, &token, None).unwrap();
+        let overridden = CommandRunner::new(&unattended, &log, &token).unwrap();
         assert_eq!(overridden.ctx.overlay(), Some(previous.as_path()));
         assert_eq!(overridden.config_handle().get().profile.name, "base");
         assert_eq!(std::fs::read(&git_config).unwrap(), saved);

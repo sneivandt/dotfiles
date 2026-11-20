@@ -2,8 +2,8 @@
 use anyhow::Result;
 use std::sync::Arc;
 
-use super::RuntimePolicy;
 use super::execution::BoundaryAction;
+use super::{CommandRunner, RuntimePolicy};
 use crate::app::cli::UpdateOpts;
 use crate::app::filter::{
     apply_task_filters, normalize_task_filter, resolve_filters, task_matches_filter,
@@ -51,12 +51,12 @@ pub fn run(
             repository_only_selected || opts.filters.only.iter().any(|s| is_repository_selector(s)),
         )?;
     }
-    let run_lock = super::prepare_self_update(runtime, log)?;
+    let startup = super::runner::CommandStartup::for_mutation(runtime, log)?;
     if !runtime.repository_child && repository_only_selected {
-        return super::CommandRunner::run_repository(runtime, log, token, &repository_only);
+        return CommandRunner::run_repository(runtime, log, token, &repository_only, startup);
     }
 
-    let runner = super::CommandRunner::new_with_lock(runtime, log, token, run_lock)?;
+    let runner = CommandRunner::from_startup(runtime, log, token, startup)?;
     let all_tasks = runner.update_tasks_for_run(&repository_update, ApmPackageMode::UpdatePins);
     let mut effective_skip = opts.filters.skip.clone();
     let startup_overlay_tasks = runner.overlay_script_tasks();

@@ -91,9 +91,22 @@ live linked configuration as well as tracked files.
 
 Before it starts a merge, Dotfiles writes a recovery marker in that worktree's
 Git directory. It clears the marker only after verifying the new HEAD and index.
-If the merge fails, is cancelled, or the process dies, the next update that
-selects `repository` stops before other tasks run. A different linked worktree
-is not marked. An ordinary dirty checkout with no marker keeps its usual behavior.
+If the merge fails, is cancelled, or the process dies, `update` and `remove`
+stop when the main checkout or the selected overlay is marked. They check
+before binary self-update or loading task configuration, even with `--only`,
+`--no-repo-update`, or `--dry-run`. You can still inspect retained runs with
+`dotfiles log`. A different linked worktree is not marked. An ordinary dirty
+checkout with no marker keeps its usual behavior.
+
+The marker cannot protect a home link that already points into the checkout.
+If `dotfiles` on PATH no longer starts, its launcher may be calling a missing
+or partially written checkout wrapper. From the intended checkout, use an
+existing `./bin/dotfiles` (`.\bin\dotfiles.exe` on Windows) **only if you can
+verify it is the trusted binary you previously installed** (for example, match
+its digest to a known-good copy). Use `./bin/dotfiles log --list` rather than
+running the wrapper. If in doubt, use
+Git alone: `git rev-parse --git-path dotfiles-merge-in-progress` locates the
+marker in the affected worktree without running any checkout script.
 
 1. Make sure the interrupted Dotfiles and Git processes have exited. In the
    affected checkout, run `git status --short --ignored`, `git diff`, and
@@ -104,10 +117,16 @@ is not marked. An ordinary dirty checkout with no marker keeps its usual behavio
    ignored files. Inspect affected files, including those already linked into
    your home, and repair only what you have verified. Don't use a blanket
    reset or clean; either can discard unrelated work.
-3. Once satisfied with the checkout and index, remove **only** the recovery
+3. If Git refuses a repair or retry because `index.lock` exists, use
+   `git rev-parse --git-path index.lock` in the affected checkout. This is
+   **Git's lock, not the recovery marker**. Stop Git clients, including
+   background editor operations. Only if you have verified no process owns the
+   lock, move that exact orphaned lock aside to your backup. Never move the
+   index itself. If ownership is uncertain, leave both files in place. Recheck
+   status and both diffs after the repair.
+4. Once satisfied with the checkout and index, remove **only** the recovery
    marker at the exact path reported by Dotfiles and retry the original update.
    Removing the marker acknowledges your review; it does not repair files.
-   Don't skip `repository` to apply an unreviewed checkout.
 
 ## Removal
 

@@ -89,6 +89,70 @@ fn unsafe_elevated_child_scope_is_rejected_before_startup_writes() {
 }
 
 #[test]
+fn selected_overlay_marker_precedes_config_and_blocks_managed_removal() {
+    let main = common::IntegrationTestContext::new();
+    let root = main.root_path();
+    let home = tempfile::tempdir().unwrap();
+    let overlay = tempfile::tempdir().unwrap();
+    let marker = git2::Repository::init(overlay.path())
+        .unwrap()
+        .path()
+        .join("dotfiles-merge-in-progress");
+    // Even an empty marker is evidence of an unfinished update.
+    std::fs::write(&marker, "").unwrap();
+    let run = |verb, only| common::cli_command(root, home.path(), None, verb, only);
+    let install = run("update", "launcher").output().unwrap();
+    assert!(install.status.success(), "unselected marker: {install:?}");
+    let launcher = home.path().join(".local/bin").join(if cfg!(windows) {
+        "dotfiles.cmd"
+    } else {
+        "dotfiles"
+    });
+    let original = std::fs::read(&launcher).unwrap();
+    let repo = git2::Repository::open(root).unwrap();
+    let repo_config = repo.path().join("config");
+    let original_config = std::fs::read(&repo_config).unwrap();
+    let blocked = |cmd: &mut std::process::Command| {
+        let out = cmd.output().unwrap();
+        assert!(!out.status.success(), "{out:?}");
+        let error = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            error.contains("Unverified repository merge")
+                && error.contains(marker.to_str().unwrap()),
+            "{out:?}"
+        );
+        assert_eq!(std::fs::read(&launcher).unwrap(), original);
+        assert!(marker.is_file());
+    };
+    blocked(
+        run("remove", "launcher")
+            .arg("--overlay")
+            .arg(overlay.path()),
+    );
+    assert_eq!(
+        std::fs::read(&repo_config).unwrap(),
+        original_config,
+        "rejected overlay must not be persisted"
+    );
+
+    repo.config()
+        .unwrap()
+        .set_str("dotfiles.overlay", overlay.path().to_str().unwrap())
+        .unwrap();
+    let check = run("check", "config-diagnostics").output().unwrap();
+    assert!(
+        check.status.success(),
+        "inspection of marked checkout: {check:?}"
+    );
+    std::fs::write(root.join("conf/symlinks.toml"), "[broken").unwrap();
+    blocked(&mut run("update", "symlinks"));
+    blocked(
+        common::isolated_cli_command(root, home.path(), None, "update", "repository", true)
+            .arg("--dry-run"),
+    );
+}
+
+#[test]
 fn shared_home_lock_blocks_other_checkouts_before_configuration_mutations() {
     use std::io::{Read as _, Seek as _};
 
@@ -890,7 +954,7 @@ fn failed_fast_forward_with_partial_write_stops_apply_until_checkout_is_repaired
     common::setup_minimal_repo(&repo);
     std::fs::write(
         repo.join("conf/symlinks.toml"),
-        "[base]\nsymlinks=['app-settings']\n",
+        "[base]\nsymlinks=['app-settings', {source='app-settings', target='.second-settings'}]\n",
     )
     .unwrap();
     let source = "symlinks/app-settings";
@@ -960,12 +1024,7 @@ exec "$FIXTURE_GIT" "$@"
     assert_eq!(std::fs::read_link(&link).unwrap(), repo.join(source));
     assert_eq!(std::fs::read(&link).unwrap(), upstream.as_bytes()[..4096]);
 
-    let retry = run("repository,symlinks,launcher").output().unwrap();
-    assert!(!retry.status.success(), "{retry:?}");
-    assert!(
-        String::from_utf8_lossy(&retry.stdout).contains("recovery marker"),
-        "{retry:?}"
-    );
+    assert_partial_checkout_not_applied(&repo, &home);
     assert!(!home.join(".local/bin/dotfiles").exists());
     assert_eq!(std::fs::read(&link).unwrap(), upstream.as_bytes()[..4096]);
 
@@ -981,6 +1040,10 @@ exec "$FIXTURE_GIT" "$@"
         git(&publisher, &["rev-parse", "HEAD"])
     );
     assert_eq!(std::fs::read(&link).unwrap(), upstream.as_bytes());
+    assert_eq!(
+        std::fs::read(home.join(".second-settings")).unwrap(),
+        upstream.as_bytes()
+    );
     assert_eq!(std::fs::read(saved).unwrap(), upstream.as_bytes()[..4096]);
     assert!(home.join(".local/bin/dotfiles").is_file());
 }
@@ -1071,6 +1134,26 @@ fi
     let dirty = run().output().unwrap();
     assert!(dirty.status.success(), "{dirty:?}");
     assert!(home.join(".local/bin/dotfiles").is_file(), "{dirty:?}");
+}
+
+#[cfg(target_os = "linux")]
+fn assert_partial_checkout_not_applied(repo: &std::path::Path, home: &std::path::Path) {
+    for (only, sync_repositories) in [
+        ("repository,symlinks,launcher", true),
+        ("symlinks", true),
+        ("symlinks", false),
+    ] {
+        let retry =
+            common::isolated_cli_command(repo, home, None, "update", only, sync_repositories)
+                .output()
+                .unwrap();
+        assert!(!retry.status.success(), "{retry:?}");
+        assert!(
+            String::from_utf8_lossy(&retry.stderr).contains("recovery marker"),
+            "{retry:?}"
+        );
+        assert!(!home.join(".second-settings").exists());
+    }
 }
 
 #[cfg(target_os = "linux")]

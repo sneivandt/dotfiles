@@ -22,6 +22,16 @@ use models::{CheckedRepository, RepositorySetReadiness};
 #[cfg(test)]
 use self::discovery::worktree_has_local_changes;
 
+/// Check the selected checkout without discovering a repository above an exported tree.
+pub(crate) fn ensure_recovery_clear(root: &Path) -> Result<()> {
+    if crate::infra::fs::symlink_metadata_optional(&root.join(".git"), "checking checkout .git")?
+        .is_some()
+    {
+        recovery::MergeMarker::for_checkout(root)?.ensure_clear(root)?;
+    }
+    Ok(())
+}
+
 /// Shared indication that the checkout changed and the command must restart.
 #[derive(Debug, Clone, Default)]
 pub struct RepositoryUpdateSignal {

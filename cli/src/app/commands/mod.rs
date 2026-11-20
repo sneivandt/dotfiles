@@ -14,7 +14,6 @@ mod runner;
 mod runtime;
 
 pub(crate) use execution::validate_elevated_child_command;
-pub(crate) use reexec::prepare_self_update;
 pub(crate) use reexec::re_exec_after_repository_update;
 pub use runner::CommandRunner;
 pub use runtime::RuntimePolicy;

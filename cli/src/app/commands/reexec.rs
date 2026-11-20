@@ -4,7 +4,7 @@ use anyhow::{Context as _, Result};
 
 use crate::infra::logging::Output;
 
-use super::{RuntimePolicy, runner};
+use super::RuntimePolicy;
 use crate::infra::logging::OutputExt as _;
 
 /// Environment variable set before re-exec to skip self-update and run-lock reacquisition.
@@ -169,28 +169,26 @@ pub(super) const fn should_check_self_update(runtime: &RuntimePolicy<'_>) -> boo
 ///
 /// # Errors
 ///
-/// Returns an error if the repository root cannot be resolved or the pre-update
-/// check fails.
-pub(crate) fn prepare_self_update(
+/// Returns an error if the pre-update check fails.
+pub(super) fn prepare_self_update(
     runtime: &RuntimePolicy<'_>,
-    log: &std::sync::Arc<crate::infra::logging::Logger>,
-) -> Result<Option<crate::infra::run_lock::CommandLocks>> {
-    let run_lock = runner::CommandRunner::acquire_run_lock(runtime, log)?;
+    root: &std::path::Path,
+    log: &crate::infra::logging::Logger,
+) -> Result<()> {
     if !should_check_self_update(runtime) {
-        return Ok(run_lock);
+        return Ok(());
     }
 
-    let root = runner::resolve_root(runtime)?;
     if let Some(notice) = crate::domains::dotfiles::self_update::pre_update(
-        &root,
-        &**log,
+        root,
+        log,
         runtime.execution.dry_run,
         runtime.global.skip_attestation,
     )? {
         log.queue_startup_transition(notice);
-        re_exec(&root, log);
+        re_exec(root, log);
     }
-    Ok(run_lock)
+    Ok(())
 }
 
 /// Path of the freshly installed binary to re-exec.

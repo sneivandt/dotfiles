@@ -17,8 +17,9 @@ are not rolled back when a later task fails.
 4. Fix that cause, preview a focused rerun, then apply it when ready.
 
 Examples assume you are in the intended checkout with dotfiles on PATH.
-If the launcher is uncertain, substitute an existing `./bin/dotfiles` or
-`.\bin\dotfiles.exe`. A wrapper can download or build the CLI before showing help.
+If the launcher is uncertain, substitute `./bin/dotfiles` or
+`.\bin\dotfiles.exe` only if you have verified it is a trusted cached binary.
+A wrapper can download or build the CLI before showing help.
 
 ## Find the symptom
 
@@ -66,6 +67,9 @@ and external tool output before sharing logs.
 Completed changes remain when another task fails. Read the failed run using
 the exact log command printed at the end of that run; it includes a stable ID.
 Fix the reported cause before retrying.
+
+If the failure was a Git merge, follow [interrupted merge recovery](../reference/dotfiles-repository.md#recover-from-an-interrupted-merge)
+first. A narrower task selection cannot bypass its recovery marker.
 
 For example, if the systemd task failed because a selected user unit file was
 missing, restore its tracked source and check its symlink declaration. On an
@@ -314,12 +318,17 @@ Check remote URLs for credentials before sharing the output.
 Untracked files can prevent a merge even after the readiness check passes.
 A failed fast-forward stops the remaining tasks for that run. Git can write files
 before advancing the branch, including files linked into your home directory.
-In the checkout named in the error, use `git status --short --ignored`,
-`git diff`, and `git diff --cached` to inspect what changed. Preserve any edits
-you need, repair the affected files, and retry. If the main checkout advanced
-before the overlay failed, it stays at the new commit.
+If the main checkout advanced before the overlay failed, it stays at the new
+commit. A recovery marker in either selected checkout stops subsequent `update`
+and `remove` commands, including previews and `--only` retries.
 
-Use `--no-repo-update` when you deliberately want to apply the current checkout.
+Follow [Recover from an interrupted merge](../reference/dotfiles-repository.md#recover-from-an-interrupted-merge)
+before clearing the marker. If the launcher itself is broken, use Git directly
+or an existing cached binary you have verified as trusted; don't bootstrap a
+replacement from the damaged checkout. If Git reports `index.lock`, leave it
+alone unless you have verified it is orphaned. It is not the Dotfiles marker.
+
+Use `--no-repo-update` when you deliberately want to apply an unmarked checkout.
 It does not discard changes or suppress other network activity.
 “Repository synced · restarting to load configuration” is normal: the child
 reloads configuration while the parent retains the lock.

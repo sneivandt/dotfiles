@@ -46,8 +46,17 @@ pub(super) fn update_targets(ctx: &Context) -> Vec<UpdateTarget> {
 
 /// Check every update target and return the set that is ready to pull, or the
 /// first blocked or inapplicable reason encountered.
-pub(super) fn checked_repositories(ctx: &Context) -> Result<RepositorySetReadiness> {
+pub(super) fn checked_repositories(
+    ctx: &Context,
+    signal: &super::RepositoryUpdateSignal,
+) -> Result<RepositorySetReadiness> {
     let targets = update_targets(ctx);
+    // A dirty or detached first checkout must not hide an unfinished merge in another.
+    for target in &targets {
+        super::recovery::MergeMarker::for_checkout(&target.root)
+            .and_then(|marker| marker.ensure_clear(&target.root))
+            .inspect_err(|_| signal.mark_recovery_required())?;
+    }
     let mut repositories = Vec::with_capacity(targets.len());
     for target in targets {
         match check_repository_ready(ctx, target)? {

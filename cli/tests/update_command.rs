@@ -960,16 +960,20 @@ exec "$FIXTURE_GIT" "$@"
     assert_eq!(std::fs::read_link(&link).unwrap(), repo.join(source));
     assert_eq!(std::fs::read(&link).unwrap(), upstream.as_bytes()[..4096]);
 
-    let retry = run("repository").arg("--fail-on-skip").output().unwrap();
+    let retry = run("repository,symlinks,launcher").output().unwrap();
     assert!(!retry.status.success(), "{retry:?}");
     assert!(
-        String::from_utf8_lossy(&retry.stdout).contains("local changes present"),
+        String::from_utf8_lossy(&retry.stdout).contains("recovery marker"),
         "{retry:?}"
     );
+    assert!(!home.join(".local/bin/dotfiles").exists());
     assert_eq!(std::fs::read(&link).unwrap(), upstream.as_bytes()[..4096]);
 
+    let saved = home.join("saved-partial-settings");
+    std::fs::copy(&link, &saved).unwrap();
     git(&repo, &["restore", "--source=HEAD", "--", source]);
     assert_eq!(std::fs::read(&link).unwrap(), original);
+    std::fs::remove_file(repo.join(".git/dotfiles-merge-in-progress")).unwrap();
     let recovered = run("repository,symlinks,launcher").output().unwrap();
     assert!(recovered.status.success(), "{recovered:?}");
     assert_eq!(
@@ -977,6 +981,7 @@ exec "$FIXTURE_GIT" "$@"
         git(&publisher, &["rev-parse", "HEAD"])
     );
     assert_eq!(std::fs::read(&link).unwrap(), upstream.as_bytes());
+    assert_eq!(std::fs::read(saved).unwrap(), upstream.as_bytes()[..4096]);
     assert!(home.join(".local/bin/dotfiles").is_file());
 }
 
@@ -1027,9 +1032,11 @@ fi
     std::fs::set_permissions(wrapped_git, std::fs::Permissions::from_mode(0o755)).unwrap();
     let path =
         std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
-    let output = common::isolated_cli_command(&root, &home, None, "update", "repository", true)
-        .env("PATH", path)
-        .env("FIXTURE_GIT", real_git)
+    let run =
+        || common::isolated_cli_command(&root, &home, None, "update", "repository,launcher", true);
+    let output = run()
+        .env("PATH", &path)
+        .env("FIXTURE_GIT", &real_git)
         .output()
         .unwrap();
     let text = format!(
@@ -1048,6 +1055,125 @@ fi
         std::fs::read_to_string(root.join("settings")).unwrap(),
         "local edit after fetch\n"
     );
+    // Repeat the race with a locally ahead branch: planning can skip its merge,
+    // but that is not permission to deploy inputs captured before the edit.
+    git(&root, &["restore", "settings"]);
+    git(&root, &["merge", "--ff-only", "origin/main"]);
+    git(&root, &["commit", "--allow-empty", "-m", "ahead"]);
+    let ahead = run()
+        .env("PATH", path)
+        .env("FIXTURE_GIT", real_git)
+        .output()
+        .unwrap();
+    assert!(!ahead.status.success(), "{ahead:?}");
+    assert!(!home.join(".local/bin/dotfiles").exists(), "{ahead:?}");
+    // A new run starts with this user's dirty checkout, not a half-written merge.
+    let dirty = run().output().unwrap();
+    assert!(dirty.status.success(), "{dirty:?}");
+    assert!(home.join(".local/bin/dotfiles").is_file(), "{dirty:?}");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn repository_merge_process_death_only_blocks_the_affected_worktree() {
+    use std::os::unix::{fs::PermissionsExt as _, process::ExitStatusExt as _};
+
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path().join("main");
+    let linked = fixture.path().join("linked");
+    let home = fixture.path().join("home");
+    let bin = fixture.path().join("bin");
+    std::fs::create_dir(&home).unwrap();
+    std::fs::create_dir(&bin).unwrap();
+    common::setup_minimal_repo(&root);
+    git(fixture.path(), &["init", "--bare", "-b", "main", "origin"]);
+    git(&root, &["init", "-b", "main"]);
+    git(&root, &["add", "."]);
+    git(&root, &["commit", "-m", "initial"]);
+    git(&root, &["remote", "add", "origin", "../origin"]);
+    git(&root, &["push", "-u", "origin", "main"]);
+    git(&root, &["worktree", "add", "-b", "linked", "../linked"]);
+    git(&linked, &["branch", "-u", "origin/main"]);
+    git(&root, &["commit", "--allow-empty", "-m", "advance"]);
+    git(&root, &["push", "origin", "main"]);
+
+    // Kill only our fixture CLI after the real merge but before it can verify
+    // the index. Even an apparently clean, current checkout needs review.
+    let wrapper = bin.join("git");
+    std::fs::write(
+        &wrapper,
+        r#"#!/bin/bash
+if [[ $1 == merge ]]; then
+    "$FIXTURE_GIT" "$@" || exit $?
+    [[ /proc/$PPID/exe -ef "$FIXTURE_CLI" ]] || exit 91
+    kill -KILL "$PPID"
+    exit
+fi
+exec "$FIXTURE_GIT" "$@"
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = std::env::var_os("PATH").unwrap();
+    let real_git = std::env::split_paths(&path)
+        .find_map(|dir| dir.join("git").canonicalize().ok())
+        .unwrap();
+    let fixture_path =
+        std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
+    // The usual fixture helper initializes .git; this checkout uses a linked gitfile.
+    let run = |repo: &std::path::Path, only: &str| {
+        let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"));
+        cmd.env_clear()
+            .env("HOME", &home)
+            .env("PATH", &path)
+            .env("TMPDIR", fixture.path())
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", home.join(".gitconfig"))
+            .env("DOTFILES_LOG_DIR", home.join("logs"))
+            .env("DOTFILES_SKIP_SELF_UPDATE", "1")
+            .current_dir(repo)
+            .args([
+                "update",
+                "--non-interactive",
+                "--profile",
+                "base",
+                "--only",
+                only,
+                "--root",
+            ])
+            .arg(repo);
+        cmd
+    };
+    let dead = run(&linked, "repository,launcher")
+        .env("FIXTURE_GIT", real_git)
+        .env("FIXTURE_CLI", env!("CARGO_BIN_EXE_dotfiles"))
+        .env("PATH", fixture_path)
+        .output()
+        .unwrap();
+    assert_eq!(dead.status.signal(), Some(9), "{dead:?}");
+    assert_eq!(git(&linked, &["status", "--porcelain"]), "");
+    assert_eq!(
+        git(&linked, &["rev-parse", "HEAD"]),
+        git(&root, &["rev-parse", "HEAD"])
+    );
+    let marker = git2::Repository::open(&linked)
+        .unwrap()
+        .path()
+        .join("dotfiles-merge-in-progress");
+    assert!(marker.is_file());
+    for extra in [None, Some("--dry-run")] {
+        let mut retry = run(&linked, "repository,launcher");
+        retry.args(extra);
+        let retry = retry.output().unwrap();
+        assert!(!retry.status.success() && marker.is_file(), "{retry:?}");
+        assert!(!home.join(".local/bin/dotfiles").exists());
+    }
+    let sibling = run(&root, "repository").output().unwrap();
+    assert!(sibling.status.success() && marker.is_file(), "{sibling:?}");
+    std::fs::remove_file(marker).unwrap();
+    let repaired = run(&linked, "repository,launcher").output().unwrap();
+    assert!(repaired.status.success(), "{repaired:?}");
+    assert!(home.join(".local/bin/dotfiles").is_file());
 }
 
 #[test]
@@ -1284,9 +1410,24 @@ fn check_partial_repository_refresh(ignored: bool) {
         "convergence must wait for repository sync"
     );
 
-    std::fs::remove_file(obstruction).unwrap();
+    let saved = home.join("saved-collision");
+    std::fs::rename(obstruction, &saved).unwrap();
+    // A skip on the first checkout must not bypass recovery in the second.
+    std::fs::write(root.join("README"), "intentional local edit").unwrap();
+    let (blocked, note) = update();
+    assert!(
+        !blocked.success() && note.contains("recovery marker"),
+        "{note}"
+    );
+    assert!(!home.join(".fresh").exists());
+    git(&root, &["restore", "README"]);
+    std::fs::remove_file(overlay.join(".git/dotfiles-merge-in-progress")).unwrap();
     let (retry_status, retry_text) = update();
     assert!(retry_status.success(), "{retry_text}");
+    assert_eq!(
+        std::fs::read_to_string(saved).unwrap(),
+        "local untracked data"
+    );
     assert_ne!(
         git(&overlay, &["rev-parse", "HEAD"]),
         initial_overlay,

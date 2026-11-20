@@ -238,6 +238,89 @@ fn shell_path_migrates_the_legacy_export_before_an_early_return() {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn shell_path_recovers_from_a_fresh_shell_without_doubling_the_guard_or_entry() {
+    let repo = common::IntegrationTestContext::new();
+    let home = tempfile::tempdir().unwrap();
+    let root = repo.root_path();
+    let profile = home.path().join(".profile");
+    let update = |only| common::cli_command(root, home.path(), None, "update", only);
+    std::fs::copy(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../dotfiles.sh"),
+        root.join("dotfiles.sh"),
+    )
+    .unwrap();
+    std::fs::create_dir(root.join("bin")).unwrap();
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_dotfiles"), root.join("bin/dotfiles")).unwrap();
+    let fresh_shell = |script: &str| {
+        let mut shell = std::process::Command::new("/bin/sh");
+        shell
+            .env_clear()
+            .env("HOME", home.path())
+            .env("PATH", "/no-tools")
+            .env("DOTFILES_PROFILE", "base")
+            .env("DOTFILES_SKIP_SELF_UPDATE", "1")
+            .env("DOTFILES_LOG_DIR", home.path().join("logs"))
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", home.path().join(".gitconfig"))
+            .current_dir(home.path())
+            .args(["-ec", script]);
+        output(&mut shell, true)
+    };
+
+    output(&mut update("launcher,path"), true);
+    let guard = std::fs::read_to_string(&profile).unwrap();
+    assert_eq!(guard.matches("# Added by dotfiles").count(), 1);
+    let edited = format!("# personal comment\r\n{guard}export PATH=/no-tools\n");
+    std::fs::write(&profile, &edited).unwrap();
+    output(update("path").arg("--dry-run"), true);
+    assert_eq!(std::fs::read_to_string(&profile).unwrap(), edited);
+    output(&mut update("path"), true);
+    let installed = std::fs::read_to_string(&profile).unwrap();
+    assert!(installed.starts_with(&edited));
+    assert_eq!(installed.matches(&guard).count(), 2);
+
+    let conflict = format!("export FIRST=yes\n{installed}export PATH=/no-tools\n");
+    std::fs::write(&profile, &conflict).unwrap();
+    let error = output(&mut update("path"), false);
+    assert_eq!(std::fs::read_to_string(&profile).unwrap(), conflict);
+    let retry =
+        r#"PATH=/usr/bin:/bin "$HOME/.local/bin/dotfiles" update --only path --no-repo-update"#;
+    assert!(error.contains(retry), "{error}");
+    // Both the inherited PATH and the freshly sourced profile hide dotfiles.
+    // The conflict still produces the right diagnostic via the printed route.
+    let still_blocked = fresh_shell(&format!(
+        r#". "$HOME/.profile"; if command -v dotfiles || {retry}; then exit 1; fi"#
+    ));
+    assert!(
+        still_blocked.contains("between the leading and trailing"),
+        "{still_blocked}"
+    );
+    let repaired = installed.replacen(
+        "export PATH=/no-tools",
+        "export FIRST=yes\nexport PATH=/no-tools",
+        1,
+    );
+    std::fs::write(&profile, &repaired).unwrap();
+    let result = fresh_shell(&format!(
+        r#"{retry}; . "$HOME/.profile"; . "$HOME/.profile"; test "$FIRST" = yes; test "$PATH" = "$HOME/.local/bin:/no-tools"; command -v dotfiles"#
+    ));
+    assert!(result.contains("unchanged"), "{result}");
+    assert_eq!(std::fs::read_to_string(&profile).unwrap(), repaired);
+    let run_id = error
+        .split_once("dotfiles log --id ")
+        .unwrap()
+        .1
+        .split_whitespace()
+        .next()
+        .unwrap();
+    let log = fresh_shell(&format!(
+        r#"PATH=/usr/bin:/bin "$HOME/.local/bin/dotfiles" log --id {run_id} -v"#
+    ));
+    assert!(log.contains("between the leading and trailing"), "{log}");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn extension_deferral_requires_a_configured_enabled_consumer_and_records_the_profile() {
     let repo = common::TestContextBuilder::new()
         .with_config_file(

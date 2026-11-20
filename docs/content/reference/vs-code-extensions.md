@@ -21,11 +21,17 @@ are present; it does not pin extension versions or configure their preferences.
 
 ## What it does
 
-After waiting for package tasks, finds an editor CLI, reads installed extensions, and
-installs missing ones. After installing, Dotfiles queries the inventory again and reports
-any extensions that are still missing. If only some installs succeeded, the task fails,
-counts the confirmed installs, and names the missing IDs. Retrying installs only the
-extensions still missing. If no CLI is available, the task is skipped.
+Dotfiles reads the selected editor's extension list and installs only missing IDs.
+It reads the list again even if an install command failed. It reports an install
+as applied only when the command succeeded and the editor lists the ID. The task
+names missing IDs and reports command failures, even if the editor now lists
+the extension. If no CLI is available, the task is skipped.
+
+If the final list cannot be read, verification fails: no new installs are
+reported as applied, but that does not mean they are absent. Cancelling stops
+further installs and leaves unverified work unconfirmed. After a failure or
+interruption, retry the same task. It reads a fresh list and requests only the
+IDs still missing.
 
 The search prefers `code-insiders` over `code` on Linux, and
 `code-insiders.cmd` over `code.cmd` on Windows. On Linux, a Dotfiles

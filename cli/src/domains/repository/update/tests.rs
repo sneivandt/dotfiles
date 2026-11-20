@@ -65,6 +65,10 @@ fn make_update_context(
     overlay: Option<PathBuf>,
     executor: impl Executor + 'static,
 ) -> Context {
+    git2::Repository::init(&root).unwrap();
+    if let Some(path) = &overlay {
+        git2::Repository::init(path).unwrap();
+    }
     make_context(
         root,
         overlay,
@@ -77,7 +81,8 @@ fn make_update_context(
 fn run_returns_not_applicable_when_detached_head() {
     // First call (symbolic-ref): fails → detached HEAD
     let exec = ScriptedExecutor::new().err(git_non_zero("simulated failure"));
-    let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
+    let root = tempfile::tempdir().unwrap();
+    let ctx = make_update_context(root.path().into(), None, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated.clone());
 
@@ -95,7 +100,8 @@ fn run_returns_not_applicable_when_detached_head() {
 #[test]
 fn run_propagates_symbolic_ref_operational_failure() {
     let exec = ScriptedExecutor::new().err(git_error("git could not start"));
-    let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
+    let root = tempfile::tempdir().unwrap();
+    let ctx = make_update_context(root.path().into(), None, exec);
 
     let err = UpdateRepository::new(UpdateSignal::new())
         .run(&ctx)
@@ -263,7 +269,9 @@ fn run_classifies_repository_state_from_git_output() {
                         } else {
                             Err(git_non_zero(""))
                         },
-                    );
+                    )
+                    .git(root, HEAD_SNAPSHOT, snapshot(head))
+                    .git(root, TRACKED_STATUS, "");
             }
         }
         if ancestry.is_none() {
@@ -560,7 +568,8 @@ fn run_propagates_fetch_cancellation() {
         .ok("refs/heads/main")
         .ok(snapshot(MAIN_NEW))
         .err(cancelled_git_error());
-    let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
+    let root = tempfile::tempdir().unwrap();
+    let ctx = make_update_context(root.path().into(), None, exec);
 
     let err = UpdateRepository::new(UpdateSignal::new())
         .run(&ctx)
@@ -633,7 +642,8 @@ fn run_retries_transient_fetch_failure() {
         .ok(MAIN_NEW)
         .ok(snapshot(MAIN_NEW))
         .ok("");
-    let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
+    let root = tempfile::tempdir().unwrap();
+    let ctx = make_update_context(root.path().into(), None, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated.clone());
 
@@ -656,7 +666,8 @@ fn run_stops_after_transient_fetch_retries_are_exhausted() {
         .err(git_error("connection reset by peer"))
         .ok(snapshot(MAIN_NEW))
         .ok("");
-    let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
+    let root = tempfile::tempdir().unwrap();
+    let ctx = make_update_context(root.path().into(), None, exec);
     let task = UpdateRepository::new(UpdateSignal::new());
 
     let result = task.run(&ctx).unwrap();
@@ -666,7 +677,8 @@ fn run_stops_after_transient_fetch_retries_are_exhausted() {
 
 #[test]
 fn run_skips_when_overlay_has_local_changes() {
-    let main_root = PathBuf::from("/tmp/main");
+    let root = tempfile::tempdir().unwrap();
+    let main_root = root.path().join("main");
     let overlay = tempfile::tempdir().unwrap();
     std::fs::create_dir(overlay.path().join(".git")).unwrap();
     let overlay_root = overlay.path().to_path_buf();
@@ -710,7 +722,8 @@ fn run_skips_when_overlay_has_local_changes() {
 
 #[test]
 fn run_updates_overlay_repository_when_behind_upstream() {
-    let main_root = PathBuf::from("/tmp/main");
+    let root = tempfile::tempdir().unwrap();
+    let main_root = root.path().join("main");
     let overlay = tempfile::tempdir().unwrap();
     std::fs::create_dir(overlay.path().join(".git")).unwrap();
     let overlay_root = overlay.path().to_path_buf();
@@ -795,7 +808,8 @@ fn overlay_config(main_root: &Path, overlay: &Path) -> crate::Config {
 
 #[test]
 fn parallel_fetch_visits_every_repository() {
-    let main_root = PathBuf::from("/tmp/main");
+    let root = tempfile::tempdir().unwrap();
+    let main_root = root.path().join("main");
     let overlay = tempfile::tempdir().unwrap();
     let config = overlay_config(&main_root, overlay.path());
 
@@ -839,7 +853,8 @@ fn parallel_fetch_visits_every_repository() {
 
 #[test]
 fn parallel_fetch_failure_reports_the_first_declared_repository() {
-    let main_root = PathBuf::from("/tmp/main");
+    let root = tempfile::tempdir().unwrap();
+    let main_root = root.path().join("main");
     let overlay = tempfile::tempdir().unwrap();
     let config = overlay_config(&main_root, overlay.path());
 
@@ -1022,7 +1037,14 @@ fn multi_repository_merge_records_verified_advances_and_preserves_restart_signal
                 assert!(reason.contains("Already advanced repository"));
             }
         }
-        assert_eq!(signal.recovery_required(), !cancelled && !success);
+        assert_eq!(signal.recovery_required(), !success);
+        assert_eq!(
+            overlay_root
+                .join(".git/dotfiles-merge-in-progress")
+                .exists(),
+            !success
+        );
+        assert!(!main_root.join(".git/dotfiles-merge-in-progress").exists());
         assert!(
             signal.was_updated(),
             "a successful first merge must prevent later tasks from using stale configuration"
@@ -1098,7 +1120,11 @@ fn unsafe_overlay_plan_prevents_merging_an_otherwise_ready_main_repository() {
                 } else {
                     Err(git_non_zero(""))
                 },
-            );
+            )
+            .git(&main_root, HEAD_SNAPSHOT, snapshot("main-old"))
+            .git(&main_root, TRACKED_STATUS, "")
+            .git(&overlay_root, HEAD_SNAPSHOT, snapshot("overlay-old"))
+            .git(&overlay_root, TRACKED_STATUS, "");
         let ctx = make_update_context(config.root, config.overlay, executor);
         let signal = UpdateSignal::new();
 
@@ -1112,6 +1138,42 @@ fn unsafe_overlay_plan_prevents_merging_an_otherwise_ready_main_repository() {
         );
         assert!(!signal.was_updated(), "{ahead}: no merge may have occurred");
     }
+}
+
+#[test]
+fn skipping_ahead_main_still_checks_the_later_overlay_inputs() {
+    let root = tempfile::tempdir().unwrap();
+    let main = root.path().join("main");
+    let overlay = root.path().join("overlay");
+    let config = overlay_config(&main, &overlay);
+    let exec = ready_repositories_script(&main, &overlay)
+        .git(&main, HEAD_SNAPSHOT, snapshot("main-old"))
+        .git(
+            &main,
+            &["rev-parse", "--verify", &verify_fetched(MAIN_NEW)],
+            MAIN_NEW,
+        )
+        .command(
+            ancestor_command(&main, "main-old", MAIN_NEW),
+            Err(git_non_zero("")),
+        )
+        .git(
+            &main,
+            &["merge-base", "--is-ancestor", MAIN_NEW, "main-old"],
+            "",
+        )
+        .git(&main, HEAD_SNAPSHOT, snapshot("main-old"))
+        .git(&main, TRACKED_STATUS, "")
+        .git(&overlay, HEAD_SNAPSHOT, snapshot("overlay-old"))
+        .git(&overlay, TRACKED_STATUS, " M conf/symlinks.toml");
+    let ctx = make_update_context(config.root, config.overlay, exec);
+    let signal = UpdateSignal::new();
+    assert!(
+        matches!(UpdateRepository::new(signal.clone()).run(&ctx).unwrap(),
+        TaskResult::Failed(reason) if reason.contains("in overlay repository"))
+    );
+    assert!(signal.recovery_required());
+    assert!(!signal.was_updated());
 }
 
 #[test]

@@ -13,6 +13,7 @@ use crate::infra::exec::CommandSpec;
 mod apply;
 mod discovery;
 mod models;
+mod recovery;
 
 use apply::apply_repository_updates;
 use discovery::{checked_repositories, dry_run_repositories};
@@ -139,7 +140,7 @@ impl Operation for UpdateRepositoryOperation<'_> {
     type Plan = Vec<CheckedRepository>;
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
-        match checked_repositories(ctx)? {
+        match checked_repositories(ctx, self.repo_updated)? {
             RepositorySetReadiness::Ready(repositories) if repositories.is_empty() => {
                 Ok(OperationState::Complete)
             }

@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::exec::{CommandSpec, ExecError, Executor};
@@ -120,20 +120,22 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
             for name in &names {
                 progress(name);
             }
-            match executor.execute(CommandSpec::new(program).args(&args)) {
-                Ok(_) => {}
+            let failure = match executor.execute(CommandSpec::new(program).args(&args)) {
+                Ok(_) => None,
                 Err(error @ (ExecError::NonZero { .. } | ExecError::TimedOut { .. })) => {
-                    return reconcile_failed_batch(
-                        resources,
-                        self.query_installed(executor),
-                        error,
-                    );
+                    Some(error)
                 }
                 Err(error) => return Err(error.into()),
+            };
+            let installed = match self.query_installed(executor) {
+                Ok(installed) => installed,
+                Err(cause) => {
+                    return Err(unverified_batch(cause, failure, resources.len()));
+                }
+            };
+            if let Some(error) = failure {
+                return reconcile_failed_batch(resources, &installed, error);
             }
-            let installed = self
-                .query_installed(executor)
-                .context("verifying installed packages after successful batch")?;
             let mut report = PackageInstallReport::new();
             for resource in resources {
                 if resource.state_from_installed(&installed) == ResourceState::Correct {
@@ -200,35 +202,36 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     }
 }
 
+fn unverified_batch(
+    cause: anyhow::Error,
+    transaction_failure: Option<ExecError>,
+    requested: usize,
+) -> anyhow::Error {
+    let cancelled = cause
+        .downcast_ref::<ExecError>()
+        .is_some_and(ExecError::is_cancelled);
+    let cause = match transaction_failure {
+        Some(error @ ExecError::TimedOut { .. }) if !cancelled => cause
+            .context("rechecking installed packages")
+            .context(error),
+        Some(error) => cause.context(format!(
+            "rechecking installed packages after batch failure: {error}"
+        )),
+        None => cause.context("verifying installed packages after successful batch"),
+    };
+    // The failed inventory cannot establish even one changed or failed item.
+    PackageInstallReport::new().stopped(cause, if cancelled { requested } else { 0 }, 0)
+}
+
 fn reconcile_failed_batch(
     resources: &[&PackageResource],
-    inventory: Result<HashSet<String>>,
+    installed: &HashSet<String>,
     error: ExecError,
 ) -> Result<PackageInstallReport> {
     let mut report = PackageInstallReport::new();
-    let timed_out = matches!(error, ExecError::TimedOut { .. });
-    let installed = match inventory {
-        Ok(installed) => installed,
-        Err(cause) => {
-            if timed_out
-                && !cause
-                    .downcast_ref::<ExecError>()
-                    .is_some_and(ExecError::is_cancelled)
-            {
-                // No observed item counts. Keep both errors and fail the batch.
-                let cause = cause
-                    .context("rechecking installed packages")
-                    .context(error);
-                return Err(report.stopped(cause, 0, 0));
-            }
-            return Err(cause.context(format!(
-                "rechecking installed packages after batch failure: {error}"
-            )));
-        }
-    };
     for resource in resources {
         if matches!(
-            resource.state_from_installed(&installed),
+            resource.state_from_installed(installed),
             ResourceState::Correct
         ) {
             report.record_applied(resource.name.clone());
@@ -236,7 +239,7 @@ fn reconcile_failed_batch(
             report.record_failure(resource.name.clone(), error.to_string());
         }
     }
-    if timed_out || !report.has_failures() {
+    if matches!(error, ExecError::TimedOut { .. }) || !report.has_failures() {
         // Keep a timeout typed, and never turn a failed post-transaction hook
         // into success just because all requested packages are now present.
         return Err(report.stopped(error.into(), 0, 0));

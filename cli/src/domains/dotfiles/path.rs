@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn profile_preview_apply_and_repeat_preserve_user_content() {
-        let export = "export PATH=\"$HOME/.local/bin:$PATH\"";
+        let block = "# Added by dotfiles\ncase \":$PATH:\" in\n    *\":$HOME/.local/bin:\"*) ;;\n    *) export PATH=\"$HOME/.local/bin:$PATH\" ;;\nesac\n";
         for (case, initial, needs_change) in [
             ("missing profile", None, true),
             (
@@ -100,11 +100,7 @@ mod tests {
                 Some("# user settings\nexport EDITOR=vim"),
                 true,
             ),
-            (
-                "existing managed export",
-                Some("# user settings\r\n \texport PATH=\"$HOME/.local/bin:$PATH\" \t\r\n"),
-                false,
-            ),
+            ("existing guarded export", Some(block), false),
         ] {
             let root = tempfile::tempdir_in(".").unwrap();
             let profile = root.path().join(".profile");
@@ -153,11 +149,8 @@ mod tests {
                 "{case}: apply"
             );
             let expected = if needs_change {
-                let block = format!(
-                    "# Added by dotfiles\ncase \":$PATH:\" in\n    *\":$HOME/.local/bin:\"*) ;;\n    *) {export} ;;\nesac\n"
-                );
                 initial.map_or_else(
-                    || block.clone(),
+                    || block.to_owned(),
                     |content| format!("{block}{content}\n{block}"),
                 )
             } else {
@@ -214,11 +207,13 @@ mod tests {
             assert_eq!(std::fs::read_to_string(&profile).unwrap(), annotated);
         }
         let active = format!("{annotated}export PATH=/fixture/bin\n");
-        std::fs::write(&profile, &active).unwrap();
-        for dry_run in [true, false] {
-            let error = ConfigurePath.run(&ctx.with_dry_run(dry_run)).unwrap_err();
-            assert!(format!("{error:#}").contains("between the leading and trailing"));
-            assert_eq!(std::fs::read_to_string(&profile).unwrap(), active);
+        for edited in [&active, &format!("export TOP=one\n{active}")] {
+            std::fs::write(&profile, edited).unwrap();
+            for dry_run in [true, false] {
+                let error = ConfigurePath.run(&ctx.with_dry_run(dry_run)).unwrap_err();
+                assert!(format!("{error:#}").contains("between the leading and trailing"));
+                assert_eq!(&std::fs::read_to_string(&profile).unwrap(), edited);
+            }
         }
         let repaired = annotated.replacen(
             "export EDITOR=vim",

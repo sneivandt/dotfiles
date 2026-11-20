@@ -60,18 +60,29 @@ fn missing_when_not_on_path_and_no_profile() {
 }
 
 #[test]
-fn correct_when_export_line_in_profile() {
-    let tmp = TempDir::new().unwrap();
-    let profile = tmp.path().join(".profile");
-    std::fs::write(
-        &profile,
-        "# existing\nexport PATH=\"$HOME/.local/bin:$PATH\"\n",
-    )
-    .unwrap();
-
-    let r = make_path_entry(tmp.path(), false);
-    let state = r.current_state().unwrap();
-    assert_eq!(state, ResourceState::Correct);
+fn unowned_or_malformed_exports_are_not_convergence_or_permission_to_rewrite() {
+    let export = "export PATH=\"$HOME/.local/bin:$PATH\"";
+    for content in [
+        format!("# existing\n{export}\n"),
+        format!("# user profile\r\n \t{export} \t\r\n"),
+        format!(": <<'EXAMPLE'\n# Added by dotfiles\n{export}\nEXAMPLE\n"),
+        // Even an exact marked trailer can be data and its closing delimiter.
+        format!(": <<'{export}'\n# Added by dotfiles\n{export}\n"),
+    ] {
+        let dir = TempDir::new_in(".").unwrap();
+        let profile = dir.path().join(".profile");
+        std::fs::write(&profile, &content).unwrap();
+        let resource = make_path_entry(dir.path(), false);
+        assert!(
+            resource
+                .current_state()
+                .unwrap_err()
+                .to_string()
+                .contains("unguarded")
+        );
+        assert!(resource.apply().is_err());
+        assert_eq!(std::fs::read_to_string(profile).unwrap(), content);
+    }
 }
 
 #[test]
@@ -101,19 +112,6 @@ fn inactive_profile_mentions_do_not_satisfy_path_state() {
         assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
         assert_eq!(std::fs::read_to_string(&profile).unwrap(), installed);
     }
-}
-
-#[test]
-fn whitespace_around_managed_profile_line_preserves_idempotence() {
-    let dir = TempDir::new_in(".").unwrap();
-    let profile = dir.path().join(".profile");
-    let content = "# user profile\r\n \texport PATH=\"$HOME/.local/bin:$PATH\" \t\r\n";
-    std::fs::write(&profile, content).unwrap();
-    let resource = make_path_entry(dir.path(), false);
-
-    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
-    assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
-    assert_eq!(std::fs::read_to_string(&profile).unwrap(), content);
 }
 
 #[test]
@@ -163,19 +161,6 @@ fn apply_appends_to_profile_when_on_path_but_profile_missing() {
 
     let content = std::fs::read_to_string(&profile).unwrap();
     assert!(content.contains("export PATH=\"$HOME/.local/bin:$PATH\""));
-}
-
-#[test]
-fn apply_skips_when_profile_already_contains_export_line() {
-    let tmp = TempDir::new().unwrap();
-    let profile = tmp.path().join(".profile");
-    let content = "# existing\nexport PATH=\"$HOME/.local/bin:$PATH\"\n";
-    std::fs::write(&profile, content).unwrap();
-
-    let r = make_path_entry(tmp.path(), false);
-    let result = r.apply().unwrap();
-    assert_eq!(result, ResourceChange::AlreadyCorrect);
-    assert_eq!(std::fs::read_to_string(&profile).unwrap(), content);
 }
 
 #[test]

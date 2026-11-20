@@ -1378,6 +1378,93 @@ fn native_batch_timeout_preserves_observed_progress_and_retries_only_missing_pac
 }
 
 #[test]
+fn failed_post_install_inventory_does_not_guess_item_outcomes() {
+    use crate::engine::{TaskAssessment, TaskOutcome, task::execute_assessed};
+    use crate::infra::logging::TaskStatus;
+
+    for batch_succeeded in [true, false] {
+        let root = tempfile::tempdir_in(".").unwrap();
+        let log = Arc::new(CapturingOutput::default());
+        let mut inventory = "existing 1\n";
+        let mut fail_next_query = false;
+        let mut mock = MockExecutor::new();
+        mock.expect_execute().times(10).returning(move |spec| {
+            if spec.program() == "pacman" && spec.arguments() == ["-Q", "paru"] {
+                assert!(!spec.is_checked());
+                return Ok(ExecResult::success("paru 1"));
+            }
+            if is_native_inventory(&spec) {
+                if std::mem::take(&mut fail_next_query) {
+                    return Err(ExecError::non_zero(
+                        "pacman -Q",
+                        ExecResult::failure(inventory, "fixture inventory error", Some(7)),
+                    ));
+                }
+                return Ok(ExecResult::success(inventory));
+            }
+            assert_eq!(spec.program(), "/usr/bin/paru");
+            assert!(spec.is_checked());
+            if spec.arguments() == ["--version"] {
+                return Ok(ExecResult::success("paru fixture"));
+            }
+            if inventory == "existing 1\n" {
+                assert_eq!(
+                    spec.arguments(),
+                    ["-S", "--needed", "--noconfirm", "first", "second"]
+                );
+                inventory = "existing 1\nfirst 1\n";
+                fail_next_query = true;
+                if !batch_succeeded {
+                    return Err(ExecError::non_zero(
+                        "paru",
+                        ExecResult::failure("", "fixture transaction error", Some(42)),
+                    ));
+                }
+            } else {
+                assert_eq!(
+                    spec.arguments(),
+                    ["-S", "--needed", "--noconfirm", "second"]
+                );
+                inventory = "existing 1\nfirst 1\nsecond 1\n";
+            }
+            Ok(ExecResult::success(""))
+        });
+        let task = InstallAurPackages::new(packages(&[
+            ("existing", true),
+            ("first", true),
+            ("second", true),
+        ]));
+        let ctx = make_package_context(root.path().into(), None, Os::Linux, true, mock)
+            .with_log(Arc::<CapturingOutput>::clone(&log));
+        let assessment = TaskAssessment::applicable();
+        let failed = execute_assessed(&task, &assessment, &ctx);
+        let retry = execute_assessed(&task, &assessment, &ctx);
+
+        assert_eq!(failed.outcome, TaskOutcome::Failed);
+        assert_eq!(retry.outcome, TaskOutcome::Satisfied);
+        let records = log.records();
+        let [first, second] = records.as_slice() else {
+            panic!("unexpected task records: {records:?}")
+        };
+        assert_eq!(first.status, TaskStatus::Failed);
+        assert_eq!(
+            (first.actions.applied, first.actions.failed),
+            (0, 0),
+            "batch_succeeded={batch_succeeded}"
+        );
+        let message = first.message.as_deref().unwrap();
+        assert!(
+            message.contains("1 already ok") && message.contains("fixture inventory error"),
+            "{message}"
+        );
+        if !batch_succeeded {
+            assert!(message.contains("fixture transaction error"), "{message}");
+        }
+        assert_eq!((second.actions.applied, second.actions.failed), (1, 0));
+    }
+}
+
+#[test]
 fn failed_timeout_recheck_preserves_the_timeout_or_new_cancellation() {
     for cancelled in [false, true] {
         let root = tempfile::tempdir_in(".").unwrap();

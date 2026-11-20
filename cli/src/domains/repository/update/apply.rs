@@ -68,31 +68,19 @@ pub(super) fn apply_repository_updates(
     let commits = match fetch_all(ctx, &tracked)? {
         Ok(commits) => commits,
         Err(reason) => {
-            // Independent tasks may continue after a network failure, but only
-            // if every checkout still matches their pre-fetch inputs.
-            for (repository, original_head) in repositories.iter().zip(&original_heads) {
-                if checkout_inputs_changed(ctx, repository, original_head)
-                    .inspect_err(|_| repo_updated.mark_recovery_required())
-                    .with_context(|| {
-                        format!(
-                            "checking {} after {reason}",
-                            repository.target.root.display()
-                        )
-                    })?
-                {
-                    return Ok(TaskResult::Failed(stop_changed_checkout(
-                        repository,
-                        repo_updated,
-                    )));
-                }
-            }
-            return Ok(TaskResult::Failed(reason));
+            return unchanged_inputs_or_stop(
+                ctx,
+                repositories,
+                &original_heads,
+                repo_updated,
+                TaskResult::Failed(reason),
+            );
         }
     };
 
     let mut plans = Vec::with_capacity(repositories.len());
     for ((repository, original_head), commit) in
-        repositories.iter().zip(original_heads).zip(&commits)
+        repositories.iter().zip(&original_heads).zip(&commits)
     {
         if checkout_head(ctx, repository)
             .inspect_err(|_| repo_updated.mark_recovery_required())?
@@ -104,9 +92,19 @@ pub(super) fn apply_repository_updates(
                 repo_updated,
             )));
         }
-        match plan_repository_update(ctx, repository, original_head, commit)? {
+        match plan_repository_update(ctx, repository, original_head, commit)
+            .inspect_err(|_| repo_updated.mark_recovery_required())?
+        {
             RepositoryPlanReadiness::Ready(plan) => plans.push(plan),
-            RepositoryPlanReadiness::Skipped(reason) => return Ok(TaskResult::unmet(reason)),
+            RepositoryPlanReadiness::Skipped(reason) => {
+                return unchanged_inputs_or_stop(
+                    ctx,
+                    repositories,
+                    &original_heads,
+                    repo_updated,
+                    TaskResult::unmet(reason),
+                );
+            }
         }
     }
     let mut changed = Vec::new();
@@ -158,6 +156,9 @@ fn advance_worktrees(
         let Some(commit) = plan.commit.as_deref() else {
             continue;
         };
+        let marker = super::recovery::MergeMarker::for_checkout(&target.root)
+            .and_then(|marker| marker.begin(&plan.original_head, commit))
+            .inspect_err(|_| repo_updated.mark_recovery_required())?;
         // A branch's mergeOptions can enable squash even with --ff-only.
         let result = ctx.executor().execute(git_command(
             ctx,
@@ -186,13 +187,19 @@ fn advance_worktrees(
                     return Ok(Some(reason));
                 }
                 repo_updated.mark_updated();
-                if index_is_unmerged(ctx, &target.root)? {
+                if index_is_unmerged(ctx, &target.root)
+                    .inspect_err(|_| repo_updated.mark_recovery_required())?
+                {
+                    repo_updated.mark_recovery_required();
                     let reason = target.reason(
                         "unmerged paths remain after fast-forward; inspect the checkout before retrying",
                     );
                     return Ok(Some(reason));
                 }
                 changed.push(target.description());
+                marker
+                    .finish()
+                    .inspect_err(|_| repo_updated.mark_recovery_required())?;
                 ctx.log().action(
                     "update",
                     target.description(),
@@ -201,13 +208,13 @@ fn advance_worktrees(
                 );
             }
             Err(e) => {
+                repo_updated.mark_recovery_required();
                 if e.is_cancelled() {
                     return Err(e.into());
                 }
                 // An unsuccessful merge can write files before updating HEAD
                 // or the index. Stop even if Git reports no tracked changes:
                 // files introduced by the merge may be untracked or ignored.
-                repo_updated.mark_recovery_required();
                 let merge_failure = target.reason("git merge --ff-only failed");
                 ctx.log().warn(format!("{merge_failure}: {e:#}"));
                 let state = checkout_head(ctx, repository).and_then(|head| {
@@ -225,8 +232,8 @@ fn advance_worktrees(
                     }
                 };
                 return Ok(Some(format!(
-                    "{merge_failure}: {detail}. Further tasks stopped. In {}, inspect 'git status --short --ignored', 'git diff', and 'git diff --cached'. Preserve any edits you need, then repair the checkout before retrying",
-                    target.root.display(),
+                    "{merge_failure}: {detail}. {}",
+                    marker.recovery_steps(&target.root)
                 )));
             }
         }
@@ -270,6 +277,31 @@ fn checkout_inputs_changed(
         return Ok(true);
     }
     worktree_has_local_changes(ctx, &repository.target.root)
+}
+
+/// A non-mutating exit after fetch may release independent tasks. Their inputs
+/// include every selected checkout, not just the one whose plan caused the exit.
+fn unchanged_inputs_or_stop(
+    ctx: &Context,
+    repositories: &[CheckedRepository],
+    original_heads: &[String],
+    signal: &RepositoryUpdateSignal,
+    otherwise: TaskResult,
+) -> Result<TaskResult> {
+    for (repo, original) in repositories.iter().zip(original_heads) {
+        if checkout_inputs_changed(ctx, repo, original)
+            .inspect_err(|_| signal.mark_recovery_required())
+            .with_context(|| {
+                format!(
+                    "rechecking checkout inputs in {}",
+                    repo.target.root.display()
+                )
+            })?
+        {
+            return Ok(TaskResult::Failed(stop_changed_checkout(repo, signal)));
+        }
+    }
+    Ok(otherwise)
 }
 
 fn checkout_head(ctx: &Context, repository: &CheckedRepository) -> Result<Option<String>> {
@@ -439,7 +471,7 @@ const fn fetch_retry_delay(_attempt: u32) -> Duration {
 fn plan_repository_update(
     ctx: &Context,
     repository: &CheckedRepository,
-    original_head: String,
+    original_head: &str,
     upstream_sha: &str,
 ) -> Result<RepositoryPlanReadiness> {
     let root = &repository.target.root;
@@ -453,7 +485,7 @@ fn plan_repository_update(
         ],
     ))?;
     let upstream = upstream.stdout.trim();
-    let commit = match compare_commits(ctx, root, &original_head, upstream)? {
+    let commit = match compare_commits(ctx, root, original_head, upstream)? {
         CommitRelationship::AlreadyCurrent => {
             ctx.log().debug(format!(
                 "{} already up to date",
@@ -479,7 +511,7 @@ fn plan_repository_update(
     };
     Ok(RepositoryPlanReadiness::Ready(RepositoryUpdatePlan {
         repository: repository.clone(),
-        original_head,
+        original_head: original_head.to_owned(),
         commit,
     }))
 }

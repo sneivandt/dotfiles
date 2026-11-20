@@ -33,11 +33,11 @@ file permissions and replace the content atomically.
 
 Open a new terminal to use the updated PATH. Existing processes keep the
 environment they inherited at startup. On Linux, loading also depends on the
-shell's startup files. Dotfiles also checks PATH at the end of the profile.
-Keep your shell commands between the two `# Added by dotfiles` blocks. Blank
-lines and comments after the last block are fine. If an edit moves a block
-into the middle of your code, the update asks you to put the commands back
-between the blocks rather than guessing which shell text it can remove.
+shell's startup files. An empty profile gets one `# Added by dotfiles` block.
+Put new commands **after** it. On the next update Dotfiles adds a trailing
+block so a command that resets PATH does not hide the launcher. Each block
+adds `~/.local/bin` only if it is absent. If you have two blocks, keep shell
+commands between them. Blank lines and comments can stay outside.
 If your profile replaces PATH and then returns early, include
 `~/.local/bin` in that assignment. The [Bash invocation reference](https://www.gnu.org/software/bash/manual/html_node/Invoking-Bash.html)
 explains login and interactive shell modes; the managed
@@ -63,6 +63,24 @@ or its `bin/` directory. Resolve any profile or saved-PATH read error before
 [applying the change](task-reference.md#preview-and-apply). Open a new shell and
 confirm it finds the launcher; retrying this task does not refresh an existing
 terminal's environment.
+
+If the update reports a conflict, it has not rewritten the profile. Move
+displaced commands back inside the two blocks, or after the block if you
+have only one. Dotfiles can migrate the exact old marked export at the
+end of a profile. It does not remove a bare export, fix CRLF shell commands,
+or guess which copy in an example is live shell code. Remove only an
+unguarded addition you recognize; keep literal examples intact. If you
+prefer to manage PATH yourself, skip the `path` task instead.
+
+If a fresh shell cannot find `dotfiles`, use the installed launcher directly
+with a temporary PATH for its standard utilities. After fixing the profile, run:
+
+```sh
+PATH=/usr/bin:/bin "$HOME/.local/bin/dotfiles" update --only path --no-repo-update
+```
+
+The same launcher and temporary PATH work with the `log --id … -v` arguments
+printed after a failure.
 
 ## Removal
 

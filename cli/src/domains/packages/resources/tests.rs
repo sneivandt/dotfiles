@@ -503,6 +503,13 @@ fn successful_native_batches_report_observed_presence_and_propagate_inventory_er
                 let error = result.unwrap_err();
                 assert!(error.downcast_ref::<ExecError>().unwrap().is_cancelled());
                 assert!(format!("{error:#}").contains("verifying installed packages"));
+                let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
+                assert_eq!(
+                    report.completion(),
+                    crate::engine::BatchCompletion::Interrupted
+                );
+                assert_eq!(report.interrupted_count(), 2);
+                assert_eq!(report.stats().failed_count(), 0);
             }
         }
     }
@@ -632,6 +639,9 @@ fn failed_batch_inventory_errors_remain_errors_not_partial_success() {
         let message = format!("{error:#}");
         assert!(message.contains("fixture batch failure"), "{message}");
         assert!(message.contains("fixture query failure"), "{message}");
+        let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
+        assert_eq!(report.interrupted_count(), if cancelled { 2 } else { 0 });
+        assert_eq!(report.stats().failed_count(), 0);
         assert_eq!(
             error
                 .downcast_ref::<ExecError>()

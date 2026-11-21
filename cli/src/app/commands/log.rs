@@ -165,10 +165,17 @@ impl RecordMetadata {
 
 #[derive(Default)]
 struct LogIndex {
+    has_startup: bool,
     selected_task_ids: Option<HashSet<String>>,
     results: HashSet<String>,
     durations: HashSet<String>,
     task_names: HashMap<String, String>,
+}
+
+impl LogIndex {
+    fn completed_resource_attempt(&self, context: &str, event: &str) -> bool {
+        matches!(event, "resource_apply" | "resource_remove") && self.results.contains(context)
+    }
 }
 
 fn index_log(reader: &mut impl BufRead, task: Option<&str>) -> Result<LogIndex> {
@@ -181,6 +188,9 @@ fn index_log(reader: &mut impl BufRead, task: Option<&str>) -> Result<LogIndex> 
     // Prefer the structured facts without altering raw or unknown-schema output.
     for line in reader.lines() {
         let line = line.context("reading log index")?;
+        if let Some((_, "startup", _)) = text_record_parts(&line) {
+            index.has_startup = true;
+        }
         let Some(metadata) = RecordMetadata::from_line(&line) else {
             continue;
         };
@@ -224,6 +234,8 @@ fn index_log(reader: &mut impl BufRead, task: Option<&str>) -> Result<LogIndex> 
             Record::Message { event, text } => {
                 if event == "task_start" {
                     index.task_names.entry(stored.context).or_insert(text);
+                } else if event == "startup" {
+                    index.has_startup = true;
                 }
             }
             Record::RunStart { .. }
@@ -277,7 +289,14 @@ fn write_selected_log(
             .map(|r| r.context.as_str())
             .or_else(|| line_context(&line));
         if let Some(stored) = record {
+            // The startup header also identifies WSL and the selected overlay.
+            if !verbose && index.has_startup && matches!(stored.record, Record::RunContext { .. }) {
+                continue;
+            }
             if let Some((event, message)) = render_record(stored.record, verbose) {
+                if !verbose && index.completed_resource_attempt(&stored.context, &event) {
+                    continue;
+                }
                 write_rendered_record(
                     out,
                     &stored.context,
@@ -292,6 +311,9 @@ fn write_selected_log(
             && (verbose || line_event(&line).is_none_or(|event| !diagnostic_event(event)))
         {
             if !verbose && let Some((text_context, event, message)) = text_record_parts(&line) {
+                if index.completed_resource_attempt(text_context, event) {
+                    continue;
+                }
                 write_rendered_record(out, text_context, &index.task_names, event, message, None)?;
             } else {
                 // Include unrecognized lines and record schemas in human views too.
@@ -341,7 +363,7 @@ fn write_rendered_record(
         "command" => "Command",
         "plan" | "dry_run" => "Planned",
         "task_skip" => "Skipped",
-        "info" | "action" | "resource_apply" | "resource_remove" | "task_result" => "",
+        "info" | "startup" | "action" | "resource_apply" | "resource_remove" | "task_result" => "",
         other => other,
     };
     let mut labels = Vec::new();
@@ -367,6 +389,7 @@ fn text_record_parts(line: &str) -> Option<(&str, &str, &str)> {
     matches!(
         event,
         "info"
+            | "startup"
             | "warn"
             | "warn_continuation"
             | "error"

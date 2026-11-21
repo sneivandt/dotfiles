@@ -76,6 +76,31 @@ fn check_console_compacts_only_non_verbose_single_line_tasks() {
             blocks.last().unwrap().starts_with("Checks: 2 passed"),
             "{text}"
         );
+        let history = |args: &[&str]| {
+            let viewed = common::cli_command(ctx.root_path(), home.path(), None, "log", "")
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(viewed.status.success(), "{viewed:?}");
+            String::from_utf8(viewed.stdout).unwrap()
+        };
+        let log = history(&[]);
+        for task in ["Configuration diagnostics", "Required configuration files"] {
+            assert_eq!(log.matches(task).count(), 1, "{log}");
+            assert!(log.contains(&format!("{task}: Passed")), "{log}");
+        }
+        assert_eq!(log.matches("base profile").count(), 1, "{log}");
+        assert!(log.lines().any(|line| line == "Checks: 2 passed"), "{log}");
+        assert!(log.contains("Result: succeeded"), "{log}");
+        let detailed = history(&["--task", "config-files", "-v"]);
+        assert!(
+            detailed.contains("required config files present"),
+            "{detailed}"
+        );
+        assert!(
+            !detailed.contains("PASSED Required configuration files"),
+            "{detailed}"
+        );
     }
 }
 

@@ -377,14 +377,6 @@ impl Logger {
         self.console.lock().task_output_emitted
     }
 
-    /// Log a compact task-result line.
-    pub fn task_result(&self, msg: &str) {
-        if let Some(run_log) = &self.run_log {
-            run_log.emit(LogEvent::Info, msg);
-        }
-        self.console.task_result(msg);
-    }
-
     /// Render a message without recording it again.
     pub(in crate::infra::logging) fn emit_console(&self, kind: MsgKind, msg: &str) {
         self.console.emit(kind, msg, self.symbols);
@@ -1030,8 +1022,10 @@ mod tests {
             "task facts are recorded once; the summary must not repeat them"
         );
         assert!(
-            contents.contains("No checks ran ·"),
-            "file summary should include the final completion line: {contents}"
+            contents
+                .lines()
+                .any(|line| line.ends_with("[info] No checks ran")),
+            "file summary should report the counts without repeating the process duration: {contents}"
         );
         let lower_contents = contents.to_lowercase();
         assert!(

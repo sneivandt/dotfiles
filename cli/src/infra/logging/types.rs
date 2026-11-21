@@ -234,10 +234,10 @@ impl MsgKind {
             Self::Stage => LogEvent::Stage,
             Self::Info
             | Self::Always
-            | Self::Startup
             | Self::SudoRequired
             | Self::Transition
             | Self::RecoveryHint => LogEvent::Info,
+            Self::Startup => LogEvent::Startup,
             Self::Summary => LogEvent::Summary,
             Self::Debug | Self::Context | Self::Trace => LogEvent::Debug,
             Self::Warn | Self::WarnContinuation => LogEvent::Warn,
@@ -254,6 +254,8 @@ pub enum LogEvent {
     Record,
     /// Informational message.
     Info,
+    /// Console header, including any WSL or overlay context.
+    Startup,
     /// Aggregate counters retained for diagnostics.
     Summary,
     /// Debug-level message.
@@ -287,6 +289,7 @@ impl LogEvent {
         match self {
             Self::Record => "record",
             Self::Info => "info",
+            Self::Startup => "startup",
             Self::Summary => "summary",
             Self::Debug => "debug",
             Self::Warn => "warn",

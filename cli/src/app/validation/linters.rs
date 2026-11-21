@@ -17,7 +17,6 @@ pub(super) fn log_exec_output(log: &dyn Log, result: &ExecResult) {
 pub(super) fn run_linter(ctx: &Context, name: &str, spec: CommandSpec) -> Result<TaskResult> {
     let result = ctx.executor().execute(spec.unchecked())?;
     if result.success {
-        ctx.log().info(format!("{name} passed"));
         Ok(TaskResult::CheckPassed)
     } else {
         log_exec_output(ctx.log(), &result);

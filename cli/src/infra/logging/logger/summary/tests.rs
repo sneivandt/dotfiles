@@ -75,13 +75,24 @@ fn format_summary_lines(
     elapsed: &str,
     style: StyleChoice,
 ) -> Vec<String> {
-    super::totals::format_summary_lines(
+    summary_lines_with_disposition(
         counts,
         mode,
         elapsed,
         style,
         CompletionDisposition::Succeeded,
     )
+}
+
+fn summary_lines_with_disposition(
+    counts: SummaryCounts,
+    mode: SummaryMode,
+    elapsed: &str,
+    style: StyleChoice,
+    disposition: CompletionDisposition,
+) -> Vec<String> {
+    let counts = super::totals::format_summary_counts(counts, mode, style, disposition);
+    vec![super::totals::with_elapsed(&counts, elapsed, style)]
 }
 
 #[test]
@@ -989,7 +1000,7 @@ fn final_summary_preserves_disposition_and_emphasis_without_a_symbol_prefix() {
             ),
         ] {
             for ansi in [false, true] {
-                let lines = super::totals::format_summary_lines(
+                let lines = summary_lines_with_disposition(
                     counts,
                     mode,
                     "1.0s",
@@ -1153,7 +1164,7 @@ fn incomplete_summaries_report_each_outcome_without_duplicate_disposition_text()
     ] {
         for mode in [SummaryMode::Standard, SummaryMode::Check] {
             for disposition in [CompletionDisposition::Succeeded, incomplete_disposition] {
-                let lines = super::totals::format_summary_lines(
+                let lines = summary_lines_with_disposition(
                     counts,
                     mode,
                     "1.0s",

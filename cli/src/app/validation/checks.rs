@@ -47,7 +47,7 @@ impl Task for ValidateConfigWarnings {
             ),
         );
         if diagnostics.is_empty() {
-            ctx.log().info("no configuration issues found");
+            ctx.log().debug("no configuration issues found");
             return Ok(TaskResult::CheckPassed);
         }
 
@@ -176,7 +176,7 @@ impl Task for ValidateSymlinkSources {
         if missing > 0 {
             anyhow::bail!("{missing} configured source(s) missing");
         }
-        ctx.log().info(format!(
+        ctx.log().debug(format!(
             "all {} configured sources exist",
             symlinks.len().saturating_add(chmod.len())
         ));
@@ -221,7 +221,7 @@ impl Task for ValidateConfigFiles {
         if errors > 0 {
             anyhow::bail!("{errors} required config file(s) missing");
         }
-        ctx.log().info(format!(
+        ctx.log().debug(format!(
             "all {} required config files present",
             required.len()
         ));
@@ -279,7 +279,7 @@ impl Task for ValidateApmPlugins {
         }
 
         ctx.log()
-            .info(format!("validated {} local APM plugins", plugins.len()));
+            .debug(format!("validated {} local APM plugins", plugins.len()));
         Ok(TaskResult::CheckPassed)
     }
 }

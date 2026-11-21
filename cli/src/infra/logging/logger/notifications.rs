@@ -361,7 +361,7 @@ mod tests {
     fn notify_task_start_adds_blank_row_after_task_console_output() {
         let (log, _tmp, _guard) = isolated_logger();
         log.separate_from_startup();
-        log.task_result("completed task");
+        log.console.task_result("completed task");
         log.mark_task_console_output();
         assert!(log.task_console_output_emitted());
         log.notify_task_start_with_progress("task-a", true);

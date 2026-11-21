@@ -220,9 +220,10 @@ to `--task` (the example uses `symlinks`). Add `--verbose` for diagnostics or
 index. Historical `install` and `uninstall` filters remain supported; they
 are not current execution commands.
 
-Normal viewing shows actions, outcomes, warnings, context, and failed-command
-output with task names and readable labels. Verbose adds task starts, checks,
-timings, debug details, and stored event identifiers and contexts. Both views
+`dotfiles log` shows each task's outcome, along with actions, warnings, and
+failed-command output. For a passing check, use `dotfiles log -v` to see
+details such as how many files were checked. Verbose output also shows task
+starts, resource operations, timings, and stored event identifiers. Both views
 show NUL bytes as `\0` so text tools can search the output. Unrecognized lines
 and record formats remain visible. Use `--raw` for the original stored records.
 An external command can return a nonzero exit code without failing its task

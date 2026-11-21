@@ -60,13 +60,12 @@ impl SummaryCounts {
     }
 }
 
-pub(super) fn format_summary_lines(
+pub(super) fn format_summary_counts(
     counts: SummaryCounts,
     mode: SummaryMode,
-    elapsed: &str,
     style: StyleChoice,
     disposition: CompletionDisposition,
-) -> Vec<String> {
+) -> String {
     let mut parts = Vec::new();
     match disposition {
         CompletionDisposition::Failed if counts.failed == 0 => {
@@ -150,8 +149,15 @@ pub(super) fn format_summary_lines(
             },
         ));
     }
-    parts.push(style.paint(TextStyle::Dim, elapsed));
-    vec![parts.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}")))]
+    parts.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}")))
+}
+
+pub(super) fn with_elapsed(counts: &str, elapsed: &str, style: StyleChoice) -> String {
+    format!(
+        "{counts} {} {}",
+        style.paint(TextStyle::Dim, "\u{00b7}"),
+        style.paint(TextStyle::Dim, elapsed)
+    )
 }
 
 /// Emphasize the first outcome plus all incomplete work.

@@ -67,20 +67,16 @@ pub(super) fn process_single<R: Resource>(
 /// emitting the appropriate log events.
 ///
 /// `verb` is the human-facing action word used in dry-run and error output
-/// (e.g. `"link"` or `"unlink"`). `applied_label` is the past-tense word used
-/// in the diagnostic trace (`"applied"` or `"removed"`).
+/// (e.g. `"link"` or `"unlink"`).
 fn record_resource_change(
     ctx: &Context,
     delta: &mut TaskStats,
     change: ResourceChange,
     desc: &str,
     verb: &str,
-    applied_label: &str,
 ) {
     match change {
         ResourceChange::Applied => {
-            ctx.log()
-                .run_event(LogEvent::ResourceResult, &format!("{desc} {applied_label}"));
             ctx.log()
                 .action(verb, desc, false, &format!("{verb} {desc}"));
             delta.record(ItemOutcome::Changed);
@@ -120,7 +116,6 @@ struct ResourceMutation<'a> {
     verb: &'a str,
     dry_run_message: Option<String>,
     event: LogEvent,
-    applied_label: &'a str,
     bail_on_error: bool,
     warn_before_apply: bool,
 }
@@ -137,7 +132,6 @@ impl<'a> ResourceMutation<'a> {
             verb,
             dry_run_message,
             event: LogEvent::ResourceApply,
-            applied_label: "applied",
             bail_on_error,
             warn_before_apply: true,
         }
@@ -149,7 +143,6 @@ impl<'a> ResourceMutation<'a> {
             verb,
             dry_run_message,
             event: LogEvent::ResourceRemove,
-            applied_label: "removed",
             bail_on_error: true,
             warn_before_apply: false,
         }
@@ -220,14 +213,7 @@ where
         }
     };
 
-    record_resource_change(
-        ctx,
-        &mut delta,
-        change,
-        mutation.description,
-        mutation.verb,
-        mutation.applied_label,
-    );
+    record_resource_change(ctx, &mut delta, change, mutation.description, mutation.verb);
     Ok(delta)
 }
 

@@ -526,7 +526,7 @@ pub(super) fn emit_startup_context(
     repository_child: bool,
 ) {
     if repository_child {
-        log.run_event(LogEvent::Info, context);
+        log.run_event(LogEvent::Startup, context);
     } else {
         log.startup(context);
     }

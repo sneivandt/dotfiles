@@ -806,6 +806,13 @@ fn retained_history_selects_exact_runs_and_preserves_parent_and_actions() {
     );
     assert!(task_log.contains("Home symlinks · Planned:"), "{task_log}");
     let normal = read_retained_log(&log_dir, &["--id", parent_id]);
+    assert_eq!(normal.matches("base profile").count(), 1, "{normal}");
+    assert!(normal.contains(" · overlay "), "{normal}");
+    assert_eq!(
+        normal.matches("Home symlinks: Planned").count(),
+        1,
+        "{normal}"
+    );
     for internal in [task_id, "[main]", "elapsed_us", "[info]"] {
         assert!(!normal.contains(internal), "{normal}");
     }
@@ -832,6 +839,38 @@ fn read_retained_log(log_dir: &std::path::Path, args: &[&str]) -> String {
         String::from_utf8_lossy(&result.stderr)
     );
     String::from_utf8(result.stdout).unwrap()
+}
+
+#[cfg(unix)]
+#[test]
+fn retained_actions_appear_once_for_update_and_remove() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"log-example\"]\n")
+        .with_symlink_source_content("log-example", "example\n")
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let logs = home.path().join("logs");
+    for (verb, attempt) in [("update", "resource_apply"), ("remove", "resource_remove")] {
+        let result = common::cli_command(repo.root_path(), home.path(), None, verb, "symlinks")
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "{verb}: {result:?}");
+        let normal = read_retained_log(&logs, &["--task", "symlinks"]);
+        assert_eq!(
+            normal
+                .lines()
+                .filter(|line| line.contains("log-example"))
+                .count(),
+            1,
+            "{verb}: {normal}"
+        );
+        let verbose = read_retained_log(&logs, &["--task", "symlinks", "-v"]);
+        assert!(
+            verbose.contains(&format!("[{attempt}]")),
+            "{verb}: {verbose}"
+        );
+        assert!(verbose.contains("[action]"), "{verb}: {verbose}");
+    }
 }
 
 #[test]

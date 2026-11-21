@@ -74,7 +74,7 @@ fn direct_and_buffered_messages_are_persisted_once_in_emission_order() {
             (MsgKind::Error, "error"),
             (MsgKind::DryRun, "dry_run"),
             (MsgKind::Always, "info"),
-            (MsgKind::Startup, "info"),
+            (MsgKind::Startup, "startup"),
         ] {
             let outputs: [(&str, &dyn Output); 2] = [("buffered", &buf), ("direct", log.as_ref())];
             for (sink, output) in outputs {

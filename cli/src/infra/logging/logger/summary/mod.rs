@@ -5,8 +5,8 @@
 use std::io::IsTerminal as _;
 
 use super::Logger;
-use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::buffered::entry::LogEntry;
+use crate::infra::logging::types::MsgKind;
 
 mod render;
 mod status;
@@ -14,7 +14,9 @@ mod totals;
 
 use crate::infra::logging::utils::{format_elapsed, terminal_columns};
 use render::{RowOpts, task_block};
-use totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
+use totals::{
+    SummaryCounts, SummaryMode, format_summary_counts, should_space_before_totals, with_elapsed,
+};
 
 impl Logger {
     /// Print the summary of all recorded tasks.
@@ -30,11 +32,22 @@ impl Logger {
         let style = self.console.stdout_style;
 
         if self.needs_totals_separator() {
-            self.task_result("");
+            self.console.task_result("");
         }
-        for line in format_summary_lines(counts, summary_mode, &elapsed_str, style, disposition) {
-            self.always(&line);
+        let counts = format_summary_counts(counts, summary_mode, style, disposition);
+        let line = with_elapsed(&counts, &elapsed_str, style);
+        if let Some(log) = &self.run_log {
+            // RunFinish owns process timing. A restarted invocation also has a total wall time.
+            log.emit(
+                crate::infra::logging::LogEvent::Info,
+                if self.elapsed_before_start.is_zero() {
+                    &counts
+                } else {
+                    &line
+                },
+            );
         }
+        self.emit_console(MsgKind::Always, &line);
     }
 
     /// Whether a blank line should separate the totals from preceding output.
@@ -79,9 +92,9 @@ impl Logger {
             use crate::infra::logging::TaskStatus;
             if let Some(row) = &block.status {
                 match task.status {
-                    TaskStatus::Failed => self.error(row),
+                    TaskStatus::Failed => self.emit_console(MsgKind::Error, row),
                     TaskStatus::Skipped | TaskStatus::Blocked | TaskStatus::Interrupted => {
-                        self.warn(row);
+                        self.emit_console(MsgKind::Warn, row);
                     }
                     TaskStatus::Changed
                     | TaskStatus::Ok
@@ -97,7 +110,7 @@ impl Logger {
             self.begin_task_block(block.expanded);
         }
         if let Some(row) = &block.status {
-            self.task_result(row);
+            self.console.task_result(row);
         }
         for detail in block.details {
             self.console.detail(

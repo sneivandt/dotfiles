@@ -49,6 +49,7 @@ pub(crate) struct CommandLocks {
     repository_path: PathBuf,
     checkout_path: Option<PathBuf>,
     owned: Vec<RunLock>,
+    legacy_overlay: Option<RunLock>,
     continuations: Vec<File>,
     share_originals: bool,
 }
@@ -83,6 +84,7 @@ impl CommandLocks {
             repository_path,
             checkout_path,
             owned,
+            legacy_overlay: None,
             continuations: Vec::new(),
             share_originals: true,
         })
@@ -124,6 +126,7 @@ impl CommandLocks {
             repository_path,
             checkout_path: checkout_path.clone(),
             owned: home_lock.into_iter().collect(),
+            legacy_overlay: None,
             continuations,
             share_originals,
         };
@@ -161,7 +164,7 @@ impl CommandLocks {
             verify_restart(root, env, platform, marker)?;
             self.continue_checkout_lock(&checkout_lock)?;
             match is_run_held(&path) {
-                Ok(true) => self.continue_checkout_lock(&path)?,
+                Ok(true) => self.continuations.push(hold_shared(&path, false)?),
                 Ok(false) => {}
                 Err(error) if unavailable_optional_lock(&error) => {}
                 Err(error) => return Err(error),
@@ -173,7 +176,7 @@ impl CommandLocks {
             self.owned
                 .push(RunLock::acquire_path(&checkout_lock, command)?);
             match RunLock::acquire_path(&path, command) {
-                Ok(lock) => self.owned.push(lock),
+                Ok(lock) => self.legacy_overlay = Some(lock),
                 Err(error) if unavailable_optional_lock(&error) => {}
                 Err(error) => return Err(error),
             }
@@ -200,7 +203,9 @@ impl CommandLocks {
             .iter()
             .map(|lock| hold_continuation(&lock.path))
             .collect::<Result<Vec<_>>>()?;
-        for lock in &self.owned {
+        // The overlay's account-local lock covers this handoff, even when its
+        // Git directory permits opening the original but forbids creating a file.
+        for lock in self.owned.iter().chain(self.legacy_overlay.as_ref()) {
             // A legacy contender can win between unlock and the shared
             // acquisition. Fail before starting the successor in that case.
             lock.file
@@ -723,7 +728,25 @@ mod tests {
             "{conflict:#}"
         );
         drop(active);
-        CommandLocks::acquire(&alias, &other_home, &env, platform, "retry").unwrap();
+        drop(CommandLocks::acquire(&alias, &other_home, &env, platform, "retry").unwrap());
+
+        // A prior writable run leaves an original lock file. A later restart
+        // must preserve its protection without creating another Git file.
+        assert!(git_dir.join(LOCK_NAME).is_file());
+        let mut parent = CommandLocks::acquire(&root, &home, &env, platform, "update").unwrap();
+        std::fs::set_permissions(&git_dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let mut restart = || -> Result<()> {
+            parent.protect_overlay(&overlay, &env, platform, "update", None)?;
+            let (_guards, mode) = parent.prepare_restart()?;
+            let lease = RestartLease::new(&root, &env, platform, mode)?;
+            let marker = lease.marker()?;
+            let mut child = CommandLocks::restart(&root, &home, &env, platform, marker, "update")?;
+            child.protect_overlay(&overlay, &env, platform, "update", Some((&root, marker)))
+        };
+        let result = restart();
+        std::fs::set_permissions(&git_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        result.unwrap();
+        assert!(!continuation_path(&git_dir.join(LOCK_NAME)).exists());
     }
 
     #[test]

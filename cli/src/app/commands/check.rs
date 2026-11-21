@@ -24,12 +24,12 @@ pub fn run(
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
     super::record_scope(log, opts, false, false);
-    let runner = super::CommandRunner::new(runtime, log, token)?;
-    let recovery_result = runner.check_checkout_recovery();
+    let (runner, recovery_pending) = super::CommandRunner::for_check(runtime, log, token)?;
     let tasks = validation_tasks(runner.config_handle());
     let filtered = apply_task_filters(&tasks, &[], &opts.only, &opts.skip, false, log)?;
     runner.run(filtered)?;
-    recovery_result
+    anyhow::ensure!(!recovery_pending, "the checkout needs merge recovery");
+    Ok(())
 }
 
 /// Build the complete task set used by the `check` command.

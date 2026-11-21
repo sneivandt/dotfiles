@@ -154,6 +154,7 @@ fn selected_overlay_marker_precedes_config_and_blocks_managed_removal() {
     assert!(stderr.contains(marker.to_str().unwrap()), "{check:?}");
     assert!(marker.is_file());
     std::fs::write(root.join("conf/symlinks.toml"), "[broken").unwrap();
+    blocked(&mut run("check", "config-diagnostics"));
     blocked(&mut run("update", "symlinks"));
     blocked(
         common::isolated_cli_command(root, home.path(), None, "update", "repository", true)

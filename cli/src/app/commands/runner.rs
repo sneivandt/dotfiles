@@ -81,6 +81,25 @@ impl CommandStartup {
         Ok(())
     }
 
+    fn report_checkout_recovery(&self, log: &Logger) -> Result<bool> {
+        use crate::domains::repository::update::pending_recovery_marker;
+
+        let mut pending = false;
+        for root in std::iter::once(self.root.as_path())
+            .chain(self.overlay.as_ref().map(|(path, _)| path.as_path()))
+        {
+            if let Some(marker) = pending_recovery_marker(root)? {
+                log.warn(format!(
+                    "Unverified repository merge in {}. Inspect Git status and diffs before clearing the recovery marker {}",
+                    root.display(),
+                    marker.display()
+                ));
+                pending = true;
+            }
+        }
+        Ok(pending)
+    }
+
     pub(super) fn checkout_snapshot(&self) -> Result<CheckoutSnapshot> {
         CheckoutSnapshot::capture(
             &self.root,
@@ -125,32 +144,16 @@ impl CommandRunner {
     ///
     /// Returns an error if profile resolution, configuration loading, or
     /// context construction fails.
-    pub fn new(
+    pub(super) fn for_check(
         runtime: &RuntimePolicy<'_>,
         log: &Arc<Logger>,
         token: &crate::engine::CancellationToken,
-    ) -> Result<Self> {
+    ) -> Result<(Self, bool)> {
         let mut startup = CommandStartup::resolve(runtime, log)?;
         startup.protect_overlay(runtime, log)?;
-        Self::from_startup(runtime, log, token, startup)
-    }
-
-    pub(super) fn check_checkout_recovery(&self) -> Result<()> {
-        use crate::domains::repository::update::pending_recovery_marker;
-
-        let mut pending = false;
-        for root in std::iter::once(self.ctx.root()).chain(self.ctx.overlay()) {
-            if let Some(marker) = pending_recovery_marker(root)? {
-                self.log.warn(format!(
-                    "Unverified repository merge in {}. Inspect Git status and diffs before clearing the recovery marker {}",
-                    root.display(),
-                    marker.display()
-                ));
-                pending = true;
-            }
-        }
-        anyhow::ensure!(!pending, "the checkout needs merge recovery");
-        Ok(())
+        let recovery_pending = startup.report_checkout_recovery(log)?;
+        let runner = Self::from_startup(runtime, log, token, startup)?;
+        Ok((runner, recovery_pending))
     }
 
     fn acquire_run_lock(
@@ -746,7 +749,9 @@ mod root_tests {
             .with("DOTFILES_PROFILE", "base")
             .with("DOTFILES_OVERLAY", &previous);
         let unattended = RuntimePolicy::new(&global, false, overrides.into_handle(), false, false);
-        let overridden = CommandRunner::new(&unattended, &log, &token).unwrap();
+        let (overridden, recovery_pending) =
+            CommandRunner::for_check(&unattended, &log, &token).unwrap();
+        assert!(!recovery_pending);
         assert_eq!(overridden.ctx.overlay(), Some(previous.as_path()));
         assert_eq!(overridden.config_handle().get().profile.name, "base");
         assert_eq!(std::fs::read(&git_config).unwrap(), saved);

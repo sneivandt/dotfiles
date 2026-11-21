@@ -71,6 +71,11 @@ files by default.
 Use **Ctrl + H** to toggle hidden files while browsing. GVFS provides trash and
 removable-drive support.
 
+From Thunar, PNG, JPEG, and WebP images open in imv; MP4, WebM, and Matroska
+videos open in mpv; ZIP and common tar archives open in File Roller. PDFs still
+open in Chromium. Edit [the default file handlers](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/mimeapps.list)
+to change these choices.
+
 ### Media keys
 
 Bindings use standard `XF86` symbols, not physical F-key positions. Keyboard
@@ -169,6 +174,12 @@ replaces a matching linked source rather than patching the base file's contents.
 | Bar contents and layout | [Bar.qml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/Bar.qml) |
 | Popup placement, focus, dismissal, and scrolling | [ShellPopup.qml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/ShellPopup.qml) |
 | Notification spacing | [mako/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/mako/config) |
+| Qt 5 and Qt 6 widget theme | [Kvantum settings](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Kvantum/kvantum.kvconfig) |
+
+Qt Widgets apps use Kvantum's KvArcDark theme unless you already select a
+different `QT_STYLE_OVERRIDE`. After updating an existing installation, log out
+and back in so UWSM loads the style for newly launched apps. Quickshell keeps
+its own theme.
 
 [hyprland.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprland.lua)
 loads the Lua modules in `hypr/conf/`. Use the existing Lua format, not a

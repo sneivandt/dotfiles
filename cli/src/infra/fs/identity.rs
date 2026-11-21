@@ -51,7 +51,7 @@ pub(crate) fn link_points_to_source(target: &Path, existing: &Path, source: &Pat
                 && (same_entry(source, path)
                     || canonical_entry
                         .as_deref()
-                        .is_some_and(|source| same_entry_with_missing_parent(source, path)))
+                        .is_some_and(|entry| same_entry_with_missing_parent(entry, path)))
         })
     };
     #[cfg(windows)]

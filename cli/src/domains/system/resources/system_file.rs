@@ -1,9 +1,9 @@
 //! Privileged system-file convergence driven by `conf/system-files.toml`.
 
 use std::fs;
-use std::io::ErrorKind;
 #[cfg(unix)]
 use std::io::Write as _;
+use std::io::{ErrorKind, Read as _};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -137,8 +137,10 @@ impl SystemFileResource {
     }
 
     fn fragment(&self) -> ResourceResult<String> {
-        fs::read_to_string(self.entry.source_path())
-            .with_context(|| format!("reading {}", self.entry.source_path().display()))
+        let source = self.entry.source_path();
+        read_fragment(&source)
+            .and_then(|bytes| String::from_utf8(bytes).map_err(Into::into))
+            .with_context(|| format!("reading {}", source.display()))
             .map_err(Into::into)
     }
 
@@ -408,9 +410,15 @@ pub(crate) fn privileged_prepare(
     }
 }
 
+fn read_fragment(path: &std::path::Path) -> anyhow::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    crate::infra::fs::open_regular_source(path)?.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
 #[cfg(unix)]
 fn verified_fragment(path: &std::path::Path, expected_hash: &str) -> anyhow::Result<String> {
-    let bytes = fs::read(path).map_err(|_| anyhow!("could not read system file fragment"))?;
+    let bytes = read_fragment(path).map_err(|_| anyhow!("could not read system file fragment"))?;
     anyhow::ensure!(
         crate::infra::fs::content_hash(&bytes) == expected_hash,
         "system file fragment changed while preparing update; retry the update"
@@ -522,8 +530,8 @@ fn merge_table(
     for (key, desired_value) in desired.iter() {
         if let (Some((current_table, current_inline)), Some(desired_table)) = (
             current.get_mut(key).and_then(|item| {
-                let inline = item.is_inline_table();
-                item.as_table_like_mut().map(|table| (table, inline))
+                let is_inline = item.is_inline_table();
+                item.as_table_like_mut().map(|table| (table, is_inline))
             }),
             desired_value.as_table_like(),
         ) {
@@ -1076,14 +1084,14 @@ mod tests {
         let fragment = "managed = nan\n[settings]\nvalues = [{ reading = -nan }]\n";
         let current = "managed = +nan\n[settings]\nvalues = [{ reading = -nan }]\nsibling = true\n";
         assert!(contains_toml(current, fragment).unwrap());
-        for current in [
+        for changed in [
             current.replace("managed = +nan", "managed = -nan"),
             current.replace("reading = -nan", "reading = nan"),
             current.replace("reading = -nan", "reading = -nan, extra = true"),
             current.replace("reading = -nan", "reading = 0.0"),
             current.replace("}]", "}, { reading = -nan }]"),
         ] {
-            assert!(!contains_toml(&current, fragment).unwrap(), "{current}");
+            assert!(!contains_toml(&changed, fragment).unwrap(), "{changed}");
         }
     }
 
@@ -1100,6 +1108,47 @@ mod tests {
         let error = verified_fragment(&path, &fingerprint).unwrap_err();
         assert!(error.to_string().contains("fragment changed"));
         assert!(!format!("{error:#}").contains("substituted fixture secret"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fragment_reads_reject_pipes_and_accept_symlinks_to_regular_files() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let system = root.join("system");
+        fs::create_dir(&system).unwrap();
+        let source = system.join("fragment");
+        let pipe = system.join("pipe");
+        nix::unistd::mkfifo(&pipe, nix::sys::stat::Mode::S_IRUSR).unwrap();
+        std::os::unix::fs::symlink("pipe", &source).unwrap();
+        let content = "managed = true\n";
+        let fingerprint = crate::infra::fs::content_hash(content);
+        let target = root.join("target");
+        fs::write(&target, content).unwrap();
+        let resource = fixture_resource(
+            entry(&root, &target, "fragment", MergeStrategy::Toml),
+            Arc::new(MockExecutor::new()),
+        );
+
+        for error in [
+            resource.current_state().unwrap_err(),
+            resource.apply().unwrap_err(),
+        ] {
+            assert!(
+                format!("{error:#}").contains("unsupported special file"),
+                "{error:#}"
+            );
+        }
+        let error = verified_fragment(&source, &fingerprint).unwrap_err();
+        assert_eq!(error.to_string(), "could not read system file fragment");
+        assert_eq!(fs::read_to_string(&target).unwrap(), content);
+
+        fs::write(system.join("regular"), content).unwrap();
+        fs::remove_file(&source).unwrap();
+        std::os::unix::fs::symlink("regular", &source).unwrap();
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+        assert_eq!(verified_fragment(&source, &fingerprint).unwrap(), content);
     }
 
     #[cfg(unix)]

@@ -189,7 +189,8 @@ remain available while a run is active.
 Check the header's profile, platform, overlay, and dry-run indicator first.
 The command is bold; metadata is dim, with dry-run mode in magenta.
 Overlay paths inside your home use `~`. Completed CLI upgrades and repository
-syncs appear together beneath the header, in normal weight with dim metadata.
+syncs appear together beneath the header. Both notices have bold labels. The
+new CLI version uses normal contrast; the previous version is dim.
 The repository notice keeps “restarting to load configuration” so the pause
 has an explanation. The restarted process continues with task output or the
 summary, without repeating the header.
@@ -227,6 +228,8 @@ verbs. All concrete actions remain visible.
 An expanded row with multiple quantified actions adds `· 35 actions applied`
 or `· planned · 35 actions`. Task-owned warnings and verbose errors stay
 indented under their row, with warnings between the actions they concern.
+If an unchanged task emits a warning, the warning still appears on stderr
+with the task name, even in quiet mode. A routine unchanged task stays silent.
 
 The final summary names its unit once, as in **Tasks · 3 changed · 14 unchanged**
 or **Checks: 5 passed · 1 skipped**. Previews use **planned** instead of **changed**.

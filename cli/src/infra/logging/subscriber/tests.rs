@@ -177,17 +177,19 @@ fn structured_startup_line_emphasizes_its_label_only() {
 }
 
 #[test]
-fn lifecycle_transitions_use_normal_weight_without_a_glyph() {
-    for message in ["CLI upgraded · old → new", "Repository synced · restarting"] {
+fn lifecycle_transitions_emphasize_the_event_and_keep_the_new_version_readable() {
+    for (message, colored) in [
+        (
+            "CLI upgraded · old → new",
+            "\x1b[1mCLI upgraded\x1b[0m\x1b[2m · old → \x1b[0mnew",
+        ),
+        (
+            "Repository synced · restarting",
+            "\x1b[1mRepository synced\x1b[0m\x1b[2m · restarting\x1b[0m",
+        ),
+    ] {
         for symbols in [false, true] {
             for (terminal, no_color) in [(true, false), (true, true), (false, false)] {
-                let (label, metadata) = message.split_once(" · ").unwrap();
-                let ansi = terminal && !no_color;
-                let metadata = if ansi {
-                    format!("\x1b[2m · {metadata}\x1b[0m")
-                } else {
-                    format!(" · {metadata}")
-                };
                 assert_eq!(
                     crate::infra::logging::console::ui_line_with_style(
                         MsgKind::Transition,
@@ -196,7 +198,14 @@ fn lifecycle_transitions_use_normal_weight_without_a_glyph() {
                         false,
                         symbols,
                     ),
-                    Some(format!("{label}{metadata}")),
+                    Some(
+                        if terminal && !no_color {
+                            colored
+                        } else {
+                            message
+                        }
+                        .into()
+                    ),
                 );
             }
         }

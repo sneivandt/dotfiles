@@ -86,7 +86,7 @@ exact plain/ANSI rendering. Preserve these implementation constraints:
 | `dry_run` | planned mutation |
 | `always` | output that must be visible |
 | `startup` | bold run-command header |
-| `transition` | normal-weight lifecycle notice with dim metadata and no glyph. The next output block owns its separator |
+| `transition` | bold lifecycle label, dim metadata, normal-contrast destination version, no glyph. The next output block owns its separator |
 | `recovery_hint` | copyable command for a healthy retained log, with dim surrounding instructions |
 
 ## Persistent records

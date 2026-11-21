@@ -91,8 +91,12 @@ impl Logger {
                 }
             }
         }
-        if let Some(row) = &block.status {
+        let visible = block.status.is_some()
+            || (task.status == crate::infra::logging::TaskStatus::Ok && block.expanded);
+        if visible {
             self.begin_task_block(block.expanded);
+        }
+        if let Some(row) = &block.status {
             self.task_result(row);
         }
         for detail in block.details {
@@ -103,7 +107,7 @@ impl Logger {
                 detail.error_stream,
             );
         }
-        if block.status.is_some() {
+        if visible {
             self.end_task_block(block.expanded);
         }
     }

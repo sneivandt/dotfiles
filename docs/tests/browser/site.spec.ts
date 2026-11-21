@@ -389,10 +389,14 @@ test('the terminal illustration preserves the completed transcript with reduced 
   for (const name of ['upgraded', 'startup', 'synced', 'links', 'completions', 'packages', 'summary', 'prompt']) {
     await expect(page.locator(`g.${name}`)).toBeVisible();
   }
-  await expect(page.locator('.upgraded text')).toHaveCSS('font-weight', '400');
-  await expect(page.locator('.synced text')).toHaveCSS('font-weight', '400');
+  await expect(page.locator('.upgraded tspan').first()).toHaveCSS('font-weight', '700');
+  await expect(page.locator('.upgraded tspan').nth(1)).toHaveCSS('fill', 'rgb(126, 133, 161)');
+  await expect(page.locator('.upgraded tspan').last()).toHaveText('v2026.01.01-2');
+  await expect(page.locator('.upgraded tspan').last()).toHaveCSS('fill', 'rgb(192, 202, 245)');
+  await expect(page.locator('.synced tspan').first()).toHaveCSS('font-weight', '700');
   await expect(page.locator('.synced text')).toHaveText('Repository synced · restarting to load configuration');
-  await expect(page.locator('.synced tspan')).toHaveCSS('fill', 'rgb(126, 133, 161)');
+  await expect(page.locator('.synced tspan').last()).toHaveCSS('fill', 'rgb(126, 133, 161)');
+  await expect(page.locator('.completions text').last()).toHaveText(/write +\/.*\/completions\/_dotfiles$/);
   for (const label of await page.locator('.startup tspan:first-child, .links tspan:nth-child(2), .completions tspan:nth-child(2), .packages tspan:nth-child(2)').all()) {
     await expect(label).toHaveCSS('font-weight', '700');
   }

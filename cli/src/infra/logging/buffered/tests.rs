@@ -455,6 +455,47 @@ fn non_verbose_flush_keeps_unchanged_task_output_off_console() {
 }
 
 #[test]
+fn unchanged_task_warnings_keep_context_even_in_quiet_mode() {
+    use crate::infra::logging::OutputMode;
+
+    for mode in [OutputMode::Human, OutputMode::Quiet] {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.set_verbose(false);
+        log.set_output_mode(mode);
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
+        let mut task = task_entry("Repository", TaskStatus::Ok, ActionCounts::default());
+        task.message = Some("fetch retried".into());
+        buf.record_task(task);
+        buf.info("up to date");
+        buf.warn("fetch retried");
+        buf.warn_continuation("second attempt succeeded");
+        buf.flush_and_complete("Repository", "Repository");
+
+        let console = log.console.lock();
+        let diagnostics: Vec<_> = console
+            .captured
+            .iter()
+            .filter(|(err, _)| *err)
+            .map(|(_, text)| text.as_str())
+            .collect();
+        assert_eq!(
+            diagnostics,
+            [
+                "WARN  Repository: fetch retried\n",
+                "  second attempt succeeded\n"
+            ]
+        );
+        assert!(
+            !console
+                .captured
+                .iter()
+                .any(|(_, text)| text.contains("up to date"))
+        );
+    }
+}
+
+#[test]
 fn non_verbose_dry_run_flush_keeps_detail_in_persistent_log() {
     let (mut log, _tmp, _guard) = isolated_logger();
     log.set_verbose(false);

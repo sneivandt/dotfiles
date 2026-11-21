@@ -326,12 +326,14 @@ pub(in crate::infra::logging) fn ui_line_with_style(
         MsgKind::Startup => Some(startup_line_with_style(&msg, style)),
         MsgKind::Transition => {
             let (label, metadata) = msg.split_once(" · ").unwrap_or((&msg, ""));
-            let metadata = if metadata.is_empty() {
-                String::new()
-            } else {
-                style.paint(TextStyle::Dim, &format!(" · {metadata}"))
-            };
-            Some(format!("{label}{metadata}"))
+            let mut line = style.bold(label);
+            if !metadata.is_empty() {
+                let current = metadata.split_once(" → ").map_or("", |(_, new)| new);
+                let muted = &metadata[..metadata.len() - current.len()];
+                line.push_str(&style.paint(TextStyle::Dim, &format!(" · {muted}")));
+                line.push_str(current);
+            }
+            Some(line)
         }
         MsgKind::RecoveryHint => {
             let command = msg

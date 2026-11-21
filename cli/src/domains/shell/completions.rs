@@ -17,7 +17,6 @@ const POWERSHELL_COMPLETION_FILENAME: &str = "dotfiles-completions.ps1";
 struct CompletionOperation<'a> {
     content: &'a str,
     destination: std::path::PathBuf,
-    shell_name: &'static str,
 }
 
 #[derive(PartialEq, Eq)]
@@ -27,6 +26,12 @@ struct CompletionSnapshot {
 }
 
 impl CompletionOperation<'_> {
+    fn report_write(&self, ctx: &Context, planned: bool) {
+        let subject = self.destination.display().to_string();
+        ctx.log()
+            .action("write", &subject, planned, &format!("write {subject}"));
+    }
+
     fn snapshot(&self) -> Result<CompletionSnapshot> {
         let path = crate::infra::fs::resolve_target_entry(&self.destination)?;
         let metadata =
@@ -65,9 +70,7 @@ impl Operation for CompletionOperation<'_> {
     }
 
     fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
-        let subject = self.destination.display().to_string();
-        ctx.log()
-            .action("write", &subject, true, &format!("write {subject}"));
+        self.report_write(ctx, true);
         Ok(TaskStats::changed().finish())
     }
 
@@ -80,9 +83,7 @@ impl Operation for CompletionOperation<'_> {
             );
             Ok(())
         })?;
-        let subject = format!("{} completions", self.shell_name);
-        ctx.log()
-            .action("write", &subject, false, &format!("write {subject}"));
+        self.report_write(ctx, false);
         Ok(TaskStats::changed().finish())
     }
 }
@@ -132,7 +133,6 @@ impl Task for GenerateCompletions {
                     .join("powershell")
                     .join("profile.d")
                     .join(POWERSHELL_COMPLETION_FILENAME),
-                shell_name: "PowerShell",
             }
         } else {
             CompletionOperation {
@@ -141,7 +141,6 @@ impl Task for GenerateCompletions {
                     .symlinks_dir()
                     .join(ZSH_COMPLETIONS_SUBDIR)
                     .join(ZSH_COMPLETION_FILENAME),
-                shell_name: "zsh",
             }
         };
         process_operation(ctx, &operation)
@@ -273,7 +272,6 @@ mod tests {
             let op = CompletionOperation {
                 content: expected,
                 destination: destination.clone(),
-                shell_name: "zsh",
             };
             let OperationState::NeedsRun { plan } = op.current_state(&ctx).unwrap() else {
                 panic!("expected a completion update");
@@ -333,16 +331,7 @@ mod tests {
                 let action = &actions[0];
                 assert_eq!(action.verb, "write");
                 assert_eq!(action.planned, dry_run);
-                assert_eq!(
-                    action.subject,
-                    if dry_run {
-                        destination.display().to_string()
-                    } else if os == Os::Windows {
-                        "PowerShell completions".into()
-                    } else {
-                        "zsh completions".into()
-                    }
-                );
+                assert_eq!(action.subject, destination.display().to_string());
                 assert_eq!(action.message, format!("write {}", action.subject));
             }
         }

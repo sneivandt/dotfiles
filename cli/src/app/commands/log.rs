@@ -630,26 +630,30 @@ fn write_run_table(runs: &[RunEntry], out: &mut dyn std::io::Write) -> Result<()
         .max()
         .unwrap_or(0)
         .max("COMMAND".len());
+    let id_width = runs
+        .iter()
+        .map(|run| run.id().len())
+        .max()
+        .unwrap_or(0)
+        .max("ID".len());
     writeln!(
         out,
-        "  #  WHEN                  {:<command_width$}  OUTCOME      DURATION  PROFILE  SIZE  ID / PARENT",
-        "COMMAND"
+        "  #  WHEN                  {:<id_width$}  {:<command_width$}  OUTCOME      DURATION  PROFILE  SIZE  PARENT",
+        "ID", "COMMAND"
     )
     .context("writing log output")?;
     for (index, run) in runs.iter().enumerate() {
         writeln!(
             out,
-            "{index:>3}  {:<20}  {:<command_width$}  {:<11}  {:>8}  {}  {}  {}{}",
+            "{index:>3}  {:<20}  {:<id_width$}  {:<command_width$}  {:<11}  {:>8}  {}  {}  {}",
             format_stamp(&run.stamp),
+            run.id(),
             run.command,
             run.outcome_label(),
             run.elapsed_us.map_or_else(|| "-".into(), format_duration),
             run.profile.as_deref().unwrap_or("-"),
             format_size(run.size),
-            run.id(),
-            run.parent_run_id
-                .as_ref()
-                .map_or_else(String::new, |parent| format!(" / {parent}")),
+            run.parent_run_id.as_deref().unwrap_or("-"),
         )
         .context("writing log output")?;
     }
@@ -1134,11 +1138,11 @@ mod tests {
         let lines: Vec<&str> = output.lines().collect();
         assert!(lines[0].contains("WHEN"), "{output}");
         assert!(
-            lines[1].starts_with("  0  2026-07-31 15:49:02Z  update"),
+            lines[1].starts_with("  0  2026-07-31 15:49:02Z  20260731T154902Z-update-2"),
             "{output}"
         );
         assert!(
-            lines[2].starts_with("  1  2026-07-31 15:42:10Z  install"),
+            lines[2].starts_with("  1  2026-07-31 15:42:10Z  20260731T154210Z-install-1"),
             "{output}"
         );
     }

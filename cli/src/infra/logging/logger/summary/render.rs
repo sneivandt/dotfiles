@@ -77,7 +77,9 @@ pub(super) fn task_block(task: &TaskEntry, entries: &[LogEntry], opts: RowOpts) 
         } else {
             opts.style
         };
-        let line = if explanatory_error {
+        let line = if task.status == TaskStatus::Ok && !emit_row {
+            standalone_diagnostic(&task.name, entry, style, opts.symbols)
+        } else if explanatory_error {
             Some(indented(entry.message(), style))
         } else {
             entry
@@ -132,10 +134,34 @@ pub(super) fn task_block(task: &TaskEntry, entries: &[LogEntry], opts: RowOpts) 
     block
 }
 
+fn standalone_diagnostic(
+    name: &str,
+    entry: &LogEntry,
+    style: StyleChoice,
+    symbols: bool,
+) -> Option<String> {
+    let message = if entry.kind() == MsgKind::WarnContinuation {
+        format!("  {}", entry.message())
+    } else {
+        format!("{name}: {}", entry.message())
+    };
+    crate::infra::logging::console::ui_line_with_style(
+        entry.kind(),
+        &message,
+        style,
+        false,
+        symbols,
+    )
+}
+
 fn detail_is_visible(entry: &LogEntry, task: &TaskEntry, verbose: bool, emit_row: bool) -> bool {
     let message = task.message.as_deref();
     if verbose {
         return entry.verbose_detail(message).is_some();
+    }
+    if task.status == TaskStatus::Ok {
+        // There is no status row to carry a warning, even when it matches the reason.
+        return entry.is_visible_in_non_verbose(task.status, None);
     }
     if duplicates_task_message(entry.message(), message) {
         return false;
@@ -144,8 +170,7 @@ fn detail_is_visible(entry: &LogEntry, task: &TaskEntry, verbose: bool, emit_row
         && should_record_task_details(task.status)
         && entry.detail_line(task.status).is_some()
         && Some(entry.message()) != row_reason(task);
-    normal_detail
-        || (task.status != TaskStatus::Ok && entry.is_visible_in_non_verbose(task.status, message))
+    normal_detail || entry.is_visible_in_non_verbose(task.status, message)
 }
 
 fn action_badge(task: &TaskEntry) -> Option<String> {

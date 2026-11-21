@@ -463,6 +463,10 @@ mod tests {
 
     #[test]
     fn incompatible_explicit_access_fails_without_staging_payload_or_changing_original() {
+        use windows_sys::Win32::{
+            Security::{Authorization::SetSecurityInfo, UNPROTECTED_DACL_SECURITY_INFORMATION},
+            Storage::FileSystem::WRITE_DAC,
+        };
         struct UnusedPayload;
         impl AsRef<[u8]> for UnusedPayload {
             fn as_ref(&self) -> &[u8] {
@@ -470,14 +474,72 @@ mod tests {
             }
         }
         let root = tempfile::tempdir_in(".").unwrap();
-        let target = root.path().join("document");
-        // An explicit, non-inheritable Owner Rights ACE in addition to normal inheritance.
-        let explicit = LocalDescriptor::parse(c"D:(A;;FA;;;OW)").unwrap();
-        create_new(&target, explicit.0)
-            .unwrap()
-            .write_all(b"original fixture")
+        let directory = crate::infra::fs::PrivateTempDir::create(root.path(), "negative").unwrap();
+        let target = directory.path().join("document");
+        let mut fixture = File::options()
+            .write(true)
+            .create_new(true)
+            .access_mode(GENERIC_WRITE | WRITE_DAC)
+            .open(&target)
             .unwrap();
-        let before = target_access(&target).unwrap();
+        fixture.write_all(b"original fixture").unwrap();
+        // Deny FILE_APPEND_DATA to the owner on this file only. Explicitly enable
+        // inheritance: absence of P in creation SDDL is not an observed postcondition.
+        let explicit = LocalDescriptor::parse(c"D:(D;;0x00000004;;;OW)(A;;FA;;;OW)").unwrap();
+        let mut present = 0;
+        let mut defaulted = 0;
+        let mut dacl = ptr::null_mut();
+        // SAFETY: parsed descriptor is live; the three out pointers are writable.
+        let ok = unsafe {
+            GetSecurityDescriptorDacl(
+                explicit.0,
+                &raw mut present,
+                &raw mut dacl,
+                &raw mut defaulted,
+            )
+        };
+        assert!(
+            ok != 0 && present != 0 && !dacl.is_null(),
+            "expected an explicit fixture DACL"
+        );
+        // SAFETY: only the newly created fixture's DACL is set. The non-null ACL
+        // remains owned by `explicit`; no owner, group, SACL or privilege is changed.
+        let status = unsafe {
+            SetSecurityInfo(
+                fixture.as_raw_handle(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | UNPROTECTED_DACL_SECURITY_INFORMATION,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                dacl,
+                ptr::null(),
+            )
+        };
+        assert_eq!(
+            status, ERROR_SUCCESS,
+            "setting the fixture's unprotected DACL"
+        );
+        drop(fixture);
+
+        let before = target_access(&target).unwrap().unwrap();
+        assert!(
+            !before.protected().unwrap(),
+            "protected targets take the descriptor-copy path"
+        );
+        let ordinary = directory.path().join("ordinary");
+        let sibling = create_new(&ordinary, ptr::null_mut()).unwrap();
+        let inherited = regular_access(&sibling, &ordinary).unwrap();
+        assert!(
+            !same_dacl(before.as_ptr(), inherited.as_ptr()).unwrap(),
+            "ordinary sibling must not inherit the target's explicit deny ACE"
+        );
+        assert_ne!(
+            before, inherited,
+            "the compared access projections must differ"
+        );
+        drop(sibling);
+        std::fs::remove_file(ordinary).unwrap();
+
         let error = write_checked(&target, UnusedPayload, || Ok(())).unwrap_err();
         assert!(
             error
@@ -486,7 +548,7 @@ mod tests {
             "{error:#}"
         );
         assert_eq!(std::fs::read(&target).unwrap(), b"original fixture");
-        assert_eq!(target_access(&target).unwrap(), before);
-        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+        assert_eq!(target_access(&target).unwrap(), Some(before));
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
     }
 }

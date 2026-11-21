@@ -1,6 +1,7 @@
 //! Git hook resource.
-use crate::infra::fs::{content_hash, rename_noreplace};
+use crate::infra::fs::{content_hash, open_regular_source, rename_noreplace};
 use anyhow::Context as _;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
 use crate::engine::{
@@ -42,11 +43,24 @@ impl HookFileResource {
     }
 
     fn ownership_record(&self) -> ResourceResult<String> {
-        match std::fs::read_to_string(self.ownership_path()) {
-            Ok(recorded) => Ok(recorded),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
-            Err(error) => Err(error.into()),
+        let path = self.ownership_path();
+        let Some(metadata) =
+            crate::infra::fs::symlink_metadata_optional(&path, "stat hook ownership")?
+        else {
+            return Ok(String::new());
+        };
+        if !metadata.is_file() {
+            return Err(anyhow::anyhow!(
+                "preserving non-regular hook ownership record {}; move it aside before retrying",
+                path.display()
+            )
+            .into());
         }
+        let mut recorded = String::new();
+        open_regular_source(&path)?
+            .read_to_string(&mut recorded)
+            .with_context(|| format!("read hook ownership {}", path.display()))?;
+        Ok(recorded)
     }
 
     fn check_pending_removal(&self) -> anyhow::Result<()> {
@@ -71,8 +85,16 @@ impl HookFileResource {
             )
             .into());
         }
-        Ok(Some(crate::infra::fs::read_bytes(path)?))
+        Ok(Some(read_hook(path)?))
     }
+}
+
+fn read_hook(path: &Path) -> ResourceResult<Vec<u8>> {
+    let mut bytes = Vec::new();
+    open_regular_source(path)?
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("read hook {}", path.display()))?;
+    Ok(bytes)
 }
 
 #[cfg(unix)]
@@ -99,14 +121,12 @@ impl Resource for HookFileResource {
         if self.targets_source()? {
             return Ok(ResourceChange::AlreadyCorrect);
         }
-        let source = crate::infra::fs::read_bytes(&self.source)?;
+        let source = read_hook(&self.source)?;
         let before = Self::target_contents(&self.target)?;
+        let recorded = self.ownership_record()?;
         if let Some(contents) = &before
             && *contents != source
-            && !self
-                .ownership_record()?
-                .lines()
-                .any(|line| line == content_hash(contents))
+            && !recorded.lines().any(|line| line == content_hash(contents))
         {
             return Err(anyhow::anyhow!(
                 "preserving foreign or modified hook {}; back it up and move it aside before installing",
@@ -181,8 +201,7 @@ impl HookFileResource {
         };
         let hash = content_hash(&contents);
         if self.ownership_record()?.lines().any(|line| line == hash)
-            || (self.source.try_exists()?
-                && crate::infra::fs::read_bytes(&self.source)? == contents)
+            || (self.source.try_exists()? && read_hook(&self.source)? == contents)
         {
             Ok(ResourceState::Correct)
         } else {
@@ -246,11 +265,21 @@ impl IntrinsicState for HookFileResource {
                         .into(),
                 });
             }
-            None => return Ok(ResourceState::Missing),
+            Some(metadata) if !metadata.is_file() && !metadata.is_symlink() => {
+                return Ok(ResourceState::Invalid {
+                    reason:
+                        "hook is not a regular file; move it aside before installing dotfiles hooks"
+                            .into(),
+                });
+            }
+            None => {
+                drop(self.ownership_record()?);
+                return Ok(ResourceState::Missing);
+            }
             Some(_) => {}
         }
-        let src_content = crate::infra::fs::read_bytes(&self.source)?;
-        let dst_content = crate::infra::fs::read_bytes(&self.target)?;
+        let src_content = read_hook(&self.source)?;
+        let dst_content = read_hook(&self.target)?;
         let record = self.ownership_record()?;
         let hash = content_hash(&dst_content);
         let owned = record.lines().any(|line| line == hash);
@@ -466,6 +495,10 @@ mod tests {
         std::fs::write(target.join("keep"), "user content").unwrap();
         let resource = HookFileResource::new(source, target.clone());
 
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Invalid { reason } if reason.contains("not a regular file")
+        ));
         assert!(resource.apply().is_err());
 
         assert_eq!(
@@ -473,6 +506,39 @@ mod tests {
             "user content"
         );
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn nonregular_ownership_record_is_preserved_during_installation_and_removal() {
+        let dir = tempfile::tempdir().unwrap();
+        let resource =
+            HookFileResource::new(dir.path().join("source"), dir.path().join("pre-commit"));
+        std::fs::write(&resource.source, "managed").unwrap();
+        let ownership = resource.ownership_path();
+        std::fs::create_dir(&ownership).unwrap();
+        let user_entry = ownership.join("keep");
+        std::fs::write(&user_entry, "user content").unwrap();
+
+        assert!(resource.current_state().is_err());
+        assert!(resource.apply().is_err());
+        assert!(!resource.target.exists());
+
+        std::fs::copy(&resource.source, &resource.target).unwrap();
+        for result in [resource.current_state(), resource.removal_state()] {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("non-regular hook ownership record")
+            );
+        }
+        assert!(resource.apply().is_err());
+        assert!(resource.remove().is_err());
+        assert_eq!(
+            std::fs::read_to_string(&resource.target).unwrap(),
+            "managed"
+        );
+        assert_eq!(std::fs::read_to_string(user_entry).unwrap(), "user content");
     }
 
     #[cfg(unix)]

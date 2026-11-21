@@ -1237,9 +1237,7 @@ fn historical_editor_links_migrate_or_materialize_without_claiming_unrelated_ent
             // Older direct invocations used DOTFILES_ROOT without normalizing it.
             let existing = repo.root_path().join("legacy-root-spelling");
             std::fs::create_dir(&existing).unwrap();
-            existing
-                .join("..")
-                .join(old.strip_prefix(repo.root_path()).unwrap())
+            existing.join("../symlinks").join(old)
         };
         let directory = config_file.is_some();
         let target_file = config_file.map_or_else(|| target.clone(), |file| target.join(file));

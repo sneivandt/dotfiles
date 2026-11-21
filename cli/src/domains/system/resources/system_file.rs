@@ -514,17 +514,26 @@ fn parse_toml(content: &str) -> anyhow::Result<toml::Table> {
 }
 
 #[cfg(any(unix, test))]
-fn merge_table(current: &mut dyn toml_edit::TableLike, desired: &dyn toml_edit::TableLike) {
+fn merge_table(
+    current: &mut dyn toml_edit::TableLike,
+    desired: &dyn toml_edit::TableLike,
+    inline: bool,
+) {
     for (key, desired_value) in desired.iter() {
-        if let (Some(current_table), Some(desired_table)) = (
-            current
-                .get_mut(key)
-                .and_then(toml_edit::Item::as_table_like_mut),
+        if let (Some((current_table, current_inline)), Some(desired_table)) = (
+            current.get_mut(key).and_then(|item| {
+                let inline = item.is_inline_table();
+                item.as_table_like_mut().map(|table| (table, inline))
+            }),
             desired_value.as_table_like(),
         ) {
-            merge_table(current_table, desired_table);
+            merge_table(current_table, desired_table, current_inline);
         } else {
             let mut replacement = desired_value.clone();
+            // Direct assignment bypasses InlineTable::insert's value conversion.
+            if inline {
+                replacement.make_value();
+            }
             if let (Some(existing), Some(value)) = (
                 current.get(key).and_then(toml_edit::Item::as_value),
                 replacement.as_value_mut(),
@@ -540,22 +549,51 @@ fn merge_table(current: &mut dyn toml_edit::TableLike, desired: &dyn toml_edit::
     }
 }
 
-fn contains_table(current: &toml::Table, desired: &toml::Table) -> bool {
-    desired.iter().all(
-        |(key, desired_value)| match (current.get(key), desired_value) {
-            (Some(toml::Value::Table(current_table)), toml::Value::Table(desired_table)) => {
-                contains_table(current_table, desired_table)
-            }
-            (Some(current_value), desired_value) => current_value == desired_value,
-            (None, _) => false,
-        },
-    )
+fn toml_table_matches(
+    current: &toml::Table,
+    desired: &toml::Table,
+    allow_extra_keys: bool,
+) -> bool {
+    (allow_extra_keys || current.len() == desired.len())
+        && desired.iter().all(|(key, desired_value)| {
+            current
+                .get(key)
+                .is_some_and(|value| toml_value_matches(value, desired_value, allow_extra_keys))
+        })
+}
+
+fn toml_value_matches(
+    current: &toml::Value,
+    desired: &toml::Value,
+    allow_extra_keys: bool,
+) -> bool {
+    match (current, desired) {
+        (toml::Value::Table(current), toml::Value::Table(desired)) => {
+            toml_table_matches(current, desired, allow_extra_keys)
+        }
+        (toml::Value::Array(current), toml::Value::Array(desired)) => {
+            // A fragment owns the whole array, including tables inside it.
+            current.len() == desired.len()
+                && current
+                    .iter()
+                    .zip(desired)
+                    .all(|(current, desired)| toml_value_matches(current, desired, false))
+        }
+        (toml::Value::Float(current), toml::Value::Float(desired))
+            if current.is_nan() && desired.is_nan() =>
+        {
+            // TOML distinguishes signs even though NaN cannot compare equal.
+            current.is_sign_negative() == desired.is_sign_negative()
+        }
+        _ => current == desired,
+    }
 }
 
 fn contains_toml(current: &str, fragment: &str) -> anyhow::Result<bool> {
-    Ok(contains_table(
+    Ok(toml_table_matches(
         &parse_toml(current)?,
         &parse_toml(fragment)?,
+        true,
     ))
 }
 
@@ -567,7 +605,7 @@ fn merge_toml(current: &str, fragment: &str) -> anyhow::Result<String> {
     let fragment = fragment
         .parse::<toml_edit::DocumentMut>()
         .context("parsing TOML system file")?;
-    merge_table(current.as_table_mut(), fragment.as_table());
+    merge_table(current.as_table_mut(), fragment.as_table(), false);
     let mut rendered = current.to_string();
     if !rendered.ends_with('\n') {
         rendered.push('\n');
@@ -1033,6 +1071,22 @@ mod tests {
         assert_eq!(merge_toml(&merged, fragment).unwrap(), merged);
     }
 
+    #[test]
+    fn toml_convergence_preserves_nan_sign_and_exact_array_contents() {
+        let fragment = "managed = nan\n[settings]\nvalues = [{ reading = -nan }]\n";
+        let current = "managed = +nan\n[settings]\nvalues = [{ reading = -nan }]\nsibling = true\n";
+        assert!(contains_toml(current, fragment).unwrap());
+        for current in [
+            current.replace("managed = +nan", "managed = -nan"),
+            current.replace("reading = -nan", "reading = nan"),
+            current.replace("reading = -nan", "reading = -nan, extra = true"),
+            current.replace("reading = -nan", "reading = 0.0"),
+            current.replace("}]", "}, { reading = -nan }]"),
+        ] {
+            assert!(!contains_toml(&current, fragment).unwrap(), "{current}");
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn privileged_fragment_read_rejects_changed_content_without_exposing_it() {
@@ -1131,10 +1185,16 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn private_preparation_merges_ini_and_pam_then_converges_without_new_staged_contents() {
+    fn private_preparation_merges_fragments_then_converges_without_new_staged_contents() {
         use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
         for (strategy, original, fragment, expected) in [
+            (
+                "toml",
+                "managed = 1.0\nkeep = 'private'\n",
+                "managed = nan\n",
+                "managed = nan\nkeep = 'private'\n",
+            ),
             (
                 "ini",
                 "# administrator\r\n[boot]\r\nsystemd=false\r\n\n[network]\r\n# retained",
@@ -1189,6 +1249,49 @@ mod tests {
             );
             assert_eq!(fs::read_dir(&stage).unwrap().count(), 0, "{strategy}");
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_toml_preparation_updates_an_array_of_tables_inside_inline_tables() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let target = root.join("target");
+        let stage = root.join("stage");
+        let original = "settings = { keep = 'retained', nested = { managed = [{ enabled = false }], sibling = 7 } }\n";
+        let fragment = "[[settings.nested.managed]]\nenabled = true\n";
+        fs::write(&target, original).unwrap();
+        fs::create_dir(&stage).unwrap();
+        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
+        let owner = fs::metadata(&root).unwrap().uid();
+
+        assert_eq!(
+            prepare_in_private_stage(&target, fragment, "toml", &stage, owner).unwrap(),
+            "prepared"
+        );
+        let staged = fs::read_to_string(stage.join("input")).unwrap();
+        assert!(contains_toml(&staged, fragment).unwrap(), "{staged}");
+        let parsed = parse_toml(&staged).unwrap();
+        assert_eq!(parsed["settings"]["keep"].as_str(), Some("retained"));
+        assert_eq!(
+            parsed["settings"]["nested"]["sibling"].as_integer(),
+            Some(7)
+        );
+        assert_eq!(
+            fs::read_to_string(stage.join("original")).unwrap(),
+            original
+        );
+        assert_eq!(fs::read_to_string(&target).unwrap(), original);
+
+        fs::rename(stage.join("input"), &target).unwrap();
+        fs::remove_file(stage.join("original")).unwrap();
+        assert_eq!(
+            prepare_in_private_stage(&target, fragment, "toml", &stage, owner).unwrap(),
+            "already-correct"
+        );
+        assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
     }
 
     #[cfg(unix)]

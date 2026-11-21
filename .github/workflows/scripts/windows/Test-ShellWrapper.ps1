@@ -359,6 +359,7 @@ function Test-IsolatedWrapperPath {
     $isWindowsPlatform = ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
     $binaryName = if ($isWindowsPlatform) { 'dotfiles.exe' } else { 'dotfiles' }
     $binary = Join-Path $repo "bin/$binaryName"
+    $backup = Join-Path $repo 'bin/.dotfiles.old'
     $buildBinary = Join-Path $repo "cli/target/dev-opt/$binaryName"
     $wrapper = Join-Path $repo 'dotfiles.ps1'
     $originalLocation = Get-Location
@@ -466,15 +467,19 @@ sys.exit(7)
         $env:GH_PROMPT_DISABLED = 'caller'
         $env:DBUS_SESSION_BUS_ADDRESS = 'caller'
         Set-Location -LiteralPath $caller
-        $arguments = @('update', '--dry-run', '--root', '.', '--overlay', '../overlay dir', '', '--BUILD', '--', 'literal value', '--build', '')
+        if (Test-Path Variable:PSNativeCommandArgumentPassing) {
+            Set-Variable -Name PSNativeCommandArgumentPassing -Value Legacy -Scope Local
+        }
+        $arguments = @('update', '--dry-run', '--root', '.', '--overlay', '../overlay "dir"', '', '--BUILD', '--', 'literal value', '--build', '')
         $modes = @('cached', 'build', 'bootstrap')
-        if ($IsLinux) { $modes += 'non-executable' }
+        if ($IsLinux) { $modes += @('non-executable', 'legacy-backup') }
         foreach ($mode in $modes) {
             $beforeDownloads = $downloadCapture.Count
             $wrapperArguments = $arguments
             if ($mode -eq 'build') { $wrapperArguments = @('--build') + $arguments }
             if ($mode -eq 'bootstrap') { Remove-Item -LiteralPath $binary }
             if ($mode -eq 'non-executable') { & chmod a-x $binary }
+            if ($mode -eq 'legacy-backup') { [IO.File]::Move($binary, $backup) }
             $output = @(& $wrapper @wrapperArguments)
             if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
                 throw "$mode changed the caller's credential environment"
@@ -489,7 +494,14 @@ sys.exit(7)
             if (($actual.Arguments | ConvertTo-Json -Compress) -cne ($arguments | ConvertTo-Json -Compress)) {
                 throw "$mode changed the forwarded arguments"
             }
-            if (-not (Test-Path -LiteralPath $binary)) { throw "$mode did not preserve the cached binary" }
+            if ($mode -eq 'legacy-backup') {
+                if ((Test-Path -LiteralPath $binary) -or -not (Test-Path -LiteralPath $backup -PathType Leaf)) {
+                    throw 'Legacy recovery moved or removed the backup image'
+                }
+                [IO.File]::Move($backup, $binary)
+            } elseif (-not (Test-Path -LiteralPath $binary)) {
+                throw "$mode did not preserve the cached binary"
+            }
             $expectedDownloads = $beforeDownloads + [int]($mode -in @('bootstrap', 'non-executable'))
             if ($downloadCapture.Count -ne $expectedDownloads) { throw "$mode used the wrong bootstrap path" }
         }
@@ -592,7 +604,7 @@ sys.exit(7)
 }
 
 function Test-NativeExitCode {
-    Write-TestStage 'Testing native child and Cargo exit codes with caller error preferences'
+    Write-TestStage 'Testing native arguments and exit codes with caller preferences'
     $fixture = Join-Path (Join-Path $PSScriptRoot '..\..\..\..') ".wrapper-native-exit-$([guid]::NewGuid())"
     $fixture = [System.IO.Path]::GetFullPath($fixture)
     $wrapper = Join-Path $fixture 'dotfiles.ps1'
@@ -627,6 +639,24 @@ function Test-NativeExitCode {
         }
         if (-not $PSNativeCommandUseErrorActionPreference) { throw 'Wrapper changed the caller native error preference' }
 
+        if (Test-Path Variable:PSNativeCommandArgumentPassing) {
+            $originalArgumentPreference = $PSNativeCommandArgumentPassing
+            $PSNativeCommandArgumentPassing = 'Legacy'
+            $probe = Join-Path $fixture 'native argv.ps1'
+            [IO.File]::WriteAllText($probe, 'ConvertTo-Json -InputObject @($args) -Compress')
+            $directory = (Join-Path $fixture 'path with spaces') + [IO.Path]::DirectorySeparatorChar
+            $expected = @('quoted "value"', '', $directory)
+            $output = @(& $wrapper --build -NoProfile -File $probe @expected)
+            if ($LASTEXITCODE -ne 0 -or $output.Count -ne 1 -or
+                $output[0] -cne (ConvertTo-Json -InputObject $expected -Compress)) {
+                throw 'Wrapper changed native child arguments under the caller legacy preference'
+            }
+            if ($PSNativeCommandArgumentPassing -cne 'Legacy') {
+                throw 'Wrapper changed the caller native argument preference'
+            }
+            $PSNativeCommandArgumentPassing = $originalArgumentPreference
+        }
+
         Set-Item Function:cargo -Value {
             & $nativeShell -NoProfile -Command '[Console]::Error.WriteLine("cargo failed"); exit 23'
         }
@@ -638,7 +668,7 @@ function Test-NativeExitCode {
         }
         if ((Get-Location).Path -ne $originalLocation.Path) { throw 'Failed native Cargo changed the caller location' }
         if (-not $PSNativeCommandUseErrorActionPreference) { throw 'Failed build changed the caller native error preference' }
-        Write-TestPass 'Native child and build exit codes are preserved independently of caller error preferences'
+        Write-TestPass 'Native child arguments and exit codes are preserved independently of caller preferences'
         return $true
     } catch {
         Write-TestFail "Native exit-code regression failed: $_"

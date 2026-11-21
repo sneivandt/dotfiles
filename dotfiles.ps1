@@ -102,6 +102,15 @@ function Get-TargetAssetName
 $BinaryName = Get-BinaryName
 $Binary = Join-Path $BinDir $BinaryName
 
+function Invoke-DotfilesCli([string]$Path, [object[]]$Arguments)
+{
+    # PowerShell's legacy mode can discard quotes and empty arguments.
+    if (Test-Path Variable:PSNativeCommandArgumentPassing) {
+        Set-Variable -Name PSNativeCommandArgumentPassing -Value Standard -Scope Local
+    }
+    & $Path @Arguments
+}
+
 # Build mode: build from source
 if ($Build)
 {
@@ -140,7 +149,7 @@ if ($Build)
         & test -f $BuildBinary -a -x $BuildBinary
         if ($LASTEXITCODE -ne 0) { throw "Cargo artifact is not an executable file: $BuildBinary" }
     }
-    & $BuildBinary @CliArgs
+    Invoke-DotfilesCli -Path $BuildBinary -Arguments $CliArgs
     exit $LASTEXITCODE
 }
 
@@ -442,7 +451,7 @@ if ((Test-Path -LiteralPath $statePath -PathType Leaf) -and (Get-Item -Force -Li
     # Do not move the running image of a pre-journal updater.
     if (-not (Test-CliStartup $backup)) { throw "Previous CLI failed its startup check: $backup" }
     [Console]::Error.WriteLine("Using previous CLI; restore $backup to $Binary when no update is running.")
-    & $backup @CliArgs
+    Invoke-DotfilesCli -Path $backup -Arguments $CliArgs
     exit $LASTEXITCODE
 }
 
@@ -464,5 +473,5 @@ if (-not $binaryReady)
     Get-Binary
 }
 
-& $Binary @CliArgs
+Invoke-DotfilesCli -Path $Binary -Arguments $CliArgs
 exit $LASTEXITCODE

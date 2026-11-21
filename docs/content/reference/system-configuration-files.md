@@ -61,7 +61,9 @@ requires every machine to have. Use the real application's format and keys.
 `system/`. The optional `target` defaults to `/etc/<source>` and must be an absolute
 path below `/etc`. Both paths must omit `..`. The destination must resolve within
 `/etc`. Its parent directories there must be owned by root, with writes restricted to
-root. Duplicate active destinations within a repository are errors.
+root. Duplicate active destinations within a repository are errors. An active
+destination cannot be a parent directory of another active destination, even
+when the two entries come from different repositories.
 
 | Strategy | What the fragment manages |
 |---|---|

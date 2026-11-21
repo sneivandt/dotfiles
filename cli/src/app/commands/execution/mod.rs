@@ -17,7 +17,7 @@ use elevation::build_elevated_child_args;
 pub(crate) use elevation::validate_elevated_child_command;
 use phase::PreparedPhase;
 
-type BoundaryDecision<'a> = Box<dyn FnOnce() -> BoundaryAction + 'a>;
+type BoundaryDecision<'a> = Box<dyn FnOnce() -> Result<BoundaryAction> + 'a>;
 type RestartAction<'a> = Box<dyn FnOnce() + 'a>;
 
 pub(super) enum BoundaryAction {
@@ -55,7 +55,7 @@ impl<'a> ExecutionPlan<'a> {
     pub(super) fn with_restart(
         tasks: impl IntoIterator<Item = &'a dyn Task>,
         boundary: TaskId,
-        decide: impl FnOnce() -> BoundaryAction + 'a,
+        decide: impl FnOnce() -> Result<BoundaryAction> + 'a,
         action: impl FnOnce() + 'a,
     ) -> Self {
         Self {
@@ -127,7 +127,7 @@ impl<'a> RunCoordinator<'a> {
             summary.outcome(&restart.boundary),
             Some(crate::engine::TaskOutcome::Satisfied)
         );
-        match (restart.decide)() {
+        match (restart.decide)()? {
             BoundaryAction::Continue => {}
             BoundaryAction::Restart
                 if boundary_satisfied
@@ -178,11 +178,11 @@ pub(crate) fn run_tasks_to_completion_with_restart<'a>(
         tasks,
         boundary,
         || {
-            if requested() {
+            Ok(if requested() {
                 BoundaryAction::Restart
             } else {
                 BoundaryAction::Continue
-            }
+            })
         },
         action,
     ))

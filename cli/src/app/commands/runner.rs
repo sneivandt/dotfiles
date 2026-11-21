@@ -9,7 +9,7 @@ use crate::app::config::Config;
 use crate::app::config::profiles;
 use crate::app::config::store::ConfigStore;
 use crate::domains::overlay::resolution::{self as overlay_resolution, OverlaySource};
-use crate::domains::repository::update::ensure_recovery_clear;
+use crate::domains::repository::update::{CheckoutSnapshot, ensure_recovery_clear};
 use crate::engine::{Context, Task, TaskId};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::{Log, LogEvent, Logger};
@@ -55,21 +55,83 @@ impl CommandStartup {
     }
 
     pub(super) fn for_mutation(runtime: &RuntimePolicy<'_>, log: &Logger) -> Result<Self> {
-        let startup = Self::resolve(runtime, log)?;
+        let mut startup = Self::resolve(runtime, log)?;
         // Task filters control synchronization, not permission to consume a partial checkout.
         ensure_recovery_clear(&startup.root)?;
-        if let Some((overlay, _)) = &startup.overlay {
+        // The preflight can restart before the overlay is needed. Keep the
+        // recovery check before that restart, then check again with the lock.
+        if super::reexec::should_check_self_update(runtime) {
+            startup.ensure_overlay_recovery_clear()?;
+            super::reexec::prepare_self_update(
+                runtime,
+                &startup.root,
+                startup.run_lock.as_ref(),
+                log,
+            )?;
+        }
+        startup.protect_overlay(runtime, log)?;
+        startup.ensure_overlay_recovery_clear()?;
+        Ok(startup)
+    }
+
+    fn ensure_overlay_recovery_clear(&self) -> Result<()> {
+        if let Some((overlay, _)) = &self.overlay {
             ensure_recovery_clear(overlay)?;
         }
-        super::reexec::prepare_self_update(runtime, &startup.root, log)?;
-        Ok(startup)
+        Ok(())
+    }
+
+    fn report_checkout_recovery(&self, log: &Logger) -> Result<bool> {
+        use crate::domains::repository::update::pending_recovery_marker;
+
+        let mut pending = false;
+        for root in std::iter::once(self.root.as_path())
+            .chain(self.overlay.as_ref().map(|(path, _)| path.as_path()))
+        {
+            if let Some(marker) = pending_recovery_marker(root)? {
+                log.warn(format!(
+                    "Unverified repository merge in {}. Inspect Git status and diffs before clearing the recovery marker {}",
+                    root.display(),
+                    marker.display()
+                ));
+                pending = true;
+            }
+        }
+        Ok(pending)
+    }
+
+    pub(super) fn checkout_snapshot(&self) -> Result<CheckoutSnapshot> {
+        CheckoutSnapshot::capture(
+            &self.root,
+            self.overlay.as_ref().map(|(path, _)| path.as_path()),
+        )
+    }
+
+    fn protect_overlay(&mut self, runtime: &RuntimePolicy<'_>, log: &Logger) -> Result<()> {
+        if let (Some(locks), Some((overlay, _))) = (&mut self.run_lock, &self.overlay) {
+            use super::reexec::{REEXEC_GUARD_VAR, REPOSITORY_OVERLAY_LOCK_VAR};
+            let marker = runtime.env.var_os(REEXEC_GUARD_VAR);
+            let inherited =
+                runtime.repository_child && runtime.env.is_set(REPOSITORY_OVERLAY_LOCK_VAR);
+            locks.protect_overlay(
+                overlay,
+                runtime.env.as_ref(),
+                Platform::detect(),
+                &log.command_title(),
+                marker
+                    .as_deref()
+                    .filter(|marker| inherited && !marker.is_empty())
+                    .map(|marker| (self.root.as_path(), marker)),
+            )?;
+        }
+        Ok(())
     }
 }
 
 /// Shared orchestration helper that combines setup and task execution.
 #[derive(Debug)]
 pub struct CommandRunner {
-    _run_lock: Option<crate::infra::run_lock::CommandLocks>,
+    run_lock: Option<crate::infra::run_lock::CommandLocks>,
     ctx: Context,
     log: Arc<Logger>,
     store: ConfigStore,
@@ -82,13 +144,16 @@ impl CommandRunner {
     ///
     /// Returns an error if profile resolution, configuration loading, or
     /// context construction fails.
-    pub fn new(
+    pub(super) fn for_check(
         runtime: &RuntimePolicy<'_>,
         log: &Arc<Logger>,
         token: &crate::engine::CancellationToken,
-    ) -> Result<Self> {
-        let startup = CommandStartup::resolve(runtime, log)?;
-        Self::from_startup(runtime, log, token, startup)
+    ) -> Result<(Self, bool)> {
+        let mut startup = CommandStartup::resolve(runtime, log)?;
+        startup.protect_overlay(runtime, log)?;
+        let recovery_pending = startup.report_checkout_recovery(log)?;
+        let runner = Self::from_startup(runtime, log, token, startup)?;
+        Ok((runner, recovery_pending))
     }
 
     fn acquire_run_lock(
@@ -114,7 +179,8 @@ impl CommandRunner {
                 platform,
                 &marker,
                 &log.command_title(),
-            );
+            )
+            .map(Some);
         }
         crate::infra::run_lock::CommandLocks::acquire(
             root,
@@ -172,7 +238,7 @@ impl CommandRunner {
         let store = ConfigStore::from_config(config);
         let ctx = Self::context(runtime, log, token, root, overlay, platform)?;
         Ok(Self {
-            _run_lock: run_lock,
+            run_lock,
             ctx,
             log: Arc::clone(log),
             store,
@@ -301,6 +367,10 @@ impl CommandRunner {
         RunCoordinator::new(&self.ctx, &self.log).execute(ExecutionPlan::single(tasks))
     }
 
+    pub(super) const fn run_lock(&self) -> Option<&crate::infra::run_lock::CommandLocks> {
+        self.run_lock.as_ref()
+    }
+
     /// Execute tasks and restart after a dependency boundary when requested.
     ///
     /// # Errors
@@ -310,9 +380,18 @@ impl CommandRunner {
         &'a self,
         tasks: impl IntoIterator<Item = &'a dyn Task>,
         boundary: TaskId,
+        checkout: CheckoutSnapshot,
         decide: impl FnOnce() -> BoundaryAction + 'a,
         action: impl FnOnce() + 'a,
     ) -> Result<()> {
+        checkout.ensure_current()?;
+        let decide = move || {
+            let decision = decide();
+            if matches!(decision, BoundaryAction::Continue) {
+                checkout.ensure_current()?;
+            }
+            Ok(decision)
+        };
         RunCoordinator::new(&self.ctx, &self.log)
             .execute(ExecutionPlan::with_restart(tasks, boundary, decide, action))
     }
@@ -670,7 +749,9 @@ mod root_tests {
             .with("DOTFILES_PROFILE", "base")
             .with("DOTFILES_OVERLAY", &previous);
         let unattended = RuntimePolicy::new(&global, false, overrides.into_handle(), false, false);
-        let overridden = CommandRunner::new(&unattended, &log, &token).unwrap();
+        let (overridden, recovery_pending) =
+            CommandRunner::for_check(&unattended, &log, &token).unwrap();
+        assert!(!recovery_pending);
         assert_eq!(overridden.ctx.overlay(), Some(previous.as_path()));
         assert_eq!(overridden.config_handle().get().profile.name, "base");
         assert_eq!(std::fs::read(&git_config).unwrap(), saved);
@@ -694,7 +775,7 @@ mod root_tests {
                 config.overlay.clone(),
             );
             let runner = CommandRunner {
-                _run_lock: None,
+                run_lock: None,
                 ctx,
                 log,
                 store: ConfigStore::from_config(config),

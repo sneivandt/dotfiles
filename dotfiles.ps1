@@ -102,6 +102,15 @@ function Get-TargetAssetName
 $BinaryName = Get-BinaryName
 $Binary = Join-Path $BinDir $BinaryName
 
+function Invoke-DotfilesCli([string]$Path, [object[]]$Arguments)
+{
+    # PowerShell's legacy mode can discard quotes and empty arguments.
+    if (Test-Path Variable:PSNativeCommandArgumentPassing) {
+        Set-Variable -Name PSNativeCommandArgumentPassing -Value Standard -Scope Local
+    }
+    & $Path @Arguments
+}
+
 # Build mode: build from source
 if ($Build)
 {
@@ -140,7 +149,7 @@ if ($Build)
         & test -f $BuildBinary -a -x $BuildBinary
         if ($LASTEXITCODE -ne 0) { throw "Cargo artifact is not an executable file: $BuildBinary" }
     }
-    & $BuildBinary @CliArgs
+    Invoke-DotfilesCli -Path $BuildBinary -Arguments $CliArgs
     exit $LASTEXITCODE
 }
 
@@ -265,6 +274,17 @@ function Resolve-ReleaseRepo
     return $repo
 }
 
+function Test-UsableCache
+{
+    if (-not (Test-Path -LiteralPath $Binary -PathType Leaf) -or
+        (Get-Item -Force -LiteralPath $Binary).Length -eq 0) { return $false }
+    if ($IsLinux -or $IsMacOS) {
+        & test -x $Binary
+        return ($LASTEXITCODE -eq 0)
+    }
+    return $true
+}
+
 function Get-Binary
 {
     $Repo = Resolve-ReleaseRepo
@@ -361,21 +381,20 @@ function Get-Binary
             {
                 throw "Downloaded CLI did not start as dotfiles $tag."
             }
-            if ((Test-Path -LiteralPath $Binary) -and -not (Test-Path -LiteralPath $Binary -PathType Leaf))
-            {
-                throw "CLI cache path is not a regular file: $Binary"
-            }
-            if ($repairCached)
-            {
-                # Only Unix repairs existing non-executable cache entries.
-                & test -x $Binary
-                if ($LASTEXITCODE -eq 0) { throw 'CLI cache changed during bootstrap; retry.' }
-                Move-Item -LiteralPath $stagedBinary -Destination $Binary -Force
-            }
-            else
-            {
-                # Never replace a concurrently completed bootstrap on first install.
-                [IO.File]::Move($stagedBinary, $Binary)
+            $publishLock = [IO.File]::Open($statePath, 'OpenOrCreate', 'ReadWrite', 'None')
+            try {
+                if ($publishLock.Length -ne 0) { throw 'CLI update recovery is pending; retry.' }
+                if ((Test-Path -LiteralPath $Binary) -and -not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
+                    throw "CLI cache path is not a regular file: $Binary"
+                }
+                if ($repairCached) {
+                    if (Test-UsableCache) { throw 'CLI cache changed during bootstrap; retry.' }
+                    Move-Item -LiteralPath $stagedBinary -Destination $Binary -Force
+                } else {
+                    [IO.File]::Move($stagedBinary, $Binary)
+                }
+            } finally {
+                $publishLock.Dispose()
             }
         }
         catch
@@ -442,7 +461,7 @@ if ((Test-Path -LiteralPath $statePath -PathType Leaf) -and (Get-Item -Force -Li
     # Do not move the running image of a pre-journal updater.
     if (-not (Test-CliStartup $backup)) { throw "Previous CLI failed its startup check: $backup" }
     [Console]::Error.WriteLine("Using previous CLI; restore $backup to $Binary when no update is running.")
-    & $backup @CliArgs
+    Invoke-DotfilesCli -Path $backup -Arguments $CliArgs
     exit $LASTEXITCODE
 }
 
@@ -452,17 +471,11 @@ if ((Test-Path -LiteralPath $Binary) -and -not (Test-Path -LiteralPath $Binary -
     Write-Error "CLI cache path is not a regular file: $Binary"
     exit 1
 }
-$binaryReady = Test-Path -LiteralPath $Binary -PathType Leaf
-$repairCached = $binaryReady
-if ($binaryReady -and ($IsLinux -or $IsMacOS))
-{
-    & test -x $Binary
-    $binaryReady = $LASTEXITCODE -eq 0
-}
-if (-not $binaryReady)
+$repairCached = Test-Path -LiteralPath $Binary -PathType Leaf
+if (-not (Test-UsableCache))
 {
     Get-Binary
 }
 
-& $Binary @CliArgs
+Invoke-DotfilesCli -Path $Binary -Arguments $CliArgs
 exit $LASTEXITCODE

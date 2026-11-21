@@ -439,6 +439,38 @@ fn load_system_file_override_replaces_fragment_and_strategy_from_overlay() {
     assert_eq!(config.validation_system_files.len(), 3);
 }
 
+#[cfg(unix)]
+#[test]
+fn load_rejects_system_file_target_overlaps_across_sources() {
+    let (main, profile, platform) = setup_load(
+        linux(),
+        &[(
+            "system-files.toml",
+            "[base]\nfiles = [{ target = '/etc/example/./settings', source = 'child', merge = 'create-only' }]\n",
+        )],
+    );
+    let overlay = tempfile::tempdir().unwrap();
+    for (overlay_target, overlaps) in [("/etc/examples", false), ("/etc/example", true)] {
+        write_overlay_config(
+            &overlay,
+            "system-files.toml",
+            &format!(
+                "[base]\nfiles = [{{ target = '{overlay_target}', source = 'parent', merge = 'create-only' }}]\n"
+            ),
+        );
+        let result = Config::load(main.path(), &profile, platform, Some(overlay.path()));
+        if overlaps {
+            let error = format!("{:#}", result.unwrap_err());
+            assert!(
+                error.contains("/etc/example is a parent directory of /etc/example/./settings"),
+                "{error}"
+            );
+        } else {
+            assert_eq!(result.unwrap().system_files.len(), 2);
+        }
+    }
+}
+
 #[test]
 fn load_overrides_expanded_symlinks_but_keeps_nonmatching_glob_entries() {
     let (main, profile, platform) = setup_load(

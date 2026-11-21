@@ -152,6 +152,11 @@ and error output are terminals. The prompt applies to the explicit flag, not eve
 of a saved overlay. Prefer a stable primary checkout for an unattended overlay;
 an ordinary `.git` directory does not need that confirmation.
 
+During `update`, `remove`, and `check`, Dotfiles coordinates Git overlays
+through locks in local storage for the current OS account. A read-only overlay
+can be inspected or used with `update --no-repo-update`. Synchronizing an overlay
+requires write access to its Git metadata.
+
 ## Merge rules
 
 An active overlay entry replaces a main entry when both manage the same

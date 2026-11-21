@@ -3,6 +3,7 @@
 use anyhow::{Context as _, Result};
 
 use crate::infra::logging::Output;
+use crate::infra::run_lock::CommandLocks;
 
 use super::RuntimePolicy;
 use crate::infra::logging::OutputExt as _;
@@ -21,13 +22,17 @@ pub(super) const STARTUP_TRANSITION_VAR: &str = "DOTFILES_STARTUP_TRANSITION";
 /// The updated binary is spawned as a child that inherits stdio and is waited
 /// on, so the parent retains the repository run lock until the replacement
 /// process finishes.
-pub(crate) fn re_exec(root: &std::path::Path, log: &crate::infra::logging::Logger) -> ! {
+fn re_exec(
+    root: &std::path::Path,
+    locks: Option<&CommandLocks>,
+    log: &crate::infra::logging::Logger,
+) -> ! {
     let command = build_reexec_command(
         &re_exec_path(root),
         &reexec_args(log),
         SELF_UPDATE_REEXEC_GUARD_VAR,
     );
-    run_reexec(command, root, log)
+    run_reexec(command, root, locks, log)
 }
 
 fn reexec_args(log: &dyn Output) -> Vec<std::ffi::OsString> {
@@ -43,15 +48,10 @@ fn finish_reexec(log: &dyn Output, code: i32) -> i32 {
     log.finish_run(code)
 }
 
-fn inherited_lease(marker: Option<std::ffi::OsString>) -> Option<std::ffi::OsString> {
-    // Upgrade a legacy repository-only lease after its child acquires the home
-    // lock, so subsequent children verify rather than reacquire that lock.
-    marker.filter(|value| crate::infra::run_lock::RestartLease::covers_home(value))
-}
-
 fn run_reexec(
     mut command: std::process::Command,
     root: &std::path::Path,
+    locks: Option<&CommandLocks>,
     log: &crate::infra::logging::Logger,
 ) -> ! {
     let mut setup = || -> Result<_> {
@@ -63,19 +63,21 @@ fn run_reexec(
                 .as_micros()
                 .to_string(),
         );
-        let inherited = inherited_lease(std::env::var_os(REEXEC_GUARD_VAR));
-        if let Some(marker) = inherited {
-            command.env(REEXEC_GUARD_VAR, marker);
-            return Ok(None);
-        }
+        // Each child verifies the immediate parent, which may own locks that
+        // its predecessor did not acquire.
+        let (continuation, mode) = locks
+            .map(CommandLocks::prepare_restart)
+            .transpose()?
+            .unwrap_or((Vec::new(), crate::infra::run_lock::RestartLockMode::Legacy));
         let env = crate::infra::env::system();
         let lease = crate::infra::run_lock::RestartLease::new(
             root,
             env.as_ref(),
             crate::infra::platform::Platform::detect(),
+            mode,
         )?;
         command.env(REEXEC_GUARD_VAR, lease.marker()?);
-        Ok(Some(lease))
+        Ok((lease, continuation))
     };
     let lease = match setup() {
         Ok(lease) => lease,
@@ -121,6 +123,7 @@ pub(super) fn build_reexec_command(
     command
         .args(args)
         .env(REEXEC_GUARD_VAR, "1")
+        .env_remove(REPOSITORY_OVERLAY_LOCK_VAR)
         .env(guard, "1");
     command
 }
@@ -131,6 +134,7 @@ pub(crate) fn re_exec_after_repository_update(
     profile: &str,
     overlay: Option<&std::path::Path>,
     exclusions: &str,
+    locks: Option<&CommandLocks>,
     log: &crate::infra::logging::Logger,
 ) -> ! {
     let exe = match std::env::current_exe() {
@@ -149,13 +153,15 @@ pub(crate) fn re_exec_after_repository_update(
             REPOSITORY_OVERLAY_VAR,
             overlay.unwrap_or_else(|| std::path::Path::new("")),
         )
+        .env(REPOSITORY_OVERLAY_LOCK_VAR, "1")
         .env(REPOSITORY_EXCLUSIONS_VAR, exclusions);
     log.transition("Repository synced · restarting to load configuration");
-    run_reexec(command, root, log)
+    run_reexec(command, root, locks, log)
 }
 
 pub(super) const REPOSITORY_PROFILE_VAR: &str = "DOTFILES_RESTART_PROFILE";
 pub(super) const REPOSITORY_OVERLAY_VAR: &str = "DOTFILES_RESTART_OVERLAY";
+pub(super) const REPOSITORY_OVERLAY_LOCK_VAR: &str = "DOTFILES_RESTART_OVERLAY_LOCKED";
 pub(super) const REPOSITORY_EXCLUSIONS_VAR: &str = "DOTFILES_RESTART_EXCLUSIONS";
 
 pub(super) const fn should_check_self_update(runtime: &RuntimePolicy<'_>) -> bool {
@@ -173,12 +179,9 @@ pub(super) const fn should_check_self_update(runtime: &RuntimePolicy<'_>) -> boo
 pub(super) fn prepare_self_update(
     runtime: &RuntimePolicy<'_>,
     root: &std::path::Path,
+    locks: Option<&CommandLocks>,
     log: &crate::infra::logging::Logger,
 ) -> Result<()> {
-    if !should_check_self_update(runtime) {
-        return Ok(());
-    }
-
     if let Some(notice) = crate::domains::dotfiles::self_update::pre_update(
         root,
         log,
@@ -186,7 +189,7 @@ pub(super) fn prepare_self_update(
         runtime.global.skip_attestation,
     )? {
         log.queue_startup_transition(notice);
-        re_exec(root, log);
+        re_exec(root, locks, log);
     }
     Ok(())
 }
@@ -207,25 +210,6 @@ mod tests {
     use super::*;
     use crate::infra::exec::{CommandSpec, Executor as _, ProcessExecutor};
     use crate::infra::logging::records::{Record, RunOutcome, StoredRecord};
-
-    #[test]
-    fn restart_chains_forward_live_lease_markers_only() {
-        for (input, expected) in [
-            (None, None),
-            (Some(""), None),
-            (Some("1"), None),
-            (Some(".dotfiles-restart-123-0-lock"), None),
-            (
-                Some(".dotfiles-restart-home-123-0-lock"),
-                Some(".dotfiles-restart-home-123-0-lock"),
-            ),
-        ] {
-            assert_eq!(
-                inherited_lease(input.map(Into::into)),
-                expected.map(Into::into)
-            );
-        }
-    }
 
     const CHILD_TEST: &str = "app::commands::reexec::tests::restart_child";
     const CHILD_ROLE: &str = "DOTFILES_RESTART_TEST_ROLE";
@@ -265,7 +249,7 @@ mod tests {
                 command
                     .args(["--ignored", "--exact", CHILD_TEST, "--nocapture"])
                     .env(CHILD_ROLE, "output-tail");
-                run_reexec(command, &root, &log);
+                run_reexec(command, &root, None, &log);
             }
             return;
         }
@@ -320,7 +304,7 @@ mod tests {
         };
         command.stdin(std::process::Stdio::null());
         git2::Repository::init(&root).unwrap();
-        run_reexec(command, &root, &log);
+        run_reexec(command, &root, None, &log);
     }
 
     #[test]

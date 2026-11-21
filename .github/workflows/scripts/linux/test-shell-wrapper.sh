@@ -104,7 +104,7 @@ test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args()
   export DOTFILES_RELEASE_REPO
   log_stage "Testing real wrapper bootstrap download, checksum, and forwarding"
 
-  tmpdir="$DIR/.wrapper-bootstrap-$$"
+  tmpdir="$DIR/.wrapper-bootstrap-$$${WRAPPER_BOOTSTRAP_SUFFIX:-}"
   mkdir "$tmpdir"
   trap 'rm -rf "$tmpdir"' EXIT
 
@@ -141,11 +141,16 @@ case "$url" in
     exit "${WRAPPER_RELEASE_STATUS:-0}"
     ;;
   */releases/download/v9.9.9/checksums.sha256)
-    [ ! -e "$DOTFILES_ROOT/bin/dotfiles" ] || {
+    cached="$DOTFILES_ROOT/bin/dotfiles"
+    if [ "${WRAPPER_EMPTY_CACHE:-0}" = 1 ]; then
+      [ -f "$cached" ] && [ ! -s "$cached" ]
+    else
+      [ ! -e "$cached" ]
+    fi || {
       echo "bootstrap published its binary before verification" >&2
       exit 1
     }
-    sum=$(sha256sum "$(cat "$DOTFILES_ROOT/download-path")" | awk '{print $1}')
+    sum=$(sha256sum < "$(cat "$DOTFILES_ROOT/download-path")" | awk '{print $1}')
     printf '%s  dotfiles-linux-x86_64\n' "$sum" > "$out"
     ;;
   */releases/download/v9.9.9/dotfiles-linux-x86_64)
@@ -173,13 +178,30 @@ EOF
   wrapper_path="$tmpdir/fake-bin:$PATH"
   if [ "${WRAPPER_DOWNLOADER:-curl}" = wget ]; then
     mv "$tmpdir/fake-bin/curl" "$tmpdir/fake-bin/wget"
-    for command_name in awk cat chmod dirname mkdir mv readlink rm rmdir sha256sum uname grep; do
+    for command_name in awk cat chmod dirname flock mkdir mv readlink rm rmdir sha256sum uname grep; do
       ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
     done
     wrapper_path="$tmpdir/fake-bin"
   fi
 
+  if [ "${WRAPPER_EMPTY_CACHE:-0}" = 1 ]; then
+    mkdir "$tmpdir/bin"
+    : > "$tmpdir/bin/dotfiles"
+    chmod +x "$tmpdir/bin/dotfiles"
+  fi
   status=0
+  if [ "${WRAPPER_BLOCK_PUBLISH:-0}" = 1 ]; then
+    mkdir -p "$tmpdir/bin"
+    (
+      flock -xn 8 || exit 2
+      PATH="$wrapper_path" DOTFILES_SKIP_ATTESTATION=1 \
+        "$tmpdir/dotfiles.sh" update -p desktop -n
+    ) 8<>"$tmpdir/bin/.dotfiles.update-state" > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
+    [ "$status" -eq 1 ] || log_error "Bootstrap published while the update lock was held"
+    grep -q 'CLI update in progress' "$tmpdir/stderr" || log_error "Missing publication lock error"
+    [ ! -e "$tmpdir/bin/dotfiles" ] || log_error "Locked bootstrap installed a binary"
+    return 0
+  fi
   PATH="$wrapper_path" DOTFILES_SKIP_ATTESTATION=1 \
     "$tmpdir/dotfiles.sh" update -p desktop -n > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
   if [ "${WRAPPER_EXPECT_RELEASE_ERROR:-0}" = 1 ]; then
@@ -225,6 +247,47 @@ EOF
   fi
 
   log_verbose "✓ Real wrapper bootstrap downloads, verifies, chmods, and forwards arguments"
+)}
+
+test_wrapper_recovers_truncated_cli()
+{(
+  log_stage "Testing recovery from an empty executable CLI"
+  fixture=$(mktemp -d)
+  trap 'rm -rf "$fixture"' EXIT
+  cp "$DIR/dotfiles.sh" "$fixture/dotfiles.sh"
+  mkdir "$fixture/bin"
+  installed="$fixture/bin/dotfiles"
+  backup="$fixture/bin/.dotfiles.old"
+  journal="$fixture/bin/.dotfiles.update-state"
+
+  : > "$installed"
+  : > "$backup"
+  chmod +x "$installed" "$backup"
+  printf x > "$journal"
+  if "$fixture/dotfiles.sh" --version > "$fixture/stdout" 2> "$fixture/stderr"; then
+    log_error "Recovery accepted an empty executable"
+  fi
+  [ -s "$journal" ] && [ ! -s "$installed" ] && [ ! -s "$backup" ] ||
+    log_error "Failed recovery modified the journal or either image"
+  grep -q 'Neither the installed CLI nor its backup starts' "$fixture/stderr" ||
+    log_error "Failed recovery was not explained"
+
+  printf '#!/bin/sh\nprintf "dotfiles v9.9.9\\n"\n' > "$backup"
+  [ "$("$fixture/dotfiles.sh" --version 2> "$fixture/stderr")" = 'dotfiles v9.9.9' ] ||
+    log_error "Recovery did not run the restored CLI"
+  [ ! -e "$backup" ] && [ ! -s "$journal" ] ||
+    log_error "Successful recovery did not restore the previous image and clear the journal"
+  grep -q '^Restored previous CLI' "$fixture/stderr" ||
+    log_error "Successful recovery was not reported"
+
+  rm "$installed" "$journal"
+  : > "$backup"
+  chmod +x "$backup"
+  if "$fixture/dotfiles.sh" --version > "$fixture/stdout" 2> "$fixture/stderr"; then
+    log_error "Legacy recovery accepted an empty backup"
+  fi
+  [ -f "$backup" ] && [ ! -e "$installed" ] ||
+    log_error "Failed legacy recovery modified either image"
 )}
 
 test_wrapper_release_metadata_formats()
@@ -619,7 +682,7 @@ EOF
   # Missing gh: fail closed, unless provenance is explicitly bypassed.
   rm -rf "${tmpdir:?}/bin"
   rm -f "$tmpdir/fake-bin/gh"
-  for command_name in awk cat chmod dirname mkdir mv readlink rm rmdir sha256sum uname grep; do
+  for command_name in awk cat chmod dirname flock mkdir mv readlink rm rmdir sha256sum uname grep; do
     ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
   done
   if PATH="$tmpdir/fake-bin" DOTFILES_SKIP_ATTESTATION=0 \
@@ -691,7 +754,7 @@ EOF
     [ -x "$fixture/bin/dotfiles" ] || log_error "$failure removed the concurrent binary"
     [ "$(cat "$fixture/bin/dotfiles")" = "$expected" ] ||
       log_error "$failure modified the concurrent binary"
-    [ "$(find "$fixture/bin" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ] ||
+    [ "$(find "$fixture/bin" -mindepth 1 -maxdepth 1 ! -name .dotfiles.update-state | wc -l)" -eq 1 ] ||
       log_error "$failure leaked staging files"
     if [ "$failure" = publication ]; then
       grep -q 'changed during bootstrap' "$fixture/stderr" || log_error "Wrong publication failure"
@@ -784,6 +847,10 @@ case "$0" in
     test_wrapper_uses_local_binary
     test_wrapper_forwarded_args
     test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    WRAPPER_BOOTSTRAP_SUFFIX=' path with \ backslash' test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    WRAPPER_EMPTY_CACHE=1 test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    WRAPPER_BLOCK_PUBLISH=1 test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    test_wrapper_recovers_truncated_cli
     test_wrapper_release_metadata_formats
     test_wrapper_failed_bootstrap_preserves_cached_binary
     test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args

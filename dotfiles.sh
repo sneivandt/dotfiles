@@ -190,7 +190,7 @@ _verify_checksum() {
     echo "ERROR: Checksum not found in checksum file for $_vc_asset." >&2
     return 1
   fi
-  actual=$(sha256sum "$_vc_binary" | awk '{print $1}')
+  actual=$(sha256sum < "$_vc_binary" | awk '{print $1}')
   if [ "$expected" != "$actual" ]; then
     echo "ERROR: Checksum verification failed!" >&2
     return 1
@@ -224,8 +224,16 @@ _verify_attestation() {
   return 1
 }
 
+has_usable_cache_entry() {
+  [ -f "$BINARY" ] && [ -x "$BINARY" ] && [ -s "$BINARY" ]
+}
+
 # Download the bootstrap binary if needed.
 download_binary() {(
+  if ! command -v flock >/dev/null 2>&1; then
+    echo "ERROR: flock is required to publish the downloaded CLI." >&2
+    exit 1
+  fi
   REPO=$(resolve_release_repo) || exit 1
   _arch="$(uname -m)"
   case "$_arch" in
@@ -278,24 +286,39 @@ download_binary() {(
     echo "ERROR: Downloaded CLI did not start as dotfiles $tag; it was not installed." >&2
     exit 1
   fi
-  if [ "$repair_cached" = true ]; then
-    # A non-executable cache entry may be repaired, but never downgrade a
-    # working CLI that arrived while this bootstrap was downloading.
-    if [ -x "$BINARY" ]; then
-      echo "ERROR: CLI cache changed during bootstrap; retry." >&2
+  (
+    flock -xn 9 || { echo "ERROR: CLI update in progress; retry shortly." >&2; exit 1; }
+    if [ -s "$state" ]; then
+      echo "ERROR: CLI update recovery is pending; retry." >&2
       exit 1
     fi
-    mv -fT -- "$staged_binary" "$BINARY"
-  else
-    mv -nT -- "$staged_binary" "$BINARY"
-    if [ -e "$staged_binary" ]; then
-      echo "ERROR: CLI cache changed during bootstrap; retry." >&2
-      exit 1
+    if [ "$repair_cached" = true ]; then
+      if has_usable_cache_entry; then
+        echo "ERROR: CLI cache changed during bootstrap; retry." >&2
+        exit 1
+      fi
+      mv -fT -- "$staged_binary" "$BINARY"
+    else
+      mv -nT -- "$staged_binary" "$BINARY"
+      if [ -e "$staged_binary" ]; then
+        echo "ERROR: CLI cache changed during bootstrap; retry." >&2
+        exit 1
+      fi
     fi
-  fi
+  ) 9<>"$state"
 
   echo "Downloaded · checksum verified · $BINARY" >&2
 )}
+
+cli_starts() {
+  [ -f "$1" ] || return 1
+  # The shell can interpret an invalid executable as a script and exit zero.
+  _cs_version=$("$1" --version 2>/dev/null) || return 1
+  case "$_cs_version" in
+    'dotfiles '?*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 state="$BIN_DIR/.dotfiles.update-state"
 backup="$BIN_DIR/.dotfiles.old"
@@ -303,8 +326,8 @@ if [ -s "$state" ]; then
   (
     flock -xn 9 || { echo "ERROR: CLI update in progress; retry shortly." >&2; exit 1; }
     if [ -s "$state" ]; then
-      if ! "$BINARY" --version >/dev/null 2>&1; then
-        if ! "$backup" --version >/dev/null 2>&1; then
+      if ! cli_starts "$BINARY"; then
+        if ! cli_starts "$backup"; then
           echo "ERROR: Neither the installed CLI nor its backup starts; inspect $BIN_DIR before retrying." >&2
           exit 1
         fi
@@ -316,7 +339,10 @@ if [ -s "$state" ]; then
   ) 9<>"$state"
 elif [ ! -e "$BINARY" ] && [ -f "$backup" ]; then
   # Older updaters have no journal lock. Do not move their running image.
-  "$backup" --version >/dev/null
+  if ! cli_starts "$backup"; then
+    echo "ERROR: Previous CLI failed its startup check: $backup" >&2
+    exit 1
+  fi
   echo "Using previous CLI; restore $backup to $BINARY when no update is running." >&2
   exec "$backup" "$@"
 fi
@@ -329,7 +355,7 @@ if [ -e "$BINARY" ] && [ ! -f "$BINARY" ]; then
 fi
 repair_cached=false
 if [ -f "$BINARY" ]; then repair_cached=true; fi
-if [ ! -x "$BINARY" ]; then
+if ! has_usable_cache_entry; then
   download_binary
 fi
 

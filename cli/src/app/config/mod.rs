@@ -423,6 +423,8 @@ impl Config {
         // overlaps can still arise when otherwise valid sources are combined.
         symlinks::validate_unique_targets(&config.symlinks)
             .context("validating symlink targets")?;
+        system_files::validate_target_overlaps(&config.system_files)
+            .context("validating system file targets")?;
         error::reject_conflicts(agent_settings::validate_conflicts(&config.agent_settings))?;
 
         Ok(config)

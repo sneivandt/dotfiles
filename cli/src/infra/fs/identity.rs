@@ -43,13 +43,15 @@ pub(crate) fn link_points_to_source(target: &Path, existing: &Path, source: &Pat
         Some(path_identity(&lexical))
     };
     let configured = identity(source);
-    let canonical = super::resolve_target_entry(source)
-        .ok()
-        .and_then(|path| identity(&path));
+    let canonical_entry = super::resolve_target_entry(source).ok();
+    let canonical = canonical_entry.as_deref().and_then(identity);
     let matches_entry = |path: &Path| {
         identity(path).is_some_and(|referenced| {
             (configured.as_ref() == Some(&referenced) || canonical.as_ref() == Some(&referenced))
-                && same_entry(source, path)
+                && (same_entry(source, path)
+                    || canonical_entry
+                        .as_deref()
+                        .is_some_and(|entry| same_entry_with_missing_parent(entry, path)))
         })
     };
     #[cfg(windows)]
@@ -61,6 +63,24 @@ pub(crate) fn link_points_to_source(target: &Path, existing: &Path, source: &Pat
     {
         matches_entry(&resolved)
     }
+}
+
+fn same_entry_with_missing_parent(source: &Path, target: &Path) -> bool {
+    let Some(parent) = target.parent() else {
+        return false;
+    };
+    if !parent
+        .symlink_metadata()
+        .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+    {
+        return false;
+    }
+    // A retired path can have missing directories below an existing ancestor
+    // whose historical spelling differs. Resolve the ancestor before comparing
+    // the missing suffix. Do not follow the final source entry.
+    super::resolve_target_entry(target).is_ok_and(|resolved| {
+        path_identity(dunce::simplified(&resolved)) == path_identity(dunce::simplified(source))
+    })
 }
 
 /// Compare entry locations without following the final link.

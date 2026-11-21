@@ -122,6 +122,44 @@ fn check_command_fails_on_config_warnings() {
     );
     assert!(text.contains("Checks: 1 failed"), "{text}");
 }
+#[cfg(target_os = "linux")]
+#[test]
+fn check_and_update_reject_conflicting_system_file_paths_before_tasks_run() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file(
+            "system-files.toml",
+            "[linux]\nfiles = [\
+                { target = '/etc/dotfiles-audit-path-fixture', source = 'parent', merge = 'create-only' },\
+                { target = '/etc/dotfiles-audit-path-fixture/child', source = 'child', merge = 'create-only' }]\n",
+        )
+        .build();
+    let system = ctx.root_path().join("system");
+    std::fs::create_dir(&system).unwrap();
+    std::fs::write(system.join("parent"), "parent\n").unwrap();
+    std::fs::write(system.join("child"), "child\n").unwrap();
+    let home = tempfile::tempdir().unwrap();
+
+    for (verb, task) in [("check", "config-diagnostics"), ("update", "system-files")] {
+        let mut command = common::cli_command(ctx.root_path(), home.path(), None, verb, task);
+        if verb == "update" {
+            command.arg("--dry-run");
+        }
+        let output = command.output().unwrap();
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!output.status.success(), "{verb}: {text}");
+        assert!(
+            text.contains(
+                "/etc/dotfiles-audit-path-fixture is a parent directory of /etc/dotfiles-audit-path-fixture/child"
+            ),
+            "{verb}: {text}"
+        );
+    }
+}
+
 #[test]
 fn check_rejects_malformed_system_fragments_without_reading_targets() {
     let ctx = common::TestContextBuilder::new()

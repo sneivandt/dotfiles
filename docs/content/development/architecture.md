@@ -101,7 +101,7 @@ Important distinctions:
 - Structured JSONL output disables prompts. Terminal-dependent Windows exit
   pauses and interrupt handling remain separate from task prompt policy.
 
-The [CommandRunner](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runner.rs) holds the repository and home locks,
+The [CommandRunner](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runner.rs) holds the main checkout, Git overlay and home locks,
 configuration store and execution context. The home lock also coordinates independent
 checkouts targeting the same home, regardless of state-directory environment overrides.
 Static update/remove tasks come from [catalog.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs); `check` has a
@@ -146,9 +146,14 @@ repository task first. If that phase succeeds and changes content, it starts
 the **current binary** again with the original arguments and a restart guard.
 The child reloads configuration and constructs a fresh catalog.
 
-The parent keeps both locks while waiting. The child selects tasks before
-removing repeated repository synchronization, and does not reacquire those locks
-or repeat the initial self-update preflight. Failure or cancellation prevents
+The parent keeps its locks while waiting. The child holds continuation locks so
+another invocation cannot start if the parent exits early. When both processes
+support shared lock handoff, the child also retains the original lock paths
+used by older binaries. A child launched by an older self-updater can protect
+its work from invocations that recognize continuation locks if that parent
+exits early. The child selects
+tasks before removing repeated repository synchronization and skips the initial
+self-update preflight. Failure or cancellation prevents
 restart; no change means the existing snapshot remains usable. Filtering out
 repository work uses a single graph.
 

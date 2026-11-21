@@ -1226,7 +1226,15 @@ fn historical_editor_links_migrate_or_materialize_without_claiming_unrelated_ent
         // referent in its original spelling so the test exercises both.
         let canonical_root = dunce::canonicalize(repo.root_path()).unwrap();
         let source = canonical_root.join("symlinks").join(source);
+        #[cfg(windows)]
         let old = repo.root_path().join("symlinks").join(old);
+        #[cfg(unix)]
+        let old = {
+            // Older direct invocations used DOTFILES_ROOT without normalizing it.
+            let existing = repo.root_path().join("legacy-root-spelling");
+            std::fs::create_dir(&existing).unwrap();
+            existing.join("../symlinks").join(old)
+        };
         let directory = config_file.is_some();
         let target_file = config_file.map_or_else(|| target.clone(), |file| target.join(file));
         let run = |verb| common::cli_command(repo.root_path(), home.path(), None, verb, "symlinks");
@@ -1292,5 +1300,18 @@ fn historical_editor_links_migrate_or_materialize_without_claiming_unrelated_ent
         output(&mut run("update"), false);
         output(&mut run("remove"), true);
         assert_link(&unrelated);
+
+        #[cfg(unix)]
+        {
+            // A symlink invented outside the checkout does not establish ownership.
+            let alias = home.path().join("checkout-alias");
+            std::os::unix::fs::symlink(repo.root_path(), &alias).unwrap();
+            let unrelated = alias.join(old.strip_prefix(repo.root_path()).unwrap());
+            std::fs::remove_file(&target).unwrap();
+            link(&unrelated, &target, directory);
+            output(&mut run("update"), false);
+            output(&mut run("remove"), true);
+            assert_link(&unrelated);
+        }
     }
 }

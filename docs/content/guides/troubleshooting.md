@@ -279,13 +279,16 @@ installation, AUR setup, links, and permissions. It is not a narrower retry.
 
 ### Repository is locked
 
-Update, remove, and check hold repository and home locks, including previews.
-Linked worktrees share the repository lock through their common Git directory.
+Update, remove, and check lock the main checkout, selected Git overlay, and
+home, including during previews. Linked worktrees and aliases of the same Git
+metadata share an account-local lock. Separate checkouts report contention
+when a run from the same OS account is using their shared overlay.
 Independent clones targeting the same home also share a home lock at
 `~/.local/state/dotfiles/home-run.lock` on Linux or
 `~/AppData/Local/dotfiles/home-run.lock` on Windows. State-directory environment
 overrides do not change the home lock. The error identifies the lock and, when
-available, the owner PID, command, and start time.
+available, the owner PID, command, and start time. A continuation lock may
+belong to a restarted child whose parent already exited.
 
 Wait for the owner or inspect it. `list` and `log` remain usable.
 **Do not delete the lock file to force concurrent runs.** The process holds

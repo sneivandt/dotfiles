@@ -18,6 +18,7 @@ mod recovery;
 use apply::apply_repository_updates;
 use discovery::{checked_repositories, dry_run_repositories};
 use models::{CheckedRepository, RepositorySetReadiness};
+pub(crate) use recovery::CheckoutSnapshot;
 
 #[cfg(test)]
 use self::discovery::worktree_has_local_changes;
@@ -30,6 +31,17 @@ pub(crate) fn ensure_recovery_clear(root: &Path) -> Result<()> {
         recovery::MergeMarker::for_checkout(root)?.ensure_clear(root)?;
     }
     Ok(())
+}
+
+/// Find an interrupted merge in an explicit Git checkout.
+pub(crate) fn pending_recovery_marker(root: &Path) -> Result<Option<std::path::PathBuf>> {
+    if crate::infra::fs::symlink_metadata_optional(&root.join(".git"), "checking checkout .git")?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let marker = recovery::MergeMarker::for_checkout(root)?;
+    Ok(marker.pending_path()?.map(Path::to_path_buf))
 }
 
 /// Shared indication that the checkout changed and the command must restart.

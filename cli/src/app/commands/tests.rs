@@ -30,6 +30,7 @@ mod reexec_tests {
 
     #[test]
     fn re_exec_preserves_arguments_and_sets_only_its_own_restart_guards() {
+        use crate::app::commands::reexec::REPOSITORY_OVERLAY_LOCK_VAR;
         use crate::infra::env::MapEnv;
 
         for (guard, args) in [
@@ -55,16 +56,21 @@ mod reexec_tests {
             );
             let env = command
                 .get_envs()
-                .map(|(key, value)| (key.to_str().unwrap(), value.unwrap().to_str().unwrap()))
+                .map(|(key, value)| (key.to_str().unwrap(), value.map(|v| v.to_str().unwrap())))
                 .collect::<std::collections::HashMap<_, _>>();
             assert_eq!(
                 env,
-                std::collections::HashMap::from([(REEXEC_GUARD_VAR, "1"), (guard, "1")]),
+                std::collections::HashMap::from([
+                    (REEXEC_GUARD_VAR, Some("1")),
+                    (guard, Some("1")),
+                    (REPOSITORY_OVERLAY_LOCK_VAR, None),
+                ]),
                 "{guard}: repository restart must not claim that the binary was replaced"
             );
 
             let child_env = env
                 .into_iter()
+                .filter_map(|(key, value)| value.map(|value| (key, value)))
                 .fold(MapEnv::new(), |child, (key, value)| child.with(key, value));
             let global = global(&[]);
             let runtime = RuntimePolicy::new(&global, false, child_env.into_handle(), true, true);

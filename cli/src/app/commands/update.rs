@@ -56,6 +56,7 @@ pub fn run(
         return CommandRunner::run_repository(runtime, log, token, &repository_only, startup);
     }
 
+    let checkout_snapshot = startup.checkout_snapshot()?;
     let runner = CommandRunner::from_startup(runtime, log, token, startup)?;
     let all_tasks = runner.update_tasks_for_run(&repository_update, ApmPackageMode::UpdatePins);
     let mut effective_skip = opts.filters.skip.clone();
@@ -111,6 +112,7 @@ pub fn run(
     runner.run_with_restart(
         filtered,
         repository_task,
+        checkout_snapshot,
         move || match repository_update.was_updated() {
             _ if repository_update.recovery_required() => BoundaryAction::Stop,
             updated if runtime.restart_after_repository_update(updated) => BoundaryAction::Restart,
@@ -123,6 +125,7 @@ pub fn run(
                 &config.profile.name,
                 config.overlay.as_deref(),
                 &exclusions,
+                runner.run_lock(),
                 log,
             )
         },

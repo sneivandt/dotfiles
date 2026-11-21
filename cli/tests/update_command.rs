@@ -139,12 +139,22 @@ fn selected_overlay_marker_precedes_config_and_blocks_managed_removal() {
         .unwrap()
         .set_str("dotfiles.overlay", overlay.path().to_str().unwrap())
         .unwrap();
-    let check = run("check", "config-diagnostics").output().unwrap();
+    let check = run("check", "config-diagnostics")
+        .arg("--no-symbols")
+        .output()
+        .unwrap();
+    assert!(!check.status.success(), "marked checkout: {check:?}");
+    let stdout = String::from_utf8_lossy(&check.stdout);
+    let stderr = String::from_utf8_lossy(&check.stderr);
     assert!(
-        check.status.success(),
-        "inspection of marked checkout: {check:?}"
+        stdout.contains("PASSED Configuration diagnostics"),
+        "{check:?}"
     );
+    assert!(stderr.contains("Unverified repository merge"), "{check:?}");
+    assert!(stderr.contains(marker.to_str().unwrap()), "{check:?}");
+    assert!(marker.is_file());
     std::fs::write(root.join("conf/symlinks.toml"), "[broken").unwrap();
+    blocked(&mut run("check", "config-diagnostics"));
     blocked(&mut run("update", "symlinks"));
     blocked(
         common::isolated_cli_command(root, home.path(), None, "update", "repository", true)
@@ -1156,6 +1166,112 @@ fn assert_partial_checkout_not_applied(repo: &std::path::Path, home: &std::path:
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn checkout_changed_before_repository_discovery_rejects_the_stale_configuration() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let path = std::env::var_os("PATH").unwrap();
+    let real_git = std::env::split_paths(&path)
+        .find_map(|dir| dir.join("git").canonicalize().ok())
+        .unwrap();
+    for change_overlay in [false, true] {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("main");
+        let overlay = fixture.path().join("overlay");
+        let home = fixture.path().join("home");
+        let bin = fixture.path().join("bin");
+        for directory in [&home, &bin] {
+            std::fs::create_dir(directory).unwrap();
+        }
+        common::setup_minimal_repo(&root);
+        std::fs::create_dir_all(overlay.join("conf")).unwrap();
+        let changed = if change_overlay { &overlay } else { &root };
+        std::fs::create_dir_all(changed.join("symlinks")).unwrap();
+        let original = "[base]\nsymlinks = [{ source = 'original', target = '.fixture' }]\n";
+        std::fs::write(changed.join("conf/symlinks.toml"), original).unwrap();
+        std::fs::write(changed.join("symlinks/original"), "old contents").unwrap();
+        std::fs::write(changed.join("symlinks/refreshed"), "fresh contents").unwrap();
+        std::fs::write(overlay.join("tracked"), "initial").unwrap();
+        for (checkout, remote) in [(&root, "main-origin"), (&overlay, "overlay-origin")] {
+            initialize_local_remote(fixture.path(), checkout, remote);
+        }
+        let publisher = fixture.path().join("publish");
+        let remote = if change_overlay {
+            "overlay-origin"
+        } else {
+            "main-origin"
+        };
+        git(fixture.path(), &["clone", remote, "publish"]);
+        std::fs::write(
+            publisher.join("conf/symlinks.toml"),
+            original.replace("original", "refreshed"),
+        )
+        .unwrap();
+        git(&publisher, &["commit", "-am", "change desired symlink"]);
+        git(&publisher, &["push", "origin", "main"]);
+        let wrapper = bin.join("git");
+        std::fs::write(
+            &wrapper,
+            r#"#!/bin/sh
+if [ "$1" = symbolic-ref ] && [ "$PWD" -ef "$FIXTURE_CHECKOUT" ]; then
+    "$FIXTURE_GIT" fetch origin main || exit $?
+    "$FIXTURE_GIT" merge --ff-only origin/main >&2 || exit $?
+fi
+exec "$FIXTURE_GIT" "$@"
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let fixture_path =
+            std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
+        let update = |sync| {
+            common::isolated_cli_command(
+                &root,
+                &home,
+                Some(&overlay),
+                "update",
+                if sync {
+                    "repository,symlinks"
+                } else {
+                    "symlinks"
+                },
+                sync,
+            )
+        };
+        let stale = update(true)
+            .env("FIXTURE_CHECKOUT", changed)
+            .env("FIXTURE_GIT", &real_git)
+            .env("PATH", fixture_path)
+            .output()
+            .unwrap();
+        assert!(!stale.status.success(), "{stale:?}");
+        assert!(
+            String::from_utf8_lossy(&stale.stderr)
+                .contains("Git checkout changed while preparing tasks"),
+            "{stale:?}"
+        );
+        assert_eq!(
+            git(changed, &["rev-parse", "HEAD"]),
+            git(&publisher, &["rev-parse", "HEAD"]),
+        );
+        assert!(std::fs::symlink_metadata(home.join(".fixture")).is_err());
+        // A deliberately dirty checkout still works when its committed inputs
+        // remain stable and the user requests a scoped update.
+        std::fs::write(overlay.join("tracked"), "local edit").unwrap();
+        let retry = update(false).output().unwrap();
+        assert!(retry.status.success(), "{retry:?}");
+        assert_eq!(
+            std::fs::read_to_string(home.join(".fixture")).unwrap(),
+            "fresh contents"
+        );
+        assert_eq!(
+            std::fs::read_to_string(overlay.join("tracked")).unwrap(),
+            "local edit"
+        );
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn repository_merge_process_death_only_blocks_the_affected_worktree() {
@@ -1360,6 +1476,168 @@ fn restarted_overlay_update_keeps_a_validated_exclusion_when_its_script_is_retir
         "dotfiles"
     };
     assert!(home.join(".local/bin").join(launcher).is_file());
+}
+
+#[cfg(unix)]
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "real repository restart, parent death, and concurrent command fixture"
+)]
+fn running_repository_restart_keeps_shared_overlay_and_home_locked_after_parent_death() {
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path().join("main");
+    let overlay = fixture.path().join("overlay");
+    let home = fixture.path().join("home");
+    let other_home = fixture.path().join("other-home");
+    for directory in [&home, &other_home, &overlay] {
+        std::fs::create_dir(directory).unwrap();
+    }
+    common::setup_minimal_repo(&root);
+    std::fs::create_dir(overlay.join("conf")).unwrap();
+    std::fs::write(
+        overlay.join("conf/scripts.toml"),
+        "[base]\nscripts = [{ name = 'Hold fixture', path = 'hold.sh' }]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        overlay.join("hold.sh"),
+        r#"#!/bin/sh
+case "$1" in
+    --check) test -f "$HOME/running"; exit $?;;
+    --remove) touch "$HOME/removed"; exit $?;;
+esac
+touch "$HOME/running" || exit 1
+tries=0
+while [ ! -f "$HOME/proceed" ] && [ "$tries" -lt 300 ]; do
+    tries=$((tries + 1))
+    sleep 0.1
+done
+test -f "$HOME/proceed" && cat revision > "$HOME/result"
+"#,
+    )
+    .unwrap();
+    std::fs::write(overlay.join("revision"), "original").unwrap();
+    for (checkout, remote) in [(&root, "main-origin"), (&overlay, "overlay-origin")] {
+        initialize_local_remote(fixture.path(), checkout, remote);
+    }
+    let other = fixture.path().join("other");
+    git(fixture.path(), &["clone", "main-origin", "other"]);
+    git(
+        &other,
+        &["commit", "--allow-empty", "-m", "trigger restart"],
+    );
+    git(&other, &["push", "origin", "main"]);
+
+    let mut parent = common::isolated_cli_command(
+        &root,
+        &home,
+        Some(&overlay),
+        "update",
+        "repository,script-hold-fixture",
+        true,
+    )
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !home.join("running").is_file() {
+        assert!(Instant::now() < deadline, "restarted script never ran");
+        assert!(parent.try_wait().unwrap().is_none(), "update exited early");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let initial_overlay = git(&overlay, &["rev-parse", "HEAD"]);
+    git(
+        fixture.path(),
+        &["clone", "overlay-origin", "publish-overlay"],
+    );
+    let publisher = fixture.path().join("publish-overlay");
+    std::fs::write(publisher.join("revision"), "updated").unwrap();
+    git(&publisher, &["commit", "-am", "advance overlay"]);
+    git(&publisher, &["push", "origin", "main"]);
+
+    let sync_overlay = || {
+        common::isolated_cli_command(
+            &other,
+            &other_home,
+            Some(&overlay),
+            "update",
+            "repository",
+            true,
+        )
+        .output()
+        .unwrap()
+    };
+    let remove_script = || {
+        common::cli_command(
+            &root,
+            &home,
+            Some(&overlay),
+            "remove",
+            "script-hold-fixture",
+        )
+        .output()
+        .unwrap()
+    };
+    let while_parent_alive = sync_overlay();
+    parent.kill().unwrap();
+    assert!(!parent.wait().unwrap().success());
+    // Older binaries attempt to lock these original files exclusively without
+    // checking the continuation files.
+    let legacy_blocked = [
+        root.join(".git/dotfiles-run.lock"),
+        home.join(".local/state/dotfiles/home-run.lock"),
+        overlay.join(".git/dotfiles-run.lock"),
+    ]
+    .map(|path| {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .unwrap();
+        matches!(file.try_lock(), Err(std::fs::TryLockError::WouldBlock))
+    });
+    let while_child_alive = sync_overlay();
+    let remove_while_child_alive = remove_script();
+    let held_overlay = git(&overlay, &["rev-parse", "HEAD"]);
+    let removed_early = home.join("removed").exists();
+
+    std::fs::write(home.join("proceed"), "").unwrap();
+    let output = parent.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Repository synced · restarting"),
+        "{output:?}"
+    );
+    assert!(home.join("result").is_file(), "{output:?}");
+    assert_eq!(
+        std::fs::read_to_string(home.join("result")).unwrap(),
+        "original"
+    );
+    for blocked in [
+        while_parent_alive,
+        while_child_alive,
+        remove_while_child_alive,
+    ] {
+        assert!(!blocked.status.success(), "{blocked:?}");
+        assert!(
+            String::from_utf8_lossy(&blocked.stderr).contains("another dotfiles run"),
+            "{blocked:?}"
+        );
+    }
+    assert_eq!(held_overlay, initial_overlay);
+    assert_eq!(legacy_blocked, [true; 3]);
+    assert!(!removed_early);
+    let finished_sync = sync_overlay();
+    assert!(finished_sync.status.success(), "{finished_sync:?}");
+    assert_ne!(git(&overlay, &["rev-parse", "HEAD"]), initial_overlay);
+    let finished_remove = remove_script();
+    assert!(finished_remove.status.success(), "{finished_remove:?}");
+    assert!(home.join("removed").exists());
 }
 
 #[allow(
@@ -1675,6 +1953,19 @@ fn repository_update_isolates_checkout_and_honors_system_git_configuration() {
         assert!(!unrelated.join(".git/FETCH_HEAD").exists());
         assert!(!unrelated.join("new-file").exists());
     }
+}
+
+#[cfg(unix)]
+fn initialize_local_remote(fixture: &std::path::Path, checkout: &std::path::Path, name: &str) {
+    git(fixture, &["init", "--bare", "-b", "main", name]);
+    git(checkout, &["init", "-b", "main"]);
+    git(checkout, &["add", "."]);
+    git(checkout, &["commit", "-m", "initial"]);
+    git(
+        checkout,
+        &["remote", "add", "origin", &format!("../{name}")],
+    );
+    git(checkout, &["push", "-u", "origin", "main"]);
 }
 
 fn git(root: &std::path::Path, args: &[&str]) -> String {

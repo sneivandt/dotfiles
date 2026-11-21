@@ -28,8 +28,8 @@ the task unmet. It does not reset or rebase the branch. Other branch-query error
 failures.
 
 Apply uses Git 2.41 or later to fetch each upstream and fast-forward to the commit
-reported by that fetch. If the local branch or commit changes during the fetch,
-review the checkout and retry. A local file that would be overwritten blocks the merge,
+reported by that fetch. If the local branch or commit changes while Dotfiles is
+preparing tasks, review the checkout and retry. A local file that would be overwritten blocks the merge,
 including a file Git normally ignores. A successfully changed checkout triggers
 the guarded [configuration
 restart](../development/architecture.md#repository-updates-are-a-restart-boundary) before later tasks
@@ -94,7 +94,9 @@ Git directory. It clears the marker only after verifying the new HEAD and index.
 If the merge fails, is cancelled, or the process dies, `update` and `remove`
 stop when the main checkout or the selected overlay is marked. They check
 before binary self-update or loading task configuration, even with `--only`,
-`--no-repo-update`, or `--dry-run`. You can still inspect retained runs with
+`--no-repo-update`, or `--dry-run`. `dotfiles check` still inspects the
+configuration and reports that recovery is pending. It exits with an error
+while a selected checkout is marked. You can inspect retained runs with
 `dotfiles log`. A different linked worktree is not marked. An ordinary dirty
 checkout with no marker keeps its usual behavior.
 

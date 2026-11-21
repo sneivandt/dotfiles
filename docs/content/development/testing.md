@@ -442,6 +442,18 @@ Add `--overlay /path/to/private-dotfiles` to validate combined configuration.
 Keep its diagnostics private until sanitized: a public-only check cannot prove
 an overlay has no conflicts.
 
+To reproduce the Linux CI deployment check, run from the repository root with
+APM 0.37.0 on `PATH`:
+
+```sh
+cargo build --locked --profile ci --manifest-path cli/Cargo.toml
+python3 -B .github/workflows/scripts/linux/test-apm.py cli/target/ci/dotfiles
+```
+
+The fixture copies the public base packages into a temporary home and checkout.
+The final frozen install is expected to refuse a deliberately edited file;
+the test fails if APM accepts or overwrites it.
+
 ### Analyzer prerequisites
 
 | Check | Required tools |

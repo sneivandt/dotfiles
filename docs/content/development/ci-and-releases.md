@@ -97,6 +97,7 @@ Coverage below is conditional on the relevant job being selected.
 |---|---|---|
 | Rust build, Clippy, tests | Native | Native |
 | Profile previews and config checks | Both roles | Both roles |
+| Public APM packages | Pack checks, local skill redeployment, frozen install and audit in a disposable home | No native APM run |
 | Update/remove round-trip | Yes | Yes |
 | Wrappers | POSIX | PowerShell |
 | Application integration | Git, Zsh, Vim, Neovim | Git |

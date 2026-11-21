@@ -14,7 +14,7 @@ FLAGS = (
     "run_docs_checks", "run_docs_site", "run_docs_contracts", "run_rust_checks",
     "run_rust_fmt", "run_audit", "run_deny",
     "run_build_linux", "run_build_windows", "run_validate_config",
-    "run_config_drift", "run_profile_linux", "run_profile_windows",
+    "run_config_drift", "run_apm", "run_profile_linux", "run_profile_windows",
     "run_roundtrip_linux", "run_roundtrip_windows", "run_app_tests",
     "run_app_windows", "run_git_hooks", "run_hook_inputs", "run_wrapper_linux",
     "run_wrapper_windows", "run_lint", "run_managed_scripts", "run_prompt",
@@ -41,8 +41,8 @@ LINTERS = {
 
 
 def documentation(path: str) -> bool:
-    # Source-tree assets can be embedded with include_str!, even Markdown.
-    return not path.startswith("cli/src/") and (
+    # Markdown can be compiled into the CLI or deployed as an APM skill.
+    return not path.startswith(("cli/src/", "symlinks/apm/")) and (
         path.endswith(".md") or path.startswith(("docs/", ".agents/"))
         or path == ".github/workflows/pages.yml"
     )
@@ -114,6 +114,10 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("docs_contracts")
         if documentation(path):
             continue
+        if path.startswith(("symlinks/apm/", "cli/src/domains/ai/apm/", "packages/apm/")) or path in {
+            "cli/src/domains/ai/apm.rs", "conf/symlinks.toml",
+        }:
+            enable("apm")
         if binary_input(path):
             enable("release")
         if path.endswith(".sh") or path in {"hooks/pre-commit"}:
@@ -140,6 +144,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("desktop_qml")
         elif path == LINUX + "test-workflows.sh":
             pass  # Always executed by classify-changes.
+        elif path == LINUX + "test-apm.py":
+            enable("apm")
         elif path in {LINUX + "test-docs.sh", LINUX + "check-doc-links.py", LINUX + "check-doc-site.py",
                       LINUX + "docs-publication-base.py"}:
             pass
@@ -286,6 +292,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             "profile", "roundtrip", "wrapper",
         )):
             enable("build_" + platform)
+    if flags["run_apm"]:
+        enable("validate_config")
     if flags["run_validate_config"] or flags["run_config_drift"] or apps:
         enable("build_linux")
     if flags["run_app_windows"]:

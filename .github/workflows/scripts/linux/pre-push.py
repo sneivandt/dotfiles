@@ -74,7 +74,7 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False):
         "run_build_windows", "run_profile_linux", "run_profile_windows",
         "run_roundtrip_linux", "run_roundtrip_windows", "run_app_tests",
         "run_app_windows", "run_git_hooks", "run_wrapper_linux", "run_wrapper_windows",
-        "run_release",
+        "run_release", "run_apm",
     ) if selection[name]]
     return commands, deferred
 

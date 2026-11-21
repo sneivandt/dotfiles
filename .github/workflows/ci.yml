@@ -33,6 +33,7 @@ jobs:
       run_lint: ${{ steps.classify.outputs.run_lint }}
       lint_matrix: ${{ steps.classify.outputs.lint_matrix }}
       run_validate_config: ${{ steps.classify.outputs.run_validate_config }}
+      run_apm: ${{ steps.classify.outputs.run_apm }}
       run_config_drift: ${{ steps.classify.outputs.run_config_drift }}
       run_rust_checks: ${{ steps.classify.outputs.run_rust_checks }}
       run_rust_fmt: ${{ steps.classify.outputs.run_rust_fmt }}
@@ -280,6 +281,15 @@ jobs:
         run: chmod +x bin/dotfiles
       - name: Run typed configuration validation
         run: ./bin/dotfiles check --root . -p desktop --only config-diagnostics,symlink-sources,config-files
+      - name: Set up APM
+        if: needs.classify-changes.outputs.run_apm == 'true'
+        uses: microsoft/apm-action@64544310be26812256300543071bfbaa8bc93aad # v1.12.0
+        with:
+          setup-only: 'true'
+          apm-version: '0.37.0'
+      - name: Verify public agent package deployment
+        if: needs.classify-changes.outputs.run_apm == 'true'
+        run: python3 -B .github/workflows/scripts/linux/test-apm.py bin/dotfiles
 
   test-stocks:
     name: "Regression: Stock ticker"

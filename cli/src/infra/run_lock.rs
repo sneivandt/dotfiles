@@ -151,10 +151,11 @@ impl CommandLocks {
         command: &str,
         restart: Option<(&Path, &std::ffi::OsStr)>,
     ) -> Result<()> {
-        let path = repository_state_path(overlay, env, platform, LOCK_NAME)?;
-        let Some(checkout_lock) = checkout_coordination_path(overlay, &path)? else {
+        if !has_git_marker(overlay)? {
             return Ok(());
-        };
+        }
+        let path = repository_state_path(overlay, env, platform, LOCK_NAME)?;
+        let checkout_lock = coordination_path_for_git(&path)?;
         if self.checkout_path.as_ref() == Some(&checkout_lock)
             || crate::infra::fs::paths_equal(&self.repository_path, &path)
         {
@@ -222,16 +223,25 @@ impl CommandLocks {
     }
 }
 
+fn has_git_marker(root: &Path) -> Result<bool> {
+    Ok(
+        crate::infra::fs::symlink_metadata_optional(&root.join(".git"), "inspect checkout marker")?
+            .is_some(),
+    )
+}
+
 fn checkout_coordination_path(root: &Path, repository_path: &Path) -> Result<Option<PathBuf>> {
-    if crate::infra::fs::symlink_metadata_optional(&root.join(".git"), "inspect checkout marker")?
-        .is_none()
-    {
+    if !has_git_marker(root)? {
         return Ok(None);
     }
+    coordination_path_for_git(repository_path).map(Some)
+}
+
+fn coordination_path_for_git(repository_path: &Path) -> Result<PathBuf> {
     let common_dir = repository_path
         .parent()
         .context("missing Git common directory")?;
-    coordination::checkout_lock_path(common_dir).map(Some)
+    coordination::checkout_lock_path(common_dir)
 }
 
 fn unavailable_optional_lock(error: &anyhow::Error) -> bool {
@@ -565,9 +575,7 @@ pub(crate) fn repository_state_path(
 ) -> Result<PathBuf> {
     // Exported dotfiles trees can live inside an unrelated repository.
     // Only the selected root's Git metadata can own its shared lock.
-    if crate::infra::fs::symlink_metadata_optional(&root.join(".git"), "inspect repository marker")?
-        .is_some()
-    {
+    if has_git_marker(root)? {
         let repository = git2::Repository::open(root)
             .with_context(|| format!("opening selected repository {}", root.display()))?;
         return Ok(repository.commondir().join(filename));
@@ -690,6 +698,23 @@ mod tests {
             drop((holder, independent));
             CommandLocks::acquire(&second, &home, &env, platform, "retry").unwrap();
         }
+    }
+
+    #[test]
+    fn exported_overlay_needs_no_git_lock_storage() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("main");
+        let overlay = fixture.path().join("export");
+        let home = fixture.path().join("home");
+        git2::Repository::init(&root).unwrap();
+        std::fs::create_dir(&overlay).unwrap();
+        let env = MapEnv::new().with("HOME", home.as_os_str());
+        let windows = Platform::new(Os::Windows, false);
+        let mut locks = CommandLocks::acquire(&root, &home, &env, windows, "check").unwrap();
+        locks
+            .protect_overlay(&overlay, &env, windows, "check", None)
+            .unwrap();
+        assert!(std::fs::read_dir(&overlay).unwrap().next().is_none());
     }
 
     #[cfg(unix)]

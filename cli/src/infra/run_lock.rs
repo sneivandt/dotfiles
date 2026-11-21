@@ -38,11 +38,12 @@ const FIRST_LOGIN_WAIT_ENV: &str = "DOTFILES_FIRST_LOGIN_WAIT_FOR_LOCK";
 const RESTART_PREFIX: &str = ".dotfiles-restart";
 const HOME_RESTART_PREFIX: &str = ".dotfiles-restart-home";
 
-/// Locks held by the parent command across task execution and process restarts.
+/// Locks held for a command and its continuation after a process restart.
 #[derive(Debug)]
 pub(crate) struct CommandLocks {
-    _repository: Option<RunLock>,
-    _home: RunLock,
+    repository_path: PathBuf,
+    owned: Vec<RunLock>,
+    continuations: Vec<File>,
 }
 
 impl CommandLocks {
@@ -53,15 +54,19 @@ impl CommandLocks {
         platform: Platform,
         command: &str,
     ) -> Result<Self> {
-        let repository = RunLock::acquire(root, env, platform, command)?;
+        let repository_path = repository_state_path(root, env, platform, LOCK_NAME)?;
+        let wait = env.var(FIRST_LOGIN_WAIT_ENV);
+        let repository =
+            RunLock::acquire_path_with_wait(&repository_path, command, wait.as_deref())?;
         let home = RunLock::acquire_path_with_wait(
             &home_lock_path(home, platform)?,
             command,
-            env.var(FIRST_LOGIN_WAIT_ENV).as_deref(),
+            wait.as_deref(),
         )?;
         Ok(Self {
-            _repository: Some(repository),
-            _home: home,
+            repository_path,
+            owned: vec![repository, home],
+            continuations: Vec::new(),
         })
     }
 
@@ -72,23 +77,91 @@ impl CommandLocks {
         platform: Platform,
         marker: &std::ffi::OsStr,
         command: &str,
-    ) -> Result<Option<Self>> {
+    ) -> Result<Self> {
         verify_restart(root, env, platform, marker)?;
-        let path = home_lock_path(home, platform)?;
-        if RestartLease::covers_home(marker) {
+        let repository_path = repository_state_path(root, env, platform, LOCK_NAME)?;
+        let home_path = home_lock_path(home, platform)?;
+        let home_lock = if RestartLease::covers_home(marker) {
             anyhow::ensure!(
-                is_held(&path)?,
+                is_held(&home_path)?,
                 "restart has no active home lock. Retry the command"
             );
-            return Ok(None);
-        }
-        // Older installed binaries hold only the repository lock. Their first
-        // restarted child acquires the home lock and keeps it for the chain.
-        Ok(Some(Self {
-            _repository: None,
-            _home: RunLock::acquire_path(&path, command)?,
-        }))
+            None
+        } else {
+            // Older installed binaries hold only the repository lock.
+            Some(RunLock::acquire_path(&home_path, command)?)
+        };
+        let continuations = vec![
+            hold_continuation(&repository_path)?,
+            hold_continuation(&home_path)?,
+        ];
+        // The parent may have exited between validation and acquisition.
+        verify_restart(root, env, platform, marker)?;
+        Ok(Self {
+            repository_path,
+            owned: home_lock.into_iter().collect(),
+            continuations,
+        })
     }
+
+    pub(crate) fn protect_overlay(
+        &mut self,
+        overlay: &Path,
+        env: &dyn Env,
+        platform: Platform,
+        command: &str,
+        restart: Option<(&Path, &std::ffi::OsStr)>,
+    ) -> Result<()> {
+        if crate::infra::fs::symlink_metadata_optional(
+            &overlay.join(".git"),
+            "inspect overlay repository marker",
+        )?
+        .is_none()
+        {
+            return Ok(());
+        }
+        let path = repository_state_path(overlay, env, platform, LOCK_NAME)?;
+        if crate::infra::fs::paths_equal(&self.repository_path, &path) {
+            return Ok(());
+        }
+        if let Some((root, marker)) = restart {
+            verify_restart(root, env, platform, marker)?;
+            anyhow::ensure!(
+                is_held(&path)?,
+                "restart has no active lock for overlay {}. Retry the command",
+                overlay.display()
+            );
+            self.continuations.push(hold_continuation(&path)?);
+            verify_restart(root, env, platform, marker)?;
+        } else {
+            // A second run may hold its own main lock while targeting this
+            // checkout. Fail fast so opposite main/overlay pairs cannot wait on each other.
+            self.owned.push(RunLock::acquire_path(&path, command)?);
+        }
+        Ok(())
+    }
+}
+
+fn continuation_path(path: &Path) -> PathBuf {
+    path.with_extension("continuation.lock")
+}
+
+fn hold_continuation(path: &Path) -> Result<File> {
+    let path = continuation_path(path);
+    let file = open_lock(&path, true)?;
+    file.try_lock_shared()
+        .map_err(|error| lock_error(&path, error))?;
+    Ok(file)
+}
+
+fn ensure_no_continuation(path: &Path, wait: Option<&str>) -> Result<()> {
+    let path = continuation_path(path);
+    if crate::infra::fs::symlink_metadata_optional(&path, "inspect restart continuation lock")?
+        .is_some()
+    {
+        take_exclusive(&open_lock(&path, false)?, &path, wait)?;
+    }
+    Ok(())
 }
 
 fn home_lock_path(home: &Path, platform: Platform) -> Result<PathBuf> {
@@ -209,6 +282,7 @@ pub(crate) fn verify_restart(
 
 impl RunLock {
     /// Acquire the lock associated with `root`.
+    #[cfg(test)]
     pub(crate) fn acquire(
         root: &Path,
         env: &dyn Env,
@@ -229,22 +303,9 @@ impl RunLock {
                 .with_context(|| format!("creating run-lock directory {}", parent.display()))?;
         }
 
-        let mut options = OpenOptions::new();
-        options.create(true).read(true).write(true).truncate(false);
-        let mut file = crate::infra::fs::open_in_place(path, &mut options)
-            .with_context(|| format!("opening run lock {}", path.display()))?;
-        #[cfg(unix)]
-        {
-            check_owner(&file.metadata()?, nix::unistd::Uid::effective().as_raw())
-                .with_context(|| format!("validating run lock {}", path.display()))?;
-        }
-
-        if matches!(wait, Some("1")) {
-            file.lock()
-                .with_context(|| format!("waiting for run lock {}", path.display()))?;
-        } else {
-            file.try_lock().map_err(|error| lock_error(path, error))?;
-        }
+        let mut file = open_lock(path, true)?;
+        take_exclusive(&file, path, wait)?;
+        ensure_no_continuation(path, wait)?;
 
         let started_unix_seconds = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -266,6 +327,30 @@ impl RunLock {
             .with_context(|| format!("syncing run lock {}", path.display()))?;
 
         Ok(Self { file })
+    }
+}
+
+fn open_lock(path: &Path, create: bool) -> Result<File> {
+    let mut options = OpenOptions::new();
+    options
+        .create(create)
+        .read(true)
+        .write(true)
+        .truncate(false);
+    let file = crate::infra::fs::open_in_place(path, &mut options)
+        .with_context(|| format!("opening run lock {}", path.display()))?;
+    #[cfg(unix)]
+    check_owner(&file.metadata()?, nix::unistd::Uid::effective().as_raw())
+        .with_context(|| format!("validating run lock {}", path.display()))?;
+    Ok(file)
+}
+
+fn take_exclusive(file: &File, path: &Path, wait: Option<&str>) -> Result<()> {
+    if matches!(wait, Some("1")) {
+        file.lock()
+            .with_context(|| format!("waiting for run lock {}", path.display()))
+    } else {
+        file.try_lock().map_err(|error| lock_error(path, error))
     }
 }
 
@@ -517,11 +602,8 @@ mod tests {
         let locks = CommandLocks::acquire(&root, &home, &env, platform, "update").unwrap();
         let lease = RestartLease::new(&root, &env, platform).unwrap();
         let marker = lease.marker().unwrap().to_owned();
-        assert!(
-            CommandLocks::restart(&root, &home, &env, platform, &marker, "update")
-                .unwrap()
-                .is_none()
-        );
+        let child = CommandLocks::restart(&root, &home, &env, platform, &marker, "update").unwrap();
+        drop(child);
         drop(locks);
         let _repository = RunLock::acquire(&root, &env, platform, "fixture").unwrap();
         let error =
@@ -554,25 +636,23 @@ mod tests {
         .unwrap();
         lease.try_lock().unwrap();
         let marker_name = marker.path().file_name().unwrap();
-        let home_lock = CommandLocks::restart(&root, &home, &env, platform, marker_name, "update")
-            .unwrap()
-            .expect("legacy child must hold the new destination lock");
+        let home_lock =
+            CommandLocks::restart(&root, &home, &env, platform, marker_name, "update").unwrap();
         assert!(
             RunLock::acquire_path(&home_lock_path(&home, platform).unwrap(), "other clone")
                 .is_err()
         );
         let modern = RestartLease::new(&root, &env, platform).unwrap();
-        assert!(
+        drop(
             CommandLocks::restart(
                 &root,
                 &home,
                 &env,
                 platform,
                 modern.marker().unwrap(),
-                "update"
+                "update",
             )
-            .unwrap()
-            .is_none()
+            .unwrap(),
         );
         drop(home_lock);
         let unrelated =
@@ -582,11 +662,70 @@ mod tests {
             CommandLocks::restart(&root, &home, &env, platform, marker_name, "update").is_err()
         );
         drop(unrelated);
-        assert!(
-            CommandLocks::restart(&root, &home, &env, platform, marker_name, "retry")
-                .unwrap()
-                .is_some()
-        );
+        CommandLocks::restart(&root, &home, &env, platform, marker_name, "retry").unwrap();
+    }
+
+    #[test]
+    fn nested_continuation_keeps_the_home_and_checkouts_locked_after_parents_exit() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("repository");
+        let overlay = fixture.path().join("overlay");
+        let another_root = fixture.path().join("another");
+        let home = fixture.path().join("home");
+        let another_home = fixture.path().join("another-home");
+        for repository in [&root, &overlay, &another_root] {
+            git2::Repository::init(repository).unwrap();
+        }
+        let env = MapEnv::new();
+        let platform = Platform::detect();
+        let parent = CommandLocks::acquire(&root, &home, &env, platform, "update").unwrap();
+        let parent_lease = RestartLease::new(&root, &env, platform).unwrap();
+
+        // Binary self-update takes place before selecting the overlay lock.
+        let mut middle = CommandLocks::restart(
+            &root,
+            &home,
+            &env,
+            platform,
+            parent_lease.marker().unwrap(),
+            "update",
+        )
+        .unwrap();
+        middle
+            .protect_overlay(&overlay, &env, platform, "update", None)
+            .unwrap();
+        let middle_lease = RestartLease::new(&root, &env, platform).unwrap();
+
+        // Repository synchronization restarts again with the selected overlay.
+        let marker = middle_lease.marker().unwrap();
+        let mut child =
+            CommandLocks::restart(&root, &home, &env, platform, marker, "update").unwrap();
+        child
+            .protect_overlay(&overlay, &env, platform, "update", Some((&root, marker)))
+            .unwrap();
+        drop((parent, parent_lease, middle, middle_lease));
+
+        for (repo, destination) in [
+            (&root, &another_home),
+            (&another_root, &home),
+            (&overlay, &another_home),
+        ] {
+            let error =
+                CommandLocks::acquire(repo, destination, &env, platform, "remove").unwrap_err();
+            assert!(
+                error.to_string().contains("another dotfiles run"),
+                "{error:#}"
+            );
+            assert!(error.to_string().contains("continuation.lock"), "{error:#}");
+        }
+        drop(child);
+        for (repo, destination) in [
+            (&root, &another_home),
+            (&another_root, &home),
+            (&overlay, &another_home),
+        ] {
+            CommandLocks::acquire(repo, destination, &env, platform, "retry").unwrap();
+        }
     }
 
     #[test]

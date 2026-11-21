@@ -1362,6 +1362,160 @@ fn restarted_overlay_update_keeps_a_validated_exclusion_when_its_script_is_retir
     assert!(home.join(".local/bin").join(launcher).is_file());
 }
 
+#[cfg(unix)]
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "real repository restart, parent death, and concurrent command fixture"
+)]
+fn running_repository_restart_keeps_shared_overlay_and_home_locked_after_parent_death() {
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path().join("main");
+    let overlay = fixture.path().join("overlay");
+    let home = fixture.path().join("home");
+    let other_home = fixture.path().join("other-home");
+    for directory in [&home, &other_home, &overlay] {
+        std::fs::create_dir(directory).unwrap();
+    }
+    common::setup_minimal_repo(&root);
+    std::fs::create_dir(overlay.join("conf")).unwrap();
+    std::fs::write(
+        overlay.join("conf/scripts.toml"),
+        "[base]\nscripts = [{ name = 'Hold fixture', path = 'hold.sh' }]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        overlay.join("hold.sh"),
+        r#"#!/bin/sh
+case "$1" in
+    --check) test -f "$HOME/running"; exit $?;;
+    --remove) touch "$HOME/removed"; exit $?;;
+esac
+touch "$HOME/running" || exit 1
+tries=0
+while [ ! -f "$HOME/proceed" ] && [ "$tries" -lt 300 ]; do
+    tries=$((tries + 1))
+    sleep 0.1
+done
+test -f "$HOME/proceed" && cat revision > "$HOME/result"
+"#,
+    )
+    .unwrap();
+    std::fs::write(overlay.join("revision"), "original").unwrap();
+    for (checkout, remote) in [(&root, "main-origin"), (&overlay, "overlay-origin")] {
+        git(fixture.path(), &["init", "--bare", "-b", "main", remote]);
+        git(checkout, &["init", "-b", "main"]);
+        git(checkout, &["add", "."]);
+        git(checkout, &["commit", "-m", "initial"]);
+        git(
+            checkout,
+            &["remote", "add", "origin", &format!("../{remote}")],
+        );
+        git(checkout, &["push", "-u", "origin", "main"]);
+    }
+    let other = fixture.path().join("other");
+    git(fixture.path(), &["clone", "main-origin", "other"]);
+    git(
+        &other,
+        &["commit", "--allow-empty", "-m", "trigger restart"],
+    );
+    git(&other, &["push", "origin", "main"]);
+
+    let mut parent = common::isolated_cli_command(
+        &root,
+        &home,
+        Some(&overlay),
+        "update",
+        "repository,script-hold-fixture",
+        true,
+    )
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !home.join("running").is_file() {
+        assert!(Instant::now() < deadline, "restarted script never ran");
+        assert!(parent.try_wait().unwrap().is_none(), "update exited early");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let initial_overlay = git(&overlay, &["rev-parse", "HEAD"]);
+    git(
+        fixture.path(),
+        &["clone", "overlay-origin", "publish-overlay"],
+    );
+    let publisher = fixture.path().join("publish-overlay");
+    std::fs::write(publisher.join("revision"), "updated").unwrap();
+    git(&publisher, &["commit", "-am", "advance overlay"]);
+    git(&publisher, &["push", "origin", "main"]);
+
+    let sync_overlay = || {
+        common::isolated_cli_command(
+            &other,
+            &other_home,
+            Some(&overlay),
+            "update",
+            "repository",
+            true,
+        )
+        .output()
+        .unwrap()
+    };
+    let remove_script = || {
+        common::cli_command(
+            &root,
+            &home,
+            Some(&overlay),
+            "remove",
+            "script-hold-fixture",
+        )
+        .output()
+        .unwrap()
+    };
+    let while_parent_alive = sync_overlay();
+    parent.kill().unwrap();
+    assert!(!parent.wait().unwrap().success());
+    let while_child_alive = sync_overlay();
+    let remove_while_child_alive = remove_script();
+    let held_overlay = git(&overlay, &["rev-parse", "HEAD"]);
+    let removed_early = home.join("removed").exists();
+
+    std::fs::write(home.join("proceed"), "").unwrap();
+    let output = parent.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Repository synced · restarting"),
+        "{output:?}"
+    );
+    assert!(home.join("result").is_file(), "{output:?}");
+    assert_eq!(
+        std::fs::read_to_string(home.join("result")).unwrap(),
+        "original"
+    );
+    for blocked in [
+        while_parent_alive,
+        while_child_alive,
+        remove_while_child_alive,
+    ] {
+        assert!(!blocked.status.success(), "{blocked:?}");
+        assert!(
+            String::from_utf8_lossy(&blocked.stderr).contains("another dotfiles run"),
+            "{blocked:?}"
+        );
+    }
+    assert_eq!(held_overlay, initial_overlay);
+    assert!(!removed_early);
+    let finished_sync = sync_overlay();
+    assert!(finished_sync.status.success(), "{finished_sync:?}");
+    assert_ne!(git(&overlay, &["rev-parse", "HEAD"]), initial_overlay);
+    let finished_remove = remove_script();
+    assert!(finished_remove.status.success(), "{finished_remove:?}");
+    assert!(home.join("removed").exists());
+}
+
 #[allow(
     clippy::too_many_lines,
     reason = "real Git remotes and update recovery"

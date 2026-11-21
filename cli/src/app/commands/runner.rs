@@ -55,14 +55,45 @@ impl CommandStartup {
     }
 
     pub(super) fn for_mutation(runtime: &RuntimePolicy<'_>, log: &Logger) -> Result<Self> {
-        let startup = Self::resolve(runtime, log)?;
+        let mut startup = Self::resolve(runtime, log)?;
         // Task filters control synchronization, not permission to consume a partial checkout.
         ensure_recovery_clear(&startup.root)?;
-        if let Some((overlay, _)) = &startup.overlay {
+        // The preflight can restart before the overlay is needed. Keep the
+        // recovery check before that restart, then check again with the lock.
+        if super::reexec::should_check_self_update(runtime) {
+            startup.ensure_overlay_recovery_clear()?;
+            super::reexec::prepare_self_update(runtime, &startup.root, log)?;
+        }
+        startup.protect_overlay(runtime, log)?;
+        startup.ensure_overlay_recovery_clear()?;
+        Ok(startup)
+    }
+
+    fn ensure_overlay_recovery_clear(&self) -> Result<()> {
+        if let Some((overlay, _)) = &self.overlay {
             ensure_recovery_clear(overlay)?;
         }
-        super::reexec::prepare_self_update(runtime, &startup.root, log)?;
-        Ok(startup)
+        Ok(())
+    }
+
+    fn protect_overlay(&mut self, runtime: &RuntimePolicy<'_>, log: &Logger) -> Result<()> {
+        if let (Some(locks), Some((overlay, _))) = (&mut self.run_lock, &self.overlay) {
+            use super::reexec::{REEXEC_GUARD_VAR, REPOSITORY_OVERLAY_LOCK_VAR};
+            let marker = runtime.env.var_os(REEXEC_GUARD_VAR);
+            let inherited =
+                runtime.repository_child && runtime.env.is_set(REPOSITORY_OVERLAY_LOCK_VAR);
+            locks.protect_overlay(
+                overlay,
+                runtime.env.as_ref(),
+                Platform::detect(),
+                &log.command_title(),
+                marker
+                    .as_deref()
+                    .filter(|marker| inherited && !marker.is_empty())
+                    .map(|marker| (self.root.as_path(), marker)),
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -87,7 +118,8 @@ impl CommandRunner {
         log: &Arc<Logger>,
         token: &crate::engine::CancellationToken,
     ) -> Result<Self> {
-        let startup = CommandStartup::resolve(runtime, log)?;
+        let mut startup = CommandStartup::resolve(runtime, log)?;
+        startup.protect_overlay(runtime, log)?;
         Self::from_startup(runtime, log, token, startup)
     }
 
@@ -114,7 +146,8 @@ impl CommandRunner {
                 platform,
                 &marker,
                 &log.command_title(),
-            );
+            )
+            .map(Some);
         }
         crate::infra::run_lock::CommandLocks::acquire(
             root,

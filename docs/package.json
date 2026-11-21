@@ -20,7 +20,7 @@
     "vue": "3.5.45"
   },
   "devDependencies": {
-    "@playwright/test": "1.65.0",
+    "@playwright/test": "1.65.1",
     "@types/node": "24.19.2",
     "esbuild": "0.28.2",
     "typescript": "6.0.3",

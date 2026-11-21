@@ -195,7 +195,9 @@ their separate confirmation requirement.
 
 After a failure, use the exact log-viewing command printed by the CLI. It
 selects the run with `--id` and adds `-v` for diagnostics. IDs stay stable even
-after later runs; numeric history indexes do not.
+after later runs; numeric history indexes do not. In `log --list`, copy the
+`ID` beside the timestamp to inspect that run. The `PARENT` column identifies
+the run that started it, if any.
 
 ```bash
 dotfiles log                          # newest run

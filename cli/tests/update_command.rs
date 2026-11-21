@@ -789,7 +789,10 @@ fn retained_history_selects_exact_runs_and_preserves_parent_and_actions() {
     assert!(
         history.contains("succeeded")
             && history.contains("base")
-            && history.contains(&format!("/ {parent_id}")),
+            && history
+                .lines()
+                .skip(1)
+                .any(|row| row.split_whitespace().last() == Some(parent_id)),
         "{history}"
     );
     assert_eq!(

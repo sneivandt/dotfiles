@@ -1,0 +1,492 @@
+//! Stage under the intended access policy, not just the destination's parent.
+#![allow(
+    unsafe_code,
+    reason = "Win32 exposes file security descriptors only through pointer APIs"
+)]
+
+use anyhow::{Context as _, Result};
+use std::ffi::CStr;
+use std::fs::File;
+use std::io::{self, Write as _};
+use std::os::windows::{
+    ffi::OsStrExt as _, fs::MetadataExt as _, fs::OpenOptionsExt as _, io::AsRawHandle as _,
+    io::FromRawHandle as _,
+};
+use std::path::Path;
+use std::ptr;
+use windows_sys::Win32::{
+    Foundation::{ERROR_SUCCESS, GENERIC_WRITE, INVALID_HANDLE_VALUE, LocalFree},
+    Security::{
+        ATTRIBUTE_SECURITY_INFORMATION,
+        Authorization::{
+            ConvertStringSecurityDescriptorToSecurityDescriptorA, GetSecurityInfo, SDDL_REVISION_1,
+            SE_FILE_OBJECT,
+        },
+        DACL_SECURITY_INFORMATION, GROUP_SECURITY_INFORMATION, GetSecurityDescriptorControl,
+        GetSecurityDescriptorDacl, GetSecurityDescriptorLength, LABEL_SECURITY_INFORMATION,
+        OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, QuerySecurityAccessMask,
+        SCOPE_SECURITY_INFORMATION, SE_DACL_PROTECTED, SE_SELF_RELATIVE, SECURITY_ATTRIBUTES,
+    },
+    Storage::FileSystem::{
+        CREATE_NEW, CreateFileW, FILE_ATTRIBUTE_ENCRYPTED, FILE_ATTRIBUTE_NORMAL,
+        FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
+        FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
+        GetVolumeInformationByHandleW, READ_CONTROL,
+    },
+    System::SystemServices::{
+        ACCESS_FILTER_SECURITY_INFORMATION, FILE_PERSISTENT_ACLS,
+        PROCESS_TRUST_LABEL_SECURITY_INFORMATION,
+    },
+};
+
+use super::TempGuard;
+
+mod private_dir;
+#[cfg(test)]
+pub(crate) use private_dir::check_private_fixture;
+pub(in crate::infra::fs) use private_dir::{create_private_dir, verify_private_child};
+
+pub(super) fn wide_path(path: &Path) -> io::Result<Vec<u16>> {
+    // Resolve only the parent, for verbatim long paths without following a final link.
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let name = path.file_name().ok_or(io::ErrorKind::InvalidInput)?;
+    let absolute = std::fs::canonicalize(parent)?.join(name);
+    let mut wide: Vec<_> = absolute.as_os_str().encode_wide().collect();
+    if wide.contains(&0) {
+        return Err(io::ErrorKind::InvalidInput.into());
+    }
+    wide.push(0);
+    Ok(wide)
+}
+
+const ACCESS_FLAGS: [u32; 8] = [
+    OWNER_SECURITY_INFORMATION,
+    GROUP_SECURITY_INFORMATION,
+    DACL_SECURITY_INFORMATION,
+    LABEL_SECURITY_INFORMATION,
+    ATTRIBUTE_SECURITY_INFORMATION,
+    SCOPE_SECURITY_INFORMATION,
+    PROCESS_TRUST_LABEL_SECURITY_INFORMATION.cast_unsigned(),
+    ACCESS_FILTER_SECURITY_INFORMATION.cast_unsigned(),
+];
+
+fn require_query_support() -> Result<()> {
+    for flag in ACCESS_FLAGS {
+        let mut rights = 0;
+        // SAFETY: pure mask query with a writable out pointer. Query flags individually
+        // so another flag requiring READ_CONTROL cannot mask an unrecognized bit.
+        unsafe { QuerySecurityAccessMask(flag, &raw mut rights) };
+        anyhow::ensure!(
+            rights == READ_CONTROL,
+            "unsupported access-policy query {flag:#x} (required rights {rights:#x})"
+        );
+    }
+    Ok(())
+}
+
+/// Compare the complete self-relative projection, including inheritance control bits.
+#[derive(Debug)]
+struct Access {
+    descriptor: LocalDescriptor,
+    len: usize,
+}
+
+impl PartialEq for Access {
+    fn eq(&self, other: &Self) -> bool {
+        self.bytes() == other.bytes()
+    }
+}
+
+impl Eq for Access {}
+
+impl Access {
+    fn read(file: &File) -> io::Result<Self> {
+        let info = ACCESS_FLAGS.into_iter().fold(0, |mask, flag| mask | flag);
+        let descriptor = LocalDescriptor::from_file(file, info)?;
+        // SAFETY: the OS allocated and initialized this descriptor.
+        let len = unsafe { GetSecurityDescriptorLength(descriptor.0) };
+        if len == 0 || descriptor.control()? & SE_SELF_RELATIVE == 0 {
+            return Err(io::ErrorKind::InvalidData.into());
+        }
+        Ok(Self {
+            descriptor,
+            len: usize::try_from(len).map_err(io::Error::other)?,
+        })
+    }
+
+    const fn bytes(&self) -> &[u8] {
+        // SAFETY: self-relative descriptor is one live buffer of the reported length.
+        unsafe { std::slice::from_raw_parts(self.as_ptr().cast(), self.len) }
+    }
+
+    const fn as_ptr(&self) -> PSECURITY_DESCRIPTOR {
+        self.descriptor.0
+    }
+
+    fn protected(&self) -> io::Result<bool> {
+        Ok(self.descriptor.control()? & SE_DACL_PROTECTED != 0)
+    }
+}
+
+#[derive(Debug)]
+struct LocalDescriptor(PSECURITY_DESCRIPTOR);
+
+impl LocalDescriptor {
+    fn from_file(file: &File, info: u32) -> io::Result<Self> {
+        let mut descriptor = ptr::null_mut();
+        // SAFETY: request only the owned descriptor for a live file handle.
+        let status = unsafe {
+            GetSecurityInfo(
+                file.as_raw_handle(),
+                SE_FILE_OBJECT,
+                info,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                &raw mut descriptor,
+            )
+        };
+        if status != ERROR_SUCCESS {
+            return Err(io::Error::from_raw_os_error(status.cast_signed()));
+        }
+        if descriptor.is_null() {
+            return Err(io::ErrorKind::InvalidData.into());
+        }
+        Ok(Self(descriptor))
+    }
+
+    fn control(&self) -> io::Result<u16> {
+        let mut control = 0;
+        let mut revision = 0;
+        // SAFETY: initialized descriptor returned by Windows, valid output pointers.
+        if unsafe { GetSecurityDescriptorControl(self.0, &raw mut control, &raw mut revision) } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(control)
+    }
+    fn parse(sddl: &CStr) -> io::Result<Self> {
+        let mut descriptor = ptr::null_mut();
+        // SAFETY: NUL-terminated SDDL and valid out pointer. On success we own the allocation.
+        if unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorA(
+                sddl.as_ptr().cast(),
+                SDDL_REVISION_1,
+                &raw mut descriptor,
+                ptr::null_mut(),
+            )
+        } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(Self(descriptor))
+    }
+}
+
+impl Drop for LocalDescriptor {
+    fn drop(&mut self) {
+        // SAFETY: both GetSecurityInfo and SDDL conversion transfer a LocalFree allocation.
+        unsafe { LocalFree(self.0) };
+    }
+}
+
+// Both descriptors come from Windows (a successful query or SDDL conversion).
+fn same_dacl(left: PSECURITY_DESCRIPTOR, right: PSECURITY_DESCRIPTOR) -> io::Result<bool> {
+    fn acl_bytes(sd: PSECURITY_DESCRIPTOR) -> io::Result<Vec<u8>> {
+        let mut present = 0;
+        let mut defaulted = 0;
+        let mut acl = ptr::null_mut();
+        // SAFETY: caller holds the valid descriptor; all out pointers are writable.
+        if unsafe {
+            GetSecurityDescriptorDacl(sd, &raw mut present, &raw mut acl, &raw mut defaulted)
+        } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        if present == 0 || acl.is_null() {
+            return Err(io::ErrorKind::InvalidData.into());
+        }
+        // SAFETY: the returned ACL lies in the live, OS-produced descriptor.
+        Ok(unsafe { std::slice::from_raw_parts(acl.cast(), usize::from((*acl).AclSize)) }.to_vec())
+    }
+    Ok(acl_bytes(left)? == acl_bytes(right)?)
+}
+
+fn create_new(path: &Path, descriptor: PSECURITY_DESCRIPTOR) -> io::Result<File> {
+    let path = wide_path(path)?;
+    let attributes = SECURITY_ATTRIBUTES {
+        nLength: u32::try_from(size_of::<SECURITY_ATTRIBUTES>()).map_err(io::Error::other)?,
+        lpSecurityDescriptor: descriptor,
+        bInheritHandle: 0,
+    };
+    // SAFETY: path is NUL-terminated. Any supplied descriptor remains live during creation.
+    let handle = unsafe {
+        CreateFileW(
+            path.as_ptr(),
+            GENERIC_WRITE | READ_CONTROL | FILE_READ_ATTRIBUTES,
+            FILE_SHARE_DELETE,
+            &raw const attributes,
+            CREATE_NEW,
+            FILE_ATTRIBUTE_NORMAL,
+            ptr::null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: CREATE_NEW returned a new, owned handle; transfer it exactly once.
+    Ok(unsafe { File::from_raw_handle(handle) })
+}
+
+fn require_persistent_acls(file: &File) -> Result<()> {
+    let mut flags = 0;
+    // SAFETY: live handle, valid flags out pointer; all optional outputs omitted.
+    if unsafe {
+        GetVolumeInformationByHandleW(
+            file.as_raw_handle(),
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &raw mut flags,
+            ptr::null_mut(),
+            0,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error().into());
+    }
+    anyhow::ensure!(
+        flags & FILE_PERSISTENT_ACLS != 0,
+        "volume cannot enforce file ACLs"
+    );
+    Ok(())
+}
+
+fn regular_access(file: &File, path: &Path) -> Result<Access> {
+    let metadata = file.metadata()?;
+    if metadata.is_dir() {
+        return Err(io::Error::from(io::ErrorKind::IsADirectory).into());
+    }
+    anyhow::ensure!(
+        metadata.is_file()
+            && metadata.file_attributes()
+                & (FILE_ATTRIBUTE_REPARSE_POINT
+                    | FILE_ATTRIBUTE_ENCRYPTED
+                    | FILE_ATTRIBUTE_READONLY)
+                == 0,
+        "cannot retain access for non-regular, encrypted or read-only target {}",
+        path.display()
+    );
+    Ok(Access::read(file)?)
+}
+
+fn open_target(path: &Path) -> Result<Option<File>> {
+    match File::options()
+        .access_mode(READ_CONTROL | FILE_READ_ATTRIBUTES)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+    {
+        Ok(file) => Ok(Some(file)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn target_access(path: &Path) -> Result<Option<Access>> {
+    open_target(path)?
+        .as_ref()
+        .map(|file| regular_access(file, path))
+        .transpose()
+}
+
+pub(super) fn write_checked(
+    path: &Path,
+    content: impl AsRef<[u8]>,
+    check: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    require_query_support()?;
+    let source =
+        open_target(path).with_context(|| format!("inspect access for {}", path.display()))?;
+    let before = source
+        .as_ref()
+        .map(|file| regular_access(file, path))
+        .transpose()
+        .with_context(|| format!("inspect access for {}", path.display()))?;
+    let creation = match source.as_ref().zip(before.as_ref()) {
+        // Do not replay another owner's SID or a projected SACL as creation
+        // instructions. Let Windows assign these normally, then verify all of them.
+        Some((file, access)) if access.protected()? => {
+            Some(LocalDescriptor::from_file(file, DACL_SECURITY_INFORMATION)?)
+        }
+        Some(_) => None,
+        None => Some(LocalDescriptor::parse(c"D:P(A;;FA;;;OW)")?),
+    };
+    drop(source);
+    let descriptor = creation.as_ref().map_or(ptr::null_mut(), |sd| sd.0);
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let (guard, mut file) = TempGuard::reserve_file_with(parent, ".dotfiles-write", "tmp", |p| {
+        create_new(p, descriptor)
+    })
+    .with_context(|| format!("create protected staging file beside {}", path.display()))?;
+    // Remove the staging name on error before releasing its deny-read/write handle.
+    let mut guard = guard;
+    require_persistent_acls(&file)?;
+    let staged = regular_access(&file, guard.path())?;
+    let retained = match &before {
+        Some(access) => access == &staged,
+        None => staged.protected()? && same_dacl(descriptor, staged.as_ptr())?,
+    };
+    anyhow::ensure!(
+        retained,
+        "cannot retain the access descriptor for {}",
+        path.display()
+    );
+    file.write_all(content.as_ref())
+        .with_context(|| format!("write temporary file beside {}", path.display()))?;
+    check()?;
+    anyhow::ensure!(
+        target_access(path)? == before && regular_access(&file, guard.path())? == staged,
+        "access changed while preparing {}",
+        path.display()
+    );
+    if before.is_some() {
+        super::rename_into_place(guard.path(), path)?;
+    } else {
+        super::rename_noreplace(guard.path(), path)
+            .with_context(|| format!("place new file at {}", path.display()))?;
+    }
+    guard.persist();
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_files_are_owner_only_and_never_replace_a_newly_arrived_target() {
+        let root = tempfile::tempdir_in(".").unwrap();
+        let target = root.path().join("document");
+        let private = LocalDescriptor::parse(c"D:P(A;;FA;;;OW)").unwrap();
+        let verify_private = |path: &Path| {
+            let access = target_access(path).unwrap().unwrap();
+            assert!(access.protected().unwrap());
+            assert!(same_dacl(access.as_ptr(), private.0).unwrap());
+        };
+        write_checked(&target, b"fixture", || {
+            let staged = std::fs::read_dir(root.path())
+                .unwrap()
+                .next()
+                .unwrap()?
+                .path();
+            verify_private(&staged);
+            Ok(())
+        })
+        .unwrap();
+        verify_private(&target);
+
+        let missing = root.path().join("initially absent");
+        assert!(
+            write_checked(&missing, b"replacement", || {
+                std::fs::write(&missing, b"arrived during staging")?;
+                Ok(())
+            })
+            .is_err()
+        );
+        assert_eq!(std::fs::read(&missing).unwrap(), b"arrived during staging");
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn inherits_or_retains_protected_access_before_payload_and_at_publication() {
+        struct Inspect<'a> {
+            directory: &'a Path,
+            expected: &'a Access,
+        }
+        impl AsRef<[u8]> for Inspect<'_> {
+            fn as_ref(&self) -> &[u8] {
+                let entry = std::fs::read_dir(self.directory)
+                    .unwrap()
+                    .map(std::result::Result::unwrap)
+                    .find(|e| {
+                        e.file_name()
+                            .to_string_lossy()
+                            .starts_with(".dotfiles-write-")
+                    })
+                    .unwrap();
+                assert_eq!(
+                    target_access(&entry.path()).unwrap().as_ref(),
+                    Some(self.expected)
+                );
+                assert_eq!(
+                    File::open(entry.path()).unwrap_err().raw_os_error(),
+                    Some(windows_sys::Win32::Foundation::ERROR_SHARING_VIOLATION.cast_signed())
+                );
+                b"synthetic replacement"
+            }
+        }
+        let root = tempfile::tempdir_in(".").unwrap();
+        for protected in [false, true] {
+            let target = root.path().join(format!("document-{protected}"));
+            if protected {
+                // Owner Rights is a well-known SID; no account lookup or ACL edits.
+                let private = LocalDescriptor::parse(c"D:P(A;;FA;;;OW)").unwrap();
+                create_new(&target, private.0)
+                    .unwrap()
+                    .write_all(b"fixture")
+                    .unwrap();
+            } else {
+                std::fs::write(&target, b"fixture").unwrap();
+            }
+            let before = target_access(&target).unwrap().unwrap();
+            if protected {
+                assert!(before.protected().unwrap());
+            }
+            write_checked(
+                &target,
+                Inspect {
+                    directory: root.path(),
+                    expected: &before,
+                },
+                || Ok(()),
+            )
+            .unwrap();
+            assert_eq!(target_access(&target).unwrap(), Some(before));
+            assert_eq!(std::fs::read(target).unwrap(), b"synthetic replacement");
+        }
+    }
+
+    #[test]
+    fn incompatible_explicit_access_fails_without_staging_payload_or_changing_original() {
+        struct UnusedPayload;
+        impl AsRef<[u8]> for UnusedPayload {
+            fn as_ref(&self) -> &[u8] {
+                panic!("must verify access before requesting payload bytes")
+            }
+        }
+        let root = tempfile::tempdir_in(".").unwrap();
+        let target = root.path().join("document");
+        // An explicit, non-inheritable Owner Rights ACE in addition to normal inheritance.
+        let explicit = LocalDescriptor::parse(c"D:(A;;FA;;;OW)").unwrap();
+        create_new(&target, explicit.0)
+            .unwrap()
+            .write_all(b"original fixture")
+            .unwrap();
+        let before = target_access(&target).unwrap();
+        let error = write_checked(&target, UnusedPayload, || Ok(())).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("cannot retain the access descriptor"),
+            "{error:#}"
+        );
+        assert_eq!(std::fs::read(&target).unwrap(), b"original fixture");
+        assert_eq!(target_access(&target).unwrap(), before);
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+}

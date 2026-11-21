@@ -6,23 +6,16 @@ use std::path::PathBuf;
 fn stage_config(
     parent: &std::path::Path,
     contents: impl AsRef<[u8]>,
-) -> Result<(crate::infra::fs::TempGuard, PathBuf)> {
+) -> Result<(crate::infra::fs::PrivateTempDir, PathBuf)> {
     use std::io::Write as _;
 
     // libgit2 also creates its own lock file during edits. Keep every such
     // intermediate copy inside a directory private from its first instant.
-    let directory = crate::infra::fs::TempGuard::create_unique_dir_with_mode(
-        parent,
-        ".dotfiles-git",
-        "tmp",
-        0o700,
-    )?;
-    let (mut stage, mut file) = crate::infra::fs::TempGuard::create_unique_file_with_mode(
-        directory.path(),
-        "config",
-        "tmp",
-        0o600,
-    )?;
+    let directory = crate::infra::fs::PrivateTempDir::create(parent, ".dotfiles-git")
+        .context("creating private Git config staging directory")?;
+    let (mut stage, mut file) = directory
+        .create_file("config")
+        .context("creating private staged Git config")?;
     file.write_all(contents.as_ref())?;
     let path = stage.path().to_path_buf();
     stage.persist();
@@ -266,7 +259,7 @@ impl GitConfigResource {
         let path = resolve()?;
         crate::infra::fs::ensure_parent_dir(&path)?;
         // Git uses exclusive creation of this path, not an advisory file lock.
-        // Keep it empty and private; libgit2 edits only the private staging copy.
+        // This is only an empty reservation. No config bytes go into this lock.
         let mut lock_path = path.as_os_str().to_os_string();
         lock_path.push(".lock");
         let lock_path = PathBuf::from(lock_path);
@@ -494,10 +487,18 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     #[test]
     fn git_config_is_private_before_staging_any_user_content() {
-        use std::os::unix::fs::PermissionsExt as _;
+        fn assert_private(path: &std::path::Path) {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt as _;
+                assert_eq!(path.metadata().unwrap().permissions().mode() & 0o077, 0);
+            }
+            #[cfg(windows)]
+            crate::infra::fs::check_private_fixture(path).unwrap();
+        }
 
         struct PrivateContent<'a>(&'a std::path::Path);
         impl AsRef<[u8]> for PrivateContent<'_> {
@@ -506,16 +507,13 @@ mod tests {
                 assert_eq!(entries.len(), 1, "exactly one staging directory must exist");
                 let directory = entries[0].as_ref().unwrap();
                 assert!(directory.metadata().unwrap().is_dir());
-                assert_eq!(
-                    directory.metadata().unwrap().permissions().mode() & 0o077,
-                    0
-                );
+                assert_private(&directory.path());
                 let files = std::fs::read_dir(directory.path())
                     .unwrap()
                     .collect::<Vec<_>>();
                 assert_eq!(files.len(), 1, "exactly one staging file must exist");
                 let metadata = files[0].as_ref().unwrap().metadata().unwrap();
-                assert_eq!(metadata.permissions().mode() & 0o077, 0);
+                assert_private(&files[0].as_ref().unwrap().path());
                 assert_eq!(metadata.len(), 0, "privacy must precede the first write");
                 b"[fixture]\n private = synthetic-value\n"
             }
@@ -532,10 +530,12 @@ mod tests {
             .unwrap()
             .set_str("fixture.extra", "value")
             .unwrap();
-        assert_eq!(
-            staged.path().metadata().unwrap().permissions().mode() & 0o077,
-            0
-        );
+        assert_private(staged.path());
+        // libgit2 committed its sibling lock file by renaming it to this path.
+        // Unix relies on the enclosing 0700 directory; Windows must also
+        // protect the new file itself because traversal checks may be bypassed.
+        #[cfg(windows)]
+        assert_private(&path);
         assert_eq!(
             open_file(&path)
                 .unwrap()
@@ -543,6 +543,18 @@ mod tests {
                 .unwrap(),
             "value"
         );
+        let mut lock_name = path.as_os_str().to_owned();
+        lock_name.push(".lock");
+        let lock_path = PathBuf::from(lock_name);
+        std::fs::write(&lock_path, []).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        assert!(
+            open_file(&path)
+                .unwrap()
+                .set_str("fixture.extra", "blocked")
+                .is_err()
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
         drop(staged);
         assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
     }

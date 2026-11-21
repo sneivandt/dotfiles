@@ -71,33 +71,32 @@ fn apm_fragment_sources(symlinks: &[Symlink], root: &Path) -> Vec<ApmFragmentSou
     symlinks
         .iter()
         .filter_map(|symlink| {
-            let target_name = apm_fragment_target_name(symlink)?;
+            let target = apm_fragment_target(symlink)?;
             let source = resolve_symlinks_dir(symlink, root).join(&symlink.source);
-            Some(ApmFragmentSource::new(source, target_name))
+            Some(ApmFragmentSource::new(source, target))
         })
         .collect()
 }
 
-fn apm_fragment_target_name(symlink: &Symlink) -> Option<std::ffi::OsString> {
+fn apm_fragment_target(symlink: &Symlink) -> Option<std::path::PathBuf> {
     let target = symlink
         .target
         .clone()
         .unwrap_or_else(|| default_target(&symlink.source));
-    let mut segments = Path::new(&target).iter().filter(|segment| *segment != ".");
-    if segments.next()? != ".apm" || segments.next()? != "config" {
+    let path = Path::new(&target);
+    if path_identity(path.parent()?) != path_identity(Path::new(".apm/config")) {
         return None;
     }
-    let filename = segments.next()?;
-    if segments.next().is_some() {
-        return None;
-    }
-    let path = Path::new(filename);
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| {
             extension.eq_ignore_ascii_case("yml") || extension.eq_ignore_ascii_case("yaml")
         })
-        .then(|| path.as_os_str().to_os_string())
+        .then(|| {
+            path.components()
+                .filter(|part| *part != std::path::Component::CurDir)
+                .collect()
+        })
 }
 
 #[cfg(test)]
@@ -185,7 +184,7 @@ mod tests {
             *store.apm_fragments.get(),
             vec![ApmFragmentSource::new(
                 root.join("symlinks").join("apm/config/base.yml"),
-                "base.yml".into(),
+                ".apm/config/base.yml".into(),
             )]
         );
     }
@@ -194,21 +193,30 @@ mod tests {
     fn fragment_sources_follow_normalized_managed_targets() {
         let root = PathBuf::from("fixture-root");
         for (source, target, expected) in [
-            ("./apm/config/base.yml", None, Some("base.yml")),
-            ("apm/./config/base.yaml", None, Some("base.yaml")),
+            ("./apm/config/base.yml", None, Some(".apm/config/base.yml")),
+            (
+                "apm/./config/base.yaml",
+                None,
+                Some(".apm/config/base.yaml"),
+            ),
             (
                 "fragment.yml",
                 Some("./.apm/config/base.yml"),
-                Some("base.yml"),
+                Some(".apm/config/base.yml"),
             ),
             (
                 "fragment.yml",
                 Some(".apm/./config//base.yml"),
-                Some("base.yml"),
+                Some(".apm/config/base.yml"),
             ),
             ("fragment.yml", Some(".apm/config/nested/base.yml"), None),
             ("fragment.yml", Some("../.apm/config/base.yml"), None),
             ("fragment.yml", Some(".apm/config/base.json"), None),
+            (
+                "fragment.yml",
+                Some(".APM/Config/Office.YML"),
+                cfg!(windows).then_some(".APM/Config/Office.YML"),
+            ),
         ] {
             let mut config = empty_config(root.clone());
             config.symlinks = vec![Symlink {
@@ -219,7 +227,9 @@ mod tests {
             }];
             let store = ConfigStore::from_config(config);
             let expected = expected
-                .map(|name| ApmFragmentSource::new(root.join("symlinks").join(source), name.into()))
+                .map(|expected_path| {
+                    ApmFragmentSource::new(root.join("symlinks").join(source), expected_path.into())
+                })
                 .into_iter()
                 .collect::<Vec<_>>();
             assert_eq!(
@@ -263,8 +273,8 @@ mod tests {
                 origin: None,
             };
             assert_eq!(
-                apm_fragment_target_name(&entry),
-                Some("base.yml".into()),
+                apm_fragment_target(&entry),
+                Some(".apm/config/base.yml".into()),
                 "{source:?} -> {target:?}"
             );
         }

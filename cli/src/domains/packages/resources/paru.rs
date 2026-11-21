@@ -1,12 +1,11 @@
 //! Paru package provider.
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 
 use super::super::PARU_EXECUTABLE;
-use super::package::PackageProvider;
+use super::package::{InstalledPackages, PackageProvider};
 use super::pacman::PacmanProvider;
 use crate::engine::ResourceChange;
 use crate::infra::exec::{CommandSpec, Executor};
@@ -27,7 +26,7 @@ impl PackageProvider for ParuProvider {
         "paru"
     }
 
-    fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
+    fn query_installed(&self, executor: &dyn Executor) -> Result<InstalledPackages> {
         PacmanProvider
             .query_installed(executor)
             .context("querying installed paru packages")

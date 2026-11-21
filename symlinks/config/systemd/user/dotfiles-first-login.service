@@ -19,11 +19,13 @@ ExecStartPre=/usr/bin/test ! -L %h/.local/state/dotfiles/deferred-vscode-extensi
 ExecStartPre=/usr/bin/test -f %h/.local/state/dotfiles/deferred-vscode-extensions
 ExecStartPre=/usr/bin/install -m 0600 -- %h/.local/state/dotfiles/deferred-vscode-extensions %t/dotfiles-first-login/queue.env
 ExecStart=%h/.local/bin/dotfiles update --non-interactive --only vscode-extensions --fail-on-skip --verbose
-# A replacement queue belongs to the next attempt, not the completed one.
-ExecStartPost=/usr/bin/test ! -L %h/.local/state/dotfiles/deferred-vscode-extensions
-ExecStartPost=/usr/bin/test -f %h/.local/state/dotfiles/deferred-vscode-extensions
-ExecStartPost=/usr/bin/cmp -s -- %t/dotfiles-first-login/queue.env %h/.local/state/dotfiles/deferred-vscode-extensions
-ExecStartPost=/usr/bin/rm -- %h/.local/state/dotfiles/deferred-vscode-extensions
+# The producer locks the marker directory across atomic replacement. Never
+# hold this lock while waiting for the launcher (which takes the CLI locks).
+ExecStartPost=:/bin/sh -ec 'exec 9<"$3"; \
+    /usr/bin/flock --nonblock --conflict-exit-code 75 9 || { rc=$?; \
+        test "$rc" -ne 75 || echo "Deferred extensions queue is busy. The service will retry." >&2; exit "$rc"; }; \
+    test ! -L "$1"; test -f "$1"; /usr/bin/cmp -s -- "$2" "$1"; /usr/bin/rm -- "$1"' \
+    sh %h/.local/state/dotfiles/deferred-vscode-extensions %t/dotfiles-first-login/queue.env %h/.local/state/dotfiles/
 Restart=on-failure
 RestartSec=5min
 StandardOutput=journal

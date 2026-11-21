@@ -1,11 +1,10 @@
 //! Pacman package provider.
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 
-use super::package::PackageProvider;
+use super::package::{InstalledPackages, PackageManager, PackageProvider};
 use crate::engine::ResourceChange;
 use crate::infra::exec::{CommandSpec, Executor};
 
@@ -50,16 +49,17 @@ impl PackageProvider for PacmanProvider {
         "pacman"
     }
 
-    fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
+    fn query_installed(&self, executor: &dyn Executor) -> Result<InstalledPackages> {
         let result = executor
             .execute(CommandSpec::new("pacman").arg("-Q"))
             .context("querying installed pacman packages")?;
-        Ok(result
+        let names = result
             .stdout
             .lines()
             .filter_map(|line| line.split_whitespace().next())
             .map(str::to_string)
-            .collect())
+            .collect();
+        Ok(InstalledPackages::new(PackageManager::Pacman, names))
     }
 
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
@@ -95,11 +95,13 @@ mod tests {
 
         let names = PacmanProvider.query_installed(&mock).unwrap();
 
-        assert_eq!(names.len(), 3);
-        assert!(names.contains("git"));
-        assert!(names.contains("base-devel"));
-        assert!(names.contains("vim"));
-        assert!(!names.contains("2.51.0"));
+        assert_eq!(
+            names,
+            InstalledPackages::new(
+                PackageManager::Pacman,
+                ["git", "base-devel", "vim"].map(String::from).into(),
+            )
+        );
     }
 
     #[test]

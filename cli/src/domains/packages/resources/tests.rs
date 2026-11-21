@@ -62,9 +62,10 @@ fn state_from_installed_correct() {
         PackageManager::Pacman,
         Arc::clone(&executor),
     );
-    let mut installed = HashSet::new();
-    installed.insert("git".to_string());
-    installed.insert("vim".to_string());
+    let installed = InstalledPackages::new(
+        PackageManager::Pacman,
+        HashSet::from(["git".into(), "vim".into()]),
+    );
     assert_eq!(
         resource.state_from_installed(&installed),
         ResourceState::Correct
@@ -79,7 +80,7 @@ fn state_from_installed_missing() {
         PackageManager::Pacman,
         Arc::clone(&executor),
     );
-    let installed = HashSet::new();
+    let installed = InstalledPackages::new(PackageManager::Pacman, HashSet::new());
     assert_eq!(
         resource.state_from_installed(&installed),
         ResourceState::Missing
@@ -101,7 +102,10 @@ fn get_installed_pacman_parses_name_version_lines() {
     let installed = get_installed_packages(PackageManager::Pacman, &mock).unwrap();
     assert_eq!(
         installed,
-        HashSet::from(["git".into(), "vim".into(), "base-devel".into()])
+        InstalledPackages::new(
+            PackageManager::Pacman,
+            HashSet::from(["git".into(), "vim".into(), "base-devel".into()])
+        )
     );
 }
 
@@ -165,10 +169,10 @@ fn get_installed_winget_parses_id_tokens() {
         Ok(ExecResult::success(""))
     });
     let installed = get_installed_packages(PackageManager::Winget, &mock).unwrap();
-    assert!(installed.contains("Git.Git"));
-    assert!(installed.contains("Microsoft.PowerShell"));
+    assert!(installed.contains_package("Git.Git"));
+    assert!(installed.contains_package("Microsoft.PowerShell"));
     assert!(
-        !installed.contains("Git"),
+        !installed.contains_package("Git"),
         "display names should not be included"
     );
 }
@@ -766,8 +770,8 @@ fn install_report_counts_already_correct_packages_separately_from_applied() {
             "already-correct"
         }
 
-        fn query_installed(&self, _executor: &dyn Executor) -> Result<HashSet<String>> {
-            Ok(HashSet::new())
+        fn query_installed(&self, _executor: &dyn Executor) -> Result<InstalledPackages> {
+            panic!("individual installs must not re-query inventory")
         }
 
         fn install(&self, _name: &str, _executor: &dyn Executor) -> Result<ResourceChange> {
@@ -804,7 +808,7 @@ fn cancellation_retains_completed_packages_and_prior_failures() {
             "cancelling"
         }
 
-        fn query_installed(&self, _executor: &dyn Executor) -> Result<HashSet<String>> {
+        fn query_installed(&self, _executor: &dyn Executor) -> Result<InstalledPackages> {
             panic!("installation must not query this fixture")
         }
 
@@ -874,8 +878,8 @@ fn install_report_propagates_cancellation_without_starting_later_packages() {
             "cancelling"
         }
 
-        fn query_installed(&self, _executor: &dyn Executor) -> Result<HashSet<String>> {
-            Ok(HashSet::new())
+        fn query_installed(&self, _executor: &dyn Executor) -> Result<InstalledPackages> {
+            panic!("individual installs must not re-query inventory")
         }
 
         fn install(&self, _name: &str, _executor: &dyn Executor) -> Result<ResourceChange> {

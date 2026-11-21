@@ -6,12 +6,20 @@
 //! here; deciding *whether* a target may be replaced remains resource policy.
 
 use anyhow::{Context as _, Result};
+#[cfg(not(windows))]
 use std::io::Write as _;
 #[cfg(all(unix, not(target_os = "linux")))]
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
 use super::{TempGuard, ensure_parent_dir};
+
+#[cfg(windows)]
+mod windows;
+#[cfg(all(windows, test))]
+pub(crate) use windows::check_private_fixture;
+#[cfg(windows)]
+pub(super) use windows::{create_private_dir, verify_private_child};
 
 /// Move an entry without replacing an existing destination.
 #[cfg(any(target_os = "linux", target_vendor = "apple"))]
@@ -28,25 +36,10 @@ pub(crate) fn rename_noreplace(source: &Path, target: &Path) -> std::io::Result<
 )]
 pub(crate) fn rename_noreplace_windows(source: &Path, target: &Path) -> std::io::Result<()> {
     use std::io;
-    use std::os::windows::ffi::OsStrExt as _;
     use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
 
-    fn wide_path(path: &Path) -> io::Result<Vec<u16>> {
-        // Canonicalize only the parent to get a verbatim path for long names
-        // without following the final entry, which may itself be a link.
-        let parent = path.parent().unwrap_or_else(|| Path::new("."));
-        let name = path.file_name().ok_or(io::ErrorKind::InvalidInput)?;
-        let absolute_path = std::fs::canonicalize(parent)?.join(name);
-        let mut wide: Vec<_> = absolute_path.as_os_str().encode_wide().collect();
-        if wide.contains(&0) {
-            return Err(io::ErrorKind::InvalidInput.into());
-        }
-        wide.push(0);
-        Ok(wide)
-    }
-
-    let source = wide_path(source)?;
-    let target = wide_path(target)?;
+    let source = windows::wide_path(source)?;
+    let target = windows::wide_path(target)?;
     // SAFETY: Both buffers are NUL-terminated and live throughout the call.
     // Zero flags disallow replacing an entry or falling back to a copy.
     if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), 0) } == 0 {
@@ -85,6 +78,9 @@ pub fn rename_into_place(staged: &Path, target: &Path) -> Result<()> {
 ///
 /// On Unix, staging files are private and existing regular-file access modes
 /// are preserved. New files and replacements of symlinks are owner-only.
+/// Windows creates new files with a protected owner-only DACL. Replacements
+/// must match the existing regular file's access descriptor before any bytes
+/// are staged. Unsupported descriptors, reparse points and EFS files fail closed.
 ///
 /// # Errors
 ///
@@ -109,6 +105,18 @@ pub fn write_atomic_checked(
 ) -> Result<()> {
     ensure_parent_dir(path)?;
 
+    write_checked(path, content, check)
+}
+
+#[cfg(windows)]
+use windows::write_checked;
+
+#[cfg(not(windows))]
+fn write_checked(
+    path: &Path,
+    content: impl AsRef<[u8]>,
+    check: impl FnOnce() -> Result<()>,
+) -> Result<()> {
     #[cfg(unix)]
     let existing = super::symlink_metadata_optional(path, "read atomic-write target permissions")?
         .filter(std::fs::Metadata::is_file);
@@ -126,18 +134,30 @@ pub fn write_atomic_checked(
         })
         .transpose()?;
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    #[cfg(target_os = "linux")]
+    let (guard, staged, mut staged_file) = {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        // Set the verified destination policy on an EMPTY inode. Its enclosing
+        // 0700 directory keeps even group-readable payloads private until rename.
+        let guard = TempGuard::create_unique_dir_with_mode(parent, ".dotfiles-write", "tmp", 0o700)
+            .with_context(|| {
+                format!(
+                    "reserve private staging directory beside {}",
+                    path.display()
+                )
+            })?;
+        let staged = guard.path().join("replacement");
+        let file = std::fs::File::options()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&staged)?;
+        (guard, staged, file)
+    };
+    #[cfg(not(target_os = "linux"))]
     let (mut guard, mut staged_file) =
         TempGuard::create_unique_file_with_mode(parent, ".dotfiles-write", "tmp", 0o600)
             .with_context(|| format!("create temporary file beside {}", path.display()))?;
-    staged_file
-        .write_all(content.as_ref())
-        .with_context(|| format!("write temporary file beside {}", path.display()))?;
-    #[cfg(all(unix, not(target_os = "linux")))]
-    if let Some(mode) = mode {
-        staged_file
-            .set_permissions(std::fs::Permissions::from_mode(mode))
-            .with_context(|| format!("preserve access permissions for {}", path.display()))?;
-    }
     #[cfg(target_os = "linux")]
     if let Some(source) = source {
         anyhow::ensure!(
@@ -152,11 +172,28 @@ pub fn write_atomic_checked(
             )
         })?;
     }
+    staged_file
+        .write_all(content.as_ref())
+        .with_context(|| format!("write temporary file beside {}", path.display()))?;
+    #[cfg(all(unix, not(target_os = "linux")))]
+    if let Some(mode) = mode {
+        staged_file
+            .set_permissions(std::fs::Permissions::from_mode(mode))
+            .with_context(|| format!("preserve access permissions for {}", path.display()))?;
+    }
     drop(staged_file);
 
     check()?;
-    rename_into_place(guard.path(), path)?;
-    guard.persist();
+    #[cfg(target_os = "linux")]
+    {
+        rename_into_place(&staged, path)?;
+        drop(guard);
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        rename_into_place(guard.path(), path)?;
+        guard.persist();
+    }
     Ok(())
 }
 
@@ -205,6 +242,8 @@ mod tests {
     fn write_atomic_stages_privately_and_preserves_existing_access_modes() {
         struct InspectStaging<'a> {
             parent: &'a Path,
+            #[cfg(target_os = "linux")]
+            mode: u32,
         }
 
         impl AsRef<[u8]> for InspectStaging<'_> {
@@ -219,6 +258,21 @@ mod tests {
                             .starts_with(".dotfiles-write")
                     })
                     .expect("staging file must exist before reading payload");
+                #[cfg(target_os = "linux")]
+                {
+                    assert_eq!(
+                        staged.metadata().unwrap().permissions().mode() & 0o777,
+                        0o700
+                    );
+                    let metadata = staged.path().join("replacement").metadata().unwrap();
+                    assert_eq!(metadata.len(), 0);
+                    assert_eq!(
+                        metadata.permissions().mode() & 0o777,
+                        self.mode,
+                        "final policy must already be established inside private staging"
+                    );
+                }
+                #[cfg(not(target_os = "linux"))]
                 assert_eq!(
                     staged.metadata().unwrap().permissions().mode() & 0o777,
                     0o600,
@@ -229,9 +283,6 @@ mod tests {
         }
 
         let root = tempfile::tempdir_in(".").unwrap();
-        let content = InspectStaging {
-            parent: root.path(),
-        };
         for (name, mode) in [
             ("new", None),
             ("private", Some(0o600)),
@@ -239,6 +290,11 @@ mod tests {
             ("executable", Some(0o750)),
             ("read-only", Some(0o400)),
         ] {
+            let content = InspectStaging {
+                parent: root.path(),
+                #[cfg(target_os = "linux")]
+                mode: mode.unwrap_or(0o600),
+            };
             let target = root.path().join(name);
             if let Some(mode) = mode {
                 std::fs::write(&target, "old").unwrap();
@@ -288,7 +344,13 @@ mod tests {
 
         let error = write_atomic(&target, "must not replace directory").unwrap_err();
 
+        #[cfg(not(windows))]
         assert!(error.to_string().starts_with("rename "), "{error:#}");
+        #[cfg(windows)]
+        assert!(
+            error.to_string().starts_with("inspect access for "),
+            "{error:#}"
+        );
         assert!(error.downcast_ref::<std::io::Error>().is_some());
         assert_eq!(
             std::fs::read_to_string(target.join("keep")).unwrap(),

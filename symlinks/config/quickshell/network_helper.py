@@ -299,7 +299,9 @@ def status():
     connections = [
         {"name": name, "type": kind, "device": device, "uuid": uuid}
         for device, kind, state, name, uuid in devices
-        if state.startswith("connected") and kind in ("ethernet", "wifi", "gsm", "cdma", "tun", "wireguard")
+        if state == "connected" or (
+            state.startswith("connected (") and kind in ("ethernet", "wifi", "gsm", "cdma", "tun", "wireguard")
+        )
     ]
     connections.sort(key=lambda connection: {"ethernet": 0, "wifi": 1}.get(connection["type"], 2))
     wifi_enabled = general[0][2] == "enabled"
@@ -307,7 +309,7 @@ def status():
     aps = query(["-f", "IN-USE,SSID,BSSID,SIGNAL,SECURITY,DEVICE", "device", "wifi", "list", "--rescan", "no"], 6) if adapters and wifi_enabled else []
     primary = connections[0] if connections else {}
     return {
-        "connected": bool(connections),
+        "connected": general[0][0].startswith("connected"),
         "connectionName": primary.get("name", ""),
         "connectionType": primary.get("type", ""),
         "deviceName": primary.get("device", ""),

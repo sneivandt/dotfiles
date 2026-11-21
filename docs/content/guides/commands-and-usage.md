@@ -341,9 +341,10 @@ Home-link actions read `copy <home path> from <source>`. Links that point
 directly to their configured checkout entries become independent copies.
 Hard links within a directory copy still share a file inside that copy.
 Linux preserves holes in sparse files when the source filesystem reports those extents.
-Links through another home path are preserved. On Linux, if the destination
-cannot preserve a source ACL or extended attribute, removal reports the
-failure and leaves the corresponding link in place.
+Links through another home path are preserved. On Linux, removal leaves the
+managed link in place if a staged file or directory has a different owner or
+group from its source, or if an ACL or extended attribute cannot be preserved.
+It does not request elevated privileges to change ownership.
 
 **Remove is not rollback.** The copies contain current configured content,
 not your pre-install files. Missing targets stay missing. Use

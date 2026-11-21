@@ -103,8 +103,12 @@ An enabled first-login service (`dotfiles-first-login.service`) can stay idle
 once the deferred VS Code extensions marker is gone. If the marker exists,
 Dotfiles queues the idle service. The service waits for the current update to
 release its locks, then installs the deferred extensions. It reads a regular
-marker file, not a symlink. If the marker contents change while installation
-is running, the service leaves the new queue for a retry.
+marker file, not a symlink. After installation succeeds, the service compares
+and removes the marker under the same lock used to queue extensions. A newer
+selection stays queued, and an interrupted installation can retry from the marker.
+If the queue is busy, the service leaves it untouched and retries after five
+minutes. If an update reports that the queue is busy, rerun it after the other
+operation finishes.
 When the managed Thunar settings service has already run, Dotfiles checks its
 two managed preferences and reruns the service if either differs. Both the check
 and the service use the installed helper, including an overlay replacement.

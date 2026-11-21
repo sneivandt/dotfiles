@@ -45,7 +45,7 @@ fn check_package_stability(ctx: &Context, packages: &[Package]) -> Result<Requir
         super::resources::package::get_installed_packages(PackageManager::Pacman, ctx.executor())?;
     if packages
         .iter()
-        .any(|package| !installed.contains(&package.name))
+        .any(|package| !installed.contains_package(&package.name))
     {
         return Ok(RequirementState::unsatisfied(
             "configured packages still need installation",

@@ -668,6 +668,19 @@ class NetworkTests(unittest.TestCase):
         self.assertTrue(state["wifiAvailable"])
         self.assertEqual(query.call_args.args[0][-2:], ["--rescan", "no"])
 
+    @patch("network_helper.query")
+    def test_manager_connectivity_is_independent_of_device_type(self, query):
+        for state, devices, connected, name in [
+            ("connected", [["vlan7", "vlan", "connected", "Office", "id"]], True, "Office"),
+            ("connected (site only)", [], True, ""),
+            ("disconnected", [["lo", "loopback", "connected (externally)", "lo", "id"]], False, ""),
+        ]:
+            with self.subTest(state=state):
+                query.side_effect = [[[state, "unknown", "disabled", "disabled"]], devices]
+                result = network.status()
+                self.assertEqual(result["connected"], connected)
+                self.assertEqual(result["connectionName"], name)
+
 
 if __name__ == "__main__":
     unittest.main()

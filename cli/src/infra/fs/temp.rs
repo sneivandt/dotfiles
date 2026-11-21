@@ -26,6 +26,51 @@ pub struct TempGuard {
     kind: TempKind,
 }
 
+/// A scratch directory for private files, including library-created intermediates.
+#[derive(Debug)]
+pub(crate) struct PrivateTempDir {
+    // Drop the deny-delete handle before removing the directory tree.
+    #[cfg(windows)]
+    _pin: File,
+    directory: TempGuard,
+}
+
+impl PrivateTempDir {
+    pub(crate) fn create(parent: &Path, prefix: &str) -> anyhow::Result<Self> {
+        #[cfg(unix)]
+        {
+            Ok(Self {
+                directory: TempGuard::create_unique_dir_with_mode(parent, prefix, "tmp", 0o700)?,
+            })
+        }
+        #[cfg(windows)]
+        {
+            let (directory, pin) = super::place::create_private_dir(parent, prefix)?;
+            Ok(Self {
+                _pin: pin,
+                directory,
+            })
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = (parent, prefix);
+            anyhow::bail!("private staging directories are unsupported on this platform")
+        }
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        self.directory.path()
+    }
+
+    pub(crate) fn create_file(&self, prefix: &str) -> anyhow::Result<(TempGuard, File)> {
+        let (guard, file) =
+            TempGuard::create_unique_file_with_mode(self.path(), prefix, "tmp", 0o600)?;
+        #[cfg(windows)]
+        super::place::verify_private_child(&file)?;
+        Ok((guard, file))
+    }
+}
+
 /// What a [`TempGuard`] cleans up, and therefore how it removes it.
 #[derive(Debug, Clone, Copy)]
 enum TempKind {
@@ -107,9 +152,18 @@ impl TempGuard {
         options: &mut std::fs::OpenOptions,
     ) -> io::Result<(Self, File)> {
         options.write(true).create_new(true);
+        Self::reserve_file_with(dir, prefix, suffix, |path| options.open(path))
+    }
+
+    pub(super) fn reserve_file_with(
+        dir: &Path,
+        prefix: &str,
+        suffix: &str,
+        mut create_new: impl FnMut(&Path) -> io::Result<File>,
+    ) -> io::Result<(Self, File)> {
         for _ in 0..1_024 {
             let path = unique_path(dir, prefix, suffix);
-            match options.open(&path) {
+            match create_new(&path) {
                 Ok(file) => return Ok((Self::file(path), file)),
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(error) => return Err(error),
@@ -154,10 +208,20 @@ impl TempGuard {
         };
         #[cfg(not(unix))]
         let _ = mode;
+        Self::reserve_dir_with(dir, prefix, suffix, |path| builder.create(path))
+            .map(|(guard, ())| guard)
+    }
+
+    pub(super) fn reserve_dir_with<T>(
+        dir: &Path,
+        prefix: &str,
+        suffix: &str,
+        mut create: impl FnMut(&Path) -> io::Result<T>,
+    ) -> io::Result<(Self, T)> {
         for _ in 0..1_024 {
             let path = unique_path(dir, prefix, suffix);
-            match builder.create(&path) {
-                Ok(()) => return Ok(Self::dir(path)),
+            match create(&path) {
+                Ok(value) => return Ok((Self::dir(path), value)),
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(error) => return Err(error),
             }

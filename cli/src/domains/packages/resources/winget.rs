@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use anyhow::{Context as _, Result};
 
-use super::package::PackageProvider;
+use super::package::{InstalledPackages, PackageManager, PackageProvider};
 use crate::engine::ResourceChange;
 use crate::infra::exec::{CommandSpec, Executor};
 
@@ -181,7 +181,7 @@ impl PackageProvider for WingetProvider {
         "winget"
     }
 
-    fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
+    fn query_installed(&self, executor: &dyn Executor) -> Result<InstalledPackages> {
         let staging = crate::infra::fs::TempGuard::create_unique_dir_with_mode(
             &std::env::temp_dir(),
             "dotfiles-winget",
@@ -200,7 +200,7 @@ impl PackageProvider for WingetProvider {
             )
             .context("querying installed winget packages")?;
         let json = std::fs::read_to_string(&output).context("reading winget export inventory")?;
-        parse_winget_ids(&json)
+        parse_winget_ids(&json).map(|ids| InstalledPackages::new(PackageManager::Winget, ids))
     }
 
     /// Install `name`, preferring a per-user installer.
@@ -365,8 +365,10 @@ mod tests {
 
         let ids = WingetProvider.query_installed(&mock).unwrap();
 
-        assert_eq!(ids.len(), 1);
-        assert!(ids.contains("Git.Git"));
+        assert_eq!(
+            ids,
+            InstalledPackages::new(PackageManager::Winget, ["Git.Git".into()].into())
+        );
         assert!(
             !output_path
                 .lock()
@@ -514,7 +516,7 @@ mod tests {
             });
             let resource = crate::domains::packages::resources::package::PackageResource::new(
                 "Git.Git".into(),
-                crate::domains::packages::resources::package::PackageManager::Winget,
+                PackageManager::Winget,
                 std::sync::Arc::new(MockExecutor::new()),
             );
             let report = WingetProvider

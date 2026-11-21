@@ -78,8 +78,9 @@ def compute_next_cron(expression, now_local):
         names=dict(zip("SUN MON TUE WED THU FRI SAT".split(), range(7))),
         sunday_alias=True,
     )
-    month_day_any = month_day_text == "*"
-    week_day_any = week_day_text == "*"
+    # Cron uses OR only when both day fields start with an explicit range/value.
+    # A leading wildcard still restricts its expanded set when it has a step.
+    wildcard_day = month_day_text.startswith("*") or week_day_text.startswith("*")
 
     now_utc = now_local.astimezone(timezone.utc)
     date = now_local.replace(hour=0, minute=0, second=0, microsecond=0, fold=0)
@@ -90,10 +91,8 @@ def compute_next_cron(expression, now_local):
             continue
         month_day_matches = date.day in month_days
         week_day_matches = ((date.weekday() + 1) % 7) in week_days
-        if month_day_any:
-            day_matches = week_day_matches
-        elif week_day_any:
-            day_matches = month_day_matches
+        if wildcard_day:
+            day_matches = month_day_matches and week_day_matches
         else:
             day_matches = month_day_matches or week_day_matches
         if day_matches:

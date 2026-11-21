@@ -71,6 +71,8 @@ cases = [
     ("0 0 1 1 *", datetime(2026, 12, 31, 23, 59), datetime(2027, 1, 1)),
     ("15 7,11,15 * * 1-5", datetime(2026, 11, 13, 15, 15), datetime(2026, 11, 16, 7, 15)),
     ("0 0 31 2 1", datetime(2026, 2, 1), datetime(2026, 2, 2)),
+    ("0 9 1 * */1", datetime(2026, 11, 21, 10), datetime(2026, 12, 1, 9)),
+    ("0 9 */2 * MON", datetime(2026, 11, 23, 10), datetime(2026, 12, 7, 9)),
     ("* * * * *", datetime(2026, 11, 14, 12, 34, 59), datetime(2026, 11, 14, 12, 35)),
 ]
 for expression, now, expected in cases:

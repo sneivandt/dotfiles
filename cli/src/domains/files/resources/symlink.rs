@@ -57,8 +57,11 @@ impl SymlinkResource {
             return Ok(false);
         }
         let linked_source = std::fs::read_link(&target)?;
-        Ok(link_points_to_source(&target, &linked_source, &self.source)
-            && crate::infra::fs::symlink_metadata_optional(&self.source, "stat source")?.is_none())
+        Ok(
+            link_points_to_source(&target, &linked_source, &self.source)?
+                && crate::infra::fs::symlink_metadata_optional(&self.source, "stat source")?
+                    .is_none(),
+        )
     }
 
     /// Create a new symlink resource.
@@ -137,7 +140,7 @@ impl SymlinkResource {
         let Some(source) = self.legacy_source.as_deref() else {
             return Ok(None);
         };
-        if link_points_to_source(target, existing, source)
+        if link_points_to_source(target, existing, source)?
             && crate::infra::fs::symlink_metadata_optional(source, "stat legacy source")?.is_none()
         {
             return Ok(Some(source));
@@ -148,7 +151,7 @@ impl SymlinkResource {
     fn managed_source(&self, target: &Path) -> ResourceResult<Option<&Path>> {
         let existing = std::fs::read_link(target)
             .with_context(|| format!("read link: {}", target.display()))?;
-        if link_points_to_source(target, &existing, &self.source) {
+        if link_points_to_source(target, &existing, &self.source)? {
             return Ok(Some(&self.source));
         }
         self.legacy_link(target, &existing)
@@ -287,7 +290,7 @@ impl RemovableResource for SymlinkResource {
         let metadata = crate::infra::fs::symlink_metadata_optional(&target, "stat target")?;
         if let Some(meta) = &metadata {
             let managed = is_link_like(&target, meta)
-                && !same_entry(&self.source, &target)
+                && !same_entry(&self.source, &target)?
                 && self.managed_source(&target)?.is_some();
             if !managed {
                 return Ok(ResourceState::Incorrect {
@@ -315,7 +318,7 @@ impl RemovableResource for SymlinkResource {
 
     fn remove(&self) -> ResourceResult<ResourceChange> {
         let target = self.checked_target()?;
-        if self.validation_error.is_some() || same_entry(&self.source, &target) {
+        if self.validation_error.is_some() || same_entry(&self.source, &target)? {
             return Ok(ResourceChange::skipped(
                 "invalid symlink will not be replaced with a copy",
             ));
@@ -392,7 +395,7 @@ pub(super) fn copy_dir_into_place(
 
 #[cfg(test)]
 pub(super) fn paths_equal(a: &Path, b: &Path) -> bool {
-    crate::infra::fs::paths_equal(a, b)
+    crate::infra::fs::paths_equal(a, b).expect("compare fixture paths")
 }
 
 #[cfg(windows)]

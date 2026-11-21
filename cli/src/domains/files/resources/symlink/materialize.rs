@@ -4,7 +4,7 @@ use std::path::{Component, Path};
 use super::platform::{create_symlink, is_link_like};
 use crate::infra::exec::Executor;
 use crate::infra::fs::{TempGuard, ensure_parent_dir, rename_noreplace};
-use crate::infra::fs::{link_points_to_source, paths_equal, same_entry};
+use crate::infra::fs::{link_points_to_source, resolve_directory, same_entry};
 
 /// Stage a copy beside the target before replacing its managed link.
 pub(super) fn copy_into_place(
@@ -75,7 +75,7 @@ fn publish(
     place_staged: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
 ) -> Result<()> {
     anyhow::ensure!(
-        !same_entry(source, target),
+        !same_entry(source, target)?,
         "refusing to replace the source entry: {}",
         target.display()
     );
@@ -137,7 +137,7 @@ fn require_managed_link(source: &Path, target: &Path, entry: &Path) -> Result<()
     let existing =
         std::fs::read_link(entry).with_context(|| format!("read link for {}", target.display()))?;
     anyhow::ensure!(
-        link_points_to_source(target, &existing, source),
+        link_points_to_source(target, &existing, source)?,
         "refusing to replace link that no longer points to the managed source: {}",
         target.display()
     );
@@ -274,21 +274,17 @@ fn validate_relocated_links(root: &Path, directory: &Path, repositories: &[&Path
             let target = std::fs::read_link(&path)?;
             let relative = path.strip_prefix(root)?;
             if target.is_absolute() {
-                anyhow::ensure!(
-                    !target.ancestors().any(|ancestor| {
-                        let resolved = dunce::canonicalize(ancestor);
-                        repositories.iter().any(|repository| {
-                            paths_equal(ancestor, repository)
-                                || resolved.as_ref().is_ok_and(|destination| {
-                                    dunce::canonicalize(repository)
-                                        .is_ok_and(|checkout| destination.starts_with(checkout))
-                                })
-                        })
-                    }),
-                    "absolute link {} -> {} depends on the checkout. Change it before retrying",
-                    relative.display(),
-                    target.display()
-                );
+                for repository in repositories {
+                    let checkout = resolve_directory(repository)?;
+                    for ancestor in target.ancestors() {
+                        anyhow::ensure!(
+                            !resolve_directory(ancestor)?.starts_with(&checkout),
+                            "absolute link {} -> {} depends on the checkout. Change it before retrying",
+                            relative.display(),
+                            target.display()
+                        );
+                    }
+                }
             } else {
                 anyhow::ensure!(
                     stays_in_tree(root, directory, &target)?,

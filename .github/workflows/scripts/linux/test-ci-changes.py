@@ -34,6 +34,7 @@ class ClassificationTests(unittest.TestCase):
             "build_windows",
         }
         rust = {"rust_checks", "rust_fmt", "build_linux", "build_windows"}
+        desktop_scripts = {"managed_scripts", "lock"}
         cases = [
             ("README.md", set()),
             (LINUX + "test-desktop-session.py", {"desktop_qml"}),
@@ -71,14 +72,17 @@ class ClassificationTests(unittest.TestCase):
             ("packages/apm/release.json", config | {"rust_checks", "lint"}),
             (".gitignore", set()),
             ("conf/agent-settings.toml", profiles),
+            ("conf/systemd-units.toml", profiles | desktop_scripts),
             ("system/pam.d/login", config | {"profile_linux", "roundtrip_linux"}),
             ("symlinks/config/git/config", config | {"app_tests", "app_windows", "build_windows"}),
+            ("symlinks/config/git/aliases", config | {"git_hooks", "app_tests", "app_windows", "build_windows"}),
             ("symlinks/config/git/windows", config | {"app_tests", "app_windows", "build_windows"}),
             ("symlinks/vim/init.vim", config | {"app_tests"}),
             ("symlinks/config/zsh/prompt.zsh", config | {"app_tests"}),
             ("symlinks/bash_profile", config | {"app_tests"}),
             ("symlinks/bashrc", config | {"app_tests"}),
             ("symlinks/config/wgetrc", config | {"app_tests"}),
+            ("symlinks/config/user-dirs.dirs", config | {"app_tests"}),
             ("symlinks/config/hypr/conf/appearance.lua",
              config | {"managed_scripts", "lock", "desktop_qml"}),
             ("symlinks/config/hypr/conf/resize-on-border.lua",
@@ -104,7 +108,7 @@ class ClassificationTests(unittest.TestCase):
             ("symlinks/config/hypr/scripts/choose-editor.sh",
              config | {"lint", "managed_scripts", "lock"}),
             ("dotfiles.sh", {"lint", "wrapper_linux", "build_linux"}),
-            ("dotfiles.ps1", {"lint", "wrapper_windows", "build_windows"}),
+            ("dotfiles.ps1", {"lint", "wrapper_windows", "roundtrip_windows", "build_windows"}),
             ("hooks/pre-commit", {"lint", "git_hooks", "hook_inputs"}),
             ("hooks/sensitive-patterns.ini", {"git_hooks", "hook_inputs"}),
             (LINUX + "test-stocks.sh", {"stocks", "lint"}),
@@ -128,15 +132,17 @@ class ClassificationTests(unittest.TestCase):
             (WINDOWS + "Test-Applications.ps1", {"app_windows", "build_windows", "lint"}),
             ("symlinks/config/git/templates/hooks/post-rewrite",
              config | {"app_tests", "app_windows", "build_windows", "git_hooks"}),
-            ("symlinks/config/systemd/user/clean-home-tmp.service", config | {"git_hooks", "desktop_qml"}),
-            ("symlinks/config/systemd/user/clean-screenshots.service", config | {"git_hooks", "desktop_qml"}),
+            ("symlinks/config/systemd/user/clean-home-tmp.service", config | desktop_scripts | {"git_hooks", "desktop_qml"}),
+            ("symlinks/config/systemd/user/clean-screenshots.service", config | desktop_scripts | {"git_hooks", "desktop_qml"}),
             ("symlinks/config/systemd/user/dotfiles-first-login.service",
-             config | {"desktop_qml", "rust_checks", "roundtrip_linux"}),
+             config | desktop_scripts | {"desktop_qml", "rust_checks", "roundtrip_linux"}),
+            ("symlinks/config/systemd/user/xdg-user-directories.service",
+             config | desktop_scripts | {"desktop_qml", "app_tests"}),
             ("symlinks/config/powershell/Microsoft.PowerShell_profile.ps1",
              config | {"prompt", "roundtrip_windows", "managed_scripts", "build_windows", "lint"}),
             ("symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json",
              config | {"roundtrip_windows", "build_windows"}),
-            ("symlinks/config/systemd/user/quickshell.service", config | {"desktop_qml"}),
+            ("symlinks/config/systemd/user/quickshell.service", config | desktop_scripts | {"desktop_qml"}),
             ("symlinks/config/systemd/user/clean-home-tmp.timer", config | {"desktop_qml"}),
             (LINUX + "test-maintenance.py", {"git_hooks", "hook_inputs"}),
             (LINUX + "test-nvim-lock.lua", {"app_tests", "build_linux"}),
@@ -200,7 +206,10 @@ class ClassificationTests(unittest.TestCase):
             (["dotfiles.ps1"], ["PSScriptAnalyzer"], []),
             (["dotfiles.sh", "dotfiles.ps1"], ["ShellCheck", "PSScriptAnalyzer"], []),
             (["symlinks/config/git/config"], [], ["git"]),
+            (["symlinks/config/git/aliases"], [], ["git", "zsh"]),
             (["symlinks/config/git/windows"], [], ["git", "zsh"]),
+            (["symlinks/config/user-dirs.dirs"], [], ["zsh"]),
+            (["symlinks/config/systemd/user/xdg-user-directories.service"], [], ["zsh"]),
             (["symlinks/vim/init.vim"], [], ["vim", "nvim"]),
             ([LINUX + "test-nvim-config.lua"], [], ["nvim"]),
             ([LINUX + "test-shell-config.py"], [], ["zsh"]),
@@ -322,6 +331,25 @@ class PrePushPlanTests(unittest.TestCase):
             flattened = " ".join(arg for _, _, command in commands for arg in command)
             self.assertIn(expected, flattened)
             self.assertNotIn(absent, flattened)
+
+    def test_local_plan_tracks_fixture_inputs_without_running_installations(self):
+        desktop = "symlinks/config/hypr/scripts/tests"
+        maintenance = LINUX + "test-maintenance.py"
+        shell = LINUX + "test-shell-config.py"
+        for path, fixtures in (
+            ("conf/systemd-units.toml", {desktop}),
+            ("symlinks/config/systemd/user/dotfiles-first-login.service", {desktop}),
+            ("symlinks/config/systemd/user/xdg-user-directories.service", {desktop, shell}),
+            ("symlinks/config/user-dirs.dirs", {shell}),
+            ("symlinks/config/git/aliases", {maintenance, shell}),
+            ("symlinks/config/git/config", set()),
+        ):
+            with self.subTest(path=path):
+                commands, _ = PRE_PUSH["plan"](classify([path]), "1.91")
+                args = {arg for _, _, command in commands for arg in command}
+                self.assertEqual(args & {desktop, maintenance, shell}, fixtures)
+        _, deferred = PRE_PUSH["plan"](classify(["dotfiles.ps1"]), "1.91")
+        self.assertIn("roundtrip_windows", deferred)
 
     def test_checker_changes_request_full_ci_without_binary_release(self):
         selected = classify([LINUX + "pre-push.py"])

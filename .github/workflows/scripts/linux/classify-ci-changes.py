@@ -155,6 +155,9 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("wrapper_linux")
         elif path in {"dotfiles.ps1", WINDOWS + "Test-ShellWrapper.ps1"}:
             enable("wrapper_windows")
+            if path == "dotfiles.ps1":
+                # The Windows PowerShell 5.1 smoke uses the installed fixture CLI.
+                enable("roundtrip_windows")
         elif path in {LINUX + "test-uninstall.sh", LINUX + "test-arch-acceptance.sh"}:
             enable("roundtrip_linux")
         elif path == WINDOWS + "Test-InstallUninstall.ps1":
@@ -190,6 +193,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             linters.add("shell")
         elif path.startswith("conf/"):
             profiles("linux", "windows")
+            if path == "conf/systemd-units.toml":
+                enable("lock")  # GraphicalUnitTests reads the declarations.
             if path in {"conf/symlinks.toml", "conf/git-config.toml", "conf/packages.toml"}:
                 apps.update(APPS)
                 enable("app_windows")
@@ -199,6 +204,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             # Config-drift tests inspect managed content as well as source paths.
             enable("validate_config", "config_drift")
             if path.startswith("symlinks/config/git/templates/") or path in {
+                "symlinks/config/git/aliases",
                 "symlinks/config/systemd/user/clean-home-tmp.service",
                 "symlinks/config/systemd/user/clean-screenshots.service",
             }:
@@ -209,6 +215,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             if path.startswith(("symlinks/config/zsh/", "symlinks/config/bash/", "symlinks/config/shell/")) or path in {
                 "symlinks/zshrc", "symlinks/zprofile", "symlinks/bashrc",
                 "symlinks/bash_profile", "symlinks/config/wgetrc", "symlinks/config/git/windows",
+                "symlinks/config/git/aliases", "symlinks/config/user-dirs.dirs",
+                "symlinks/config/systemd/user/xdg-user-directories.service",
             }:
                 apps.add("zsh")
             if path.startswith("symlinks/vim/"):
@@ -231,8 +239,13 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 "symlinks/config/hypr/hyprland.lua", "symlinks/config/hypr/hyprlock.conf",
             }:
                 enable("desktop_qml")
-            if path.startswith("symlinks/config/systemd/user/") and path.endswith((".service", ".timer")):
-                enable("desktop_qml")
+            if path.rpartition("/")[0] == "symlinks/config/systemd/user":
+                if path.endswith((".service", ".timer")):
+                    enable("desktop_qml")
+                # The Hypr script suite follows graphical declarations to shipped
+                # service files and exercises the first-login queue commands.
+                if path.endswith(".service"):
+                    enable("lock")
             if path.startswith("symlinks/config/quickshell/"):
                 enable("desktop_python", "desktop_qml")
             if path in {

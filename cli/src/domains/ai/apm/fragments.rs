@@ -1,5 +1,6 @@
 //! Discovery, merging, and de-duplication of APM YAML config fragments.
 
+use crate::infra::fs::{PlannedDirectory, entry_name, link_points_to_source};
 use crate::infra::yaml::{Mapping, Value};
 use anyhow::{Context as _, Result};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -9,22 +10,18 @@ use std::path::{Path, PathBuf};
 
 use super::GENERATED_HEADER;
 
-/// A configured APM fragment source and the filename it occupies under
-/// `~/.apm/config/`.
+/// A configured APM fragment source and its declared home-relative target.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ApmFragmentSource {
     source: PathBuf,
-    target_name: OsString,
+    target: PathBuf,
 }
 
 impl ApmFragmentSource {
     /// Create a managed fragment source resolved by the application layer.
     #[must_use]
-    pub(crate) const fn new(source: PathBuf, target_name: OsString) -> Self {
-        Self {
-            source,
-            target_name,
-        }
+    pub(crate) const fn new(source: PathBuf, target: PathBuf) -> Self {
+        Self { source, target }
     }
 }
 
@@ -48,24 +45,50 @@ pub(super) fn discover_effective_fragment_files(
     managed: &[ApmFragmentSource],
     inactive: &[ApmFragmentSource],
 ) -> Result<Vec<PathBuf>> {
-    let mut fragments: BTreeMap<_, _> = managed
-        .iter()
-        .map(|fragment| (fragment.target_name.clone(), fragment.source.clone()))
-        .collect();
-    let home_fragments = discover_yaml_files_filtered(&home.join(".apm").join("config"), |path| {
-        let Some(name) = path.file_name() else {
-            return Ok(false);
-        };
-        if fragments.contains_key(name) {
+    let config = home.join(".apm/config");
+    let directory = PlannedDirectory::resolve(&config)?;
+    let in_config = |fragment: &ApmFragmentSource| -> Result<bool> {
+        let parent = fragment
+            .target
+            .parent()
+            .context("fragment target has no parent")?;
+        Ok(parent == Path::new(".apm/config")
+            || directory.same_directory(&PlannedDirectory::resolve(&home.join(parent))?)?)
+    };
+    let mut fragments = BTreeMap::new();
+    let mut active = HashSet::new();
+    for fragment in managed {
+        if in_config(fragment)? {
+            let target = home.join(&fragment.target);
+            anyhow::ensure!(
+                active.insert(entry_name(&target)?),
+                "ambiguous active APM fragment target {}",
+                target.display()
+            );
+            let name = target
+                .file_name()
+                .context("fragment target has no filename")?;
+            fragments.insert(name.to_owned(), fragment.source.clone());
+        }
+    }
+    let mut retired: HashMap<OsString, Vec<&Path>> = HashMap::new();
+    for fragment in inactive {
+        if in_config(fragment)? {
+            retired
+                .entry(entry_name(&home.join(&fragment.target))?)
+                .or_default()
+                .push(&fragment.source);
+        }
+    }
+    let home_fragments = discover_yaml_files_filtered(&config, |path| {
+        // read_dir gives us the stored name, including for dangling links.
+        let name = path.file_name().context("fragment entry has no filename")?;
+        if active.contains(name) {
             return Ok(true);
         }
-        let mut matching = inactive
-            .iter()
-            .filter(|fragment| fragment.target_name == name)
-            .peekable();
-        if matching.peek().is_none() {
+        let Some(matching) = retired.get(name) else {
             return Ok(false);
-        }
+        };
         let metadata = std::fs::symlink_metadata(path)
             .with_context(|| format!("checking retained APM fragment {}", path.display()))?;
         if !metadata.file_type().is_symlink() {
@@ -73,9 +96,12 @@ pub(super) fn discover_effective_fragment_files(
         }
         let source = std::fs::read_link(path)
             .with_context(|| format!("reading retained APM fragment {}", path.display()))?;
-        Ok(matching.any(|fragment| {
-            crate::infra::fs::link_points_to_source(path, &source, &fragment.source)
-        }))
+        for configured in matching {
+            if link_points_to_source(path, &source, configured)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     })?;
     for path in home_fragments {
         if let Some(name) = path.file_name() {
@@ -97,7 +123,13 @@ fn discover_yaml_files_filtered(
 ) -> Result<Vec<PathBuf>> {
     let entries = match std::fs::read_dir(config_dir) {
         Ok(entries) => entries,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            // A dangling parent link is not an absent config directory.
+            PlannedDirectory::resolve(config_dir).with_context(|| {
+                format!("reading APM config directory {}", config_dir.display())
+            })?;
+            return Ok(Vec::new());
+        }
         Err(err) => {
             return Err(err)
                 .with_context(|| format!("reading APM config directory {}", config_dir.display()));
@@ -387,6 +419,149 @@ mod tests {
     }
 
     #[test]
+    fn managed_fragment_shadows_only_the_same_target_identity() {
+        let home = tempfile::tempdir().unwrap();
+        let config = home.path().join(".apm/config");
+        std::fs::create_dir_all(&config).unwrap();
+        let user = config.join("Team.yml");
+        std::fs::write(&user, "description: home").unwrap();
+        let selected = home.path().join("source.yml");
+        std::fs::write(&selected, "description: selected").unwrap();
+        let managed = [ApmFragmentSource::new(
+            selected.clone(),
+            ".apm/config/team.yml".into(),
+        )];
+        let files = discover_effective_fragment_files(home.path(), &managed, &[]).unwrap();
+        if config.join("team.yml").try_exists().unwrap() {
+            assert_eq!(files, [selected]);
+        } else {
+            assert_eq!(files, [user, selected]);
+        }
+    }
+
+    fn check_coexisting_names(home: &Path, first: &str, second: &str) {
+        let config = home.join(".apm/config");
+        std::fs::create_dir_all(&config).unwrap();
+        let selected = home.join("selected.yml");
+        std::fs::write(&selected, "description: selected").unwrap();
+        let managed = [ApmFragmentSource::new(
+            selected.clone(),
+            Path::new(".apm/config").join(first),
+        )];
+        std::fs::write(config.join(first), "description: old").unwrap();
+        let user = config.join(second);
+        std::fs::File::create_new(&user).expect("fixture names must physically coexist");
+        assert_eq!(
+            discover_effective_fragment_files(home, &managed, &[]).unwrap(),
+            [selected, user]
+        );
+    }
+
+    #[test]
+    fn coexisting_kelvin_and_ascii_fragments_both_contribute() {
+        let home = tempfile::tempdir().unwrap();
+        check_coexisting_names(home.path(), "K.yml", "\u{212a}.yml");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn coexisting_unix_case_variants_both_contribute() {
+        let home = tempfile::tempdir().unwrap();
+        check_coexisting_names(home.path(), "Team.yml", "team.yml");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn native_case_sensitive_fragment_names_and_parent_directories() {
+        let home = tempfile::tempdir().unwrap();
+        if !crate::infra::fs::enable_fixture_case_sensitivity(home.path()).unwrap() {
+            return;
+        }
+        let canonical = home.path().join(".apm/config");
+        let separate = home.path().join(".APM/Config");
+        let other = [ApmFragmentSource::new(
+            home.path().join("other-source.yml"),
+            ".APM/Config/Team.yml".into(),
+        )];
+        // A different planned path is not selected even before its directories exist.
+        assert!(
+            discover_effective_fragment_files(home.path(), &other, &[])
+                .unwrap()
+                .is_empty()
+        );
+        std::fs::create_dir_all(&separate).unwrap();
+        std::fs::create_dir_all(&canonical).unwrap();
+        if !crate::infra::fs::enable_fixture_case_sensitivity(&canonical).unwrap() {
+            return;
+        }
+        check_coexisting_names(home.path(), "Team.yml", "team.yml");
+        let files = discover_effective_fragment_files(home.path(), &other, &[]).unwrap();
+        assert_eq!(
+            files,
+            [canonical.join("Team.yml"), canonical.join("team.yml")]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn missing_fragment_directory_recognizes_its_ordinary_windows_alias() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(home.path().join("probe")).unwrap();
+        if !home.path().join("PROBE").try_exists().unwrap() {
+            return;
+        }
+        let source = home.path().join("selected.yml");
+        let managed = [ApmFragmentSource::new(
+            source.clone(),
+            ".APM/Config/Team.yml".into(),
+        )];
+        assert_eq!(
+            discover_effective_fragment_files(home.path(), &managed, &[]).unwrap(),
+            [source]
+        );
+        assert!(!home.path().join(".apm").try_exists().unwrap());
+    }
+
+    #[test]
+    fn inactive_fragment_pointing_to_a_distinct_source_is_not_owned() {
+        let home = tempfile::tempdir().unwrap();
+        let config = home.path().join(".apm/config");
+        std::fs::create_dir_all(&config).unwrap();
+        let retired = home.path().join("K.yml");
+        let user = home.path().join("\u{212a}.yml");
+        std::fs::write(&retired, "retired").unwrap();
+        // Sharing file contents/identity is not sufficient to own a different entry.
+        std::fs::hard_link(&retired, &user).unwrap();
+        let link = config.join("old.yml");
+        crate::infra::fs::create_native_symlink(&user, &link, false).unwrap();
+        let original = std::fs::read_link(&link).unwrap();
+        let inactive = [ApmFragmentSource::new(
+            retired,
+            ".apm/config/old.yml".into(),
+        )];
+        assert_eq!(
+            discover_effective_fragment_files(home.path(), &[], &inactive).unwrap(),
+            std::slice::from_ref(&link)
+        );
+        assert_eq!(std::fs::read_link(&link).unwrap(), original);
+    }
+
+    #[test]
+    fn fragment_discovery_fails_on_an_uninspectable_parent() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::write(home.path().join(".apm"), "preserve").unwrap();
+        let managed = [ApmFragmentSource::new(
+            home.path().join("selected"),
+            ".apm/config/Team.yml".into(),
+        )];
+        assert!(discover_effective_fragment_files(home.path(), &managed, &[]).is_err());
+        assert_eq!(
+            std::fs::read(home.path().join(".apm")).unwrap(),
+            b"preserve"
+        );
+    }
+
+    #[test]
     fn effective_fragments_replace_broken_managed_links_before_metadata_checks() {
         let dir = tempfile::tempdir_in(".").expect("create fixture directory");
         let home = crate::infra::fs::canonicalize(dir.path()).expect("resolve fixture home");
@@ -409,7 +584,10 @@ mod tests {
         assert!(discover_effective_fragment_files(&home, &[], &[]).is_err());
         let effective = discover_effective_fragment_files(
             &home,
-            &[ApmFragmentSource::new(source.clone(), "base.yml".into())],
+            &[ApmFragmentSource::new(
+                source.clone(),
+                ".apm/config/base.yml".into(),
+            )],
             &[],
         )
         .expect("managed source must mask the stale home entry");
@@ -417,7 +595,15 @@ mod tests {
         assert_eq!(effective, [source, unmanaged]);
         assert_eq!(std::fs::read_link(&stale_link).unwrap(), missing);
 
-        let inactive = [ApmFragmentSource::new(missing.clone(), "base.yml".into())];
+        let declared_name = if config.join("BASE.YML").symlink_metadata().is_ok() {
+            "BASE.YML"
+        } else {
+            "base.yml"
+        };
+        let inactive = [ApmFragmentSource::new(
+            missing.clone(),
+            Path::new(".apm/config").join(declared_name),
+        )];
         assert_eq!(
             discover_effective_fragment_files(&home, &[], &inactive).unwrap(),
             [config.join("user.yml")]

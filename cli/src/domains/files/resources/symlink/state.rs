@@ -15,7 +15,7 @@ pub(super) fn current_state(
 
     std::fs::read_link(target).map_or_else(
         |_| match crate::infra::fs::symlink_metadata_optional(target, "stat target")? {
-            Some(_) if paths_equal(target, &resource.source) => Ok(ResourceState::Invalid {
+            Some(_) if paths_equal(target, &resource.source)? => Ok(ResourceState::Invalid {
                 reason: "target resolves to the source instead of a separate managed link"
                     .to_string(),
             }),
@@ -28,7 +28,7 @@ pub(super) fn current_state(
             None => Ok(ResourceState::Missing),
         },
         |existing| {
-            if link_points_to_source(target, &existing, &resource.source) {
+            if link_points_to_source(target, &existing, &resource.source)? {
                 Ok(ResourceState::Correct)
             } else if resource.legacy_link(target, &existing)?.is_some() {
                 Ok(ResourceState::Incorrect {
@@ -59,6 +59,6 @@ pub(super) fn invalid_source_reason(
             return Ok(Some(reason));
         }
     }
-    Ok(same_entry(&resource.source, target)
+    Ok(same_entry(&resource.source, target)?
         .then(|| "target aliases the source entry through its parent directory".to_string()))
 }

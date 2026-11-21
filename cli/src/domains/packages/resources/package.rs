@@ -19,6 +19,39 @@ use super::paru::ParuProvider;
 use super::report::PackageInstallReport;
 use super::winget::WingetProvider;
 
+/// Membership index for one inventory snapshot, separate from the spelling
+/// used in provider output and install arguments.
+#[derive(Debug, PartialEq, Eq)]
+pub struct InstalledPackages {
+    keys: HashSet<String>,
+    manager: PackageManager,
+}
+
+impl InstalledPackages {
+    pub(super) fn new(manager: PackageManager, names: HashSet<String>) -> Self {
+        let keys = match manager {
+            PackageManager::Winget => names
+                .into_iter()
+                .map(|mut name| {
+                    name.make_ascii_lowercase();
+                    name
+                })
+                .collect(),
+            PackageManager::Pacman | PackageManager::Paru => names,
+        };
+        Self { keys, manager }
+    }
+
+    /// Compare a configured name using the inventory provider's identity rules.
+    #[must_use]
+    pub fn contains_package(&self, name: &str) -> bool {
+        match self.manager {
+            PackageManager::Winget => self.keys.contains(&name.to_ascii_lowercase()),
+            PackageManager::Pacman | PackageManager::Paru => self.keys.contains(name),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // PackageProvider trait
 // ---------------------------------------------------------------------------
@@ -37,15 +70,15 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
 
     /// Query all currently installed package names.
     ///
-    /// Returns a set of names/IDs that can be matched against desired
-    /// package names to determine what is already installed. Runs a
-    /// **single** command regardless of how many packages need checking.
+    /// Returns an index for checking configured names with provider-specific
+    /// identity rules. Runs a **single** command regardless of how many
+    /// packages need checking.
     ///
     /// # Errors
     ///
     /// Returns an error if the package manager command fails or output
     /// cannot be parsed.
-    fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>>;
+    fn query_installed(&self, executor: &dyn Executor) -> Result<InstalledPackages>;
 
     /// Install a single package.
     ///
@@ -225,7 +258,7 @@ fn unverified_batch(
 
 fn reconcile_failed_batch(
     resources: &[&PackageResource],
-    installed: &HashSet<String>,
+    installed: &InstalledPackages,
     error: ExecError,
 ) -> Result<PackageInstallReport> {
     let mut report = PackageInstallReport::new();
@@ -310,8 +343,8 @@ impl PackageResource {
     /// This avoids running a per-package query when used with
     /// [`get_installed_packages`].
     #[must_use]
-    pub fn state_from_installed(&self, installed: &HashSet<String>) -> ResourceState {
-        if installed.contains(&self.name) {
+    pub fn state_from_installed(&self, installed: &InstalledPackages) -> ResourceState {
+        if installed.contains_package(&self.name) {
             ResourceState::Correct
         } else {
             ResourceState::Missing
@@ -319,7 +352,7 @@ impl PackageResource {
     }
 }
 
-/// Query the full set of installed package names for a given manager.
+/// Query and index installed package names for a given manager.
 ///
 /// Delegates to the manager's [`PackageProvider::query_installed`]
 /// implementation, running a **single** command regardless of how many
@@ -332,7 +365,7 @@ impl PackageResource {
 pub fn get_installed_packages(
     manager: PackageManager,
     executor: &dyn Executor,
-) -> Result<HashSet<String>> {
+) -> Result<InstalledPackages> {
     manager.provider().query_installed(executor)
 }
 

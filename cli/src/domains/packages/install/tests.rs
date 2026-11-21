@@ -43,7 +43,7 @@ fn aur_preview_uses_package_database_without_requiring_paru() {
                         ExecResult::failure("", "fixture database error", Some(1)),
                     ))
                 } else {
-                    Ok(ExecResult::success("already-installed 1.0\n"))
+                    Ok(ExecResult::success("Example-Aur 1.0\n"))
                 }
             });
         let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock)
@@ -1619,12 +1619,13 @@ fn cancelled_winget_task_preserves_completed_and_initially_current_counts() {
 }
 
 #[test]
-fn winget_per_package_install_preserves_changed_and_already_current_counts() {
-    for (install_result, expected) in [
-        (ExecResult::success(""), (1, 0, 0)),
+fn winget_install_matches_ascii_case_and_installs_only_missing_configured_ids() {
+    for (configured_git, install_result, expected) in [
+        ("git.git", ExecResult::success(""), (1, 1, 0)),
         (
+            "gIt.GIT",
             ExecResult::failure("No available upgrade found.", "", Some(-1_978_335_189)),
-            (0, 1, 0),
+            (0, 2, 0),
         ),
     ] {
         let mut mock = MockExecutor::new();
@@ -1637,7 +1638,10 @@ fn winget_per_package_install_preserves_changed_and_already_current_counts() {
             .once()
             .in_sequence(&mut sequence)
             .returning(|spec| {
-                crate::domains::packages::resources::mock_inventory(&spec, &[]);
+                crate::domains::packages::resources::mock_inventory(
+                    &spec,
+                    &["Git.Git", "Äpp.Tool"],
+                );
                 Ok(ExecResult::success(""))
             });
         mock.expect_execute()
@@ -1649,7 +1653,7 @@ fn winget_per_package_install_preserves_changed_and_already_current_counts() {
                         == [
                             "install",
                             "--id",
-                            "Git.Git",
+                            "äpp.ToOl",
                             "--exact",
                             "--no-upgrade",
                             "--source",
@@ -1665,9 +1669,9 @@ fn winget_per_package_install_preserves_changed_and_already_current_counts() {
             })
             .return_once(|_| Ok(install_result));
         let ctx = make_package_context("fixture-repository".into(), None, Os::Windows, false, mock);
-        let result = InstallPackages::new(packages(&[("Git.Git", false)]))
-            .run(&ctx)
-            .unwrap();
+        // ASCII case changes don't make Git missing; ä and Ä are distinct.
+        let entries = packages(&[(configured_git, false), ("äpp.ToOl", false)]);
+        let result = InstallPackages::new(entries).run(&ctx).unwrap();
         let stats = task_batch(&result);
         assert_eq!(
             (
@@ -1743,7 +1747,7 @@ fn package_elevation_requires_missing_packages_on_a_supported_platform() {
                     Ok(ExecResult::success(if installed {
                         "fixture-package 1.0\n"
                     } else {
-                        "other-package 1.0\n"
+                        "Fixture-Package 1.0\n"
                     }))
                 });
             let ctx = make_package_context("/fixture".into(), None, os, arch, mock);
@@ -1850,6 +1854,7 @@ fn consumers_are_released_only_when_inventory_and_paru_prove_no_package_work() {
         "current",
         "missing-native",
         "missing-aur",
+        "different-case",
         "database-error",
         "broken-paru",
     ] {
@@ -1870,6 +1875,7 @@ fn consumers_are_released_only_when_inventory_and_paru_prove_no_package_work() {
                 Ok(match case {
                     "missing-native" => ExecResult::success("aur-tool 1\n"),
                     "missing-aur" => ExecResult::success("native-tool 1\n"),
+                    "different-case" => ExecResult::success("native-tool 1\nAur-Tool 1\n"),
                     _ => ExecResult::success("native-tool 1\naur-tool 1\n"),
                 })
             });

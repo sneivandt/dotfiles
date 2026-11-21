@@ -124,7 +124,7 @@ PanelWindow {
                 BarBlock {
                     id: networkButton
                     glyph: bar.network.icon
-                    tooltip: !bar.network.available ? "Network status unavailable" : (bar.network.connected ? bar.network.connectionName : "Network")
+                    tooltip: !bar.network.available ? "Network status unavailable" : (bar.network.connected ? (bar.network.connectionName || "Connected") : "Network")
                     textColor: !bar.network.available ? Theme.yellow : (bar.network.connected ? Theme.foreground : Theme.mutedStrong)
                     selected: networkMenu.visible && !networkMenu.closing
                     onActivated: button => {

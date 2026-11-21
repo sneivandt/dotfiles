@@ -68,7 +68,7 @@ pub(super) fn check_paru_health(executor: &dyn Executor) -> Result<ParuHealth> {
         // errors. Only a successful inventory can establish that paru is missing.
         let installed = get_installed_packages(PackageManager::Pacman, executor)
             .context("verifying whether the target paru package is missing")?;
-        if installed.contains(PARU_PACKAGE) {
+        if installed.contains_package(PARU_PACKAGE) {
             return Err(ExecError::non_zero("pacman -Q paru", package_result).into());
         }
         let detail =

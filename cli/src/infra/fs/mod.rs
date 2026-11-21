@@ -17,17 +17,28 @@ mod directories;
 mod identity;
 mod mutation;
 mod place;
+mod planned;
 mod temp;
 
 pub use copy::{copy_dir_recursive, reject_destination_link};
 pub(crate) use copy::{copy_regular_contents, open_regular_source, preserve_copy_metadata};
 pub(crate) use directories::checked_directory_chain;
-pub(crate) use identity::{link_points_to_source, path_identity, paths_equal, same_entry};
+#[cfg(windows)]
+pub(crate) use identity::stored_entry_name;
+pub(crate) use identity::{
+    entry_name, link_points_to_source, path_identity, paths_equal, same_entry,
+};
 pub(crate) use mutation::open_in_place;
 #[cfg(unix)]
 pub(crate) use mutation::require_single_link;
+#[cfg(all(windows, test))]
+pub(crate) use place::check_private_fixture;
 pub(crate) use place::rename_noreplace;
 pub use place::{rename_into_place, write_atomic, write_atomic_checked};
+pub(crate) use planned::PlannedDirectory;
+#[cfg(all(windows, test))]
+pub(crate) use planned::enable_fixture_case_sensitivity;
+pub(crate) use temp::PrivateTempDir;
 pub use temp::TempGuard;
 
 /// Fingerprint owned file bytes without storing their contents in a ledger.
@@ -52,6 +63,14 @@ pub(crate) fn resolve_directory_with(
     path: &Path,
     canonicalize: impl Fn(&Path) -> std::io::Result<PathBuf>,
 ) -> Result<PathBuf> {
+    let (existing, missing) = resolve_with_suffix(path, canonicalize)?;
+    Ok(existing.join(missing))
+}
+
+fn resolve_with_suffix(
+    path: &Path,
+    canonicalize: impl Fn(&Path) -> std::io::Result<PathBuf>,
+) -> Result<(PathBuf, PathBuf)> {
     let absolute = std::path::absolute(path)?;
     for ancestor in absolute.ancestors() {
         let resolved = match canonicalize(ancestor) {
@@ -66,7 +85,7 @@ pub(crate) fn resolve_directory_with(
             result => result,
         }
         .with_context(|| format!("resolve target parent {}", ancestor.display()))?;
-        return Ok(resolved.join(absolute.strip_prefix(ancestor)?));
+        return Ok((resolved, absolute.strip_prefix(ancestor)?.to_owned()));
     }
     anyhow::bail!("cannot resolve target parent {}", path.display())
 }

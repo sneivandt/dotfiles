@@ -98,7 +98,9 @@ pub(super) fn predict_sudo(
     let Ok(installed) = get_installed_packages(manager, ctx.executor()) else {
         return false;
     };
-    packages.iter().any(|p| !installed.contains(&p.name))
+    packages
+        .iter()
+        .any(|p| !installed.contains_package(&p.name))
 }
 
 pub(super) fn build_install_plan(

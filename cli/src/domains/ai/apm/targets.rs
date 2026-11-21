@@ -153,22 +153,15 @@ pub(super) fn copilot_cowork_skills_path(ctx: &Context) -> Result<Option<PathBuf
     };
     // Both trees can have missing suffixes on a first install. Resolve existing
     // parents (including aliases) before allowing APM or the copier to run.
-    let source = crate::infra::fs::resolve_directory(&ctx.home().join(".agents/skills"))?;
-    let destination = crate::infra::fs::resolve_directory(&target)?;
+    let source = crate::infra::fs::PlannedDirectory::resolve(&ctx.home().join(".agents/skills"))?;
+    let destination = crate::infra::fs::PlannedDirectory::resolve(&target)?;
     anyhow::ensure!(
-        !destination
-            .components()
-            .any(|part| part == std::path::Component::ParentDir),
-        "cannot resolve Copilot Cowork destination {}; use a path without unresolved '..' components",
-        target.display()
-    );
-    let source = crate::infra::fs::path_identity(&source);
-    let destination = crate::infra::fs::path_identity(&destination);
-    anyhow::ensure!(
-        !destination.starts_with(&source) && !source.starts_with(&destination),
+        !source.trees_overlap(&destination)?,
         "Copilot Cowork destination {} overlaps the shared skills directory; choose a separate directory",
         target.display()
     );
+    #[cfg(target_os = "linux")]
+    super::cowork::overlap::check(ctx.home(), &target, &ctx.cancellation_token())?;
     Ok(Some(target))
 }
 

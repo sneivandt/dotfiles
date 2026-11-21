@@ -188,9 +188,10 @@ pub(crate) fn preserve_copy_metadata(
     source: &std::fs::File,
     destination: &std::fs::File,
 ) -> Result<()> {
+    let metadata = source.metadata()?;
     #[cfg(target_os = "linux")]
-    preserve_attributes(source, destination, |_| true)?;
-    destination.set_permissions(source.metadata()?.permissions())?;
+    preserve_attributes(source, destination, access_identity(&metadata), |_| true)?;
+    destination.set_permissions(metadata.permissions())?;
     Ok(())
 }
 
@@ -201,62 +202,64 @@ pub(super) fn preserve_replacement_metadata(
 ) -> Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
     // Content signatures and capabilities must not be attached to new bytes.
-    preserve_attributes(source, destination, |name| {
+    let metadata = source.metadata()?;
+    preserve_attributes(source, destination, access_identity(&metadata), |name| {
         name.starts_with(b"user.") || name.starts_with(b"system.posix_acl_")
     })?;
-    let mode = source.metadata()?.permissions().mode() & 0o777;
+    let mode = metadata.permissions().mode() & 0o777;
     destination.set_permissions(std::fs::Permissions::from_mode(mode))?;
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn access_identity(metadata: &std::fs::Metadata) -> (u32, u32) {
+    use std::os::unix::fs::MetadataExt as _;
+    (metadata.uid(), metadata.gid())
 }
 
 #[cfg(target_os = "linux")]
 fn preserve_attributes(
     source: &std::fs::File,
     destination: &std::fs::File,
+    source_identity: (u32, u32),
     preserve: impl Fn(&[u8]) -> bool,
 ) -> Result<()> {
-    #[cfg(target_os = "linux")]
-    {
-        use rustix::fs::{
-            XattrFlags, fgetxattr, fgetxattr_query, flistxattr, flistxattr_query, fremovexattr,
-            fsetxattr,
-        };
-        use rustix::io::Errno;
-        use std::os::unix::fs::MetadataExt as _;
+    use rustix::fs::{
+        XattrFlags, fgetxattr, fgetxattr_query, flistxattr, flistxattr_query, fremovexattr,
+        fsetxattr,
+    };
+    use rustix::io::Errno;
 
-        let names = read_attribute_names(flistxattr_query(source), |buffer| {
-            flistxattr(source, buffer)
-        })?;
-        let names: Vec<_> = names
-            .split(|byte| *byte == 0)
-            .filter(|name| !name.is_empty() && preserve(name))
-            .collect();
-        for acl in ["system.posix_acl_access", "system.posix_acl_default"] {
-            if !names.contains(&acl.as_bytes()) {
-                match fremovexattr(destination, acl) {
-                    Ok(()) | Err(Errno::NODATA | Errno::NOTSUP) => {}
-                    Err(error) => {
-                        return Err(error).with_context(|| format!("clear inherited {acl}"));
-                    }
+    // The owner and group interpret the mode bits even when there is no
+    // access ACL. Never restore attributes or modes onto different principals.
+    anyhow::ensure!(
+        access_identity(&destination.metadata()?) == source_identity,
+        "the staged copy has a different owner or group and would change access"
+    );
+    let names = read_attribute_names(flistxattr_query(source), |buffer| {
+        flistxattr(source, buffer)
+    })?;
+    let names: Vec<_> = names
+        .split(|byte| *byte == 0)
+        .filter(|name| !name.is_empty() && preserve(name))
+        .collect();
+    for acl in ["system.posix_acl_access", "system.posix_acl_default"] {
+        if !names.contains(&acl.as_bytes()) {
+            match fremovexattr(destination, acl) {
+                Ok(()) | Err(Errno::NODATA | Errno::NOTSUP) => {}
+                Err(error) => {
+                    return Err(error).with_context(|| format!("clear inherited {acl}"));
                 }
             }
         }
-        if names.contains(&b"system.posix_acl_access".as_slice()) {
-            let source = source.metadata()?;
-            let destination = destination.metadata()?;
-            anyhow::ensure!(
-                (source.uid(), source.gid()) == (destination.uid(), destination.gid()),
-                "the staged copy has a different owner or group and would change ACL access"
-            );
-        }
-        for name in names {
-            let name = std::ffi::OsStr::from_bytes(name);
-            let mut value = vec![0; fgetxattr_query(source, name)?.max(1)];
-            let size = fgetxattr(source, name, value.as_mut_slice())?;
-            value.truncate(size);
-            fsetxattr(destination, name, &value, XattrFlags::empty())
-                .with_context(|| format!("copy extended attribute {}", name.to_string_lossy()))?;
-        }
+    }
+    for name in names {
+        let name = std::ffi::OsStr::from_bytes(name);
+        let mut value = vec![0; fgetxattr_query(source, name)?.max(1)];
+        let size = fgetxattr(source, name, value.as_mut_slice())?;
+        value.truncate(size);
+        fsetxattr(destination, name, &value, XattrFlags::empty())
+            .with_context(|| format!("copy extended attribute {}", name.to_string_lossy()))?;
     }
     Ok(())
 }
@@ -399,6 +402,61 @@ pub(crate) fn open_regular_source(path: &Path) -> Result<std::fs::File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn mode_only_files_and_default_acl_only_dirs_require_matching_principals() {
+        use rustix::fs::{XattrFlags, fgetxattr, fgetxattr_query, fsetxattr};
+        use rustix::io::Errno;
+        let root = tempfile::tempdir_in(".").unwrap();
+        // Linux POSIX ACL v2 with just owner, owning group and other.
+        let mut acl = 2_u32.to_le_bytes().to_vec();
+        for (tag, rights) in [(1_u16, 7_u16), (4, 5), (32, 0)] {
+            acl.extend(tag.to_le_bytes());
+            acl.extend(rights.to_le_bytes());
+            acl.extend(u32::MAX.to_le_bytes());
+        }
+        let default = "system.posix_acl_default";
+        for is_dir in [false, true] {
+            let create = |name: &str| {
+                let path = root.path().join(format!("{name}-{is_dir}"));
+                if is_dir {
+                    std::fs::create_dir(&path).unwrap();
+                    std::fs::File::open(path).unwrap()
+                } else {
+                    std::fs::File::create_new(path).unwrap()
+                }
+            };
+            let source = create("source");
+            let staged = create("staged");
+            if is_dir {
+                fsetxattr(&source, default, &acl, XattrFlags::empty()).unwrap();
+            }
+            assert_eq!(
+                fgetxattr_query(&source, "system.posix_acl_access"),
+                Err(Errno::NODATA)
+            );
+            let (uid, gid) = access_identity(&source.metadata().unwrap());
+            // Inject only the IDs: no chown, other account, or privileged test runner.
+            for mismatch in [(uid ^ 1, gid), (uid, gid ^ 1)] {
+                let error = preserve_attributes(&source, &staged, mismatch, |_| true).unwrap_err();
+                assert!(
+                    error.to_string().contains("different owner or group"),
+                    "{error:#}"
+                );
+                assert_eq!(fgetxattr_query(&staged, default), Err(Errno::NODATA));
+            }
+            preserve_copy_metadata(&source, &staged).unwrap();
+            if is_dir {
+                let mut actual = vec![0; acl.len()];
+                assert_eq!(
+                    fgetxattr(&staged, default, actual.as_mut_slice()).unwrap(),
+                    acl.len()
+                );
+                assert_eq!(actual, acl);
+            }
+        }
+    }
 
     #[test]
     fn destination_resolution_preserves_non_missing_io_errors() {

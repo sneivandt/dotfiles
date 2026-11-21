@@ -157,7 +157,7 @@ impl CommandLocks {
         let path = repository_state_path(overlay, env, platform, LOCK_NAME)?;
         let checkout_lock = coordination_path_for_git(&path)?;
         if self.checkout_path.as_ref() == Some(&checkout_lock)
-            || crate::infra::fs::paths_equal(&self.repository_path, &path)
+            || crate::infra::fs::paths_equal(&self.repository_path, &path)?
         {
             return Ok(());
         }

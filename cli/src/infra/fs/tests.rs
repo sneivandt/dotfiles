@@ -1,6 +1,83 @@
 use super::*;
 
 #[test]
+fn ownership_only_cancels_parent_steps_through_known_plain_directories() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let root = canonicalize(fixture.path()).unwrap();
+    let plain = root.join("plain");
+    let alias = root.join("alias");
+    let source = root.join("item");
+    std::fs::create_dir(&plain).unwrap();
+    std::fs::write(&source, b"preserve").unwrap();
+    create_native_symlink(&plain, &alias, true).unwrap();
+    let original_alias = std::fs::read_link(&alias).unwrap();
+
+    // Only inspect ownership; no install or removal is attempted.
+    let target = root.join("link");
+    assert!(link_points_to_source(&target, Path::new("plain/../item"), &source).unwrap());
+    assert!(link_points_to_source(&plain.join("link"), Path::new("../item"), &source).unwrap());
+    assert!(!link_points_to_source(&target, Path::new("alias/../item"), &source).unwrap());
+    assert!(link_points_to_source(&target, Path::new("missing/../item"), &source).is_err());
+    assert_eq!(std::fs::read(&source).unwrap(), b"preserve");
+    assert_eq!(std::fs::read_link(&alias).unwrap(), original_alias);
+    assert!(!target.try_exists().unwrap());
+}
+
+#[test]
+fn ownership_compares_entries_and_declared_routes_not_referents() {
+    let fixture = tempfile::tempdir().unwrap();
+    let home = fixture.path();
+    let declared = home.join("K");
+    let other = home.join("\u{212a}");
+    for parent in [&declared, &other] {
+        std::fs::create_dir(parent).unwrap();
+        std::fs::write(parent.join("item"), b"content").unwrap();
+    }
+    let source = declared.join("item");
+    let target = home.join("link");
+    assert!(!paths_equal(&declared, &other).unwrap());
+    assert!(!same_entry(&source, &other.join("item")).unwrap());
+    assert!(!link_points_to_source(&target, Path::new("\u{212a}/item"), &source).unwrap());
+    // A directory redirect aliases the final entry but isn't the declared route.
+    let redirect = home.join("redirect");
+    create_native_symlink(&declared, &redirect, true).unwrap();
+    assert!(same_entry(&source, &redirect.join("item")).unwrap());
+    assert!(!link_points_to_source(&target, Path::new("redirect/item"), &source).unwrap());
+    assert!(link_points_to_source(&target, Path::new("K/item"), &source).unwrap());
+    // A retired source with multiple absent components retains its exact suffix.
+    let missing = declared.join("gone/item");
+    assert!(link_points_to_source(&target, Path::new("K/gone/item"), &missing).unwrap());
+    assert!(!link_points_to_source(&target, Path::new("\u{212a}/gone/item"), &missing).unwrap());
+    assert!(link_points_to_source(&target, Path::new("K/bad\0/item"), &missing).is_err());
+}
+
+#[cfg(windows)]
+#[test]
+fn ordinary_windows_entry_aliases_are_owned_even_above_a_missing_suffix() {
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path();
+    let parent = root.join("Team");
+    std::fs::create_dir(&parent).unwrap();
+    if !root.join("TEAM").try_exists().unwrap() {
+        return; // case-sensitive volume
+    }
+    let item = parent.join("Item");
+    std::fs::write(&item, b"owned").unwrap();
+    let alias = root.join("TEAM/ITEM");
+    assert!(paths_equal(&alias, &item).unwrap());
+    assert!(same_entry(&alias, &item).unwrap());
+    assert!(link_points_to_source(&root.join("link"), &alias, &item).unwrap());
+    assert!(
+        link_points_to_source(
+            &root.join("link"),
+            Path::new("TEAM/gone/item"),
+            &parent.join("gone/item")
+        )
+        .unwrap()
+    );
+}
+
+#[test]
 fn source_inspection_distinguishes_missing_existing_and_unreadable_paths() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");

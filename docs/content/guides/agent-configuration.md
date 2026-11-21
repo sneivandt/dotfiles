@@ -280,8 +280,11 @@ flowchart TB
 Dotfiles reads the selected source fragments directly, so previews use your
 edits even if a fragment's home link is missing or broken. Other YAML files
 already in `~/.apm/config/` also contribute unless a selected source has the
-same filename. Links still pointing to a declared but inactive source do not
-contribute; dotfiles leaves those links in place.
+same filename in that directory. For example, `Team.yml` and `team.yml` both
+contribute if the directory contains two distinct entries; if those names open
+the same entry, the selected source takes precedence. Links still pointing to
+a declared but inactive source do not contribute; dotfiles leaves those links
+in place.
 
 If you already maintain `~/.apm/apm.yml`, dotfiles will not replace it.
 Back it up outside `~/.apm/config/`, move the settings you want to keep into
@@ -360,9 +363,28 @@ Set `APM_COPILOT_COWORK_SKILLS_DIR` to choose a destination explicitly,
 including on Linux. Dotfiles copies selected skills from `~/.agents/skills`
 while preserving the destination directories and their Windows permissions.
 Choose a directory separate from `~/.agents/skills`: neither path can be
-inside the other, including through a directory link.
+inside the other, including through a directory link or a Linux bind mount.
+On Linux, this protection includes unselected skills. Before copying or
+pruning, dotfiles checks directory identities throughout the shared skill tree
+without following symlinks inside it or reading unselected file contents. If
+the tree is unreadable, cyclic, or exceeds the scan limit, the check stops
+rather than assuming the destination is safe.
 If a package restricts its targets, include `copilot-cowork` to send its skills
 here.
+
+Keep `SKILL.md` and its assets inside the skill directory. Cowork copies
+symbolic links as links: a relative link such as `docs/entry.md` works if its
+target is included with the same spelling. An absolute link or a link to a
+sibling skill is not portable, even if it opens in the shared APM directory.
+If a link is missing its target, forms a cycle, or leaves the skill directory
+at any step, Cowork reconciliation stops before copying or pruning skills.
+Include the referenced content in the source skill and retry.
+
+If an update changes a regular file into a symbolic link, Cowork stops before
+copying or pruning any skills. A link would use its referent's access rules
+instead of the installed file's permissions. To accept the change, move the
+reported destination file to a safe location and retry. Existing managed links
+can still be updated without moving them aside.
 
 Dotfiles records deployed file hashes and removes unchanged owned files that
 disappear from the source or leave the selected skill set. Dotfiles can take

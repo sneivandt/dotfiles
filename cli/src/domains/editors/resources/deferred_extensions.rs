@@ -55,6 +55,47 @@ impl DeferredExtensionsResource {
             )),
         }
     }
+
+    fn update_marker(&self, update: impl FnOnce(&mut String)) -> ResourceResult<ResourceChange> {
+        #[cfg(target_os = "linux")]
+        let _queue_lock = {
+            use anyhow::Context as _;
+            let parent = self.marker.parent().context("missing queue directory")?;
+            std::fs::create_dir_all(parent)?;
+            lock_queue(parent)?
+        };
+        let previous = self.marker_contents()?;
+        let mut content = previous.as_deref().unwrap_or(MARKER_CONTENT).to_owned();
+        update(&mut content);
+        crate::infra::fs::write_atomic_checked(&self.marker, content, || {
+            anyhow::ensure!(
+                self.marker_contents()? == previous,
+                "deferred extensions marker changed; retry"
+            );
+            Ok(())
+        })?;
+        Ok(ResourceChange::Applied)
+    }
+}
+
+// The service holds the same flock from comparison through unlink. Lock the
+// stable parent, not the marker inode we replace.
+#[cfg(target_os = "linux")]
+fn lock_queue(parent: &Path) -> std::io::Result<std::fs::File> {
+    use std::fs::TryLockError;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let directory = std::fs::File::options()
+        .read(true)
+        .custom_flags(nix::libc::O_DIRECTORY)
+        .open(parent)?;
+    directory.try_lock().map_err(|error| match error {
+        TryLockError::WouldBlock => std::io::Error::new(
+            std::io::ErrorKind::WouldBlock,
+            "deferred extensions queue is busy; retry the update after the other operation finishes",
+        ),
+        TryLockError::Error(error) => error,
+    })?;
+    Ok(directory)
 }
 
 // systemd EnvironmentFile double-quoted values preserve whitespace and newlines.
@@ -79,25 +120,30 @@ impl Resource for DeferredExtensionsResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        let previous = self.marker_contents()?;
-        let mut content = previous.as_deref().unwrap_or(MARKER_CONTENT).to_owned();
-        if !content.is_empty() && !content.ends_with('\n') {
-            content.push('\n');
-        }
-        content.push_str(&self.assignments);
-        crate::infra::fs::write_atomic_checked(&self.marker, content, || {
-            anyhow::ensure!(
-                self.marker_contents()? == previous,
-                "deferred extensions marker changed; retry"
-            );
-            Ok(())
-        })?;
-        Ok(ResourceChange::Applied)
+        self.update_marker(|content| {
+            if !content.is_empty() && !content.ends_with('\n') {
+                content.push('\n');
+            }
+            content.push_str(&self.assignments);
+        })
     }
 }
 
 impl IntrinsicState for DeferredExtensionsResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
+        // The consumer can otherwise unlink a pending marker between stat and read.
+        #[cfg(target_os = "linux")]
+        let _queue_lock = {
+            use anyhow::Context as _;
+            let parent = self.marker.parent().context("missing queue directory")?;
+            match lock_queue(parent) {
+                Ok(directory) => directory,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(ResourceState::Missing);
+                }
+                Err(error) => return Err(error.into()),
+            }
+        };
         Ok(match deferred_extensions_state(&self.marker)? {
             DeferredExtensionsState::Pending => {
                 let content = std::fs::read_to_string(&self.marker)?;
@@ -121,6 +167,66 @@ impl IntrinsicState for DeferredExtensionsResource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn producer_excludes_acknowledgement_while_updating_the_queue() {
+        use std::fs::{File, TryLockError};
+        let home = tempfile::tempdir().unwrap();
+        let queue = DeferredExtensionsResource::new(home.path(), "desktop", None, &[]).unwrap();
+        queue.apply().unwrap();
+        let consumer = File::open(queue.marker.parent().unwrap()).unwrap();
+        queue
+            .update_marker(|content| {
+                assert!(matches!(consumer.try_lock(), Err(TryLockError::WouldBlock)));
+                content.push_str("# supersedes staged queue\n");
+            })
+            .unwrap();
+        consumer.try_lock().expect("producer released the queue");
+        assert!(
+            std::fs::read_to_string(&queue.marker)
+                .unwrap()
+                .ends_with("# supersedes staged queue\n")
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn busy_queue_refuses_discovery_and_apply_then_allows_retry() {
+        let home = tempfile::tempdir().unwrap();
+        let queue = DeferredExtensionsResource::new(home.path(), "desktop", None, &[]).unwrap();
+        let parent = queue.marker.parent().unwrap();
+        std::fs::create_dir_all(parent).unwrap();
+        std::fs::write(&queue.marker, "previous selection\n").unwrap();
+        let consumer = std::fs::File::open(parent).unwrap();
+        consumer.try_lock().unwrap();
+        let (state, applied) = std::thread::scope(|scope| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let queue = &queue;
+            scope.spawn(move || tx.send((queue.current_state(), queue.apply())).unwrap());
+            let result = rx.recv_timeout(std::time::Duration::from_secs(5));
+            drop(consumer); // Also unblock a regressed worker before the scope joins it.
+            result.expect("discovery and apply must return while the lock is held")
+        });
+        for error in [state.unwrap_err(), applied.unwrap_err()] {
+            assert!(
+                error
+                    .to_string()
+                    .contains("queue is busy; retry the update"),
+                "{error}"
+            );
+        }
+        assert_eq!(
+            std::fs::read(&queue.marker).unwrap(),
+            b"previous selection\n"
+        );
+        assert!(matches!(
+            queue.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
+        assert_eq!(queue.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(queue.current_state().unwrap(), ResourceState::Correct);
+    }
 
     #[test]
     fn marker_apply_creates_an_explained_deferral() {

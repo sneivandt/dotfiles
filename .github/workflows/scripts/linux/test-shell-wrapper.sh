@@ -104,7 +104,7 @@ test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args()
   export DOTFILES_RELEASE_REPO
   log_stage "Testing real wrapper bootstrap download, checksum, and forwarding"
 
-  tmpdir="$DIR/.wrapper-bootstrap-$$"
+  tmpdir="$DIR/.wrapper-bootstrap-$$${WRAPPER_BOOTSTRAP_SUFFIX:-}"
   mkdir "$tmpdir"
   trap 'rm -rf "$tmpdir"' EXIT
 
@@ -150,7 +150,7 @@ case "$url" in
       echo "bootstrap published its binary before verification" >&2
       exit 1
     }
-    sum=$(sha256sum "$(cat "$DOTFILES_ROOT/download-path")" | awk '{print $1}')
+    sum=$(sha256sum < "$(cat "$DOTFILES_ROOT/download-path")" | awk '{print $1}')
     printf '%s  dotfiles-linux-x86_64\n' "$sum" > "$out"
     ;;
   */releases/download/v9.9.9/dotfiles-linux-x86_64)
@@ -835,6 +835,7 @@ case "$0" in
     test_wrapper_uses_local_binary
     test_wrapper_forwarded_args
     test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    WRAPPER_BOOTSTRAP_SUFFIX=' path with \ backslash' test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
     WRAPPER_EMPTY_CACHE=1 test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
     test_wrapper_recovers_truncated_cli
     test_wrapper_release_metadata_formats

@@ -190,7 +190,7 @@ _verify_checksum() {
     echo "ERROR: Checksum not found in checksum file for $_vc_asset." >&2
     return 1
   fi
-  actual=$(sha256sum "$_vc_binary" | awk '{print $1}')
+  actual=$(sha256sum < "$_vc_binary" | awk '{print $1}')
   if [ "$expected" != "$actual" ]; then
     echo "ERROR: Checksum verification failed!" >&2
     return 1

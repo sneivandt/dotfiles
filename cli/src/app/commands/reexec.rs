@@ -65,16 +65,16 @@ fn run_reexec(
         );
         // Each child verifies the immediate parent, which may own locks that
         // its predecessor did not acquire.
-        let continuation = locks
+        let (continuation, mode) = locks
             .map(CommandLocks::prepare_restart)
             .transpose()?
-            .flatten();
+            .unwrap_or((Vec::new(), crate::infra::run_lock::RestartLockMode::Legacy));
         let env = crate::infra::env::system();
         let lease = crate::infra::run_lock::RestartLease::new(
             root,
             env.as_ref(),
             crate::infra::platform::Platform::detect(),
-            continuation.is_some(),
+            mode,
         )?;
         command.env(REEXEC_GUARD_VAR, lease.marker()?);
         Ok((lease, continuation))

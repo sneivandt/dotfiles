@@ -280,9 +280,9 @@ installation, AUR setup, links, and permissions. It is not a narrower retry.
 ### Repository is locked
 
 Update, remove, and check lock the main checkout, selected Git overlay, and
-home, including during previews. Linked worktrees share a lock through their
-common Git directory. Runs from separate checkouts report contention when a shared Git
-overlay is in use.
+home, including during previews. Linked worktrees and aliases of the same Git
+metadata share an account-local lock. Separate checkouts report contention
+when a run from the same OS account is using their shared overlay.
 Independent clones targeting the same home also share a home lock at
 `~/.local/state/dotfiles/home-run.lock` on Linux or
 `~/AppData/Local/dotfiles/home-run.lock` on Windows. State-directory environment

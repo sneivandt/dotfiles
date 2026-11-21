@@ -141,7 +141,12 @@ case "$url" in
     exit "${WRAPPER_RELEASE_STATUS:-0}"
     ;;
   */releases/download/v9.9.9/checksums.sha256)
-    [ ! -e "$DOTFILES_ROOT/bin/dotfiles" ] || {
+    cached="$DOTFILES_ROOT/bin/dotfiles"
+    if [ "${WRAPPER_EMPTY_CACHE:-0}" = 1 ]; then
+      [ -f "$cached" ] && [ ! -s "$cached" ]
+    else
+      [ ! -e "$cached" ]
+    fi || {
       echo "bootstrap published its binary before verification" >&2
       exit 1
     }
@@ -179,6 +184,11 @@ EOF
     wrapper_path="$tmpdir/fake-bin"
   fi
 
+  if [ "${WRAPPER_EMPTY_CACHE:-0}" = 1 ]; then
+    mkdir "$tmpdir/bin"
+    : > "$tmpdir/bin/dotfiles"
+    chmod +x "$tmpdir/bin/dotfiles"
+  fi
   status=0
   PATH="$wrapper_path" DOTFILES_SKIP_ATTESTATION=1 \
     "$tmpdir/dotfiles.sh" update -p desktop -n > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
@@ -225,6 +235,47 @@ EOF
   fi
 
   log_verbose "✓ Real wrapper bootstrap downloads, verifies, chmods, and forwards arguments"
+)}
+
+test_wrapper_recovers_truncated_cli()
+{(
+  log_stage "Testing recovery from an empty executable CLI"
+  fixture=$(mktemp -d)
+  trap 'rm -rf "$fixture"' EXIT
+  cp "$DIR/dotfiles.sh" "$fixture/dotfiles.sh"
+  mkdir "$fixture/bin"
+  installed="$fixture/bin/dotfiles"
+  backup="$fixture/bin/.dotfiles.old"
+  journal="$fixture/bin/.dotfiles.update-state"
+
+  : > "$installed"
+  : > "$backup"
+  chmod +x "$installed" "$backup"
+  printf x > "$journal"
+  if "$fixture/dotfiles.sh" --version > "$fixture/stdout" 2> "$fixture/stderr"; then
+    log_error "Recovery accepted an empty executable"
+  fi
+  [ -s "$journal" ] && [ ! -s "$installed" ] && [ ! -s "$backup" ] ||
+    log_error "Failed recovery modified the journal or either image"
+  grep -q 'Neither the installed CLI nor its backup starts' "$fixture/stderr" ||
+    log_error "Failed recovery was not explained"
+
+  printf '#!/bin/sh\nprintf "dotfiles v9.9.9\\n"\n' > "$backup"
+  [ "$("$fixture/dotfiles.sh" --version 2> "$fixture/stderr")" = 'dotfiles v9.9.9' ] ||
+    log_error "Recovery did not run the restored CLI"
+  [ ! -e "$backup" ] && [ ! -s "$journal" ] ||
+    log_error "Successful recovery did not restore the previous image and clear the journal"
+  grep -q '^Restored previous CLI' "$fixture/stderr" ||
+    log_error "Successful recovery was not reported"
+
+  rm "$installed" "$journal"
+  : > "$backup"
+  chmod +x "$backup"
+  if "$fixture/dotfiles.sh" --version > "$fixture/stdout" 2> "$fixture/stderr"; then
+    log_error "Legacy recovery accepted an empty backup"
+  fi
+  [ -f "$backup" ] && [ ! -e "$installed" ] ||
+    log_error "Failed legacy recovery modified either image"
 )}
 
 test_wrapper_release_metadata_formats()
@@ -784,6 +835,8 @@ case "$0" in
     test_wrapper_uses_local_binary
     test_wrapper_forwarded_args
     test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    WRAPPER_EMPTY_CACHE=1 test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    test_wrapper_recovers_truncated_cli
     test_wrapper_release_metadata_formats
     test_wrapper_failed_bootstrap_preserves_cached_binary
     test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args

@@ -660,8 +660,14 @@ fn wrappers_only_bootstrap_and_forward() {
         .parent()
         .expect("cli should be inside repository root");
     let wrappers = [
-        ("dotfiles.sh", "exec \"$BINARY\" \"$@\""),
-        ("dotfiles.ps1", "& $Binary @CliArgs"),
+        ("dotfiles.sh", &["exec \"$BINARY\" \"$@\""][..]),
+        (
+            "dotfiles.ps1",
+            &[
+                "Invoke-DotfilesCli -Path $Binary -Arguments $CliArgs",
+                "& $Path @Arguments",
+            ][..],
+        ),
     ];
     let forbidden = [
         "pacman ",
@@ -681,10 +687,11 @@ fn wrappers_only_bootstrap_and_forward() {
     for (wrapper, forwarding) in wrappers {
         let path = repo_root.join(wrapper);
         let source = std::fs::read_to_string(&path).expect("read wrapper");
-        if !source
-            .lines()
-            .any(|line| !line.trim_start().starts_with('#') && line.contains(forwarding))
-        {
+        if !forwarding.iter().all(|pattern| {
+            source
+                .lines()
+                .any(|line| !line.trim_start().starts_with('#') && line.contains(pattern))
+        }) {
             violations.push(format!(
                 "{} does not preserve the expected argument-forwarding boundary",
                 path.display()

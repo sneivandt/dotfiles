@@ -230,6 +230,10 @@ has_usable_cache_entry() {
 
 # Download the bootstrap binary if needed.
 download_binary() {(
+  if ! command -v flock >/dev/null 2>&1; then
+    echo "ERROR: flock is required to publish the downloaded CLI." >&2
+    exit 1
+  fi
   REPO=$(resolve_release_repo) || exit 1
   _arch="$(uname -m)"
   case "$_arch" in

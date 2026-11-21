@@ -178,7 +178,7 @@ EOF
   wrapper_path="$tmpdir/fake-bin:$PATH"
   if [ "${WRAPPER_DOWNLOADER:-curl}" = wget ]; then
     mv "$tmpdir/fake-bin/curl" "$tmpdir/fake-bin/wget"
-    for command_name in awk cat chmod dirname mkdir mv readlink rm rmdir sha256sum uname grep; do
+    for command_name in awk cat chmod dirname flock mkdir mv readlink rm rmdir sha256sum uname grep; do
       ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
     done
     wrapper_path="$tmpdir/fake-bin"
@@ -190,6 +190,18 @@ EOF
     chmod +x "$tmpdir/bin/dotfiles"
   fi
   status=0
+  if [ "${WRAPPER_BLOCK_PUBLISH:-0}" = 1 ]; then
+    mkdir -p "$tmpdir/bin"
+    (
+      flock -xn 8 || exit 2
+      PATH="$wrapper_path" DOTFILES_SKIP_ATTESTATION=1 \
+        "$tmpdir/dotfiles.sh" update -p desktop -n
+    ) 8<>"$tmpdir/bin/.dotfiles.update-state" > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
+    [ "$status" -eq 1 ] || log_error "Bootstrap published while the update lock was held"
+    grep -q 'CLI update in progress' "$tmpdir/stderr" || log_error "Missing publication lock error"
+    [ ! -e "$tmpdir/bin/dotfiles" ] || log_error "Locked bootstrap installed a binary"
+    return 0
+  fi
   PATH="$wrapper_path" DOTFILES_SKIP_ATTESTATION=1 \
     "$tmpdir/dotfiles.sh" update -p desktop -n > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
   if [ "${WRAPPER_EXPECT_RELEASE_ERROR:-0}" = 1 ]; then
@@ -670,7 +682,7 @@ EOF
   # Missing gh: fail closed, unless provenance is explicitly bypassed.
   rm -rf "${tmpdir:?}/bin"
   rm -f "$tmpdir/fake-bin/gh"
-  for command_name in awk cat chmod dirname mkdir mv readlink rm rmdir sha256sum uname grep; do
+  for command_name in awk cat chmod dirname flock mkdir mv readlink rm rmdir sha256sum uname grep; do
     ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
   done
   if PATH="$tmpdir/fake-bin" DOTFILES_SKIP_ATTESTATION=0 \
@@ -742,7 +754,7 @@ EOF
     [ -x "$fixture/bin/dotfiles" ] || log_error "$failure removed the concurrent binary"
     [ "$(cat "$fixture/bin/dotfiles")" = "$expected" ] ||
       log_error "$failure modified the concurrent binary"
-    [ "$(find "$fixture/bin" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ] ||
+    [ "$(find "$fixture/bin" -mindepth 1 -maxdepth 1 ! -name .dotfiles.update-state | wc -l)" -eq 1 ] ||
       log_error "$failure leaked staging files"
     if [ "$failure" = publication ]; then
       grep -q 'changed during bootstrap' "$fixture/stderr" || log_error "Wrong publication failure"
@@ -837,6 +849,7 @@ case "$0" in
     test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
     WRAPPER_BOOTSTRAP_SUFFIX=' path with \ backslash' test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
     WRAPPER_EMPTY_CACHE=1 test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    WRAPPER_BLOCK_PUBLISH=1 test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
     test_wrapper_recovers_truncated_cli
     test_wrapper_release_metadata_formats
     test_wrapper_failed_bootstrap_preserves_cached_binary

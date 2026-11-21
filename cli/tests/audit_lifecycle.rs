@@ -1310,12 +1310,12 @@ fn historical_editor_links_migrate_or_materialize_without_claiming_unrelated_ent
             // A symlink invented outside the checkout does not establish ownership.
             let alias = home.path().join("checkout-alias");
             std::os::unix::fs::symlink(repo.root_path(), &alias).unwrap();
-            let unrelated = alias.join(old.strip_prefix(repo.root_path()).unwrap());
+            let aliased_referent = alias.join(old.strip_prefix(repo.root_path()).unwrap());
             std::fs::remove_file(&target).unwrap();
-            link(&unrelated, &target, directory);
+            link(&aliased_referent, &target, directory);
             output(&mut run("update"), false);
             output(&mut run("remove"), true);
-            assert_link(&unrelated);
+            assert_link(&aliased_referent);
         }
     }
 }

@@ -138,6 +138,27 @@ pub(crate) fn validate_entries(files: &[SystemFile]) -> Result<()> {
     Ok(())
 }
 
+/// Reject active targets that cannot both exist as regular files.
+pub(crate) fn validate_target_overlaps(files: &[SystemFile]) -> Result<()> {
+    let targets: std::collections::BTreeSet<_> =
+        files.iter().map(|file| file.target.as_path()).collect();
+    for file in files {
+        if let Some(parent) = file
+            .target
+            .ancestors()
+            .skip(1)
+            .find(|path| targets.contains(path))
+        {
+            bail!(
+                "system file target overlap: {} is a parent directory of {}",
+                parent.display(),
+                file.target.display()
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Validate tracked fragments without reading their installed destinations.
 #[must_use]
 pub fn validate(files: &[SystemFile]) -> Vec<crate::infra::config::Diagnostic> {

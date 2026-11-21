@@ -282,21 +282,26 @@ download_binary() {(
     echo "ERROR: Downloaded CLI did not start as dotfiles $tag; it was not installed." >&2
     exit 1
   fi
-  if [ "$repair_cached" = true ]; then
-    # An empty or non-executable cache entry may be repaired, but never downgrade a
-    # working CLI that arrived while this bootstrap was downloading.
-    if has_usable_cache_entry; then
-      echo "ERROR: CLI cache changed during bootstrap; retry." >&2
+  (
+    flock -xn 9 || { echo "ERROR: CLI update in progress; retry shortly." >&2; exit 1; }
+    if [ -s "$state" ]; then
+      echo "ERROR: CLI update recovery is pending; retry." >&2
       exit 1
     fi
-    mv -fT -- "$staged_binary" "$BINARY"
-  else
-    mv -nT -- "$staged_binary" "$BINARY"
-    if [ -e "$staged_binary" ]; then
-      echo "ERROR: CLI cache changed during bootstrap; retry." >&2
-      exit 1
+    if [ "$repair_cached" = true ]; then
+      if has_usable_cache_entry; then
+        echo "ERROR: CLI cache changed during bootstrap; retry." >&2
+        exit 1
+      fi
+      mv -fT -- "$staged_binary" "$BINARY"
+    else
+      mv -nT -- "$staged_binary" "$BINARY"
+      if [ -e "$staged_binary" ]; then
+        echo "ERROR: CLI cache changed during bootstrap; retry." >&2
+        exit 1
+      fi
     fi
-  fi
+  ) 9<>"$state"
 
   echo "Downloaded · checksum verified · $BINARY" >&2
 )}

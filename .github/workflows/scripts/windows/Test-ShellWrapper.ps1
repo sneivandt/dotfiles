@@ -471,13 +471,14 @@ sys.exit(7)
             Set-Variable -Name PSNativeCommandArgumentPassing -Value Legacy -Scope Local
         }
         $arguments = @('update', '--dry-run', '--root', '.', '--overlay', '../overlay "dir"', '', '--BUILD', '--', 'literal value', '--build', '')
-        $modes = @('cached', 'build', 'bootstrap')
+        $modes = @('cached', 'build', 'bootstrap', 'empty-cache')
         if ($IsLinux) { $modes += @('non-executable', 'legacy-backup') }
         foreach ($mode in $modes) {
             $beforeDownloads = $downloadCapture.Count
             $wrapperArguments = $arguments
             if ($mode -eq 'build') { $wrapperArguments = @('--build') + $arguments }
             if ($mode -eq 'bootstrap') { Remove-Item -LiteralPath $binary }
+            if ($mode -eq 'empty-cache') { [IO.File]::WriteAllText($binary, '') }
             if ($mode -eq 'non-executable') { & chmod a-x $binary }
             if ($mode -eq 'legacy-backup') { [IO.File]::Move($binary, $backup) }
             $output = @(& $wrapper @wrapperArguments)
@@ -502,7 +503,7 @@ sys.exit(7)
             } elseif (-not (Test-Path -LiteralPath $binary)) {
                 throw "$mode did not preserve the cached binary"
             }
-            $expectedDownloads = $beforeDownloads + [int]($mode -in @('bootstrap', 'non-executable'))
+            $expectedDownloads = $beforeDownloads + [int]($mode -in @('bootstrap', 'empty-cache', 'non-executable'))
             if ($downloadCapture.Count -ne $expectedDownloads) { throw "$mode used the wrong bootstrap path" }
         }
         if ([System.IO.File]::ReadAllText((Join-Path $repo 'cargo-cwd')) -ne (Join-Path $repo 'cli')) {
@@ -560,17 +561,23 @@ sys.exit(7)
             throw 'Bootstrap published or leaked a verified binary that did not start'
         }
         $env:WRAPPER_TEST_BAD_BINARY = '0'
-        $env:WRAPPER_TEST_GH_EXIT = 'publish'
-        $rejected = $false
-        try {
-            & $wrapper --version | Out-Null
-        } catch {
-            if ($_ -notmatch 'Failed to install downloaded binary') { throw }
-            $rejected = $true
+        foreach ($repair in @($false, $true)) {
+            if ($repair) {
+                [IO.File]::WriteAllText($binary, '')
+                if ($IsLinux) { & chmod +x $binary }
+            }
+            $env:WRAPPER_TEST_GH_EXIT = 'publish'
+            $rejected = $false
+            try {
+                & $wrapper --version | Out-Null
+            } catch {
+                if ($_ -notmatch 'Failed to install downloaded binary') { throw }
+                $rejected = $true
+            }
+            if (-not $rejected -or [System.IO.File]::ReadAllText($binary) -cne 'concurrent fixture' -or
+                (Test-Path -LiteralPath $download)) { throw 'Bootstrap overwrote a concurrently installed CLI' }
+            Remove-Item -LiteralPath $binary
         }
-        if (-not $rejected -or [System.IO.File]::ReadAllText($binary) -cne 'concurrent fixture' -or
-            (Test-Path -LiteralPath $download)) { throw 'Bootstrap overwrote a concurrently installed CLI' }
-        Remove-Item -LiteralPath $binary
         $env:WRAPPER_TEST_GH_EXIT = 'throw'
         $rejected = $false
         try {

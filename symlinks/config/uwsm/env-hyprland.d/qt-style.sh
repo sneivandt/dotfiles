@@ -1,1 +1,2 @@
+# shellcheck shell=sh
 export QT_STYLE_OVERRIDE="${QT_STYLE_OVERRIDE:-kvantum}"

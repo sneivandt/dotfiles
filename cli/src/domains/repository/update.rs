@@ -33,6 +33,17 @@ pub(crate) fn ensure_recovery_clear(root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Find an interrupted merge in an explicit Git checkout.
+pub(crate) fn pending_recovery_marker(root: &Path) -> Result<Option<std::path::PathBuf>> {
+    if crate::infra::fs::symlink_metadata_optional(&root.join(".git"), "checking checkout .git")?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let marker = recovery::MergeMarker::for_checkout(root)?;
+    Ok(marker.pending_path()?.map(Path::to_path_buf))
+}
+
 /// Shared indication that the checkout changed and the command must restart.
 #[derive(Debug, Clone, Default)]
 pub struct RepositoryUpdateSignal {

@@ -130,6 +130,24 @@ impl CommandRunner {
         Self::from_startup(runtime, log, token, startup)
     }
 
+    pub(super) fn check_checkout_recovery(&self) -> Result<()> {
+        use crate::domains::repository::update::pending_recovery_marker;
+
+        let mut pending = false;
+        for root in std::iter::once(self.ctx.root()).chain(self.ctx.overlay()) {
+            if let Some(marker) = pending_recovery_marker(root)? {
+                self.log.warn(format!(
+                    "Unverified repository merge in {}. Inspect Git status and diffs before clearing the recovery marker {}",
+                    root.display(),
+                    marker.display()
+                ));
+                pending = true;
+            }
+        }
+        anyhow::ensure!(!pending, "the checkout needs merge recovery");
+        Ok(())
+    }
+
     fn acquire_run_lock(
         runtime: &RuntimePolicy<'_>,
         root: &Path,

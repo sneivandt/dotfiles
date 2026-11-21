@@ -94,7 +94,9 @@ Git directory. It clears the marker only after verifying the new HEAD and index.
 If the merge fails, is cancelled, or the process dies, `update` and `remove`
 stop when the main checkout or the selected overlay is marked. They check
 before binary self-update or loading task configuration, even with `--only`,
-`--no-repo-update`, or `--dry-run`. You can still inspect retained runs with
+`--no-repo-update`, or `--dry-run`. `dotfiles check` still inspects the
+configuration and reports that recovery is pending. It exits with an error
+while a selected checkout is marked. You can inspect retained runs with
 `dotfiles log`. A different linked worktree is not marked. An ordinary dirty
 checkout with no marker keeps its usual behavior.
 

@@ -25,9 +25,11 @@ pub fn run(
 ) -> Result<()> {
     super::record_scope(log, opts, false, false);
     let runner = super::CommandRunner::new(runtime, log, token)?;
+    let recovery_result = runner.check_checkout_recovery();
     let tasks = validation_tasks(runner.config_handle());
     let filtered = apply_task_filters(&tasks, &[], &opts.only, &opts.skip, false, log)?;
-    runner.run(filtered)
+    runner.run(filtered)?;
+    recovery_result
 }
 
 /// Build the complete task set used by the `check` command.

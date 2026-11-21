@@ -84,10 +84,15 @@ impl MergeMarker {
         Ok(Self(repo.path().join("dotfiles-merge-in-progress")))
     }
 
+    pub(super) fn pending_path(&self) -> Result<Option<&Path>> {
+        Ok(
+            crate::infra::fs::symlink_metadata_optional(&self.0, "checking recovery marker")?
+                .map(|_| self.0.as_path()),
+        )
+    }
+
     pub(super) fn ensure_clear(&self, root: &Path) -> Result<()> {
-        if crate::infra::fs::symlink_metadata_optional(&self.0, "checking recovery marker")?
-            .is_some()
-        {
+        if self.pending_path()?.is_some() {
             anyhow::bail!("Unverified repository merge. {}", self.recovery_steps(root));
         }
         Ok(())

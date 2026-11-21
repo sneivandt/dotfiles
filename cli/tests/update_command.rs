@@ -139,11 +139,20 @@ fn selected_overlay_marker_precedes_config_and_blocks_managed_removal() {
         .unwrap()
         .set_str("dotfiles.overlay", overlay.path().to_str().unwrap())
         .unwrap();
-    let check = run("check", "config-diagnostics").output().unwrap();
+    let check = run("check", "config-diagnostics")
+        .arg("--no-symbols")
+        .output()
+        .unwrap();
+    assert!(!check.status.success(), "marked checkout: {check:?}");
+    let stdout = String::from_utf8_lossy(&check.stdout);
+    let stderr = String::from_utf8_lossy(&check.stderr);
     assert!(
-        check.status.success(),
-        "inspection of marked checkout: {check:?}"
+        stdout.contains("PASSED Configuration diagnostics"),
+        "{check:?}"
     );
+    assert!(stderr.contains("Unverified repository merge"), "{check:?}");
+    assert!(stderr.contains(marker.to_str().unwrap()), "{check:?}");
+    assert!(marker.is_file());
     std::fs::write(root.join("conf/symlinks.toml"), "[broken").unwrap();
     blocked(&mut run("update", "symlinks"));
     blocked(

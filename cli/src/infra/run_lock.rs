@@ -83,7 +83,7 @@ impl CommandLocks {
         let home_path = home_lock_path(home, platform)?;
         let home_lock = if RestartLease::covers_home(marker) {
             anyhow::ensure!(
-                is_held(&home_path)?,
+                is_run_held(&home_path)?,
                 "restart has no active home lock. Retry the command"
             );
             None
@@ -127,7 +127,7 @@ impl CommandLocks {
         if let Some((root, marker)) = restart {
             verify_restart(root, env, platform, marker)?;
             anyhow::ensure!(
-                is_held(&path)?,
+                is_run_held(&path)?,
                 "restart has no active lock for overlay {}. Retry the command",
                 overlay.display()
             );
@@ -231,6 +231,19 @@ fn is_held(path: &Path) -> Result<bool> {
     }
 }
 
+fn is_run_held(path: &Path) -> Result<bool> {
+    if is_held(path)? {
+        return Ok(true);
+    }
+    let continuation = continuation_path(path);
+    if crate::infra::fs::symlink_metadata_optional(&continuation, "inspect continuation lock")?
+        .is_none()
+    {
+        return Ok(false);
+    }
+    is_held(&continuation)
+}
+
 pub(crate) fn verify_restart(
     root: &Path,
     env: &dyn Env,
@@ -238,8 +251,13 @@ pub(crate) fn verify_restart(
     marker: &std::ffi::OsStr,
 ) -> Result<()> {
     let lock = repository_state_path(root, env, platform, LOCK_NAME)?;
+    let held = if RestartLease::covers_home(marker) {
+        is_run_held(&lock)?
+    } else {
+        is_held(&lock)?
+    };
     anyhow::ensure!(
-        is_held(&lock)?,
+        held,
         "restart has no active repository lock. Retry the command"
     );
     // Existing release binaries pass a literal 1. Match their recorded owner
@@ -694,6 +712,7 @@ mod tests {
         middle
             .protect_overlay(&overlay, &env, platform, "update", None)
             .unwrap();
+        drop((parent, parent_lease));
         let middle_lease = RestartLease::new(&root, &env, platform).unwrap();
 
         // Repository synchronization restarts again with the selected overlay.
@@ -703,7 +722,7 @@ mod tests {
         child
             .protect_overlay(&overlay, &env, platform, "update", Some((&root, marker)))
             .unwrap();
-        drop((parent, parent_lease, middle, middle_lease));
+        drop((middle, middle_lease));
 
         for (repo, destination) in [
             (&root, &another_home),
@@ -775,7 +794,9 @@ mod tests {
                 .to_string()
                 .contains("no active repository lock")
         );
-        let _lock = RunLock::acquire(root.path(), &env, platform, "update").unwrap();
+        let path = repository_state_path(root.path(), &env, platform, LOCK_NAME).unwrap();
+        let _continuation = hold_continuation(&path).unwrap();
+        verify_restart(root.path(), &env, platform, &marker).unwrap();
         drop(lease);
         assert!(verify_restart(root.path(), &env, platform, &marker).is_err());
     }

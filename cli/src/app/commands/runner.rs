@@ -9,7 +9,7 @@ use crate::app::config::Config;
 use crate::app::config::profiles;
 use crate::app::config::store::ConfigStore;
 use crate::domains::overlay::resolution::{self as overlay_resolution, OverlaySource};
-use crate::domains::repository::update::ensure_recovery_clear;
+use crate::domains::repository::update::{CheckoutSnapshot, ensure_recovery_clear};
 use crate::engine::{Context, Task, TaskId};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::{Log, LogEvent, Logger};
@@ -74,6 +74,13 @@ impl CommandStartup {
             ensure_recovery_clear(overlay)?;
         }
         Ok(())
+    }
+
+    pub(super) fn checkout_snapshot(&self) -> Result<CheckoutSnapshot> {
+        CheckoutSnapshot::capture(
+            &self.root,
+            self.overlay.as_ref().map(|(path, _)| path.as_path()),
+        )
     }
 
     fn protect_overlay(&mut self, runtime: &RuntimePolicy<'_>, log: &Logger) -> Result<()> {
@@ -343,9 +350,18 @@ impl CommandRunner {
         &'a self,
         tasks: impl IntoIterator<Item = &'a dyn Task>,
         boundary: TaskId,
+        checkout: CheckoutSnapshot,
         decide: impl FnOnce() -> BoundaryAction + 'a,
         action: impl FnOnce() + 'a,
     ) -> Result<()> {
+        checkout.ensure_current()?;
+        let decide = move || {
+            let decision = decide();
+            if matches!(decision, BoundaryAction::Continue) {
+                checkout.ensure_current()?;
+            }
+            Ok(decision)
+        };
         RunCoordinator::new(&self.ctx, &self.log)
             .execute(ExecutionPlan::with_restart(tasks, boundary, decide, action))
     }

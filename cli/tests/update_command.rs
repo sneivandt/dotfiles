@@ -1156,6 +1156,112 @@ fn assert_partial_checkout_not_applied(repo: &std::path::Path, home: &std::path:
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn checkout_changed_before_repository_discovery_rejects_the_stale_configuration() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let path = std::env::var_os("PATH").unwrap();
+    let real_git = std::env::split_paths(&path)
+        .find_map(|dir| dir.join("git").canonicalize().ok())
+        .unwrap();
+    for change_overlay in [false, true] {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("main");
+        let overlay = fixture.path().join("overlay");
+        let home = fixture.path().join("home");
+        let bin = fixture.path().join("bin");
+        for directory in [&home, &bin] {
+            std::fs::create_dir(directory).unwrap();
+        }
+        common::setup_minimal_repo(&root);
+        std::fs::create_dir_all(overlay.join("conf")).unwrap();
+        let changed = if change_overlay { &overlay } else { &root };
+        std::fs::create_dir_all(changed.join("symlinks")).unwrap();
+        let original = "[base]\nsymlinks = [{ source = 'original', target = '.fixture' }]\n";
+        std::fs::write(changed.join("conf/symlinks.toml"), original).unwrap();
+        std::fs::write(changed.join("symlinks/original"), "old contents").unwrap();
+        std::fs::write(changed.join("symlinks/refreshed"), "fresh contents").unwrap();
+        std::fs::write(overlay.join("tracked"), "initial").unwrap();
+        for (checkout, remote) in [(&root, "main-origin"), (&overlay, "overlay-origin")] {
+            initialize_local_remote(fixture.path(), checkout, remote);
+        }
+        let publisher = fixture.path().join("publish");
+        let remote = if change_overlay {
+            "overlay-origin"
+        } else {
+            "main-origin"
+        };
+        git(fixture.path(), &["clone", remote, "publish"]);
+        std::fs::write(
+            publisher.join("conf/symlinks.toml"),
+            original.replace("original", "refreshed"),
+        )
+        .unwrap();
+        git(&publisher, &["commit", "-am", "change desired symlink"]);
+        git(&publisher, &["push", "origin", "main"]);
+        let wrapper = bin.join("git");
+        std::fs::write(
+            &wrapper,
+            r#"#!/bin/sh
+if [ "$1" = symbolic-ref ] && [ "$PWD" -ef "$FIXTURE_CHECKOUT" ]; then
+    "$FIXTURE_GIT" fetch origin main || exit $?
+    "$FIXTURE_GIT" merge --ff-only origin/main >&2 || exit $?
+fi
+exec "$FIXTURE_GIT" "$@"
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let fixture_path =
+            std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
+        let update = |sync| {
+            common::isolated_cli_command(
+                &root,
+                &home,
+                Some(&overlay),
+                "update",
+                if sync {
+                    "repository,symlinks"
+                } else {
+                    "symlinks"
+                },
+                sync,
+            )
+        };
+        let stale = update(true)
+            .env("FIXTURE_CHECKOUT", changed)
+            .env("FIXTURE_GIT", &real_git)
+            .env("PATH", fixture_path)
+            .output()
+            .unwrap();
+        assert!(!stale.status.success(), "{stale:?}");
+        assert!(
+            String::from_utf8_lossy(&stale.stderr)
+                .contains("Git checkout changed while preparing tasks"),
+            "{stale:?}"
+        );
+        assert_eq!(
+            git(changed, &["rev-parse", "HEAD"]),
+            git(&publisher, &["rev-parse", "HEAD"]),
+        );
+        assert!(std::fs::symlink_metadata(home.join(".fixture")).is_err());
+        // A deliberately dirty checkout still works when its committed inputs
+        // remain stable and the user requests a scoped update.
+        std::fs::write(overlay.join("tracked"), "local edit").unwrap();
+        let retry = update(false).output().unwrap();
+        assert!(retry.status.success(), "{retry:?}");
+        assert_eq!(
+            std::fs::read_to_string(home.join(".fixture")).unwrap(),
+            "fresh contents"
+        );
+        assert_eq!(
+            std::fs::read_to_string(overlay.join("tracked")).unwrap(),
+            "local edit"
+        );
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn repository_merge_process_death_only_blocks_the_affected_worktree() {
@@ -1406,15 +1512,7 @@ test -f "$HOME/proceed" && cat revision > "$HOME/result"
     .unwrap();
     std::fs::write(overlay.join("revision"), "original").unwrap();
     for (checkout, remote) in [(&root, "main-origin"), (&overlay, "overlay-origin")] {
-        git(fixture.path(), &["init", "--bare", "-b", "main", remote]);
-        git(checkout, &["init", "-b", "main"]);
-        git(checkout, &["add", "."]);
-        git(checkout, &["commit", "-m", "initial"]);
-        git(
-            checkout,
-            &["remote", "add", "origin", &format!("../{remote}")],
-        );
-        git(checkout, &["push", "-u", "origin", "main"]);
+        initialize_local_remote(fixture.path(), checkout, remote);
     }
     let other = fixture.path().join("other");
     git(fixture.path(), &["clone", "main-origin", "other"]);
@@ -1829,6 +1927,19 @@ fn repository_update_isolates_checkout_and_honors_system_git_configuration() {
         assert!(!unrelated.join(".git/FETCH_HEAD").exists());
         assert!(!unrelated.join("new-file").exists());
     }
+}
+
+#[cfg(unix)]
+fn initialize_local_remote(fixture: &std::path::Path, checkout: &std::path::Path, name: &str) {
+    git(fixture, &["init", "--bare", "-b", "main", name]);
+    git(checkout, &["init", "-b", "main"]);
+    git(checkout, &["add", "."]);
+    git(checkout, &["commit", "-m", "initial"]);
+    git(
+        checkout,
+        &["remote", "add", "origin", &format!("../{name}")],
+    );
+    git(checkout, &["push", "-u", "origin", "main"]);
 }
 
 fn git(root: &std::path::Path, args: &[&str]) -> String {

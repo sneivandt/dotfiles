@@ -18,6 +18,7 @@ mod recovery;
 use apply::apply_repository_updates;
 use discovery::{checked_repositories, dry_run_repositories};
 use models::{CheckedRepository, RepositorySetReadiness};
+pub(crate) use recovery::CheckoutSnapshot;
 
 #[cfg(test)]
 use self::discovery::worktree_has_local_changes;

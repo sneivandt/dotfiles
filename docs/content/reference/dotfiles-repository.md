@@ -28,8 +28,8 @@ the task unmet. It does not reset or rebase the branch. Other branch-query error
 failures.
 
 Apply uses Git 2.41 or later to fetch each upstream and fast-forward to the commit
-reported by that fetch. If the local branch or commit changes during the fetch,
-review the checkout and retry. A local file that would be overwritten blocks the merge,
+reported by that fetch. If the local branch or commit changes while Dotfiles is
+preparing tasks, review the checkout and retry. A local file that would be overwritten blocks the merge,
 including a file Git normally ignores. A successfully changed checkout triggers
 the guarded [configuration
 restart](../development/architecture.md#repository-updates-are-a-restart-boundary) before later tasks

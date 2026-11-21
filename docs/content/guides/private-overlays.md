@@ -152,6 +152,11 @@ and error output are terminals. The prompt applies to the explicit flag, not eve
 of a saved overlay. Prefer a stable primary checkout for an unattended overlay;
 an ordinary `.git` directory does not need that confirmation.
 
+For `update`, `remove`, and `check`, Dotfiles needs writable lock files in a
+Git overlay's metadata directory to coordinate access with other runs. The lock is
+also used during previews and when repository synchronization is disabled. An
+overlay directory without Git metadata can be read from a read-only location.
+
 ## Merge rules
 
 An active overlay entry replaces a main entry when both manage the same

@@ -20,6 +20,7 @@ pub fn run(
 ) -> Result<()> {
     super::record_scope(log, &opts.filters, false, false);
     let startup = super::runner::CommandStartup::for_mutation(runtime, log)?;
+    let checkout_snapshot = startup.checkout_snapshot()?;
     let runner = super::CommandRunner::from_startup(runtime, log, token, startup)?;
     let tasks = runner.remove_tasks(opts.restore_missing);
     let overlay_tasks = runner.overlay_script_removal_tasks();
@@ -31,5 +32,6 @@ pub fn run(
         false,
         log,
     )?;
+    checkout_snapshot.ensure_current()?;
     runner.run(filtered)
 }

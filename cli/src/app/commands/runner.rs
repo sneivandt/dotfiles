@@ -62,7 +62,12 @@ impl CommandStartup {
         // recovery check before that restart, then check again with the lock.
         if super::reexec::should_check_self_update(runtime) {
             startup.ensure_overlay_recovery_clear()?;
-            super::reexec::prepare_self_update(runtime, &startup.root, log)?;
+            super::reexec::prepare_self_update(
+                runtime,
+                &startup.root,
+                startup.run_lock.as_ref(),
+                log,
+            )?;
         }
         startup.protect_overlay(runtime, log)?;
         startup.ensure_overlay_recovery_clear()?;
@@ -107,7 +112,7 @@ impl CommandStartup {
 /// Shared orchestration helper that combines setup and task execution.
 #[derive(Debug)]
 pub struct CommandRunner {
-    _run_lock: Option<crate::infra::run_lock::CommandLocks>,
+    run_lock: Option<crate::infra::run_lock::CommandLocks>,
     ctx: Context,
     log: Arc<Logger>,
     store: ConfigStore,
@@ -230,7 +235,7 @@ impl CommandRunner {
         let store = ConfigStore::from_config(config);
         let ctx = Self::context(runtime, log, token, root, overlay, platform)?;
         Ok(Self {
-            _run_lock: run_lock,
+            run_lock,
             ctx,
             log: Arc::clone(log),
             store,
@@ -357,6 +362,10 @@ impl CommandRunner {
     /// Returns an error if one or more tasks fail.
     pub fn run<'a>(&self, tasks: impl IntoIterator<Item = &'a dyn Task>) -> Result<()> {
         RunCoordinator::new(&self.ctx, &self.log).execute(ExecutionPlan::single(tasks))
+    }
+
+    pub(super) const fn run_lock(&self) -> Option<&crate::infra::run_lock::CommandLocks> {
+        self.run_lock.as_ref()
     }
 
     /// Execute tasks and restart after a dependency boundary when requested.
@@ -761,7 +770,7 @@ mod root_tests {
                 config.overlay.clone(),
             );
             let runner = CommandRunner {
-                _run_lock: None,
+                run_lock: None,
                 ctx,
                 log,
                 store: ConfigStore::from_config(config),

@@ -125,6 +125,7 @@ pub fn run(
                 &config.profile.name,
                 config.overlay.as_deref(),
                 &exclusions,
+                runner.run_lock(),
                 log,
             )
         },

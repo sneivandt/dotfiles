@@ -3,6 +3,7 @@
 use anyhow::{Context as _, Result};
 
 use crate::infra::logging::Output;
+use crate::infra::run_lock::CommandLocks;
 
 use super::RuntimePolicy;
 use crate::infra::logging::OutputExt as _;
@@ -21,13 +22,17 @@ pub(super) const STARTUP_TRANSITION_VAR: &str = "DOTFILES_STARTUP_TRANSITION";
 /// The updated binary is spawned as a child that inherits stdio and is waited
 /// on, so the parent retains the repository run lock until the replacement
 /// process finishes.
-pub(crate) fn re_exec(root: &std::path::Path, log: &crate::infra::logging::Logger) -> ! {
+fn re_exec(
+    root: &std::path::Path,
+    locks: Option<&CommandLocks>,
+    log: &crate::infra::logging::Logger,
+) -> ! {
     let command = build_reexec_command(
         &re_exec_path(root),
         &reexec_args(log),
         SELF_UPDATE_REEXEC_GUARD_VAR,
     );
-    run_reexec(command, root, log)
+    run_reexec(command, root, locks, log)
 }
 
 fn reexec_args(log: &dyn Output) -> Vec<std::ffi::OsString> {
@@ -46,6 +51,7 @@ fn finish_reexec(log: &dyn Output, code: i32) -> i32 {
 fn run_reexec(
     mut command: std::process::Command,
     root: &std::path::Path,
+    locks: Option<&CommandLocks>,
     log: &crate::infra::logging::Logger,
 ) -> ! {
     let mut setup = || -> Result<_> {
@@ -59,14 +65,19 @@ fn run_reexec(
         );
         // Each child verifies the immediate parent, which may own locks that
         // its predecessor did not acquire.
+        let continuation = locks
+            .map(CommandLocks::prepare_restart)
+            .transpose()?
+            .flatten();
         let env = crate::infra::env::system();
         let lease = crate::infra::run_lock::RestartLease::new(
             root,
             env.as_ref(),
             crate::infra::platform::Platform::detect(),
+            continuation.is_some(),
         )?;
         command.env(REEXEC_GUARD_VAR, lease.marker()?);
-        Ok(lease)
+        Ok((lease, continuation))
     };
     let lease = match setup() {
         Ok(lease) => lease,
@@ -123,6 +134,7 @@ pub(crate) fn re_exec_after_repository_update(
     profile: &str,
     overlay: Option<&std::path::Path>,
     exclusions: &str,
+    locks: Option<&CommandLocks>,
     log: &crate::infra::logging::Logger,
 ) -> ! {
     let exe = match std::env::current_exe() {
@@ -144,7 +156,7 @@ pub(crate) fn re_exec_after_repository_update(
         .env(REPOSITORY_OVERLAY_LOCK_VAR, "1")
         .env(REPOSITORY_EXCLUSIONS_VAR, exclusions);
     log.transition("Repository synced · restarting to load configuration");
-    run_reexec(command, root, log)
+    run_reexec(command, root, locks, log)
 }
 
 pub(super) const REPOSITORY_PROFILE_VAR: &str = "DOTFILES_RESTART_PROFILE";
@@ -167,6 +179,7 @@ pub(super) const fn should_check_self_update(runtime: &RuntimePolicy<'_>) -> boo
 pub(super) fn prepare_self_update(
     runtime: &RuntimePolicy<'_>,
     root: &std::path::Path,
+    locks: Option<&CommandLocks>,
     log: &crate::infra::logging::Logger,
 ) -> Result<()> {
     if let Some(notice) = crate::domains::dotfiles::self_update::pre_update(
@@ -176,7 +189,7 @@ pub(super) fn prepare_self_update(
         runtime.global.skip_attestation,
     )? {
         log.queue_startup_transition(notice);
-        re_exec(root, log);
+        re_exec(root, locks, log);
     }
     Ok(())
 }
@@ -236,7 +249,7 @@ mod tests {
                 command
                     .args(["--ignored", "--exact", CHILD_TEST, "--nocapture"])
                     .env(CHILD_ROLE, "output-tail");
-                run_reexec(command, &root, &log);
+                run_reexec(command, &root, None, &log);
             }
             return;
         }
@@ -291,7 +304,7 @@ mod tests {
         };
         command.stdin(std::process::Stdio::null());
         git2::Repository::init(&root).unwrap();
-        run_reexec(command, &root, &log);
+        run_reexec(command, &root, None, &log);
     }
 
     #[test]

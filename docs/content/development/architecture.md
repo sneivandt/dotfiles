@@ -147,7 +147,11 @@ the **current binary** again with the original arguments and a restart guard.
 The child reloads configuration and constructs a fresh catalog.
 
 The parent keeps its locks while waiting. The child holds continuation locks so
-another invocation cannot start if the parent exits early. The child selects
+another invocation cannot start if the parent exits early. When both processes
+support shared lock handoff, the child also retains the original lock paths
+used by older binaries. A child launched by an older self-updater can protect
+its work from invocations that recognize continuation locks if that parent
+exits early. The child selects
 tasks before removing repeated repository synchronization and skips the initial
 self-update preflight. Failure or cancellation prevents
 restart; no change means the existing snapshot remains usable. Filtering out

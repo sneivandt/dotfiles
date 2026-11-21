@@ -1585,6 +1585,21 @@ test -f "$HOME/proceed" && cat revision > "$HOME/result"
     let while_parent_alive = sync_overlay();
     parent.kill().unwrap();
     assert!(!parent.wait().unwrap().success());
+    // Older binaries attempt to lock these original files exclusively without
+    // checking the continuation files.
+    let legacy_blocked = [
+        root.join(".git/dotfiles-run.lock"),
+        home.join(".local/state/dotfiles/home-run.lock"),
+        overlay.join(".git/dotfiles-run.lock"),
+    ]
+    .map(|path| {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .unwrap();
+        matches!(file.try_lock(), Err(std::fs::TryLockError::WouldBlock))
+    });
     let while_child_alive = sync_overlay();
     let remove_while_child_alive = remove_script();
     let held_overlay = git(&overlay, &["rev-parse", "HEAD"]);
@@ -1614,6 +1629,7 @@ test -f "$HOME/proceed" && cat revision > "$HOME/result"
         );
     }
     assert_eq!(held_overlay, initial_overlay);
+    assert_eq!(legacy_blocked, [true; 3]);
     assert!(!removed_early);
     let finished_sync = sync_overlay();
     assert!(finished_sync.status.success(), "{finished_sync:?}");

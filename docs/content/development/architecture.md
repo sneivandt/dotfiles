@@ -19,6 +19,14 @@ read [Usage](../guides/commands-and-usage.md); for desired-state declarations, r
 [Adding a task](adding-a-task.md); for isolated regression fixtures, use
 [Writing tests](writing-tests.md).
 
+## Design decisions
+
+- [One update syncs the checkout and applies the machine's configuration](../guides/commands-and-usage.md#update).
+- [Home symlinks expose edits immediately, without another update](../reference/home-symlinks.md).
+- [These dotfiles are for one person's machines, not every possible setup](../guides/index.md).
+- [Changing profiles selects future work without undoing earlier updates](../guides/profiles-and-categories.md#changing-profiles-or-categories).
+- [Selecting a task with `--only` does not automatically add its dependencies](../guides/commands-and-usage.md#select-tasks).
+
 ## System view
 
 ```mermaid

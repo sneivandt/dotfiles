@@ -5,10 +5,11 @@ description: Link home-directory configuration to tracked sources, resolve exist
 
 # Home symlinks
 
-A symbolic link makes a home-directory path refer to a source in the checkout
-instead of holding a separate copy. Editing that tracked source can change
-the application's configuration immediately. This task creates those links;
-it does not merge an existing application's settings into the source.
+A symbolic link makes a home path point to a file or directory in the checkout
+instead of holding a separate copy. Once the link is installed, an edit to the
+tracked file is visible at the home path without another `dotfiles update`.
+A Git pull that changes the file has the same effect. Some applications reload
+the new contents immediately; others read them the next time they start.
 
 | Task detail | Value |
 |---|---|
@@ -24,13 +25,14 @@ it does not merge an existing application's settings into the source.
 Links sources from the declaring repository's `symlinks/` into home. Overlay entries
 retain their origin.
 
-Existing files, directories, and unrelated links are left in place and reported as
-conflicts. Back up and move them aside before applying.
+Existing files, directories, and unrelated links are left in place and reported
+as conflicts. The task doesn't merge existing application settings into the
+source. Back up and move conflicts aside before applying.
 
 Removal leaves a managed directory link in place if copying it would relocate a relative
 link that points outside the directory being copied.
 
-Linked sources stay live. On Windows, home links stay in the original user's process.
+On Windows, home links stay in the original user's process.
 The task checks file-link capability after Developer Mode; unavailable file links
 are skipped without preventing directory links or already-correct links from running.
 It also rejects Git symlink placeholders checked out as ordinary files. See

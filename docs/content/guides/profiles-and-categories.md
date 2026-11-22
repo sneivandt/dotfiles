@@ -132,6 +132,12 @@ selection error, see [Profile troubleshooting](troubleshooting.md#no-profile-sel
 
 ## Changing profiles or categories
 
+A profile tells dotfiles what to manage on this run, not what it may delete.
+**Switching from desktop to base does not uninstall desktop configuration.**
+Desktop-only packages, services, links, and settings stay in place, so you can
+choose which ones to keep. Removing a declaration likewise stops future
+management; it doesn't undo an earlier update.
+
 ### Preview a different role
 
 ```bash
@@ -141,10 +147,6 @@ dotfiles update --profile desktop --dry-run
 
 Neither command changes the saved profile. The preview still has the
 [bookkeeping and external-tool effects](commands-and-usage.md#dry-run-scope) of any dry run.
-
-**Switching from desktop to base does not uninstall desktop configuration.**
-It stops selecting desktop-only entries. Their packages, services, links, and
-settings remain. Removing a declaration has the same limitation.
 
 For a desktop-to-base transition, plan cleanup before changing the saved role:
 

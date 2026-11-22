@@ -72,11 +72,14 @@ for graph markers and structured formats.
 
 ## Update
 
-Update is the default: running the launcher without a command applies an update.
-Tasks check what is installed or configured and leave it alone when it already
-matches the configuration.
-For a targeted change, pass a task selector to `--only` and preview the
-selection. For example, to preview changes to managed symlinks:
+`dotfiles update` is the everyday command for bringing a machine in line with
+this checkout. It syncs the repository and applies the selected profile's
+packages, links, and settings in one run, so you don't have to pull first or
+remember which tasks to run afterward. Tasks leave already-correct state alone.
+Running the launcher without a command also applies an update.
+
+When you want to change just one thing, narrow the run with `--only`. For
+example, to preview changes to managed symlinks:
 
 ```sh
 dotfiles update --only symlinks --dry-run
@@ -151,9 +154,10 @@ dotfiles update --only symlinks,git-hooks --dry-run
 - `--only packages` means **all selected pacman or winget packages**, not a
   single package and not the AUR package list.
 
-**Dependencies are not included automatically.** If a required task is omitted,
-dotfiles warns and proceeds as though that prerequisite had succeeded. Use
-`--with-deps` to include prerequisites and other tasks the selection must wait for:
+**Dependencies are not included automatically.** This lets you select just
+`systemd` without also asking dotfiles to install packages. If you omit a required task, dotfiles warns
+and proceeds as though that prerequisite had succeeded. Use `--with-deps` when
+you want prerequisites and other tasks the selection must wait for:
 
 ```bash
 dotfiles list --graph update --only systemd --with-deps

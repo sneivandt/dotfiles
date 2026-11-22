@@ -19,7 +19,9 @@ engine for my Arch Linux and Windows machines, and a place to experiment with
 how coding agents can help build and maintain software, even when that means
 building more than I strictly need.
 
-This is my own setup, not a general-purpose tool.
+This is my own setup, not a general-purpose tool. If I want a different shell
+alias or editor setting, I change the tracked configuration. It doesn't need a
+new CLI option just because another machine might prefer a different default.
 
 Start with **[Getting started](getting-started.md)** to review the configuration
 and preview changes before applying anything to your machine.

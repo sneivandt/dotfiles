@@ -4,6 +4,11 @@ This repository manages Linux and Windows desired state through a Rust CLI.
 Start with the files that own the requested behavior; application configuration
 changes usually do not need engine changes.
 
+Before proposing a change in behavior, check the
+[design decisions](docs/content/development/architecture.md#design-decisions).
+If you recommend revisiting one, explain what problem the current choice causes
+and what would be lost by changing it.
+
 ## Working safely
 
 - This checkout may be the live source of home-directory symlinks. Edit tracked

@@ -8,7 +8,7 @@ use crate::domains::system::config::systemd_units::{SystemdUnit, UnitScope};
 use crate::domains::system::resources::systemd_unit::SystemdUnitResource;
 use crate::engine::{
     Context, IntrinsicState, ProcessOpts, Requirement, RequirementState, ResourceState, Task,
-    TaskMeta, TaskResult, process_requirement, process_resources,
+    TaskMeta, TaskResult, process_requirement, process_resources_with_cache,
 };
 use crate::infra::exec::{CommandSpec, OutputLog};
 use crate::infra::logging::OutputExt as _;
@@ -104,11 +104,6 @@ impl Task for ConfigureSystemd {
 
             let user_manager_available = user_manager_available(ctx, units)?;
             let graphical_session = graphical_session_active(ctx, units, user_manager_available)?;
-            let system_reload_required =
-                !crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref())
-                    && system_unit_needs_change(ctx, units);
-            reload_daemons(ctx, user_manager_available, system_reload_required)?;
-
             let executor = ctx.executor_arc();
             let retired = should_retire_nautilus_settings(units).then(|| {
                 SystemdUnitResource::retired_nautilus_settings(
@@ -117,18 +112,49 @@ impl Task for ConfigureSystemd {
                     Arc::clone(&executor),
                 )
             });
-            let resources = units.iter().map(|entry| {
-                SystemdUnitResource::from_entry(
-                    entry,
-                    Arc::clone(&executor),
-                    ctx.home(),
-                    target_manager_available(ctx, &entry.scope, user_manager_available),
-                    graphical_session,
-                )
-            });
-            process_resources(
+            let resources: Vec<_> = units
+                .iter()
+                .map(|entry| {
+                    SystemdUnitResource::from_entry(
+                        entry,
+                        Arc::clone(&executor),
+                        ctx.home(),
+                        target_manager_available(ctx, &entry.scope, user_manager_available),
+                        graphical_session,
+                    )
+                })
+                .collect();
+            let inspect_system_units =
+                !ctx.dry_run() && !crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref());
+            let mut system_units_current = inspect_system_units;
+            let system_reload_required = inspect_system_units
+                && resources
+                    .iter()
+                    .filter(|resource| resource.scope == UnitScope::System)
+                    .any(|resource| match resource.current_state() {
+                        Ok(ResourceState::Correct) => false,
+                        state => {
+                            system_units_current = false;
+                            matches!(
+                                state,
+                                Ok(ResourceState::Missing | ResourceState::Incorrect { .. })
+                            )
+                        }
+                    });
+            reload_daemons(ctx, user_manager_available, system_reload_required)?;
+            // Reinspect the whole system scope after a reload or when any unit
+            // was unconfirmed. Changes to one unit can affect another.
+            process_resources_with_cache(
                 ctx,
                 retired.into_iter().chain(resources),
+                &system_units_current,
+                |resource, &current| {
+                    if resource.scope == UnitScope::System && current {
+                        Ok(ResourceState::Correct)
+                    } else {
+                        resource.current_state()
+                    }
+                },
                 &ProcessOpts::lenient("configure").sequential(),
             )
         })

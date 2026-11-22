@@ -49,7 +49,7 @@ impl TaskExecution {
 /// Each executed task records its measured duration once. Parallel interleaving
 /// makes subtracting timestamps from unrelated log entries unreliable.
 pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
-    let assessment = task.assess(ctx, &|_| false);
+    let assessment = task.assess(ctx, &mut crate::engine::AssessmentInputs::new(&|_| false));
     execute_assessed(task, &assessment, ctx).status
 }
 

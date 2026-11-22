@@ -4,24 +4,24 @@ use super::*;
 fn readiness_requires_published_config_and_committed_current_inputs() {
     let f = SnapshotFixture::new();
     let _result = f.configure();
-    assert!(unavailable_packages(&f.ctx).unwrap().is_empty());
+    assert!(unavailable_packages(&f.ctx, |_| true).unwrap().is_empty());
     let config = f.ctx.home().join(".config/paru/paru.conf");
     let original = std::fs::read_to_string(&config).unwrap();
     std::fs::write(&config, "[options]\n").unwrap();
     assert!(
-        unavailable_packages(&f.ctx)
+        unavailable_packages(&f.ctx, |_| true)
             .unwrap()
             .contains_key("tool-bin")
     );
     std::fs::write(config, original).unwrap();
     std::fs::write(f.source.join("PKGBUILD"), "new inputs\n").unwrap();
     assert!(
-        unavailable_packages(&f.ctx)
+        unavailable_packages(&f.ctx, |_| true)
             .unwrap()
             .contains_key("tool-bin")
     );
     let _refreshed = f.configure();
-    assert!(unavailable_packages(&f.ctx).unwrap().is_empty());
+    assert!(unavailable_packages(&f.ctx, |_| true).unwrap().is_empty());
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn split_package_ownership_is_explicit_and_ordinary_names_default_to_base() {
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     descriptor["packages"] = serde_json::json!(["tool-cli", "tool-gui"]);
     std::fs::write(&path, descriptor.to_string()).unwrap();
-    let missing = unavailable_packages(&f.ctx).unwrap();
+    let missing = unavailable_packages(&f.ctx, |_| true).unwrap();
     assert!(missing.contains_key("tool-cli"));
     assert!(missing.contains_key("tool-gui"));
     assert!(!missing.contains_key("tool-bin"));
@@ -44,11 +44,11 @@ fn split_package_ownership_is_explicit_and_ordinary_names_default_to_base() {
     ] {
         descriptor["packages"] = invalid;
         std::fs::write(&path, descriptor.to_string()).unwrap();
-        assert!(unavailable_packages(&f.ctx).is_err());
+        assert!(unavailable_packages(&f.ctx, |_| true).is_err());
     }
     std::fs::remove_file(path).unwrap();
     assert!(
-        unavailable_packages(&f.ctx).is_err(),
+        unavailable_packages(&f.ctx, |_| true).is_err(),
         "missing descriptor must not erase ownership and permit AUR fallback"
     );
 }
@@ -57,14 +57,14 @@ fn split_package_ownership_is_explicit_and_ordinary_names_default_to_base() {
 fn readiness_rejects_descriptor_changes_before_configuration_is_refreshed() {
     let f = SnapshotFixture::new();
     let _prepared = f.configure();
-    assert!(unavailable_packages(&f.ctx).unwrap().is_empty());
+    assert!(unavailable_packages(&f.ctx, |_| true).unwrap().is_empty());
     let path = f.source.join("release.json");
     let mut descriptor: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     descriptor["packages"] = serde_json::json!(["tool-cli", "tool-gui"]);
     std::fs::write(path, descriptor.to_string()).unwrap();
 
-    let missing = unavailable_packages(&f.ctx).unwrap();
+    let missing = unavailable_packages(&f.ctx, |_| true).unwrap();
 
     assert_eq!(
         missing.keys().map(String::as_str).collect::<Vec<_>>(),
@@ -86,19 +86,19 @@ fn readiness_requires_successful_metadata_validation_for_current_inputs() {
         }
 
         assert!(
-            unavailable_packages(&f.ctx)
+            unavailable_packages(&f.ctx, |_| true)
                 .unwrap()
                 .contains_key("tool-bin"),
             "missing or stale validation is not proof of package readiness"
         );
         assert!(
-            unavailable_packages(&f.ctx.with_dry_run(true))
+            unavailable_packages(&f.ctx.with_dry_run(true), |_| true)
                 .unwrap()
                 .is_empty(),
             "preview may plan prerequisite validation without executing recipes"
         );
         let _revalidated = f.configure();
-        assert!(unavailable_packages(&f.ctx).unwrap().is_empty());
+        assert!(unavailable_packages(&f.ctx, |_| true).unwrap().is_empty());
     }
 }
 

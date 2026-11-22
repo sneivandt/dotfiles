@@ -5,7 +5,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use anyhow::Result;
 
 use super::*;
-use crate::engine::{AccessClaim, TaskMeta, TaskResult, TaskStats, TaskWithExtraDeps};
+use crate::engine::{
+    AccessClaim, AssessmentInputs, TaskMeta, TaskResult, TaskStats, TaskWithExtraDeps,
+};
 use crate::infra::exec::{ExecError, ExecResult};
 use crate::infra::logging::TaskEntry;
 use crate::test_helpers::ContextBuilder;
@@ -32,9 +34,10 @@ impl Mode {
             tasks.iter().any(|task| task.task_id() == *id)
                 || prior.is_some_and(|s| s.outcome(id).is_some())
         };
+        let mut inputs = AssessmentInputs::new(&has_provider);
         let assessments = tasks
             .iter()
-            .map(|task| (task.task_id(), task.assess(ctx, &has_provider)))
+            .map(|task| (task.task_id(), task.assess(ctx, &mut inputs)))
             .collect();
         let graph = ResolvedTaskGraph::resolve_assessed(tasks, &assessments).unwrap();
         let summary = run_tasks(tasks, &graph, &assessments, ctx, log, prior);
@@ -244,7 +247,7 @@ impl Task for TestTask {
         self.applicable
     }
 
-    fn assess(&self, _ctx: &Context, _has_provider: &dyn Fn(&TaskId) -> bool) -> TaskAssessment {
+    fn assess(&self, _ctx: &Context, _inputs: &mut AssessmentInputs<'_>) -> TaskAssessment {
         if !self.applicable {
             return TaskAssessment::not_applicable(None::<String>);
         }

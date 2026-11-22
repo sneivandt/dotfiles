@@ -32,12 +32,13 @@ impl<'a> PreparedPhase<'a> {
         let declared = resolve_task_graph(&tasks, log)?;
         let has_provider =
             |id: &TaskId| declared.contains(id) || prior.is_some_and(|s| s.outcome(id).is_some());
+        let mut inputs = crate::engine::AssessmentInputs::new(&has_provider);
         let mut assessments = if ctx.is_cancelled() {
             HashMap::new()
         } else {
             tasks
                 .iter()
-                .map(|task| (task.task_id(), task.assess(ctx, &has_provider)))
+                .map(|task| (task.task_id(), task.assess(ctx, &mut inputs)))
                 .collect()
         };
         let mut graph = ResolvedTaskGraph::resolve_assessed(&tasks, &assessments)?;

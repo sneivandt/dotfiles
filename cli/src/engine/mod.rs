@@ -53,8 +53,8 @@ pub use stats::{TaskResult, TaskStats};
 #[cfg(test)]
 pub use task::requires_elevation;
 pub use task::{
-    Task, TaskAssessment, TaskId, TaskMeta, TaskResultDisplay, TaskVisibility, TaskWithExtraDeps,
-    execute,
+    AssessmentInputs, Task, TaskAssessment, TaskId, TaskMeta, TaskResultDisplay, TaskVisibility,
+    TaskWithExtraDeps, execute,
 };
 pub(crate) use task::{
     TaskOutcome, config_task, run_batch_resource_task, run_resource_task, task_deps, task_metadata,

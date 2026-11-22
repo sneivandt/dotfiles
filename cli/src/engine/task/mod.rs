@@ -17,11 +17,54 @@ pub(crate) use macros::{
 pub use types::{TaskAssessment, TaskId, TaskMeta};
 
 use std::any::TypeId;
+use std::sync::Arc;
 
 use anyhow::Result;
 
 use super::requirement::ordering_requirements_satisfied;
 use super::{AccessClaim, Context, Requirement, TaskResult};
+
+/// Inputs shared while assessing the tasks in a single execution phase.
+pub struct AssessmentInputs<'a> {
+    has_provider: &'a dyn Fn(&TaskId) -> bool,
+    provider_stability: Vec<(Arc<Requirement<'static>>, bool)>,
+}
+
+impl std::fmt::Debug for AssessmentInputs<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AssessmentInputs")
+            .field("provider_stability", &self.provider_stability)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<'a> AssessmentInputs<'a> {
+    pub(crate) const fn new(has_provider: &'a dyn Fn(&TaskId) -> bool) -> Self {
+        Self {
+            has_provider,
+            provider_stability: Vec::new(),
+        }
+    }
+
+    fn provider_is_stable(
+        &mut self,
+        ctx: &Context,
+        requirement: &Arc<Requirement<'static>>,
+    ) -> bool {
+        if let Some((_, stable)) = self
+            .provider_stability
+            .iter()
+            .find(|(previous, _)| Arc::ptr_eq(previous, requirement))
+        {
+            return *stable;
+        }
+        let stable =
+            ordering_requirements_satisfied(ctx, std::slice::from_ref(requirement.as_ref()));
+        self.provider_stability
+            .push((Arc::clone(requirement), stable));
+        stable
+    }
+}
 
 /// A named, executable task.
 ///
@@ -154,9 +197,9 @@ pub trait Task: Send + Sync + 'static {
     ///
     /// The default preserves the existing task hooks while ensuring their
     /// filesystem and tool probes are evaluated only once before elevation
-    /// planning and scheduling. `has_provider` includes tasks selected in this
-    /// phase and providers whose outcomes carry over from an earlier phase.
-    fn assess(&self, ctx: &Context, _has_provider: &dyn Fn(&TaskId) -> bool) -> TaskAssessment {
+    /// planning and scheduling. The inputs include tasks selected in this phase
+    /// and providers whose outcomes carry over from an earlier phase.
+    fn assess(&self, ctx: &Context, _inputs: &mut AssessmentInputs<'_>) -> TaskAssessment {
         if !self.should_run(ctx) {
             return TaskAssessment::not_applicable(None::<String>);
         }
@@ -180,7 +223,7 @@ pub trait Task: Send + Sync + 'static {
 #[must_use]
 #[cfg(test)]
 pub fn requires_elevation(task: &dyn Task, ctx: &Context) -> bool {
-    let assessment = task.assess(ctx, &|_| false);
+    let assessment = task.assess(ctx, &mut AssessmentInputs::new(&|_| false));
     assessment.is_applicable() && assessment.requires_elevation()
 }
 
@@ -205,7 +248,7 @@ pub struct TaskWithExtraDeps {
 
 struct ConditionalOrdering {
     ids: Vec<TaskId>,
-    provider_stability: Requirement<'static>,
+    provider_stability: Arc<Requirement<'static>>,
 }
 
 impl TaskWithExtraDeps {
@@ -230,16 +273,17 @@ impl TaskWithExtraDeps {
     }
 
     /// Waive selected ordering edges only when consumer requirements hold and
-    /// the provider requirement proves their inputs will remain stable.
+    /// the provider requirement proves their inputs will remain stable. Consumers
+    /// that share a requirement instance share its probe within each phase.
     #[must_use]
     pub fn with_conditional_ordering(
         mut self,
         ids: &[TaskId],
-        provider_stability: Requirement<'static>,
+        provider_stability: impl Into<Arc<Requirement<'static>>>,
     ) -> Self {
         self.conditional_ordering = Some(ConditionalOrdering {
             ids: ids.to_vec(),
-            provider_stability,
+            provider_stability: provider_stability.into(),
         });
         self
     }
@@ -309,16 +353,13 @@ impl Task for TaskWithExtraDeps {
         self.inner.ordering_requirements()
     }
 
-    fn assess(&self, ctx: &Context, has_provider: &dyn Fn(&TaskId) -> bool) -> TaskAssessment {
-        let assessment = self.inner.assess(ctx, has_provider);
+    fn assess(&self, ctx: &Context, inputs: &mut AssessmentInputs<'_>) -> TaskAssessment {
+        let assessment = self.inner.assess(ctx, inputs);
         if assessment.is_applicable()
             && let Some(conditional) = &self.conditional_ordering
-            && conditional.ids.iter().any(has_provider)
+            && conditional.ids.iter().any(inputs.has_provider)
             && ordering_requirements_satisfied(ctx, &self.inner.ordering_requirements())
-            && ordering_requirements_satisfied(
-                ctx,
-                std::slice::from_ref(&conditional.provider_stability),
-            )
+            && inputs.provider_is_stable(ctx, &conditional.provider_stability)
         {
             return assessment.with_satisfied_ordering(&conditional.ids);
         }

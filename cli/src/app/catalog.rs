@@ -7,6 +7,7 @@
 //! wrapping tasks in [`TaskWithExtraDeps`].
 
 use std::any::TypeId;
+use std::sync::Arc;
 
 use crate::app::config::store::ConfigStore;
 use crate::domains::ai::agent_settings::ConfigureAgentSettings;
@@ -92,19 +93,18 @@ pub(crate) fn update_tasks_for_run(
     apm_mode: ApmPackageMode,
 ) -> Vec<Box<dyn Task>> {
     use crate::infra::provisioning::{FIRST_LOGIN_UNIT, FIRST_LOGIN_UNIT_PATH};
+    let package_stability = Arc::new(
+        crate::domains::packages::install::package_stability_requirement(store.packages.clone()),
+    );
     let conditional_packages =
         |inner: Box<dyn Task>, blocking: &[TaskId], ordering: &[TaskId]| -> Box<dyn Task> {
             Box::new(
                 TaskWithExtraDeps::new(inner, blocking, ordering).with_conditional_ordering(
                     &[id::<InstallPackages>(), id::<InstallAurPackages>()],
-                    crate::domains::packages::install::package_stability_requirement(
-                        store.packages.clone(),
-                    ),
+                    Arc::clone(&package_stability),
                 ),
             )
         };
-    let zsh_completions = generate_zsh_completions();
-    let powershell_completions = generate_powershell_completions();
     let mut systemd_ordering = vec![
         id::<InstallPackages>(),
         id::<InstallAurPackages>(),
@@ -135,7 +135,7 @@ pub(crate) fn update_tasks_for_run(
         Box::new(ConfigureAgentSettings::new(store.agent_settings.clone())),
         with_ordering_deps(InstallGitHooks::new(), &[id::<UpdateRepository>()]),
         with_ordering_deps(
-            GenerateCompletions::new(zsh_completions, powershell_completions),
+            GenerateCompletions::new(generate_zsh_completions, generate_powershell_completions),
             &[id::<UpdateRepository>()],
         ),
         Box::new(InstallPackages::new(store.packages.clone())),

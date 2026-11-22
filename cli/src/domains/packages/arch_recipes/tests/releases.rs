@@ -470,11 +470,11 @@ fn failed_release_does_not_block_other_updates_or_aur_installs() {
                     std::fs::read_to_string(broken.join("version.sh")).unwrap(),
                     old_pins
                 );
-                assert!(unavailable_packages(&ctx).unwrap().is_empty());
+                assert!(unavailable_packages(&ctx, |_| true).unwrap().is_empty());
             } else {
                 assert!(!broken.join("version.sh").exists());
                 assert!(
-                    unavailable_packages(&ctx)
+                    unavailable_packages(&ctx, |_| true)
                         .unwrap()
                         .contains_key("broken-bin")
                 );

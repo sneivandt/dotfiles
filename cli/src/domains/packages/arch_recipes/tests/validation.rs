@@ -211,7 +211,7 @@ fn invalid_metadata_is_not_published_and_other_recipes_continue() {
     assert!(!config.contains("[dotfiles-tool-bin]"));
     assert!(config.contains("[dotfiles-other-bin]"));
     assert!(
-        unavailable_packages(&f.ctx)
+        unavailable_packages(&f.ctx, |_| true)
             .unwrap()
             .contains_key("tool-bin")
     );

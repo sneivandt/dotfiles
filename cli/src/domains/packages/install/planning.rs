@@ -117,7 +117,9 @@ pub(super) fn build_install_plan(
 
     let installed = get_installed_packages(manager, ctx.executor())?;
     let unavailable_custom = if manager == PackageManager::Paru {
-        super::super::arch_recipes::unavailable_packages(ctx)?
+        super::super::arch_recipes::unavailable_packages(ctx, |name| {
+            !installed.contains_package(name) && packages.iter().any(|package| package.name == name)
+        })?
     } else {
         std::collections::BTreeMap::new()
     };

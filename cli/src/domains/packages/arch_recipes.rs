@@ -775,11 +775,23 @@ fn recipes(ctx: &Context) -> Result<Vec<(PathBuf, ReleaseSource)>> {
     Ok(recipes)
 }
 
-/// Unavailable dotfiles-managed package names; never send these to an AUR lookup.
+/// Unavailable dotfiles-managed names among packages still needed for install.
 /// Preview accepts inputs that prerequisite tasks would prepare without writing.
-pub(super) fn unavailable_packages(ctx: &Context) -> Result<BTreeMap<String, String>> {
-    let recipes = recipes(ctx)?;
-    if recipes.is_empty() {
+pub(super) fn unavailable_packages(
+    ctx: &Context,
+    needs_install: impl Fn(&str) -> bool,
+) -> Result<BTreeMap<String, String>> {
+    // Check descriptor ownership and conflicts even for packages that are installed.
+    let mut recipes = recipes(ctx)?
+        .into_iter()
+        .filter(|(_, source)| {
+            source
+                .package_names()
+                .iter()
+                .any(|name| needs_install(name))
+        })
+        .peekable();
+    if recipes.peek().is_none() {
         return Ok(BTreeMap::new());
     }
     let root = build_root(ctx)?;
@@ -807,7 +819,11 @@ pub(super) fn unavailable_packages(ctx: &Context) -> Result<BTreeMap<String, Str
             Ok(())
         })();
         if let Err(error) = readiness {
-            for name in source.package_names() {
+            for name in source
+                .package_names()
+                .iter()
+                .filter(|name| needs_install(name))
+            {
                 unavailable.insert(name.clone(), format!("{error:#}"));
             }
         }

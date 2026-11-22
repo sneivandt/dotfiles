@@ -5,20 +5,27 @@ fn as_dyn(tasks: &[ProbeTask]) -> Vec<&dyn Task> {
 }
 
 #[test]
-fn conditional_readiness_only_probes_for_current_or_prior_providers() {
+fn conditional_readiness_checks_consumers_and_shares_selected_provider_probe_per_phase() {
     use crate::engine::scheduler::ExecutionSummary;
     use crate::engine::{Requirement, RequirementState, TaskWithExtraDeps};
 
-    struct Consumer(Arc<AtomicUsize>);
+    struct Consumer {
+        id: u64,
+        probes: Arc<AtomicUsize>,
+    }
 
     impl Task for Consumer {
         fn meta(&self) -> TaskMeta<'_> {
             TaskMeta::new("consumer")
         }
 
+        fn task_id(&self) -> TaskId {
+            numeric_task_id(self.id)
+        }
+
         fn ordering_requirements(&self) -> Vec<Requirement<'_>> {
             vec![Requirement::new("ready", |_, _| {
-                self.0.fetch_add(1, Ordering::SeqCst);
+                self.probes.fetch_add(1, Ordering::SeqCst);
                 Ok(RequirementState::Satisfied(()))
             })]
         }
@@ -33,13 +40,22 @@ fn conditional_readiness_only_probes_for_current_or_prior_providers() {
         let provider = fixture.task("provider", 1);
         let providers = [numeric_task_id(99), provider.task_id()];
         let probes = Arc::new(AtomicUsize::new(0));
-        let consumer =
-            TaskWithExtraDeps::new(Box::new(Consumer(Arc::clone(&probes))), &[], &providers)
-                .with_conditional_ordering(
-                    &providers,
-                    Requirement::new("stable", |_, _| Ok(RequirementState::Satisfied(()))),
-                );
-        let mut tasks: Vec<&dyn Task> = vec![&consumer];
+        let provider_probes = Arc::new(AtomicUsize::new(0));
+        let observed = Arc::clone(&provider_probes);
+        let stability = Arc::new(Requirement::new("stable", move |_, _| {
+            observed.fetch_add(1, Ordering::SeqCst);
+            Ok(RequirementState::Satisfied(()))
+        }));
+        let consumers = [2, 3, 4].map(|id| {
+            let task = Consumer {
+                id,
+                probes: Arc::clone(&probes),
+            };
+            TaskWithExtraDeps::new(Box::new(task), &[], &providers)
+                .with_conditional_ordering(&providers, Arc::clone(&stability))
+        });
+        let mut tasks: Vec<&dyn Task> =
+            consumers.iter().map(|task| -> &dyn Task { task }).collect();
         if selected {
             tasks.push(&provider);
         }
@@ -47,15 +63,19 @@ fn conditional_readiness_only_probes_for_current_or_prior_providers() {
         if ran_earlier {
             prior.record(provider.task_id(), provider.name(), TaskOutcome::Cancelled);
         }
-        let summary = run_task_graph(tasks, &fixture.ctx, &fixture.log, Some(&prior)).unwrap();
-        assert_eq!(
-            probes.load(Ordering::SeqCst),
-            usize::from(selected || ran_earlier)
-        );
-        assert_eq!(
-            summary.outcome(&consumer.task_id()),
-            Some(TaskOutcome::Satisfied)
-        );
+        for phase_count in 1..=2 {
+            let summary =
+                run_task_graph(tasks.clone(), &fixture.ctx, &fixture.log, Some(&prior)).unwrap();
+            let expected = usize::from(selected || ran_earlier) * phase_count;
+            assert_eq!(probes.load(Ordering::SeqCst), consumers.len() * expected);
+            assert_eq!(provider_probes.load(Ordering::SeqCst), expected);
+            for consumer in &consumers {
+                assert_eq!(
+                    summary.outcome(&consumer.task_id()),
+                    Some(TaskOutcome::Satisfied)
+                );
+            }
+        }
     }
 }
 

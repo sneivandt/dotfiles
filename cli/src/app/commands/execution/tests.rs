@@ -102,7 +102,11 @@ impl Task for ProbeTask {
         true
     }
 
-    fn assess(&self, _ctx: &Context, _has_provider: &dyn Fn(&TaskId) -> bool) -> TaskAssessment {
+    fn assess(
+        &self,
+        _ctx: &Context,
+        _inputs: &mut crate::engine::AssessmentInputs<'_>,
+    ) -> TaskAssessment {
         self.assessments.fetch_add(1, Ordering::SeqCst);
         TaskAssessment::applicable().with_elevation(self.requires_elevation)
     }

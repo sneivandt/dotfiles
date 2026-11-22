@@ -178,9 +178,14 @@ fn unavailable_custom_package_preserves_failure_counts_and_diagnostics() {
                 });
         }
         let output = Arc::new(CapturingOutput::default());
+        let mut env = crate::infra::env::MapEnv::new();
+        if installed {
+            // An installed custom package does not need a usable build configuration.
+            env = env.with("PARU_CONF", "relative");
+        }
         let ctx = make_package_context(dir.path().into(), None, Os::Linux, true, mock)
             .with_home(dir.path().join("home"))
-            .with_env(crate::infra::env::MapEnv::new().into_handle())
+            .with_env(env.into_handle())
             .with_log(Arc::<CapturingOutput>::clone(&output));
         let mut names = vec!["local-tool", "existing"];
         if other_install_fails {

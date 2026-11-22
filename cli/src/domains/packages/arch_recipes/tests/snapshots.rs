@@ -149,7 +149,7 @@ fn snapshot_publishes_current_metadata_and_repairs_legacy_or_damaged_srcinfo() {
     std::fs::write(&metadata, old_metadata).unwrap();
     reset_to_head(&repo);
     assert_eq!(std::fs::read_to_string(metadata).unwrap(), current);
-    assert!(unavailable_packages(&f.ctx).unwrap().is_empty());
+    assert!(unavailable_packages(&f.ctx, |_| true).unwrap().is_empty());
 }
 
 #[test]
@@ -224,7 +224,7 @@ fn retiring_optional_snapshot_inputs_cleans_only_the_managed_slots() {
     assert_eq!(task_batch(&preview).changed_count(), 1);
     assert!(cache.join("package.install").exists());
     assert!(
-        unavailable_packages(&f.ctx)
+        unavailable_packages(&f.ctx, |_| true)
             .unwrap()
             .contains_key("tool-bin")
     );
@@ -240,7 +240,7 @@ fn retiring_optional_snapshot_inputs_cleans_only_the_managed_slots() {
     std::fs::write(cache.join("NOTICE/keep"), "user data\n").unwrap();
     assert_eq!(task_batch(&f.configure()).failed_count(), 1);
     assert!(
-        unavailable_packages(&f.ctx)
+        unavailable_packages(&f.ctx, |_| true)
             .unwrap()
             .contains_key("tool-bin")
     );
@@ -457,7 +457,7 @@ fn snapshot_conflict_removes_only_its_repository_and_preserves_other_recipes() {
         "conflicting snapshot must be preserved"
     );
     assert_eq!(
-        unavailable_packages(&f.ctx)
+        unavailable_packages(&f.ctx, |_| true)
             .unwrap()
             .keys()
             .collect::<Vec<_>>(),

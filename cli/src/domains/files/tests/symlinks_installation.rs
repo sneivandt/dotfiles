@@ -60,7 +60,9 @@ fn file_capability_is_checked_at_execution_without_delegating_home_links() {
             .with_dry_run(dry_run);
         assert!(!task.needs_elevation(&ctx), "{name}");
         assert!(
-            !task.assess(&ctx, &|_| false).requires_elevation(),
+            !task
+                .assess(&ctx, &mut crate::engine::AssessmentInputs::new(&|_| false))
+                .requires_elevation(),
             "{name}: phase assessment must not cache missing file capability"
         );
         let result =

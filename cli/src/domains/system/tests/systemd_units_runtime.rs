@@ -113,12 +113,11 @@ fn arch_chroot_system_units_change_only_persistent_enablement_and_retry_without_
 }
 
 #[test]
-fn run_does_not_reload_enabled_system_scope_units() {
+fn current_system_unit_is_probed_once_in_preview_and_apply() {
     let name = "NetworkManager.service";
     let task = systemd_task(name, UnitScope::System, true);
-    let mut executor = script();
-    for _ in 0..2 {
-        executor = executor
+    for dry_run in [false, true] {
+        let executor = script()
             .command(
                 systemctl(&["is-enabled", name]),
                 Ok(ExecResult::success("enabled\n")),
@@ -127,12 +126,12 @@ fn run_does_not_reload_enabled_system_scope_units() {
                 runtime_probe(&UnitScope::System, name),
                 Ok(ExecResult::success("ActiveState=active\n")),
             );
+        let result = task.run(&context(executor).with_dry_run(dry_run)).unwrap();
+        assert_eq!(
+            crate::test_helpers::task_batch(&result).already_ok_count(),
+            1
+        );
     }
-    let result = task.run(&context(executor)).unwrap();
-    assert_eq!(
-        crate::test_helpers::task_batch(&result).already_ok_count(),
-        1
-    );
 }
 
 #[test]
@@ -382,6 +381,51 @@ fn stale_active_system_unit_reloads_without_restarting_it() {
         crate::test_helpers::task_batch(&result).already_ok_count(),
         1
     );
+}
+
+#[test]
+fn a_system_reload_invalidates_other_units_previously_observed_as_current() {
+    let first = "first.timer";
+    let stale = "stale.timer";
+    let task = ConfigureSystemd::new(ConfigHandle::new(
+        [first, stale]
+            .map(|name| SystemdUnit {
+                name: name.into(),
+                scope: UnitScope::System,
+                enabled: true,
+                graphical: false,
+            })
+            .to_vec(),
+    ));
+    let enabled = || Ok(ExecResult::success("enabled"));
+    let active = || Ok(ExecResult::success("ActiveState=active\n"));
+    let executor = script()
+        .command(systemctl(&["is-enabled", first]), enabled())
+        .command(runtime_probe(&UnitScope::System, first), active())
+        .command(systemctl(&["is-enabled", stale]), enabled())
+        .command(
+            runtime_probe(&UnitScope::System, stale),
+            Ok(ExecResult::success(
+                "ActiveState=active\nNeedDaemonReload=yes\n",
+            )),
+        )
+        .command(
+            CommandSpec::new("sudo").args(&["systemctl", "daemon-reload"]),
+            Ok(ExecResult::success("")),
+        )
+        .command(systemctl(&["is-enabled", first]), Ok(disabled_result()))
+        .command(
+            CommandSpec::new("sudo")
+                .args(&["systemctl", "enable", "--now", first])
+                .unchecked(),
+            Ok(ExecResult::success("")),
+        )
+        .command(systemctl(&["is-enabled", stale]), enabled())
+        .command(runtime_probe(&UnitScope::System, stale), active());
+    let result = task.run(&context(executor)).unwrap();
+    let result = crate::test_helpers::task_batch(&result);
+    assert_eq!(result.changed_count(), 1);
+    assert_eq!(result.already_ok_count(), 1);
 }
 
 #[test]

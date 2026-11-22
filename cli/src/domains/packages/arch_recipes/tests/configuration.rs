@@ -274,17 +274,25 @@ fn config_overrides_control_publication_and_readiness() {
         let _preview = configure_paru(&ctx.with_dry_run(true)).unwrap();
         assert!(!target.exists());
         assert!(!build_root(&ctx).unwrap().exists());
-        assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+        assert!(
+            unavailable_packages(&ctx, |_| true)
+                .unwrap()
+                .contains_key("tool-bin")
+        );
         let _applied = configure_paru(&ctx).unwrap();
         assert!(target.is_file());
-        assert!(unavailable_packages(&ctx).unwrap().is_empty());
+        assert!(unavailable_packages(&ctx, |_| true).unwrap().is_empty());
         assert_eq!(std::fs::read_to_string(&default).unwrap(), "sentinel\n");
         // A valid default config must not mask an invalid active override.
         std::fs::copy(&target, &default).unwrap();
         std::fs::write(&target, "[options]\n").unwrap();
-        assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+        assert!(
+            unavailable_packages(&ctx, |_| true)
+                .unwrap()
+                .contains_key("tool-bin")
+        );
         let _repaired = configure_paru(&ctx).unwrap();
-        assert!(unavailable_packages(&ctx).unwrap().is_empty());
+        assert!(unavailable_packages(&ctx, |_| true).unwrap().is_empty());
         assert!(matches!(configure_paru(&ctx).unwrap(), TaskResult::Ok));
     }
     for key in ["PARU_CONF", "XDG_CONFIG_HOME"] {
@@ -296,7 +304,7 @@ fn config_overrides_control_publication_and_readiness() {
                     .into_handle(),
             );
             assert!(configure_paru(&ctx).is_err(), "{key}={value:?}");
-            assert!(unavailable_packages(&ctx).is_err());
+            assert!(unavailable_packages(&ctx, |_| true).is_err());
             assert!(!build_root(&ctx).unwrap().exists());
         }
     }

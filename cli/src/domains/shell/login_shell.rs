@@ -128,7 +128,8 @@ mod tests {
         )
         .with_env(MapEnv::new().with("USER", "test-user").into_handle());
 
-        let assessment = ConfigureShell.assess(&ctx, &|_| false);
+        let assessment =
+            ConfigureShell.assess(&ctx, &mut crate::engine::AssessmentInputs::new(&|_| false));
         assert!(assessment.is_applicable());
         ready.store(true, Ordering::SeqCst);
         let result = crate::engine::task::execute_assessed(&ConfigureShell, &assessment, &ctx);

@@ -25,7 +25,7 @@ read [Usage](../guides/commands-and-usage.md); for desired-state declarations, r
 - [Home symlinks expose edits immediately, without another update](../reference/home-symlinks.md).
 - [These dotfiles are for one person's machines, not every possible setup](../guides/index.md).
 - [Changing profiles selects future work without undoing earlier updates](../guides/profiles-and-categories.md#changing-profiles-or-categories).
-- [Selecting a task with `--only` does not automatically add its dependencies](../guides/commands-and-usage.md#select-tasks).
+- [Selecting a single task does not automatically add its dependencies](../guides/commands-and-usage.md#select-tasks).
 
 ## System view
 

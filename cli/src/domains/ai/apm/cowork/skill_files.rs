@@ -284,11 +284,13 @@ pub(super) fn copy_skill_files(source: &Path, target: &Path) -> Result<()> {
             check_link_replacement(target, current.as_ref())?;
             match (target_meta, current) {
                 (None, _) | (_, None) => crate::infra::fs::rename_noreplace(&link, target)?,
-                (Some(_), Some(_current)) => {
+                (Some(_), Some(current)) => {
+                    #[cfg(not(windows))]
+                    let _ = &current;
                     #[cfg(windows)]
                     {
                         use std::os::windows::fs::FileTypeExt as _;
-                        if _current.file_type().is_symlink_dir() {
+                        if current.file_type().is_symlink_dir() {
                             let previous = staged.path().join("previous");
                             std::fs::rename(target, &previous)?;
                             if let Err(error) = crate::infra::fs::rename_into_place(&link, target) {

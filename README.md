@@ -22,22 +22,25 @@ and review the settings before using it on your own machine.
 
 ## What it manages
 
-| Area | Configuration |
+Which settings apply depends on the operating system and the
+[profile](https://dotfiles.stuartneivandt.com/profiles-and-categories.html):
+`base` covers command-line tools, while `desktop` adds workstation settings.
+
+| Area | Examples from this setup |
 |---|---|
-| Shell | Zsh, Bash, PowerShell, login shell, tmux, PATH, and completions |
-| Editors | Vim/Neovim and VS Code settings, keybindings, and extensions |
-| Terminal | Alacritty and Windows Terminal |
-| Git | Global settings, aliases, and repository hooks |
-| Packages | Arch and AUR packages through pacman/paru, custom Arch packages from dotfiles-managed recipes, and Windows packages through winget |
-| Arch desktop | Hyprland, Quickshell bar and menus, mako notifications, fuzzel launcher, locking, wallpaper, and GTK/font settings |
-| Services | systemd services, sockets, and timers, including automatic cleanup of old temporary files and screenshots |
-| System configuration | Managed settings under `/etc`, including pacman, PAM, and WSL configuration |
-| SSH and GPG | SSH client and GPG agent configuration |
-| Agent tooling | Agent packages and plugins, Copilot and Codex settings |
-| Windows | Current-user registry values and Developer Mode |
-| WSL | Windows-side WSL networking settings and Linux-side integration |
+| Shells and terminals | Zsh, Bash, and PowerShell startup files, dotfiles completions, tmux, Alacritty, and Windows Terminal |
+| Editors | Shared Vim and Neovim configuration, plus VS Code settings, keybindings, and extensions |
+| Git, SSH, and GPG | Git aliases and global settings, hooks for this checkout, SSH client settings, and GPG agent settings |
+| Coding agents | Copilot and Codex preferences, plus skills and plugins installed through Agent Package Manager |
+| Packages | Arch packages through pacman, AUR packages through paru, custom Arch recipes, and Windows packages through winget |
+| Arch desktop | Hyprland window management, the Quickshell bar and menus, mako notifications, and screen locking |
+| Linux system | systemd services and cleanup timers, plus pacman and PAM settings under `/etc` on Arch |
+| Windows | Developer Mode and per-user File Explorer and taskbar preferences |
+| WSL | Networking on the Windows host, plus systemd startup and Windows PATH handling inside the Linux distribution |
 
-## Reference
+## Guides and reference
 
-- [Getting started](https://dotfiles.stuartneivandt.com/getting-started.html): setup and usage.
-- [Contributing](https://dotfiles.stuartneivandt.com/contributing.html): building, testing, and changing the CLI.
+- [Getting started](https://dotfiles.stuartneivandt.com/getting-started.html): Back up existing settings and preview your first setup.
+- [Commands and usage](https://dotfiles.stuartneivandt.com/commands-and-usage.html): Select tasks, apply changes, and inspect the results.
+- [Task reference](https://dotfiles.stuartneivandt.com/task-reference.html): Look up what a task changes, how to configure it, and what it leaves behind.
+- [Contributing](https://dotfiles.stuartneivandt.com/contributing.html): Find where to make a change and which checks to run.

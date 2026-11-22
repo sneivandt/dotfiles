@@ -9,7 +9,8 @@ if [ -n "${SSH_CONNECTION:-}" ] || [ -e /.dockerenv ]; then
 fi
 
 typeset -g _ZSH_PROMPT_SHELL=""
-if [ "$(readlink -f "$(command -v zsh)")" != "$(readlink -f "${SHELL:-}")" ]; then
+# Compare physical paths so a symlink to the default shell doesn't add a label.
+if [[ ${${commands[zsh]-}:P} != ${${SHELL:-}:P} ]]; then
   _ZSH_PROMPT_SHELL="%F{cyan}zsh%f "
 fi
 

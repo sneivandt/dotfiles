@@ -263,7 +263,7 @@ def check_pages(workflow: str, ci_workflow: str) -> None:
     docs = job_blocks(ci_workflow)["docs"]
     for required in (
         "test-docs.sh docs_site",
-        "npx playwright install --with-deps chromium",
+        "npx playwright install --with-deps --only-shell chromium",
         "name: docs-site",
         "path: docs/dist/",
         "if: github.event_name == 'push' && github.ref == 'refs/heads/main'",

@@ -7,8 +7,10 @@
 [ -n "${ZSHRC_LOADED:-}" ] && return
 ZSHRC_LOADED=1
 
-# A new terminal or tmux pane must not retain the parent shell's GPG tty.
-if tty -s; then
+# Use the new pane's controlling terminal only when it is also stdin.
+if [[ -t 0 && ${TTY:-} -ef /dev/fd/0 ]]; then
+  export GPG_TTY="$TTY"
+elif tty -s; then
   GPG_TTY="$(tty)"
   export GPG_TTY
 fi
@@ -33,7 +35,7 @@ setopt sharehistory
 setopt extendedglob
 _zsh_legacy_history="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/history"
 HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history"
-if mkdir -p "${HISTFILE:h}"; then
+if [[ -d ${HISTFILE:h} ]] || mkdir -p "${HISTFILE:h}"; then
   # Seed persistent state once. Keep the old file for shells still using it.
   if [[ ! -e $HISTFILE && -f $_zsh_legacy_history ]]; then
     if ! (

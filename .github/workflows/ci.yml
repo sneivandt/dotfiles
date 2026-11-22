@@ -242,7 +242,7 @@ jobs:
         run: npm --prefix docs audit
       - name: Install browser test runtime
         working-directory: docs
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps --only-shell chromium
       - name: Check documentation consistency
         env:
           DIR: ${{ github.workspace }}

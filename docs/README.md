@@ -79,7 +79,8 @@ npx playwright install chromium
 On a minimal Linux machine, Playwright may report missing system libraries.
 Its `install --with-deps chromium` command can install those libraries, but that
 is a host package change: use an authorized environment or a disposable runner.
-CI uses that option on its disposable Ubuntu runner.
+CI adds `--only-shell` on its disposable Ubuntu runner. Both the desktop and
+mobile projects use Chromium's headless shell, so CI does not need full Chrome.
 
 To run the full native documentation checker from the repository root:
 

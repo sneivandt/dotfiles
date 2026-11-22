@@ -8,7 +8,7 @@ autoload -Uz compinit
 typeset -g ZSH_COMPDUMP="${ZSH_COMPDUMP:-${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump-${ZSH_VERSION}}"
 
 # Ensure cache directory exists (extract directory from ZSH_COMPDUMP path)
-mkdir -p "${ZSH_COMPDUMP:h}"
+[[ -d ${ZSH_COMPDUMP:h} ]] || mkdir -p "${ZSH_COMPDUMP:h}"
 
 # compinit leaves an unchanged dump's mtime alone, so track the last scan separately.
 if [[ -f "$ZSH_COMPDUMP" && -n ${ZSH_COMPDUMP}.checked(#qNmh-24) ]]; then

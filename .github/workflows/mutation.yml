@@ -55,6 +55,8 @@ jobs:
     if: needs.select.outputs.run_linux == 'true'
     strategy:
       fail-fast: false
+      # Leave runner capacity for ordinary CI while the nightly replay runs.
+      max-parallel: 14
       matrix:
         # A full-source replay selects about 6,200 mutants. Keep each runner
         # below roughly 130 builds before exclusions.

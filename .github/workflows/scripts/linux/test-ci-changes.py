@@ -934,6 +934,8 @@ class GateTests(unittest.TestCase):
             workflow.replace("if: always()", "if: success()"),
             workflow.replace("raise SystemExit(1)", "pass"),
             re.sub(r"shard: \[0, 1, 2, [^\n]+", "shard: [0, 1]", workflow),
+            workflow.replace("      max-parallel: 14\n", ""),
+            workflow.replace("      max-parallel: 14\n", "      max-parallel: 48\n"),
             workflow.replace("needs.select.outputs.run_linux", "needs.select.outputs.run_windows"),
         ):
             with self.subTest(broken=broken):

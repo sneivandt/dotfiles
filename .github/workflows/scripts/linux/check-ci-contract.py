@@ -183,6 +183,9 @@ def check_mutation(workflow: str) -> None:
         raise ValueError("mutation shard matrix must cover every shard exactly once")
     if "fail-fast: false" not in mutation or "--cargo-arg=--profile=ci" not in mutation:
         raise ValueError("mutation shards must all run using the ci Cargo profile")
+    parallel = re.search(r"(?m)^      max-parallel: ([0-9]+)$", mutation)
+    if parallel is None or not 1 <= int(parallel.group(1)) <= 14:
+        raise ValueError("Linux mutation concurrency must leave runner capacity for ordinary CI")
     native = jobs["mutation-windows"]
     for required in ("runs-on: windows-latest", "decode_reg_string|encode_reg_string", "--cargo-arg=--profile=ci"):
         if required not in native:

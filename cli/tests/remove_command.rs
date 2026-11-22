@@ -160,7 +160,9 @@ fn update_and_remove_leave_inactive_profile_links_untouched() {
             .with_symlink_source_content("inactive", "inactive source\n")
             .with_symlink_source_content("inactive-missing", "not installed\n")
             .build();
-        let home = tempfile::tempdir_in(".").unwrap();
+        // Use the same temporary root as the test repository. The Windows
+        // runner's checkout and temp volume have different inherited ACLs.
+        let home = tempfile::tempdir().unwrap();
         let home_path = dunce::canonicalize(home.path()).unwrap();
         for source in ["active", "inactive"] {
             let source_path = repo.root_path().join("symlinks").join(source);

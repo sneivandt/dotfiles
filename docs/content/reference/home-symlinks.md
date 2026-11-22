@@ -179,8 +179,10 @@ before replacement, so a link retargeted after inspection is preserved. File cop
 staged privately on Unix and receive source permissions before publication.
 On Windows, removal leaves the managed link in place if it cannot verify that
 the copy has the same access policy as the source, or if the source is encrypted.
-This applies to entries inside a linked directory too. With `--restore-missing`,
-the target stays absent on refusal. Do not loosen source permissions to force removal.
+For example, the checkout and home directory can inherit different permissions
+even for ordinary files. This applies to entries inside a linked directory too.
+With `--restore-missing`, the target stays absent on refusal. Do not loosen
+source permissions to force removal.
 
 ```sh
 dotfiles remove --only symlinks --dry-run

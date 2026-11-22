@@ -251,7 +251,11 @@ mod tests {
         );
         assert_eq!(
             CopilotTarget::CopilotApp.unavailable_detail(&ctx),
-            home.path().join(".copilot/data.db").display().to_string()
+            home.path()
+                .join(".copilot")
+                .join("data.db")
+                .display()
+                .to_string()
         );
         assert_eq!(
             CopilotTarget::Cowork.unavailable_detail(&ctx),

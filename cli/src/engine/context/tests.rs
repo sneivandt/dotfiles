@@ -76,6 +76,21 @@ fn debug_fmt_skips_closure_when_debug_logging_is_disabled() {
 }
 
 #[test]
+fn trace_fmt_is_lazy_and_writes_only_to_the_run_log() {
+    let ctx = make_linux_context(PathBuf::from("/dotfiles"), None);
+    ctx.with_log(Arc::new(SilentLog))
+        .trace_fmt(|| panic!("disabled tracing must not format the message"));
+
+    let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
+    let log = Arc::new(log);
+    let ctx = ctx.with_log(Arc::<Logger>::clone(&log));
+    ctx.trace_fmt(|| "trace-only fixture".to_owned());
+    let records = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+    assert!(records.contains("trace-only fixture"), "{records}");
+    assert!(log.captured_lines().is_empty());
+}
+
+#[test]
 fn new_preserves_explicit_ci_overrides_and_environment_defaults() {
     use crate::infra::env::MapEnv;
     use crate::infra::platform::{Os, Platform};

@@ -6,22 +6,16 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use super::package::*;
+use super::report::PackageInstallReport;
 use super::winget::{mock_inventory, parse_winget_ids};
+use crate::domains::packages::test_fixture::{
+    inventory, native_install, pacman_uses_sudo, winget_install,
+};
 use crate::engine::{Resource, ResourceChange, ResourceState};
-use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor, MockExecutor};
-
-#[cfg(unix)]
-fn running_as_root() -> bool {
-    nix::unistd::Uid::effective().is_root()
-}
-
-#[cfg(not(unix))]
-const fn running_as_root() -> bool {
-    false
-}
+use crate::infra::exec::{ExecError, ExecResult, Executor, MockExecutor};
 
 fn expect_sudo_lookup_if_needed(mock: &mut MockExecutor) {
-    if !running_as_root() {
+    if pacman_uses_sudo() {
         mock.expect_which()
             .once()
             .with(mockall::predicate::eq("sudo"))
@@ -29,62 +23,76 @@ fn expect_sudo_lookup_if_needed(mock: &mut MockExecutor) {
     }
 }
 
+fn install_batch(
+    manager: PackageManager,
+    names: &[&str],
+    mock: MockExecutor,
+    progress: &dyn Fn(&str),
+) -> Result<PackageInstallReport> {
+    let executor: Arc<dyn Executor> = Arc::new(mock);
+    let resources: Vec<_> = names
+        .iter()
+        .map(|&name| PackageResource::new(name.into(), manager, Arc::clone(&executor)))
+        .collect();
+    install_missing_packages(
+        manager,
+        &resources.iter().collect::<Vec<_>>(),
+        &*executor,
+        progress,
+    )
+}
+
+/// A started transaction is reconciled against exactly one fresh inventory.
+/// A spawn failure need not (and must not) inspect the package database.
+fn native_batch(
+    manager: PackageManager,
+    names: &[&str],
+    transaction: Result<ExecResult, ExecError>,
+    verification: Option<Result<ExecResult, ExecError>>,
+) -> Result<PackageInstallReport> {
+    let mut mock = MockExecutor::new();
+    if manager == PackageManager::Pacman {
+        expect_sudo_lookup_if_needed(&mut mock);
+    }
+    let mut sequence = mockall::Sequence::new();
+    let steps = std::iter::once((native_install(manager, names), transaction))
+        .chain(verification.map(|result| (inventory(), result)));
+    for (command, result) in steps {
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .with(mockall::predicate::eq(command))
+            .return_once(|_| result);
+    }
+    install_batch(manager, names, mock, &|_| {})
+}
+
 #[test]
 fn description_includes_manager() {
-    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
-    let pacman_resource = PackageResource::new(
-        "git".to_string(),
-        PackageManager::Pacman,
-        Arc::clone(&executor),
-    );
-    assert_eq!(pacman_resource.description(), "git (pacman)");
-
-    let paru_resource = PackageResource::new(
-        "paru-bin".to_string(),
-        PackageManager::Paru,
-        Arc::clone(&executor),
-    );
-    assert_eq!(paru_resource.description(), "paru-bin (paru)");
-
-    let winget_resource = PackageResource::new(
-        "Git.Git".to_string(),
-        PackageManager::Winget,
-        Arc::clone(&executor),
-    );
-    assert_eq!(winget_resource.description(), "Git.Git (winget)");
+    for (manager, name, label) in [
+        (PackageManager::Pacman, "git", "git (pacman)"),
+        (PackageManager::Paru, "paru-bin", "paru-bin (paru)"),
+        (PackageManager::Winget, "Git.Git", "Git.Git (winget)"),
+    ] {
+        let resource = PackageResource::new(name.into(), manager, Arc::new(MockExecutor::new()));
+        assert_eq!(resource.description(), label);
+    }
 }
 
 #[test]
-fn state_from_installed_correct() {
-    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
-    let resource = PackageResource::new(
-        "git".to_string(),
-        PackageManager::Pacman,
-        Arc::clone(&executor),
-    );
-    let installed = InstalledPackages::new(
-        PackageManager::Pacman,
-        HashSet::from(["git".into(), "vim".into()]),
-    );
-    assert_eq!(
-        resource.state_from_installed(&installed),
-        ResourceState::Correct
-    );
-}
-
-#[test]
-fn state_from_installed_missing() {
-    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
-    let resource = PackageResource::new(
-        "git".to_string(),
-        PackageManager::Pacman,
-        Arc::clone(&executor),
-    );
-    let installed = InstalledPackages::new(PackageManager::Pacman, HashSet::new());
-    assert_eq!(
-        resource.state_from_installed(&installed),
-        ResourceState::Missing
-    );
+fn state_from_installed_distinguishes_present_and_missing() {
+    let manager = PackageManager::Pacman;
+    let resource = PackageResource::new("git".into(), manager, Arc::new(MockExecutor::new()));
+    for (names, expected) in [
+        (
+            HashSet::from(["git".into(), "vim".into()]),
+            ResourceState::Correct,
+        ),
+        (HashSet::new(), ResourceState::Missing),
+    ] {
+        let installed = InstalledPackages::new(manager, names);
+        assert_eq!(resource.state_from_installed(&installed), expected);
+    }
 }
 
 // ------------------------------------------------------------------
@@ -228,35 +236,22 @@ fn get_installed_winget_does_not_depend_on_localized_names() {
 // ------------------------------------------------------------------
 
 #[test]
-fn apply_pacman_returns_applied_on_success() {
-    let mut mock = MockExecutor::new();
-    expect_sudo_lookup_if_needed(&mut mock);
-    mock.expect_execute()
-        .once()
-        .returning(|_| Ok(ExecResult::success("")));
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let resource = PackageResource::new(
-        "git".to_string(),
-        PackageManager::Pacman,
-        Arc::clone(&executor),
-    );
-    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
-}
-
-#[test]
-fn apply_paru_returns_applied_on_success() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute().once().returning(|spec| {
-        assert_eq!(spec.program(), "/usr/bin/paru");
-        Ok(ExecResult::success(""))
-    });
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let resource = PackageResource::new(
-        "paru-bin".to_string(),
-        PackageManager::Paru,
-        Arc::clone(&executor),
-    );
-    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+fn native_apply_returns_applied_on_success() {
+    for (manager, name) in [
+        (PackageManager::Pacman, "git"),
+        (PackageManager::Paru, "paru-bin"),
+    ] {
+        let mut mock = MockExecutor::new();
+        if manager == PackageManager::Pacman {
+            expect_sudo_lookup_if_needed(&mut mock);
+        }
+        mock.expect_execute()
+            .once()
+            .with(mockall::predicate::eq(native_install(manager, &[name])))
+            .returning(|_| Ok(ExecResult::success("")));
+        let resource = PackageResource::new(name.into(), manager, Arc::new(mock));
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    }
 }
 
 #[test]
@@ -371,14 +366,9 @@ fn batch_install_announces_each_package_before_execution() {
                     })
                     .returning(|_| Ok(ExecResult::success("first 1.0\nsecond 1.0\n")));
             }
-            let executor: Arc<dyn Executor> = Arc::new(mock);
-            let first = PackageResource::new("first".to_string(), manager, Arc::clone(&executor));
-            let second = PackageResource::new("second".to_string(), manager, Arc::clone(&executor));
-
-            let result =
-                install_missing_packages(manager, &[&first, &second], &*executor, &|package| {
-                    announced.lock().unwrap().push(package.to_string());
-                });
+            let result = install_batch(manager, &["first", "second"], mock, &|package| {
+                announced.lock().unwrap().push(package.to_string());
+            });
 
             assert_eq!(result.is_err(), fails);
             if let Ok(report) = result {
@@ -395,58 +385,18 @@ fn batch_install_announces_each_package_before_execution() {
 
 #[test]
 fn native_batch_install_verifies_one_checked_transaction_with_one_inventory() {
-    let (pacman_program, pacman_args) = if running_as_root() {
-        ("pacman", vec!["-Syu", "--needed", "--noconfirm"])
-    } else {
-        ("sudo", vec!["pacman", "-Syu", "--needed", "--noconfirm"])
-    };
-    for (manager, names, program, mut args) in [
-        (
-            PackageManager::Pacman,
-            ["git", "vim"],
-            pacman_program,
-            pacman_args,
-        ),
-        (
-            PackageManager::Paru,
-            ["paru-bin", "yay"],
-            "/usr/bin/paru",
-            vec!["-S", "--needed", "--noconfirm"],
-        ),
+    for (manager, names) in [
+        (PackageManager::Pacman, ["git", "vim"]),
+        (PackageManager::Paru, ["paru-bin", "yay"]),
     ] {
-        let mut mock = MockExecutor::new();
-        if manager == PackageManager::Pacman {
-            expect_sudo_lookup_if_needed(&mut mock);
-        }
-        args.extend(names);
-        let args: Vec<_> = args.into_iter().map(std::ffi::OsString::from).collect();
-        mock.expect_execute()
-            .once()
-            .withf(move |spec| {
-                spec.program() == program
-                    && spec.arguments() == args
-                    && spec.is_checked()
-                    && spec.working_dir().is_none()
-            })
-            .returning(|_| Ok(ExecResult::success("")));
-        mock.expect_execute()
-            .once()
-            .withf(|spec| {
-                spec.program() == "pacman" && spec.arguments() == ["-Q"] && spec.is_checked()
-            })
-            .returning(move |_| {
-                Ok(ExecResult::success(format!(
-                    "{} 1.0\n{} 1.0\n",
-                    names[0], names[1]
-                )))
-            });
-        let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resources = names
-            .map(|name| PackageResource::new(name.to_string(), manager, Arc::clone(&executor)));
-        let references: Vec<_> = resources.iter().collect();
-
-        let report = install_missing_packages(manager, &references, &*executor, &|_| {}).unwrap();
-
+        let after = format!("{} 1.0\n{} 1.0\n", names[0], names[1]);
+        let report = native_batch(
+            manager,
+            &names,
+            Ok(ExecResult::success("")),
+            Some(Ok(ExecResult::success(after))),
+        )
+        .unwrap();
         assert_eq!(report.applied_count(), 2, "{manager}");
         assert!(!report.has_failures(), "{manager}");
     }
@@ -461,37 +411,18 @@ fn successful_native_batches_report_observed_presence_and_propagate_inventory_er
             Some("first 1.0\nsecond 2.0\n"),
             None,
         ] {
-            let mut mock = MockExecutor::new();
-            if manager == PackageManager::Pacman {
-                expect_sudo_lookup_if_needed(&mut mock);
-            }
-            let mut sequence = mockall::Sequence::new();
-            mock.expect_execute()
-                .once()
-                .in_sequence(&mut sequence)
-                .withf(|spec| spec.is_checked() && spec.arguments() != ["-Q"])
-                .returning(|_| Ok(ExecResult::success("")));
-            mock.expect_execute()
-                .once()
-                .in_sequence(&mut sequence)
-                .withf(|spec| {
-                    spec.program() == "pacman" && spec.arguments() == ["-Q"] && spec.is_checked()
-                })
-                .returning(move |_| {
-                    installed.map_or_else(
-                        || {
-                            Err(ExecError::Cancelled {
-                                command: "pacman -Q".into(),
-                                result: ExecResult::failure("partial", "cancelled fixture", None),
-                            })
-                        },
-                        |output| Ok(ExecResult::success(output)),
-                    )
+            let after = installed
+                .map(ExecResult::success)
+                .ok_or_else(|| ExecError::Cancelled {
+                    command: "pacman -Q".into(),
+                    result: ExecResult::failure("partial", "cancelled fixture", None),
                 });
-            let executor: Arc<dyn Executor> = Arc::new(mock);
-            let first = PackageResource::new("first".into(), manager, Arc::clone(&executor));
-            let second = PackageResource::new("second".into(), manager, Arc::clone(&executor));
-            let result = install_missing_packages(manager, &[&first, &second], &*executor, &|_| {});
+            let result = native_batch(
+                manager,
+                &["first", "second"],
+                Ok(ExecResult::success("")),
+                Some(after),
+            );
             if let Some(installed) = installed {
                 let report = result.unwrap();
                 let expected = installed.lines().count();
@@ -521,54 +452,24 @@ fn successful_native_batches_report_observed_presence_and_propagate_inventory_er
 
 #[test]
 fn batch_install_propagates_pacman_error() {
-    let mut mock = MockExecutor::new();
-    expect_sudo_lookup_if_needed(&mut mock);
-    mock.expect_execute().once().returning(|_| {
-        Err(ExecError::spawn(
-            "pacman",
-            std::io::Error::other("simulated failure"),
-        ))
-    });
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let r1 = PackageResource::new(
-        "git".to_string(),
-        PackageManager::Pacman,
-        Arc::clone(&executor),
-    );
-    assert!(install_missing_packages(PackageManager::Pacman, &[&r1], &*executor, &|_| {}).is_err());
+    let error = ExecError::spawn("pacman", std::io::Error::other("simulated failure"));
+    assert!(native_batch(PackageManager::Pacman, &["git"], Err(error), None).is_err());
 }
 
 #[test]
 fn failed_native_batch_reports_packages_that_were_actually_installed() {
     for manager in [PackageManager::Pacman, PackageManager::Paru] {
         for installed in ["", "first 1.0\n", "first 1.0\nsecond 2.0\n"] {
-            let mut mock = MockExecutor::new();
-            if manager == PackageManager::Pacman {
-                expect_sudo_lookup_if_needed(&mut mock);
-            }
-            let mut sequence = mockall::Sequence::new();
-            mock.expect_execute()
-                .once()
-                .in_sequence(&mut sequence)
-                .withf(CommandSpec::is_checked)
-                .returning(|_| {
-                    Err(ExecError::non_zero(
-                        "fixture batch install",
-                        ExecResult::failure("", "fixture transaction failure", Some(1)),
-                    ))
-                });
-            mock.expect_execute()
-                .once()
-                .in_sequence(&mut sequence)
-                .withf(|spec| {
-                    spec.program() == "pacman" && spec.arguments() == ["-Q"] && spec.is_checked()
-                })
-                .returning(move |_| Ok(ExecResult::success(installed)));
-            let executor: Arc<dyn Executor> = Arc::new(mock);
-            let first = PackageResource::new("first".into(), manager, Arc::clone(&executor));
-            let second = PackageResource::new("second".into(), manager, Arc::clone(&executor));
-
-            let result = install_missing_packages(manager, &[&first, &second], &*executor, &|_| {});
+            let transaction_error = ExecError::non_zero(
+                "fixture batch install",
+                ExecResult::failure("", "fixture transaction failure", Some(1)),
+            );
+            let result = native_batch(
+                manager,
+                &["first", "second"],
+                Err(transaction_error),
+                Some(Ok(ExecResult::success(installed))),
+            );
 
             if installed.contains("second") {
                 let error = result.expect_err("a failed post-transaction hook must stay failed");
@@ -597,46 +498,24 @@ fn failed_native_batch_reports_packages_that_were_actually_installed() {
 #[test]
 fn failed_batch_inventory_errors_remain_errors_not_partial_success() {
     for cancelled in [false, true] {
-        let mut mock = MockExecutor::new();
-        let mut sequence = mockall::Sequence::new();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut sequence)
-            .withf(CommandSpec::is_checked)
-            .returning(|_| {
-                Err(ExecError::non_zero(
-                    "fixture batch",
-                    ExecResult::failure("", "fixture batch failure", Some(1)),
-                ))
-            });
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut sequence)
-            .withf(|spec| {
-                spec.program() == "pacman" && spec.arguments() == ["-Q"] && spec.is_checked()
-            })
-            .returning(move |_| {
-                let result = ExecResult::failure("first 1.0\n", "fixture query failure", Some(1));
-                if cancelled {
-                    Err(ExecError::Cancelled {
-                        command: "pacman -Q".into(),
-                        result,
-                    })
-                } else {
-                    Err(ExecError::non_zero("pacman -Q", result))
-                }
-            });
-        let executor: Arc<dyn Executor> = Arc::new(mock);
-        let first =
-            PackageResource::new("first".into(), PackageManager::Paru, Arc::clone(&executor));
-        let second =
-            PackageResource::new("second".into(), PackageManager::Paru, Arc::clone(&executor));
-
-        let error = install_missing_packages(
+        let batch_failure = ExecError::non_zero(
+            "fixture batch",
+            ExecResult::failure("", "fixture batch failure", Some(1)),
+        );
+        let result = ExecResult::failure("first 1.0\n", "fixture query failure", Some(1));
+        let query_failure = if cancelled {
+            ExecError::Cancelled {
+                command: "pacman -Q".into(),
+                result,
+            }
+        } else {
+            ExecError::non_zero("pacman -Q", result)
+        };
+        let error = native_batch(
             PackageManager::Paru,
-            &[&first, &second],
-            &*executor,
-            &|_| {},
+            &["first", "second"],
+            Err(batch_failure),
+            Some(Err(query_failure)),
         )
         .unwrap_err();
 
@@ -695,43 +574,15 @@ fn winget_install_report_continues_after_individual_failures_without_losing_outc
             mock.expect_execute()
                 .once()
                 .in_sequence(&mut sequence)
-                .return_once(move |spec| {
-                    assert_eq!(spec.program(), "winget");
-                    assert_eq!(
-                        spec.arguments(),
-                        [
-                            "install",
-                            "--id",
-                            name,
-                            "--exact",
-                            "--no-upgrade",
-                            "--source",
-                            "winget",
-                            "--accept-source-agreements",
-                            "--accept-package-agreements",
-                            "--disable-interactivity",
-                            "--scope",
-                            "user",
-                        ]
-                    );
-                    assert!(!spec.is_checked());
-                    assert_eq!(spec.working_dir(), None);
+                .with(mockall::predicate::eq(winget_install(name)))
+                .return_once(move |_| {
                     recorded.lock().unwrap().push(format!("install:{name}"));
                     outcome
                 });
         }
-        let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resources = names.map(|name| {
-            PackageResource::new(name.into(), PackageManager::Winget, Arc::clone(&executor))
-        });
-        let report = install_missing_packages(
-            PackageManager::Winget,
-            &resources.iter().collect::<Vec<_>>(),
-            &*executor,
-            &|package| {
-                events.lock().unwrap().push(format!("progress:{package}"));
-            },
-        )
+        let report = install_batch(PackageManager::Winget, &names, mock, &|package| {
+            events.lock().unwrap().push(format!("progress:{package}"));
+        })
         .unwrap();
 
         assert_eq!(report.applied_count(), 1, "{case}");

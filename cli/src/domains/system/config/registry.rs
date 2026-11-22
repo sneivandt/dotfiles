@@ -262,7 +262,10 @@ pub(crate) const REGISTRY_TOML: &str = "registry.toml";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::config::test_helpers::assert_load_unfiltered_rejects;
+    use crate::infra::config::test_helpers::{
+        assert_conflict, assert_mentions, assert_messages, rejects_toml, write_named_toml,
+        write_temp_toml,
+    };
     use crate::infra::config::test_load_missing_unfiltered_returns_empty;
 
     #[test]
@@ -305,24 +308,24 @@ mod tests {
         }
     }
 
-    #[test]
-    fn unknown_key_in_registry_section_is_rejected() {
-        assert_load_unfiltered_rejects(
-            load,
-            "[console]\npath = \"HKCU:\\\\Console\"\npaths = \"typo\"\n[console.values]\nFontSize = 14\n",
-            "paths",
-        );
+    rejects_toml! {
+        "test.toml", load;
+        unknown_key_in_registry_section_is_rejected:
+            "[console]\npath = \"HKCU:\\\\Console\"\npaths = \"typo\"\n[console.values]\nFontSize = 14\n" => "paths";
+    }
+
+    rejects_toml! {
+        "registry.toml", load;
+        load_returns_error_on_malformed_toml: "[console\npath = \"HKCU:\\\\Test\"";
+        load_returns_error_on_missing_path_field: "[console]\n[console.values]\nKey = \"Value\"\n";
     }
 
     #[test]
     fn load_registry_from_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("registry.toml");
-        std::fs::write(
-            &path,
+        let (_dir, path) = write_named_toml(
+            "registry.toml",
             "[console]\npath = \"HKCU:\\\\Console\"\n[console.values]\nFontSize = 14\nCursorSize = 100\n",
-        )
-        .unwrap();
+        );
 
         let entries = load(&path).unwrap();
         assert_eq!(entries.len(), 2);
@@ -341,13 +344,10 @@ mod tests {
 
     #[test]
     fn load_multiple_sections() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("registry.toml");
-        std::fs::write(
-            &path,
+        let (_dir, path) = write_named_toml(
+            "registry.toml",
             "[console]\npath = \"HKCU:\\\\Console\"\n[console.values]\nFontSize = 14\n\n[explorer]\npath = \"HKCU:\\\\Explorer\"\n[explorer.values]\nShowHidden = 1\n",
-        )
-        .unwrap();
+        );
 
         let entries = load(&path).unwrap();
         assert_eq!(entries.len(), 2);
@@ -370,9 +370,7 @@ mod tests {
 
     #[test]
     fn load_empty_file_returns_empty() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("registry.toml");
-        std::fs::write(&path, "").unwrap();
+        let (_dir, path) = write_named_toml("registry.toml", "");
         let entries = load(&path).unwrap();
         assert!(entries.is_empty(), "empty file should produce empty list");
     }
@@ -393,36 +391,22 @@ mod tests {
             ("case-sensitive strings", "\"text\"", "\"Text\"", true),
         ];
         for (name, first, second, conflict) in cases {
-            let (_dir, path) = crate::infra::config::test_helpers::write_temp_toml(&format!(
+            let (_dir, path) = write_temp_toml(&format!(
                 "[first]\npath = 'HKCU:\\Console'\n[first.values]\nFontSize = {first}\n\
                  [second]\npath = 'hkcu:\\console\\'\n[second.values]\nfontsize = {second}\n"
             ));
             let entries = load(&path).expect("load registry declarations");
             let diagnostics = validate_conflicts(&entries);
-            assert_eq!(
-                diagnostics.len(),
-                usize::from(conflict),
-                "{name}: {diagnostics:?}"
-            );
-            if conflict {
-                let diagnostic = &diagnostics[0];
-                assert_eq!(diagnostic.code, REGISTRY_CONFLICTING_VALUES, "{name}");
-                assert_eq!(
-                    diagnostic.severity,
-                    crate::infra::config::Severity::Error,
-                    "{name}"
-                );
-                assert!(
-                    diagnostic.message.contains(&path.display().to_string()),
-                    "{name}"
-                );
-                assert!(
-                    diagnostic.message.contains("[first.values] \"FontSize\""),
-                    "{name}"
-                );
-                assert!(
-                    diagnostic.message.contains("[second.values] \"fontsize\""),
-                    "{name}"
+            if let Some(diagnostic) =
+                assert_conflict(name, &diagnostics, conflict, REGISTRY_CONFLICTING_VALUES)
+            {
+                assert_mentions(
+                    &diagnostic.message,
+                    &[
+                        &path.display().to_string(),
+                        "[first.values] \"FontSize\"",
+                        "[second.values] \"fontsize\"",
+                    ],
                 );
             }
         }
@@ -430,7 +414,7 @@ mod tests {
 
     #[test]
     fn distinct_registry_targets_do_not_conflict() {
-        let (_dir, path) = crate::infra::config::test_helpers::write_temp_toml(
+        let (_dir, path) = write_temp_toml(
             r#"
 [first]
 path = 'HKCU:\A'
@@ -487,158 +471,65 @@ bar = 5
         }
     }
 
-    #[test]
-    fn validate_rejects_invalid_hive() {
-        let entries = vec![RegistryEntry {
-            key_path: "INVALID:\\Key".to_string(),
-            value_name: "Test".to_string(),
-            value_data: "1".to_string(),
+    fn dword(path: &str, name: &str, data: &str) -> RegistryEntry {
+        RegistryEntry {
+            key_path: path.into(),
+            value_name: name.into(),
+            value_data: data.into(),
             value_type: RegistryValueType::Dword,
             origin: None,
-        }];
-        let warnings = validate(&entries);
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("must start with HKCU"));
+        }
     }
 
     #[test]
-    fn validate_detects_empty_key_path() {
-        let entries = vec![RegistryEntry {
-            key_path: "  ".to_string(),
-            value_name: "Test".to_string(),
-            value_data: "1".to_string(),
-            value_type: RegistryValueType::Dword,
-            origin: None,
-        }];
-        let warnings = validate(&entries);
-        assert!(
-            warnings.iter().any(|w| w.message.contains("path is empty")),
-            "should warn about empty key path: {warnings:?}"
-        );
+    fn validate_rejects_invalid_registry_targets() {
+        for (path, name, count, message) in [
+            (r"INVALID:\Key", "Test", Some(1), "must start with HKCU"),
+            ("  ", "Test", None, "path is empty"),
+            (r"HKCU:\Console", "  ", None, "value name is empty"),
+            (
+                r"HKLM:\Software\Test",
+                "Setting",
+                None,
+                "other registry hives are not supported",
+            ),
+        ] {
+            assert_messages(&validate(&[dword(path, name, "1")]), count, &[message]);
+        }
     }
 
     #[test]
-    fn validate_detects_empty_value_name() {
-        let entries = vec![RegistryEntry {
-            key_path: "HKCU:\\Console".to_string(),
-            value_name: "  ".to_string(),
-            value_data: "1".to_string(),
-            value_type: RegistryValueType::Dword,
-            origin: None,
-        }];
-        let warnings = validate(&entries);
-        assert!(
-            warnings
-                .iter()
-                .any(|w| w.message.contains("value name is empty")),
-            "should warn about empty value name: {warnings:?}"
-        );
-    }
-
-    #[test]
-    fn validate_rejects_non_hkcu_hive() {
-        let entries = vec![RegistryEntry {
-            key_path: "HKLM:\\Software\\Test".to_string(),
-            value_name: "Setting".to_string(),
-            value_data: "1".to_string(),
-            value_type: RegistryValueType::Dword,
-            origin: None,
-        }];
-        let warnings = validate(&entries);
-        assert!(
-            warnings
-                .iter()
-                .any(|w| w.message.contains("other registry hives are not supported")),
-            "should reject non-HKCU hives: {warnings:?}"
-        );
-    }
-
-    #[test]
-    fn validate_valid_hkcu_entry_produces_no_warnings() {
-        let entries = vec![RegistryEntry {
-            key_path: "HKCU:\\Console".to_string(),
-            value_name: "FontSize".to_string(),
-            value_data: "14".to_string(),
-            value_type: RegistryValueType::Dword,
-            origin: None,
-        }];
-        let warnings = validate(&entries);
-        assert!(
-            warnings.is_empty(),
-            "valid HKCU entry should produce no warnings: {warnings:?}"
-        );
-    }
-
-    #[test]
-    fn validate_empty_entries_produces_no_warnings() {
-        let warnings = validate(&[]);
-        assert!(
-            warnings.is_empty(),
-            "empty entries should produce no warnings"
-        );
-    }
-
-    #[test]
-    fn validate_case_insensitive_hive_prefix() {
-        let entries = vec![RegistryEntry {
-            key_path: "hkcu:\\Console".to_string(),
-            value_name: "FontSize".to_string(),
-            value_data: "14".to_string(),
-            value_type: RegistryValueType::Dword,
-            origin: None,
-        }];
-        let warnings = validate(&entries);
-        assert!(
-            warnings.is_empty(),
-            "lowercase hive prefix should be accepted: {warnings:?}"
-        );
+    fn validate_accepts_empty_input_and_case_insensitive_hkcu() {
+        assert!(validate(&[]).is_empty());
+        for path in [r"HKCU:\Console", r"hkcu:\Console"] {
+            assert!(
+                validate(&[dword(path, "FontSize", "14")]).is_empty(),
+                "{path}"
+            );
+        }
     }
 
     #[test]
     fn classify_value_covers_types() {
-        assert_eq!(
-            classify_value(&toml::Value::String("hello".into())),
-            ("hello".to_string(), RegistryValueType::String)
-        );
-        assert_eq!(
-            classify_value(&toml::Value::Integer(42)),
-            ("42".to_string(), RegistryValueType::Dword)
-        );
-        assert_eq!(
-            classify_value(&toml::Value::Boolean(true)),
-            ("1".to_string(), RegistryValueType::Dword)
-        );
-        assert_eq!(
-            classify_value(&toml::Value::Boolean(false)),
-            ("0".to_string(), RegistryValueType::Dword)
-        );
-        assert_eq!(
-            classify_value(&toml::Value::String("0x0E".into())),
-            ("0x0E".to_string(), RegistryValueType::Dword)
-        );
-        // Strings that merely look numeric remain REG_SZ — use TOML integers
-        // if you want a DWORD.
-        assert_eq!(
-            classify_value(&toml::Value::String("42".into())),
-            ("42".to_string(), RegistryValueType::String)
-        );
-    }
-
-    #[test]
-    fn load_returns_error_on_malformed_toml() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("registry.toml");
-        std::fs::write(&path, "[console\npath = \"HKCU:\\\\Test\"").unwrap();
-        let result = load(&path);
-        assert!(result.is_err(), "malformed TOML should return error");
-    }
-
-    #[test]
-    fn load_returns_error_on_missing_path_field() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("registry.toml");
-        std::fs::write(&path, "[console]\n[console.values]\nKey = \"Value\"\n").unwrap();
-        let result = load(&path);
-        assert!(result.is_err(), "missing 'path' field should return error");
+        use toml::Value;
+        for (input, data, kind) in [
+            (
+                Value::String("hello".into()),
+                "hello",
+                RegistryValueType::String,
+            ),
+            (Value::Integer(42), "42", RegistryValueType::Dword),
+            (Value::Boolean(true), "1", RegistryValueType::Dword),
+            (Value::Boolean(false), "0", RegistryValueType::Dword),
+            (
+                Value::String("0x0E".into()),
+                "0x0E",
+                RegistryValueType::Dword,
+            ),
+            // Decimal strings remain REG_SZ; use TOML integers for DWORDs.
+            (Value::String("42".into()), "42", RegistryValueType::String),
+        ] {
+            assert_eq!(classify_value(&input), (data.to_string(), kind), "{input}");
+        }
     }
 }

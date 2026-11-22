@@ -91,6 +91,22 @@ pub fn write_atomic(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     write_atomic_checked(path, content, || Ok(()))
 }
 
+/// Record both possible target contents before publication, and retire the old
+/// hash only after success. A failed or interrupted publish leaves a record
+/// that recognizes either outcome on retry.
+pub(crate) fn publish_with_ownership<E: From<anyhow::Error>>(
+    ledger: &Path,
+    before: Option<&[u8]>,
+    desired: &[u8],
+    publish: impl FnOnce() -> Result<(), E>,
+) -> Result<(), E> {
+    let committed = format!("{}\n", super::content_hash(desired));
+    let pending = before.map(|old| format!("{committed}{}\n", super::content_hash(old)));
+    write_atomic(ledger, pending.as_deref().unwrap_or(&committed))?;
+    publish()?;
+    write_atomic(ledger, committed).map_err(Into::into)
+}
+
 /// Stage a replacement and verify the caller's baseline immediately before publication.
 ///
 /// The check detects intervening edits but cannot lock out uncooperative writers.
@@ -202,6 +218,33 @@ mod tests {
     use super::*;
     #[cfg(target_os = "linux")]
     use std::os::unix::fs::PermissionsExt as _;
+
+    #[test]
+    fn ownership_spans_publication_and_retires_the_old_hash_only_on_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let ledger = dir.path().join("ownership");
+        let new = format!("{}\n", crate::infra::fs::content_hash(b"new"));
+        let both = format!("{new}{}\n", crate::infra::fs::content_hash(b"old"));
+        for fail in [true, false] {
+            let result = publish_with_ownership(&ledger, Some(b"old"), b"new", || {
+                assert_eq!(std::fs::read_to_string(&ledger).unwrap(), both);
+                anyhow::ensure!(!fail, "publication failed");
+                Ok(())
+            });
+            assert_eq!(result.is_err(), fail);
+            let final_record = std::fs::read_to_string(&ledger).unwrap();
+            assert_eq!(&final_record, if fail { &both } else { &new });
+        }
+    }
+
+    #[test]
+    fn cannot_publish_without_recording_ownership_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let result: Result<()> = publish_with_ownership(dir.path(), None, b"new", || {
+            panic!("must not publish when the ledger is unwritable")
+        });
+        assert!(result.is_err());
+    }
 
     #[test]
     fn write_atomic_creates_missing_parents() {

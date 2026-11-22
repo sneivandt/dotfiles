@@ -7,13 +7,34 @@
 
 mod common;
 
-fn output(command: &mut std::process::Command, success: bool) -> String {
+use std::path::Path;
+use std::process::Command;
+
+struct LifecycleCli<'a> {
+    repo: &'a Path,
+    home: tempfile::TempDir,
+}
+
+impl<'a> LifecycleCli<'a> {
+    fn new(repo: &'a Path) -> Self {
+        Self {
+            repo,
+            home: tempfile::tempdir().unwrap(),
+        }
+    }
+
+    fn command(&self, overlay: Option<&Path>, verb: &str, selector: &str) -> Command {
+        common::cli_command(self.repo, self.home.path(), overlay, verb, selector)
+    }
+
+    fn run(&self, overlay: Option<&Path>, verb: &str, selector: &str, success: bool) -> String {
+        output(&mut self.command(overlay, verb, selector), success)
+    }
+}
+
+fn output(command: &mut Command, success: bool) -> String {
     let result = command.output().unwrap();
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&result.stdout),
-        String::from_utf8_lossy(&result.stderr)
-    );
+    let text = common::combined_output(&result);
     assert_eq!(result.status.success(), success, "{text}");
     text
 }
@@ -24,13 +45,12 @@ fn broken_hook_directory_is_not_an_empty_or_retired_source() {
     let repo = common::TestContextBuilder::new()
         .with_hook_source("pre-commit", "first version\n")
         .build();
-    let home = tempfile::tempdir().unwrap();
+    let cli = LifecycleCli::new(repo.root_path());
     let hooks = repo.root_path().join("hooks");
     let saved = repo.root_path().join("saved-hooks");
     let installed = repo.root_path().join(".git/hooks/pre-commit");
     let run = |verb, dry_run, success| {
-        let mut command =
-            common::cli_command(repo.root_path(), home.path(), None, verb, "git-hooks");
+        let mut command = cli.command(None, verb, "git-hooks");
         if dry_run {
             command.arg("--dry-run");
         }
@@ -68,7 +88,7 @@ fn missing_overlay_cannot_replace_the_saved_selection_or_apply_base_settings() {
             "[base]\nsettings=[{key='core.editor',value='vim'}]\n",
         )
         .build();
-    let home = tempfile::tempdir().unwrap();
+    let cli = LifecycleCli::new(repo.root_path());
     let overlay = tempfile::tempdir().unwrap();
     std::fs::create_dir(overlay.path().join("conf")).unwrap();
     std::fs::write(
@@ -76,18 +96,7 @@ fn missing_overlay_cannot_replace_the_saved_selection_or_apply_base_settings() {
         "[base]\nsettings=[{key='core.editor',value='nano'}]\n",
     )
     .unwrap();
-    let run = |selected_overlay, success| {
-        output(
-            &mut common::cli_command(
-                repo.root_path(),
-                home.path(),
-                selected_overlay,
-                "update",
-                "git",
-            ),
-            success,
-        )
-    };
+    let run = |selected_overlay, success| cli.run(selected_overlay, "update", "git", success);
     run(Some(overlay.path()), true);
     let message = run(Some(&overlay.path().join("missing")), false);
     assert!(
@@ -103,7 +112,7 @@ fn missing_overlay_cannot_replace_the_saved_selection_or_apply_base_settings() {
             .unwrap(),
         overlay.path()
     );
-    let global = git2::Config::open(&home.path().join(".gitconfig")).unwrap();
+    let global = git2::Config::open(&cli.home.path().join(".gitconfig")).unwrap();
     assert_eq!(global.get_string("core.editor").unwrap(), "nano");
 }
 
@@ -116,7 +125,7 @@ fn dangling_optional_overlay_config_cannot_revert_an_installed_preference() {
             "[base]\nsettings=[{target='copilot',key='model',value='base'}]\n",
         )
         .build();
-    let home = tempfile::tempdir().unwrap();
+    let cli = LifecycleCli::new(repo.root_path());
     let overlay = tempfile::tempdir().unwrap();
     let conf = overlay.path().join("conf");
     std::fs::create_dir(&conf).unwrap();
@@ -127,17 +136,9 @@ fn dangling_optional_overlay_config_cannot_revert_an_installed_preference() {
     )
     .unwrap();
     std::os::unix::fs::symlink("../active.toml", conf.join("agent-settings.toml")).unwrap();
-    let update = |selection| {
-        common::cli_command(
-            repo.root_path(),
-            home.path(),
-            selection,
-            "update",
-            "agent-settings",
-        )
-    };
+    let update = |selection| cli.command(selection, "update", "agent-settings");
     output(&mut update(Some(overlay.path())), true);
-    let document = home.path().join(".copilot/settings.json");
+    let document = cli.home.path().join(".copilot/settings.json");
     let installed = std::fs::read(&document).unwrap();
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&installed)
@@ -162,12 +163,13 @@ fn dangling_optional_overlay_config_cannot_revert_an_installed_preference() {
 #[test]
 fn nonregular_log_entries_cannot_block_update() {
     let repo = common::IntegrationTestContext::new();
-    let home = tempfile::tempdir().unwrap();
-    let logs = home.path().join("logs");
+    let cli = LifecycleCli::new(repo.root_path());
+    let logs = cli.home.path().join("logs");
     std::fs::create_dir(&logs).unwrap();
     let fifo = logs.join("20250101T010101Z-update-7.log");
     nix::unistd::mkfifo(&fifo, nix::sys::stat::Mode::S_IRUSR).unwrap();
-    let mut update = common::cli_command(repo.root_path(), home.path(), None, "update", "git")
+    let mut update = cli
+        .command(None, "update", "git")
         .stdout(std::process::Stdio::null())
         .spawn()
         .unwrap();
@@ -195,21 +197,13 @@ fn nonregular_log_entries_cannot_block_update() {
 #[test]
 fn shell_path_migrates_the_legacy_export_before_an_early_return() {
     let repo = common::IntegrationTestContext::new();
-    let home = tempfile::tempdir().unwrap();
-    let profile = home.path().join(".profile");
+    let cli = LifecycleCli::new(repo.root_path());
+    let profile = cli.home.path().join(".profile");
     let original = "#!/bin/sh\nexport FIXTURE_SETTING=kept\nreturn 0\n";
     let export = "export PATH=\"$HOME/.local/bin:$PATH\"";
     let legacy = format!("{original}\n# Added by dotfiles\n{export}\n");
     std::fs::write(&profile, &legacy).unwrap();
-    let update = || {
-        common::cli_command(
-            repo.root_path(),
-            home.path(),
-            None,
-            "update",
-            "launcher,path",
-        )
-    };
+    let update = || cli.command(None, "update", "launcher,path");
     output(update().arg("--dry-run"), true);
     assert_eq!(std::fs::read_to_string(&profile).unwrap(), legacy);
     output(&mut update(), true);
@@ -217,9 +211,9 @@ fn shell_path_migrates_the_legacy_export_before_an_early_return() {
     assert_eq!(configured.matches(export).count(), 2);
     assert!(configured.starts_with("#!/bin/sh\n"));
     assert!(configured.contains("export FIXTURE_SETTING=kept\nreturn 0\n"));
-    let shell = std::process::Command::new("/bin/sh")
+    let shell = Command::new("/bin/sh")
         .env_clear()
-        .env("HOME", home.path())
+        .env("HOME", cli.home.path())
         .env("PATH", "/usr/bin:/bin")
         .args([
             "-c",
@@ -230,7 +224,11 @@ fn shell_path_migrates_the_legacy_export_before_an_early_return() {
     assert!(shell.status.success(), "{shell:?}");
     assert_eq!(
         String::from_utf8(shell.stdout).unwrap().trim(),
-        home.path().join(".local/bin/dotfiles").to_str().unwrap()
+        cli.home
+            .path()
+            .join(".local/bin/dotfiles")
+            .to_str()
+            .unwrap()
     );
     output(&mut update(), true);
     assert_eq!(std::fs::read_to_string(profile).unwrap(), configured);
@@ -240,29 +238,29 @@ fn shell_path_migrates_the_legacy_export_before_an_early_return() {
 #[test]
 fn shell_path_recovers_from_a_fresh_shell_without_doubling_the_guard_or_entry() {
     let repo = common::IntegrationTestContext::new();
-    let home = tempfile::tempdir().unwrap();
+    let cli = LifecycleCli::new(repo.root_path());
     let root = repo.root_path();
-    let profile = home.path().join(".profile");
-    let update = |only| common::cli_command(root, home.path(), None, "update", only);
+    let profile = cli.home.path().join(".profile");
+    let update = |only| cli.command(None, "update", only);
     std::fs::copy(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../dotfiles.sh"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../dotfiles.sh"),
         root.join("dotfiles.sh"),
     )
     .unwrap();
     std::fs::create_dir(root.join("bin")).unwrap();
     std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_dotfiles"), root.join("bin/dotfiles")).unwrap();
     let fresh_shell = |script: &str| {
-        let mut shell = std::process::Command::new("/bin/sh");
+        let mut shell = Command::new("/bin/sh");
         shell
             .env_clear()
-            .env("HOME", home.path())
+            .env("HOME", cli.home.path())
             .env("PATH", "/no-tools")
             .env("DOTFILES_PROFILE", "base")
             .env("DOTFILES_SKIP_SELF_UPDATE", "1")
-            .env("DOTFILES_LOG_DIR", home.path().join("logs"))
+            .env("DOTFILES_LOG_DIR", cli.home.path().join("logs"))
             .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", home.path().join(".gitconfig"))
-            .current_dir(home.path())
+            .env("GIT_CONFIG_GLOBAL", cli.home.path().join(".gitconfig"))
+            .current_dir(cli.home.path())
             .args(["-ec", script]);
         output(&mut shell, true)
     };
@@ -328,22 +326,17 @@ fn extension_deferral_requires_a_configured_enabled_consumer_and_records_the_pro
             "[base]\nextensions=['fixture.extension']\n",
         )
         .build();
-    let home = tempfile::tempdir().unwrap();
-    let marker = home
+    let cli = LifecycleCli::new(repo.root_path());
+    let marker = cli
+        .home
         .path()
         .join(".local/state/dotfiles/deferred-vscode-extensions");
     let unit = "dotfiles-first-login.service";
-    let directory = home.path().join(".config/systemd/user");
+    let directory = cli.home.path().join(".config/systemd/user");
     let run = |success| {
         output(
-            common::cli_command(
-                repo.root_path(),
-                home.path(),
-                None,
-                "update",
-                "vscode-extensions",
-            )
-            .env("DOTFILES_PROVISIONING", "arch-chroot"),
+            cli.command(None, "update", "vscode-extensions")
+                .env("DOTFILES_PROVISIONING", "arch-chroot"),
             success,
         )
     };
@@ -396,12 +389,12 @@ fn first_login_replays_the_overlay_and_extensions_recorded_in_its_marker() {
         .with_config_file("symlinks.toml", &format!("[base]\nsymlinks=['{source}']\n"))
         .with_symlink_source_content(&source, "[Install]\nWantedBy=graphical-session.target\n")
         .build();
-    let home = tempfile::tempdir().unwrap();
+    let cli = LifecycleCli::new(repo.root_path());
     let overlay = tempfile::tempdir().unwrap();
     let overlay_config = overlay.path().join("conf/vscode-extensions.toml");
     std::fs::create_dir_all(overlay_config.parent().unwrap()).unwrap();
     std::fs::write(&overlay_config, "[base]\nextensions=['fixture.private']\n").unwrap();
-    let unit_dir = home.path().join(".config/systemd/user");
+    let unit_dir = cli.home.path().join(".config/systemd/user");
     let wants = unit_dir.join("graphical-session.target.wants");
     std::fs::create_dir_all(&wants).unwrap();
     std::os::unix::fs::symlink(
@@ -411,22 +404,15 @@ fn first_login_replays_the_overlay_and_extensions_recorded_in_its_marker() {
     .unwrap();
     std::os::unix::fs::symlink(unit_dir.join(unit), wants.join(unit)).unwrap();
 
-    let update = || {
-        common::cli_command(
-            repo.root_path(),
-            home.path(),
-            None,
-            "update",
-            "vscode-extensions",
-        )
-    };
+    let update = || cli.command(None, "update", "vscode-extensions");
     output(
         update()
             .env("DOTFILES_PROVISIONING", "arch-chroot")
             .env("DOTFILES_OVERLAY", overlay.path()),
         true,
     );
-    let marker = home
+    let marker = cli
+        .home
         .path()
         .join(".local/state/dotfiles/deferred-vscode-extensions");
     let content = std::fs::read_to_string(&marker).unwrap();
@@ -439,7 +425,7 @@ fn first_login_replays_the_overlay_and_extensions_recorded_in_its_marker() {
         variables.get("DOTFILES_OVERLAY").map(String::as_str),
         overlay.path().to_str()
     );
-    let installed = home.path().join("bin/code");
+    let installed = cli.home.path().join("bin/code");
     std::fs::create_dir_all(installed.parent().unwrap()).unwrap();
     std::fs::write(
         &installed,
@@ -479,8 +465,8 @@ fn rewriting_global_git_config_preserves_linux_access_metadata() {
             "[base]\nsettings = [{key='core.editor',value='vim'}]\n",
         )
         .build();
-    let home = tempfile::tempdir().unwrap();
-    let config = home.path().join(".gitconfig");
+    let cli = LifecycleCli::new(repo.root_path());
+    let config = cli.home.path().join(".gitconfig");
     std::fs::write(&config, "[core]\n editor = nano\n").unwrap();
     let mut acl = 2_u32.to_le_bytes().to_vec();
     let uid = config.metadata().unwrap().uid();
@@ -502,10 +488,7 @@ fn rewriting_global_git_config_preserves_linux_access_metadata() {
     for (name, value) in attributes {
         setxattr(&config, name, value, XattrFlags::empty()).unwrap();
     }
-    output(
-        &mut common::cli_command(repo.root_path(), home.path(), None, "update", "git"),
-        true,
-    );
+    cli.run(None, "update", "git", true);
     assert!(std::fs::read_to_string(&config).unwrap().contains("vim"));
     for (name, value) in attributes {
         let mut observed = vec![0; value.len()];
@@ -527,10 +510,10 @@ fn global_git_update_honors_the_selected_file_and_later_conditional_includes() {
             "[base]\nsettings = [{key='core.editor',value='vim'}]\n",
         )
         .build();
-    let home = tempfile::tempdir().unwrap();
-    let default = home.path().join(".gitconfig");
-    let selected = home.path().join("selected.gitconfig");
-    let included = home.path().join("included.gitconfig");
+    let cli = LifecycleCli::new(repo.root_path());
+    let default = cli.home.path().join(".gitconfig");
+    let selected = cli.home.path().join("selected.gitconfig");
+    let included = cli.home.path().join("included.gitconfig");
     let untouched_default = "[core]\n editor = existing-default\n";
     let untouched_include = "[core]\n editor = existing-override\n";
     std::fs::write(&default, untouched_default).unwrap();
@@ -544,16 +527,16 @@ fn global_git_update_honors_the_selected_file_and_later_conditional_includes() {
     )
     .unwrap();
     let git_update = || {
-        let mut command = common::cli_command(repo.root_path(), home.path(), None, "update", "git");
+        let mut command = cli.command(None, "update", "git");
         command.env("GIT_CONFIG_GLOBAL", &selected).arg("--verbose");
         command
     };
     let mut command = git_update();
     let native_value = || {
-        let result = std::process::Command::new("git")
+        let result = Command::new("git")
             .env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap())
-            .env("HOME", home.path())
+            .env("HOME", cli.home.path())
             .env("GIT_CONFIG_GLOBAL", &selected)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .current_dir(repo.root_path())
@@ -592,45 +575,21 @@ fn global_git_update_honors_the_selected_file_and_later_conditional_includes() {
 #[test]
 fn checks_reject_hard_linked_locks_without_overwriting_user_data() {
     let repo = common::IntegrationTestContext::new();
-    let home = tempfile::tempdir().unwrap();
-    let unrelated = home.path().join("unrelated");
+    let cli = LifecycleCli::new(repo.root_path());
+    let unrelated = cli.home.path().join("unrelated");
     std::fs::write(&unrelated, "valuable user data").unwrap();
     // Initialize the fixture repository before installing the conflicting lock.
-    let _command = common::cli_command(
-        repo.root_path(),
-        home.path(),
-        None,
-        "check",
-        "config-diagnostics",
-    );
+    let _command = cli.command(None, "check", "config-diagnostics");
     let lock = repo.root_path().join(".git/dotfiles-run.lock");
     std::fs::hard_link(&unrelated, &lock).unwrap();
-    let text = output(
-        &mut common::cli_command(
-            repo.root_path(),
-            home.path(),
-            None,
-            "check",
-            "config-diagnostics",
-        ),
-        false,
-    );
+    let text = cli.run(None, "check", "config-diagnostics", false);
     assert!(text.contains("multiply linked"), "{text}");
     assert_eq!(
         std::fs::read_to_string(&unrelated).unwrap(),
         "valuable user data"
     );
     std::fs::remove_file(lock).unwrap();
-    output(
-        &mut common::cli_command(
-            repo.root_path(),
-            home.path(),
-            None,
-            "check",
-            "config-diagnostics",
-        ),
-        true,
-    );
+    cli.run(None, "check", "config-diagnostics", true);
     assert_eq!(
         std::fs::read_to_string(unrelated).unwrap(),
         "valuable user data"
@@ -646,7 +605,7 @@ fn pam_conflicts_are_reported_by_configuration_diagnostics() {
             "[base]\nfiles=[{source='pam.d/test',merge='pam'}]\n",
         )
         .build();
-    let home = tempfile::tempdir().unwrap();
+    let cli = LifecycleCli::new(repo.root_path());
     let source = repo.root_path().join("system/pam.d/test");
     std::fs::create_dir_all(source.parent().unwrap()).unwrap();
     std::fs::write(
@@ -654,16 +613,7 @@ fn pam_conflicts_are_reported_by_configuration_diagnostics() {
         "auth optional pam_example.so first\n-auth required pam_example.so second\n",
     )
     .unwrap();
-    let text = output(
-        &mut common::cli_command(
-            repo.root_path(),
-            home.path(),
-            None,
-            "check",
-            "config-diagnostics",
-        ),
-        false,
-    );
+    let text = cli.run(None, "check", "config-diagnostics", false);
     assert!(text.contains("conflicting rules"), "{text}");
 }
 
@@ -675,10 +625,10 @@ fn non_interactive_login_shell_never_calls_an_authentication_prompt() {
         return;
     }
     let repo = common::IntegrationTestContext::new();
-    let home = tempfile::tempdir().unwrap();
-    let bin = home.path().join("bin");
+    let cli = LifecycleCli::new(repo.root_path());
+    let bin = cli.home.path().join("bin");
     std::fs::create_dir(&bin).unwrap();
-    let prompt_marker = home.path().join("unexpected-prompt");
+    let prompt_marker = cli.home.path().join("unexpected-prompt");
     for (name, script) in [
         ("zsh", "exit 0".to_string()),
         (
@@ -695,8 +645,7 @@ fn non_interactive_login_shell_never_calls_an_authentication_prompt() {
         std::fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
-    let mut command =
-        common::cli_command(repo.root_path(), home.path(), None, "update", "login-shell");
+    let mut command = cli.command(None, "update", "login-shell");
     command
         .env("PATH", &bin)
         .env("USER", "fixture")
@@ -718,18 +667,17 @@ fn non_interactive_login_shell_never_calls_an_authentication_prompt() {
 #[test]
 fn launcher_preserves_user_files_and_modified_installations() {
     let repo = common::IntegrationTestContext::new();
-    let home = tempfile::tempdir().unwrap();
+    let cli = LifecycleCli::new(repo.root_path());
     let name = if cfg!(windows) {
         "dotfiles.cmd"
     } else {
         "dotfiles"
     };
-    let target = home.path().join(".local/bin").join(name);
+    let target = cli.home.path().join(".local/bin").join(name);
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "user launcher").unwrap();
     for preview in [true, false] {
-        let mut command =
-            common::cli_command(repo.root_path(), home.path(), None, "update", "launcher");
+        let mut command = cli.command(None, "update", "launcher");
         command.arg("--fail-on-skip");
         if preview {
             command.arg("--dry-run");
@@ -739,36 +687,26 @@ fn launcher_preserves_user_files_and_modified_installations() {
     }
     std::fs::remove_file(&target).unwrap();
     output(
-        common::cli_command(repo.root_path(), home.path(), None, "update", "launcher")
-            .arg("--dry-run"),
+        cli.command(None, "update", "launcher").arg("--dry-run"),
         true,
     );
     assert!(!target.exists(), "preview must not install a launcher");
     output(
-        common::cli_command(repo.root_path(), home.path(), None, "update", "launcher").env(
+        cli.command(None, "update", "launcher").env(
             "DOTFILES_WRAPPER",
             if cfg!(windows) { "sh" } else { "pwsh" },
         ),
         true,
     );
     let installed = std::fs::read(&target).unwrap();
-    let text = output(
-        &mut common::cli_command(repo.root_path(), home.path(), None, "update", "launcher"),
-        true,
-    );
+    let text = cli.run(None, "update", "launcher", true);
     assert!(text.contains("Tasks · 1 unchanged"), "{text}");
     assert_eq!(std::fs::read(&target).unwrap(), installed);
     std::fs::write(&target, "user edit").unwrap();
-    output(
-        &mut common::cli_command(repo.root_path(), home.path(), None, "remove", "launcher"),
-        true,
-    );
+    cli.run(None, "remove", "launcher", true);
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "user edit");
     std::fs::write(&target, &installed).unwrap();
-    output(
-        &mut common::cli_command(repo.root_path(), home.path(), None, "remove", "launcher"),
-        true,
-    );
+    cli.run(None, "remove", "launcher", true);
     assert!(!target.exists());
 }
 
@@ -780,9 +718,9 @@ fn included_git_settings_converge_without_modifying_included_files() {
             "[base]\nsettings = [{ key = 'core.autocrlf', value = 'false' }]\n",
         )
         .build();
-    let home = tempfile::tempdir().unwrap();
-    let config = home.path().join(".gitconfig");
-    let included = home.path().join("included.gitconfig");
+    let cli = LifecycleCli::new(repo.root_path());
+    let config = cli.home.path().join(".gitconfig");
+    let included = cli.home.path().join("included.gitconfig");
     std::fs::write(
         &config,
         "[core]\n autocrlf = true\n[include]\n path = included.gitconfig\n",
@@ -790,20 +728,11 @@ fn included_git_settings_converge_without_modifying_included_files() {
     .unwrap();
     std::fs::write(&included, "[core]\n autocrlf = true\n").unwrap();
     let before = std::fs::read(&config).unwrap();
-    output(
-        common::cli_command(repo.root_path(), home.path(), None, "update", "git").arg("--dry-run"),
-        true,
-    );
+    output(cli.command(None, "update", "git").arg("--dry-run"), true);
     assert_eq!(std::fs::read(&config).unwrap(), before);
-    output(
-        &mut common::cli_command(repo.root_path(), home.path(), None, "update", "git"),
-        true,
-    );
+    cli.run(None, "update", "git", true);
     let after = std::fs::read(&config).unwrap();
-    let text = output(
-        &mut common::cli_command(repo.root_path(), home.path(), None, "update", "git"),
-        true,
-    );
+    let text = cli.run(None, "update", "git", true);
     assert!(text.contains("Tasks · 1 unchanged"), "{text}");
     assert_eq!(std::fs::read(&config).unwrap(), after);
     assert_eq!(
@@ -827,30 +756,22 @@ fn default_linux_modes_preserve_local_zsh_files_and_restrict_ssh_config() {
     let repo = common::TestContextBuilder::new()
         .with_config_file("chmod.toml", include_str!("../../conf/chmod.toml"))
         .build();
-    let home = tempfile::tempdir().unwrap();
+    let cli = LifecycleCli::new(repo.root_path());
     let files = [
         (".config/zsh/private-plugin.zsh", 0o600, 0o600),
         (".config/zsh/local-helper", 0o700, 0o700),
         (".ssh/config", 0o644, 0o600),
     ];
     for (path, mode, _) in files {
-        let target = home.path().join(path);
+        let target = cli.home.path().join(path);
         std::fs::create_dir_all(target.parent().unwrap()).unwrap();
         std::fs::write(&target, "fixture").unwrap();
         std::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode)).unwrap();
     }
-    output(
-        &mut common::cli_command(
-            repo.root_path(),
-            home.path(),
-            None,
-            "update",
-            "file-permissions",
-        ),
-        true,
-    );
+    cli.run(None, "update", "file-permissions", true);
     for (path, _, expected) in files {
-        let mode = home
+        let mode = cli
+            .home
             .path()
             .join(path)
             .metadata()
@@ -867,12 +788,12 @@ fn default_linux_modes_preserve_local_zsh_files_and_restrict_ssh_config() {
 fn redirected_chmod_is_blocked_until_explicitly_allowed() {
     use std::os::unix::fs::{PermissionsExt as _, symlink};
     let repo = common::IntegrationTestContext::new();
-    let home = tempfile::tempdir().unwrap();
+    let cli = LifecycleCli::new(repo.root_path());
     let outside = tempfile::tempdir().unwrap();
     let private = outside.path().join("private");
     std::fs::write(&private, "private").unwrap();
     std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o600)).unwrap();
-    symlink(outside.path(), home.path().join(".redirect")).unwrap();
+    symlink(outside.path(), cli.home.path().join(".redirect")).unwrap();
     let config = repo.root_path().join("conf/chmod.toml");
     std::fs::write(
         &config,
@@ -880,13 +801,7 @@ fn redirected_chmod_is_blocked_until_explicitly_allowed() {
     )
     .unwrap();
     for preview in [true, false] {
-        let mut command = common::cli_command(
-            repo.root_path(),
-            home.path(),
-            None,
-            "update",
-            "file-permissions",
-        );
+        let mut command = cli.command(None, "update", "file-permissions");
         command.arg("--fail-on-skip");
         if preview {
             command.arg("--dry-run");
@@ -900,44 +815,20 @@ fn redirected_chmod_is_blocked_until_explicitly_allowed() {
     }
     std::fs::write(&config, "[base]\npermissions = [{ mode = '755', path = 'redirect', allow_external_target = true }]\n").unwrap();
     output(
-        common::cli_command(
-            repo.root_path(),
-            home.path(),
-            None,
-            "update",
-            "file-permissions",
-        )
-        .arg("--dry-run"),
+        cli.command(None, "update", "file-permissions")
+            .arg("--dry-run"),
         true,
     );
     assert_eq!(
         private.metadata().unwrap().permissions().mode() & 0o777,
         0o600
     );
-    output(
-        &mut common::cli_command(
-            repo.root_path(),
-            home.path(),
-            None,
-            "update",
-            "file-permissions",
-        ),
-        true,
-    );
+    cli.run(None, "update", "file-permissions", true);
     assert_eq!(
         private.metadata().unwrap().permissions().mode() & 0o777,
         0o644
     );
-    let text = output(
-        &mut common::cli_command(
-            repo.root_path(),
-            home.path(),
-            None,
-            "update",
-            "file-permissions",
-        ),
-        true,
-    );
+    let text = cli.run(None, "update", "file-permissions", true);
     assert!(text.contains("Tasks · 1 unchanged"), "{text}");
 }
 
@@ -967,17 +858,11 @@ fn chmod_managed_source_links_converge_in_public_and_overlay_trees() {
         std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::fs::set_permissions(source.join("run"), std::fs::Permissions::from_mode(0o600))
             .unwrap();
-        let home = tempfile::tempdir().unwrap();
+        let cli = LifecycleCli::new(repo.root_path());
         let overlay_path = use_overlay.then_some(overlay.path());
         output(
-            common::cli_command(
-                repo.root_path(),
-                home.path(),
-                overlay_path,
-                "update",
-                "symlinks,file-permissions",
-            )
-            .arg("--fail-on-skip"),
+            cli.command(overlay_path, "update", "symlinks,file-permissions")
+                .arg("--fail-on-skip"),
             true,
         );
         assert_eq!(
@@ -995,14 +880,8 @@ fn chmod_managed_source_links_converge_in_public_and_overlay_trees() {
             0o755
         );
         let text = output(
-            common::cli_command(
-                repo.root_path(),
-                home.path(),
-                overlay_path,
-                "update",
-                "symlinks,file-permissions",
-            )
-            .arg("--fail-on-skip"),
+            cli.command(overlay_path, "update", "symlinks,file-permissions")
+                .arg("--fail-on-skip"),
             true,
         );
         assert!(text.contains("Tasks · 2 unchanged"), "{text}");
@@ -1028,28 +907,10 @@ fn permission_source_checks_follow_explicit_and_overlay_directory_mappings() {
         .unwrap();
         let source = overlay.path().join("symlinks/actual/config");
         std::fs::write(&source, "fixture").unwrap();
-        let home = tempfile::tempdir().unwrap();
-        output(
-            &mut common::cli_command(
-                repo.root_path(),
-                home.path(),
-                Some(overlay.path()),
-                "check",
-                "symlink-sources",
-            ),
-            true,
-        );
+        let cli = LifecycleCli::new(repo.root_path());
+        cli.run(Some(overlay.path()), "check", "symlink-sources", true);
         std::fs::remove_file(&source).unwrap();
-        let text = output(
-            &mut common::cli_command(
-                repo.root_path(),
-                home.path(),
-                Some(overlay.path()),
-                "check",
-                "symlink-sources",
-            ),
-            false,
-        );
+        let text = cli.run(Some(overlay.path()), "check", "symlink-sources", false);
         assert!(text.contains("file-permission source missing"), "{text}");
     }
 }
@@ -1063,36 +924,18 @@ fn permission_source_checks_accept_home_public_and_overlay_sources() {
                 "[base]\npermissions = [{ mode = '600', path = '.custom' }]\n",
             )
             .build();
-        let home = tempfile::tempdir().unwrap();
+        let cli = LifecycleCli::new(repo.root_path());
         let overlay = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(overlay.path().join("symlinks")).unwrap();
         let source = match location {
-            "home" => home.path().join(".custom"),
+            "home" => cli.home.path().join(".custom"),
             "public" => repo.root_path().join("symlinks/custom"),
             _ => overlay.path().join("symlinks/custom"),
         };
         std::fs::write(&source, "fixture").unwrap();
-        output(
-            &mut common::cli_command(
-                repo.root_path(),
-                home.path(),
-                Some(overlay.path()),
-                "check",
-                "symlink-sources",
-            ),
-            true,
-        );
+        cli.run(Some(overlay.path()), "check", "symlink-sources", true);
         std::fs::remove_file(source).unwrap();
-        output(
-            &mut common::cli_command(
-                repo.root_path(),
-                home.path(),
-                Some(overlay.path()),
-                "check",
-                "symlink-sources",
-            ),
-            false,
-        );
+        cli.run(Some(overlay.path()), "check", "symlink-sources", false);
     }
 }
 
@@ -1105,13 +948,13 @@ fn git_update_lock_contention_retry_and_fresh_home_converge() {
                 "[base]\nsettings = [{ key = 'core.editor', value = 'fixture-editor' }]\n",
             )
             .build();
-        let home = tempfile::tempdir().unwrap();
-        let path = home.path().join(".gitconfig");
-        let lock = home.path().join(".gitconfig.lock");
+        let cli = LifecycleCli::new(repo.root_path());
+        let path = cli.home.path().join(".gitconfig");
+        let lock = cli.home.path().join(".gitconfig.lock");
         if include {
             std::fs::write(&path, "[include]\n path = included\n").unwrap();
             std::fs::write(
-                home.path().join("included"),
+                cli.home.path().join("included"),
                 "[core]\n editor = inherited\n",
             )
             .unwrap();
@@ -1122,10 +965,7 @@ fn git_update_lock_contention_retry_and_fresh_home_converge() {
             }
         }
         std::fs::write(&lock, "foreign writer").unwrap();
-        output(
-            &mut common::cli_command(repo.root_path(), home.path(), None, "update", "git"),
-            false,
-        );
+        cli.run(None, "update", "git", false);
         assert_eq!(std::fs::read_to_string(&lock).unwrap(), "foreign writer");
         assert_eq!(
             path.exists(),
@@ -1133,10 +973,7 @@ fn git_update_lock_contention_retry_and_fresh_home_converge() {
             "a failed first install must leave the config absent"
         );
         std::fs::remove_file(&lock).unwrap();
-        output(
-            &mut common::cli_command(repo.root_path(), home.path(), None, "update", "git"),
-            true,
-        );
+        cli.run(None, "update", "git", true);
         let after = std::fs::read(&path).unwrap();
         assert_eq!(
             git2::Config::open(&path)
@@ -1150,10 +987,7 @@ fn git_update_lock_contention_retry_and_fresh_home_converge() {
             use std::os::unix::fs::PermissionsExt as _;
             assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o600);
         }
-        output(
-            &mut common::cli_command(repo.root_path(), home.path(), None, "update", "git"),
-            true,
-        );
+        cli.run(None, "update", "git", true);
         assert_eq!(std::fs::read(&path).unwrap(), after);
         assert!(!lock.exists());
     }
@@ -1197,8 +1031,6 @@ const HISTORICAL_EDITOR_LINKS: &[(&str, &str, &str, Option<&str>)] = &[
     reason = "cover the complete lifecycle and ownership of historical links"
 )]
 fn historical_editor_links_migrate_or_materialize_without_claiming_unrelated_entries() {
-    use std::path::Path;
-
     fn link(source: &Path, target: &Path, directory: bool) {
         #[cfg(unix)]
         {
@@ -1224,8 +1056,8 @@ fn historical_editor_links_migrate_or_materialize_without_claiming_unrelated_ent
             )
             .with_symlink_source_content(&source_file, content)
             .build();
-        let home = tempfile::tempdir().unwrap();
-        let target = home.path().join(target);
+        let cli = LifecycleCli::new(repo.root_path());
+        let target = cli.home.path().join(target);
         // The CLI loads the canonical checkout root. Keep the historical
         // referent in its original spelling so the test exercises both.
         let canonical_root = dunce::canonicalize(repo.root_path()).unwrap();
@@ -1241,7 +1073,7 @@ fn historical_editor_links_migrate_or_materialize_without_claiming_unrelated_ent
         };
         let directory = config_file.is_some();
         let target_file = config_file.map_or_else(|| target.clone(), |file| target.join(file));
-        let run = |verb| common::cli_command(repo.root_path(), home.path(), None, verb, "symlinks");
+        let run = |verb| cli.command(None, verb, "symlinks");
         let assert_link = |referent: &Path| {
             let actual = std::fs::read_link(&target).unwrap();
             assert_eq!(dunce::simplified(&actual), dunce::simplified(referent));
@@ -1308,7 +1140,7 @@ fn historical_editor_links_migrate_or_materialize_without_claiming_unrelated_ent
         #[cfg(unix)]
         {
             // A symlink invented outside the checkout does not establish ownership.
-            let alias = home.path().join("checkout-alias");
+            let alias = cli.home.path().join("checkout-alias");
             std::os::unix::fs::symlink(repo.root_path(), &alias).unwrap();
             let aliased_referent = alias.join(old.strip_prefix(repo.root_path()).unwrap());
             std::fs::remove_file(&target).unwrap();

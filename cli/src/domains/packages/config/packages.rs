@@ -75,29 +75,17 @@ pub(crate) const PACKAGES_TOML: &str = "packages.toml";
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
+    use crate::infra::config::test_helpers::{assert_messages, rejects_toml, write_temp_toml};
     use crate::infra::config::test_load_missing_returns_empty;
 
-    #[test]
-    fn unknown_key_in_package_table_is_rejected() {
-        assert_load_rejects(
-            load,
-            r#"[base]
+    rejects_toml! {
+        "test.toml", |path| load(path, &[Category::Base]);
+        unknown_key_in_package_table_is_rejected: r#"[base]
 packages = [{ name = "paru-bin", our = true }]
-"#,
-            "our",
-        );
-    }
-
-    #[test]
-    fn integer_package_entry_is_rejected() {
-        assert_load_rejects(
-            load,
-            r"[base]
-packages = [42]
-",
-            "expected a string or a table",
-        );
+"# => "our";
+        integer_package_entry_is_rejected: "[base]\npackages = [42]\n" => "expected a string or a table";
+        load_returns_error_on_malformed_toml: "[base\npackages = [\"git\"";
+        load_returns_error_on_type_mismatch: "[base]\npackages = 42\n";
     }
 
     #[test]
@@ -142,47 +130,19 @@ packages = [
     test_load_missing_returns_empty!(load);
 
     #[test]
-    fn validate_warns_aur_on_non_arch() {
+    fn validate_warns_on_invalid_packages() {
         use crate::infra::platform::{Os, Platform};
 
-        let packages = vec![Package {
-            name: "yay".to_string(),
-            is_aur: true,
-        }];
-        let warnings = validate(&packages, Platform::new(Os::Linux, false));
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("not Arch Linux"));
-    }
-
-    #[test]
-    fn load_returns_error_on_malformed_toml() {
-        let (_dir, path) = write_temp_toml("[base\npackages = [\"git\"");
-        let result = load(&path, &[Category::Base]);
-        assert!(result.is_err(), "malformed TOML should return error");
-    }
-
-    #[test]
-    fn load_returns_error_on_type_mismatch() {
-        let (_dir, path) = write_temp_toml("[base]\npackages = 42\n");
-        let result = load(&path, &[Category::Base]);
-        assert!(
-            result.is_err(),
-            "integer instead of array should return error"
-        );
-    }
-
-    #[test]
-    fn validate_warns_empty_package_name() {
-        use crate::infra::platform::{Os, Platform};
-
-        let packages = vec![Package {
-            name: "  ".to_string(),
-            is_aur: false,
-        }];
-        let warnings = validate(&packages, Platform::new(Os::Linux, false));
-        assert!(
-            warnings.iter().any(|w| w.message.contains("empty")),
-            "should warn about empty package name: {warnings:?}"
-        );
+        for (name, is_aur, count, message) in [
+            ("yay", true, Some(1), "not Arch Linux"),
+            ("  ", false, None, "empty"),
+        ] {
+            let package = Package {
+                name: name.into(),
+                is_aur,
+            };
+            let warnings = validate(&[package], Platform::new(Os::Linux, false));
+            assert_messages(&warnings, count, &[message]);
+        }
     }
 }

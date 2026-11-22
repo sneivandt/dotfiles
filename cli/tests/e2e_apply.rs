@@ -43,11 +43,7 @@ fn ambiguous_copilot_members_survive_preview_apply_and_retry() {
     for preview in [true, false] {
         let result = run(preview);
         assert!(!result.status.success(), "{result:?}");
-        let text = format!(
-            "{}{}",
-            String::from_utf8_lossy(&result.stdout),
-            String::from_utf8_lossy(&result.stderr)
-        );
+        let text = common::combined_output(&result);
         assert!(text.contains("duplicate JSON member"), "{text}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
     }

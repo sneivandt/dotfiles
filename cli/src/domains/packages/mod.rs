@@ -9,3 +9,6 @@ pub mod arch_recipes;
 pub mod config;
 pub mod install;
 pub mod resources;
+
+#[cfg(test)]
+mod test_fixture;

@@ -1,5 +1,6 @@
 use super::*;
 use crate::domains::system::config::systemd_units::SystemdUnit;
+use crate::domains::system::systemd_fixture::{runtime_probe, systemctl};
 use crate::engine::{Context, SkipKind, Task, TaskResult};
 use crate::infra::ConfigHandle;
 #[cfg(unix)]
@@ -108,97 +109,109 @@ fn context(executor: impl Executor + 'static) -> Context {
     )
 }
 
-fn systemctl(args: &[&str]) -> CommandSpec {
-    CommandSpec::new("systemctl").args(args).unchecked()
+fn user_manager_probe() -> CommandSpec {
+    systemctl(&["--user", "show-environment"])
+        .env("LC_ALL", "C")
+        .output_log(OutputLog::Omit)
 }
 
-fn runtime_probe(name: &str) -> CommandSpec {
-    systemctl(&[
-        "show",
-        "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload",
-        name,
-    ])
+fn user_reload() -> CommandSpec {
+    CommandSpec::new("systemctl").args(&["--user", "daemon-reload"])
 }
 
 fn script() -> ScriptedExecutor {
     ScriptedExecutor::new().with_programs(&["systemctl"])
 }
 
-fn graphical_probe() -> CommandSpec {
-    CommandSpec::new("systemctl").args(&[
+fn graphical_probe(
+    script: ScriptedExecutor,
+    result: Result<ExecResult, ExecError>,
+) -> ScriptedExecutor {
+    let probe = CommandSpec::new("systemctl").args(&[
         "--user",
         "show",
         "--property=ActiveState",
         "--value",
         "graphical-session.target",
-    ])
+    ]);
+    script
+        .command(user_manager_probe(), Ok(ExecResult::success("")))
+        .command(probe, result)
+}
+
+fn graphical_unit() -> SystemdUnit {
+    SystemdUnit {
+        name: "hypridle.service".into(),
+        scope: UnitScope::User,
+        enabled: true,
+        graphical: true,
+    }
 }
 
 #[test]
 fn graphical_units_enable_without_starting_until_the_session_is_active() {
-    let name = "hypridle.service";
-    let task = ConfigureSystemd::new(ConfigHandle::new(vec![SystemdUnit {
-        name: name.into(),
-        scope: UnitScope::User,
-        enabled: true,
-        graphical: true,
-    }]));
+    use UnitProbe::{Disabled, Enabled, Runtime};
+
+    #[derive(Debug, Clone, Copy)]
+    enum UnitProbe {
+        Disabled,
+        Enabled,
+        Runtime(&'static str),
+    }
+
+    let unit = "hypridle.service";
+    let enable = ["--user", "enable", unit];
+    let start = ["--user", "enable", "--now", unit];
+    let cases = [
+        ("inactive", Disabled, Some(enable.as_slice())),
+        ("inactive", Enabled, None),
+        ("activating", Enabled, None),
+        ("deactivating", Enabled, None),
+        ("failed", Enabled, None),
+        (
+            "active",
+            Runtime("ActiveState=inactive"),
+            Some(start.as_slice()),
+        ),
+        ("active", Runtime("ActiveState=active"), None),
+    ];
+    let task = ConfigureSystemd::new(ConfigHandle::new(vec![graphical_unit()]));
     for dry_run in [true, false] {
         let mut executor = script();
-        for (session, enabled, running) in [
-            ("inactive", false, false),
-            ("inactive", true, false),
-            ("activating", true, false),
-            ("deactivating", true, false),
-            ("failed", true, false),
-            ("active", true, false),
-            ("active", true, true),
-        ] {
-            executor = executor
-                .command(
-                    systemctl(&["--user", "show-environment"]),
-                    Ok(ExecResult::success("")),
-                )
-                .command(graphical_probe(), Ok(ExecResult::success(session)));
+        for (session, observed, action) in cases {
+            executor = graphical_probe(executor, Ok(ExecResult::success(session)));
             if !dry_run {
+                executor = executor.command(user_reload(), Ok(ExecResult::success("")));
+            }
+            let enablement = match observed {
+                Disabled => disabled_result(),
+                Enabled | Runtime(_) => ExecResult::success("enabled"),
+            };
+            executor = executor.command(systemctl(&["--user", "is-enabled", unit]), Ok(enablement));
+            if let Runtime(properties) = observed {
                 executor = executor.command(
-                    CommandSpec::new("systemctl").args(&["--user", "daemon-reload"]),
-                    Ok(ExecResult::success("")),
+                    runtime_probe(&UnitScope::User, unit),
+                    Ok(ExecResult::success(properties)),
                 );
             }
-            executor = executor.command(
-                systemctl(&["--user", "is-enabled", name]),
-                Ok(if enabled {
-                    ExecResult::success("enabled")
-                } else {
-                    disabled_result()
-                }),
-            );
-            if session == "active" {
-                executor = executor.command(
-                    systemctl(&["--user", "show", "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload", name]),
-                    Ok(ExecResult::success(if running { "ActiveState=active" } else { "ActiveState=inactive" })),
-                );
-            }
-            if !dry_run && (!enabled || (session == "active" && !running)) {
-                let args = if session == "active" {
-                    vec!["--user", "enable", "--now", name]
-                } else {
-                    vec!["--user", "enable", name]
-                };
-                executor = executor.command(systemctl(&args), Ok(ExecResult::success("")));
+            if !dry_run && let Some(args) = action {
+                executor = executor.command(systemctl(args), Ok(ExecResult::success("")));
             }
         }
         let ctx = context(executor).with_dry_run(dry_run);
-        for changed in [1, 0, 0, 0, 0, 1, 0] {
+        for (session, observed, action) in cases {
             let result = task.run(&ctx).unwrap();
+            let stats = crate::test_helpers::task_batch(&result);
+            let expected = if action.is_some() { (1, 0) } else { (0, 1) };
+            let counts = (stats.changed_count(), stats.already_ok_count());
             assert_eq!(
-                crate::test_helpers::task_batch(&result).changed_count(),
-                changed
+                counts, expected,
+                "{session}, {observed:?}, dry_run={dry_run}"
             );
             assert_eq!(
-                crate::test_helpers::task_batch(&result).already_ok_count(),
-                1 - changed
+                (stats.failed_count(), stats.skipped_count()),
+                (0, 0),
+                "{result:?}"
             );
         }
     }
@@ -206,28 +219,32 @@ fn graphical_units_enable_without_starting_until_the_session_is_active() {
 
 #[test]
 fn graphical_session_probe_errors_never_reload_or_start_units() {
-    let units = vec![SystemdUnit {
-        name: "hypridle.service".into(),
-        scope: UnitScope::User,
-        enabled: true,
-        graphical: true,
-    }];
-    for response in [
-        Ok(ExecResult::success("")),
-        Ok(ExecResult::success("unexpected")),
-        Err(ExecError::NonZero {
-            command: "systemctl show".into(),
-            result: ExecResult::failure("", "no bus", Some(1)),
-        }),
-    ] {
-        let executor = script()
-            .command(
-                systemctl(&["--user", "show-environment"]),
+    let units = vec![graphical_unit()];
+    let task = ConfigureSystemd::new(ConfigHandle::new(units.clone()));
+    for dry_run in [true, false] {
+        for (response, diagnostic) in [
+            (
                 Ok(ExecResult::success("")),
-            )
-            .command(graphical_probe(), response);
-        let task = ConfigureSystemd::new(ConfigHandle::new(units.clone()));
-        assert!(task.run(&context(executor)).is_err());
+                "unexpected graphical-session.target ActiveState: \"\"",
+            ),
+            (
+                Ok(ExecResult::success("unexpected")),
+                "unexpected graphical-session.target ActiveState: \"unexpected\"",
+            ),
+            (
+                Err(ExecError::NonZero {
+                    command: "systemctl show".into(),
+                    result: ExecResult::failure("", "no bus", Some(1)),
+                }),
+                "no bus",
+            ),
+        ] {
+            let executor = graphical_probe(script(), response);
+            let error = task
+                .run(&context(executor).with_dry_run(dry_run))
+                .unwrap_err();
+            assert!(format!("{error:#}").contains(diagnostic), "{error:#}");
+        }
     }
     let ctx = context(MockExecutor::new());
     assert!(!graphical_session_active(&ctx, &units, false).unwrap());
@@ -308,7 +325,7 @@ fn gtk_service_migration_previews_then_removes_retired_links_once() {
     let mut executor = script();
     for _ in 0..3 {
         executor = executor.command(
-            systemctl(&["--user", "show-environment"]),
+            user_manager_probe(),
             Ok(ExecResult::failure(
                 "",
                 "Failed to connect to bus: No medium found",
@@ -343,11 +360,6 @@ fn run_calls_daemon_reload_before_enabling_unit() {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     let task = systemd_task("dunst.service", UnitScope::User, true);
-    // Ordered expectations:
-    //   1. probe the live user manager
-    //   2. run("systemctl", ["--user", "daemon-reload"]) -> success
-    //   3. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) -> disabled
-    //   4. run_unchecked("systemctl", ["--user", "enable", "--now", "dunst.service"]) → success
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     let installed = Arc::new(AtomicBool::new(false));
@@ -356,47 +368,25 @@ fn run_calls_daemon_reload_before_enabling_unit() {
         .once()
         .with(mockall::predicate::eq("systemctl"))
         .returning(move |_| observed.load(Ordering::SeqCst));
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(|spec| {
-            spec.program() == "systemctl"
-                && spec.arguments() == ["--user", "show-environment"]
-                && !spec.is_checked()
-                && spec.working_dir().is_none()
-        })
-        .returning(|_| Ok(ExecResult::success("")));
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(|spec| {
-            spec.program() == "systemctl"
-                && spec.arguments() == ["--user", "daemon-reload"]
-                && spec.is_checked()
-                && spec.working_dir().is_none()
-        })
-        .returning(|_| Ok(ExecResult::success("")));
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(|spec| {
-            spec.program() == "systemctl"
-                && spec.arguments() == ["--user", "is-enabled", "dunst.service"]
-                && !spec.is_checked()
-                && spec.working_dir().is_none()
-        })
-        .returning(|_| Ok(disabled_result()));
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(|spec| {
-            spec.program() == "systemctl"
-                && spec.arguments() == ["--user", "enable", "--now", "dunst.service"]
-                && !spec.is_checked()
-                && spec.working_dir().is_none()
-        })
-        .returning(|_| Ok(ExecResult::success("")));
-    let ctx = make_systemd_context(mock);
+    for (cmd, result) in [
+        (user_manager_probe(), ExecResult::success("")),
+        (user_reload(), ExecResult::success("")),
+        (
+            systemctl(&["--user", "is-enabled", "dunst.service"]),
+            disabled_result(),
+        ),
+        (
+            systemctl(&["--user", "enable", "--now", "dunst.service"]),
+            ExecResult::success(""),
+        ),
+    ] {
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .with(mockall::predicate::eq(cmd))
+            .return_once(|_| Ok(result));
+    }
+    let ctx = context(mock);
     assert!(
         task.should_run(&ctx),
         "assessment must not skip systemctl provided by a prerequisite"
@@ -413,34 +403,39 @@ fn run_calls_daemon_reload_before_enabling_unit() {
 #[test]
 fn unavailable_wsl_manager_is_checked_at_run_time() {
     let task = systemd_task("example.service", UnitScope::User, true);
-    let mut mock = MockExecutor::new();
-    mock.expect_which()
-        .once()
-        .with(mockall::predicate::eq("systemctl"))
-        .return_const(true);
-    mock.expect_execute()
-        .once()
-        .withf(|spec| {
-            spec.program() == "systemctl"
-                && spec.arguments() == ["is-system-running"]
-                && !spec.is_checked()
-        })
-        .returning(|_| Ok(ExecResult::failure("offline", "", Some(1))));
-    let ctx = make_context(
-        ".".into(),
-        None,
-        Platform {
-            os: Os::Linux,
-            is_arch: false,
-            is_wsl: true,
-        },
-        Arc::new(mock),
+    let ctx = manager_context(
+        Platform::new_wsl(),
+        true,
+        Some((
+            systemctl(&["is-system-running"]),
+            Ok(ExecResult::failure("offline", "", Some(1))),
+        )),
     );
 
     assert!(task.should_run(&ctx));
     assert!(
         matches!(task.run(&ctx).unwrap(), TaskResult::NotApplicable(reason) if reason == "systemd unavailable")
     );
+}
+
+/// These early-exit paths perform one availability lookup and at most one probe.
+fn manager_context(
+    platform: Platform,
+    available: bool,
+    probe: Option<(CommandSpec, Result<ExecResult, ExecError>)>,
+) -> Context {
+    let mut mock = MockExecutor::new();
+    mock.expect_which()
+        .once()
+        .with(mockall::predicate::eq("systemctl"))
+        .return_const(available);
+    if let Some((cmd, result)) = probe {
+        mock.expect_execute()
+            .once()
+            .with(mockall::predicate::eq(cmd))
+            .return_once(|_| result);
+    }
+    make_context("/fixture".into(), None, platform, Arc::new(mock))
 }
 
 #[test]
@@ -462,11 +457,7 @@ fn wsl_systemd_availability_accepts_running_or_degraded_managers() {
         let ctx = make_context(
             "/fixture".into(),
             None,
-            Platform {
-                os: Os::Linux,
-                is_arch: false,
-                is_wsl: true,
-            },
+            Platform::new_wsl(),
             Arc::new(executor),
         );
         assert_eq!(systemd_available(&ctx).unwrap(), expected, "{name}");
@@ -502,10 +493,7 @@ fn wsl_manager_inspection_errors_are_not_unavailable_states() {
 fn run_skips_daemon_reload_in_dry_run() {
     let task = systemd_task("dunst.service", UnitScope::User, true);
     let executor = script()
-        .command(
-            systemctl(&["--user", "show-environment"]),
-            Ok(ExecResult::success("")),
-        )
+        .command(user_manager_probe(), Ok(ExecResult::success("")))
         .command(
             systemctl(&["--user", "is-enabled", "dunst.service"]),
             Ok(disabled_result()),
@@ -520,9 +508,9 @@ fn daemon_reload_failures_abort_user_and_system_tasks() {
         (
             UnitScope::User,
             "dunst.service",
-            systemctl(&["--user", "show-environment"]),
+            user_manager_probe(),
             ExecResult::success(""),
-            CommandSpec::new("systemctl").args(&["--user", "daemon-reload"]),
+            user_reload(),
             "reloading user systemd daemon",
         ),
         (
@@ -550,45 +538,29 @@ fn daemon_reload_failures_abort_user_and_system_tasks() {
 
 #[cfg(unix)]
 #[test]
-fn run_enables_user_units_offline_when_the_user_manager_is_unavailable() {
-    let home = tempfile::tempdir().unwrap();
-    let unit_dir = home.path().join(".config/systemd/user");
-    std::fs::create_dir_all(&unit_dir).unwrap();
-    std::fs::write(
-        unit_dir.join("clean-home-tmp.timer"),
-        "[Install]\nWantedBy=timers.target\n",
-    )
-    .unwrap();
-    let task = systemd_task("clean-home-tmp.timer", UnitScope::User, true);
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .withf(|spec| {
-            spec.program() == "systemctl"
-                && spec.arguments() == ["--user", "show-environment"]
-                && !spec.is_checked()
-        })
-        .returning(|_| {
-            Ok(ExecResult::failure(
-                "",
-                "Failed to connect to bus: No medium found",
-                Some(1),
-            ))
-        });
-    let ctx = make_systemd_context(mock).with_home(home.path().to_path_buf());
-
-    let result = task.run(&ctx).unwrap();
-
-    assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
-        "offline enablement should be reported as changed: {result:?}"
+fn unavailable_manager_and_arch_chroot_enable_units_offline() {
+    let offline = ExecResult::failure("", "Failed to connect to bus: No medium found", Some(1));
+    let chroot = MapEnv::new().with(
+        crate::infra::provisioning::ENV_VAR,
+        crate::infra::provisioning::ARCH_CHROOT,
     );
-    assert!(
-        unit_dir
-            .join("timers.target.wants/clean-home-tmp.timer")
-            .is_symlink(),
-        "offline enablement should converge before the first login"
-    );
+    for ctx in [
+        context(script().command(user_manager_probe(), Ok(offline))),
+        context(script()).with_env(chroot.into_handle()), // No user bus probe in a chroot.
+    ] {
+        let home = tempfile::tempdir().unwrap();
+        let unit_dir = home.path().join(".config/systemd/user");
+        std::fs::create_dir_all(&unit_dir).unwrap();
+        let name = "clean-home-tmp.timer";
+        std::fs::write(unit_dir.join(name), "[Install]\nWantedBy=timers.target\n").unwrap();
+        let ctx = ctx.with_home(home.path().to_path_buf());
+        let result = systemd_task(name, UnitScope::User, true).run(&ctx).unwrap();
+        assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);
+        assert_eq!(
+            std::fs::read_link(unit_dir.join("timers.target.wants").join(name)).unwrap(),
+            unit_dir.join(name)
+        );
+    }
 }
 
 #[cfg(unix)]
@@ -604,7 +576,7 @@ fn rejected_user_manager_probe_preserves_login_links_until_access_recovers() {
     let link = wants.join(name);
     std::os::unix::fs::symlink(&unit, &link).unwrap();
     let task = systemd_task(name, UnitScope::User, false);
-    let probe = systemctl(&["--user", "show-environment"]);
+    let probe = user_manager_probe();
 
     for diagnostic in [
         "Failed to connect to bus: Permission denied",
@@ -641,53 +613,11 @@ fn user_manager_absence_diagnostics_are_recognized_in_the_c_locale() {
         let mut mock = MockExecutor::new();
         mock.expect_execute()
             .once()
-            .withf(|spec| {
-                spec.program() == "systemctl"
-                    && spec.arguments() == ["--user", "show-environment"]
-                    && !spec.is_checked()
-                    && spec.environment() == [("LC_ALL".into(), "C".into())]
-            })
+            .with(mockall::predicate::eq(user_manager_probe()))
             .returning(move |_| Ok(ExecResult::failure("", error, Some(1))));
         let task = systemd_task("fixture.service", UnitScope::User, true);
         assert!(!user_manager_available(&context(mock), task.config.get()).unwrap());
     }
-}
-
-#[cfg(unix)]
-#[test]
-fn arch_chroot_provisioning_never_probes_the_user_manager() {
-    let home = tempfile::tempdir().unwrap();
-    let unit_dir = home.path().join(".config/systemd/user");
-    std::fs::create_dir_all(&unit_dir).unwrap();
-    std::fs::write(
-        unit_dir.join("clean-home-tmp.timer"),
-        "[Install]\nWantedBy=timers.target\n",
-    )
-    .unwrap();
-    let task = systemd_task("clean-home-tmp.timer", UnitScope::User, true);
-    let ctx = make_systemd_context(MockExecutor::new())
-        .with_home(home.path().to_path_buf())
-        .with_env(
-            MapEnv::new()
-                .with(
-                    crate::infra::provisioning::ENV_VAR,
-                    crate::infra::provisioning::ARCH_CHROOT,
-                )
-                .into_handle(),
-        );
-
-    let result = task.run(&ctx).unwrap();
-
-    assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
-        "offline provisioning should report one changed unit: {result:?}"
-    );
-    assert!(
-        unit_dir
-            .join("timers.target.wants/clean-home-tmp.timer")
-            .is_symlink(),
-        "offline provisioning should enable the timer without using the user bus"
-    );
 }
 
 #[test]
@@ -710,7 +640,7 @@ fn system_unit_elevation_follows_enablement_and_runtime_state() {
         let mut executor = script().command(systemctl(&["is-enabled", name]), Ok(current));
         if !expected {
             executor = executor.command(
-                runtime_probe(name),
+                runtime_probe(&UnitScope::System, name),
                 Ok(ExecResult::success("ActiveState=active\n")),
             );
         }
@@ -805,7 +735,7 @@ fn run_does_not_reload_enabled_system_scope_units() {
                 Ok(ExecResult::success("enabled\n")),
             )
             .command(
-                runtime_probe(name),
+                runtime_probe(&UnitScope::System, name),
                 Ok(ExecResult::success("ActiveState=active\n")),
             );
     }
@@ -826,7 +756,7 @@ fn previously_condition_skipped_system_timer_requires_elevation_for_retry() {
             Ok(ExecResult::success("enabled\n")),
         )
         .command(
-            runtime_probe(name),
+            runtime_probe(&UnitScope::System, name),
             Ok(ExecResult::success(
                 "ActiveState=inactive\nConditionResult=no\n",
             )),
@@ -840,15 +770,9 @@ fn user_unit_probe(
     dry_run: bool,
     runtime: &str,
 ) -> ScriptedExecutor {
-    let mut executor = executor.command(
-        systemctl(&["--user", "show-environment"]),
-        Ok(ExecResult::success("")),
-    );
+    let mut executor = executor.command(user_manager_probe(), Ok(ExecResult::success("")));
     if !dry_run {
-        executor = executor.command(
-            CommandSpec::new("systemctl").args(&["--user", "daemon-reload"]),
-            Ok(ExecResult::success("")),
-        );
+        executor = executor.command(user_reload(), Ok(ExecResult::success("")));
     }
     executor
         .command(
@@ -856,12 +780,7 @@ fn user_unit_probe(
             Ok(ExecResult::success("enabled\n")),
         )
         .command(
-            systemctl(&[
-                "--user",
-                "show",
-                "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload",
-                name,
-            ]),
+            runtime_probe(&UnitScope::User, name),
             Ok(ExecResult::success(runtime)),
         )
 }
@@ -1054,13 +973,19 @@ fn stale_active_system_unit_reloads_without_restarting_it() {
     let enablement = || systemctl(&["is-enabled", name]);
     let executor = script()
         .command(enablement(), Ok(ExecResult::success("enabled")))
-        .command(runtime_probe(name), Ok(ExecResult::success(observed)))
+        .command(
+            runtime_probe(&UnitScope::System, name),
+            Ok(ExecResult::success(observed)),
+        )
         .command(
             CommandSpec::new("sudo").args(&["systemctl", "daemon-reload"]),
             Ok(ExecResult::success("")),
         )
         .command(enablement(), Ok(ExecResult::success("enabled")))
-        .command(runtime_probe(name), Ok(ExecResult::success(refreshed)));
+        .command(
+            runtime_probe(&UnitScope::System, name),
+            Ok(ExecResult::success(refreshed)),
+        );
     let result = systemd_task(name, UnitScope::System, true)
         .run(&context(executor))
         .unwrap();
@@ -1072,17 +997,16 @@ fn stale_active_system_unit_reloads_without_restarting_it() {
 
 #[test]
 fn runtime_drift_plans_elevation_respects_dry_run_and_converges() {
+    use mockall::predicate::eq;
     use std::sync::atomic::{AtomicBool, Ordering};
+    let name = "test.service";
+    let sudo = |args: &[&str]| CommandSpec::new("sudo").arg("systemctl").args(args);
     for enabled in [true, false] {
-        let task = systemd_task("test.service", UnitScope::System, enabled);
+        let task = systemd_task(name, UnitScope::System, enabled);
         let active = Arc::new(AtomicBool::new(!enabled));
         let mut mock = MockExecutor::new();
         mock.expect_execute()
-            .withf(|spec| {
-                spec.program() == "systemctl"
-                    && spec.arguments() == ["is-enabled", "test.service"]
-                    && !spec.is_checked()
-            })
+            .with(eq(systemctl(&["is-enabled", name])))
             .returning(move |_| {
                 Ok(if enabled {
                     ExecResult::success("enabled\n")
@@ -1092,54 +1016,33 @@ fn runtime_drift_plans_elevation_respects_dry_run_and_converges() {
             });
         let observed = Arc::clone(&active);
         mock.expect_execute()
-                .withf(|spec| {
-                    spec.program() == "systemctl"
-                        && spec.arguments() == [
-                            "show",
-                            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload",
-                            "test.service",
-                        ]
-                        && !spec.is_checked()
-                })
-                .returning(move |_| {
-                    Ok(ExecResult::success(if observed.load(Ordering::SeqCst) {
-                        "ActiveState=active\n"
-                    } else {
-                        "ActiveState=inactive\n"
-                    }))
-                });
+            .with(eq(runtime_probe(&UnitScope::System, name)))
+            .returning(move |_| {
+                Ok(ExecResult::success(if observed.load(Ordering::SeqCst) {
+                    "ActiveState=active\n"
+                } else {
+                    "ActiveState=inactive\n"
+                }))
+            });
+        let mut mutations = mockall::Sequence::new();
         mock.expect_execute()
             .once()
-            .withf(|spec| {
-                spec.program() == "sudo"
-                    && spec.arguments() == ["systemctl", "daemon-reload"]
-                    && spec.is_checked()
-            })
+            .in_sequence(&mut mutations)
+            .with(eq(sudo(&["daemon-reload"])))
             .returning(|_| Ok(ExecResult::success("")));
         let applied = Arc::clone(&active);
         if !enabled {
             mock.expect_execute()
                 .once()
-                .withf(|spec| {
-                    spec.program() == "sudo"
-                        && spec.arguments() == ["systemctl", "disable", "--runtime", "test.service"]
-                        && !spec.is_checked()
-                })
+                .in_sequence(&mut mutations)
+                .with(eq(sudo(&["disable", "--runtime", name]).unchecked()))
                 .returning(|_| Ok(ExecResult::success("")));
         }
+        let action = if enabled { "enable" } else { "disable" };
         mock.expect_execute()
             .once()
-            .withf(move |spec| {
-                spec.program() == "sudo"
-                    && spec.arguments()
-                        == [
-                            "systemctl",
-                            if enabled { "enable" } else { "disable" },
-                            "--now",
-                            "test.service",
-                        ]
-                    && !spec.is_checked()
-            })
+            .in_sequence(&mut mutations)
+            .with(eq(sudo(&[action, "--now", name]).unchecked()))
             .returning(move |_| {
                 applied.store(enabled, Ordering::SeqCst);
                 Ok(ExecResult::success(""))
@@ -1174,82 +1077,56 @@ fn runtime_drift_plans_elevation_respects_dry_run_and_converges() {
 
 #[test]
 fn early_systemd_readiness_requires_converged_unit_state() {
-    for (case, expected) in [
-        ("active", true),
-        ("inactive", false),
-        ("missing", false),
-        ("probe-error", false),
+    let name = "example.service";
+    let enabled = || Ok(ExecResult::success("enabled\n"));
+    let not_found = Ok(ExecResult::failure("not-found\n", "", Some(4)));
+    let probe_error = Err(ExecError::spawn(
+        "systemctl",
+        std::io::Error::other("fixture failure"),
+    ));
+    for (enablement, runtime, ready) in [
+        (enabled(), Some("active"), true),
+        (enabled(), Some("inactive"), false),
+        (not_found, None, false),
+        (probe_error, None, false),
     ] {
-        let mut mock = MockExecutor::new();
-        mock.expect_which()
-            .withf(|program| program == "systemctl")
-            .return_const(true);
-        mock.expect_execute()
-            .once()
-            .withf(|spec| spec.arguments() == ["is-enabled", "example.service"])
-            .returning(move |_| {
-                if case == "probe-error" {
-                    return Err(ExecError::spawn(
-                        "systemctl",
-                        std::io::Error::other("fixture failure"),
-                    ));
-                }
-                Ok(if case == "missing" {
-                    ExecResult::failure("not-found\n", "", Some(4))
-                } else {
-                    ExecResult::success("enabled\n")
-                })
-            });
-        if matches!(case, "active" | "inactive") {
-            mock.expect_execute()
-                .once()
-                .withf(|spec| spec.arguments().first().is_some_and(|arg| arg == "show"))
-                .returning(move |_| {
-                    Ok(ExecResult::success(format!(
-                        "ActiveState={case}\nType=simple\n"
-                    )))
-                });
+        let mut executor = script().command(systemctl(&["is-enabled", name]), enablement);
+        if let Some(active) = runtime {
+            executor = executor.command(
+                runtime_probe(&UnitScope::System, name),
+                Ok(ExecResult::success(format!(
+                    "ActiveState={active}\nType=simple\n"
+                ))),
+            );
         }
         let ctx = make_context(
             "/tmp".into(),
             None,
             Platform::new(Os::Linux, true),
-            Arc::new(mock),
+            Arc::new(executor),
         );
         assert_eq!(
             crate::engine::requirement::ordering_requirements_satisfied(
                 &ctx,
-                &systemd_task("example.service", UnitScope::System, true).ordering_requirements(),
+                &systemd_task(name, UnitScope::System, true).ordering_requirements(),
             ),
-            expected,
-            "{case}"
+            ready,
+            "runtime={runtime:?}"
         );
     }
 }
 
 #[test]
 fn early_systemd_readiness_requires_the_command_and_a_usable_manager() {
-    for wsl in [false, true] {
-        let mut mock = MockExecutor::new();
-        mock.expect_which()
-            .once()
-            .withf(|program| program == "systemctl")
-            .return_const(wsl);
-        if wsl {
-            mock.expect_execute()
-                .once()
-                .withf(|spec| {
-                    spec.program() == "systemctl" && spec.arguments() == ["is-system-running"]
-                })
-                .returning(|_| Ok(ExecResult::failure("offline", "", Some(1))));
-        }
-
-        let platform = if wsl {
-            Platform::new_wsl()
-        } else {
-            Platform::new(Os::Linux, true)
-        };
-        let ctx = make_context("/tmp".into(), None, platform, Arc::new(mock));
+    let offline = Ok(ExecResult::failure("offline", "", Some(1)));
+    for ctx in [
+        manager_context(Platform::new(Os::Linux, true), false, None),
+        manager_context(
+            Platform::new_wsl(),
+            true,
+            Some((systemctl(&["is-system-running"]), offline)),
+        ),
+    ] {
         assert!(
             !crate::engine::requirement::ordering_requirements_satisfied(
                 &ctx,
@@ -1261,45 +1138,20 @@ fn early_systemd_readiness_requires_the_command_and_a_usable_manager() {
 
 #[test]
 fn failed_manager_probes_are_not_offline_or_inapplicable() {
-    for wsl in [false, true] {
+    for (platform, probe) in [
+        (Platform::new(Os::Linux, true), user_manager_probe()),
+        (Platform::new_wsl(), systemctl(&["is-system-running"])),
+    ] {
         for dry_run in [false, true] {
-            let mut mock = MockExecutor::new();
-            mock.expect_which()
-                .once()
-                .with(mockall::predicate::eq("systemctl"))
-                .return_const(true);
-            mock.expect_execute()
-                .once()
-                .withf(move |spec| {
-                    spec.program() == "systemctl"
-                        && !spec.is_checked()
-                        && spec.arguments()
-                            == if wsl {
-                                vec!["is-system-running"]
-                            } else {
-                                vec!["--user", "show-environment"]
-                            }
-                })
-                .returning(|_| {
-                    Err(ExecError::spawn(
-                        "systemctl",
-                        std::io::Error::new(
-                            std::io::ErrorKind::PermissionDenied,
-                            "manager probe refused",
-                        ),
-                    ))
-                });
-            let ctx = make_context(
-                "/tmp".into(),
-                None,
-                if wsl {
-                    Platform::new_wsl()
-                } else {
-                    Platform::new(Os::Linux, true)
-                },
-                Arc::new(mock),
-            )
-            .with_dry_run(dry_run);
+            let refused = ExecError::spawn(
+                "systemctl",
+                std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "manager probe refused",
+                ),
+            );
+            let ctx = manager_context(platform, true, Some((probe.clone(), Err(refused))))
+                .with_dry_run(dry_run);
             let error = systemd_task("example.service", UnitScope::User, true)
                 .run(&ctx)
                 .unwrap_err();

@@ -261,18 +261,17 @@ pub(crate) const CHMOD_TOML: &str = "chmod.toml";
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
+    use crate::infra::config::test_helpers::{assert_messages, rejects_toml, write_temp_toml};
     use crate::infra::config::test_load_missing_returns_empty;
+    use crate::infra::platform::{Os, Platform};
 
-    #[test]
-    fn unknown_key_in_chmod_entry_is_rejected() {
-        assert_load_rejects(
-            load,
-            r#"[base]
+    rejects_toml! {
+        "test.toml", |path| load(path, &[Category::Base]);
+        unknown_key_in_chmod_entry_is_rejected: r#"[base]
 permissions = [{ mode = "600", path = "ssh/config", pathh = "typo" }]
-"#,
-            "pathh",
-        );
+"# => "pathh";
+        load_returns_error_on_malformed_toml: "[base\npermissions = [";
+        load_returns_error_on_type_mismatch: "[base]\npermissions = \"not-an-array\"\n";
     }
 
     #[test]
@@ -321,46 +320,30 @@ permissions = [{ path = "config/hypr/scripts/brightness.sh", mode = "755" }]
 
     test_load_missing_returns_empty!(load);
 
-    #[test]
-    fn validate_detects_invalid_mode() {
-        use crate::infra::platform::{Os, Platform};
-
-        let entries = vec![ChmodEntry::new("999", ".ssh/config")];
-        let warnings = validate(&entries, Platform::new(Os::Linux, false));
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("invalid octal digit"));
+    fn validate_entry(mode: &str, path: &str) -> Vec<Diagnostic> {
+        validate(
+            &[ChmodEntry::new(mode, path)],
+            Platform::new(Os::Linux, false),
+        )
     }
 
     #[test]
-    fn validate_detects_invalid_mode_length() {
-        use crate::infra::platform::{Os, Platform};
-
-        let entries = vec![ChmodEntry::new("12", ".ssh/config")];
-        let warnings = validate(&entries, Platform::new(Os::Linux, false));
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("must be 3 or 4 digits"));
-    }
-
-    #[test]
-    fn validate_detects_path_traversal() {
-        use crate::infra::platform::{Os, Platform};
-
-        let entries = vec![ChmodEntry::new("600", "../../etc/shadow")];
-        let warnings = validate(&entries, Platform::new(Os::Linux, false));
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("'..'"));
+    fn validate_rejects_invalid_modes_and_traversal() {
+        for (mode, path, message) in [
+            ("999", ".ssh/config", "invalid octal digit"),
+            ("12", ".ssh/config", "must be 3 or 4 digits"),
+            ("600", "../../etc/shadow", "'..'"),
+        ] {
+            assert_messages(&validate_entry(mode, path), Some(1), &[message]);
+        }
     }
 
     #[test]
     fn validate_rejects_empty_and_home_root_paths() {
         use crate::infra::config::Severity;
-        use crate::infra::platform::{Os, Platform};
 
         for path in ["", " ", ".", "./", "././", ".//.//"] {
-            let diagnostics = validate(
-                &[ChmodEntry::new("755", path)],
-                Platform::new(Os::Linux, false),
-            );
+            let diagnostics = validate_entry("755", path);
             assert_eq!(diagnostics.len(), 1, "{path:?}");
             let diagnostic = &diagnostics[0];
             assert_eq!(diagnostic.code, CHMOD_HOME_ROOT, "{path:?}");
@@ -372,14 +355,7 @@ permissions = [{ path = "config/hypr/scripts/brightness.sh", mode = "755" }]
         }
         for path in ["ssh/config", ".ssh/config"] {
             assert!(validate_path(path).is_ok(), "{path:?}");
-            assert!(
-                validate(
-                    &[ChmodEntry::new("600", path)],
-                    Platform::new(Os::Linux, false)
-                )
-                .is_empty(),
-                "{path:?}"
-            );
+            assert!(validate_entry("600", path).is_empty(), "{path:?}");
         }
     }
 
@@ -387,7 +363,6 @@ permissions = [{ path = "config/hypr/scripts/brightness.sh", mode = "755" }]
     #[test]
     fn validate_rejects_windows_root_spellings() {
         use crate::infra::config::Severity;
-        use crate::infra::platform::{Os, Platform};
 
         for (path, code) in [
             (r".\", CHMOD_HOME_ROOT),
@@ -397,31 +372,11 @@ permissions = [{ path = "config/hypr/scripts/brightness.sh", mode = "755" }]
             (r"C:relative", CHMOD_ABSOLUTE_PATH),
             (r"\\server\share", CHMOD_ABSOLUTE_PATH),
         ] {
-            let diagnostics = validate(
-                &[ChmodEntry::new("755", path)],
-                Platform::new(Os::Linux, false),
-            );
+            let diagnostics = validate_entry("755", path);
             assert_eq!(diagnostics.len(), 1, "{path:?}");
             assert_eq!(diagnostics[0].code, code, "{path:?}");
             assert_eq!(diagnostics[0].severity, Severity::Error, "{path:?}");
             assert!(validate_path(path).is_err(), "{path:?}");
         }
-    }
-
-    #[test]
-    fn load_returns_error_on_malformed_toml() {
-        let (_dir, path) = write_temp_toml("[base\npermissions = [");
-        let result = load(&path, &[Category::Base]);
-        assert!(result.is_err(), "malformed TOML should return error");
-    }
-
-    #[test]
-    fn load_returns_error_on_type_mismatch() {
-        let (_dir, path) = write_temp_toml("[base]\npermissions = \"not-an-array\"\n");
-        let result = load(&path, &[Category::Base]);
-        assert!(
-            result.is_err(),
-            "string instead of array should return error"
-        );
     }
 }

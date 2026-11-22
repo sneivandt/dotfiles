@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::engine::Context;
 use crate::infra::ConfigHandle;
 use crate::infra::env::MapEnv;
-use crate::infra::exec::{CommandSpec, ExecResult, MockExecutor};
+use crate::infra::exec::{CommandSpec, ExecError, ExecResult, MockExecutor};
 use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::make_context;
 
@@ -84,7 +84,7 @@ pub fn expect_which_apm(mock: &mut MockExecutor, found: bool) {
         .returning(move |_| found);
 }
 
-pub fn has_env(spec: &CommandSpec, key: &str, value: &str) -> bool {
+fn has_env(spec: &CommandSpec, key: &str, value: &str) -> bool {
     spec.environment()
         .iter()
         .any(|(actual_key, actual_value)| actual_key == key && actual_value == value)
@@ -100,6 +100,7 @@ pub fn assert_apm_command(spec: &CommandSpec) {
         spec.working_dir().is_some(),
         "APM must run in the fixture home"
     );
+    assert!(has_env(spec, "GIT_TERMINAL_PROMPT", "0"));
     for (key, value) in super::commands::APM_NONINTERACTIVE_ENV {
         assert!(
             has_env(spec, key, value),
@@ -108,102 +109,80 @@ pub fn assert_apm_command(spec: &CommandSpec) {
     }
 }
 
-pub fn expect_copilot_app_enable(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(|spec| {
-            assert_apm_command(&spec);
-            assert_eq!(spec.arguments(), ["experimental", "enable", "copilot-app"]);
-            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ExecResult::success("[!] copilot-app is already enabled.\n"))
-        });
+pub const INSTALL: &[&str] = &["install", "-g"];
+pub const UPDATE: &[&str] = &["update", "-g", "--yes"];
+pub const PREVIEW_UPDATE: &[&str] = &["update", "-g", "--dry-run"];
+
+/// Ordered native commands (and, for Copilot App, workflow snapshots and repairs)
+/// sharing the same isolated home. No other programs or calls are accepted.
+pub struct ApmRun<'a> {
+    pub home: &'a Path,
+    pub mock: MockExecutor,
+    pub seq: mockall::Sequence,
 }
 
-pub fn expect_cowork_enable(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(|spec| {
-            assert_apm_command(&spec);
-            assert_eq!(
-                spec.arguments(),
-                ["experimental", "enable", "copilot-cowork"]
-            );
-            Ok(ExecResult::success(
-                "[!] copilot-cowork is already enabled.\n",
-            ))
-        });
-}
+impl<'a> ApmRun<'a> {
+    pub fn new(home: &'a Path, apm_probes: usize) -> Self {
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .with(mockall::predicate::eq("apm"))
+            .times(apm_probes)
+            .return_const(true);
+        Self {
+            home,
+            mock,
+            seq: mockall::Sequence::new(),
+        }
+    }
 
-pub fn expect_apm_update(
-    mock: &mut MockExecutor,
-    seq: &mut mockall::Sequence,
-    stdout: &'static str,
-) {
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(move |spec| {
-            assert_apm_command(&spec);
-            assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
-            Ok(ExecResult::success(stdout))
-        });
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(|spec| {
-            assert_apm_command(&spec);
-            assert_eq!(spec.arguments(), ["install", "-g"]);
-            Ok(ExecResult::success("converged deployments\n"))
-        });
-}
+    pub fn command(
+        &mut self,
+        args: &[&str],
+        respond: impl FnOnce(&Path) -> Result<ExecResult, ExecError> + Send + 'static,
+    ) {
+        let home = self.home.to_owned();
+        let args: Vec<_> = args.iter().map(std::ffi::OsString::from).collect();
+        self.mock
+            .expect_execute()
+            .once()
+            .in_sequence(&mut self.seq)
+            .return_once(move |spec| {
+                assert_apm_command(&spec);
+                assert_eq!(spec.working_dir(), Some(home.as_path()));
+                assert_eq!(spec.arguments(), args);
+                respond(&home)
+            });
+    }
 
-pub fn expect_copilot_app_workflow_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(|spec| {
-            assert_apm_command(&spec);
-            assert_eq!(
-                spec.arguments(),
-                ["install", "-g", "--target", "copilot-app", "--only", "apm"]
-            );
-            Ok(ExecResult::success("installed workflows\n"))
-        });
-}
+    pub fn ok(&mut self, args: &[&str], stdout: &'static str) {
+        self.command(args, move |_| Ok(ExecResult::success(stdout)));
+    }
 
-pub fn expect_apm_install_without_enable(
-    mock: &mut MockExecutor,
-    seq: &mut mockall::Sequence,
-    cwd: &Path,
-) {
-    let install_cwd = cwd.to_path_buf();
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(move |spec| {
-            assert_apm_command(&spec);
-            assert_eq!(spec.working_dir(), Some(install_cwd.as_path()));
-            assert_eq!(spec.program(), "apm");
-            assert_eq!(spec.arguments(), ["install", "-g"]);
-            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ExecResult::success("installed\n"))
+    pub fn enable(&mut self, target: &'static str) {
+        self.command(&["experimental", "enable", target], move |_| {
+            Ok(ExecResult::success(format!(
+                "[!] {target} is already enabled.\n"
+            )))
         });
-    expect_copilot_app_workflow_install(mock, seq);
-}
+    }
 
-pub fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence, cwd: &Path) {
-    let install_cwd = cwd.to_path_buf();
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(move |spec| {
-            assert_apm_command(&spec);
-            assert_eq!(spec.working_dir(), Some(install_cwd.as_path()));
-            assert_eq!(spec.arguments(), ["install", "-g"]);
-            Ok(ExecResult::success("installed\n"))
-        });
-    expect_copilot_app_enable(mock, seq);
-    expect_copilot_app_workflow_install(mock, seq);
+    pub fn workflow_install(&mut self) {
+        self.ok(
+            &["install", "-g", "--target", "copilot-app", "--only", "apm"],
+            "installed workflows\n",
+        );
+    }
+
+    pub fn copilot_install(&mut self) {
+        self.ok(INSTALL, "installed\n");
+        self.enable("copilot-app");
+        self.workflow_install();
+    }
+
+    pub fn copilot_update(&mut self, stdout: &'static str) {
+        self.ok(UPDATE, stdout);
+        self.ok(INSTALL, "converged deployments\n");
+        self.enable("copilot-app");
+        self.workflow_install();
+    }
 }

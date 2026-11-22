@@ -153,7 +153,9 @@ pub(crate) const AGENT_SETTINGS_TOML: &str = "agent-settings.toml";
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_helpers::{
+        assert_conflict, assert_mentions, rejects_toml, write_temp_toml,
+    };
     use crate::infra::config::test_load_missing_returns_empty;
 
     #[test]
@@ -280,46 +282,26 @@ settings = [{ target = "codex", key = "model", value = "x" }]
                 },
             ];
             let diagnostics = validate(&settings);
-            assert_eq!(
-                diagnostics.len(),
-                usize::from(conflicts),
-                "{target:?}:{key}"
-            );
-            if conflicts {
-                let diagnostic = &diagnostics[0];
-                assert_eq!(diagnostic.code, AGENT_SETTINGS_CONFLICTING_VALUES);
-                assert_eq!(diagnostic.severity, crate::infra::config::Severity::Error);
+            if let Some(diagnostic) = assert_conflict(
+                (target, key),
+                &diagnostics,
+                conflicts,
+                AGENT_SETTINGS_CONFLICTING_VALUES,
+            ) {
                 assert_eq!(diagnostic.source, AGENT_SETTINGS_TOML);
                 assert_eq!(diagnostic.item, "copilot:model");
-                assert!(diagnostic.message.contains("entry 1"));
-                assert!(diagnostic.message.contains("entry 2"));
+                assert_mentions(&diagnostic.message, &["entry 1", "entry 2"]);
             }
         }
     }
 
-    #[test]
-    fn load_returns_error_on_unknown_field_in_entry() {
-        let (_dir, path) = write_temp_toml(
-            "[base]\nsettings = [{ target = \"copilot\", key = \"model\", value = \"x\", typo = \"y\" }]\n",
-        );
-        let result = load(&path, &[Category::Base]);
-        assert!(result.is_err(), "unknown field 'typo' should error");
-    }
-
-    #[test]
-    fn load_returns_error_on_unknown_target() {
-        let (_dir, path) = write_temp_toml(
-            "[base]\nsettings = [{ target = \"other\", key = \"model\", value = \"x\" }]\n",
-        );
-        let result = load(&path, &[Category::Base]);
-        assert!(result.is_err(), "unknown target should error");
-    }
-
-    #[test]
-    fn load_returns_error_on_malformed_toml() {
-        let (_dir, path) = write_temp_toml("[base\nsettings = [");
-        let result = load(&path, &[Category::Base]);
-        assert!(result.is_err(), "malformed TOML should return error");
+    rejects_toml! {
+        "test.toml", |path| load(path, &[Category::Base]);
+        load_returns_error_on_unknown_field_in_entry:
+            "[base]\nsettings = [{ target = \"copilot\", key = \"model\", value = \"x\", typo = \"y\" }]\n";
+        load_returns_error_on_unknown_target:
+            "[base]\nsettings = [{ target = \"other\", key = \"model\", value = \"x\" }]\n";
+        load_returns_error_on_malformed_toml: "[base\nsettings = [";
     }
 
     #[test]
@@ -390,18 +372,14 @@ settings = [{ target = "codex", key = "model", value = "x" }]
                     entries.reverse();
                 }
                 let diagnostics = validate_conflicts(&entries);
-                assert_eq!(
-                    diagnostics.len(),
-                    usize::from(conflict),
-                    "{parent_key}/{child_key}, reverse={reverse}"
-                );
-                if conflict {
-                    let diagnostic = &diagnostics[0];
-                    assert_eq!(diagnostic.code, AGENT_SETTINGS_CONFLICTING_VALUES);
+                if let Some(diagnostic) = assert_conflict(
+                    (parent_key, child_key, reverse),
+                    &diagnostics,
+                    conflict,
+                    AGENT_SETTINGS_CONFLICTING_VALUES,
+                ) {
                     assert_eq!(diagnostic.source, AGENT_SETTINGS_TOML);
-                    assert_eq!(diagnostic.severity, crate::infra::config::Severity::Error);
-                    assert!(diagnostic.message.contains("entry 1"));
-                    assert!(diagnostic.message.contains("entry 2"));
+                    assert_mentions(&diagnostic.message, &["entry 1", "entry 2"]);
                     assert!(!diagnostic.message.contains("private-fixture"));
                 }
                 entries[0].target = AgentHarness::Codex;

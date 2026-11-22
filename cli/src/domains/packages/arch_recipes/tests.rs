@@ -499,24 +499,23 @@ fn config_paths_must_survive_paru_whitespace_and_comment_parsing() {
 #[test]
 fn paru_preparation_preserves_config_changes_made_after_discovery() {
     for config_write_planned in [false, true] {
-        let dir = fixture();
-        let ctx = snapshot_context(dir.path());
-        let _installed = configure_paru(&ctx).unwrap();
-        let config = paru_config_path(&ctx).unwrap();
+        let f = SnapshotFixture::new();
+        let _installed = f.configure();
+        let config = paru_config_path(&f.ctx).unwrap();
         let original = std::fs::read_to_string(&config).unwrap();
-        let cache = build_root(&ctx).unwrap().join("tool-bin/PKGBUILD");
+        let cache = f.cache.join("PKGBUILD");
         let before = std::fs::read(&cache).unwrap();
         let recipe = "pkgname=tool-bin\n# updated\n";
-        std::fs::write(dir.path().join("packages/tool-bin/PKGBUILD"), recipe).unwrap();
+        std::fs::write(f.source.join("PKGBUILD"), recipe).unwrap();
         if config_write_planned {
             std::fs::write(&config, "[options]\nDevel\n").unwrap();
         }
-        let base = ctx.symlinks_dir().join("config/paru/paru.conf.base");
+        let base = f.ctx.symlinks_dir().join("config/paru/paru.conf.base");
         let op = ParuConfig { base: &base };
-        let OperationState::NeedsRun { plan } = op.current_state(&ctx).unwrap() else {
+        let OperationState::NeedsRun { plan } = op.current_state(&f.ctx).unwrap() else {
             panic!("new recipe must require preparation")
         };
-        let saved = dir.path().join("saved.conf");
+        let saved = f.dir.path().join("saved.conf");
         let preferences = "[options]\nBottomUp\n";
         if config_write_planned {
             // A user saves additional preferences after the old file was read.
@@ -527,7 +526,7 @@ fn paru_preparation_preserves_config_changes_made_after_discovery() {
             std::fs::remove_file(&config).unwrap();
             std::os::unix::fs::symlink(&saved, &config).unwrap();
         }
-        let error = op.apply(&ctx, &plan).unwrap_err();
+        let error = op.apply(&f.ctx, &plan).unwrap_err();
         assert!(
             error.to_string().contains("changed during preparation"),
             "{error:#}"
@@ -544,7 +543,7 @@ fn paru_preparation_preserves_config_changes_made_after_discovery() {
         );
 
         std::fs::write(&base, preferences).unwrap();
-        let retry = configure_paru(&ctx).unwrap();
+        let retry = f.configure();
         assert_eq!(task_batch(&retry).changed_count(), 2);
         assert!(!config.is_symlink());
         assert!(
@@ -556,7 +555,7 @@ fn paru_preparation_preserves_config_changes_made_after_discovery() {
             assert_eq!(std::fs::read_to_string(saved).unwrap(), original);
         }
         assert_eq!(std::fs::read_to_string(cache).unwrap(), recipe);
-        assert!(matches!(configure_paru(&ctx).unwrap(), TaskResult::Ok));
+        assert!(matches!(f.configure(), TaskResult::Ok));
     }
 }
 
@@ -604,33 +603,116 @@ fn expect_metadata(mock: &mut MockExecutor) {
         });
 }
 
-fn snapshot_context(root: &Path) -> Context {
+fn metadata_executor() -> MockExecutor {
     let mut mock = MockExecutor::new();
     expect_metadata(&mut mock);
-    let ctx = make_context(
+    mock
+}
+
+fn arch_context(root: &Path, mock: MockExecutor) -> Context {
+    make_context(
         root.into(),
         None,
         Platform::new(Os::Linux, true),
         Arc::new(mock),
     )
     .with_home(root.join("home"))
-    .with_env(crate::infra::env::MapEnv::new().into_handle());
+    .with_env(crate::infra::env::MapEnv::new().into_handle())
+}
+
+fn snapshot_context(root: &Path, mock: MockExecutor) -> Context {
+    let ctx = arch_context(root, mock);
     let base = ctx.symlinks_dir().join("config/paru/paru.conf.base");
     std::fs::create_dir_all(base.parent().unwrap()).unwrap();
     std::fs::write(base, "[options]\nCleanAfter\n").unwrap();
     ctx
 }
 
-#[test]
-fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
-    let dir = fixture();
-    std::fs::rename(
-        dir.path().join("packages/tool-bin"),
-        dir.path().join("packages/tool"),
+struct SnapshotFixture {
+    dir: tempfile::TempDir,
+    source: PathBuf,
+    cache: PathBuf,
+    ctx: Context,
+}
+
+impl SnapshotFixture {
+    fn new() -> Self {
+        Self::with_executor(metadata_executor())
+    }
+
+    fn with_executor(mock: MockExecutor) -> Self {
+        let dir = fixture();
+        let source = dir.path().join("packages/tool-bin");
+        let ctx = snapshot_context(dir.path(), mock);
+        let cache = build_root(&ctx).unwrap().join("tool-bin");
+        Self {
+            dir,
+            source,
+            cache,
+            ctx,
+        }
+    }
+
+    fn plan(&self, preview: bool) -> Snapshot {
+        Snapshot::plan(
+            self.cache.parent().unwrap(),
+            "tool-bin",
+            &self.source,
+            preview,
+        )
+        .unwrap()
+    }
+
+    fn configure(&self) -> TaskResult {
+        configure_paru(&self.ctx).unwrap()
+    }
+
+    fn preview(&self) -> TaskResult {
+        configure_paru(&self.ctx.with_dry_run(true)).unwrap()
+    }
+
+    fn repo(&self) -> git2::Repository {
+        git2::Repository::open(&self.cache).unwrap()
+    }
+
+    fn commit_index(&self, message: &str, edit: impl FnOnce(&mut git2::Index)) {
+        let repo = self.repo();
+        let mut index = repo.index().unwrap();
+        edit(&mut index);
+        index.write().unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        commit_tree(&repo, message, &tree);
+    }
+}
+
+fn commit_tree(repo: &git2::Repository, message: &str, tree: &git2::Tree<'_>) {
+    let parent = repo.head().unwrap().peel_to_commit().unwrap();
+    let signature = git2::Signature::now("fixture", "ci@test.local").unwrap();
+    repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        message,
+        tree,
+        &[&parent],
     )
     .unwrap();
-    let ctx = snapshot_context(dir.path());
-    let cache = build_root(&ctx).unwrap().join("tool-bin");
+}
+
+fn reset_to_head(repo: &git2::Repository) {
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    repo.reset(head.as_object(), git2::ResetType::Hard, None)
+        .unwrap();
+}
+
+#[test]
+fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
+    let mut f = SnapshotFixture::new();
+    let renamed = f.dir.path().join("packages/tool");
+    std::fs::rename(&f.source, &renamed).unwrap();
+    f.source = renamed;
+    let ctx = &f.ctx;
+    let cache = &f.cache;
     let preview_log = Arc::new(crate::test_helpers::CapturingOutput::default());
     let preview_ctx =
         ctx.with_dry_run(true)
@@ -648,7 +730,7 @@ fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
         preview_log.messages_of(crate::infra::logging::MsgKind::Debug),
         [
             format!("snapshot {}", cache.display()),
-            format!("write {}", paru_config_path(&ctx).unwrap().display()),
+            format!("write {}", paru_config_path(ctx).unwrap().display()),
         ]
     );
     assert!(!cache.exists());
@@ -666,7 +748,7 @@ fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
         applied_log.messages_of(crate::infra::logging::MsgKind::Debug),
         preview_log.messages_of(crate::infra::logging::MsgKind::Debug)
     );
-    let repo = git2::Repository::open(&cache).unwrap();
+    let repo = f.repo();
     let head = repo.head().unwrap().peel_to_commit().unwrap();
     let tree = head.tree().unwrap();
     let blob = repo
@@ -679,7 +761,7 @@ fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
         "[dotfiles-tool-bin]\nPath = {}\nGenerateSrcinfo",
         cache.display()
     )));
-    assert!(matches!(configure_paru(&ctx).unwrap(), TaskResult::Ok));
+    assert!(matches!(f.configure(), TaskResult::Ok));
 
     let unchanged_log = Arc::new(crate::test_helpers::CapturingOutput::default());
     let unchanged_ctx =
@@ -696,7 +778,7 @@ fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
         "preview must not announce work for a prepared snapshot"
     );
 
-    let source = dir.path().join("packages/tool/PKGBUILD");
+    let source = f.source.join("PKGBUILD");
     std::fs::write(&source, "modified tracked source\n").unwrap();
     // Resetting the standalone cache cannot reset the source checkout.
     std::fs::write(cache.join("PKGBUILD"), "modified cache\n").unwrap();
@@ -707,18 +789,14 @@ fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
         "modified tracked source\n"
     );
     std::fs::write(cache.join("PKGBUILD"), "modified tracked source\n").unwrap();
-    let refreshed = configure_paru(&ctx).unwrap();
+    let refreshed = f.configure();
     assert_eq!(task_batch(&refreshed).changed_count(), 1);
     assert_ne!(repo.head().unwrap().target().unwrap(), head.id());
-    assert!(matches!(configure_paru(&ctx).unwrap(), TaskResult::Ok));
+    assert!(matches!(f.configure(), TaskResult::Ok));
 }
 
 #[test]
 fn snapshot_publishes_current_metadata_and_repairs_legacy_or_damaged_srcinfo() {
-    let dir = fixture();
-    let setup = snapshot_context(dir.path());
-    let pins = dir.path().join("packages/tool-bin/version.sh");
-    std::fs::write(&pins, "pkgver=1.0.103\n").unwrap();
     let mut mock = MockExecutor::new();
     mock.expect_execute()
         .withf(|spec| spec.program() == "makepkg" && spec.arguments() == ["--printsrcinfo"] && spec.is_checked())
@@ -729,56 +807,30 @@ fn snapshot_publishes_current_metadata_and_repairs_legacy_or_damaged_srcinfo() {
                 "pkgbase = tool-bin\n\tpkgver = {version}\n\tpkgrel = 1\n\tarch = x86_64\npkgname = tool-bin\n"
             )))
         });
-    let ctx = make_context(
-        dir.path().into(),
-        None,
-        Platform::new(Os::Linux, true),
-        Arc::new(mock),
-    )
-    .with_home(setup.home().to_path_buf())
-    .with_env(crate::infra::env::MapEnv::new().into_handle());
-    let cache = build_root(&ctx).unwrap().join("tool-bin");
-    let _first = configure_paru(&ctx).unwrap();
-    let metadata = cache.join(".SRCINFO");
+    let f = SnapshotFixture::with_executor(mock);
+    let pins = f.source.join("version.sh");
+    std::fs::write(&pins, "pkgver=1.0.103\n").unwrap();
+    let _first = f.configure();
+    let metadata = f.cache.join(".SRCINFO");
     let old_metadata = std::fs::read_to_string(&metadata).unwrap();
     assert!(old_metadata.contains("pkgver = 1.0.103\n"));
 
     // Reproduce the pre-fix snapshot: metadata exists but is not committed,
     // and a successful validation stamp exists for the recipe inputs.
-    let repo = git2::Repository::open(&cache).unwrap();
-    {
-        let parent = repo.head().unwrap().peel_to_commit().unwrap();
-        let mut index = repo.index().unwrap();
+    f.commit_index("legacy snapshot", |index| {
         index.remove_path(Path::new(".SRCINFO")).unwrap();
-        index.write().unwrap();
-        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
-        let signature = git2::Signature::now("fixture", "ci@test.local").unwrap();
-        repo.commit(
-            Some("HEAD"),
-            &signature,
-            &signature,
-            "legacy snapshot",
-            &tree,
-            &[&parent],
-        )
-        .unwrap();
-    }
-    assert_eq!(
-        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
-        1
-    );
-    assert!(matches!(configure_paru(&ctx).unwrap(), TaskResult::Ok));
+    });
+    assert_eq!(task_batch(&f.configure()).changed_count(), 1);
+    assert!(matches!(f.configure(), TaskResult::Ok));
 
     std::fs::write(&pins, "pkgver=1.0.104\n").unwrap();
+    let repo = f.repo();
     let previous_head = repo.head().unwrap().target();
-    let preview = configure_paru(&ctx.with_dry_run(true)).unwrap();
+    let preview = f.preview();
     assert_eq!(task_batch(&preview).changed_count(), 1);
     assert_eq!(std::fs::read_to_string(&metadata).unwrap(), old_metadata);
     assert_eq!(repo.head().unwrap().target(), previous_head);
-    assert_eq!(
-        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
-        1
-    );
+    assert_eq!(task_batch(&f.configure()).changed_count(), 1);
     let current = std::fs::read_to_string(&metadata).unwrap();
     assert!(current.contains("pkgver = 1.0.104\n"));
 
@@ -788,66 +840,41 @@ fn snapshot_publishes_current_metadata_and_repairs_legacy_or_damaged_srcinfo() {
         } else {
             std::fs::remove_file(&metadata).unwrap();
         }
-        assert_eq!(
-            task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
-            1
-        );
+        assert_eq!(task_batch(&f.configure()).changed_count(), 1);
         assert_eq!(std::fs::read_to_string(&metadata).unwrap(), current);
-        assert!(matches!(configure_paru(&ctx).unwrap(), TaskResult::Ok));
+        assert!(matches!(f.configure(), TaskResult::Ok));
     }
     // Paru's reset/clean must preserve the current package metadata too.
-    let head = repo.head().unwrap().peel_to_commit().unwrap();
     std::fs::write(&metadata, old_metadata).unwrap();
-    repo.reset(head.as_object(), git2::ResetType::Hard, None)
-        .unwrap();
+    reset_to_head(&repo);
     assert_eq!(std::fs::read_to_string(metadata).unwrap(), current);
-    assert!(unavailable_packages(&ctx).unwrap().is_empty());
+    assert!(unavailable_packages(&f.ctx).unwrap().is_empty());
 }
 
 #[test]
 fn changed_committed_metadata_invalidates_validation_cache() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    let _prepared = configure_paru(&ctx).unwrap();
-    let cache = build_root(&ctx).unwrap().join("tool-bin");
-    let metadata = cache.join(".SRCINFO");
+    let f = SnapshotFixture::new();
+    let _prepared = f.configure();
+    let metadata = f.cache.join(".SRCINFO");
     let current = std::fs::read_to_string(&metadata).unwrap();
     std::fs::write(&metadata, "stale committed metadata\n").unwrap();
-    let repo = git2::Repository::open(&cache).unwrap();
-    let parent = repo.head().unwrap().peel_to_commit().unwrap();
-    let mut index = repo.index().unwrap();
-    index.add_path(Path::new(".SRCINFO")).unwrap();
-    index.write().unwrap();
-    let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
-    let signature = git2::Signature::now("fixture", "ci@test.local").unwrap();
-    repo.commit(
-        Some("HEAD"),
-        &signature,
-        &signature,
-        "stale committed metadata",
-        &tree,
-        &[&parent],
-    )
-    .unwrap();
-    assert_eq!(
-        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
-        1
-    );
+    f.commit_index("stale committed metadata", |index| {
+        index.add_path(Path::new(".SRCINFO")).unwrap();
+    });
+    assert_eq!(task_batch(&f.configure()).changed_count(), 1);
     assert_eq!(std::fs::read_to_string(&metadata).unwrap(), current);
-    assert!(matches!(configure_paru(&ctx).unwrap(), TaskResult::Ok));
+    assert!(matches!(f.configure(), TaskResult::Ok));
 }
 
 #[test]
 fn snapshot_commits_install_script_and_refreshes_changes_for_cleanup() {
-    let dir = fixture();
-    let source = dir.path().join("packages/tool-bin");
-    let script = source.join("package.install");
-    let build_root = dir.path().join("builds");
+    let f = SnapshotFixture::new();
+    let script = f.source.join("package.install");
     std::fs::write(&script, "post_install() { :; }\n").unwrap();
     for name in ["LICENSE", "NOTICE"] {
-        std::fs::write(source.join(name), format!("upstream {name}\n")).unwrap();
+        std::fs::write(f.source.join(name), format!("upstream {name}\n")).unwrap();
     }
-    let snapshot = Snapshot::plan(&build_root, "tool-bin", &source, true).unwrap();
+    let snapshot = f.plan(true);
     assert!(snapshot.needs_write().unwrap());
     assert!(!snapshot.path.exists(), "planning must not publish inputs");
     snapshot.apply("fixture metadata\n").unwrap();
@@ -856,31 +883,19 @@ fn snapshot_commits_install_script_and_refreshes_changes_for_cleanup() {
         "dotfiles local PKGBUILD snapshot v1\n",
         "terminology changes must preserve the existing snapshot ownership protocol"
     );
-    assert!(
-        !Snapshot::plan(&build_root, "tool-bin", &source, false)
-            .unwrap()
-            .needs_write()
-            .unwrap()
-    );
-    let repo = git2::Repository::open(&snapshot.path).unwrap();
-    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    assert!(!f.plan(false).needs_write().unwrap());
+    let repo = f.repo();
     std::fs::write(snapshot.path.join("package.install"), "cache edit\n").unwrap();
-    repo.reset(head.as_object(), git2::ResetType::Hard, None)
-        .unwrap();
+    reset_to_head(&repo);
     assert_eq!(
         std::fs::read_to_string(snapshot.path.join("package.install")).unwrap(),
         "post_install() { :; }\n"
     );
     std::fs::write(&script, "post_install() { echo updated; }\n").unwrap();
-    let changed = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
+    let changed = f.plan(false);
     assert!(changed.needs_write().unwrap());
     changed.apply("fixture metadata\n").unwrap();
-    assert!(
-        !Snapshot::plan(&build_root, "tool-bin", &source, false)
-            .unwrap()
-            .needs_write()
-            .unwrap()
-    );
+    assert!(!f.plan(false).needs_write().unwrap());
     let tree = repo.head().unwrap().peel_to_tree().unwrap();
     for name in ["LICENSE", "NOTICE"] {
         let blob = repo.find_blob(tree.get_name(name).unwrap().id()).unwrap();
@@ -894,30 +909,26 @@ fn snapshot_commits_install_script_and_refreshes_changes_for_cleanup() {
 
 #[test]
 fn retiring_optional_snapshot_inputs_cleans_only_the_managed_slots() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    let source = dir.path().join("packages/tool-bin");
-    let cache = build_root(&ctx).unwrap().join("tool-bin");
+    let f = SnapshotFixture::new();
+    let cache = &f.cache;
     std::fs::write(
-        source.join("package.install"),
+        f.source.join("package.install"),
         "obsolete lifecycle script\n",
     )
     .unwrap();
-    assert_eq!(
-        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
-        2
-    );
-    std::fs::remove_file(source.join("package.install")).unwrap();
+    assert_eq!(task_batch(&f.configure()).changed_count(), 2);
+    std::fs::remove_file(f.source.join("package.install")).unwrap();
     std::fs::write(cache.join("artifact"), "keep\n").unwrap();
-    let preview = configure_paru(&ctx.with_dry_run(true)).unwrap();
+    let preview = f.preview();
     assert_eq!(task_batch(&preview).changed_count(), 1);
     assert!(cache.join("package.install").exists());
-    assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
-    assert_eq!(
-        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
-        1
+    assert!(
+        unavailable_packages(&f.ctx)
+            .unwrap()
+            .contains_key("tool-bin")
     );
-    let repo = git2::Repository::open(&cache).unwrap();
+    assert_eq!(task_batch(&f.configure()).changed_count(), 1);
+    let repo = f.repo();
     let tree = repo.head().unwrap().peel_to_tree().unwrap();
     assert!(tree.get_name("package.install").is_none());
     assert!(!cache.join("package.install").exists());
@@ -926,34 +937,33 @@ fn retiring_optional_snapshot_inputs_cleans_only_the_managed_slots() {
     // index without unlinking it. A directory is not safe to delete recursively.
     std::fs::create_dir(cache.join("NOTICE")).unwrap();
     std::fs::write(cache.join("NOTICE/keep"), "user data\n").unwrap();
-    assert_eq!(task_batch(&configure_paru(&ctx).unwrap()).failed_count(), 1);
-    assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+    assert_eq!(task_batch(&f.configure()).failed_count(), 1);
+    assert!(
+        unavailable_packages(&f.ctx)
+            .unwrap()
+            .contains_key("tool-bin")
+    );
     std::fs::rename(cache.join("NOTICE"), cache.join("saved")).unwrap();
     std::fs::write(cache.join("NOTICE"), "retired notice\n").unwrap();
-    assert_eq!(
-        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
-        2
-    );
+    assert_eq!(task_batch(&f.configure()).changed_count(), 2);
     assert!(!cache.join("NOTICE").exists());
     assert_eq!(
         std::fs::read(cache.join("saved/keep")).unwrap(),
         b"user data\n"
     );
     assert_eq!(std::fs::read(cache.join("artifact")).unwrap(), b"keep\n");
-    assert!(matches!(configure_paru(&ctx).unwrap(), TaskResult::Ok));
+    assert!(matches!(f.configure(), TaskResult::Ok));
 }
 
 #[test]
 fn snapshot_repairs_attributes_and_preserves_exact_bytes_through_git_reset() {
-    let dir = fixture();
-    let source = dir.path().join("packages/tool-bin");
-    let build_root = dir.path().join("builds");
+    let f = SnapshotFixture::new();
     let script = "post_install() { :; }\r\n";
     let metadata = "fixture metadata\n";
-    std::fs::write(source.join("package.install"), script).unwrap();
-    let snapshot = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
+    std::fs::write(f.source.join("package.install"), script).unwrap();
+    let snapshot = f.plan(false);
     snapshot.apply(metadata).unwrap();
-    let repo = git2::Repository::open(&snapshot.path).unwrap();
+    let repo = f.repo();
     let attributes = repo.path().join("info/attributes");
     std::fs::write(snapshot.path.join(".gitattributes"), "* text eol=crlf\n").unwrap();
 
@@ -963,17 +973,15 @@ fn snapshot_repairs_attributes_and_preserves_exact_bytes_through_git_reset() {
         } else {
             std::fs::remove_file(&attributes).unwrap();
         }
-        let planned = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
+        let planned = f.plan(false);
         assert!(planned.needs_write().unwrap());
         assert_eq!(read_optional(&attributes).unwrap().as_deref(), contents);
         planned.apply(metadata).unwrap();
 
-        let head = repo.head().unwrap().peel_to_commit().unwrap();
         for name in ["package.install", ".SRCINFO"] {
             std::fs::write(snapshot.path.join(name), "changed\n").unwrap();
         }
-        repo.reset(head.as_object(), git2::ResetType::Hard, None)
-            .unwrap();
+        reset_to_head(&repo);
 
         for (name, expected) in [("package.install", script), (".SRCINFO", metadata)] {
             assert_eq!(
@@ -982,43 +990,25 @@ fn snapshot_repairs_attributes_and_preserves_exact_bytes_through_git_reset() {
                 "{name}: snapshot-local attributes must preserve both CRLF and LF inputs"
             );
         }
-        assert!(
-            !Snapshot::plan(&build_root, "tool-bin", &source, false)
-                .unwrap()
-                .needs_write()
-                .unwrap()
-        );
+        assert!(!f.plan(false).needs_write().unwrap());
     }
 }
 
 #[test]
 fn snapshot_repairs_committed_symlink_inputs_even_when_blob_contents_match() {
     for name in ["PKGBUILD", "version.sh", ".SRCINFO"] {
-        let dir = fixture();
-        let source = dir.path().join("packages/tool-bin");
-        let build_root = dir.path().join("builds");
-        let snapshot = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
-        snapshot.apply("fixture metadata\n").unwrap();
-        let repo = git2::Repository::open(&snapshot.path).unwrap();
-        let parent = repo.head().unwrap().peel_to_commit().unwrap();
-        let original = parent.tree().unwrap();
+        let f = SnapshotFixture::new();
+        f.plan(false).apply("fixture metadata\n").unwrap();
+        let repo = f.repo();
+        let original = repo.head().unwrap().peel_to_tree().unwrap();
         let mut builder = repo.treebuilder(Some(&original)).unwrap();
         builder
             .insert(name, original.get_name(name).unwrap().id(), 0o120_000)
             .unwrap();
         let tree = repo.find_tree(builder.write().unwrap()).unwrap();
-        let signature = git2::Signature::now("fixture", "ci@test.local").unwrap();
-        repo.commit(
-            Some("HEAD"),
-            &signature,
-            &signature,
-            "replace input with committed symlink",
-            &tree,
-            &[&parent],
-        )
-        .unwrap();
+        commit_tree(&repo, "replace input with committed symlink", &tree);
 
-        let damaged = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
+        let damaged = f.plan(false);
         assert!(
             damaged.needs_write().unwrap(),
             "{name}: Git cleanup would restore a symlink rather than a usable input"
@@ -1036,10 +1026,7 @@ fn snapshot_repairs_committed_symlink_inputs_even_when_blob_contents_match() {
             "{name}",
         );
         assert!(
-            !Snapshot::plan(&build_root, "tool-bin", &source, false)
-                .unwrap()
-                .needs_write()
-                .unwrap(),
+            !f.plan(false).needs_write().unwrap(),
             "{name}: repaired snapshot must converge",
         );
     }
@@ -1049,19 +1036,16 @@ fn snapshot_repairs_committed_symlink_inputs_even_when_blob_contents_match() {
 #[test]
 fn snapshot_repairs_working_symlinks_without_modifying_their_targets() {
     for name in ["PKGBUILD", "version.sh", ".SRCINFO"] {
-        let dir = fixture();
-        let source = dir.path().join("packages/tool-bin");
-        let build_root = dir.path().join("builds");
-        let snapshot = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
-        snapshot.apply("fixture metadata\n").unwrap();
-        let input = snapshot.path.join(name);
+        let f = SnapshotFixture::new();
+        f.plan(false).apply("fixture metadata\n").unwrap();
+        let input = f.cache.join(name);
         let original = std::fs::read_to_string(&input).unwrap();
-        let target = dir.path().join("outside-snapshot");
+        let target = f.dir.path().join("outside-snapshot");
         std::fs::write(&target, &original).unwrap();
         std::fs::remove_file(&input).unwrap();
         std::os::unix::fs::symlink(&target, &input).unwrap();
 
-        let damaged = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
+        let damaged = f.plan(false);
         assert!(
             damaged.needs_write().unwrap(),
             "{name}: matching symlink contents must not bypass snapshot repair"
@@ -1072,10 +1056,7 @@ fn snapshot_repairs_working_symlinks_without_modifying_their_targets() {
         assert_eq!(std::fs::read_to_string(&target).unwrap(), original);
         assert_eq!(std::fs::read_to_string(&input).unwrap(), original);
         assert!(
-            !Snapshot::plan(&build_root, "tool-bin", &source, false)
-                .unwrap()
-                .needs_write()
-                .unwrap(),
+            !f.plan(false).needs_write().unwrap(),
             "{name}: repaired snapshot must converge",
         );
     }
@@ -1083,19 +1064,18 @@ fn snapshot_repairs_working_symlinks_without_modifying_their_targets() {
 
 #[test]
 fn snapshot_preview_handles_missing_pins_and_refuses_unmanaged_cache() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    let pins = dir.path().join("packages/tool-bin/version.sh");
+    let f = SnapshotFixture::new();
+    let pins = f.source.join("version.sh");
     std::fs::remove_file(&pins).unwrap();
-    let preview = configure_paru(&ctx.with_dry_run(true)).unwrap();
+    let preview = f.preview();
     assert_eq!(task_batch(&preview).changed_count(), 2);
-    assert!(!build_root(&ctx).unwrap().exists());
-    assert_eq!(task_batch(&configure_paru(&ctx).unwrap()).failed_count(), 1);
+    assert!(!build_root(&f.ctx).unwrap().exists());
+    assert_eq!(task_batch(&f.configure()).failed_count(), 1);
     std::fs::write(pins, "pins\n").unwrap();
-    let cache = build_root(&ctx).unwrap().join("tool-bin");
-    std::fs::create_dir_all(&cache).unwrap();
+    let cache = &f.cache;
+    std::fs::create_dir_all(cache).unwrap();
     std::fs::write(cache.join("sentinel"), "unmanaged\n").unwrap();
-    assert_eq!(task_batch(&configure_paru(&ctx).unwrap()).failed_count(), 1);
+    assert_eq!(task_batch(&f.configure()).failed_count(), 1);
     assert_eq!(
         std::fs::read_to_string(cache.join("sentinel")).unwrap(),
         "unmanaged\n"
@@ -1106,7 +1086,7 @@ fn snapshot_preview_handles_missing_pins_and_refuses_unmanaged_cache() {
 #[test]
 fn build_cache_respects_injected_xdg_and_aurdest() {
     let dir = tempfile::tempdir().unwrap();
-    let ctx = snapshot_context(dir.path());
+    let ctx = snapshot_context(dir.path(), metadata_executor());
     let cache = dir.path().join("custom-cache");
     let env = crate::infra::env::MapEnv::new().with("XDG_CACHE_HOME", &cache);
     assert_eq!(
@@ -1171,9 +1151,9 @@ fn invalid_descriptors_do_not_query_or_publish_snapshots() {
             serde_json::json!({"x86_64":""}),
         ),
     ] {
-        let dir = fixture();
-        let ctx = snapshot_context(dir.path());
-        let path = dir.path().join("packages/tool-bin/release.json");
+        let f = SnapshotFixture::new();
+        let ctx = &f.ctx;
+        let path = f.source.join("release.json");
         let mut descriptor: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         descriptor[field] = value;
@@ -1181,15 +1161,15 @@ fn invalid_descriptors_do_not_query_or_publish_snapshots() {
         // The executor has no process expectations: discovery must reject
         // invalid metadata before making a network request.
         assert!(
-            task().run(&ctx).is_err(),
+            task().run(ctx).is_err(),
             "{label}: release discovery accepted invalid input"
         );
         assert!(
-            configure_paru(&ctx).is_err(),
+            configure_paru(ctx).is_err(),
             "{label}: snapshot preparation accepted invalid input"
         );
         assert!(
-            !build_root(&ctx).unwrap().exists(),
+            !build_root(ctx).unwrap().exists(),
             "{label}: cache was mutated"
         );
         assert!(
@@ -1197,7 +1177,7 @@ fn invalid_descriptors_do_not_query_or_publish_snapshots() {
             "{label}: config was published"
         );
         assert_eq!(
-            std::fs::read_to_string(dir.path().join("packages/tool-bin/version.sh")).unwrap(),
+            std::fs::read_to_string(f.source.join("version.sh")).unwrap(),
             "original pins\n",
             "{label}: pins were changed"
         );
@@ -1206,21 +1186,20 @@ fn invalid_descriptors_do_not_query_or_publish_snapshots() {
 
 #[test]
 fn unreadable_descriptor_is_an_error_not_an_absent_recipe() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    let descriptor = dir.path().join("packages/tool-bin/release.json");
+    let f = SnapshotFixture::new();
+    let descriptor = f.source.join("release.json");
     std::fs::remove_file(&descriptor).unwrap();
     std::fs::create_dir(&descriptor).unwrap();
-    assert!(task().run(&ctx).is_err());
-    assert!(configure_paru(&ctx).is_err());
-    assert!(!build_root(&ctx).unwrap().exists());
-    assert!(!ctx.home().join(".config/paru/paru.conf").exists());
+    assert!(task().run(&f.ctx).is_err());
+    assert!(configure_paru(&f.ctx).is_err());
+    assert!(!build_root(&f.ctx).unwrap().exists());
+    assert!(!f.ctx.home().join(".config/paru/paru.conf").exists());
 }
 
 #[test]
 fn recipe_directory_query_failure_does_not_publish_empty_configuration() {
     let dir = tempfile::tempdir().unwrap();
-    let ctx = snapshot_context(dir.path());
+    let ctx = snapshot_context(dir.path(), metadata_executor());
     std::fs::write(dir.path().join("packages"), "not a directory\n").unwrap();
     assert!(task().run(&ctx).is_err());
     assert!(configure_paru(&ctx).is_err());
@@ -1229,44 +1208,31 @@ fn recipe_directory_query_failure_does_not_publish_empty_configuration() {
 
 #[test]
 fn interrupted_snapshot_initialization_recovers_an_unborn_head() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    assert_eq!(
-        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
-        2
-    );
-    let cache = build_root(&ctx).unwrap().join("tool-bin");
-    let repo = git2::Repository::open(&cache).unwrap();
+    let f = SnapshotFixture::new();
+    assert_eq!(task_batch(&f.configure()).changed_count(), 2);
+    let repo = f.repo();
     let branch = repo.head().unwrap().name().unwrap().to_owned();
     std::fs::remove_file(repo.path().join(branch)).unwrap();
     assert!(repo.head().is_err());
-    let recovered = configure_paru(&ctx).unwrap();
+    let recovered = f.configure();
     assert_eq!(task_batch(&recovered).changed_count(), 1);
     assert!(repo.head().unwrap().peel_to_commit().is_ok());
-    assert!(matches!(configure_paru(&ctx).unwrap(), TaskResult::Ok));
+    assert!(matches!(f.configure(), TaskResult::Ok));
 }
 
 #[test]
 fn corrupt_snapshot_head_fails_before_preview_or_cached_input_changes() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    assert_eq!(
-        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
-        2
-    );
-    let source = dir.path().join("packages/tool-bin");
-    let cache = build_root(&ctx).unwrap().join("tool-bin");
+    let f = SnapshotFixture::new();
+    assert_eq!(task_batch(&f.configure()).changed_count(), 2);
+    let cache = &f.cache;
     let original = std::fs::read_to_string(cache.join("PKGBUILD")).unwrap();
-    std::fs::write(source.join("PKGBUILD"), "new recipe inputs\n").unwrap();
-    let plan = Snapshot::plan(&build_root(&ctx).unwrap(), "tool-bin", &source, false).unwrap();
-    let repo = git2::Repository::open(&cache).unwrap();
+    std::fs::write(f.source.join("PKGBUILD"), "new recipe inputs\n").unwrap();
+    let plan = f.plan(false);
+    let repo = f.repo();
     let branch = repo.head().unwrap().name().unwrap().to_owned();
     std::fs::write(repo.path().join(branch), "corrupted reference\n").unwrap();
     assert!(repo.head().is_err());
-    assert_eq!(
-        task_batch(&configure_paru(&ctx.with_dry_run(true)).unwrap()).failed_count(),
-        1
-    );
+    assert_eq!(task_batch(&f.preview()).failed_count(), 1);
     assert!(plan.apply("fixture metadata\n").is_err());
     assert_eq!(
         std::fs::read_to_string(cache.join("PKGBUILD")).unwrap(),
@@ -1368,27 +1334,19 @@ fn failed_release_does_not_block_other_updates_or_aur_installs() {
 
     for parallel in [false, true] {
         for retained in [false, true] {
-            let dir = fixture();
-            let broken = add_recipe(dir.path(), "broken-bin");
+            let f = SnapshotFixture::with_executor(release_failure_executor(retained));
+            let broken = add_recipe(f.dir.path(), "broken-bin");
             let old_pins = release_pins(&source(), &release()).unwrap();
             if retained {
                 std::fs::write(broken.join("version.sh"), &old_pins).unwrap();
             }
-            let setup = snapshot_context(dir.path());
-            let mock = release_failure_executor(retained);
             let (logger, _logs, _guard) = crate::infra::logging::isolated_logger();
             let logger = Arc::new(logger);
-            let ctx = make_context(
-                dir.path().into(),
-                None,
-                Platform::new(Os::Linux, true),
-                Arc::new(mock),
-            )
-            .with_home(setup.home().to_path_buf())
-            .with_env(crate::infra::env::MapEnv::new().into_handle())
-            .with_http(Arc::new(release_failure_http(retained)))
-            .with_log(Arc::<crate::infra::logging::Logger>::clone(&logger))
-            .with_parallel(parallel);
+            let ctx = f
+                .ctx
+                .with_http(Arc::new(release_failure_http(retained)))
+                .with_log(Arc::<crate::infra::logging::Logger>::clone(&logger))
+                .with_parallel(parallel);
             let versions = UpdateCustomPackageVersions;
             let config = paru_task(&ctx);
             let install = release_failure_install();
@@ -1431,7 +1389,7 @@ fn failed_release_does_not_block_other_updates_or_aur_installs() {
             assert_eq!(install_entry.actions.failed, u32::from(!retained));
             assert_aur_retry(&install.run(&ctx).unwrap(), retained);
             assert_eq!(
-                std::fs::read_to_string(dir.path().join("packages/tool-bin/version.sh")).unwrap(),
+                std::fs::read_to_string(f.source.join("version.sh")).unwrap(),
                 old_pins
             );
             let generated =
@@ -1495,16 +1453,15 @@ fn release_failure_http(retained: bool) -> MockHttpClient {
 
 #[test]
 fn snapshot_conflict_removes_only_its_repository_and_preserves_other_recipes() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    let broken = add_recipe(dir.path(), "broken-bin");
+    let f = SnapshotFixture::new();
+    let broken = add_recipe(f.dir.path(), "broken-bin");
     std::fs::write(broken.join("version.sh"), "old pins\n").unwrap();
-    assert_eq!(task_batch(&configure_paru(&ctx).unwrap()).failed_count(), 0);
-    let path = build_root(&ctx).unwrap().join("broken-bin");
+    assert_eq!(task_batch(&f.configure()).failed_count(), 0);
+    let path = build_root(&f.ctx).unwrap().join("broken-bin");
     std::fs::remove_file(path.join(".git/dotfiles-local-build")).unwrap();
-    let result = configure_paru(&ctx).unwrap();
+    let result = f.configure();
     assert_eq!(task_batch(&result).failed_count(), 1);
-    let config = std::fs::read_to_string(ctx.home().join(".config/paru/paru.conf")).unwrap();
+    let config = std::fs::read_to_string(f.ctx.home().join(".config/paru/paru.conf")).unwrap();
     assert!(config.contains("[dotfiles-tool-bin]"));
     assert!(!config.contains("[dotfiles-broken-bin]"));
     assert!(
@@ -1512,7 +1469,7 @@ fn snapshot_conflict_removes_only_its_repository_and_preserves_other_recipes() {
         "conflicting snapshot must be preserved"
     );
     assert_eq!(
-        unavailable_packages(&ctx)
+        unavailable_packages(&f.ctx)
             .unwrap()
             .keys()
             .collect::<Vec<_>>(),
@@ -1522,36 +1479,38 @@ fn snapshot_conflict_removes_only_its_repository_and_preserves_other_recipes() {
 
 #[test]
 fn readiness_requires_published_config_and_committed_current_inputs() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    let _result = configure_paru(&ctx).unwrap();
-    assert!(unavailable_packages(&ctx).unwrap().is_empty());
-    let config = ctx.home().join(".config/paru/paru.conf");
+    let f = SnapshotFixture::new();
+    let _result = f.configure();
+    assert!(unavailable_packages(&f.ctx).unwrap().is_empty());
+    let config = f.ctx.home().join(".config/paru/paru.conf");
     let original = std::fs::read_to_string(&config).unwrap();
     std::fs::write(&config, "[options]\n").unwrap();
-    assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+    assert!(
+        unavailable_packages(&f.ctx)
+            .unwrap()
+            .contains_key("tool-bin")
+    );
     std::fs::write(config, original).unwrap();
-    std::fs::write(
-        dir.path().join("packages/tool-bin/PKGBUILD"),
-        "new inputs\n",
-    )
-    .unwrap();
-    assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
-    let _refreshed = configure_paru(&ctx).unwrap();
-    assert!(unavailable_packages(&ctx).unwrap().is_empty());
+    std::fs::write(f.source.join("PKGBUILD"), "new inputs\n").unwrap();
+    assert!(
+        unavailable_packages(&f.ctx)
+            .unwrap()
+            .contains_key("tool-bin")
+    );
+    let _refreshed = f.configure();
+    assert!(unavailable_packages(&f.ctx).unwrap().is_empty());
 }
 
 #[test]
 fn split_package_ownership_is_explicit_and_ordinary_names_default_to_base() {
     assert_eq!(source().package_names(), ["tool-bin"]);
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    let path = dir.path().join("packages/tool-bin/release.json");
+    let f = SnapshotFixture::new();
+    let path = f.source.join("release.json");
     let mut descriptor: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     descriptor["packages"] = serde_json::json!(["tool-cli", "tool-gui"]);
     std::fs::write(&path, descriptor.to_string()).unwrap();
-    let missing = unavailable_packages(&ctx).unwrap();
+    let missing = unavailable_packages(&f.ctx).unwrap();
     assert!(missing.contains_key("tool-cli"));
     assert!(missing.contains_key("tool-gui"));
     assert!(!missing.contains_key("tool-bin"));
@@ -1562,28 +1521,27 @@ fn split_package_ownership_is_explicit_and_ordinary_names_default_to_base() {
     ] {
         descriptor["packages"] = invalid;
         std::fs::write(&path, descriptor.to_string()).unwrap();
-        assert!(unavailable_packages(&ctx).is_err());
+        assert!(unavailable_packages(&f.ctx).is_err());
     }
     std::fs::remove_file(path).unwrap();
     assert!(
-        unavailable_packages(&ctx).is_err(),
+        unavailable_packages(&f.ctx).is_err(),
         "missing descriptor must not erase ownership and permit AUR fallback"
     );
 }
 
 #[test]
 fn readiness_rejects_descriptor_changes_before_configuration_is_refreshed() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    let _prepared = configure_paru(&ctx).unwrap();
-    assert!(unavailable_packages(&ctx).unwrap().is_empty());
-    let path = dir.path().join("packages/tool-bin/release.json");
+    let f = SnapshotFixture::new();
+    let _prepared = f.configure();
+    assert!(unavailable_packages(&f.ctx).unwrap().is_empty());
+    let path = f.source.join("release.json");
     let mut descriptor: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     descriptor["packages"] = serde_json::json!(["tool-cli", "tool-gui"]);
     std::fs::write(path, descriptor.to_string()).unwrap();
 
-    let missing = unavailable_packages(&ctx).unwrap();
+    let missing = unavailable_packages(&f.ctx).unwrap();
 
     assert_eq!(
         missing.keys().map(String::as_str).collect::<Vec<_>>(),
@@ -1594,12 +1552,9 @@ fn readiness_rejects_descriptor_changes_before_configuration_is_refreshed() {
 
 #[test]
 fn readiness_requires_successful_metadata_validation_for_current_inputs() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    let _prepared = configure_paru(&ctx).unwrap();
-    let stamp = build_root(&ctx)
-        .unwrap()
-        .join("tool-bin/.git/dotfiles-validated-metadata");
+    let f = SnapshotFixture::new();
+    let _prepared = f.configure();
+    let stamp = f.cache.join(".git/dotfiles-validated-metadata");
     for damaged in [None, Some("stale validation key")] {
         if let Some(value) = damaged {
             std::fs::write(&stamp, value).unwrap();
@@ -1608,48 +1563,44 @@ fn readiness_requires_successful_metadata_validation_for_current_inputs() {
         }
 
         assert!(
-            unavailable_packages(&ctx).unwrap().contains_key("tool-bin"),
+            unavailable_packages(&f.ctx)
+                .unwrap()
+                .contains_key("tool-bin"),
             "missing or stale validation is not proof of package readiness"
         );
         assert!(
-            unavailable_packages(&ctx.with_dry_run(true))
+            unavailable_packages(&f.ctx.with_dry_run(true))
                 .unwrap()
                 .is_empty(),
             "preview may plan prerequisite validation without executing recipes"
         );
-        let _revalidated = configure_paru(&ctx).unwrap();
-        assert!(unavailable_packages(&ctx).unwrap().is_empty());
+        let _revalidated = f.configure();
+        assert!(unavailable_packages(&f.ctx).unwrap().is_empty());
     }
 }
 
 #[test]
 fn snapshot_apply_failure_does_not_publish_its_section_or_block_other_snapshots() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    let broken = add_recipe(dir.path(), "broken-bin");
+    let f = SnapshotFixture::new();
+    let broken = add_recipe(f.dir.path(), "broken-bin");
     std::fs::write(broken.join("version.sh"), "old pins\n").unwrap();
-    let OperationState::NeedsRun { plan } = ParuConfig {
-        base: &ctx.symlinks_dir().join("config/paru/paru.conf.base"),
-    }
-    .current_state(&ctx)
-    .unwrap() else {
+    let op = ParuConfig {
+        base: &f.ctx.symlinks_dir().join("config/paru/paru.conf.base"),
+    };
+    let OperationState::NeedsRun { plan } = op.current_state(&f.ctx).unwrap() else {
         panic!("expected preparation plan")
     };
-    let conflict = build_root(&ctx).unwrap().join("broken-bin");
+    let conflict = build_root(&f.ctx).unwrap().join("broken-bin");
     std::fs::create_dir_all(&conflict).unwrap();
     std::fs::write(conflict.join("sentinel"), "preserve").unwrap();
-    let result = ParuConfig {
-        base: &ctx.symlinks_dir().join("config/paru/paru.conf.base"),
-    }
-    .apply(&ctx, &plan)
-    .unwrap();
+    let result = op.apply(&f.ctx, &plan).unwrap();
     assert_eq!(task_batch(&result).failed_count(), 1);
     assert_eq!(task_batch(&result).changed_count(), 2);
     assert_eq!(
         std::fs::read_to_string(conflict.join("sentinel")).unwrap(),
         "preserve"
     );
-    let config = std::fs::read_to_string(ctx.home().join(".config/paru/paru.conf")).unwrap();
+    let config = std::fs::read_to_string(f.ctx.home().join(".config/paru/paru.conf")).unwrap();
     assert!(!config.contains("[dotfiles-broken-bin]"));
     assert!(config.contains("[dotfiles-tool-bin]"));
 }
@@ -1725,16 +1676,19 @@ fn interruption_after_release_discovery_does_not_publish_pins_or_cache() {
 
 #[test]
 fn interrupted_second_validation_leaves_the_published_first_snapshot_usable() {
-    let dir = fixture();
-    let setup = snapshot_context(dir.path());
-    let _installed = configure_paru(&setup).unwrap();
-    let path = build_root(&setup).unwrap().join("tool-bin");
-    let config = paru_config_path(&setup).unwrap();
+    let f = SnapshotFixture::new();
+    let _installed = f.configure();
+    let path = &f.cache;
+    let config = paru_config_path(&f.ctx).unwrap();
     let before_config = std::fs::read(&config).unwrap();
     let before_recipe = std::fs::read(path.join("PKGBUILD")).unwrap();
     let changed = "pkgname=tool-bin\n# updated\n";
-    std::fs::write(dir.path().join("packages/tool-bin/PKGBUILD"), changed).unwrap();
-    std::fs::write(add_recipe(dir.path(), "z-bin").join("version.sh"), "pins\n").unwrap();
+    std::fs::write(f.source.join("PKGBUILD"), changed).unwrap();
+    std::fs::write(
+        add_recipe(f.dir.path(), "z-bin").join("version.sh"),
+        "pins\n",
+    )
+    .unwrap();
 
     let mut mock = MockExecutor::new();
     mock.expect_execute().times(2).returning(|spec| {
@@ -1752,15 +1706,7 @@ fn interrupted_second_validation_leaves_the_published_first_snapshot_usable() {
             "pkgbase = tool-bin\n\tarch = x86_64\npkgname = tool-bin\n",
         ))
     });
-    let ctx = make_context(
-        dir.path().into(),
-        None,
-        Platform::new(Os::Linux, true),
-        Arc::new(mock),
-    )
-    .with_home(setup.home().to_path_buf())
-    .with_env(crate::infra::env::MapEnv::new().into_handle())
-    .with_parallel(false);
+    let ctx = arch_context(f.dir.path(), mock).with_parallel(false);
     let error = configure_paru(&ctx).unwrap_err();
     assert!(
         error
@@ -1771,15 +1717,12 @@ fn interrupted_second_validation_leaves_the_published_first_snapshot_usable() {
     assert_eq!(std::fs::read(path.join("PKGBUILD")).unwrap(), before_recipe);
     assert_eq!(std::fs::read(&config).unwrap(), before_config);
     assert!(!build_root(&ctx).unwrap().join("z-bin").exists());
-    assert_eq!(
-        task_batch(&configure_paru(&setup).unwrap()).changed_count(),
-        3
-    );
+    assert_eq!(task_batch(&f.configure()).changed_count(), 3);
     assert_eq!(
         std::fs::read_to_string(path.join("PKGBUILD")).unwrap(),
         changed
     );
-    assert!(matches!(configure_paru(&setup).unwrap(), TaskResult::Ok));
+    assert!(matches!(f.configure(), TaskResult::Ok));
 }
 
 #[cfg(target_os = "linux")]
@@ -1844,10 +1787,9 @@ fn powershell_package_hooks_preserve_existing_login_shell_registrations() {
 #[test]
 fn config_overrides_control_publication_and_readiness() {
     for explicit in [false, true] {
-        let dir = fixture();
-        let ctx = snapshot_context(dir.path());
-        let xdg = dir.path().join("xdg config");
-        let explicit_path = dir.path().join("custom/paru.conf");
+        let f = SnapshotFixture::new();
+        let xdg = f.dir.path().join("xdg config");
+        let explicit_path = f.dir.path().join("custom/paru.conf");
         let mut env = crate::infra::env::MapEnv::new().with("XDG_CONFIG_HOME", &xdg);
         let target = if explicit {
             env = env.with("PARU_CONF", &explicit_path);
@@ -1855,7 +1797,7 @@ fn config_overrides_control_publication_and_readiness() {
         } else {
             xdg.join("paru/paru.conf")
         };
-        let ctx = ctx.with_env(env.into_handle());
+        let ctx = f.ctx.with_env(env.into_handle());
         let default = ctx.home().join(".config/paru/paru.conf");
         std::fs::create_dir_all(default.parent().unwrap()).unwrap();
         std::fs::write(&default, "sentinel\n").unwrap();
@@ -1877,8 +1819,8 @@ fn config_overrides_control_publication_and_readiness() {
     }
     for key in ["PARU_CONF", "XDG_CONFIG_HOME"] {
         for value in ["", "relative/path"] {
-            let dir = fixture();
-            let ctx = snapshot_context(dir.path()).with_env(
+            let f = SnapshotFixture::new();
+            let ctx = f.ctx.with_env(
                 crate::infra::env::MapEnv::new()
                     .with(key, value)
                     .into_handle(),
@@ -1924,37 +1866,40 @@ fn srcinfo_must_match_descriptor_ownership_and_architectures() {
 
 #[test]
 fn invalid_metadata_is_not_published_and_other_recipes_continue() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path());
-    let _prepared = configure_paru(&ctx).unwrap();
-    let cache = build_root(&ctx).unwrap().join("tool-bin");
+    let f = SnapshotFixture::new();
+    let _prepared = f.configure();
+    let cache = &f.cache;
     let original = std::fs::read(cache.join("PKGBUILD")).unwrap();
     let original_metadata = std::fs::read(cache.join(".SRCINFO")).unwrap();
-    let recipe = dir.path().join("packages/tool-bin/PKGBUILD");
+    let recipe = f.source.join("PKGBUILD");
     std::fs::write(&recipe, "pkgname=wrong-name\n").unwrap();
-    let other = add_recipe(dir.path(), "other-bin");
+    let other = add_recipe(f.dir.path(), "other-bin");
     std::fs::write(other.join("version.sh"), "pins\n").unwrap();
-    let result = configure_paru(&ctx).unwrap();
+    let result = f.configure();
     assert_eq!(task_batch(&result).failed_count(), 1);
     assert_eq!(std::fs::read(cache.join("PKGBUILD")).unwrap(), original);
     assert_eq!(
         std::fs::read(cache.join(".SRCINFO")).unwrap(),
         original_metadata
     );
-    let config = std::fs::read_to_string(paru_config_path(&ctx).unwrap()).unwrap();
+    let config = std::fs::read_to_string(paru_config_path(&f.ctx).unwrap()).unwrap();
     assert!(!config.contains("[dotfiles-tool-bin]"));
     assert!(config.contains("[dotfiles-other-bin]"));
-    assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+    assert!(
+        unavailable_packages(&f.ctx)
+            .unwrap()
+            .contains_key("tool-bin")
+    );
     // Descriptor-only changes must also be checked when snapshot inputs match.
     std::fs::write(recipe, original).unwrap();
-    let path = dir.path().join("packages/tool-bin/release.json");
+    let path = f.source.join("release.json");
     let mut descriptor: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     descriptor["packages"] = serde_json::json!(["different-name"]);
     std::fs::write(path, descriptor.to_string()).unwrap();
-    assert_eq!(task_batch(&configure_paru(&ctx).unwrap()).failed_count(), 1);
+    assert_eq!(task_batch(&f.configure()).failed_count(), 1);
     assert!(
-        !std::fs::read_to_string(paru_config_path(&ctx).unwrap())
+        !std::fs::read_to_string(paru_config_path(&f.ctx).unwrap())
             .unwrap()
             .contains("[dotfiles-tool-bin]")
     );
@@ -1963,8 +1908,6 @@ fn invalid_metadata_is_not_published_and_other_recipes_continue() {
 #[test]
 fn metadata_execution_failure_preserves_snapshot_and_cancellation_type() {
     for cancelled in [false, true] {
-        let dir = fixture();
-        let setup = snapshot_context(dir.path());
         let mut mock = MockExecutor::new();
         mock.expect_execute()
             .once()
@@ -1987,15 +1930,8 @@ fn metadata_execution_failure_preserves_snapshot_and_cancellation_type() {
                     )
                 })
             });
-        let ctx = make_context(
-            dir.path().into(),
-            None,
-            Platform::new(Os::Linux, true),
-            Arc::new(mock),
-        )
-        .with_home(setup.home().to_path_buf())
-        .with_env(crate::infra::env::MapEnv::new().into_handle());
-        let result = configure_paru(&ctx);
+        let f = SnapshotFixture::with_executor(mock);
+        let result = configure_paru(&f.ctx);
         if cancelled {
             assert!(
                 result
@@ -2004,18 +1940,18 @@ fn metadata_execution_failure_preserves_snapshot_and_cancellation_type() {
                     .unwrap()
                     .is_cancelled()
             );
-            assert!(!paru_config_path(&ctx).unwrap().exists());
+            assert!(!paru_config_path(&f.ctx).unwrap().exists());
         } else {
             assert_eq!(task_batch(&result.unwrap()).failed_count(), 1);
             assert!(
-                !std::fs::read_to_string(paru_config_path(&ctx).unwrap())
+                !std::fs::read_to_string(paru_config_path(&f.ctx).unwrap())
                     .unwrap()
                     .contains("[dotfiles-tool-bin]")
             );
         }
-        assert!(!build_root(&ctx).unwrap().exists());
+        assert!(!build_root(&f.ctx).unwrap().exists());
         assert_eq!(
-            std::fs::read_to_string(dir.path().join("packages/tool-bin/version.sh")).unwrap(),
+            std::fs::read_to_string(f.source.join("version.sh")).unwrap(),
             "original pins\n"
         );
     }
@@ -2024,8 +1960,6 @@ fn metadata_execution_failure_preserves_snapshot_and_cancellation_type() {
 #[test]
 fn successful_metadata_validation_is_reused_only_for_identical_intact_inputs() {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    let dir = fixture();
-    let setup = snapshot_context(dir.path());
     let calls = Arc::new(AtomicUsize::new(0));
     let count = Arc::clone(&calls);
     let mut mock = MockExecutor::new();
@@ -2037,28 +1971,19 @@ fn successful_metadata_validation_is_reused_only_for_identical_intact_inputs() {
                 "pkgbase = tool-bin\n\tarch = x86_64\npkgname = tool-bin\n",
             ))
         });
-    let ctx = make_context(
-        dir.path().into(),
-        None,
-        Platform::new(Os::Linux, true),
-        Arc::new(mock),
-    )
-    .with_home(setup.home().to_path_buf())
-    .with_env(crate::infra::env::MapEnv::new().into_handle());
-    let _first = configure_paru(&ctx).unwrap();
-    let snapshot = build_root(&ctx).unwrap().join("tool-bin");
-    let stamp = snapshot.join(".git/dotfiles-validated-metadata");
+    let f = SnapshotFixture::with_executor(mock);
+    let _first = f.configure();
+    let stamp = f.cache.join(".git/dotfiles-validated-metadata");
     let modified = std::fs::metadata(&stamp).unwrap().modified().unwrap();
-    let _repeat = configure_paru(&ctx).unwrap();
+    let _repeat = f.configure();
+    let op = ParuConfig {
+        base: &f.ctx.symlinks_dir().join("config/paru/paru.conf.base"),
+    };
     assert!(matches!(
-        ParuConfig {
-            base: &ctx.symlinks_dir().join("config/paru/paru.conf.base")
-        }
-        .current_state(&ctx)
-        .unwrap(),
+        op.current_state(&f.ctx).unwrap(),
         OperationState::Complete
     ));
-    let _preview = configure_paru(&ctx.with_dry_run(true)).unwrap();
+    let _preview = f.preview();
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(
         std::fs::metadata(&stamp).unwrap().modified().unwrap(),
@@ -2066,38 +1991,28 @@ fn successful_metadata_validation_is_reused_only_for_identical_intact_inputs() {
     );
 
     for (path, content) in [
-        (
-            dir.path().join("packages/tool-bin/PKGBUILD"),
-            "pkgname=tool-bin\n# changed\n",
-        ),
-        (
-            dir.path().join("packages/tool-bin/version.sh"),
-            "changed pins\n",
-        ),
-        (snapshot.join("PKGBUILD"), "damaged cache\n"),
+        (f.source.join("PKGBUILD"), "pkgname=tool-bin\n# changed\n"),
+        (f.source.join("version.sh"), "changed pins\n"),
+        (f.cache.join("PKGBUILD"), "damaged cache\n"),
     ] {
         let before = calls.load(Ordering::SeqCst);
         std::fs::write(path, content).unwrap();
-        let _changed = configure_paru(&ctx).unwrap();
+        let _changed = f.configure();
         assert_eq!(calls.load(Ordering::SeqCst), before + 1);
     }
-    let descriptor = dir.path().join("packages/tool-bin/release.json");
+    let descriptor = f.source.join("release.json");
     let content = std::fs::read_to_string(&descriptor)
         .unwrap()
         .replace("example/tool", "example/other");
     std::fs::write(descriptor, content).unwrap();
-    let _descriptor = configure_paru(&ctx).unwrap();
+    let _descriptor = f.configure();
     assert_eq!(calls.load(Ordering::SeqCst), 5);
     std::fs::remove_file(&stamp).unwrap();
     assert!(matches!(
-        ParuConfig {
-            base: &ctx.symlinks_dir().join("config/paru/paru.conf.base")
-        }
-        .current_state(&ctx)
-        .unwrap(),
+        op.current_state(&f.ctx).unwrap(),
         OperationState::NeedsRun { .. }
     ));
-    let preview = configure_paru(&ctx.with_dry_run(true)).unwrap();
+    let preview = f.preview();
     assert_eq!(task_batch(&preview).changed_count(), 1);
     assert_eq!(
         calls.load(Ordering::SeqCst),
@@ -2105,10 +2020,7 @@ fn successful_metadata_validation_is_reused_only_for_identical_intact_inputs() {
         "preview must not evaluate recipes"
     );
     assert!(!stamp.exists());
-    assert_eq!(
-        task_batch(&configure_paru(&ctx).unwrap()).changed_count(),
-        1
-    );
+    assert_eq!(task_batch(&f.configure()).changed_count(), 1);
     assert_eq!(calls.load(Ordering::SeqCst), 6);
 }
 
@@ -2120,8 +2032,8 @@ fn recipe_workers_are_bounded_ordered_and_respect_sequential_mode() {
     };
     for parallel in [false, true] {
         for length in [0_usize, 1, 2, 8] {
-            let dir = fixture();
-            let ctx = snapshot_context(dir.path()).with_parallel(parallel);
+            let f = SnapshotFixture::new();
+            let ctx = f.ctx.with_parallel(parallel);
             let caller = std::thread::current().id();
             let gate = (Mutex::new(std::collections::HashSet::new()), Condvar::new());
             let active = AtomicUsize::new(0);
@@ -2176,8 +2088,6 @@ fn recipe_workers_are_bounded_ordered_and_respect_sequential_mode() {
 #[test]
 fn failed_metadata_validation_is_retried_without_a_success_stamp() {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    let dir = fixture();
-    let setup = snapshot_context(dir.path());
     let attempts = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&attempts);
     let mut mock = MockExecutor::new();
@@ -2195,29 +2105,20 @@ fn failed_metadata_validation_is_retried_without_a_success_stamp() {
                 "pkgbase = tool-bin\n\tarch = x86_64\npkgname = tool-bin\n",
             ))
         });
-    let ctx = make_context(
-        dir.path().into(),
-        None,
-        Platform::new(Os::Linux, true),
-        Arc::new(mock),
-    )
-    .with_home(setup.home().to_path_buf())
-    .with_env(crate::infra::env::MapEnv::new().into_handle());
-    assert_eq!(task_batch(&configure_paru(&ctx).unwrap()).failed_count(), 1);
-    let stamp = build_root(&ctx)
-        .unwrap()
-        .join("tool-bin/.git/dotfiles-validated-metadata");
+    let f = SnapshotFixture::with_executor(mock);
+    assert_eq!(task_batch(&f.configure()).failed_count(), 1);
+    let stamp = f.cache.join(".git/dotfiles-validated-metadata");
     assert!(!stamp.exists());
-    assert_eq!(task_batch(&configure_paru(&ctx).unwrap()).failed_count(), 0);
+    assert_eq!(task_batch(&f.configure()).failed_count(), 0);
     assert!(stamp.exists());
-    assert!(matches!(configure_paru(&ctx).unwrap(), TaskResult::Ok));
+    assert!(matches!(f.configure(), TaskResult::Ok));
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
 }
 
 #[test]
 fn cancelled_recipe_stops_later_sequential_dispatch_without_caching_failure() {
-    let dir = fixture();
-    let ctx = snapshot_context(dir.path()).with_parallel(false);
+    let f = SnapshotFixture::new();
+    let ctx = f.ctx.with_parallel(false);
     let results = map_recipes(&ctx, &[0, 1, 2], |item| -> Result<()> {
         assert_eq!(*item, 0, "no recipe may start after cancellation");
         Err(crate::infra::exec::ExecError::Cancelled {

@@ -184,8 +184,20 @@ pub(crate) const SYSTEMD_UNITS_TOML: &str = "systemd-units.toml";
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
+    use crate::infra::config::test_helpers::{
+        assert_conflict, assert_mentions, assert_messages, rejects_toml, write_temp_toml,
+    };
     use crate::infra::config::test_load_missing_returns_empty;
+    use crate::infra::platform::{Os, Platform};
+
+    fn unit(name: &str, scope: UnitScope, enabled: bool) -> SystemdUnit {
+        SystemdUnit {
+            name: name.into(),
+            scope,
+            graphical: false,
+            enabled,
+        }
+    }
 
     #[test]
     fn safe_names_reject_paths_options_controls_and_malformed_escapes() {
@@ -217,16 +229,8 @@ mod tests {
         for separator in ['-', '_', ':', '.', '@'] {
             assert!(safe_unit_name(&format!("audit{separator}one.service")));
         }
-        let units = [SystemdUnit {
-            name: "../audit.service".into(),
-            scope: UnitScope::User,
-            graphical: false,
-            enabled: true,
-        }];
-        let diagnostics = validate(
-            &units,
-            crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
-        );
+        let units = [unit("../audit.service", UnitScope::User, true)];
+        let diagnostics = validate(&units, Platform::new(Os::Linux, false));
         let diagnostic = diagnostics
             .iter()
             .find(|d| d.code == SYSTEMD_INVALID_NAME)
@@ -238,46 +242,29 @@ mod tests {
 
     #[test]
     fn conflicts_are_scoped_by_unit_and_scope_and_identical_values_are_harmless() {
-        let first = SystemdUnit {
-            name: "audit.service".into(),
-            scope: UnitScope::User,
-            graphical: false,
-            enabled: true,
-        };
-        for (name, scope, enabled, count) in [
-            ("audit.service", UnitScope::User, true, 0),
-            ("audit.service", UnitScope::User, false, 1),
-            ("audit.service", UnitScope::System, false, 0),
-            ("other.service", UnitScope::User, false, 0),
+        let first = unit("audit.service", UnitScope::User, true);
+        for (name, scope, enabled, conflict) in [
+            ("audit.service", UnitScope::User, true, false),
+            ("audit.service", UnitScope::User, false, true),
+            ("audit.service", UnitScope::System, false, false),
+            ("other.service", UnitScope::User, false, false),
         ] {
-            let diagnostics = validate_conflicts(&[
-                first.clone(),
-                SystemdUnit {
-                    name: name.into(),
-                    scope,
-                    graphical: false,
-                    enabled,
-                },
-            ]);
-            assert_eq!(diagnostics.len(), count);
-            if let Some(diagnostic) = diagnostics.first() {
-                assert_eq!(diagnostic.code, SYSTEMD_CONFLICTING_VALUES);
-                assert_eq!(diagnostic.severity, crate::infra::config::Severity::Error);
-                assert!(diagnostic.message.contains("entry 1"));
-                assert!(diagnostic.message.contains("entry 2"));
+            let diagnostics = validate_conflicts(&[first.clone(), unit(name, scope, enabled)]);
+            if let Some(diagnostic) =
+                assert_conflict(name, &diagnostics, conflict, SYSTEMD_CONFLICTING_VALUES)
+            {
+                assert_mentions(&diagnostic.message, &["entry 1", "entry 2"]);
             }
         }
     }
 
-    #[test]
-    fn unknown_key_in_unit_table_is_rejected() {
-        assert_load_rejects(
-            load,
-            r#"[base]
+    rejects_toml! {
+        "test.toml", |path| load(path, &[Category::Base]);
+        unknown_key_in_unit_table_is_rejected: r#"[base]
 units = [{ name = "dunst.service", scop = "system" }]
-"#,
-            "scop",
-        );
+"# => "scop";
+        load_returns_error_on_malformed_toml: "[base\nunits = [\"ssh.service\"";
+        load_returns_error_on_type_mismatch: "[base]\nunits = 42\n";
     }
 
     #[test]
@@ -288,8 +275,7 @@ units = [{ name = "dunst.service", scop = "system" }]
             enabled: true,
             graphical: true,
         };
-        let platform =
-            crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false);
+        let platform = Platform::new(Os::Linux, false);
         assert!(validate(std::slice::from_ref(&unit), platform).is_empty());
         let invalid = SystemdUnit {
             scope: UnitScope::System,
@@ -363,24 +349,29 @@ units = [{ name = "dhcpcd.service", scope = "system", enabled = false }]
     test_load_missing_returns_empty!(load);
 
     #[test]
-    fn validate_detects_invalid_extension() {
-        use crate::infra::platform::{Os, Platform};
-
-        let units = vec![SystemdUnit {
-            name: "myunit".to_string(),
-            scope: UnitScope::User,
-            graphical: false,
-            enabled: true,
-        }];
-        let warnings = validate(&units, Platform::new(Os::Linux, false));
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("valid systemd extension"));
+    fn validate_reports_invalid_user_units_and_unsupported_platforms() {
+        for (name, os, count, message) in [
+            ("myunit", Os::Linux, Some(1), "valid systemd extension"),
+            ("  ", Os::Linux, None, "empty"),
+            (
+                "test.service",
+                Os::Windows,
+                None,
+                "does not support systemd",
+            ),
+        ] {
+            let units = [unit(name, UnitScope::User, true)];
+            assert_messages(
+                &validate(&units, Platform::new(os, false)),
+                count,
+                &[message],
+            );
+        }
     }
 
     #[test]
     fn validate_accepts_supported_unit_types_and_rejects_invalid_suffixes() {
         use crate::infra::config::Severity;
-        use crate::infra::platform::{Os, Platform};
 
         let platform = Platform::new(Os::Linux, false);
         for (name, valid) in [
@@ -397,12 +388,7 @@ units = [{ name = "dhcpcd.service", scope = "system", enabled = false }]
             ("data.automount.bak", false),
             ("example.unknown", false),
         ] {
-            let units = [SystemdUnit {
-                name: name.to_string(),
-                scope: UnitScope::System,
-                graphical: false,
-                enabled: true,
-            }];
+            let units = [unit(name, UnitScope::System, true)];
             let diagnostics = validate(&units, platform);
             if valid {
                 assert!(diagnostics.is_empty(), "{name}: {diagnostics:?}");
@@ -419,62 +405,7 @@ units = [{ name = "dhcpcd.service", scope = "system", enabled = false }]
     }
 
     #[test]
-    fn load_returns_error_on_malformed_toml() {
-        let (_dir, path) = write_temp_toml("[base\nunits = [\"ssh.service\"");
-        let result = load(&path, &[Category::Base]);
-        assert!(result.is_err(), "malformed TOML should return error");
-    }
-
-    #[test]
-    fn load_returns_error_on_type_mismatch() {
-        let (_dir, path) = write_temp_toml("[base]\nunits = 42\n");
-        let result = load(&path, &[Category::Base]);
-        assert!(
-            result.is_err(),
-            "integer instead of array should return error"
-        );
-    }
-
-    #[test]
-    fn validate_detects_empty_unit_name() {
-        use crate::infra::platform::{Os, Platform};
-
-        let units = vec![SystemdUnit {
-            name: "  ".to_string(),
-            scope: UnitScope::User,
-            graphical: false,
-            enabled: true,
-        }];
-        let warnings = validate(&units, Platform::new(Os::Linux, false));
-        assert!(
-            warnings.iter().any(|w| w.message.contains("empty")),
-            "should warn about empty unit name: {warnings:?}"
-        );
-    }
-
-    #[test]
-    fn validate_warns_systemd_on_non_linux() {
-        use crate::infra::platform::{Os, Platform};
-
-        let units = vec![SystemdUnit {
-            name: "test.service".to_string(),
-            scope: UnitScope::User,
-            graphical: false,
-            enabled: true,
-        }];
-        let warnings = validate(&units, Platform::new(Os::Windows, false));
-        assert!(
-            warnings
-                .iter()
-                .any(|w| w.message.contains("does not support systemd")),
-            "should warn about systemd on non-Linux: {warnings:?}"
-        );
-    }
-
-    #[test]
     fn validate_warns_on_invalid_scope() {
-        use crate::infra::platform::{Os, Platform};
-
         let (_dir, path) = write_temp_toml(
             "[base]\nunits = [{ name = \"example.service\", scope = \"global\" }]\n",
         );

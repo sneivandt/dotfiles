@@ -65,11 +65,7 @@ fn unsafe_elevated_child_scope_is_rejected_before_startup_writes() {
         let original_config = std::fs::read(&config_path).unwrap();
 
         let result = command.output().unwrap();
-        let output = format!(
-            "{}{}",
-            String::from_utf8_lossy(&result.stdout),
-            String::from_utf8_lossy(&result.stderr)
-        );
+        let output = common::combined_output(&result);
         assert!(!result.status.success(), "{verb}/{selector}: {output}");
         assert!(
             output.contains("elevated children"),
@@ -201,11 +197,7 @@ fn shared_home_lock_blocks_other_checkouts_before_configuration_mutations() {
             command.env("XDG_STATE_HOME", home.path().join("other-state"));
             command.env("LOCALAPPDATA", home.path().join("other-local"));
             let result = command.output().unwrap();
-            let output = format!(
-                "{}{}",
-                String::from_utf8_lossy(&result.stdout),
-                String::from_utf8_lossy(&result.stderr)
-            );
+            let output = common::combined_output(&result);
             assert!(!result.status.success(), "{verb}: {output}");
             assert!(output.contains("another dotfiles run"), "{verb}: {output}");
             assert!(output.contains("home-run.lock"), "{verb}: {output}");
@@ -462,11 +454,7 @@ fn conflicting_overlay_desired_state_stops_update_before_selected_tasks_run() {
                 command.arg("--dry-run");
             }
             let output = command.output().expect("run isolated update");
-            let text = format!(
-                "{}{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
+            let text = common::combined_output(&output);
             assert!(
                 !output.status.success(),
                 "{file}, dry_run={dry_run}: {text}"
@@ -892,11 +880,7 @@ fn startup_failure_writes_finished_history_and_an_exact_diagnostic_hint() {
     .output()
     .unwrap();
     assert!(!output.status.success());
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let text = common::combined_output(&output);
     let id = text
         .split_once("Run 'dotfiles log --id ")
         .unwrap()
@@ -913,16 +897,36 @@ fn startup_failure_writes_finished_history_and_an_exact_diagnostic_hint() {
 }
 
 #[cfg(unix)]
-#[test]
-fn repository_update_uses_each_fetch_result_when_a_later_fetch_overwrites_fetch_head() {
+fn install_git_wrapper(
+    fixture: &std::path::Path,
+    script: &str,
+) -> std::collections::BTreeMap<&'static str, std::ffi::OsString> {
     use std::os::unix::fs::PermissionsExt as _;
 
+    let path = std::env::var_os("PATH").expect("fixture needs PATH");
+    let real_git = which::which("git").expect("fixture needs git");
+    let bin = fixture.join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    let wrapper = bin.join("git");
+    std::fs::write(&wrapper, script).unwrap();
+    std::fs::set_permissions(wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let wrapped_path =
+        std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
+    [
+        ("PATH", wrapped_path),
+        ("FIXTURE_GIT", real_git.into_os_string()),
+    ]
+    .into()
+}
+
+#[cfg(unix)]
+#[test]
+fn repository_update_uses_each_fetch_result_when_a_later_fetch_overwrites_fetch_head() {
     let fixture = tempfile::tempdir().unwrap();
     let home = fixture.path().join("home");
     let root = fixture.path().join("main");
     let overlay = fixture.path().join("overlay");
-    let bin = fixture.path().join("bin");
-    for dir in [&home, &overlay, &bin] {
+    for dir in [&home, &overlay] {
         std::fs::create_dir(dir).unwrap();
     }
     common::setup_minimal_repo(&root);
@@ -947,13 +951,8 @@ fn repository_update_uses_each_fetch_result_when_a_later_fetch_overwrites_fetch_
         expected.push((repo, upstream, unrelated));
     }
 
-    let path = std::env::var_os("PATH").unwrap();
-    let real_git = std::env::split_paths(&path)
-        .find_map(|dir| dir.join("git").canonicalize().ok())
-        .unwrap();
-    let wrapped_git = bin.join("git");
-    std::fs::write(
-        &wrapped_git,
+    let wrapper = install_git_wrapper(
+        fixture.path(),
         r#"#!/bin/sh
 if [ "$1" = fetch ]; then
     "$FIXTURE_GIT" "$@" || exit "$?"
@@ -962,15 +961,10 @@ else
     exec "$FIXTURE_GIT" "$@"
 fi
 "#,
-    )
-    .unwrap();
-    std::fs::set_permissions(wrapped_git, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let path =
-        std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
+    );
     let output =
         common::isolated_cli_command(&root, &home, Some(&overlay), "update", "repository", true)
-            .env("PATH", path)
-            .env("FIXTURE_GIT", real_git)
+            .envs(wrapper)
             .output()
             .unwrap();
     assert!(output.status.success(), "{output:?}");
@@ -994,15 +988,13 @@ fn ignored_overlay_file_blocks_merge_and_survives_retry() {
 #[cfg(target_os = "linux")]
 #[test]
 fn failed_fast_forward_with_partial_write_stops_apply_until_checkout_is_repaired() {
-    use std::os::unix::fs::{PermissionsExt as _, symlink};
+    use std::os::unix::fs::symlink;
 
     let fixture = tempfile::tempdir().unwrap();
     let home = fixture.path().join("home");
     let repo = fixture.path().join("main");
     let publisher = fixture.path().join("publisher");
-    let bin = fixture.path().join("bin");
     std::fs::create_dir(&home).unwrap();
-    std::fs::create_dir(&bin).unwrap();
     common::setup_minimal_repo(&repo);
     std::fs::write(
         repo.join("conf/symlinks.toml"),
@@ -1031,13 +1023,8 @@ fn failed_fast_forward_with_partial_write_stops_apply_until_checkout_is_repaired
     git(&publisher, &["commit", "-am", "expand settings"]);
     git(&publisher, &["push", "origin", "main"]);
 
-    let path = std::env::var_os("PATH").unwrap();
-    let real_git = std::env::split_paths(&path)
-        .find_map(|dir| dir.join("git").canonicalize().ok())
-        .unwrap();
-    let wrapper = bin.join("git");
-    std::fs::write(
-        &wrapper,
+    let wrapper = install_git_wrapper(
+        fixture.path(),
         r#"#!/bin/bash
 if [[ $1 == merge ]]; then
     trap '' XFSZ
@@ -1045,22 +1032,13 @@ if [[ $1 == merge ]]; then
 fi
 exec "$FIXTURE_GIT" "$@"
 "#,
-    )
-    .unwrap();
-    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let wrapped_path =
-        std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
+    );
     let run = |tasks| common::isolated_cli_command(&repo, &home, None, "update", tasks, true);
     let failed = run("repository,symlinks,launcher")
-        .env("PATH", wrapped_path)
-        .env("FIXTURE_GIT", real_git)
+        .envs(wrapper)
         .output()
         .unwrap();
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&failed.stdout),
-        String::from_utf8_lossy(&failed.stderr)
-    );
+    let text = common::combined_output(&failed);
     assert!(!failed.status.success(), "{text}");
     assert!(
         text.contains("the checkout changed during the failed merge"),
@@ -1103,14 +1081,10 @@ exec "$FIXTURE_GIT" "$@"
 #[cfg(unix)]
 #[test]
 fn repository_update_preserves_tracked_edits_made_during_fetch_with_autostash_enabled() {
-    use std::os::unix::fs::PermissionsExt as _;
-
     let fixture = tempfile::tempdir().unwrap();
     let home = fixture.path().join("home");
     let root = fixture.path().join("main");
-    let bin = fixture.path().join("bin");
     std::fs::create_dir(&home).unwrap();
-    std::fs::create_dir(&bin).unwrap();
     common::setup_minimal_repo(&root);
     git(fixture.path(), &["init", "--bare", "-b", "main", "origin"]);
     git(&root, &["init", "-b", "main"]);
@@ -1127,13 +1101,8 @@ fn repository_update_preserves_tracked_edits_made_during_fetch_with_autostash_en
     git(&publisher, &["commit", "-am", "change settings"]);
     git(&publisher, &["push", "origin", "main"]);
 
-    let path = std::env::var_os("PATH").unwrap();
-    let real_git = std::env::split_paths(&path)
-        .find_map(|dir| dir.join("git").canonicalize().ok())
-        .unwrap();
-    let wrapped_git = bin.join("git");
-    std::fs::write(
-        &wrapped_git,
+    let wrapper = install_git_wrapper(
+        fixture.path(),
         r#"#!/bin/sh
 if [ "$1" = fetch ]; then
     "$FIXTURE_GIT" "$@" || exit "$?"
@@ -1142,23 +1111,11 @@ else
     exec "$FIXTURE_GIT" "$@"
 fi
 "#,
-    )
-    .unwrap();
-    std::fs::set_permissions(wrapped_git, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let path =
-        std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
+    );
     let run =
         || common::isolated_cli_command(&root, &home, None, "update", "repository,launcher", true);
-    let output = run()
-        .env("PATH", &path)
-        .env("FIXTURE_GIT", &real_git)
-        .output()
-        .unwrap();
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let output = run().envs(&wrapper).output().unwrap();
+    let text = common::combined_output(&output);
     assert!(
         text.contains("tracked files changed during update"),
         "{text}"
@@ -1175,11 +1132,7 @@ fi
     git(&root, &["restore", "settings"]);
     git(&root, &["merge", "--ff-only", "origin/main"]);
     git(&root, &["commit", "--allow-empty", "-m", "ahead"]);
-    let ahead = run()
-        .env("PATH", path)
-        .env("FIXTURE_GIT", real_git)
-        .output()
-        .unwrap();
+    let ahead = run().envs(wrapper).output().unwrap();
     assert!(!ahead.status.success(), "{ahead:?}");
     assert!(!home.join(".local/bin/dotfiles").exists(), "{ahead:?}");
     // A new run starts with this user's dirty checkout, not a half-written merge.
@@ -1211,21 +1164,12 @@ fn assert_partial_checkout_not_applied(repo: &std::path::Path, home: &std::path:
 #[cfg(unix)]
 #[test]
 fn checkout_changed_before_repository_discovery_rejects_the_stale_configuration() {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    let path = std::env::var_os("PATH").unwrap();
-    let real_git = std::env::split_paths(&path)
-        .find_map(|dir| dir.join("git").canonicalize().ok())
-        .unwrap();
     for change_overlay in [false, true] {
         let fixture = tempfile::tempdir().unwrap();
         let root = fixture.path().join("main");
         let overlay = fixture.path().join("overlay");
         let home = fixture.path().join("home");
-        let bin = fixture.path().join("bin");
-        for directory in [&home, &bin] {
-            std::fs::create_dir(directory).unwrap();
-        }
+        std::fs::create_dir(&home).unwrap();
         common::setup_minimal_repo(&root);
         std::fs::create_dir_all(overlay.join("conf")).unwrap();
         let changed = if change_overlay { &overlay } else { &root };
@@ -1252,9 +1196,8 @@ fn checkout_changed_before_repository_discovery_rejects_the_stale_configuration(
         .unwrap();
         git(&publisher, &["commit", "-am", "change desired symlink"]);
         git(&publisher, &["push", "origin", "main"]);
-        let wrapper = bin.join("git");
-        std::fs::write(
-            &wrapper,
+        let wrapper = install_git_wrapper(
+            fixture.path(),
             r#"#!/bin/sh
 if [ "$1" = symbolic-ref ] && [ "$PWD" -ef "$FIXTURE_CHECKOUT" ]; then
     "$FIXTURE_GIT" fetch origin main || exit $?
@@ -1262,11 +1205,7 @@ if [ "$1" = symbolic-ref ] && [ "$PWD" -ef "$FIXTURE_CHECKOUT" ]; then
 fi
 exec "$FIXTURE_GIT" "$@"
 "#,
-        )
-        .unwrap();
-        std::fs::set_permissions(wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let fixture_path =
-            std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
+        );
         let update = |sync| {
             common::isolated_cli_command(
                 &root,
@@ -1283,8 +1222,7 @@ exec "$FIXTURE_GIT" "$@"
         };
         let stale = update(true)
             .env("FIXTURE_CHECKOUT", changed)
-            .env("FIXTURE_GIT", &real_git)
-            .env("PATH", fixture_path)
+            .envs(wrapper)
             .output()
             .unwrap();
         assert!(!stale.status.success(), "{stale:?}");
@@ -1317,15 +1255,13 @@ exec "$FIXTURE_GIT" "$@"
 #[cfg(target_os = "linux")]
 #[test]
 fn repository_merge_process_death_only_blocks_the_affected_worktree() {
-    use std::os::unix::{fs::PermissionsExt as _, process::ExitStatusExt as _};
+    use std::os::unix::process::ExitStatusExt as _;
 
     let fixture = tempfile::tempdir().unwrap();
     let root = fixture.path().join("main");
     let linked = fixture.path().join("linked");
     let home = fixture.path().join("home");
-    let bin = fixture.path().join("bin");
     std::fs::create_dir(&home).unwrap();
-    std::fs::create_dir(&bin).unwrap();
     common::setup_minimal_repo(&root);
     git(fixture.path(), &["init", "--bare", "-b", "main", "origin"]);
     git(&root, &["init", "-b", "main"]);
@@ -1340,9 +1276,8 @@ fn repository_merge_process_death_only_blocks_the_affected_worktree() {
 
     // Kill only our fixture CLI after the real merge but before it can verify
     // the index. Even an apparently clean, current checkout needs review.
-    let wrapper = bin.join("git");
-    std::fs::write(
-        &wrapper,
+    let wrapper = install_git_wrapper(
+        fixture.path(),
         r#"#!/bin/bash
 if [[ $1 == merge ]]; then
     "$FIXTURE_GIT" "$@" || exit $?
@@ -1352,15 +1287,8 @@ if [[ $1 == merge ]]; then
 fi
 exec "$FIXTURE_GIT" "$@"
 "#,
-    )
-    .unwrap();
-    std::fs::set_permissions(wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     let path = std::env::var_os("PATH").unwrap();
-    let real_git = std::env::split_paths(&path)
-        .find_map(|dir| dir.join("git").canonicalize().ok())
-        .unwrap();
-    let fixture_path =
-        std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap();
     // The usual fixture helper initializes .git; this checkout uses a linked gitfile.
     let run = |repo: &std::path::Path, only: &str| {
         let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"));
@@ -1386,9 +1314,8 @@ exec "$FIXTURE_GIT" "$@"
         cmd
     };
     let dead = run(&linked, "repository,launcher")
-        .env("FIXTURE_GIT", real_git)
         .env("FIXTURE_CLI", env!("CARGO_BIN_EXE_dotfiles"))
-        .env("PATH", fixture_path)
+        .envs(wrapper)
         .output()
         .unwrap();
     assert_eq!(dead.status.signal(), Some(9), "{dead:?}");
@@ -1496,11 +1423,7 @@ fn restarted_overlay_update_keeps_a_validated_exclusion_when_its_script_is_retir
     assert_ne!(git(&overlay, &["rev-parse", "HEAD"]), initial);
     #[cfg(unix)]
     {
-        let text = format!(
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let text = common::combined_output(&output);
         assert!(text.contains("points to a missing source"), "{text}");
         assert!(!text.contains("foreign-replacement"), "{text}");
         assert_eq!(
@@ -1773,11 +1696,7 @@ fn check_partial_repository_refresh(ignored: bool) {
         )
         .output()
         .unwrap();
-        let text = format!(
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let text = common::combined_output(&output);
         (output.status, text)
     };
     let (status, text) = update();
@@ -1856,11 +1775,7 @@ fn check_partial_repository_refresh(ignored: bool) {
             command.arg("--dry-run");
         }
         let output = command.output().unwrap();
-        let status_text = format!(
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let status_text = common::combined_output(&output);
         if dry_run {
             assert!(output.status.success(), "{status_text}");
         }

@@ -372,30 +372,22 @@ pub(crate) const SYMLINKS_TOML: &str = "symlinks.toml";
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
+    use crate::infra::config::test_helpers::{
+        assert_mentions, assert_messages, rejects_toml, write_temp_toml,
+    };
     use crate::infra::config::test_load_missing_returns_empty;
     use crate::test_helpers::symlink;
 
-    #[test]
-    fn unknown_key_in_symlink_table_is_rejected() {
-        assert_load_rejects(
-            load,
-            r#"[base]
+    rejects_toml! {
+        "test.toml", |path| load(path, &[Category::Base]);
+        unknown_key_in_symlink_table_is_rejected: r#"[base]
 symlinks = [{ source = "bashrc", targett = ".bashrc" }]
-"#,
-            "targett",
-        );
-    }
-
-    #[test]
-    fn unknown_section_field_is_rejected() {
-        assert_load_rejects(
-            load,
-            r#"[base]
+"# => "targett";
+        unknown_section_field_is_rejected: r#"[base]
 symlink = ["bashrc"]
-"#,
-            "symlink",
-        );
+"# => "symlink";
+        load_returns_error_on_malformed_toml: "[base\nsymlinks = [\"bashrc\"";
+        load_returns_error_on_type_mismatch: "[base]\nsymlinks = \"not-an-array\"\n";
     }
 
     #[test]
@@ -492,44 +484,20 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
     test_load_missing_returns_empty!(load);
 
     #[test]
-    fn validate_detects_missing_source() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let symlinks = vec![symlink("nonexistent.txt", None)];
-
-        let warnings = validate(&symlinks, temp_dir.path());
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("does not exist"));
-    }
-
-    #[test]
-    fn validate_detects_absolute_path() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let symlinks = vec![symlink("/absolute/path", None)];
-
-        let warnings = validate(&symlinks, temp_dir.path());
-        assert_eq!(warnings.len(), 2);
-        assert!(
-            warnings
-                .iter()
-                .any(|w| w.message.contains("should be relative"))
-        );
-        assert!(
-            warnings
-                .iter()
-                .any(|w| w.message.contains("does not exist"))
-        );
-    }
-
-    #[test]
-    fn validate_detects_source_path_traversal() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let symlinks = vec![symlink("../outside", None)];
-
-        let warnings = validate(&symlinks, temp_dir.path());
-        assert!(
-            warnings.iter().any(|w| w.message.contains("'..'")),
-            "expected traversal warning, got: {warnings:?}"
-        );
+    fn validate_reports_missing_absolute_and_traversing_sources() {
+        for (source, count, messages) in [
+            ("nonexistent.txt", Some(1), &["does not exist"][..]),
+            (
+                "/absolute/path",
+                Some(2),
+                &["should be relative", "does not exist"],
+            ),
+            ("../outside", None, &["'..'"]),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let diagnostics = validate(&[symlink(source, None)], root.path());
+            assert_messages(&diagnostics, count, messages);
+        }
     }
 
     #[test]
@@ -581,12 +549,20 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
     }
 
     #[test]
-    fn expand_glob_patterns_rejects_glob_path_traversal() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let symlinks = vec![symlink("../*", Some("../../outside"))];
-
-        let err = expand_glob_patterns(&symlinks, temp_dir.path()).unwrap_err();
-        assert!(err.to_string().contains("must not contain '..'"));
+    fn expand_glob_patterns_rejects_traversal_and_invalid_wildcards() {
+        for (source, target, fragment) in [
+            ("../*", "../../outside", "must not contain '..'"),
+            ("skills/*", ".copilot/skills", "wildcard"),
+            ("skills/**", ".copilot/skills/*", "**"),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let entries = [symlink(source, Some(target))];
+            let err = expand_glob_patterns(&entries, root.path()).unwrap_err();
+            assert!(
+                err.to_string().contains(fragment),
+                "{source} -> {target}: {err}"
+            );
+        }
     }
 
     #[test]
@@ -648,35 +624,18 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
     }
 
     #[test]
-    fn validate_detects_absolute_target() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let symlinks_dir = temp_dir.path().join("symlinks");
-        std::fs::create_dir_all(&symlinks_dir).unwrap();
-        std::fs::write(symlinks_dir.join("bashrc"), "").unwrap();
-
-        let symlinks = vec![symlink("bashrc", Some("/etc/passwd"))];
-
-        let warnings = validate(&symlinks, temp_dir.path());
-        assert_eq!(warnings.len(), 1);
-        assert!(
-            warnings[0]
-                .message
-                .contains("should be relative to $HOME directory")
-        );
-    }
-
-    #[test]
-    fn validate_detects_target_path_traversal() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let symlinks_dir = temp_dir.path().join("symlinks");
-        std::fs::create_dir_all(&symlinks_dir).unwrap();
-        std::fs::write(symlinks_dir.join("bashrc"), "").unwrap();
-
-        let symlinks = vec![symlink("bashrc", Some("../../etc/passwd"))];
-
-        let warnings = validate(&symlinks, temp_dir.path());
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("'..'"));
+    fn validate_rejects_absolute_and_traversing_targets() {
+        for (target, fragment) in [
+            ("/etc/passwd", "should be relative to $HOME directory"),
+            ("../../etc/passwd", "'..'"),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let sources = root.path().join("symlinks");
+            std::fs::create_dir_all(&sources).unwrap();
+            std::fs::write(sources.join("bashrc"), "").unwrap();
+            let warnings = validate(&[symlink("bashrc", Some(target))], root.path());
+            assert_messages(&warnings, Some(1), &[fragment]);
+        }
     }
 
     #[cfg(unix)]
@@ -747,16 +706,24 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
     }
 
     #[test]
-    fn validate_unique_targets_rejects_explicit_and_computed_collision() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let symlinks_dir = temp_dir.path().join("symlinks");
-        std::fs::create_dir_all(&symlinks_dir).unwrap();
-        std::fs::write(symlinks_dir.join("bashrc"), "").unwrap();
-        std::fs::write(symlinks_dir.join("other"), "").unwrap();
-        let symlinks = vec![symlink("bashrc", None), symlink("other", Some(".bashrc"))];
-
-        let error = validate_unique_targets(&symlinks).unwrap_err();
-        assert!(error.to_string().contains("collision"));
+    fn validate_unique_targets_rejects_explicit_and_computed_collisions() {
+        for declarations in [
+            [("bashrc", None), ("other", Some(".bashrc"))],
+            [("one", Some(".same")), ("two", Some(".same"))],
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let sources = root.path().join("symlinks");
+            std::fs::create_dir_all(&sources).unwrap();
+            for (source, _) in declarations {
+                std::fs::write(sources.join(source), "").unwrap();
+            }
+            let entries = declarations.map(|(source, target)| symlink(source, target));
+            let error = validate_unique_targets(&entries).unwrap_err();
+            assert!(
+                error.to_string().contains("collision"),
+                "{entries:?}: {error}"
+            );
+        }
     }
 
     #[test]
@@ -766,9 +733,10 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
 
         for symlinks in [vec![parent.clone(), child.clone()], vec![child, parent]] {
             let error = validate_unique_targets(&symlinks).unwrap_err();
-            assert!(error.to_string().contains("overlap"));
-            assert!(error.to_string().contains(".config/example"));
-            assert!(error.to_string().contains(".config/example/file"));
+            assert_mentions(
+                &error.to_string(),
+                &["overlap", ".config/example", ".config/example/file"],
+            );
         }
     }
 
@@ -815,56 +783,5 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
         let expanded = expand_glob_patterns(&symlinks, temp_dir.path()).unwrap();
         assert_eq!(expanded.len(), 1);
         assert_eq!(expanded[0].origin.as_deref(), Some(origin.as_path()));
-    }
-
-    #[test]
-    fn expand_glob_patterns_rejects_mismatched_target_wildcards() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let symlinks = vec![symlink("skills/*", Some(".copilot/skills"))];
-
-        let result = expand_glob_patterns(&symlinks, temp_dir.path());
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("wildcard"));
-    }
-
-    #[test]
-    fn expand_glob_patterns_rejects_recursive_wildcard() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let symlinks = vec![symlink("skills/**", Some(".copilot/skills/*"))];
-
-        let result = expand_glob_patterns(&symlinks, temp_dir.path());
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("**"));
-    }
-
-    #[test]
-    fn validate_unique_targets_rejects_duplicate_explicit_targets() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let symlinks_dir = temp_dir.path().join("symlinks");
-        std::fs::create_dir_all(&symlinks_dir).unwrap();
-        std::fs::write(symlinks_dir.join("one"), "").unwrap();
-        std::fs::write(symlinks_dir.join("two"), "").unwrap();
-        let symlinks = vec![symlink("one", Some(".same")), symlink("two", Some(".same"))];
-
-        let result = validate_unique_targets(&symlinks);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("collision"));
-    }
-
-    #[test]
-    fn load_returns_error_on_malformed_toml() {
-        let (_dir, path) = write_temp_toml("[base\nsymlinks = [\"bashrc\"");
-        let result = load(&path, &[Category::Base]);
-        assert!(result.is_err(), "malformed TOML should return error");
-    }
-
-    #[test]
-    fn load_returns_error_on_type_mismatch() {
-        let (_dir, path) = write_temp_toml("[base]\nsymlinks = \"not-an-array\"\n");
-        let result = load(&path, &[Category::Base]);
-        assert!(
-            result.is_err(),
-            "string instead of array should return error"
-        );
     }
 }

@@ -79,55 +79,33 @@ pub(super) fn format_summary_counts(
         | CompletionDisposition::Interrupted => {}
     }
     let counts_start = parts.len();
-    for (count, label, color) in [
+    let incomplete = [
         (counts.failed, "failed", TextStyle::Red),
         (counts.interrupted, "interrupted", TextStyle::Yellow),
         (counts.blocked, "blocked", TextStyle::Yellow),
         (counts.skipped, "skipped", TextStyle::Yellow),
-    ] {
-        push_count(&mut parts, count, color, label, style, true);
-    }
-    match mode {
-        SummaryMode::Standard => {
-            push_count(
-                &mut parts,
-                counts.changed,
-                TextStyle::Green,
-                "changed",
-                style,
-                false,
-            );
-            push_count(
-                &mut parts,
-                counts.dry_run,
-                TextStyle::Magenta,
-                "planned",
-                style,
-                false,
-            );
-            let unchanged_style = if parts.is_empty() {
-                TextStyle::Bold
+    ];
+    let completed: &[_] = match mode {
+        SummaryMode::Standard => &[
+            (counts.changed, "changed", TextStyle::Green),
+            (counts.dry_run, "planned", TextStyle::Magenta),
+            (counts.ok, "unchanged", TextStyle::Dim),
+        ],
+        SummaryMode::Check => &[(counts.passed, "passed", TextStyle::Green)],
+    };
+    for (outcomes, emphasize) in [(&incomplete[..], true), (completed, false)] {
+        for &(count, label, color) in outcomes {
+            if count == 0 {
+                continue;
+            }
+            let text = format!("{count} {label}");
+            parts.push(if parts.is_empty() && matches!(color, TextStyle::Dim) {
+                style.bold(&text)
+            } else if emphasize || parts.is_empty() {
+                style.paint_bold(color, &text)
             } else {
-                TextStyle::Dim
-            };
-            push_count(
-                &mut parts,
-                counts.ok,
-                unchanged_style,
-                "unchanged",
-                style,
-                false,
-            );
-        }
-        SummaryMode::Check => {
-            push_count(
-                &mut parts,
-                counts.passed,
-                TextStyle::Green,
-                "passed",
-                style,
-                false,
-            );
+                style.paint(color, &text)
+            });
         }
     }
     if let Some(first_count) = parts.get_mut(counts_start) {
@@ -158,27 +136,6 @@ pub(super) fn with_elapsed(counts: &str, elapsed: &str, style: StyleChoice) -> S
         style.paint(TextStyle::Dim, "\u{00b7}"),
         style.paint(TextStyle::Dim, elapsed)
     )
-}
-
-/// Emphasize the first outcome plus all incomplete work.
-fn push_count(
-    parts: &mut Vec<String>,
-    count: u32,
-    text_style: TextStyle,
-    label: &str,
-    style: StyleChoice,
-    incomplete: bool,
-) {
-    if count > 0 {
-        let text = format!("{count} {label}");
-        parts.push(if matches!(text_style, TextStyle::Bold) {
-            style.bold(&text)
-        } else if incomplete || parts.is_empty() {
-            style.paint_bold(text_style, &text)
-        } else {
-            style.paint(text_style, &text)
-        });
-    }
 }
 
 /// Decide whether a blank line should separate the totals from what precedes

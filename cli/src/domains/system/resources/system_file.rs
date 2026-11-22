@@ -1233,9 +1233,57 @@ mod tests {
     }
 
     #[cfg(unix)]
+    struct PrivateStage {
+        root: tempfile::TempDir,
+        target: PathBuf,
+        stage: PathBuf,
+        owner: u32,
+    }
+
+    #[cfg(unix)]
+    impl PrivateStage {
+        fn new(target_name: &str) -> Self {
+            use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+            let root = tempfile::tempdir_in(fs::canonicalize(".").unwrap()).unwrap();
+            let target = root.path().join(target_name);
+            let stage = root.path().join("stage");
+            fs::create_dir(&stage).unwrap();
+            fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
+            let owner = fs::metadata(root.path()).unwrap().uid();
+            Self {
+                root,
+                target,
+                stage,
+                owner,
+            }
+        }
+
+        fn prepare(&self, fragment: &str, strategy: &str) -> anyhow::Result<&'static str> {
+            prepare_in_private_stage(&self.target, fragment, strategy, &self.stage, self.owner)
+        }
+
+        fn write_target(&self, contents: &str) {
+            fs::write(&self.target, contents).unwrap();
+        }
+
+        fn target_contents(&self) -> String {
+            fs::read_to_string(&self.target).unwrap()
+        }
+
+        fn staged_contents(&self, name: &str) -> String {
+            fs::read_to_string(self.stage.join(name)).unwrap()
+        }
+
+        fn stage_is_empty(&self) -> bool {
+            fs::read_dir(&self.stage).unwrap().next().is_none()
+        }
+    }
+
+    #[cfg(unix)]
     #[test]
     fn private_preparation_merges_fragments_then_converges_without_new_staged_contents() {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+        use std::os::unix::fs::PermissionsExt as _;
 
         for (strategy, original, fragment, expected) in [
             (
@@ -1263,64 +1311,33 @@ mod tests {
                 "# retained\nauth include system-auth\nauth optional fixture.so\nsession include system-login\n",
             ),
         ] {
-            let fixture = tempfile::tempdir_in(".").unwrap();
-            let root = fixture.path().canonicalize().unwrap();
-            let target = root.join("target");
-            let stage = root.join("stage");
-            fs::write(&target, original).unwrap();
-            fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
-            fs::create_dir(&stage).unwrap();
-            fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
-            let owner = fs::metadata(&root).unwrap().uid();
-            assert_eq!(
-                prepare_in_private_stage(&target, fragment, strategy, &stage, owner).unwrap(),
-                "prepared",
-                "{strategy}"
-            );
-            assert_eq!(
-                fs::read_to_string(stage.join("input")).unwrap(),
-                expected,
-                "{strategy}"
-            );
-            assert_eq!(
-                fs::read_to_string(stage.join("original")).unwrap(),
-                original,
-                "{strategy}"
-            );
-            assert_eq!(fs::read_to_string(&target).unwrap(), original, "{strategy}");
-            fs::write(&target, expected).unwrap();
-            fs::remove_file(stage.join("input")).unwrap();
-            fs::remove_file(stage.join("original")).unwrap();
-            assert_eq!(
-                prepare_in_private_stage(&target, fragment, strategy, &stage, owner).unwrap(),
-                "already-correct",
-                "{strategy}"
-            );
-            assert_eq!(fs::read_dir(&stage).unwrap().count(), 0, "{strategy}");
+            let fixture = PrivateStage::new("target");
+            fixture.write_target(original);
+            fs::set_permissions(&fixture.target, fs::Permissions::from_mode(0o600)).unwrap();
+            let prepare = || fixture.prepare(fragment, strategy).unwrap();
+
+            assert_eq!(prepare(), "prepared", "{strategy}");
+            assert_eq!(fixture.staged_contents("input"), expected, "{strategy}");
+            assert_eq!(fixture.staged_contents("original"), original, "{strategy}");
+            assert_eq!(fixture.target_contents(), original, "{strategy}");
+            fixture.write_target(expected);
+            fs::remove_file(fixture.stage.join("input")).unwrap();
+            fs::remove_file(fixture.stage.join("original")).unwrap();
+            assert_eq!(prepare(), "already-correct", "{strategy}");
+            assert!(fixture.stage_is_empty(), "{strategy}");
         }
     }
 
     #[cfg(unix)]
     #[test]
     fn private_toml_preparation_updates_an_array_of_tables_inside_inline_tables() {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-
-        let fixture = tempfile::tempdir_in(".").unwrap();
-        let root = fixture.path().canonicalize().unwrap();
-        let target = root.join("target");
-        let stage = root.join("stage");
+        let fixture = PrivateStage::new("target");
         let original = "settings = { keep = 'retained', nested = { managed = [{ enabled = false }], sibling = 7 } }\n";
         let fragment = "[[settings.nested.managed]]\nenabled = true\n";
-        fs::write(&target, original).unwrap();
-        fs::create_dir(&stage).unwrap();
-        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
-        let owner = fs::metadata(&root).unwrap().uid();
+        fixture.write_target(original);
 
-        assert_eq!(
-            prepare_in_private_stage(&target, fragment, "toml", &stage, owner).unwrap(),
-            "prepared"
-        );
-        let staged = fs::read_to_string(stage.join("input")).unwrap();
+        assert_eq!(fixture.prepare(fragment, "toml").unwrap(), "prepared");
+        let staged = fixture.staged_contents("input");
         assert!(contains_toml(&staged, fragment).unwrap(), "{staged}");
         let parsed = parse_toml(&staged).unwrap();
         assert_eq!(parsed["settings"]["keep"].as_str(), Some("retained"));
@@ -1328,19 +1345,16 @@ mod tests {
             parsed["settings"]["nested"]["sibling"].as_integer(),
             Some(7)
         );
-        assert_eq!(
-            fs::read_to_string(stage.join("original")).unwrap(),
-            original
-        );
-        assert_eq!(fs::read_to_string(&target).unwrap(), original);
+        assert_eq!(fixture.staged_contents("original"), original);
+        assert_eq!(fixture.target_contents(), original);
 
-        fs::rename(stage.join("input"), &target).unwrap();
-        fs::remove_file(stage.join("original")).unwrap();
+        fs::rename(fixture.stage.join("input"), &fixture.target).unwrap();
+        fs::remove_file(fixture.stage.join("original")).unwrap();
         assert_eq!(
-            prepare_in_private_stage(&target, fragment, "toml", &stage, owner).unwrap(),
+            fixture.prepare(fragment, "toml").unwrap(),
             "already-correct"
         );
-        assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+        assert!(fixture.stage_is_empty());
     }
 
     #[cfg(unix)]
@@ -1423,104 +1437,82 @@ mod tests {
     fn preparation_keeps_original_and_merged_contents_in_verified_private_stage() {
         use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
-        let fixture = tempfile::tempdir_in(".").unwrap();
-        let root = fixture.path().canonicalize().unwrap();
-        let target = root.join("target");
-        let stage = root.join("private-stage");
-        fs::create_dir(&stage).unwrap();
-        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
+        let fixture = PrivateStage::new("target");
         let original = "# confidential\nprivate = 'fixture secret'\nmanaged = false\n";
-        fs::write(&target, original).unwrap();
-        fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
-        let owner = fs::metadata(&root).unwrap().uid();
-        assert_eq!(
-            prepare_in_private_stage(&target, "managed = true\n", "toml", &stage, owner).unwrap(),
-            "prepared"
-        );
-        assert_eq!(
-            fs::read_to_string(stage.join("original")).unwrap(),
-            original
-        );
-        let merged = fs::read_to_string(stage.join("input")).unwrap();
+        fixture.write_target(original);
+        fs::set_permissions(&fixture.target, fs::Permissions::from_mode(0o600)).unwrap();
+        let prepare = || fixture.prepare("managed = true\n", "toml").unwrap();
+        assert_eq!(prepare(), "prepared");
+        assert_eq!(fixture.staged_contents("original"), original);
+        let merged = fixture.staged_contents("input");
         assert!(merged.contains("private = 'fixture secret'"));
         assert!(merged.contains("# confidential"));
         for name in ["input", "original"] {
-            let metadata = fs::metadata(stage.join(name)).unwrap();
-            assert_eq!(metadata.uid(), owner);
+            let metadata = fs::metadata(fixture.stage.join(name)).unwrap();
+            assert_eq!(metadata.uid(), fixture.owner);
             assert_eq!(metadata.mode() & 0o777, 0o600);
-            fs::remove_file(stage.join(name)).unwrap();
+            fs::remove_file(fixture.stage.join(name)).unwrap();
         }
-        assert_eq!(fs::read_to_string(&target).unwrap(), original);
-        fs::write(&target, merged).unwrap();
-        assert_eq!(
-            prepare_in_private_stage(&target, "managed = true\n", "toml", &stage, owner).unwrap(),
-            "already-correct"
-        );
-        assert_eq!(fs::read_dir(stage).unwrap().count(), 0);
+        assert_eq!(fixture.target_contents(), original);
+        fixture.write_target(&merged);
+        assert_eq!(prepare(), "already-correct");
+        assert!(fixture.stage_is_empty());
     }
 
     #[cfg(unix)]
     #[test]
     fn preparation_refuses_public_or_linked_staging_and_sanitizes_target_parse_errors() {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+        use std::os::unix::fs::PermissionsExt as _;
 
-        let fixture = tempfile::tempdir_in(".").unwrap();
-        let root = fixture.path().canonicalize().unwrap();
-        let target = root.join("target");
-        let stage = root.join("stage");
-        fs::create_dir(&stage).unwrap();
-        fs::write(&target, "private = 'fixture secret'\nmanaged = false\n").unwrap();
-        let owner = fs::metadata(&root).unwrap().uid();
-        fs::set_permissions(&stage, fs::Permissions::from_mode(0o755)).unwrap();
+        let fixture = PrivateStage::new("target");
+        let original = "private = 'fixture secret'\nmanaged = false\n";
+        fixture.write_target(original);
+        let fragment = "managed = true\n";
+        fs::set_permissions(&fixture.stage, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(fixture.prepare(fragment, "toml").is_err());
+        assert!(fixture.stage_is_empty());
+        assert_eq!(fixture.target_contents(), original);
+
+        fs::set_permissions(&fixture.stage, fs::Permissions::from_mode(0o700)).unwrap();
+        let link = fixture.root.path().join("link");
+        std::os::unix::fs::symlink(&fixture.stage, &link).unwrap();
         assert!(
-            prepare_in_private_stage(&target, "managed = true\n", "toml", &stage, owner).is_err()
+            prepare_in_private_stage(&fixture.target, fragment, "toml", &link, fixture.owner)
+                .is_err()
         );
-        assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
-        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
-        let link = root.join("link");
-        std::os::unix::fs::symlink(&stage, &link).unwrap();
-        assert!(
-            prepare_in_private_stage(&target, "managed = true\n", "toml", &link, owner).is_err()
-        );
+        assert!(fixture.stage_is_empty());
+        assert_eq!(fixture.target_contents(), original);
+
         let invalid = "private = [fixture secret\n";
-        fs::write(&target, invalid).unwrap();
-        let error = prepare_in_private_stage(&target, "managed = true\n", "toml", &stage, owner)
-            .unwrap_err();
+        fixture.write_target(invalid);
+        let error = fixture.prepare(fragment, "toml").unwrap_err();
         assert!(!format!("{error:#}").contains("fixture secret"));
-        assert_eq!(fs::read_to_string(&target).unwrap(), invalid);
-        assert_eq!(fs::read_dir(stage).unwrap().count(), 0);
+        assert_eq!(fixture.target_contents(), invalid);
+        assert!(fixture.stage_is_empty());
     }
 
     #[cfg(unix)]
     #[test]
     fn privileged_assessment_refuses_missing_pam_and_nonregular_targets_without_staging_contents() {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-
-        let fixture = tempfile::tempdir_in(".").unwrap();
-        let root = fixture.path().canonicalize().unwrap();
-        let target = root.join("target");
-        let stage = root.join("stage");
-        fs::create_dir(&stage).unwrap();
-        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
-        let owner = fs::metadata(&root).unwrap().uid();
+        let fixture = PrivateStage::new("target");
         assert!(
-            prepare_in_private_stage(&target, "auth optional fixture.so\n", "pam", &stage, owner,)
+            fixture
+                .prepare("auth optional fixture.so\n", "pam")
                 .is_err()
         );
-        assert!(!target.exists());
-        assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
-        let unmanaged = root.join("unmanaged");
+        assert!(!fixture.target.exists());
+        assert!(fixture.stage_is_empty());
+
+        let unmanaged = fixture.root.path().join("unmanaged");
         fs::write(&unmanaged, "private = 'fixture secret'\n").unwrap();
-        std::os::unix::fs::symlink(&unmanaged, &target).unwrap();
-        assert!(
-            prepare_in_private_stage(&target, "managed = true\n", "toml", &stage, owner).is_err()
-        );
-        assert!(fs::symlink_metadata(&target).unwrap().is_symlink());
+        std::os::unix::fs::symlink(&unmanaged, &fixture.target).unwrap();
+        assert!(fixture.prepare("managed = true\n", "toml").is_err());
+        assert!(fs::symlink_metadata(&fixture.target).unwrap().is_symlink());
         assert_eq!(
             fs::read_to_string(&unmanaged).unwrap(),
             "private = 'fixture secret'\n"
         );
-        assert_eq!(fs::read_dir(stage).unwrap().count(), 0);
+        assert!(fixture.stage_is_empty());
     }
 
     #[test]
@@ -1704,43 +1696,33 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn pam_retry_preserves_equivalent_site_layout_and_adds_only_missing_session_rule() {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
         const LOGIN: &str = include_str!("../../../../../system/pam.d/login");
-        let fixture = tempfile::tempdir_in(".").unwrap();
-        let root = fixture.path().canonicalize().unwrap();
-        let target = root.join("login");
-        let stage = root.join("stage");
-        fs::create_dir(&stage).unwrap();
-        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
-        let owner = fs::metadata(&root).unwrap().uid();
+        let fixture = PrivateStage::new("login");
         let legacy = "auth\toptional\tpam_gnome_keyring.so # local tty policy\n";
         let site = "auth optional pam_gnome_keyring.so only_if=gdm # graphical login\n\
                     session include system-login\n";
         let ambiguous = format!("auth optional pam_gnome_keyring.so only_if=login\n{site}");
-        fs::write(&target, &ambiguous).unwrap();
-        let prepare = || prepare_in_private_stage(&target, LOGIN, "pam", &stage, owner);
+        fixture.write_target(&ambiguous);
+        let prepare = || fixture.prepare(LOGIN, "pam");
         assert!(prepare().is_err());
-        assert_eq!(fs::read_to_string(&target).unwrap(), ambiguous);
-        assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+        assert_eq!(fixture.target_contents(), ambiguous);
+        assert!(fixture.stage_is_empty());
 
         let reviewed = format!("{legacy}{site}");
-        fs::write(&target, &reviewed).unwrap();
+        fixture.write_target(&reviewed);
         assert_eq!(prepare().unwrap(), "prepared");
         let session = LOGIN
             .lines()
             .find(|line| line.starts_with("session"))
             .unwrap();
         let expected = format!("{reviewed}{session}\n");
-        assert_eq!(fs::read_to_string(stage.join("input")).unwrap(), expected);
-        assert_eq!(
-            fs::read_to_string(stage.join("original")).unwrap(),
-            reviewed
-        );
-        fs::rename(stage.join("input"), &target).unwrap();
-        fs::remove_file(stage.join("original")).unwrap();
+        assert_eq!(fixture.staged_contents("input"), expected);
+        assert_eq!(fixture.staged_contents("original"), reviewed);
+        fs::rename(fixture.stage.join("input"), &fixture.target).unwrap();
+        fs::remove_file(fixture.stage.join("original")).unwrap();
         assert_eq!(prepare().unwrap(), "already-correct");
-        assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
-        assert_eq!(fs::read_to_string(&target).unwrap(), expected);
+        assert!(fixture.stage_is_empty());
+        assert_eq!(fixture.target_contents(), expected);
 
         let argument = "auth optional site.so [config=/etc/kiosk  site]";
         assert!(!same_pam_rule(
@@ -1805,15 +1787,6 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn unsafe_pam_stack_edit_does_not_stage_any_files() {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-
-        let fixture = tempfile::tempdir().unwrap();
-        let root = fixture.path().canonicalize().unwrap();
-        let target = root.join("login");
-        let stage = root.join("stage");
-        fs::create_dir(&stage).unwrap();
-        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
-        let owner = fs::metadata(&root).unwrap().uid();
         let fragment = "auth optional keyring.so\n";
         for (installed, expected) in [
             (
@@ -1829,11 +1802,12 @@ mod tests {
                 Some("already-correct"),
             ),
         ] {
-            fs::write(&target, installed).unwrap();
-            let result = prepare_in_private_stage(&target, fragment, "pam", &stage, owner);
+            let fixture = PrivateStage::new("login");
+            fixture.write_target(installed);
+            let result = fixture.prepare(fragment, "pam");
             assert_eq!(result.ok(), expected, "{installed}");
-            assert_eq!(fs::read_to_string(&target).unwrap(), installed);
-            assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+            assert_eq!(fixture.target_contents(), installed);
+            assert!(fixture.stage_is_empty());
         }
     }
 
@@ -1945,17 +1919,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn paccache_drop_in_never_replaces_custom_environment_lists() {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
         const DROP_IN: &str =
             include_str!("../../../../../system/systemd/system/paccache.service.d/retention.conf");
         const ENV_FILE: &str =
             include_str!("../../../../../system/systemd/system/paccache.service.d/retention.env");
-        let fixture = tempfile::tempdir_in(".").unwrap();
-        let root = fixture.path().canonicalize().unwrap();
-        let stage = root.join("stage");
-        fs::create_dir(&stage).unwrap();
-        fs::set_permissions(&stage, fs::Permissions::from_mode(0o700)).unwrap();
-        let owner = fs::metadata(&root).unwrap().uid();
         let previous = "[Service]\nEnvironmentFile=\nEnvironment=PACCACHE_ARGS=-k2\n";
         let custom = "[Service]\nEnvironment=SITE=blue\nEnvironmentFile=/srv/site/cache.env\n\
                       EnvironmentFile=-/srv/mirror.env\nNice=7\n";
@@ -1979,30 +1946,22 @@ mod tests {
                 ["", "# operator override\nCACHE=/srv/private\n"],
             ),
         ] {
-            let target = root.join(name);
+            let fixture = PrivateStage::new(name);
+            let prepare = || fixture.prepare(desired, "create-only");
             for existing in conflicts {
-                fs::write(&target, existing).unwrap();
-                assert!(
-                    prepare_in_private_stage(&target, desired, "create-only", &stage, owner)
-                        .is_err()
-                );
-                assert_eq!(fs::read_to_string(&target).unwrap(), existing);
-                assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+                fixture.write_target(existing);
+                assert!(prepare().is_err());
+                assert_eq!(fixture.target_contents(), existing);
+                assert!(fixture.stage_is_empty());
             }
-            let backup = root.join(format!("{name}.before-review"));
-            fs::rename(&target, &backup).unwrap();
-            assert_eq!(
-                prepare_in_private_stage(&target, desired, "create-only", &stage, owner).unwrap(),
-                "prepared"
-            );
-            assert!(!target.exists());
-            fs::rename(stage.join("input"), &target).unwrap();
-            assert_eq!(fs::read_to_string(&target).unwrap(), desired);
-            assert_eq!(
-                prepare_in_private_stage(&target, desired, "create-only", &stage, owner).unwrap(),
-                "already-correct"
-            );
-            assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+            let backup = fixture.root.path().join(format!("{name}.before-review"));
+            fs::rename(&fixture.target, &backup).unwrap();
+            assert_eq!(prepare().unwrap(), "prepared");
+            assert!(!fixture.target.exists());
+            fs::rename(fixture.stage.join("input"), &fixture.target).unwrap();
+            assert_eq!(fixture.target_contents(), desired);
+            assert_eq!(prepare().unwrap(), "already-correct");
+            assert!(fixture.stage_is_empty());
             assert_eq!(fs::read_to_string(backup).unwrap(), conflicts[1]);
         }
     }

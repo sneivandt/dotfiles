@@ -4,10 +4,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use super::test_fixture::{
-    assert_apm_command, expect_apm_install_without_enable, expect_copilot_app_enable,
-    expect_copilot_app_workflow_install, expect_cowork_enable, expect_which_apm, has_env,
-    install_task, make_context_with_home, make_windows_cowork_context, update_task,
-    write_copilot_app_db, write_current_manifest_and_lock, write_default_home_fragment,
+    ApmRun, INSTALL, PREVIEW_UPDATE, UPDATE, expect_which_apm, install_task,
+    make_context_with_home, make_windows_cowork_context, update_task, write_copilot_app_db,
+    write_current_manifest_and_lock, write_default_home_fragment,
 };
 use super::*;
 use crate::engine::Context;
@@ -78,43 +77,21 @@ fn cowork_repairs_report_changes_even_when_the_lock_is_unchanged() {
         std::fs::create_dir_all(&target).unwrap();
         std::fs::write(source.join("SKILL.md"), "stale fixture").unwrap();
         std::fs::write(target.join("cowork-owned.txt"), "preserve").unwrap();
-        let mut mock = MockExecutor::new();
-        mock.expect_which()
-            .with(mockall::predicate::eq("apm"))
-            .times(2)
-            .return_const(true);
-        mock.expect_execute()
-            .times(2)
-            .withf(move |spec| {
-                spec.program() == "apm"
-                    && spec.arguments()
-                        == if update {
-                            vec!["update", "-g", "--yes"]
-                        } else {
-                            vec!["install", "-g"]
-                        }
-            })
-            .returning(|_| Ok(ExecResult::success("")));
-        if update {
-            mock.expect_execute()
-                .times(2)
-                .withf(|spec| spec.program() == "apm" && spec.arguments() == ["install", "-g"])
-                .returning(|_| Ok(ExecResult::success("")));
+        let mut run = ApmRun::new(dir.path(), 2);
+        for _ in 0..2 {
+            if update {
+                run.ok(UPDATE, "");
+            }
+            run.ok(INSTALL, "");
+            run.ok(&["experimental", "enable", "copilot-cowork"], "");
         }
-        mock.expect_execute()
-            .times(2)
-            .withf(|spec| {
-                spec.program() == "apm"
-                    && spec.arguments() == ["experimental", "enable", "copilot-cowork"]
-            })
-            .returning(|_| Ok(ExecResult::success("")));
-        let ctx = make_windows_cowork_context(dir.path(), mock);
+        let ctx = make_windows_cowork_context(dir.path(), run.mock);
         assert!(cowork::reconcile_cowork_skills(&ctx).unwrap());
         std::fs::write(source.join("SKILL.md"), "current fixture").unwrap();
-        let task: Box<dyn Task> = if update {
-            Box::new(update_task())
+        let task = if update {
+            update_task()
         } else {
-            Box::new(install_task())
+            install_task()
         };
         assert_task_changed(&task.run(&ctx).unwrap());
         assert_task_ok(&task.run(&ctx).unwrap());
@@ -133,36 +110,7 @@ fn cowork_repairs_report_changes_even_when_the_lock_is_unchanged() {
     }
 }
 
-fn expect_primary_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence, home: &Path) {
-    let home = home.to_path_buf();
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(move |spec| {
-            assert_apm_command(&spec);
-            assert_eq!(spec.working_dir(), Some(home.as_path()));
-            assert_eq!(spec.program(), "apm");
-            assert_eq!(spec.arguments(), ["install", "-g"]);
-            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ExecResult::success("installed\n"))
-        });
-}
-
-fn expect_primary_update(mock: &mut MockExecutor, seq: &mut mockall::Sequence, home: &Path) {
-    let home = home.to_path_buf();
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(move |spec| {
-            assert_apm_command(&spec);
-            assert_eq!(spec.working_dir(), Some(home.as_path()));
-            assert_eq!(spec.program(), "apm");
-            assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
-            Ok(ExecResult::success(
-                "All dependencies already at their latest matching refs.\n",
-            ))
-        });
-}
+const REFS_CURRENT: &str = "All dependencies already at their latest matching refs.\n";
 
 #[test]
 fn should_run_tracks_effective_fragments() {
@@ -192,11 +140,9 @@ fn install_skips_when_apm_is_missing() {
 fn install_always_delegates_but_reports_unchanged_lock_as_ok() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_and_lock(dir.path());
-    let mut mock = MockExecutor::new();
-    let mut seq = mockall::Sequence::new();
-    expect_which_apm(&mut mock, true);
-    expect_primary_install(&mut mock, &mut seq, dir.path());
-    let ctx = linux_context(dir.path(), mock);
+    let mut run = ApmRun::new(dir.path(), 1);
+    run.ok(INSTALL, "installed\n");
+    let ctx = linux_context(dir.path(), run.mock);
 
     let result = install_task().run(&ctx).expect("run install");
 
@@ -207,25 +153,16 @@ fn install_always_delegates_but_reports_unchanged_lock_as_ok() {
 fn install_reports_manifest_and_lock_changes() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_default_home_fragment(dir.path());
-    let mut mock = MockExecutor::new();
-    let mut seq = mockall::Sequence::new();
-    expect_which_apm(&mut mock, true);
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|spec| {
-            assert_eq!(spec.arguments(), ["install", "-g"]);
-            std::fs::write(
-                spec.working_dir()
-                    .expect("home")
-                    .join(".apm")
-                    .join("apm.lock.yaml"),
-                "dependencies:\n- repo_url: example/plugin\n",
-            )
-            .expect("write lock");
-            Ok(ExecResult::success("installed\n"))
-        });
-    let ctx = linux_context(dir.path(), mock);
+    let mut run = ApmRun::new(dir.path(), 1);
+    run.command(INSTALL, |home| {
+        std::fs::write(
+            home.join(".apm/apm.lock.yaml"),
+            "dependencies:\n- repo_url: example/plugin\n",
+        )
+        .expect("write lock");
+        Ok(ExecResult::success("installed\n"))
+    });
+    let ctx = linux_context(dir.path(), run.mock);
 
     let result = install_task().run(&ctx).expect("run install");
 
@@ -244,13 +181,9 @@ fn install_uses_native_copilot_app_target() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_default_home_fragment(dir.path());
     write_copilot_app_db(dir.path());
-    let mut mock = MockExecutor::new();
-    let mut seq = mockall::Sequence::new();
-    expect_which_apm(&mut mock, true);
-    expect_primary_install(&mut mock, &mut seq, dir.path());
-    expect_copilot_app_enable(&mut mock, &mut seq);
-    expect_copilot_app_workflow_install(&mut mock, &mut seq);
-    let ctx = linux_context(dir.path(), mock);
+    let mut run = ApmRun::new(dir.path(), 1);
+    run.copilot_install();
+    let ctx = linux_context(dir.path(), run.mock);
 
     assert_task_changed(&install_task().run(&ctx).expect("run install"));
 }
@@ -265,11 +198,10 @@ fn install_skips_enable_when_apm_config_has_flag() {
         "{\"experimental\":{\"copilot_app\":true}}",
     )
     .expect("write APM config");
-    let mut mock = MockExecutor::new();
-    let mut seq = mockall::Sequence::new();
-    expect_which_apm(&mut mock, true);
-    expect_apm_install_without_enable(&mut mock, &mut seq, dir.path());
-    let ctx = linux_context(dir.path(), mock);
+    let mut run = ApmRun::new(dir.path(), 1);
+    run.ok(INSTALL, "installed\n");
+    run.workflow_install();
+    let ctx = linux_context(dir.path(), run.mock);
 
     assert_task_changed(&install_task().run(&ctx).expect("run install"));
 }
@@ -292,28 +224,19 @@ fn install_configures_cowork_but_reconciles_files_without_native_target() {
     std::fs::write(cowork_skill.join("placeholder.txt"), "preserve")
         .expect("write Cowork placeholder");
 
-    let mut mock = MockExecutor::new();
-    let mut seq = mockall::Sequence::new();
-    expect_which_apm(&mut mock, true);
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|spec| {
-            assert_eq!(spec.arguments(), ["install", "-g"]);
-            std::fs::write(
-                spec.working_dir()
-                    .expect("home")
-                    .join(".apm")
-                    .join("apm.lock.yaml"),
-                "dependencies:\n  - deployed_files:\n      - \
+    let mut run = ApmRun::new(dir.path(), 1);
+    run.command(INSTALL, |home| {
+        std::fs::write(
+            home.join(".apm/apm.lock.yaml"),
+            "dependencies:\n  - deployed_files:\n      - \
                  .agents/skills/example/SKILL.md\n    target_subset: [agent-skills, \
                  copilot-cowork]\n",
-            )
-            .expect("write lock");
-            Ok(ExecResult::success("installed\n"))
-        });
-    expect_cowork_enable(&mut mock, &mut seq);
-    let ctx = make_windows_cowork_context(dir.path(), mock);
+        )
+        .expect("write lock");
+        Ok(ExecResult::success("installed\n"))
+    });
+    run.enable("copilot-cowork");
+    let ctx = make_windows_cowork_context(dir.path(), run.mock);
 
     assert_task_changed(&install_task().run(&ctx).expect("run install"));
     assert_eq!(
@@ -333,25 +256,14 @@ fn install_removes_legacy_cowork_records_without_a_detectable_cowork_path() {
          cowork://skills/example/SKILL.md\n      - .agents/skills/example/SKILL.md\n",
     )
     .expect("write legacy Cowork lock");
-    let mut mock = MockExecutor::new();
-    let mut seq = mockall::Sequence::new();
-    expect_which_apm(&mut mock, true);
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|spec| {
-            assert_eq!(spec.arguments(), ["install", "-g"]);
-            let lock = std::fs::read_to_string(
-                spec.working_dir()
-                    .expect("home")
-                    .join(".apm")
-                    .join("apm.lock.yaml"),
-            )
-            .expect("read sanitized lock");
-            assert!(!lock.contains("cowork://"));
-            Ok(ExecResult::success("installed\n"))
-        });
-    let ctx = linux_context(dir.path(), mock);
+    let mut run = ApmRun::new(dir.path(), 1);
+    run.command(INSTALL, |home| {
+        let lock =
+            std::fs::read_to_string(home.join(".apm/apm.lock.yaml")).expect("read sanitized lock");
+        assert!(!lock.contains("cowork://"));
+        Ok(ExecResult::success("installed\n"))
+    });
+    let ctx = linux_context(dir.path(), run.mock);
 
     assert_task_changed(&install_task().run(&ctx).expect("run install"));
 }
@@ -393,30 +305,21 @@ fn update_then_install_reports_exact_lock_changes() {
          resolved_commit: 1111111aaaa\n",
     )
     .expect("seed lock");
-    let mut mock = MockExecutor::new();
-    let mut seq = mockall::Sequence::new();
-    expect_which_apm(&mut mock, true);
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|spec| {
-            assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
-            std::fs::write(
-                spec.working_dir()
-                    .expect("home")
-                    .join(".apm")
-                    .join("apm.lock.yaml"),
-                "dependencies:\n- repo_url: example/plugin\n  name: example-plugin\n  \
+    let mut run = ApmRun::new(dir.path(), 1);
+    run.command(UPDATE, |home| {
+        std::fs::write(
+            home.join(".apm/apm.lock.yaml"),
+            "dependencies:\n- repo_url: example/plugin\n  name: example-plugin\n  \
                  resolved_commit: 2222222bbbb\n  deployed_files: [new/SKILL.md]\n",
-            )
-            .expect("advance lock");
-            Ok(ExecResult::success("updated\n"))
-        });
-    expect_primary_install(&mut mock, &mut seq, dir.path());
+        )
+        .expect("advance lock");
+        Ok(ExecResult::success("updated\n"))
+    });
+    run.ok(INSTALL, "installed\n");
     let (log, _tmp, _guard) = logging::isolated_logger();
     let log = Arc::new(log);
     let log_output: Arc<dyn Log> = Arc::<Logger>::clone(&log);
-    let ctx = linux_context(dir.path(), mock).with_log(log_output);
+    let ctx = linux_context(dir.path(), run.mock).with_log(log_output);
 
     let result = update_task().run(&ctx).expect("run update");
 
@@ -455,26 +358,15 @@ fn update_then_install_reports_exact_lock_changes() {
 fn update_writes_generated_manifest_then_updates_and_installs() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_default_home_fragment(dir.path());
-    let mut mock = MockExecutor::new();
-    expect_which_apm(&mut mock, true);
-    let mut seq = mockall::Sequence::new();
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|spec| {
-            assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
-            let manifest = std::fs::read_to_string(
-                spec.working_dir()
-                    .expect("home")
-                    .join(".apm")
-                    .join("apm.yml"),
-            )
+    let mut run = ApmRun::new(dir.path(), 1);
+    run.command(UPDATE, |home| {
+        let manifest = std::fs::read_to_string(home.join(".apm/apm.yml"))
             .expect("read generated manifest before update");
-            assert!(manifest.contains("example/plugin"));
-            Ok(ExecResult::success("updated\n"))
-        });
-    expect_primary_install(&mut mock, &mut seq, dir.path());
-    let ctx = linux_context(dir.path(), mock);
+        assert!(manifest.contains("example/plugin"));
+        Ok(ExecResult::success("updated\n"))
+    });
+    run.ok(INSTALL, "installed\n");
+    let ctx = linux_context(dir.path(), run.mock);
 
     assert_task_changed(&update_task().run(&ctx).expect("run update"));
 }
@@ -494,21 +386,13 @@ fn update_reconciles_renamed_local_skills_when_remote_refs_are_current() {
     std::fs::create_dir_all(old.parent().unwrap()).unwrap();
     std::fs::write(&source, "renamed local skill").unwrap();
     std::fs::write(&old, "old local skill").unwrap();
-    let mut mock = MockExecutor::new();
-    let mut seq = mockall::Sequence::new();
-    mock.expect_which()
-        .with(mockall::predicate::eq("apm"))
-        .times(2)
-        .return_const(true);
+    let mut run = ApmRun::new(dir.path(), 2);
     for _ in 0..2 {
-        expect_primary_update(&mut mock, &mut seq, dir.path());
+        run.ok(UPDATE, REFS_CURRENT);
         let source = source.clone();
         let old = old.clone();
         let deployed = deployed.clone();
-        mock.expect_execute().once().in_sequence(&mut seq).returning(move |spec| {
-            assert_apm_command(&spec);
-            assert_eq!(spec.arguments(), ["install", "-g"]);
-            let home = spec.working_dir().unwrap();
+        run.command(INSTALL, move |home| {
             assert_eq!(source.strip_prefix(home).unwrap(), Path::new("plugin/.apm/skills/agent-customization/SKILL.md"));
             // Model native install reconciling local content and stale ownership.
             std::fs::create_dir_all(deployed.parent().unwrap()).unwrap();
@@ -521,7 +405,7 @@ fn update_reconciles_renamed_local_skills_when_remote_refs_are_current() {
             Ok(ExecResult::success("installed\n"))
         });
     }
-    let ctx = linux_context(dir.path(), mock);
+    let ctx = linux_context(dir.path(), run.mock);
     assert_task_changed(&update_task().run(&ctx).unwrap());
     assert!(!old.exists());
     assert_eq!(
@@ -536,19 +420,10 @@ fn update_does_not_report_current_when_followup_install_fails() {
     for message in ["archive extraction failed", "fatal: Authentication failed"] {
         let dir = tempfile::tempdir_in(".").unwrap();
         write_current_manifest_and_lock(dir.path());
-        let mut mock = MockExecutor::new();
-        let mut seq = mockall::Sequence::new();
-        expect_which_apm(&mut mock, true);
-        expect_primary_update(&mut mock, &mut seq, dir.path());
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |spec| {
-                assert_apm_command(&spec);
-                assert_eq!(spec.arguments(), ["install", "-g"]);
-                Err(command_failure(message))
-            });
-        let ctx = make_windows_cowork_context(dir.path(), mock);
+        let mut run = ApmRun::new(dir.path(), 1);
+        run.ok(UPDATE, REFS_CURRENT);
+        run.command(INSTALL, move |_| Err(command_failure(message)));
+        let ctx = make_windows_cowork_context(dir.path(), run.mock);
         let result = update_task().run(&ctx);
         if message.contains("Authentication") {
             assert!(matches!(
@@ -572,12 +447,10 @@ fn update_does_not_report_current_when_followup_install_fails() {
 fn update_reports_ok_when_lock_is_byte_identical() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_and_lock(dir.path());
-    let mut mock = MockExecutor::new();
-    let mut seq = mockall::Sequence::new();
-    expect_which_apm(&mut mock, true);
-    expect_primary_update(&mut mock, &mut seq, dir.path());
-    expect_primary_install(&mut mock, &mut seq, dir.path());
-    let ctx = linux_context(dir.path(), mock);
+    let mut run = ApmRun::new(dir.path(), 1);
+    run.ok(UPDATE, REFS_CURRENT);
+    run.ok(INSTALL, "installed\n");
+    let ctx = linux_context(dir.path(), run.mock);
 
     assert_task_ok(&update_task().run(&ctx).expect("run update"));
 }
@@ -626,17 +499,10 @@ fn update_dry_run_uses_native_apm_plan() {
     let lock_path = dir.path().join(".apm/apm.lock.yaml");
     let manifest_before = std::fs::read(&manifest_path).unwrap();
     let lock_before = std::fs::read(&lock_path).unwrap();
-    let expected_home = dir.path().to_path_buf();
-    let mut mock = MockExecutor::new();
-    expect_which_apm(&mut mock, true);
-    mock.expect_execute().once().returning(move |spec| {
-        assert_apm_command(&spec);
-        assert_eq!(spec.working_dir(), Some(expected_home.as_path()));
-        assert_eq!(spec.arguments(), ["update", "-g", "--dry-run"]);
-        Ok(ExecResult::success("would update example/plugin\n"))
-    });
+    let mut run = ApmRun::new(dir.path(), 1);
+    run.ok(PREVIEW_UPDATE, "would update example/plugin\n");
     let output = Arc::new(CapturingOutput::default());
-    let ctx = linux_context(dir.path(), mock)
+    let ctx = linux_context(dir.path(), run.mock)
         .with_dry_run(true)
         .with_log(Arc::<CapturingOutput>::clone(&output));
 
@@ -772,13 +638,8 @@ fn update_preview_failure_preserves_files_and_failure_classification() {
         let lock_path = dir.path().join(".apm/apm.lock.yaml");
         let manifest_before = std::fs::read(&manifest_path).unwrap();
         let lock_before = std::fs::read(&lock_path).unwrap();
-        let home = dir.path().to_path_buf();
-        let mut mock = MockExecutor::new();
-        expect_which_apm(&mut mock, true);
-        mock.expect_execute().once().returning(move |spec| {
-            assert_apm_command(&spec);
-            assert_eq!(spec.working_dir(), Some(home.as_path()));
-            assert_eq!(spec.arguments(), ["update", "-g", "--dry-run"]);
+        let mut run = ApmRun::new(dir.path(), 1);
+        run.command(PREVIEW_UPDATE, move |_| {
             Err(if failure == "cancelled" {
                 ExecError::Cancelled {
                     command: "apm".into(),
@@ -788,7 +649,7 @@ fn update_preview_failure_preserves_files_and_failure_classification() {
                 command_failure(failure)
             })
         });
-        let ctx = linux_context(dir.path(), mock).with_dry_run(true);
+        let ctx = linux_context(dir.path(), run.mock).with_dry_run(true);
 
         let result = update_task().run(&ctx);
 
@@ -860,23 +721,11 @@ fn native_commands_classify_auth_failures_but_propagate_other_failures() {
     ] {
         let dir = tempfile::tempdir().expect("create temp dir");
         write_default_home_fragment(dir.path());
-        let mut mock = MockExecutor::new();
-        expect_which_apm(&mut mock, true);
-        let expected_home = dir.path().to_path_buf();
-        mock.expect_execute().once().returning(move |spec| {
-            assert_apm_command(&spec);
-            assert_eq!(spec.working_dir(), Some(expected_home.as_path()));
-            assert_eq!(
-                spec.arguments(),
-                if update {
-                    vec!["update", "-g", "--yes"]
-                } else {
-                    vec!["install", "-g"]
-                }
-            );
+        let mut run = ApmRun::new(dir.path(), 1);
+        run.command(if update { UPDATE } else { INSTALL }, move |_| {
             Err(command_failure(message))
         });
-        let ctx = linux_context(dir.path(), mock);
+        let ctx = linux_context(dir.path(), run.mock);
         let result = if update {
             update_task()
         } else {
@@ -913,20 +762,8 @@ fn cancelled_native_commands_preserve_cancellation_instead_of_skipping() {
     for update in [false, true] {
         let dir = tempfile::tempdir_in(".").unwrap();
         write_current_manifest_and_lock(dir.path());
-        let mut mock = MockExecutor::new();
-        expect_which_apm(&mut mock, true);
-        let expected_home = dir.path().to_path_buf();
-        mock.expect_execute().once().returning(move |spec| {
-            assert_apm_command(&spec);
-            assert_eq!(spec.working_dir(), Some(expected_home.as_path()));
-            assert_eq!(
-                spec.arguments(),
-                if update {
-                    vec!["update", "-g", "--yes"]
-                } else {
-                    vec!["install", "-g"]
-                }
-            );
+        let mut run = ApmRun::new(dir.path(), 1);
+        run.command(if update { UPDATE } else { INSTALL }, |_| {
             Err(ExecError::Cancelled {
                 command: "apm".to_string(),
                 result: ExecResult::failure(
@@ -936,7 +773,7 @@ fn cancelled_native_commands_preserve_cancellation_instead_of_skipping() {
                 ),
             })
         });
-        let ctx = linux_context(dir.path(), mock);
+        let ctx = linux_context(dir.path(), run.mock);
         let error = if update {
             update_task()
         } else {
@@ -972,24 +809,18 @@ fn cancelled_target_enablement_stops_before_native_install_or_cowork_copy() {
         if target == "copilot-app" {
             write_copilot_app_db(dir.path());
         }
-        let mut mock = MockExecutor::new();
-        let mut sequence = mockall::Sequence::new();
-        expect_primary_install(&mut mock, &mut sequence, dir.path());
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut sequence)
-            .returning(move |spec| {
-                assert_apm_command(&spec);
-                assert_eq!(spec.arguments(), ["experimental", "enable", target]);
-                Err(ExecError::Cancelled {
-                    command: "apm".to_string(),
-                    result: ExecResult::failure("", "cancelled", None),
-                })
-            });
+        let mut run = ApmRun::new(dir.path(), 0);
+        run.ok(INSTALL, "installed\n");
+        run.command(&["experimental", "enable", target], |_| {
+            Err(ExecError::Cancelled {
+                command: "apm".to_string(),
+                result: ExecResult::failure("", "cancelled", None),
+            })
+        });
         let ctx = if target == "copilot-app" {
-            linux_context(dir.path(), mock)
+            linux_context(dir.path(), run.mock)
         } else {
-            make_windows_cowork_context(dir.path(), mock)
+            make_windows_cowork_context(dir.path(), run.mock)
         };
         let error = managed_targets::ManagedTargets::detect(&ctx)
             .unwrap()

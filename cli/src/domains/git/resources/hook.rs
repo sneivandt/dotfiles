@@ -1,5 +1,7 @@
 //! Git hook resource.
-use crate::infra::fs::{content_hash, open_regular_source, rename_noreplace};
+use crate::infra::fs::{
+    content_hash, open_regular_source, publish_with_ownership, rename_noreplace,
+};
 use anyhow::Context as _;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -159,21 +161,12 @@ impl Resource for HookFileResource {
             )
             .into());
         }
-        // Record both possible publication outcomes so an interrupted update remains owned.
-        let mut ownership = format!("{}\n", content_hash(&source));
-        if let Some(before) = &before {
-            ownership.push_str(&content_hash(before));
-            ownership.push('\n');
-        }
-        crate::infra::fs::write_atomic(&self.ownership_path(), ownership)?;
-        crate::infra::fs::rename_into_place(staged.path(), &self.target)?;
-        staged.persist();
-        crate::infra::fs::write_atomic(
-            &self.ownership_path(),
-            format!("{}\n", content_hash(source)),
-        )?;
-
-        Ok(ResourceChange::Applied)
+        publish_with_ownership(&self.ownership_path(), before.as_deref(), &source, || {
+            crate::infra::fs::rename_into_place(staged.path(), &self.target)?;
+            staged.persist();
+            Ok(())
+        })
+        .map(|()| ResourceChange::Applied)
     }
 }
 

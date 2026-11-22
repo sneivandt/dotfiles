@@ -1,6 +1,9 @@
 //! Test helpers for configuration loader tests.
 
-use std::path::PathBuf;
+use super::category_matcher::Category;
+use super::{Diagnostic, DiagnosticCode, Severity};
+use std::fmt::Debug;
+use std::path::{Path, PathBuf};
 
 /// Write content to a temp TOML file and return the temp dir + path.
 /// The `TempDir` must be kept alive for the file to persist during the test.
@@ -9,40 +12,26 @@ use std::path::PathBuf;
 ///
 /// Panics if the temp directory or file cannot be created.
 #[must_use]
-#[allow(
-    clippy::expect_used,
-    reason = "test helper: setup failures should abort the calling test"
-)]
 pub fn write_temp_toml(content: &str) -> (tempfile::TempDir, PathBuf) {
+    write_named_toml("test.toml", content)
+}
+
+pub(crate) fn write_named_toml(name: &str, content: &str) -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().expect("failed to create temp dir");
-    let path = dir.path().join("test.toml");
+    let path = dir.path().join(name);
     std::fs::write(&path, content).expect("failed to write temp toml");
     (dir, path)
 }
 
 /// Assert that a config loader returns an empty list for a missing file.
 ///
-/// Eliminates the repeated pattern of creating a temp dir, pointing at a
-/// nonexistent file, calling the loader, and asserting the result is empty.
-///
 /// # Panics
 ///
 /// Panics if the temp directory cannot be created or the loader fails.
-#[allow(
-    clippy::expect_used,
-    reason = "test helper: setup failures should abort the calling test"
-)]
 pub fn assert_load_missing_returns_empty<T>(
-    loader: impl Fn(
-        &std::path::Path,
-        &[crate::infra::config::category_matcher::Category],
-    ) -> anyhow::Result<Vec<T>>,
+    loader: impl Fn(&Path, &[Category]) -> anyhow::Result<Vec<T>>,
 ) {
-    use crate::infra::config::category_matcher::Category;
-    let dir = tempfile::tempdir().expect("failed to create temp dir");
-    let path = dir.path().join("nonexistent.toml");
-    let result = loader(&path, &[Category::Base]).expect("loader should not fail");
-    assert!(result.is_empty(), "missing file should produce empty list");
+    assert_load_missing_unfiltered_returns_empty(|path| loader(path, &[Category::Base]));
 }
 
 /// Assert that an unfiltered config loader returns an empty list for a
@@ -51,12 +40,8 @@ pub fn assert_load_missing_returns_empty<T>(
 /// # Panics
 ///
 /// Panics if the temp directory cannot be created or the loader fails.
-#[allow(
-    clippy::expect_used,
-    reason = "test helper: setup failures should abort the calling test"
-)]
 pub fn assert_load_missing_unfiltered_returns_empty<T>(
-    loader: impl Fn(&std::path::Path) -> anyhow::Result<Vec<T>>,
+    loader: impl Fn(&Path) -> anyhow::Result<Vec<T>>,
 ) {
     let dir = tempfile::tempdir().expect("failed to create temp dir");
     let path = dir.path().join("nonexistent.toml");
@@ -64,71 +49,79 @@ pub fn assert_load_missing_unfiltered_returns_empty<T>(
     assert!(result.is_empty(), "missing file should produce empty list");
 }
 
-/// Assert that a category-filtered loader rejects `content`, naming
-/// `expected_fragment` in the reported error.
-///
-/// Guards the invariant that a misspelled key is a hard parse error rather
-/// than a silently discarded value.
-///
-/// # Panics
-///
-/// Panics if the temp file cannot be written, the loader succeeds, or the
-/// error does not mention `expected_fragment`.
-#[allow(
-    clippy::expect_used,
-    reason = "test helper: setup failures should abort the calling test"
-)]
-pub fn assert_load_rejects<T>(
-    loader: impl Fn(
-        &std::path::Path,
-        &[crate::infra::config::category_matcher::Category],
-    ) -> anyhow::Result<T>,
-    content: &str,
-    expected_fragment: &str,
-) {
-    use crate::infra::config::category_matcher::Category;
-    let (_dir, path) = write_temp_toml(content);
-    let error = loader(&path, &[Category::Base])
-        .err()
-        .expect("loader should reject the document instead of ignoring the key");
-    assert_error_mentions(&error, expected_fragment);
+/// Keep each rejected document individually runnable. An optional `=> fragment`
+/// checks the full error chain (the loader wraps serde errors with file context).
+macro_rules! rejects_toml {
+    ($filename:literal, $load:expr; $($case:ident: $toml:literal $(=> $fragment:literal)?;)+) => {
+        $(
+            #[test]
+            fn $case() {
+                $crate::infra::config::test_helpers::assert_rejected(
+                    $filename, $load, $toml, &[$($fragment)?],
+                );
+            }
+        )+
+    };
 }
 
-/// Assert that an unfiltered loader rejects `content`, naming
-/// `expected_fragment` in the reported error.
-///
-/// # Panics
-///
-/// Panics if the temp file cannot be written, the loader succeeds, or the
-/// error does not mention `expected_fragment`.
-#[allow(
-    clippy::expect_used,
-    reason = "test helper: setup failures should abort the calling test"
-)]
-pub fn assert_load_unfiltered_rejects<T>(
-    loader: impl Fn(&std::path::Path) -> anyhow::Result<T>,
-    content: &str,
-    expected_fragment: &str,
+pub(crate) use rejects_toml;
+
+#[track_caller]
+pub(crate) fn assert_rejected<T: Debug>(
+    filename: &str,
+    load: impl FnOnce(&Path) -> anyhow::Result<T>,
+    toml: &str,
+    fragments: &[&str],
 ) {
-    let (_dir, path) = write_temp_toml(content);
-    let error = loader(&path)
-        .err()
-        .expect("loader should reject the document instead of ignoring the key");
-    assert_error_mentions(&error, expected_fragment);
+    let (_dir, path) = write_named_toml(filename, toml);
+    let error = load(&path).expect_err("loader accepted invalid TOML");
+    assert_mentions(&format!("{error:#}"), fragments);
 }
 
-/// Assert that `error` or any of its sources mentions `fragment`.
-///
-/// Loader errors are wrapped with file context, so the underlying serde
-/// message is only reachable through the source chain.
-///
-/// # Panics
-///
-/// Panics if no error in the chain mentions `fragment`.
-fn assert_error_mentions(error: &anyhow::Error, fragment: &str) {
-    let rendered = format!("{error:#}");
-    assert!(
-        rendered.contains(fragment),
-        "error should mention {fragment:?}, got: {rendered}"
+#[track_caller]
+pub(crate) fn assert_mentions(message: &str, fragments: &[&str]) {
+    for fragment in fragments {
+        assert!(
+            message.contains(fragment),
+            "missing {fragment:?}: {message}"
+        );
+    }
+}
+
+/// Some rules can report additional findings; only enforce a count when specified.
+#[track_caller]
+pub(crate) fn assert_messages(
+    diagnostics: &[Diagnostic],
+    count: Option<usize>,
+    fragments: &[&str],
+) {
+    if let Some(count) = count {
+        assert_eq!(diagnostics.len(), count, "{diagnostics:?}");
+    }
+    for fragment in fragments {
+        assert!(
+            diagnostics.iter().any(|d| d.message.contains(fragment)),
+            "missing {fragment:?}: {diagnostics:?}"
+        );
+    }
+}
+
+/// Check the zero-or-one conflict contract; return the conflict for domain-specific
+/// checks on declaration locations, identity and sensitive values.
+#[track_caller]
+pub(crate) fn assert_conflict(
+    case: impl Debug,
+    diagnostics: &[Diagnostic],
+    expected: bool,
+    code: DiagnosticCode,
+) -> Option<&Diagnostic> {
+    assert_eq!(
+        diagnostics.len(),
+        usize::from(expected),
+        "{case:?}: {diagnostics:?}"
     );
+    let diagnostic = diagnostics.first()?;
+    assert_eq!(diagnostic.code, code, "{case:?}");
+    assert_eq!(diagnostic.severity, Severity::Error, "{case:?}");
+    Some(diagnostic)
 }

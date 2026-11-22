@@ -64,6 +64,16 @@ mod tests {
     use super::*;
     use crate::test_helpers::symlink;
 
+    fn assert_platform_alias(entries: &[Symlink], kind: &str) {
+        let result = validate_unique_targets(entries);
+        if cfg!(windows) {
+            let error = result.unwrap_err();
+            assert!(error.to_string().contains(kind), "{error}");
+        } else {
+            result.unwrap();
+        }
+    }
+
     #[test]
     fn dot_aliases_collide_with_explicit_and_default_targets() {
         for pair in [
@@ -106,13 +116,7 @@ mod tests {
             let parent = symlink("config/example", None);
             let other = symlink("other", Some(target));
             for entries in [[parent.clone(), other.clone()], [other, parent]] {
-                let result = validate_unique_targets(&entries);
-                if cfg!(windows) {
-                    let error = result.unwrap_err();
-                    assert!(error.to_string().contains(kind), "{error}");
-                } else {
-                    result.unwrap();
-                }
+                assert_platform_alias(&entries, kind);
             }
         }
     }
@@ -123,12 +127,7 @@ mod tests {
             symlink("config/example", None),
             symlink("child", Some(r".config\.\example\settings")),
         ];
-        let result = validate_unique_targets(&entries);
-        if cfg!(windows) {
-            assert!(result.unwrap_err().to_string().contains("overlap"));
-        } else {
-            result.unwrap();
-        }
+        assert_platform_alias(&entries, "overlap");
     }
 
     #[test]

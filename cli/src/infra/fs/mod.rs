@@ -33,7 +33,7 @@ pub(crate) use mutation::open_in_place;
 pub(crate) use mutation::require_single_link;
 #[cfg(all(windows, test))]
 pub(crate) use place::check_private_fixture;
-pub(crate) use place::rename_noreplace;
+pub(crate) use place::{publish_with_ownership, rename_noreplace};
 pub use place::{rename_into_place, write_atomic, write_atomic_checked};
 pub(crate) use planned::PlannedDirectory;
 #[cfg(all(windows, test))]

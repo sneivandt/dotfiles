@@ -330,7 +330,7 @@ fn unavailable_elevation_prunes_roots_and_transitive_dependents() {
         root.task_id(),
         TaskAssessment::applicable().with_elevation(true),
     )]);
-    let (ctx, log) = sequential_context();
+    let (ctx, log) = execution_context(false);
     let ctx = ctx.with_non_interactive(true);
 
     let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).expect("valid graph");
@@ -378,7 +378,7 @@ fn unavailable_elevation_preserves_task_presentation_metadata() {
             TaskAssessment::applicable().with_elevation(true),
         )]);
         let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).expect("valid graph");
-        let (ctx, log) = sequential_context();
+        let (ctx, log) = execution_context(false);
         let ctx = ctx.with_non_interactive(true).with_require_complete(strict);
         let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
 
@@ -405,15 +405,7 @@ fn unavailable_elevation_preserves_task_presentation_metadata() {
     }
 }
 
-#[test]
-fn elevated_child_does_not_request_elevation_again() {
-    let trace = trace();
-    let task = ProbeTask::new("Home symlinks", 1, &trace);
-    let mut tasks: Vec<&dyn Task> = vec![&task];
-    let assessments = HashMap::from([(
-        task.task_id(),
-        TaskAssessment::applicable().with_elevation(true),
-    )]);
+fn elevated_child_context() -> (Context, Arc<Logger>) {
     let global = super::super::tests::global(&["--elevated-child", "--non-interactive"]);
     let runtime = crate::app::commands::RuntimePolicy::new(
         &global,
@@ -424,7 +416,7 @@ fn elevated_child_does_not_request_elevation_again() {
         false,
         false,
     );
-    let (base, log) = sequential_context();
+    let (base, log) = execution_context(false);
     let ctx = Context::new_with_policy(
         base.root().to_path_buf(),
         None,
@@ -435,6 +427,19 @@ fn elevated_child_does_not_request_elevation_again() {
         runtime.execution,
     )
     .unwrap();
+    (ctx, log)
+}
+
+#[test]
+fn elevated_child_does_not_request_elevation_again() {
+    let trace = trace();
+    let task = ProbeTask::new("Home symlinks", 1, &trace);
+    let mut tasks: Vec<&dyn Task> = vec![&task];
+    let assessments = HashMap::from([(
+        task.task_id(),
+        TaskAssessment::applicable().with_elevation(true),
+    )]);
+    let (ctx, log) = elevated_child_context();
     let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).unwrap();
     let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
     assert_eq!(
@@ -480,28 +485,8 @@ fn elevated_child_rejects_user_scoped_graphs_before_any_task_runs() {
                 selector,
                 ran: Arc::clone(&ran),
             };
-            let global = super::super::tests::global(&["--elevated-child", "--non-interactive"]);
-            let runtime = crate::app::commands::RuntimePolicy::new(
-                &global,
-                false,
-                crate::infra::env::MapEnv::new()
-                    .with("HOME", "/fixture-home")
-                    .into_handle(),
-                false,
-                false,
-            );
-            let (base, log) = sequential_context();
-            let ctx = Context::new_with_policy(
-                base.root().to_path_buf(),
-                None,
-                base.platform(),
-                Arc::<Logger>::clone(&log),
-                base.executor_arc(),
-                Arc::clone(&runtime.env),
-                runtime.execution,
-            )
-            .unwrap()
-            .with_parallel(parallel);
+            let (ctx, log) = elevated_child_context();
+            let ctx = ctx.with_parallel(parallel);
             let tasks: Vec<&dyn Task> = if selector == "developer-mode" {
                 vec![&machine]
             } else {
@@ -533,7 +518,7 @@ fn windows_broker_does_not_delegate_user_scoped_assessments() {
         TaskAssessment::applicable().with_elevation(true),
     )]);
     let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).unwrap();
-    let (base, log) = sequential_context();
+    let (base, log) = execution_context(false);
     let ctx = crate::test_helpers::make_windows_context(base.root().to_path_buf(), None)
         .with_non_interactive(true);
     let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
@@ -554,7 +539,7 @@ fn strict_completion_counts_unavailable_elevation_as_failure() {
         root.task_id(),
         TaskAssessment::applicable().with_elevation(true),
     )]);
-    let (ctx, log) = sequential_context();
+    let (ctx, log) = execution_context(false);
     let ctx = ctx.with_non_interactive(true).with_require_complete(true);
 
     let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).expect("valid graph");
@@ -567,13 +552,6 @@ fn strict_completion_counts_unavailable_elevation_as_failure() {
 
 fn trace() -> Trace {
     Arc::new(Mutex::new(Vec::new()))
-}
-
-fn entries(trace: &Trace) -> Vec<String> {
-    trace
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -685,16 +663,62 @@ fn cancelled_command() -> crate::infra::exec::ExecError {
     }
 }
 
-fn sequential_context() -> (Context, Arc<Logger>) {
-    let (ctx, log) = make_static_context(std::path::PathBuf::from("fixture-root"), None);
-    // Sequential execution keeps the recorded trace deterministic, so
-    // ordering assertions describe dependency edges rather than thread
-    // scheduling luck.
-    (ctx.with_parallel(false), log)
+fn execution_context(parallel: bool) -> (Context, Arc<Logger>) {
+    let (ctx, log) = make_static_context("fixture-root".into(), None);
+    (ctx.with_parallel(parallel), log)
 }
 
 fn as_dyn(tasks: &[ProbeTask]) -> Vec<&dyn Task> {
     tasks.iter().map(|task| -> &dyn Task { task }).collect()
+}
+
+struct ExecutionFixture {
+    trace: Trace,
+    ctx: Context,
+    log: Arc<Logger>,
+}
+
+impl ExecutionFixture {
+    fn with_parallel(parallel: bool) -> Self {
+        let (ctx, log) = execution_context(parallel);
+        Self {
+            trace: trace(),
+            ctx,
+            log,
+        }
+    }
+
+    fn task(&self, name: &str, id: u64) -> ProbeTask {
+        ProbeTask::new(name, id, &self.trace)
+    }
+
+    fn entries(&self) -> Vec<String> {
+        self.trace
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    fn run(&self, tasks: &[&dyn Task]) -> Result<()> {
+        run_tasks_to_completion(tasks.iter().copied(), &self.ctx, &self.log)
+    }
+
+    fn run_with_restart<'a>(
+        &self,
+        tasks: &[&'a dyn Task],
+        boundary: TaskId,
+        requested: impl FnOnce() -> bool + 'a,
+        action: impl FnOnce() + 'a,
+    ) -> Result<()> {
+        run_tasks_to_completion_with_restart(
+            tasks.iter().copied(),
+            &self.ctx,
+            &self.log,
+            boundary,
+            requested,
+            action,
+        )
+    }
 }
 
 #[test]
@@ -722,8 +746,8 @@ fn conditional_readiness_only_probes_for_current_or_prior_providers() {
     }
 
     for (selected, ran_earlier) in [(false, false), (true, false), (false, true)] {
-        let (ctx, log) = sequential_context();
-        let provider = ProbeTask::new("provider", 1, &trace());
+        let fixture = ExecutionFixture::with_parallel(false);
+        let provider = fixture.task("provider", 1);
         let providers = [numeric_task_id(99), provider.task_id()];
         let probes = Arc::new(AtomicUsize::new(0));
         let consumer =
@@ -740,7 +764,7 @@ fn conditional_readiness_only_probes_for_current_or_prior_providers() {
         if ran_earlier {
             prior.record(provider.task_id(), provider.name(), TaskOutcome::Cancelled);
         }
-        let summary = run_task_graph(tasks, &ctx, &log, Some(&prior)).unwrap();
+        let summary = run_task_graph(tasks, &fixture.ctx, &fixture.log, Some(&prior)).unwrap();
         assert_eq!(
             probes.load(Ordering::SeqCst),
             usize::from(selected || ran_earlier)
@@ -755,20 +779,19 @@ fn conditional_readiness_only_probes_for_current_or_prior_providers() {
 #[test]
 fn prepared_phase_rebuilds_after_elevation_without_reassessing() {
     for parallel in [false, true] {
-        let trace = trace();
-        let mut elevated = ProbeTask::new("elevated", 1, &trace);
+        let fixture = ExecutionFixture::with_parallel(parallel);
+        let ctx = fixture.ctx.with_non_interactive(true);
+        let mut elevated = fixture.task("elevated", 1);
         elevated.requires_elevation = true;
         let tasks = [
             elevated,
-            ProbeTask::new("dependent", 4, &trace).depends_on(&[3]),
-            ProbeTask::new("independent", 3, &trace),
-            ProbeTask::new("blocked", 2, &trace).depends_on(&[1]),
+            fixture.task("dependent", 4).depends_on(&[3]),
+            fixture.task("independent", 3),
+            fixture.task("blocked", 2).depends_on(&[1]),
         ];
-        let (ctx, log) = sequential_context();
-        let ctx = ctx.with_parallel(parallel).with_non_interactive(true);
-        let summary = run_task_graph(as_dyn(&tasks), &ctx, &log, None).unwrap();
+        let summary = run_task_graph(as_dyn(&tasks), &ctx, &fixture.log, None).unwrap();
 
-        assert_eq!(entries(&trace), ["independent", "dependent"]);
+        assert_eq!(fixture.entries(), ["independent", "dependent"]);
         for (task, expected) in tasks.iter().zip([
             TaskOutcome::Unmet,
             TaskOutcome::Satisfied,
@@ -942,18 +965,15 @@ proptest! {
 
 #[test]
 fn run_executes_tasks_in_dependency_order() {
-    let trace = trace();
-    let tasks = vec![
-        ProbeTask::new("second", 2, &trace).depends_on(&[1]),
-        ProbeTask::new("first", 1, &trace),
-    ];
-    let (ctx, log) = sequential_context();
+    let fixture = ExecutionFixture::with_parallel(false);
+    let second = fixture.task("second", 2).depends_on(&[1]);
+    let first = fixture.task("first", 1);
 
-    run_tasks_to_completion(as_dyn(&tasks), &ctx, &log).expect("run should succeed");
+    fixture.run(&[&second, &first]).expect("run should succeed");
 
     assert_eq!(
-        entries(&trace),
-        vec!["first".to_string(), "second".to_string()],
+        fixture.entries(),
+        ["first", "second"],
         "list order is not execution order; dependency edges are"
     );
 }
@@ -1003,37 +1023,33 @@ fn static_dependencies_complete_before_dependents_and_restart() {
                 prerequisite_completed: Arc::clone(&prerequisite.0),
                 completed: Arc::new(AtomicBool::new(false)),
             };
-            let trace = trace();
-            let mut remaining = ProbeTask::new("remaining", 3, &trace);
+            let fixture = ExecutionFixture::with_parallel(parallel);
+            let mut remaining = fixture.task("remaining", 3);
             remaining.dependencies = vec![dependent.task_id()];
             let tasks: [&dyn Task; 3] = [&remaining, &dependent, &prerequisite];
-            let (ctx, log) = sequential_context();
-            let ctx = ctx.with_parallel(parallel);
             let restarted = std::cell::Cell::new(false);
 
             if restart {
-                run_tasks_to_completion_with_restart(
-                    tasks,
-                    &ctx,
-                    &log,
+                fixture.run_with_restart(
+                    &tasks,
                     dependent.task_id(),
                     || true,
                     || {
                         assert!(prerequisite.0.load(Ordering::SeqCst));
                         assert!(dependent.completed.load(Ordering::SeqCst));
-                        assert!(entries(&trace).is_empty());
+                        assert!(fixture.entries().is_empty());
                         restarted.set(true);
                     },
                 )
             } else {
-                run_tasks_to_completion(tasks, &ctx, &log)
+                fixture.run(&tasks)
             }
             .unwrap_or_else(|error| panic!("parallel={parallel}, restart={restart}: {error:#}"));
 
             assert!(dependent.completed.load(Ordering::SeqCst));
             assert_eq!(restarted.get(), restart);
             assert_eq!(
-                entries(&trace),
+                fixture.entries(),
                 if restart { vec![] } else { vec!["remaining"] },
                 "parallel={parallel}, restart={restart}"
             );
@@ -1043,14 +1059,12 @@ fn static_dependencies_complete_before_dependents_and_restart() {
 
 #[test]
 fn run_reports_failure_count_when_a_task_fails() {
-    let trace = trace();
-    let tasks = vec![
-        ProbeTask::new("ok", 1, &trace),
-        ProbeTask::new("bad", 2, &trace).failing(),
-    ];
-    let (ctx, log) = sequential_context();
+    let fixture = ExecutionFixture::with_parallel(false);
+    let ok = fixture.task("ok", 1);
+    let bad = fixture.task("bad", 2).failing();
 
-    let error = run_tasks_to_completion(as_dyn(&tasks), &ctx, &log)
+    let error = fixture
+        .run(&[&ok, &bad])
         .expect_err("a failing task must fail the run");
 
     assert!(
@@ -1061,18 +1075,15 @@ fn run_reports_failure_count_when_a_task_fails() {
 
 #[test]
 fn run_blocks_dependents_of_a_failed_task() {
-    let trace = trace();
-    let tasks = vec![
-        ProbeTask::new("bad", 1, &trace).failing(),
-        ProbeTask::new("dependent", 2, &trace).depends_on(&[1]),
-    ];
-    let (ctx, log) = sequential_context();
+    let fixture = ExecutionFixture::with_parallel(false);
+    let bad = fixture.task("bad", 1).failing();
+    let dependent = fixture.task("dependent", 2).depends_on(&[1]);
 
-    let _error = run_tasks_to_completion(as_dyn(&tasks), &ctx, &log).unwrap_err();
+    let _error = fixture.run(&[&bad, &dependent]).unwrap_err();
 
     assert_eq!(
-        entries(&trace),
-        vec!["bad".to_string()],
+        fixture.entries(),
+        ["bad"],
         "a task whose prerequisite failed must not run"
     );
 }
@@ -1080,15 +1091,12 @@ fn run_blocks_dependents_of_a_failed_task() {
 #[test]
 fn run_rejects_a_cyclic_graph_before_executing_anything() {
     for parallel in [false, true] {
-        let trace = trace();
-        let tasks = vec![
-            ProbeTask::new("a", 1, &trace).depends_on(&[2]),
-            ProbeTask::new("b", 2, &trace).depends_on(&[1]),
-        ];
-        let (ctx, log) = sequential_context();
-        let ctx = ctx.with_parallel(parallel);
+        let fixture = ExecutionFixture::with_parallel(parallel);
+        let a = fixture.task("a", 1).depends_on(&[2]);
+        let b = fixture.task("b", 2).depends_on(&[1]);
 
-        let error = run_tasks_to_completion(as_dyn(&tasks), &ctx, &log)
+        let error = fixture
+            .run(&[&a, &b])
             .expect_err("a cycle must be rejected");
 
         assert_eq!(
@@ -1097,7 +1105,7 @@ fn run_rejects_a_cyclic_graph_before_executing_anything() {
             "parallel={parallel}"
         );
         assert!(
-            entries(&trace).is_empty(),
+            fixture.entries().is_empty(),
             "no task may run when graph validation fails: parallel={parallel}"
         );
     }
@@ -1106,18 +1114,17 @@ fn run_rejects_a_cyclic_graph_before_executing_anything() {
 #[test]
 fn run_reports_interruption_without_dispatch_when_already_cancelled() {
     for parallel in [false, true] {
-        let trace = trace();
-        let tasks = vec![ProbeTask::new("a", 1, &trace)];
-        let (ctx, log) = sequential_context();
-        let ctx = ctx.with_parallel(parallel);
-        ctx.cancellation_token().cancel();
+        let fixture = ExecutionFixture::with_parallel(parallel);
+        let a = fixture.task("a", 1);
+        fixture.ctx.cancellation_token().cancel();
 
-        let error = run_tasks_to_completion(as_dyn(&tasks), &ctx, &log)
+        let error = fixture
+            .run(&[&a])
             .expect_err("cancelled work must not succeed");
 
         assert!(error.is::<CommandInterrupted>(), "{error:#}");
         assert!(
-            entries(&trace).is_empty(),
+            fixture.entries().is_empty(),
             "cancellation before dispatch must skip every task"
         );
     }
@@ -1126,20 +1133,17 @@ fn run_reports_interruption_without_dispatch_when_already_cancelled() {
 #[test]
 fn typed_task_cancellation_interrupts_the_command_without_a_global_signal() {
     for parallel in [false, true] {
-        let trace = trace();
-        let tasks = vec![
-            ProbeTask::new("interrupted", 1, &trace).interrupted(),
-            ProbeTask::new("dependent", 2, &trace).depends_on(&[1]),
-        ];
-        let (ctx, log) = sequential_context();
-        let ctx = ctx.with_parallel(parallel);
+        let fixture = ExecutionFixture::with_parallel(parallel);
+        let interrupted = fixture.task("interrupted", 1).interrupted();
+        let dependent = fixture.task("dependent", 2).depends_on(&[1]);
 
-        let error = run_tasks_to_completion(as_dyn(&tasks), &ctx, &log)
+        let error = fixture
+            .run(&[&interrupted, &dependent])
             .expect_err("typed interruption must reach command completion");
 
         assert!(error.is::<CommandInterrupted>(), "{error:#}");
-        assert!(!ctx.is_cancelled(), "no global token was set");
-        assert_eq!(entries(&trace), ["interrupted"]);
+        assert!(!fixture.ctx.is_cancelled(), "no global token was set");
+        assert_eq!(fixture.entries(), ["interrupted"]);
     }
 }
 
@@ -1192,18 +1196,18 @@ fn partial_batch_cancellation_reaches_command_completion_with_its_counts() {
     }
 
     for parallel in [false, true] {
-        let trace = trace();
-        let task = BatchTask(Arc::clone(&trace));
-        let (ctx, log) = sequential_context();
-        let ctx = ctx.with_parallel(parallel);
-        let task_ref: &dyn Task = &task;
+        let fixture = ExecutionFixture::with_parallel(parallel);
+        let task = BatchTask(Arc::clone(&fixture.trace));
 
-        let error = run_tasks_to_completion([task_ref], &ctx, &log).unwrap_err();
+        let error = fixture.run(&[&task]).unwrap_err();
 
         assert!(error.is::<CommandInterrupted>(), "{error:#}");
-        assert!(!ctx.is_cancelled(), "the typed error must stand on its own");
-        assert_eq!(entries(&trace), ["resource 0", "resource 1"]);
-        let recorded = log.task_entries();
+        assert!(
+            !fixture.ctx.is_cancelled(),
+            "the typed error must stand on its own"
+        );
+        assert_eq!(fixture.entries(), ["resource 0", "resource 1"]);
+        let recorded = fixture.log.task_entries();
         assert_eq!(recorded.len(), 1);
         assert_eq!(recorded[0].status, TaskStatus::Interrupted);
         assert_eq!(
@@ -1221,30 +1225,27 @@ fn partial_batch_cancellation_reaches_command_completion_with_its_counts() {
 #[test]
 fn real_failures_win_over_cancellation_without_counting_it_as_failure() {
     for parallel in [false, true] {
-        let trace = trace();
-        let tasks = vec![
-            ProbeTask::new("failed", 1, &trace).failing(),
-            ProbeTask::new("interrupted", 2, &trace).interrupted(),
-        ];
-        let (ctx, log) = sequential_context();
-        let ctx = ctx.with_parallel(parallel);
+        let fixture = ExecutionFixture::with_parallel(parallel);
+        let failed = fixture.task("failed", 1).failing();
+        let interrupted = fixture.task("interrupted", 2).interrupted();
 
-        let error = run_tasks_to_completion(as_dyn(&tasks), &ctx, &log)
+        let error = fixture
+            .run(&[&failed, &interrupted])
             .expect_err("a failure and an interruption cannot succeed");
 
         assert!(error.is::<TaskFailures>(), "{error:#}");
         assert_eq!(error.to_string(), "1 task(s) failed");
-        assert_eq!(entries(&trace).len(), 2);
+        assert_eq!(fixture.entries().len(), 2);
     }
 }
 
 #[test]
 fn cancellation_does_not_hide_an_unrelated_failure_from_the_same_task() {
-    let trace = trace();
-    let tasks = vec![ProbeTask::new("failed", 1, &trace).cancelling().failing()];
-    let (ctx, log) = sequential_context();
+    let fixture = ExecutionFixture::with_parallel(false);
+    let failed = fixture.task("failed", 1).cancelling().failing();
 
-    let error = run_tasks_to_completion(as_dyn(&tasks), &ctx, &log)
+    let error = fixture
+        .run(&[&failed])
         .expect_err("a real failure still wins when the token is set");
 
     assert!(error.is::<TaskFailures>(), "{error:#}");
@@ -1253,12 +1254,10 @@ fn cancellation_does_not_hide_an_unrelated_failure_from_the_same_task() {
 
 #[test]
 fn completed_task_stays_satisfied_but_cancelled_command_does_not_succeed() {
-    let trace = trace();
-    let task = ProbeTask::new("completed", 1, &trace).cancelling();
-    let (ctx, log) = sequential_context();
-    let tasks: Vec<&dyn Task> = vec![&task];
+    let fixture = ExecutionFixture::with_parallel(false);
+    let task = fixture.task("completed", 1).cancelling();
 
-    let summary = run_task_graph(tasks, &ctx, &log, None).unwrap();
+    let summary = run_task_graph(vec![&task], &fixture.ctx, &fixture.log, None).unwrap();
 
     assert_eq!(
         summary.outcome(&task.task_id()),
@@ -1266,10 +1265,12 @@ fn completed_task_stays_satisfied_but_cancelled_command_does_not_succeed() {
     );
     assert!(!summary.was_interrupted());
     assert_eq!(summary.failure_count(), 0);
-    let error = finish_run(&ctx, &log, &summary).unwrap_err();
+    let error = finish_run(&fixture.ctx, &fixture.log, &summary).unwrap_err();
     assert!(error.is::<CommandInterrupted>(), "{error:#}");
     assert!(
-        log.captured_lines()
+        fixture
+            .log
+            .captured_lines()
             .iter()
             .any(|line| line.starts_with("Interrupted · ")),
         "late cancellation must not claim success"
@@ -1278,7 +1279,7 @@ fn completed_task_stays_satisfied_but_cancelled_command_does_not_succeed() {
 
 #[test]
 fn completion_uses_scheduler_outcomes_even_without_presentation_records() {
-    let (ctx, log) = sequential_context();
+    let (ctx, log) = execution_context(false);
     let mut summary = crate::engine::scheduler::ExecutionSummary::default();
     summary.record(numeric_task_id(1), "internal task", TaskOutcome::Cancelled);
 
@@ -1297,7 +1298,7 @@ fn completion_uses_scheduler_outcomes_even_without_presentation_records() {
 
 #[test]
 fn hidden_failure_precedes_cancellation_in_both_result_and_totals() {
-    let (ctx, log) = sequential_context();
+    let (ctx, log) = execution_context(false);
     ctx.cancellation_token().cancel();
     let mut summary = crate::engine::scheduler::ExecutionSummary::default();
     summary.record(numeric_task_id(1), "internal failure", TaskOutcome::Failed);
@@ -1318,17 +1319,18 @@ fn hidden_failure_precedes_cancellation_in_both_result_and_totals() {
 
 #[test]
 fn run_accepts_an_empty_task_list() {
-    let (ctx, log) = sequential_context();
-    run_tasks_to_completion(Vec::<&dyn Task>::new(), &ctx, &log)
+    let fixture = ExecutionFixture::with_parallel(false);
+    fixture
+        .run(&[])
         .expect("an empty graph is a successful no-op");
 }
 
 #[test]
 fn cancelled_empty_plan_is_interrupted() {
-    let (ctx, log) = sequential_context();
-    ctx.cancellation_token().cancel();
+    let fixture = ExecutionFixture::with_parallel(false);
+    fixture.ctx.cancellation_token().cancel();
 
-    let error = run_tasks_to_completion(Vec::<&dyn Task>::new(), &ctx, &log).unwrap_err();
+    let error = fixture.run(&[]).unwrap_err();
 
     assert!(error.is::<CommandInterrupted>(), "{error:#}");
 }
@@ -1337,82 +1339,63 @@ fn cancelled_empty_plan_is_interrupted() {
 
 #[test]
 fn restart_runs_after_the_boundary_closure_and_stops_the_parent() {
-    let trace = trace();
-    let tasks = vec![
-        ProbeTask::new("before-boundary", 1, &trace),
-        ProbeTask::new("boundary", 2, &trace).depends_on(&[1]),
-        ProbeTask::new("after-boundary", 3, &trace).depends_on(&[2]),
-    ];
-    let (ctx, log) = sequential_context();
-    let restarted = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let action_flag = Arc::clone(&restarted);
+    let fixture = ExecutionFixture::with_parallel(false);
+    let before = fixture.task("before-boundary", 1);
+    let boundary = fixture.task("boundary", 2).depends_on(&[1]);
+    let after = fixture.task("after-boundary", 3).depends_on(&[2]);
+    let restarted = std::cell::Cell::new(false);
 
-    run_tasks_to_completion_with_restart(
-        as_dyn(&tasks),
-        &ctx,
-        &log,
-        numeric_task_id(2),
-        || true,
-        move || action_flag.store(true, Ordering::SeqCst),
-    )
-    .expect("restart handoff should succeed");
+    fixture
+        .run_with_restart(
+            &[&before, &boundary, &after],
+            boundary.task_id(),
+            || true,
+            || restarted.set(true),
+        )
+        .expect("restart handoff should succeed");
 
-    assert!(restarted.load(Ordering::SeqCst));
+    assert!(restarted.get());
     assert_eq!(
-        entries(&trace),
-        vec!["before-boundary".to_string(), "boundary".to_string()],
+        fixture.entries(),
+        ["before-boundary", "boundary"],
         "the parent must not execute work after handing off to the child"
     );
 }
 
 #[test]
 fn unsatisfied_restart_condition_runs_the_remaining_graph() {
-    let trace = trace();
-    let tasks = vec![
-        ProbeTask::new("boundary", 1, &trace),
-        ProbeTask::new("remaining", 2, &trace).depends_on(&[1]),
-    ];
-    let (ctx, log) = sequential_context();
+    let fixture = ExecutionFixture::with_parallel(false);
+    let boundary = fixture.task("boundary", 1);
+    let remaining = fixture.task("remaining", 2).depends_on(&[1]);
 
-    run_tasks_to_completion_with_restart(
-        as_dyn(&tasks),
-        &ctx,
-        &log,
-        numeric_task_id(1),
-        || false,
-        || panic!("restart action must not run"),
-    )
-    .expect("run should continue without a restart");
+    fixture
+        .run_with_restart(
+            &[&boundary, &remaining],
+            boundary.task_id(),
+            || false,
+            || panic!("restart action must not run"),
+        )
+        .expect("run should continue without a restart");
 
-    assert_eq!(
-        entries(&trace),
-        vec!["boundary".to_string(), "remaining".to_string()]
-    );
+    assert_eq!(fixture.entries(), ["boundary", "remaining"]);
 }
 
 #[test]
 fn missing_boundary_falls_back_to_one_graph_without_restart() {
     for parallel in [false, true] {
-        let trace = trace();
-        let tasks = vec![ProbeTask::new("static", 1, &trace)];
-        let (ctx, log) = sequential_context();
-        let ctx = ctx.with_parallel(parallel);
+        let fixture = ExecutionFixture::with_parallel(parallel);
+        let task = fixture.task("static", 1);
 
-        run_tasks_to_completion_with_restart(
-            as_dyn(&tasks),
-            &ctx,
-            &log,
-            numeric_task_id(404),
-            || true,
-            || panic!("a filtered boundary must not trigger restart"),
-        )
-        .expect("missing boundary should use a single graph");
+        fixture
+            .run_with_restart(
+                &[&task],
+                numeric_task_id(404),
+                || true,
+                || panic!("a filtered boundary must not trigger restart"),
+            )
+            .expect("missing boundary should use a single graph");
 
-        assert_eq!(
-            entries(&trace),
-            vec!["static".to_string()],
-            "parallel={parallel}"
-        );
+        assert_eq!(fixture.entries(), ["static"], "parallel={parallel}");
     }
 }
 
@@ -1420,33 +1403,27 @@ fn missing_boundary_falls_back_to_one_graph_without_restart() {
 fn failed_boundary_suppresses_restart() {
     for parallel in [false, true] {
         for failure in [ProbeFailure::Error, ProbeFailure::Result] {
-            let trace = trace();
-            let mut boundary = ProbeTask::new("boundary", 1, &trace);
+            let fixture = ExecutionFixture::with_parallel(parallel);
+            let mut boundary = fixture.task("boundary", 1);
             boundary.failure = Some(failure);
-            let tasks = vec![
-                boundary,
-                ProbeTask::new("remaining", 2, &trace).depends_on(&[1]),
-            ];
-            let (ctx, log) = sequential_context();
-            let ctx = ctx.with_parallel(parallel);
+            let remaining = fixture.task("remaining", 2).depends_on(&[1]);
 
-            let error = run_tasks_to_completion_with_restart(
-                as_dyn(&tasks),
-                &ctx,
-                &log,
-                numeric_task_id(1),
-                || true,
-                || panic!("a failed boundary must not trigger restart"),
-            )
-            .expect_err("boundary failure must fail the run");
+            let error = fixture
+                .run_with_restart(
+                    &[&boundary, &remaining],
+                    boundary.task_id(),
+                    || true,
+                    || panic!("a failed boundary must not trigger restart"),
+                )
+                .expect_err("boundary failure must fail the run");
 
             assert!(
                 error.downcast_ref::<TaskFailures>().is_some(),
                 "parallel={parallel}, failure={failure:?}: {error:#}"
             );
             assert_eq!(
-                entries(&trace),
-                vec!["boundary".to_string()],
+                fixture.entries(),
+                ["boundary"],
                 "parallel={parallel}, failure={failure:?}"
             );
         }
@@ -1455,120 +1432,104 @@ fn failed_boundary_suppresses_restart() {
 
 #[test]
 fn failed_boundary_stops_independent_tasks_when_it_changed_restart_inputs() {
-    let trace = trace();
-    let tasks = vec![
-        ProbeTask::new("partially-updated-boundary", 1, &trace).failing(),
-        ProbeTask::new("independent", 2, &trace),
-    ];
-    let (ctx, log) = sequential_context();
+    let fixture = ExecutionFixture::with_parallel(false);
+    let boundary = fixture.task("partially-updated-boundary", 1).failing();
+    let independent = fixture.task("independent", 2);
 
-    let error = run_tasks_to_completion_with_restart(
-        as_dyn(&tasks),
-        &ctx,
-        &log,
-        numeric_task_id(1),
-        || true,
-        || panic!("a failed update must be reported before a re-exec is attempted"),
-    )
-    .expect_err("the boundary failure must fail the run");
+    let error = fixture
+        .run_with_restart(
+            &[&boundary, &independent],
+            boundary.task_id(),
+            || true,
+            || panic!("a failed update must be reported before a re-exec is attempted"),
+        )
+        .expect_err("the boundary failure must fail the run");
 
     assert!(error.downcast_ref::<TaskFailures>().is_some());
     assert_eq!(
-        entries(&trace),
-        vec!["partially-updated-boundary".to_string()],
+        fixture.entries(),
+        ["partially-updated-boundary"],
         "remaining tasks must not use inputs loaded before the partial update"
     );
 }
 
 #[test]
 fn cancellation_suppresses_restart() {
-    let trace = trace();
-    let tasks = vec![ProbeTask::new("boundary", 1, &trace)];
-    let (ctx, log) = sequential_context();
-    ctx.cancellation_token().cancel();
+    let fixture = ExecutionFixture::with_parallel(false);
+    let boundary = fixture.task("boundary", 1);
+    fixture.ctx.cancellation_token().cancel();
 
-    let error = run_tasks_to_completion_with_restart(
-        as_dyn(&tasks),
-        &ctx,
-        &log,
-        numeric_task_id(1),
-        || panic!("a cancelled run must not inspect restart inputs"),
-        || panic!("a cancelled run must not trigger restart"),
-    )
-    .expect_err("a cancelled run must be interrupted");
+    let error = fixture
+        .run_with_restart(
+            &[&boundary],
+            boundary.task_id(),
+            || panic!("a cancelled run must not inspect restart inputs"),
+            || panic!("a cancelled run must not trigger restart"),
+        )
+        .expect_err("a cancelled run must be interrupted");
 
     assert!(error.is::<CommandInterrupted>(), "{error:#}");
-    assert!(entries(&trace).is_empty());
+    assert!(fixture.entries().is_empty());
 }
 
 #[test]
 fn typed_interruption_stops_the_next_phase_and_suppresses_restart() {
-    let trace = trace();
-    let tasks = vec![
-        ProbeTask::new("boundary", 1, &trace).interrupted(),
-        ProbeTask::new("independent", 2, &trace),
-    ];
-    let (ctx, log) = sequential_context();
+    let fixture = ExecutionFixture::with_parallel(false);
+    let boundary = fixture.task("boundary", 1).interrupted();
+    let independent = fixture.task("independent", 2);
 
-    let error = run_tasks_to_completion_with_restart(
-        as_dyn(&tasks),
-        &ctx,
-        &log,
-        numeric_task_id(1),
-        || panic!("an interrupted phase must not inspect restart inputs"),
-        || panic!("an interrupted phase must not restart"),
-    )
-    .unwrap_err();
+    let error = fixture
+        .run_with_restart(
+            &[&boundary, &independent],
+            boundary.task_id(),
+            || panic!("an interrupted phase must not inspect restart inputs"),
+            || panic!("an interrupted phase must not restart"),
+        )
+        .unwrap_err();
 
     assert!(error.is::<CommandInterrupted>(), "{error:#}");
-    assert!(!ctx.is_cancelled());
-    assert_eq!(entries(&trace), ["boundary"]);
+    assert!(!fixture.ctx.is_cancelled());
+    assert_eq!(fixture.entries(), ["boundary"]);
 }
 
 #[test]
 fn cancellation_after_boundary_completion_suppresses_restart() {
-    let trace = trace();
-    let tasks = vec![
-        ProbeTask::new("boundary", 1, &trace).cancelling(),
-        ProbeTask::new("independent", 2, &trace),
-    ];
-    let (ctx, log) = sequential_context();
+    let fixture = ExecutionFixture::with_parallel(false);
+    let boundary = fixture.task("boundary", 1).cancelling();
+    let independent = fixture.task("independent", 2);
 
-    let error = run_tasks_to_completion_with_restart(
-        as_dyn(&tasks),
-        &ctx,
-        &log,
-        numeric_task_id(1),
-        || panic!("a cancelled phase must not inspect restart inputs"),
-        || panic!("a completed boundary must not restart a cancelled command"),
-    )
-    .unwrap_err();
+    let error = fixture
+        .run_with_restart(
+            &[&boundary, &independent],
+            boundary.task_id(),
+            || panic!("a cancelled phase must not inspect restart inputs"),
+            || panic!("a completed boundary must not restart a cancelled command"),
+        )
+        .unwrap_err();
 
     assert!(error.is::<CommandInterrupted>(), "{error:#}");
-    assert_eq!(entries(&trace), ["boundary"]);
+    assert_eq!(fixture.entries(), ["boundary"]);
 }
 
 #[test]
 fn cancellation_during_restart_check_suppresses_the_action() {
-    let trace = trace();
-    let tasks = vec![ProbeTask::new("boundary", 1, &trace)];
-    let (ctx, log) = sequential_context();
+    let fixture = ExecutionFixture::with_parallel(false);
+    let boundary = fixture.task("boundary", 1);
 
-    let error = run_tasks_to_completion_with_restart(
-        as_dyn(&tasks),
-        &ctx,
-        &log,
-        numeric_task_id(1),
-        || {
-            ctx.cancellation_token().cancel();
-            true
-        },
-        || panic!("a late cancellation must still suppress restart"),
-    )
-    .unwrap_err();
+    let error = fixture
+        .run_with_restart(
+            &[&boundary],
+            boundary.task_id(),
+            || {
+                fixture.ctx.cancellation_token().cancel();
+                true
+            },
+            || panic!("a late cancellation must still suppress restart"),
+        )
+        .unwrap_err();
 
     assert!(error.is::<CommandInterrupted>(), "{error:#}");
-    assert_eq!(entries(&trace), ["boundary"]);
+    assert_eq!(fixture.entries(), ["boundary"]);
 }
 
 #[test]

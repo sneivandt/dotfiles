@@ -7,6 +7,7 @@
 
 pub mod catalog;
 pub mod cli;
+mod cli_words;
 pub mod commands;
 pub mod completion;
 pub mod config;

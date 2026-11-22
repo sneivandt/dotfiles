@@ -131,11 +131,7 @@ fn check_command_fails_on_config_warnings() {
     .args(["--no-symbols", "--fail-on-skip"])
     .output()
     .unwrap();
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let text = common::combined_output(&output);
     assert!(
         !output.status.success(),
         "check command should fail on warnings: {text}"
@@ -170,11 +166,7 @@ fn check_and_update_reject_conflicting_system_file_paths_before_tasks_run() {
             command.arg("--dry-run");
         }
         let output = command.output().unwrap();
-        let text = format!(
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let text = common::combined_output(&output);
         assert!(!output.status.success(), "{verb}: {text}");
         assert!(
             text.contains(
@@ -219,11 +211,7 @@ fn check_rejects_malformed_system_fragments_without_reading_targets() {
     )
     .output()
     .unwrap();
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let text = common::combined_output(&output);
     assert!(!output.status.success(), "{text}");
     for name in [
         "broken.toml",

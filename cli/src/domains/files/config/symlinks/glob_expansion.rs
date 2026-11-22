@@ -182,6 +182,7 @@ fn path_to_config_string(path: &Path) -> String {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use crate::infra::config::test_helpers::{assert_mentions, assert_messages};
     use crate::test_helpers::symlink;
 
     #[test]
@@ -242,11 +243,7 @@ mod tests {
                 expected
             );
             let diagnostics = super::super::validate(&entries, fixture.path());
-            assert!(
-                diagnostics
-                    .iter()
-                    .any(|diagnostic| diagnostic.message.contains("dangling"))
-            );
+            assert_messages(&diagnostics, None, &["dangling"]);
         }
     }
 
@@ -275,10 +272,7 @@ mod tests {
             std::io::ErrorKind::PermissionDenied
         );
         let error = format!("{:#}", result.unwrap_err());
-        assert!(
-            error.contains("inspect glob source") && error.contains("denied/nested"),
-            "{error}"
-        );
+        assert_mentions(&error, &["inspect glob source", "denied/nested"]);
     }
 
     #[test]

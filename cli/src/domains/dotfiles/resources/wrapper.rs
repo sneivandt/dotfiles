@@ -181,23 +181,22 @@ impl Resource for WrapperResource {
         #[cfg(unix)]
         crate::infra::fs::set_executable(staged.path())?;
         self.verify_baseline(before.as_deref())?;
-        // Retain both outcomes if publication or the final ledger write is interrupted.
-        let hash = crate::infra::fs::content_hash(&self.content);
-        let mut ownership = format!("{hash}\n");
-        if let Some(contents) = &before {
-            ownership.push_str(&crate::infra::fs::content_hash(contents));
-            ownership.push('\n');
-        }
-        crate::infra::fs::write_atomic(&self.ownership_path(), ownership)?;
-        self.verify_baseline(before.as_deref())?;
-        if before.is_none() {
-            std::fs::hard_link(staged.path(), &self.target)?;
-        } else {
-            crate::infra::fs::rename_into_place(staged.path(), &self.target)?;
-            staged.persist();
-        }
-        crate::infra::fs::write_atomic(&self.ownership_path(), format!("{hash}\n"))?;
-        Ok(ResourceChange::Applied)
+        crate::infra::fs::publish_with_ownership(
+            &self.ownership_path(),
+            before.as_deref(),
+            self.content.as_bytes(),
+            || {
+                self.verify_baseline(before.as_deref())?;
+                if before.is_none() {
+                    std::fs::hard_link(staged.path(), &self.target)?;
+                } else {
+                    crate::infra::fs::rename_into_place(staged.path(), &self.target)?;
+                    staged.persist();
+                }
+                Ok(())
+            },
+        )
+        .map(|()| ResourceChange::Applied)
     }
 }
 

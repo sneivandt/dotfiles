@@ -68,6 +68,26 @@ fn colored_opts() -> RowOpts {
     }
 }
 
+fn assert_hidden_row(task: &TaskEntry) {
+    for verbose in [false, true] {
+        let opts = RowOpts {
+            verbose,
+            ..plain_opts()
+        };
+        assert!(
+            task_result_lines(task, &[], opts).is_empty(),
+            "{task:?}, verbose={verbose}"
+        );
+    }
+}
+
+// Each totals fixture specifies just the counters it exercises.
+macro_rules! counts {
+    ($($field:ident: $value:expr),* $(,)?) => {
+        SummaryCounts { $($field: $value,)* ..Default::default() }
+    };
+}
+
 /// Count/vocabulary fixtures use successful completion; disposition is tested separately.
 fn format_summary_lines(
     counts: SummaryCounts,
@@ -130,15 +150,7 @@ fn current_only_summary_is_bold_without_a_contradictory_no_changes_label() {
         for ansi in [false, true] {
             let style = StyleChoice::auto(ansi, false);
             assert_eq!(
-                format_summary_lines(
-                    SummaryCounts {
-                        ok: count,
-                        ..SummaryCounts::default()
-                    },
-                    SummaryMode::Standard,
-                    "3.4s",
-                    style,
-                ),
+                format_summary_lines(counts!(ok: count), SummaryMode::Standard, "3.4s", style,),
                 [format!(
                     "{} {} {} {} {}",
                     style.paint(crate::infra::logging::style::TextStyle::Dim, "Tasks"),
@@ -181,27 +193,20 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
     for (case, counts, elapsed, expected) in [
         (
             "standard_error_summary_starts_with_failed_count",
-            SummaryCounts {
-                ok: 1,
-                failed: 1,
-                ..SummaryCounts::default()
-            },
+            counts!(ok: 1, failed: 1),
             "7.2s",
             "Tasks · 1 failed · 1 unchanged · 7.2s",
         ),
         (
             "standard_summary_groups_task_and_action_counts",
             SummaryCounts {
-                changed: 3,
-                skipped: 1,
-                failed: 1,
                 actions: ActionCounts {
                     applied: 87,
                     skipped: 2,
                     failed: 1,
                     ..ActionCounts::default()
                 },
-                ..SummaryCounts::default()
+                ..counts!(changed: 3, skipped: 1, failed: 1)
             },
             "2.0s",
             "Tasks · 1 failed · 1 skipped · 3 changed · 2.0s",
@@ -209,46 +214,36 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
         (
             "dry_run_summary_pairs_affected_and_planned_counts",
             SummaryCounts {
-                dry_run: 1,
                 actions: ActionCounts {
                     planned: 81,
                     ..ActionCounts::default()
                 },
-                ..SummaryCounts::default()
+                ..counts!(dry_run: 1)
             },
             "0.8s",
             "Tasks · 1 planned · 0.8s",
         ),
         (
             "dry_run_summary_counts_unquantified_affected_tasks",
-            SummaryCounts {
-                dry_run: 2,
-                ..SummaryCounts::default()
-            },
+            counts!(dry_run: 2),
             "0.8s",
             "Tasks · 2 planned · 0.8s",
         ),
         (
             "summary_totals_account_for_every_reported_task",
             SummaryCounts {
-                changed: 2,
-                ok: 15,
-                skipped: 1,
                 actions: ActionCounts {
                     applied: 4,
                     ..ActionCounts::default()
                 },
-                ..SummaryCounts::default()
+                ..counts!(changed: 2, ok: 15, skipped: 1)
             },
             "2.3s",
             "Tasks · 1 skipped · 2 changed · 15 unchanged · 2.3s",
         ),
         (
             "standard_summary_omits_actions_when_all_action_counts_are_zero",
-            SummaryCounts {
-                changed: 2,
-                ..SummaryCounts::default()
-            },
+            counts!(changed: 2),
             "1.0s",
             "Tasks · 2 changed · 1.0s",
         ),
@@ -263,12 +258,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
 
 #[test]
 fn check_summary_uses_check_vocabulary_and_omits_not_run() {
-    let counts = SummaryCounts {
-        passed: 7,
-        skipped: 2,
-        failed: 1,
-        ..SummaryCounts::default()
-    };
+    let counts = counts!(passed: 7, skipped: 2, failed: 1);
     assert_eq!(
         format_summary_lines(counts, SummaryMode::Check, "3.4s", StyleChoice::plain()),
         ["Checks: 1 failed · 2 skipped · 7 passed · 3.4s"],
@@ -359,18 +349,7 @@ fn restart_notice_supersedes_changed_task_row() {
     let task = task_entry("Dotfiles repository", TaskStatus::Changed, None)
         .with_result_display(crate::infra::logging::TaskResultDisplay::RestartNotice);
 
-    assert!(task_result_lines(&task, &[], plain_opts()).is_empty());
-    assert!(
-        task_result_lines(
-            &task,
-            &[],
-            RowOpts {
-                verbose: true,
-                ..plain_opts()
-            }
-        )
-        .is_empty()
-    );
+    assert_hidden_row(&task);
 }
 
 #[test]
@@ -633,18 +612,7 @@ fn internal_tasks_never_produce_console_rows() {
         SummaryCounts::from_tasks(std::slice::from_ref(&task)),
         SummaryCounts::default()
     );
-    assert!(task_result_lines(&task, &[], plain_opts()).is_empty());
-    assert!(
-        task_result_lines(
-            &task,
-            &[],
-            RowOpts {
-                verbose: true,
-                ..plain_opts()
-            }
-        )
-        .is_empty()
-    );
+    assert_hidden_row(&task);
 }
 
 #[test]
@@ -653,18 +621,7 @@ fn unstarted_interruptions_do_not_produce_rows_or_totals() {
     let mut started = task_entry("started", TaskStatus::Interrupted, Some("interrupted"));
     started.duration = Some(Duration::from_millis(100));
 
-    assert!(task_result_lines(&queued, &[], plain_opts()).is_empty());
-    assert!(
-        task_result_lines(
-            &queued,
-            &[],
-            RowOpts {
-                verbose: true,
-                ..plain_opts()
-            }
-        )
-        .is_empty()
-    );
+    assert_hidden_row(&queued);
     assert_eq!(
         task_result_lines(&started, &[], plain_opts()),
         ["⊘ started · interrupted"]
@@ -786,33 +743,6 @@ fn blocked_and_interrupted_counts_do_not_become_skips_or_failures() {
         format_summary_lines(counts, SummaryMode::Check, "1.0s", StyleChoice::plain()),
         ["Checks: 1 interrupted · 1 blocked · 1 skipped · 1.0s"]
     );
-}
-
-#[test]
-fn incomplete_work_never_claims_no_changes() {
-    for counts in [
-        SummaryCounts {
-            skipped: 1,
-            ..SummaryCounts::default()
-        },
-        SummaryCounts {
-            blocked: 1,
-            ..SummaryCounts::default()
-        },
-        SummaryCounts {
-            interrupted: 1,
-            ..SummaryCounts::default()
-        },
-        SummaryCounts {
-            failed: 1,
-            ..SummaryCounts::default()
-        },
-    ] {
-        let lines =
-            format_summary_lines(counts, SummaryMode::Standard, "1.0s", StyleChoice::plain());
-        assert!(!lines[0].contains("No applicable tasks"), "{lines:?}");
-        assert!(!lines[0].contains("unchanged"), "{lines:?}");
-    }
 }
 
 #[test]
@@ -981,10 +911,7 @@ fn final_summary_preserves_disposition_and_emphasis_without_a_symbol_prefix() {
             ),
             (
                 CompletionDisposition::Succeeded,
-                SummaryCounts {
-                    skipped: 1,
-                    ..SummaryCounts::default()
-                },
+                counts!(skipped: 1),
                 "1;33",
                 "1 skipped",
             ),
@@ -1130,34 +1057,22 @@ fn completed_actions_align_visible_subjects_without_forcing_wrap() {
 fn incomplete_summaries_report_each_outcome_without_duplicate_disposition_text() {
     for (counts, incomplete_disposition, text) in [
         (
-            SummaryCounts {
-                failed: 1,
-                ..SummaryCounts::default()
-            },
+            counts!(failed: 1),
             CompletionDisposition::Failed,
             "1 failed",
         ),
         (
-            SummaryCounts {
-                interrupted: 1,
-                ..SummaryCounts::default()
-            },
+            counts!(interrupted: 1),
             CompletionDisposition::Interrupted,
             "1 interrupted",
         ),
         (
-            SummaryCounts {
-                blocked: 1,
-                ..SummaryCounts::default()
-            },
+            counts!(blocked: 1),
             CompletionDisposition::Succeeded,
             "1 blocked",
         ),
         (
-            SummaryCounts {
-                skipped: 1,
-                ..SummaryCounts::default()
-            },
+            counts!(skipped: 1),
             CompletionDisposition::Succeeded,
             "1 skipped",
         ),

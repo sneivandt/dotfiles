@@ -615,11 +615,7 @@ fn inherited_hooks_path_blocks_installation_without_changing_shared_files() {
         .unwrap();
     let output = command.output().unwrap();
     assert!(!output.status.success());
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let text = common::combined_output(&output);
     assert!(
         text.contains("inherited from shared Git configuration"),
         "{text}"

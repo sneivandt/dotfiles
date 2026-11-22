@@ -6,3 +6,6 @@ pub mod registry;
 pub mod resources;
 pub mod system_files;
 pub mod systemd_units;
+
+#[cfg(test)]
+mod systemd_fixture;

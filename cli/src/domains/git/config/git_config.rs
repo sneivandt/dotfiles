@@ -138,7 +138,9 @@ pub(crate) const GIT_CONFIG_TOML: &str = "git-config.toml";
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_helpers::{
+        assert_conflict, assert_mentions, assert_messages, rejects_toml, write_temp_toml,
+    };
     use crate::infra::config::test_load_missing_returns_empty;
 
     #[test]
@@ -174,152 +176,81 @@ settings = [{ key = "core.autocrlf", value = "false" }]
     // validate
     // ------------------------------------------------------------------
 
-    #[test]
-    fn validate_valid_setting_produces_no_warnings() {
-        let settings = vec![GitSetting {
-            key: "core.autocrlf".to_string(),
-            value: "false".to_string(),
+    fn setting(key: &str, value: &str) -> GitSetting {
+        GitSetting {
+            key: key.into(),
+            value: value.into(),
             origin: None,
-        }];
-        assert!(validate(&settings).is_empty());
+        }
     }
 
     #[test]
-    fn validate_detects_empty_key() {
-        let settings = vec![GitSetting {
-            key: "  ".to_string(),
-            value: "false".to_string(),
-            origin: None,
-        }];
-        let warnings = validate(&settings);
-        assert_eq!(warnings.len(), 2);
-        assert!(warnings.iter().any(|w| w.message.contains("key is empty")));
-    }
-
-    #[test]
-    fn validate_detects_empty_value() {
-        let settings = vec![GitSetting {
-            key: "core.autocrlf".to_string(),
-            value: "  ".to_string(),
-            origin: None,
-        }];
-        let warnings = validate(&settings);
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("value is empty"));
-    }
-
-    #[test]
-    fn validate_detects_missing_section_separator() {
-        let settings = vec![GitSetting {
-            key: "autocrlf".to_string(),
-            value: "false".to_string(),
-            origin: None,
-        }];
-        let warnings = validate(&settings);
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("section separator"));
-    }
-
-    #[test]
-    fn validate_empty_settings_produces_no_warnings() {
+    fn validate_git_settings() {
+        for (entry, count, message) in [
+            (setting("  ", "false"), 2, "key is empty"),
+            (setting("core.autocrlf", "  "), 1, "value is empty"),
+            (setting("autocrlf", "false"), 1, "section separator"),
+        ] {
+            assert_messages(&validate(&[entry]), Some(count), &[message]);
+        }
+        assert!(validate(&[setting("core.autocrlf", "false")]).is_empty());
         assert!(validate(&[]).is_empty());
     }
 
     #[test]
     fn conflicting_values_respect_git_key_identity() {
-        let cases = [
+        for (name, first, second, conflict) in [
             (
                 "different values",
-                "core.editor",
-                "core.editor",
-                "vim",
-                "nano",
+                setting("core.editor", "vim"),
+                setting("core.editor", "nano"),
                 true,
             ),
             (
                 "identical values",
-                "core.editor",
-                "CORE.EDITOR",
-                "vim",
-                "vim",
+                setting("core.editor", "vim"),
+                setting("CORE.EDITOR", "vim"),
                 false,
             ),
             (
                 "section and variable case",
-                "core.editor",
-                "CORE.EDITOR",
-                "vim",
-                "nano",
+                setting("core.editor", "vim"),
+                setting("CORE.EDITOR", "nano"),
                 true,
             ),
             (
                 "same subsection",
-                "remote.Origin.url",
-                "REMOTE.Origin.URL",
-                "a",
-                "b",
+                setting("remote.Origin.url", "a"),
+                setting("REMOTE.Origin.URL", "b"),
                 true,
             ),
             (
                 "subsection case",
-                "remote.Origin.url",
-                "remote.origin.url",
-                "a",
-                "b",
+                setting("remote.Origin.url", "a"),
+                setting("remote.origin.url", "b"),
                 false,
             ),
             (
                 "dotted subsection",
-                "remote.a.B.url",
-                "REMOTE.a.B.URL",
-                "a",
-                "b",
+                setting("remote.a.B.url", "a"),
+                setting("REMOTE.a.B.URL", "b"),
                 true,
             ),
             (
                 "distinct variables",
-                "core.editor",
-                "core.pager",
-                "vim",
-                "less",
+                setting("core.editor", "vim"),
+                setting("core.pager", "less"),
                 false,
             ),
             (
                 "literal values",
-                "core.editor",
-                "core.editor",
-                "Vim",
-                "vim",
+                setting("core.editor", "Vim"),
+                setting("core.editor", "vim"),
                 true,
             ),
-        ];
-        for (name, first_key, second_key, first_value, second_value, conflict) in cases {
-            let settings = [
-                GitSetting {
-                    key: first_key.to_string(),
-                    value: first_value.to_string(),
-                    origin: None,
-                },
-                GitSetting {
-                    key: second_key.to_string(),
-                    value: second_value.to_string(),
-                    origin: None,
-                },
-            ];
-            let diagnostics = validate(&settings);
-            assert_eq!(
-                diagnostics.len(),
-                usize::from(conflict),
-                "{name}: {diagnostics:?}"
-            );
-            if conflict {
-                assert_eq!(diagnostics[0].code, GIT_CONFLICTING_VALUES, "{name}");
-                assert_eq!(
-                    diagnostics[0].severity,
-                    crate::infra::config::Severity::Error,
-                    "{name}"
-                );
-            }
+        ] {
+            let diagnostics = validate(&[first, second]);
+            assert_conflict(name, &diagnostics, conflict, GIT_CONFLICTING_VALUES);
         }
     }
 
@@ -344,10 +275,14 @@ settings = [{ key = "core.editor", value = "code" }]
             "inactive desktop declarations must not participate"
         );
         assert_eq!(diagnostics.len(), 1);
-        let message = &diagnostics[0].message;
-        assert!(message.contains(&path.display().to_string()), "{message}");
-        assert!(message.contains("[base] settings entry 1"), "{message}");
-        assert!(message.contains("[base] settings entry 2"), "{message}");
+        assert_mentions(
+            &diagnostics[0].message,
+            &[
+                &path.display().to_string(),
+                "[base] settings entry 1",
+                "[base] settings entry 2",
+            ],
+        );
     }
 
     #[test]
@@ -360,52 +295,15 @@ settings = [{ key = "core.editor", value = "code" }]
         assert_eq!(validate_conflicts(&settings).len(), 1);
     }
 
-    #[test]
-    fn declaration_origin_cannot_be_supplied_by_configuration() {
-        let (_dir, path) = write_temp_toml(
-            "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\", origin = \"fake\" }]\n",
-        );
-        assert!(
-            load(&path, &[Category::Base]).is_err(),
-            "provenance is loader-owned"
-        );
-    }
-
-    #[test]
-    fn load_returns_error_on_malformed_toml() {
-        let (_dir, path) = write_temp_toml("[base\nsettings = [");
-        let result = load(&path, &[Category::Base]);
-        assert!(result.is_err(), "malformed TOML should return error");
-    }
-
-    #[test]
-    fn load_returns_error_on_type_mismatch() {
-        let (_dir, path) = write_temp_toml("[base]\nsettings = [{ key = 123, value = \"ok\" }]\n");
-        let result = load(&path, &[Category::Base]);
-        assert!(result.is_err(), "integer key should fail deserialization");
-    }
-
-    #[test]
-    fn load_returns_error_on_unknown_field_in_entry() {
-        let (_dir, path) = write_temp_toml(
-            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\", typo = \"x\" }]\n",
-        );
-        let result = load(&path, &[Category::Base]);
-        assert!(
-            result.is_err(),
-            "unknown field 'typo' in GitSetting should return an error"
-        );
-    }
-
-    #[test]
-    fn load_returns_error_on_unknown_section_field() {
-        // Wrong field name in the section: "setting" instead of "settings".
-        let (_dir, path) =
-            write_temp_toml("[base]\nsetting = [{ key = \"core.autocrlf\", value = \"false\" }]\n");
-        let result = load(&path, &[Category::Base]);
-        assert!(
-            result.is_err(),
-            "unknown section field 'setting' should return an error"
-        );
+    rejects_toml! {
+        "test.toml", |path| load(path, &[Category::Base]);
+        declaration_origin_cannot_be_supplied_by_configuration:
+            "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\", origin = \"fake\" }]\n";
+        load_returns_error_on_malformed_toml: "[base\nsettings = [";
+        load_returns_error_on_type_mismatch: "[base]\nsettings = [{ key = 123, value = \"ok\" }]\n";
+        load_returns_error_on_unknown_field_in_entry:
+            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\", typo = \"x\" }]\n";
+        load_returns_error_on_unknown_section_field:
+            "[base]\nsetting = [{ key = \"core.autocrlf\", value = \"false\" }]\n";
     }
 }

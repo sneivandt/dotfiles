@@ -4,12 +4,10 @@ use super::*;
 use crate::domains::overlay::config::scripts::ScriptEntry;
 use crate::engine::{Context, Task, TaskResult, execute};
 use crate::infra::ConfigHandle;
-use crate::infra::exec::{ExecResult, MockExecutor};
-use crate::infra::logging::{BufferedLog, Log, Logger, TaskStatus};
+use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
+use crate::infra::logging::{BufferedLog, Logger, TaskStatus};
 use crate::infra::platform::{Os, Platform};
-use crate::test_helpers::{
-    CapturingOutput, assert_task_changed, empty_config, make_context, make_linux_context,
-};
+use crate::test_helpers::{CapturingOutput, assert_task_changed, make_context, make_linux_context};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -22,50 +20,98 @@ fn script_entry(name: &str, path: &str) -> ScriptEntry {
     }
 }
 
-fn shell_script_fixture() -> (tempfile::TempDir, ScriptEntry, String) {
-    let overlay = tempfile::tempdir().expect("create overlay dir");
-    let script_path = overlay.path().join("scripts/test.sh");
-    std::fs::create_dir_all(script_path.parent().expect("script parent"))
-        .expect("create scripts dir");
-    std::fs::write(&script_path, "#!/bin/sh\n").expect("write script");
-    let script_arg = script_path.display().to_string();
-    (
-        overlay,
-        script_entry("Setup test", "scripts/test.sh"),
-        script_arg,
-    )
-}
-
 fn context_with_executor(overlay: &Path, executor: MockExecutor) -> Context {
-    let mut config = empty_config(overlay.to_path_buf());
-    config.overlay = Some(overlay.to_path_buf());
     make_context(
-        config.root.clone(),
-        config.overlay,
+        overlay.to_path_buf(),
+        Some(overlay.to_path_buf()),
         Platform::new(Os::Linux, false),
         Arc::new(executor),
     )
 }
 
-fn expect_shell_script(
-    mock: &mut MockExecutor,
-    overlay: &Path,
-    script: &str,
-    flag: Option<&'static str>,
-    result: ExecResult,
-) {
-    let overlay = overlay.to_path_buf();
-    let mut args = vec![std::ffi::OsString::from(script)];
-    args.extend(flag.map(std::ffi::OsString::from));
-    mock.expect_execute()
-        .once()
-        .withf(move |spec| {
-            spec.working_dir() == Some(overlay.as_path())
-                && spec.program() == "sh"
-                && spec.arguments() == args
-                && spec.is_checked() != matches!(flag, Some("--check" | "--check-remove"))
-        })
-        .return_once(move |_| Ok(result));
+type ShellStep = (Option<&'static str>, ExecResult);
+
+struct ShellCase {
+    overlay: tempfile::TempDir,
+    task: OverlayScriptTask,
+    ctx: Context,
+}
+
+impl ShellCase {
+    fn new(
+        mode: ScriptTaskMode,
+        check_remove: bool,
+        steps: impl IntoIterator<Item = ShellStep>,
+    ) -> Self {
+        let overlay = tempfile::tempdir().expect("create overlay dir");
+        let mut entry = script_entry("Setup test", "scripts/test.sh");
+        entry.check_remove = check_remove;
+        let script = overlay.path().join(&entry.path);
+        std::fs::create_dir_all(script.parent().unwrap()).expect("create scripts dir");
+        std::fs::write(&script, "#!/bin/sh\n").expect("write script");
+        let mut mock = MockExecutor::new();
+        let mut seq = mockall::Sequence::new();
+        for (flag, result) in steps {
+            let root = overlay.path().to_owned();
+            let mut args = vec![script.clone().into_os_string()];
+            args.extend(flag.map(std::ffi::OsString::from));
+            let checked = !matches!(flag, Some("--check" | "--check-remove"));
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut seq)
+                .return_once(move |spec| {
+                    assert_eq!(spec.working_dir(), Some(root.as_path()));
+                    assert_eq!(spec.program(), "sh");
+                    assert_eq!(spec.arguments(), args);
+                    assert_eq!(spec.is_checked(), checked);
+                    if checked && !result.success {
+                        let command = ["sh", "script.sh"]
+                            .into_iter()
+                            .chain(flag)
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        Err(ExecError::non_zero(command, result))
+                    } else {
+                        Ok(result)
+                    }
+                });
+        }
+        let root = overlay.path().to_owned();
+        let ctx = context_with_executor(&root, mock);
+        let task = match mode {
+            ScriptTaskMode::Apply => OverlayScriptTask::new(entry, root),
+            ScriptTaskMode::Remove => OverlayScriptTask::with_mode(entry, root, mode),
+        };
+        Self { overlay, task, ctx }
+    }
+
+    fn apply(steps: impl IntoIterator<Item = ShellStep>) -> Self {
+        Self::new(ScriptTaskMode::Apply, false, steps)
+    }
+
+    fn remove(steps: impl IntoIterator<Item = ShellStep>) -> Self {
+        Self::new(ScriptTaskMode::Remove, false, steps)
+    }
+
+    fn run(&self) -> Result<TaskResult> {
+        self.task.run(&self.ctx)
+    }
+}
+
+fn check(status: i32) -> ShellStep {
+    (Some("--check"), probe_result(status))
+}
+
+fn probe_result(status: i32) -> ExecResult {
+    if status == 0 {
+        ExecResult::success("")
+    } else {
+        ExecResult::failure("", "", Some(status))
+    }
+}
+
+fn configured_context() -> Context {
+    make_linux_context(PathBuf::from("/tmp"), Some(PathBuf::from("/overlay")))
 }
 
 #[test]
@@ -76,17 +122,13 @@ fn snapshot_report_should_run_false_without_overlay() {
 
 #[test]
 fn snapshot_report_should_run_true_with_overlay() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
-    config.overlay = Some(PathBuf::from("/overlay"));
-    let ctx = make_linux_context(config.root.clone(), config.overlay);
+    let ctx = configured_context();
     assert!(ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![])).should_run(&ctx));
 }
 
 #[test]
 fn snapshot_report_returns_not_applicable_when_empty() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
-    config.overlay = Some(PathBuf::from("/overlay"));
-    let ctx = make_linux_context(config.root.clone(), config.overlay);
+    let ctx = configured_context();
     let task = ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![]));
 
     assert!(matches!(
@@ -97,9 +139,7 @@ fn snapshot_report_returns_not_applicable_when_empty() {
 
 #[test]
 fn snapshot_report_succeeds_with_configured_scripts() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
-    config.overlay = Some(PathBuf::from("/overlay"));
-    let ctx = make_linux_context(config.root.clone(), config.overlay);
+    let ctx = configured_context();
     let task = ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![script_entry(
         "Setup test",
         "scripts/test.sh",
@@ -113,12 +153,7 @@ fn snapshot_report_succeeds_with_configured_scripts() {
 
 #[test]
 fn script_task_name_matches_entry() {
-    let entry = ScriptEntry {
-        name: "Setup database".to_string(),
-        path: "scripts/setup-db.ps1".to_string(),
-        description: None,
-        check_remove: false,
-    };
+    let entry = script_entry("Setup database", "scripts/setup-db.ps1");
     let task = OverlayScriptTask::new(entry, PathBuf::from("/overlay"));
     assert_eq!(task.name(), "Setup database");
     assert_eq!(task.selector(), "script-setup-database");
@@ -127,47 +162,22 @@ fn script_task_name_matches_entry() {
 #[test]
 fn script_task_should_run_false_without_overlay() {
     let ctx = make_linux_context(PathBuf::from("/tmp"), None);
-    let entry = ScriptEntry {
-        name: "test".to_string(),
-        path: "scripts/test.sh".to_string(),
-        description: None,
-        check_remove: false,
-    };
+    let entry = script_entry("test", "scripts/test.sh");
     let task = OverlayScriptTask::new(entry, PathBuf::from("/overlay"));
     assert!(!task.should_run(&ctx));
 }
 
 #[test]
 fn script_task_should_run_true_with_overlay() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
-    config.overlay = Some(PathBuf::from("/overlay"));
-    let ctx = make_linux_context(config.root.clone(), config.overlay);
-    let entry = ScriptEntry {
-        name: "test".to_string(),
-        path: "scripts/test.sh".to_string(),
-        description: None,
-        check_remove: false,
-    };
+    let ctx = configured_context();
+    let entry = script_entry("test", "scripts/test.sh");
     let task = OverlayScriptTask::new(entry, PathBuf::from("/overlay"));
     assert!(task.should_run(&ctx));
 }
 
 #[test]
 fn overlay_script_tasks_creates_one_per_entry() {
-    let scripts = vec![
-        ScriptEntry {
-            name: "A".to_string(),
-            path: "a.sh".to_string(),
-            description: None,
-            check_remove: false,
-        },
-        ScriptEntry {
-            name: "B".to_string(),
-            path: "b.ps1".to_string(),
-            description: None,
-            check_remove: false,
-        },
-    ];
+    let scripts = [script_entry("A", "a.sh"), script_entry("B", "b.ps1")];
     let tasks = overlay_script_tasks(&scripts, Path::new("/overlay"));
     assert_eq!(tasks.len(), 2);
     assert_eq!(tasks[0].name(), "A");
@@ -176,106 +186,48 @@ fn overlay_script_tasks_creates_one_per_entry() {
 
 #[test]
 fn removal_task_checks_then_runs_remove_with_output() {
-    let (overlay, entry, script_arg) = shell_script_fixture();
-    let mut mock = MockExecutor::new();
-    expect_shell_script(
-        &mut mock,
-        overlay.path(),
-        &script_arg,
-        Some("--check"),
-        ExecResult::success(""),
-    );
-    expect_shell_script(
-        &mut mock,
-        overlay.path(),
-        &script_arg,
-        Some("--remove"),
-        ExecResult::success("removed\n"),
-    );
-
-    let ctx = context_with_executor(overlay.path(), mock);
-    let task =
-        OverlayScriptTask::with_mode(entry, overlay.path().to_path_buf(), ScriptTaskMode::Remove);
-    assert_task_changed(&task.run(&ctx).unwrap());
+    let case = ShellCase::remove([
+        check(0),
+        (Some("--remove"), ExecResult::success("removed\n")),
+    ]);
+    assert_task_changed(&case.run().unwrap());
 }
 
 #[test]
 fn removal_task_skips_when_script_reports_absent_state() {
-    let (overlay, entry, script_arg) = shell_script_fixture();
-    let mut mock = MockExecutor::new();
-    expect_shell_script(
-        &mut mock,
-        overlay.path(),
-        &script_arg,
-        Some("--check"),
-        ExecResult::failure("", "", Some(1)),
-    );
-
-    let ctx = context_with_executor(overlay.path(), mock);
-    let task =
-        OverlayScriptTask::with_mode(entry, overlay.path().to_path_buf(), ScriptTaskMode::Remove);
-    assert!(matches!(task.run(&ctx).unwrap(), TaskResult::Ok));
+    let case = ShellCase::remove([check(1)]);
+    assert!(matches!(case.run().unwrap(), TaskResult::Ok));
 }
 
 #[test]
 fn opt_in_removal_probe_can_detect_partial_state_without_touching_a_preview() {
     for (state, dry_run) in [(0, false), (0, true), (1, false), (42, false)] {
-        let (overlay, mut entry, script_arg) = shell_script_fixture();
-        entry.check_remove = true;
-        let mut mock = MockExecutor::new();
-        expect_shell_script(
-            &mut mock,
-            overlay.path(),
-            &script_arg,
-            Some("--check-remove"),
-            if state == 0 {
-                ExecResult::success("")
-            } else {
-                ExecResult::failure("", "", Some(state))
-            },
-        );
+        let mut steps = vec![(Some("--check-remove"), probe_result(state))];
         if state == 0 && !dry_run {
-            expect_shell_script(
-                &mut mock,
-                overlay.path(),
-                &script_arg,
+            steps.push((
                 Some("--remove"),
                 ExecResult::success("removed partial state"),
-            );
+            ));
         }
-        let ctx = context_with_executor(overlay.path(), mock).with_dry_run(dry_run);
-        let task = OverlayScriptTask::with_mode(
-            entry,
-            overlay.path().to_path_buf(),
-            ScriptTaskMode::Remove,
-        );
+        let case = ShellCase::new(ScriptTaskMode::Remove, true, steps);
+        let result = case.task.run(&case.ctx.with_dry_run(dry_run));
         match state {
-            0 => assert_task_changed(&task.run(&ctx).unwrap()),
-            1 => assert!(matches!(task.run(&ctx).unwrap(), TaskResult::Ok)),
-            _ => assert!(task.run(&ctx).is_err()),
+            0 => assert_task_changed(&result.unwrap()),
+            1 => assert!(matches!(result.unwrap(), TaskResult::Ok)),
+            _ => assert!(result.is_err()),
         }
     }
 }
 
 #[test]
 fn removal_dry_run_does_not_execute_remove() {
-    let (overlay, entry, script_arg) = shell_script_fixture();
-    let mut mock = MockExecutor::new();
-    expect_shell_script(
-        &mut mock,
-        overlay.path(),
-        &script_arg,
-        Some("--check"),
-        ExecResult::success(""),
-    );
-
+    let case = ShellCase::remove([check(0)]);
     let output = Arc::new(CapturingOutput::default());
-    let ctx = context_with_executor(overlay.path(), mock)
+    let ctx = case
+        .ctx
         .with_dry_run(true)
         .with_log(Arc::<CapturingOutput>::clone(&output));
-    let task =
-        OverlayScriptTask::with_mode(entry, overlay.path().to_path_buf(), ScriptTaskMode::Remove);
-    assert_task_changed(&task.run(&ctx).unwrap());
+    assert_task_changed(&case.task.run(&ctx).unwrap());
     let actions = output.actions();
     assert_eq!(actions.len(), 1);
     assert_eq!(actions[0].verb, "remove");
@@ -336,28 +288,14 @@ fn script_disappearing_after_check_fails_apply_preview_and_remove() {
 
 #[test]
 fn removal_task_propagates_remove_failure() {
-    let (overlay, entry, script_arg) = shell_script_fixture();
-    let check_arg = script_arg.clone();
-    let remove_arg = script_arg;
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .withf(move |spec| spec.arguments() == [check_arg.as_str(), "--check"])
-        .returning(|_| Ok(ExecResult::success("")));
-    mock.expect_execute()
-        .once()
-        .withf(move |spec| spec.arguments() == [remove_arg.as_str(), "--remove"])
-        .returning(|_| {
-            Err(crate::infra::exec::ExecError::NonZero {
-                command: "sh script.sh --remove".to_string(),
-                result: ExecResult::failure("", "remove failed", Some(2)),
-            })
-        });
-
-    let ctx = context_with_executor(overlay.path(), mock);
-    let task =
-        OverlayScriptTask::with_mode(entry, overlay.path().to_path_buf(), ScriptTaskMode::Remove);
-    let error = task.run(&ctx).unwrap_err().to_string();
+    let case = ShellCase::remove([
+        check(0),
+        (
+            Some("--remove"),
+            ExecResult::failure("", "remove failed", Some(2)),
+        ),
+    ]);
+    let error = case.run().unwrap_err().to_string();
     assert!(error.contains("removing script"), "{error}");
 }
 
@@ -368,25 +306,10 @@ fn overlay_script_tasks_have_unique_task_ids() {
     use crate::engine::TaskId;
     use std::collections::HashSet;
 
-    let scripts = vec![
-        ScriptEntry {
-            name: "A".to_string(),
-            path: "a.sh".to_string(),
-            description: None,
-            check_remove: false,
-        },
-        ScriptEntry {
-            name: "B".to_string(),
-            path: "b.ps1".to_string(),
-            description: None,
-            check_remove: false,
-        },
-        ScriptEntry {
-            name: "C".to_string(),
-            path: "c.sh".to_string(),
-            description: None,
-            check_remove: false,
-        },
+    let scripts = [
+        script_entry("A", "a.sh"),
+        script_entry("B", "b.ps1"),
+        script_entry("C", "c.sh"),
     ];
     let tasks = overlay_script_tasks(&scripts, Path::new("/overlay"));
     let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
@@ -406,78 +329,27 @@ fn overlay_script_tasks_have_unique_task_ids() {
 
 #[test]
 fn script_task_run_is_ok_when_check_reports_correct() {
-    let (overlay, entry, script_arg) = shell_script_fixture();
-    let mut mock = MockExecutor::new();
-    expect_shell_script(
-        &mut mock,
-        overlay.path(),
-        &script_arg,
-        Some("--check"),
-        ExecResult::success(""),
-    );
-
-    let ctx = context_with_executor(overlay.path(), mock);
-    let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
-
-    assert!(matches!(task.run(&ctx).unwrap(), TaskResult::Ok));
+    let case = ShellCase::apply([check(0)]);
+    assert!(matches!(case.run().unwrap(), TaskResult::Ok));
 }
 
 #[test]
 fn script_task_run_reports_changed_when_check_reports_missing() {
-    let (overlay, entry, script_arg) = shell_script_fixture();
-    let mut mock = MockExecutor::new();
-    expect_shell_script(
-        &mut mock,
-        overlay.path(),
-        &script_arg,
-        Some("--check"),
-        ExecResult::failure("", "", Some(1)),
-    );
-    expect_shell_script(
-        &mut mock,
-        overlay.path(),
-        &script_arg,
-        None,
-        ExecResult::success("applied\n"),
-    );
-
-    let ctx = context_with_executor(overlay.path(), mock);
-    let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
-
-    assert_task_changed(&task.run(&ctx).unwrap());
+    let case = ShellCase::apply([check(1), (None, ExecResult::success("applied\n"))]);
+    assert_task_changed(&case.run().unwrap());
 }
 
 #[test]
 fn script_task_execute_records_changed_status_and_stdout() {
-    let (overlay, entry, script_arg) = shell_script_fixture();
-    let mut mock = MockExecutor::new();
-    expect_shell_script(
-        &mut mock,
-        overlay.path(),
-        &script_arg,
-        Some("--check"),
-        ExecResult::failure("", "", Some(1)),
-    );
-    expect_shell_script(
-        &mut mock,
-        overlay.path(),
-        &script_arg,
-        None,
-        ExecResult::success("script applied\n"),
-    );
-
-    let mut logger = Logger::new_in("install", overlay.path());
+    let case = ShellCase::apply([check(1), (None, ExecResult::success("script applied\n"))]);
+    let mut logger = Logger::new_in("install", case.overlay.path());
     logger.set_verbose(false);
     let logger = Arc::new(logger);
     let buffered = Arc::new(BufferedLog::new(Arc::clone(&logger)));
-    let buffered_log = Arc::clone(&buffered);
-    let log: Arc<dyn Log> = buffered_log;
-    let ctx = context_with_executor(overlay.path(), mock).with_log(log);
-    let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
-
-    let status = execute(&task, &ctx);
+    let ctx = case.ctx.with_log(Arc::<BufferedLog>::clone(&buffered));
+    let status = execute(&case.task, &ctx);
     assert_eq!(status, TaskStatus::Changed);
-    buffered.flush_and_complete(&task.log_key(), task.name());
+    buffered.flush_and_complete(&case.task.log_key(), case.task.name());
 
     let entries = logger.task_entries();
     assert_eq!(entries.len(), 1);
@@ -497,47 +369,20 @@ fn script_task_execute_records_changed_status_and_stdout() {
 
 #[test]
 fn script_task_run_uses_dry_run_script_when_context_is_dry_run() {
-    let (overlay, entry, script_arg) = shell_script_fixture();
-    let mut mock = MockExecutor::new();
-    expect_shell_script(
-        &mut mock,
-        overlay.path(),
-        &script_arg,
-        Some("--check"),
-        ExecResult::failure("", "", Some(1)),
-    );
-    expect_shell_script(
-        &mut mock,
-        overlay.path(),
-        &script_arg,
-        Some("--dryrun"),
-        ExecResult::success("would apply\n"),
-    );
-
-    let ctx = context_with_executor(overlay.path(), mock).with_dry_run(true);
-    let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
-
+    let case = ShellCase::apply([
+        check(1),
+        (Some("--dryrun"), ExecResult::success("would apply\n")),
+    ]);
     assert!(matches!(
-        task.run(&ctx).unwrap(),
+        case.task.run(&case.ctx.with_dry_run(true)).unwrap(),
         TaskResult::Batch(stats) if stats.changed_count() > 0
     ));
 }
 
 #[test]
 fn script_task_run_propagates_check_failures() {
-    let (overlay, entry, script_arg) = shell_script_fixture();
-    let mut mock = MockExecutor::new();
-    expect_shell_script(
-        &mut mock,
-        overlay.path(),
-        &script_arg,
-        Some("--check"),
-        ExecResult::failure("", "boom", Some(2)),
-    );
-
-    let ctx = context_with_executor(overlay.path(), mock);
-    let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
-    let error = task.run(&ctx).unwrap_err().to_string();
+    let case = ShellCase::apply([(Some("--check"), ExecResult::failure("", "boom", Some(2)))]);
+    let error = case.run().unwrap_err().to_string();
     assert!(
         error.contains("exit 2") && error.contains("boom"),
         "{error}"

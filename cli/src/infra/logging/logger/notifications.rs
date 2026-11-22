@@ -93,17 +93,6 @@ mod tests {
     }
 
     #[test]
-    fn notify_task_start_adds_to_active_tasks() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start_with_progress("my-task", false);
-        let active = log.active_tasks.lock().unwrap();
-        assert!(
-            active.contains(&"my-task".to_string()),
-            "active_tasks should contain 'my-task'"
-        );
-    }
-
-    #[test]
     fn task_totals_accumulate_across_scheduled_graphs() {
         let (log, _tmp, _guard) = isolated_logger();
         log.add_task_total(20);
@@ -183,193 +172,65 @@ mod tests {
     }
 
     #[test]
-    fn notify_task_start_separates_the_first_progress_row_from_startup() {
-        let (log, _tmp, _guard) = isolated_logger();
-        assert_eq!(log.progress_rows_count(), 0, "progress_rows starts at 0");
-        assert!(!log.console.lock().startup_separator_emitted);
-
-        log.notify_task_start_with_progress("task-a", true);
-
-        assert_eq!(
-            log.progress_rows_count(),
-            1,
-            "the durable separator should not count as a transient progress row"
-        );
-        assert!(
-            log.console.lock().startup_separator_emitted,
-            "the first running row should be separated from startup output"
-        );
-    }
-
-    #[test]
-    fn notify_task_start_adds_one_spacer_after_later_console_output() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.separate_from_startup();
-        log.warn("warning after startup");
-
-        log.notify_task_start_with_progress("task-a", true);
-
-        assert_eq!(
-            log.progress_rows_count(),
-            2,
-            "the status and its added blank spacer should both be transient"
-        );
-    }
-
-    #[test]
-    fn notify_task_start_reuses_an_existing_blank_line() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.always("prior output");
-        log.always("");
-
-        log.notify_task_start_with_progress("task-a", true);
-
-        assert_eq!(
-            log.progress_rows_count(),
-            1,
-            "an existing blank line should not be duplicated or made transient"
-        );
-    }
-
-    #[test]
-    fn notify_task_done_removes_from_active_tasks() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start_with_progress("my-task", false);
-        log.notify_task_done_with_progress("my-task", false);
-        let active = log.active_tasks.lock().unwrap();
-        assert!(
-            !active.contains(&"my-task".to_string()),
-            "active_tasks should not contain 'my-task' after notify_task_done"
-        );
-    }
-
-    #[test]
-    fn notify_task_done_clears_progress_when_last_task_completes() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start_with_progress("task-a", true);
-        assert_eq!(
-            log.progress_rows_count(),
-            1,
-            "progress_rows should be 1 after start"
-        );
-        log.notify_task_done_with_progress("task-a", true);
-        assert_eq!(
-            log.progress_rows_count(),
-            0,
-            "progress_rows should be 0 after last task completes"
-        );
-    }
-
-    #[test]
-    fn notify_task_done_keeps_progress_when_tasks_remain() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start_with_progress("task-a", true);
-        log.notify_task_start_with_progress("task-b", true);
-        log.notify_task_done_with_progress("task-a", true);
-        assert_eq!(
-            log.progress_rows_count(),
-            1,
-            "progress_rows should still be 1 when task-b is still active"
-        );
-    }
-
-    #[test]
-    fn completing_one_task_keeps_another_with_the_same_display_name_active() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start_with_progress("shared name", true);
-        log.notify_task_start_with_progress("shared name", true);
-
-        log.notify_task_done_with_progress("shared name", true);
-
-        assert_eq!(&*log.lock_active_tasks(), &["shared name"]);
-        assert_eq!(
-            log.progress_rows_count(),
-            1,
-            "the other same-name task is still running"
-        );
-
-        log.notify_task_done_with_progress("shared name", true);
-
-        assert!(log.lock_active_tasks().is_empty());
-        assert_eq!(log.progress_rows_count(), 0);
-    }
-
-    #[test]
-    fn notify_task_done_multiple_tasks_all_complete() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start_with_progress("task-a", true);
-        log.notify_task_start_with_progress("task-b", true);
-        log.notify_task_done_with_progress("task-a", true);
-        {
-            let active = log.active_tasks.lock().unwrap();
-            assert!(
-                !active.contains(&"task-a".to_string()),
-                "task-a should be removed"
-            );
-            assert!(
-                active.contains(&"task-b".to_string()),
-                "task-b should still be present"
-            );
+    fn task_lifetimes_occupy_one_status_row_until_the_last_finishes() {
+        for names in [
+            &["single"][..],
+            &["task-a", "task-b"],
+            &["shared", "shared"],
+        ] {
+            for interactive in [false, true] {
+                let (log, _tmp, _guard) = isolated_logger();
+                let assert_active = |expected: &[&str]| {
+                    let visible = interactive && !expected.is_empty();
+                    assert_eq!(&*log.lock_active_tasks(), expected, "{names:?}");
+                    assert_eq!(
+                        log.status_row_visible(),
+                        visible,
+                        "{expected:?}, interactive={interactive}"
+                    );
+                    assert_eq!(log.progress_rows_count(), u16::from(visible));
+                };
+                assert_active(&[]);
+                assert!(!log.console.lock().startup_separator_emitted);
+                for (index, name) in names.iter().enumerate() {
+                    log.notify_task_start_with_progress(name, interactive);
+                    assert_active(&names[..=index]);
+                }
+                if interactive {
+                    assert!(log.console.lock().startup_separator_emitted);
+                }
+                for (index, name) in names.iter().enumerate() {
+                    log.notify_task_done_with_progress(name, interactive);
+                    assert_active(&names[index + 1..]);
+                }
+            }
         }
-        log.notify_task_done_with_progress("task-b", true);
-        {
-            let active = log.active_tasks.lock().unwrap();
-            assert!(
-                active.is_empty(),
-                "active_tasks should be empty after both tasks complete"
-            );
-        }
-        assert_eq!(
-            log.progress_rows_count(),
-            0,
-            "progress_rows should be 0 after all tasks complete"
-        );
     }
 
     #[test]
-    fn notify_task_start_suppresses_progress_when_not_interactive() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start_with_progress("task-a", false);
-        assert_eq!(
-            log.progress_rows_count(),
-            0,
-            "progress_rows should stay zero when progress rendering is disabled"
-        );
-    }
+    fn status_spacing_reuses_a_blank_line_but_separates_durable_output() {
+        use crate::infra::logging::Logger;
 
-    #[test]
-    fn notify_task_start_only_replaces_existing_status_row() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start_with_progress("task-a", true);
-        assert_eq!(
-            log.progress_rows_count(),
-            1,
-            "first active task should draw one status row"
-        );
-        assert!(log.status_row_visible());
-
-        log.notify_task_start_with_progress("task-b", true);
-        assert_eq!(
-            log.progress_rows_count(),
-            1,
-            "adding another active task should replace only the existing status row"
-        );
-        assert!(log.status_row_visible());
-    }
-
-    #[test]
-    fn notify_task_start_adds_blank_row_after_task_console_output() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.separate_from_startup();
-        log.console.task_result("completed task");
-        log.mark_task_console_output();
-        assert!(log.task_console_output_emitted());
-        log.notify_task_start_with_progress("task-a", true);
-        assert_eq!(
-            log.progress_rows_count(),
-            2,
-            "status row should include a transient blank spacer after task output"
-        );
-        assert!(log.status_row_visible());
+        let check = |expected_rows, emit: fn(&Logger)| {
+            let (log, _tmp, _guard) = isolated_logger();
+            emit(&log);
+            log.notify_task_start_with_progress("task-a", true);
+            assert!(log.status_row_visible());
+            assert_eq!(log.progress_rows_count(), expected_rows);
+        };
+        check(1, |log| {
+            log.always("prior output");
+            log.always("");
+        });
+        check(2, |log| {
+            log.separate_from_startup();
+            log.warn("warning after startup");
+        });
+        check(2, |log| {
+            log.separate_from_startup();
+            log.console.task_result("completed task");
+            log.mark_task_console_output();
+            assert!(log.task_console_output_emitted());
+        });
     }
 }

@@ -1,28 +1,9 @@
 use std::sync::Arc;
 
 use super::*;
+use crate::domains::system::systemd_fixture::{runtime_probe, systemctl, unit_probe};
 use crate::infra::exec::{ExecResult, MockExecutor};
-
-fn expect_runtime(mock: &mut MockExecutor, unit: &str, scope: UnitScope, output: &str) {
-    let unit = unit.to_string();
-    let output = output.to_string();
-    mock.expect_execute()
-            .once()
-            .withf(move |spec| {
-                let mut args = vec![
-                    "show",
-                    "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload",
-                    &unit,
-                ];
-                if scope == UnitScope::User {
-                    args.insert(0, "--user");
-                }
-                spec.program() == "systemctl"
-                    && spec.arguments() == args.as_slice()
-                    && !spec.is_checked()
-            })
-            .returning(move |_| Ok(ExecResult::success(output.clone())));
-}
+use crate::test_helpers::ScriptedExecutor;
 
 #[cfg(unix)]
 fn offline_unit(home: &Path, name: &str, enabled: bool) -> SystemdUnitResource {
@@ -42,22 +23,15 @@ fn queried_unit(
     enablement: ExecResult,
     runtime: Option<&str>,
 ) -> SystemdUnitResource {
-    let mut mock = MockExecutor::new();
-    let mut args = vec!["is-enabled".to_string(), name.to_string()];
-    if scope == UnitScope::User {
-        args.insert(0, "--user".to_string());
-    }
-    let args: Vec<_> = args.into_iter().map(std::ffi::OsString::from).collect();
-    mock.expect_execute()
-        .once()
-        .withf(move |spec| {
-            spec.program() == "systemctl" && spec.arguments() == args && !spec.is_checked()
-        })
-        .return_once(|_| Ok(enablement));
+    let mut script =
+        ScriptedExecutor::new().command(unit_probe(&scope, name, &["is-enabled"]), Ok(enablement));
     if let Some(runtime) = runtime {
-        expect_runtime(&mut mock, name, scope.clone(), runtime);
+        script = script.command(
+            runtime_probe(&scope, name),
+            Ok(ExecResult::success(runtime)),
+        );
     }
-    let mut resource = SystemdUnitResource::new(name, scope, Arc::new(mock));
+    let mut resource = SystemdUnitResource::new(name, scope, Arc::new(script));
     resource.enabled = enabled;
     resource
 }
@@ -246,17 +220,13 @@ fn live_aliases_report_the_canonical_name_without_probing_runtime() {
         (ExecResult::success("/invalid.service\n"), fallback),
         (ExecResult::success(format!("{name}\n")), fallback),
     ] {
-        let executor = crate::test_helpers::ScriptedExecutor::new()
+        let executor = ScriptedExecutor::new()
             .command(
-                CommandSpec::new("systemctl")
-                    .args(&["--user", "is-enabled", name])
-                    .unchecked(),
+                systemctl(&["--user", "is-enabled", name]),
                 Ok(ExecResult::success("alias\n")),
             )
             .command(
-                CommandSpec::new("systemctl")
-                    .args(&["--user", "show", "--property=Id", "--value", name])
-                    .unchecked(),
+                systemctl(&["--user", "show", "--property=Id", "--value", name]),
                 Ok(result),
             );
         let resource = SystemdUnitResource::new(name, UnitScope::User, Arc::new(executor));
@@ -282,20 +252,16 @@ fn live_aliases_report_the_canonical_name_without_probing_runtime() {
 
 #[test]
 fn disabled_or_system_scope_thunar_units_use_the_regular_systemd_lifecycle() {
-    use crate::test_helpers::ScriptedExecutor;
-
-    for (scope, enabled, prefix, enablement, runtime) in [
+    for (scope, enabled, enablement, runtime) in [
         (
             UnitScope::User,
             false,
-            &["--user"][..],
             ExecResult::failure("disabled", "", Some(1)),
             "ActiveState=inactive\n",
         ),
         (
             UnitScope::System,
             true,
-            &[][..],
             ExecResult::success("enabled"),
             "ActiveState=active\n",
         ),
@@ -306,17 +272,13 @@ fn disabled_or_system_scope_thunar_units_use_the_regular_systemd_lifecycle() {
             graphical: false,
             enabled,
         };
-        let probe = |args: &[&str]| {
-            CommandSpec::new("systemctl")
-                .args(prefix)
-                .args(args)
-                .arg(&entry.name)
-                .unchecked()
-        };
         let executor = ScriptedExecutor::new()
-            .command(probe(&["is-enabled"]), Ok(enablement))
             .command(
-                probe(&["show", "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload"]),
+                unit_probe(&entry.scope, &entry.name, &["is-enabled"]),
+                Ok(enablement),
+            )
+            .command(
+                runtime_probe(&entry.scope, &entry.name),
                 Ok(ExecResult::success(runtime)),
             );
         let resource = SystemdUnitResource::from_entry(
@@ -332,16 +294,17 @@ fn disabled_or_system_scope_thunar_units_use_the_regular_systemd_lifecycle() {
 
 #[test]
 fn runtime_probe_failure_is_not_converged() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .withf(|spec| spec.arguments() == ["is-enabled", "test.service"])
-        .returning(|_| Ok(ExecResult::success("enabled\n")));
-    mock.expect_execute()
-        .once()
-        .withf(|spec| spec.arguments().first().is_some_and(|arg| arg == "show"))
-        .returning(|_| Ok(ExecResult::failure("", "Failed to connect to bus", Some(1))));
-    let resource = SystemdUnitResource::new("test.service", UnitScope::System, Arc::new(mock));
+    let name = "test.service";
+    let script = ScriptedExecutor::new()
+        .command(
+            systemctl(&["is-enabled", name]),
+            Ok(ExecResult::success("enabled\n")),
+        )
+        .command(
+            runtime_probe(&UnitScope::System, name),
+            Ok(ExecResult::failure("", "Failed to connect to bus", Some(1))),
+        );
+    let resource = SystemdUnitResource::new(name, UnitScope::System, Arc::new(script));
     assert!(
         matches!(resource.current_state().unwrap(), ResourceState::Unknown { reason } if reason.contains("Failed to connect to bus"))
     );
@@ -479,55 +442,28 @@ fn disabled_static_units_still_check_runtime_state() {
 
 #[test]
 fn disabling_a_static_unit_converges_after_stopping_it() {
-    let mut sequence = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
+    let name = "static.service";
+    let mut script = ScriptedExecutor::new();
     for active in ["active", "inactive", "inactive"] {
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut sequence)
-            .withf(|spec| {
-                spec.program() == "systemctl"
-                    && spec.arguments() == ["is-enabled", "static.service"]
-                    && !spec.is_checked()
-            })
-            .returning(|_| Ok(ExecResult::success("static\n")));
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut sequence)
-            .withf(|spec| {
-                spec.program() == "systemctl"
-                    && spec.arguments() == [
-                        "show",
-                        "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload",
-                        "static.service",
-                    ]
-                    && !spec.is_checked()
-            })
-            .returning(move |_| Ok(ExecResult::success(format!("ActiveState={active}\n"))));
+        script = script
+            .command(
+                systemctl(&["is-enabled", name]),
+                Ok(ExecResult::success("static\n")),
+            )
+            .command(
+                runtime_probe(&UnitScope::System, name),
+                Ok(ExecResult::success(format!("ActiveState={active}\n"))),
+            );
         if active == "active" {
-            mock.expect_execute()
-                .once()
-                .in_sequence(&mut sequence)
-                .withf(|spec| {
-                    spec.program() == "sudo"
-                        && spec.arguments()
-                            == ["systemctl", "disable", "--runtime", "static.service"]
-                        && !spec.is_checked()
-                })
-                .returning(|_| Ok(ExecResult::success("")));
-            mock.expect_execute()
-                .once()
-                .in_sequence(&mut sequence)
-                .withf(|spec| {
-                    spec.program() == "sudo"
-                        && spec.arguments() == ["systemctl", "disable", "--now", "static.service"]
-                        && !spec.is_checked()
-                })
-                .returning(|_| Ok(ExecResult::success("")));
+            for mode in ["--runtime", "--now"] {
+                let change = CommandSpec::new("sudo")
+                    .args(&["systemctl", "disable", mode, name])
+                    .unchecked();
+                script = script.command(change, Ok(ExecResult::success("")));
+            }
         }
     }
-    let mut resource =
-        SystemdUnitResource::new("static.service", UnitScope::System, Arc::new(mock));
+    let mut resource = SystemdUnitResource::new(name, UnitScope::System, Arc::new(script));
     resource.enabled = false;
 
     assert!(matches!(
@@ -610,31 +546,14 @@ fn configured_scope_and_enablement_drive_exact_apply_commands() {
             ["systemctl", "disable", "--now", "fixture.service"],
         ),
     ] {
-        let mut mock = MockExecutor::new();
-        let mut sequence = mockall::Sequence::new();
+        let command = |arguments: &[&str]| CommandSpec::new(program).args(arguments).unchecked();
+        let mut script = ScriptedExecutor::new();
         if !enabled {
             let mut runtime = args;
             runtime[2] = "--runtime";
-            mock.expect_execute()
-                .once()
-                .in_sequence(&mut sequence)
-                .returning(move |spec| {
-                    assert_eq!(spec.program(), program);
-                    assert_eq!(spec.arguments(), runtime);
-                    assert!(!spec.is_checked());
-                    Ok(ExecResult::success(""))
-                });
+            script = script.command(command(&runtime), Ok(ExecResult::success("")));
         }
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut sequence)
-            .returning(move |spec| {
-                assert_eq!(spec.program(), program);
-                assert_eq!(spec.arguments(), args);
-                assert_eq!(spec.working_dir(), None);
-                assert!(!spec.is_checked());
-                Ok(ExecResult::success(""))
-            });
+        script = script.command(command(&args), Ok(ExecResult::success("")));
         let entry = crate::domains::system::config::systemd_units::SystemdUnit {
             name: "fixture.service".into(),
             scope,
@@ -642,7 +561,7 @@ fn configured_scope_and_enablement_drive_exact_apply_commands() {
             enabled,
         };
         let home = Path::new("unused-home");
-        let resource = SystemdUnitResource::from_entry(&entry, Arc::new(mock), home, true, true);
+        let resource = SystemdUnitResource::from_entry(&entry, Arc::new(script), home, true, true);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
 }
@@ -670,48 +589,25 @@ fn runtime_disable_failure_is_reported_before_persistent_disable() {
 fn system_automount_and_swap_units_use_the_existing_runtime_contract() {
     for name in ["data.automount", "swapfile.swap"] {
         for enabled in [true, false] {
-            let mut mock = MockExecutor::new();
-            mock.expect_execute()
-                .once()
-                .withf(move |spec| {
-                    spec.program() == "systemctl"
-                        && spec.arguments() == ["is-enabled", name]
-                        && !spec.is_checked()
-                })
-                .returning(move |_| {
-                    Ok(if enabled {
-                        ExecResult::success("enabled\n")
-                    } else {
-                        ExecResult::failure("disabled\n", "", Some(1))
-                    })
-                });
-            expect_runtime(
-                &mut mock,
-                name,
-                UnitScope::System,
-                if enabled {
-                    "ActiveState=active\n"
-                } else {
-                    "ActiveState=inactive\n"
-                },
-            );
-            let mut resource = SystemdUnitResource::new(name, UnitScope::System, Arc::new(mock));
-            resource.enabled = enabled;
+            let (state, runtime, action) = if enabled {
+                (
+                    ExecResult::success("enabled\n"),
+                    "ActiveState=active\n",
+                    "enable",
+                )
+            } else {
+                (
+                    ExecResult::failure("disabled\n", "", Some(1)),
+                    "ActiveState=inactive\n",
+                    "disable",
+                )
+            };
+            let resource = queried_unit(name, UnitScope::System, enabled, state, Some(runtime));
 
             assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
             assert_eq!(
-                resource
-                    .change_invocation(&[if enabled { "enable" } else { "disable" }, "--now"])
-                    .unwrap(),
-                (
-                    "sudo",
-                    vec![
-                        "systemctl",
-                        if enabled { "enable" } else { "disable" },
-                        "--now",
-                        name,
-                    ],
-                )
+                resource.change_invocation(&[action, "--now"]).unwrap(),
+                ("sudo", vec!["systemctl", action, "--now", name])
             );
         }
     }
@@ -914,25 +810,46 @@ fn offline_enablement_repairs_checkout_links_and_accepts_relative_installed_link
 
 #[cfg(unix)]
 #[test]
-fn offline_user_unit_is_enabled_without_contacting_the_bus() {
-    let home = tempfile::tempdir().unwrap();
-    let unit_dir = home.path().join(".config/systemd/user");
-    std::fs::create_dir_all(&unit_dir).unwrap();
-    std::fs::write(
-        unit_dir.join("clean-home-tmp.timer"),
-        "[Unit]\nDescription=Clean tmp\n[Install]\nWantedBy=timers.target\n",
-    )
-    .unwrap();
-    let resource = offline_unit(home.path(), "clean-home-tmp.timer", true);
+fn offline_user_units_converge_without_contacting_the_bus() {
+    for (name, definition, relationship) in [
+        (
+            "clean-home-tmp.timer",
+            "[Unit]\nDescription=Clean tmp\n[Install]\nWantedBy=timers.target\n",
+            "timers.target.wants",
+        ),
+        (
+            "session.service",
+            "[Install]\nWantedBy=graphical-session.target\n",
+            "graphical-session.target.wants",
+        ),
+        (
+            "session.service",
+            "[Install]\nRequiredBy=graphical-session.target\n",
+            "graphical-session.target.requires",
+        ),
+    ] {
+        let home = tempfile::tempdir().unwrap();
+        let user = home.path().join(".config/systemd/user");
+        std::fs::create_dir_all(&user).unwrap();
+        let source = user.join(name);
+        std::fs::write(&source, definition).unwrap();
+        let link = user.join(relationship).join(name);
 
-    assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
-    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
-    let enabled = unit_dir.join("timers.target.wants/clean-home-tmp.timer");
-    assert!(
-        enabled.is_symlink(),
-        "offline enablement should create a symlink"
-    );
-    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        let enabled = offline_unit(home.path(), name, true);
+        assert_eq!(enabled.current_state().unwrap(), ResourceState::Missing);
+        assert_eq!(enabled.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(std::fs::read_link(&link).unwrap(), source, "{relationship}");
+        assert_eq!(enabled.current_state().unwrap(), ResourceState::Correct);
+
+        let disabled = offline_unit(home.path(), name, false);
+        assert!(matches!(
+            disabled.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
+        assert_eq!(disabled.apply().unwrap(), ResourceChange::Applied);
+        assert!(!link.is_symlink(), "{relationship}");
+        assert_eq!(disabled.current_state().unwrap(), ResourceState::Correct);
+    }
 }
 
 #[cfg(unix)]
@@ -942,27 +859,6 @@ fn offline_user_unit_missing_definition_is_plannable_for_dry_run() {
     let resource = offline_unit(home.path(), "not-linked-yet.timer", true);
 
     assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
-}
-
-#[cfg(unix)]
-#[test]
-fn offline_user_unit_supports_required_by_targets() {
-    let home = tempfile::tempdir().unwrap();
-    let unit_dir = home.path().join(".config/systemd/user");
-    std::fs::create_dir_all(&unit_dir).unwrap();
-    std::fs::write(
-        unit_dir.join("session.service"),
-        "[Install]\nRequiredBy=graphical-session.target\n",
-    )
-    .unwrap();
-    let resource = offline_unit(home.path(), "session.service", true);
-
-    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
-    assert!(
-        unit_dir
-            .join("graphical-session.target.requires/session.service")
-            .is_symlink()
-    );
 }
 
 #[test]
@@ -1200,7 +1096,6 @@ fn offline_enablement_reconciles_reset_install_targets() {
 #[test]
 fn live_user_enablement_reconciles_changed_targets_and_preserves_foreign_links() {
     use crate::engine::{ProcessOpts, process_resources};
-    use crate::test_helpers::ScriptedExecutor;
     use crate::test_helpers::{ContextBuilder, task_batch};
 
     let fixture = tempfile::tempdir_in(".").unwrap();
@@ -1216,11 +1111,7 @@ fn live_user_enablement_reconciles_changed_targets_and_preserves_foreign_links()
     std::fs::write(&unit, "[Install]\nWantedBy=new.target\n").unwrap();
     std::os::unix::fs::symlink(&unit, old.join(name)).unwrap();
     std::os::unix::fs::symlink("../another.service", foreign.join(name)).unwrap();
-    let probe = || {
-        CommandSpec::new("systemctl")
-            .args(&["--user", "is-enabled", name])
-            .unchecked()
-    };
+    let probe = || systemctl(&["--user", "is-enabled", name]);
     let scripted = ScriptedExecutor::new()
         .command(probe(), Ok(ExecResult::success("enabled")))
         .command(probe(), Ok(ExecResult::success("enabled")))
@@ -1284,14 +1175,10 @@ fn disable_reports_global_enablement_and_preserves_the_admin_link_online_and_off
     for live in [false, true] {
         resource.manager_available = live;
         if live {
-            resource.executor = Arc::new(
-                crate::test_helpers::ScriptedExecutor::new().command(
-                    CommandSpec::new("systemctl")
-                        .args(&["--user", "is-enabled", name])
-                        .unchecked(),
-                    Ok(ExecResult::success("enabled")),
-                ),
-            );
+            resource.executor = Arc::new(ScriptedExecutor::new().command(
+                systemctl(&["--user", "is-enabled", name]),
+                Ok(ExecResult::success("enabled")),
+            ));
         }
         assert!(matches!(
             resource.current_state().unwrap(),
@@ -1370,29 +1257,6 @@ fn temporary_mask_cannot_confirm_persistent_disable_until_it_expires() {
     );
     std::fs::remove_file(link.as_path()).unwrap();
     assert_eq!(resource().current_state().unwrap(), ResourceState::Correct);
-}
-
-#[cfg(unix)]
-#[test]
-fn offline_user_unit_can_be_disabled() {
-    let home = tempfile::tempdir().unwrap();
-    let unit_dir = home.path().join(".config/systemd/user");
-    std::fs::create_dir_all(&unit_dir).unwrap();
-    std::fs::write(
-        unit_dir.join("session.service"),
-        "[Install]\nWantedBy=graphical-session.target\n",
-    )
-    .unwrap();
-    let resource = offline_unit(home.path(), "session.service", true);
-    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
-
-    let disabled = offline_unit(home.path(), "session.service", false);
-    assert!(matches!(
-        disabled.current_state().unwrap(),
-        ResourceState::Incorrect { .. }
-    ));
-    assert_eq!(disabled.apply().unwrap(), ResourceChange::Applied);
-    assert_eq!(disabled.current_state().unwrap(), ResourceState::Correct);
 }
 
 #[cfg(unix)]

@@ -80,45 +80,15 @@ pub(super) fn normalize_command_position(
     args: &mut Vec<std::ffi::OsString>,
     command: &clap::Command,
 ) {
-    let options: Vec<_> = command
-        .get_arguments()
-        .chain(
-            command
-                .get_subcommands()
-                .flat_map(clap::Command::get_arguments),
-        )
-        .collect();
-    let mut position = 1;
-    while let Some(value) = args.get(position) {
-        let arg = value.to_string_lossy();
-        if arg == "--" {
-            break;
-        }
-        if !arg.starts_with('-') {
-            let explicit = args.remove(position);
-            args.insert(1, explicit);
-            return;
-        }
-        let takes_next = arg.strip_prefix("--").map_or_else(
-            || {
-                let mut shorts = arg.trim_start_matches('-').chars();
-                while let Some(short) = shorts.next() {
-                    if options.iter().any(|option| {
-                        option.get_short() == Some(short) && option.get_action().takes_values()
-                    }) {
-                        return shorts.as_str().is_empty();
-                    }
-                }
-                false
-            },
-            |long| {
-                !long.contains('=')
-                    && options.iter().any(|option| {
-                        option.get_long() == Some(long) && option.get_action().takes_values()
-                    })
-            },
-        );
-        position = position.saturating_add(if takes_next { 2 } else { 1 });
+    use super::cli_words::{Word, value_options, words};
+    let raw = clap_lex::RawArgs::new(args.iter().skip(1));
+    if let Some(position) = words(&raw, value_options(command)).find_map(|word| match word {
+        Word::Positional(index, _) => Some(index + 1),
+        Word::Option(_, _) => None,
+    }) {
+        let explicit = args.remove(position);
+        args.insert(1, explicit);
+        return;
     }
     let top_level_display = args
         .iter()

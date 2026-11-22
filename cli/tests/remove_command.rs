@@ -136,11 +136,7 @@ fn invalid_remove_selection_fails_without_removing_managed_hooks() {
             command.args(["--skip", skip]);
         }
         let output = command.output().unwrap();
-        let text = format!(
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let text = common::combined_output(&output);
         assert!(!output.status.success(), "{selector}: {text}");
         assert!(text.contains(diagnostic), "{selector}: {text}");
         assert_eq!(
@@ -597,11 +593,7 @@ fn materialization_refuses_nested_absolute_links_to_the_active_overlay() {
         }
         let output = command.output().unwrap();
         assert!(!output.status.success(), "{output:?}");
-        let text = format!(
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let text = common::combined_output(&output);
         assert!(text.contains("depends on the checkout"), "{text}");
         assert!(std::fs::read_link(&target).is_ok());
         assert_eq!(

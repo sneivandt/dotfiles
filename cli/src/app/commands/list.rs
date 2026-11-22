@@ -423,11 +423,27 @@ fn command_membership(listing: &TaskListing) -> String {
 mod tests {
     use super::*;
     use crate::domains::overlay::config::scripts::ScriptEntry;
-    use crate::engine::{Context, TaskId, TaskMeta, TaskResult};
-    use crate::test_helpers::empty_config;
+    use crate::engine::{Context, TaskMeta, TaskResult};
+    use crate::test_helpers::{empty_config, test_task};
     use std::path::PathBuf;
 
-    struct VisibleTask;
+    test_task! {
+        VisibleTask {
+            name: "Visible task",
+            selector: "visible",
+        }
+        InternalTask {
+            name: "Internal task",
+            selector: "internal",
+            visibility: TaskVisibility::Internal,
+        }
+        DependentTask {
+            name: "Dependent task",
+            selector: "dependent",
+            deps: [VisibleTask],
+            ordering: [InternalTask],
+        }
+    }
 
     #[test]
     fn discovery_filters_only_proven_inapplicability() {
@@ -528,52 +544,6 @@ mod tests {
         });
         assert!(potentially_applicable("packages", &config, arch, false));
         assert!(potentially_applicable("packages", &config, windows, false));
-    }
-
-    impl Task for VisibleTask {
-        fn meta(&self) -> TaskMeta<'_> {
-            TaskMeta::new("Visible task").with_selector("visible")
-        }
-
-        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-            Ok(TaskResult::Ok)
-        }
-    }
-
-    struct InternalTask;
-
-    impl Task for InternalTask {
-        fn meta(&self) -> TaskMeta<'_> {
-            TaskMeta::new("Internal task")
-                .with_selector("internal")
-                .with_visibility(TaskVisibility::Internal)
-        }
-
-        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-            Ok(TaskResult::Ok)
-        }
-    }
-
-    struct DependentTask;
-
-    impl Task for DependentTask {
-        fn meta(&self) -> TaskMeta<'_> {
-            TaskMeta::new("Dependent task").with_selector("dependent")
-        }
-
-        fn dependencies(&self) -> &[TaskId] {
-            const DEPS: &[TaskId] = &[TaskId::Type(std::any::TypeId::of::<VisibleTask>())];
-            DEPS
-        }
-
-        fn ordering_dependencies(&self) -> &[TaskId] {
-            const DEPS: &[TaskId] = &[TaskId::Type(std::any::TypeId::of::<InternalTask>())];
-            DEPS
-        }
-
-        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-            Ok(TaskResult::Ok)
-        }
     }
 
     #[test]

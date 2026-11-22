@@ -137,7 +137,7 @@ fn validate_relative_script_path(entry: &ScriptEntry) -> Result<()> {
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_helpers::{rejects_toml, write_temp_toml};
     use crate::infra::config::test_load_missing_returns_empty;
 
     #[test]
@@ -171,27 +171,21 @@ scripts = [
 
     test_load_missing_returns_empty!(load);
 
+    fn script(name: &str, path: &str) -> ScriptEntry {
+        ScriptEntry {
+            name: name.into(),
+            path: path.into(),
+            description: None,
+            check_remove: false,
+        }
+    }
+
     #[test]
     fn validate_rejects_empty_names_invalid_paths_and_duplicate_selectors() {
-        let entries = vec![
-            ScriptEntry {
-                name: " ".to_string(),
-                path: String::new(),
-                description: None,
-                check_remove: false,
-            },
-            ScriptEntry {
-                name: "Duplicate".to_string(),
-                path: "../escape.sh".to_string(),
-                description: None,
-                check_remove: false,
-            },
-            ScriptEntry {
-                name: "Duplicate".to_string(),
-                path: "../escape.sh".to_string(),
-                description: None,
-                check_remove: false,
-            },
+        let entries = [
+            script(" ", ""),
+            script("Duplicate", "../escape.sh"),
+            script("Duplicate", "../escape.sh"),
         ];
 
         let diagnostics = validate(&entries);
@@ -206,19 +200,9 @@ scripts = [
 
     #[test]
     fn validate_rejects_distinct_names_with_the_same_selector() {
-        let entries = vec![
-            ScriptEntry {
-                name: "Set up DB".to_string(),
-                path: "scripts/setup-db.sh".to_string(),
-                description: None,
-                check_remove: false,
-            },
-            ScriptEntry {
-                name: "Set-up DB".to_string(),
-                path: "scripts/setup-db-alt.sh".to_string(),
-                description: None,
-                check_remove: false,
-            },
+        let entries = [
+            script("Set up DB", "scripts/setup-db.sh"),
+            script("Set-up DB", "scripts/setup-db-alt.sh"),
         ];
 
         let diagnostics = validate(&entries);
@@ -234,54 +218,23 @@ scripts = [
 
     #[test]
     fn resolve_script_path_joins_overlay_root() {
-        let entry = ScriptEntry {
-            name: "test".to_string(),
-            path: "scripts/test.ps1".to_string(),
-            description: None,
-            check_remove: false,
-        };
+        let entry = script("test", "scripts/test.ps1");
         let resolved = resolve_script_path(&entry, Path::new("/overlay"))
             .expect("relative script path should resolve");
         assert_eq!(resolved, PathBuf::from("/overlay/scripts/test.ps1"));
     }
 
     #[test]
-    fn resolve_script_path_rejects_absolute_paths() {
-        let entry = ScriptEntry {
-            name: "test".to_string(),
-            path: "/tmp/test.ps1".to_string(),
-            description: None,
-            check_remove: false,
-        };
-        let err = resolve_script_path(&entry, Path::new("/overlay"))
-            .expect_err("absolute script path should be rejected");
-        assert!(err.to_string().contains("must be relative"));
-    }
-
-    #[test]
-    fn resolve_script_path_rejects_windows_absolute_paths_on_every_platform() {
-        let entry = ScriptEntry {
-            name: "test".to_string(),
-            path: r"C:\tmp\test.ps1".to_string(),
-            description: None,
-            check_remove: false,
-        };
-        let err = resolve_script_path(&entry, Path::new("/overlay"))
-            .expect_err("Windows absolute script path should be rejected");
-        assert!(err.to_string().contains("must be relative"));
-    }
-
-    #[test]
-    fn resolve_script_path_rejects_parent_directory_traversal() {
-        let entry = ScriptEntry {
-            name: "test".to_string(),
-            path: "scripts/../test.ps1".to_string(),
-            description: None,
-            check_remove: false,
-        };
-        let err = resolve_script_path(&entry, Path::new("/overlay"))
-            .expect_err("parent-directory traversal should be rejected");
-        assert!(err.to_string().contains("must not contain '..'"));
+    fn resolve_script_path_rejects_unsafe_paths_on_every_platform() {
+        for (path, fragment) in [
+            ("/tmp/test.ps1", "must be relative"),
+            (r"C:\tmp\test.ps1", "must be relative"),
+            ("scripts/../test.ps1", "must not contain '..'"),
+        ] {
+            let err =
+                resolve_script_path(&script("test", path), Path::new("/overlay")).unwrap_err();
+            assert!(err.to_string().contains(fragment), "{path}: {err}");
+        }
     }
 
     #[test]
@@ -303,31 +256,15 @@ scripts = [
         assert_eq!(entries[0].name, "Base script");
     }
 
-    #[test]
-    fn load_returns_error_on_unknown_field_in_entry() {
-        let content = r#"
+    rejects_toml! {
+        "test.toml", |path| load(path, &[Category::Base]);
+        load_returns_error_on_unknown_field_in_entry: r#"
 [base]
 scripts = [
     { name = "Setup", path = "scripts/setup.sh", typo_field = "oops" },
 ]
 "#;
-        let (_dir, path) = write_temp_toml(content);
-        let result = load(&path, &[Category::Base]);
-        assert!(
-            result.is_err(),
-            "unknown field 'typo_field' in ScriptEntry should return an error"
-        );
-    }
-
-    #[test]
-    fn load_returns_error_on_unknown_section_field() {
-        // Wrong field name in the section: "script" instead of "scripts".
-        let content = "[base]\nscript = [{ name = \"Setup\", path = \"scripts/setup.sh\" }]\n";
-        let (_dir, path) = write_temp_toml(content);
-        let result = load(&path, &[Category::Base]);
-        assert!(
-            result.is_err(),
-            "unknown section field 'script' should return an error"
-        );
+        load_returns_error_on_unknown_section_field:
+            "[base]\nscript = [{ name = \"Setup\", path = \"scripts/setup.sh\" }]\n";
     }
 }

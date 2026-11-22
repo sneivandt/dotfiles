@@ -1,11 +1,13 @@
 //! Runtime completion candidates and shell registration scripts.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::process::Command as ProcessCommand;
 
 use clap_complete::CompletionCandidate;
-use clap_lex::OsStrExt as _;
+use clap_lex::RawArgs;
 use serde::Deserialize;
+
+use super::cli_words::{self, Word};
 
 /// Completion uses the same command context as argument parsing, including
 /// options before an explicit command and the implicit update command.
@@ -27,7 +29,8 @@ fn command_for_words(words: &[OsString]) -> clap::Command {
     else {
         return canonical;
     };
-    let present = present_arguments(selected, normalized.get(2..).unwrap_or_default());
+    let raw = RawArgs::new(normalized.iter().skip(2));
+    let present = present_arguments(selected, &raw);
     let options = selected
         .get_arguments()
         .cloned()
@@ -44,7 +47,7 @@ fn command_for_words(words: &[OsString]) -> clap::Command {
             };
             let graph_expansion_unavailable = selected.get_name() == "list"
                 && arg.get_id() == "with_deps"
-                && option_value(&normalized, "--graph") != Some("update");
+                && graph_value(&raw, &canonical) != Some("update");
             if !graph_expansion_unavailable && argument_available(selected, &present, &arg) {
                 if present.contains(arg.get_id())
                     && !matches!(arg.get_action(), clap::ArgAction::Append)
@@ -88,53 +91,18 @@ fn command_for_words(words: &[OsString]) -> clap::Command {
 }
 
 /// Collect option identities, respecting value boundaries and short clusters.
-/// Probe with valid placeholder values so incomplete input cannot mask conflicts.
-fn present_arguments(command: &clap::Command, words: &[OsString]) -> Vec<clap::Id> {
-    let mut present = Vec::new();
-    let mut words = words.iter();
-    while let Some(word) = words.next() {
-        let text = word.to_string_lossy();
-        if text == "--" {
-            break;
-        }
-        if let Some(long) = text.strip_prefix("--") {
-            let (long, attached) = long
-                .split_once('=')
-                .map_or((long, false), |(name, _)| (name, true));
-            if let Some(arg) = command
-                .get_arguments()
-                .find(|arg| arg.get_long() == Some(long))
-            {
-                present.push(arg.get_id().clone());
-                if arg.get_action().takes_values() && !attached {
-                    let _ = words.next();
-                }
-            }
-        } else if let Some(shorts) = text.strip_prefix('-') {
-            let mut shorts = shorts.chars();
-            while let Some(short) = shorts.next() {
-                if let Some(arg) = command
-                    .get_arguments()
-                    .find(|arg| arg.get_short() == Some(short))
-                {
-                    present.push(arg.get_id().clone());
-                    if arg.get_action().takes_values() {
-                        if shorts.as_str().is_empty() {
-                            let _ = words.next();
-                        }
-                        break;
-                    }
-                }
-            }
-        } else if !text.is_empty()
-            && let Some(arg) = command.get_positionals().next()
-        {
-            present.push(arg.get_id().clone());
-        }
-    }
-    present
+fn present_arguments(command: &clap::Command, raw: &RawArgs) -> Vec<clap::Id> {
+    cli_words::words(raw, command.get_arguments().collect())
+        .filter_map(|word| match word {
+            Word::Option(arg, _) => Some(arg),
+            Word::Positional(_, value) if !value.is_empty() => command.get_positionals().next(),
+            Word::Positional(_, _) => None,
+        })
+        .map(|arg| arg.get_id().clone())
+        .collect()
 }
 
+/// Probe with valid placeholder values so incomplete input cannot mask conflicts.
 fn argument_available(
     command: &clap::Command,
     present: &[clap::Id],
@@ -271,13 +239,14 @@ fn completion_words(args: Vec<OsString>) -> Vec<OsString> {
 
 fn task_memberships(words: &[OsString]) -> &'static [&'static str] {
     use clap::CommandFactory as _;
+    let cli = super::cli::Cli::command();
     let mut normalized = words.to_vec();
-    super::cli::normalize_command_position(&mut normalized, &super::cli::Cli::command());
+    super::cli::normalize_command_position(&mut normalized, &cli);
     match normalized.get(1).and_then(|word| word.to_str()) {
         Some("update") | None => &["update"],
         Some("remove") => &["remove"],
         Some("check") => &["check"],
-        Some("list") => match option_value(&normalized, "--graph") {
+        Some("list") => match graph_value(&RawArgs::new(normalized.iter().skip(2)), &cli) {
             Some("update") => &["update"],
             Some("remove") => &["remove"],
             Some("check") => &["check"],
@@ -288,78 +257,30 @@ fn task_memberships(words: &[OsString]) -> &'static [&'static str] {
     }
 }
 
-fn option_value<'a>(words: &'a [OsString], option: &str) -> Option<&'a str> {
-    option_values(words)
-        .into_iter()
-        .find(|(name, _)| Some(name.as_str()) == option.strip_prefix("--"))
+fn graph_value<'a>(raw: &'a RawArgs, command: &'a clap::Command) -> Option<&'a str> {
+    option_values(raw, command)
+        .find(|(name, _)| *name == "graph")
         .and_then(|(_, value)| value.to_str())
 }
 
 fn repository_args(words: &[OsString]) -> Vec<OsString> {
-    option_values(words)
-        .into_iter()
-        .filter(|(name, _)| matches!(name.as_str(), "profile" | "root" | "overlay"))
+    use clap::CommandFactory as _;
+    option_values(&RawArgs::new(words), &super::cli::Cli::command())
+        .filter(|(name, _)| matches!(*name, "profile" | "root" | "overlay"))
         .flat_map(|(name, value)| [format!("--{name}").into(), value.to_os_string()])
         .collect()
 }
 
 /// Read values with the same option boundaries as command normalization, even
 /// while the current completion word is incomplete.
-fn option_values(words: &[OsString]) -> Vec<(String, &std::ffi::OsStr)> {
-    use clap::CommandFactory as _;
-
-    let command = super::cli::Cli::command();
-    let options = command
-        .get_arguments()
-        .chain(
-            command
-                .get_subcommands()
-                .flat_map(clap::Command::get_arguments),
-        )
-        .collect::<Vec<_>>();
-    let mut values = Vec::new();
-    let mut words = words.iter();
-    while let Some(word) = words.next() {
-        if word == "--" {
-            break;
-        }
-        if let Some(long) = word.strip_prefix("--") {
-            let (name, attached) = long
-                .split_once("=")
-                .map_or((long, None), |(name, value)| (name, Some(value)));
-            let Some(name) = name.to_str() else {
-                continue;
-            };
-            if options
-                .iter()
-                .any(|arg| arg.get_long() == Some(name) && arg.get_action().takes_values())
-                && let Some(value) = attached.or_else(|| words.next().map(OsString::as_os_str))
-            {
-                values.push((name.to_owned(), value));
-            }
-        } else if let Some(shorts) = word.to_str().and_then(|text| text.strip_prefix('-')) {
-            let mut shorts = shorts.chars();
-            while let Some(short) = shorts.next() {
-                let Some(arg) = options
-                    .iter()
-                    .find(|arg| arg.get_short() == Some(short) && arg.get_action().takes_values())
-                else {
-                    continue;
-                };
-                let rest = shorts.as_str();
-                let value = if rest.is_empty() {
-                    words.next().map(OsString::as_os_str)
-                } else {
-                    Some(std::ffi::OsStr::new(rest.strip_prefix('=').unwrap_or(rest)))
-                };
-                if let (Some(name), Some(value)) = (arg.get_long(), value) {
-                    values.push((name.to_owned(), value));
-                }
-                break;
-            }
-        }
-    }
-    values
+fn option_values<'a>(
+    raw: &'a RawArgs,
+    command: &'a clap::Command,
+) -> impl Iterator<Item = (&'a str, &'a OsStr)> {
+    cli_words::words(raw, cli_words::value_options(command)).filter_map(|word| match word {
+        Word::Option(arg, Some(value)) => Some((arg.get_long()?, value)),
+        Word::Positional(_, _) | Word::Option(_, None) => None,
+    })
 }
 
 fn task_candidates_from_json(json: &[u8], memberships: &[&str]) -> Vec<CompletionCandidate> {
@@ -783,6 +704,39 @@ mod tests {
     }
 
     #[test]
+    fn aliases_own_their_values_but_only_selected_options_count_as_present() {
+        let selected = clap::Command::new("list").arg(
+            clap::Arg::new("profile")
+                .long("profile")
+                .alias("preset")
+                .short('p')
+                .short_alias('P'),
+        );
+        let other = clap::Command::new("log").arg(clap::Arg::new("task").long("task"));
+        let cli = clap::Command::new("dotfiles").subcommands([selected.clone(), other]);
+        for spelling in [vec!["--preset", "log"], vec!["-P=log"]] {
+            let mut input = vec![OsString::from("dotfiles")];
+            input.extend(spelling.iter().map(OsString::from));
+            input.push("list".into());
+            super::super::cli::normalize_command_position(&mut input, &cli);
+            assert_eq!(input[1], "list", "{spelling:?}");
+            let raw = RawArgs::new(&spelling);
+            assert_eq!(
+                option_values(&raw, &cli).collect::<Vec<_>>(),
+                [("profile", OsStr::new("log"))]
+            );
+        }
+        // --task owns the next word in the union, but is unknown on `list`.
+        // An unfinished --preset must still hide the selected command's profile.
+        let raw = RawArgs::new(["--task", "--preset"]);
+        assert_eq!(
+            option_values(&raw, &cli).collect::<Vec<_>>(),
+            [("task", OsStr::new("--preset"))]
+        );
+        assert_eq!(present_arguments(&selected, &raw), ["profile"]);
+    }
+
+    #[test]
     fn clustered_profile_options_reach_task_discovery() {
         for flags in [
             vec!["-vpbase"],
@@ -827,12 +781,18 @@ mod tests {
 
     #[test]
     fn graph_values_respect_other_options_and_the_end_of_options() {
+        use clap::CommandFactory as _;
+        let command = super::super::cli::Cli::command();
         for words in [
             vec!["dotfiles", "list", "--root", "--graph=update"],
             vec!["dotfiles", "list", "--", "--graph=update"],
         ] {
             let words = words.into_iter().map(OsString::from).collect::<Vec<_>>();
-            assert_eq!(option_value(&words, "--graph"), None, "{words:?}");
+            assert_eq!(
+                graph_value(&RawArgs::new(&words), &command),
+                None,
+                "{words:?}"
+            );
             assert!(task_memberships(&words).is_empty(), "{words:?}");
         }
     }

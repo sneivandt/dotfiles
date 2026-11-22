@@ -5,12 +5,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use crate::domains::packages::config::packages::Package;
+use crate::domains::packages::test_fixture::{inventory, native_install, winget_install};
 use crate::infra::ConfigHandle;
 use crate::infra::exec::{CommandSpec, ExecError, ExecResult, MockExecutor};
 use crate::infra::platform::Os;
 use crate::test_helpers::{
-    CapturingOutput, assert_task_changed, assert_task_ok, make_platform_context_with_which,
-    task_batch, task_skipped,
+    CapturingOutput, ScriptedExecutor, assert_task_changed, assert_task_ok,
+    make_platform_context_with_which, task_batch, task_skipped,
 };
 use std::path::PathBuf;
 
@@ -1039,16 +1040,12 @@ fn expect_paru_build_prerequisites(mock: &mut MockExecutor) {
 // run() — batch install paths (pacman/paru)
 // -----------------------------------------------------------------------
 
-/// Build a context that uses a [`MockExecutor`] with `which=true`.
-///
-/// This lets tests exercise the `process_packages` batch install path without
-/// being short-circuited by the "tool not found" guard in `run()`.
 fn make_package_context(
     root: PathBuf,
     overlay: Option<PathBuf>,
     os: Os,
     is_arch: bool,
-    executor: MockExecutor,
+    executor: impl crate::infra::exec::Executor + 'static,
 ) -> Context {
     use crate::infra::platform::Platform;
     crate::test_helpers::make_context(
@@ -1060,29 +1057,13 @@ fn make_package_context(
 }
 
 fn is_native_inventory(spec: &CommandSpec) -> bool {
-    spec.program() == "pacman"
-        && spec.arguments() == ["-Q"]
-        && spec.is_checked()
-        && spec.working_dir().is_none()
+    *spec == inventory()
 }
 
-fn is_native_git_install(spec: &CommandSpec) -> bool {
-    #[cfg(unix)]
-    let root = nix::unistd::Uid::effective().is_root();
-    #[cfg(not(unix))]
-    let root = false;
-    let (program, arguments) = if root {
-        ("pacman", vec!["-Syu", "--needed", "--noconfirm", "git"])
-    } else {
-        (
-            "sudo",
-            vec!["pacman", "-Syu", "--needed", "--noconfirm", "git"],
-        )
-    };
-    spec.program() == program
-        && spec.arguments() == arguments
-        && spec.is_checked()
-        && spec.working_dir().is_none()
+fn native_inventory(before: &str) -> ScriptedExecutor {
+    ScriptedExecutor::new()
+        .with_programs(&["pacman", "sudo"])
+        .command(inventory(), Ok(ExecResult::success(before)))
 }
 
 #[test]
@@ -1093,24 +1074,12 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
         ("vim", false),
         ("aur-package-must-not-be-installed", true),
     ]);
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    mock.expect_which().returning(|_| true);
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(is_native_inventory)
-        .returning(|_| Ok(ExecResult::success("vim 9.0\n")));
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(is_native_git_install)
-        .returning(|_| Ok(ExecResult::success("")));
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(is_native_inventory)
-        .returning(|_| Ok(ExecResult::success("vim 9.0\ngit 2.0\n")));
+    let mock = native_inventory("vim 9.0\n")
+        .command(
+            native_install(PackageManager::Pacman, &["git"]),
+            Ok(ExecResult::success("")),
+        )
+        .command(inventory(), Ok(ExecResult::success("vim 9.0\ngit 2.0\n")));
     let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     let stats = task_batch(&result);
@@ -1124,14 +1093,7 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
 fn install_packages_all_already_installed_returns_ok() {
     let root = tempfile::tempdir_in(".").unwrap();
     let packages = packages(&[("git", false)]);
-    // which("pacman") → true
-    // pacman inventory → git installed → no install needed
-    let mut mock = MockExecutor::new();
-    mock.expect_which().returning(|_| true);
-    mock.expect_execute()
-        .once()
-        .withf(is_native_inventory)
-        .returning(|_| Ok(ExecResult::success("git 2.40\n")));
+    let mock = native_inventory("git 2.40\n");
     let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     assert_task_ok(&result);
@@ -1141,14 +1103,7 @@ fn install_packages_all_already_installed_returns_ok() {
 fn install_packages_dry_run_reports_missing_packages() {
     let root = tempfile::tempdir_in(".").unwrap();
     let packages = packages(&[("git", false), ("vim", false)]);
-    // which("pacman") → true
-    // pacman inventory → nothing installed
-    let mut mock = MockExecutor::new();
-    mock.expect_which().returning(|_| true);
-    mock.expect_execute()
-        .once()
-        .withf(is_native_inventory)
-        .returning(|_| Ok(ExecResult::success("")));
+    let mock = native_inventory("");
     let output = Arc::new(CapturingOutput::default());
     let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock)
         .with_log(Arc::<CapturingOutput>::clone(&output))
@@ -1205,32 +1160,13 @@ fn native_inventory_failure_prevents_planning_and_installation() {
 fn install_packages_returns_failed_when_batch_install_fails() {
     let root = tempfile::tempdir_in(".").unwrap();
     let packages = packages(&[("git", false)]);
-    // which("pacman") → true
-    // pacman inventory → git not installed
-    // run("sudo", ["pacman", ...]) → error (simulating locked db)
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    mock.expect_which().returning(|_| true);
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(is_native_inventory)
-        .returning(|_| Ok(ExecResult::success("")));
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(is_native_git_install)
-        .returning(|_| {
-            Err(ExecError::non_zero(
-                "pacman",
-                ExecResult::failure("", "database locked", Some(1)),
-            ))
-        });
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(is_native_inventory)
-        .returning(|_| Ok(ExecResult::success("")));
+    let error = ExecError::non_zero(
+        "pacman",
+        ExecResult::failure("", "database locked", Some(1)),
+    );
+    let mock = native_inventory("")
+        .command(native_install(PackageManager::Pacman, &["git"]), Err(error))
+        .command(inventory(), Ok(ExecResult::success("")));
     let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     let stats = task_batch(&result);
@@ -1247,50 +1183,22 @@ fn install_packages_returns_failed_when_batch_install_fails() {
 #[test]
 fn partial_package_batch_preserves_changed_and_already_installed_counts() {
     for all_installed in [false, true] {
-        let packages = ConfigHandle::new(
-            ["first", "second", "existing"]
-                .into_iter()
-                .map(|name| Package {
-                    name: name.into(),
-                    is_aur: false,
-                })
-                .collect(),
+        let packages = packages(&[("first", false), ("second", false), ("existing", false)]);
+        let error = ExecError::non_zero(
+            "pacman",
+            ExecResult::failure("", "fixture second package failed", Some(1)),
         );
-        let mut mock = MockExecutor::new();
-        mock.expect_which().return_const(true);
-        let mut sequence = mockall::Sequence::new();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut sequence)
-            .withf(is_native_inventory)
-            .returning(|_| Ok(ExecResult::success("existing 1.0\n")));
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut sequence)
-            .withf(|spec| {
-                spec.is_checked()
-                    && spec.arguments().ends_with(&[
-                        std::ffi::OsString::from("first"),
-                        std::ffi::OsString::from("second"),
-                    ])
-            })
-            .returning(|_| {
-                Err(ExecError::non_zero(
-                    "pacman",
-                    ExecResult::failure("", "fixture second package failed", Some(1)),
-                ))
-            });
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut sequence)
-            .withf(is_native_inventory)
-            .returning(move |_| {
-                Ok(ExecResult::success(if all_installed {
-                    "existing 1.0\nfirst 1.0\nsecond 1.0\n"
-                } else {
-                    "existing 1.0\nfirst 1.0\n"
-                }))
-            });
+        let after = if all_installed {
+            "existing 1.0\nfirst 1.0\nsecond 1.0\n"
+        } else {
+            "existing 1.0\nfirst 1.0\n"
+        };
+        let mock = native_inventory("existing 1.0\n")
+            .command(
+                native_install(PackageManager::Pacman, &["first", "second"]),
+                Err(error),
+            )
+            .command(inventory(), Ok(ExecResult::success(after)));
         let ctx = make_package_context(
             PathBuf::from("fixture-repository"),
             None,
@@ -1524,24 +1432,13 @@ fn failed_timeout_recheck_preserves_the_timeout_or_new_cancellation() {
 fn install_packages_propagates_batch_cancellation() {
     let root = tempfile::tempdir_in(".").unwrap();
     let packages = packages(&[("git", false)]);
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    mock.expect_which().returning(|_| true);
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(is_native_inventory)
-        .returning(|_| Ok(ExecResult::success("")));
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(is_native_git_install)
-        .returning(|_| {
-            Err(ExecError::Cancelled {
-                command: "sudo pacman".to_string(),
-                result: ExecResult::failure("", "", None),
-            })
-        });
+    let mock = native_inventory("").command(
+        native_install(PackageManager::Pacman, &["git"]),
+        Err(ExecError::Cancelled {
+            command: "sudo pacman".to_string(),
+            result: ExecResult::failure("", "", None),
+        }),
+    );
     let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock);
 
     let err = InstallPackages::new(packages)
@@ -1575,24 +1472,12 @@ fn cancelled_winget_task_preserves_completed_and_initially_current_counts() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut sequence)
-        .withf(|spec| {
-            spec.program() == "winget"
-                && spec
-                    .arguments()
-                    .get(2)
-                    .is_some_and(|arg| arg == "First.App")
-        })
+        .with(mockall::predicate::eq(winget_install("First.App")))
         .returning(|_| Ok(ExecResult::success("installed")));
     mock.expect_execute()
         .once()
         .in_sequence(&mut sequence)
-        .withf(|spec| {
-            spec.program() == "winget"
-                && spec
-                    .arguments()
-                    .get(2)
-                    .is_some_and(|arg| arg == "Second.App")
-        })
+        .with(mockall::predicate::eq(winget_install("Second.App")))
         .returning(|_| {
             Err(ExecError::Cancelled {
                 command: "winget install".into(),
@@ -1647,26 +1532,7 @@ fn winget_install_matches_ascii_case_and_installs_only_missing_configured_ids() 
         mock.expect_execute()
             .once()
             .in_sequence(&mut sequence)
-            .withf(|spec| {
-                spec.program() == "winget"
-                    && spec.arguments()
-                        == [
-                            "install",
-                            "--id",
-                            "äpp.ToOl",
-                            "--exact",
-                            "--no-upgrade",
-                            "--source",
-                            "winget",
-                            "--accept-source-agreements",
-                            "--accept-package-agreements",
-                            "--disable-interactivity",
-                            "--scope",
-                            "user",
-                        ]
-                    && !spec.is_checked()
-                    && spec.working_dir().is_none()
-            })
+            .with(mockall::predicate::eq(winget_install("äpp.ToOl")))
             .return_once(|_| Ok(install_result));
         let ctx = make_package_context("fixture-repository".into(), None, Os::Windows, false, mock);
         // ASCII case changes don't make Git missing; ä and Ä are distinct.

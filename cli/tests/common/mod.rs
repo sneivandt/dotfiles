@@ -10,7 +10,7 @@
 use dotfiles_cli::testing as test_api;
 use std::collections::HashSet;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::sync::Arc;
 
 use test_api::config::Config;
@@ -23,6 +23,15 @@ use test_api::tasks::{Context, ContextOpts, Task, TaskId};
 
 fn log_arc(log: &Arc<Logger>) -> Arc<dyn Log> {
     Arc::<Logger>::clone(log)
+}
+
+/// For assertions about diagnostics that may appear on either stream.
+pub(crate) fn combined_output(output: &Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    )
 }
 
 /// Enumerate retained logs, excluding lease and directory-coordination files.

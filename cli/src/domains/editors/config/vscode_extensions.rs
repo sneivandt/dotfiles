@@ -53,7 +53,7 @@ pub(crate) const VSCODE_EXTENSIONS_TOML: &str = "vscode-extensions.toml";
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_helpers::{rejects_toml, write_temp_toml};
     use crate::infra::config::test_load_missing_returns_empty;
 
     #[test]
@@ -130,21 +130,10 @@ extensions = ["github.copilot-chat"]
         }
     }
 
-    #[test]
-    fn load_returns_error_on_malformed_toml() {
-        let (_dir, path) = write_temp_toml("[base\nextensions = [\"ext\"");
-        let result = load(&path, &[Category::Base]);
-        assert!(result.is_err(), "malformed TOML should return error");
-    }
-
-    #[test]
-    fn load_returns_error_on_type_mismatch() {
-        let (_dir, path) = write_temp_toml("[base]\nextensions = 42\n");
-        let result = load(&path, &[Category::Base]);
-        assert!(
-            result.is_err(),
-            "integer instead of array should return error"
-        );
+    rejects_toml! {
+        "test.toml", |path| load(path, &[Category::Base]);
+        load_returns_error_on_malformed_toml: "[base\nextensions = [\"ext\"";
+        load_returns_error_on_type_mismatch: "[base]\nextensions = 42\n";
     }
 
     #[test]

@@ -203,7 +203,16 @@ pub fn validate(files: &[SystemFile]) -> Vec<crate::infra::config::Diagnostic> {
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
+    use crate::infra::config::test_helpers::{rejects_toml, write_temp_toml};
+
+    fn file(target: &str, source: &str) -> SystemFile {
+        SystemFile {
+            target: PathBuf::from(target),
+            source: PathBuf::from(source),
+            merge: MergeStrategy::Toml,
+            origin: None,
+        }
+    }
 
     #[test]
     fn fragment_diagnostics_distinguish_absence_and_non_regular_sources() {
@@ -212,10 +221,8 @@ mod tests {
         std::fs::create_dir(&system).unwrap();
         let source = system.join("fixture.toml");
         let file = SystemFile {
-            target: "/etc/fixture.toml".into(),
-            source: "fixture.toml".into(),
-            merge: MergeStrategy::Toml,
             origin: Some(fixture.path().to_path_buf()),
+            ..file("/etc/fixture.toml", "fixture.toml")
         };
         assert_eq!(
             validate(std::slice::from_ref(&file))[0].code.to_string(),
@@ -254,13 +261,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn rejects_unknown_entry_keys() {
-        assert_load_rejects(
-            load,
-            "[base]\nfiles = [{ target = '/etc/x', source = 'x', merge = 'toml', typo = true }]\n",
-            "typo",
-        );
+    rejects_toml! {
+        "test.toml", |path| load(path, &[Category::Base]);
+        rejects_unknown_entry_keys:
+            "[base]\nfiles = [{ target = '/etc/x', source = 'x', merge = 'toml', typo = true }]\n" => "typo";
     }
 
     #[test]
@@ -283,12 +287,6 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn validation_rejects_unsafe_and_duplicate_paths() {
-        let file = |target: &str, source: &str| SystemFile {
-            target: PathBuf::from(target),
-            source: PathBuf::from(source),
-            merge: MergeStrategy::Toml,
-            origin: None,
-        };
         for target in [
             "relative",
             "/etc",
@@ -319,13 +317,7 @@ mod tests {
     #[test]
     fn validation_does_not_treat_windows_targets_as_linux_etc_paths() {
         for target in ["/etc/x", r"C:\etc\x", r"C:\etc\..\home\x", r"\\host\etc\x"] {
-            let file = SystemFile {
-                target: PathBuf::from(target),
-                source: PathBuf::from("x"),
-                merge: MergeStrategy::Toml,
-                origin: None,
-            };
-            assert!(validate_entries(&[file]).is_err(), "{target}");
+            assert!(validate_entries(&[file(target, "x")]).is_err(), "{target}");
         }
     }
 }

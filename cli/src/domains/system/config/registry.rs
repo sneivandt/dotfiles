@@ -141,7 +141,7 @@ const SUPPORTED_HIVE_PREFIX: &str = r"HKCU:\";
     unsafe_code,
     reason = "registry identity requires the native, infallible UTF-16 uppercase table"
 )]
-fn uppercase_registry_name(name: &str) -> String {
+fn uppercase_native_registry_name(name: &str) -> String {
     #[link(name = "ntdll")]
     unsafe extern "system" {
         fn RtlUpcaseUnicodeChar(source: u16) -> u16;
@@ -158,6 +158,9 @@ fn uppercase_registry_name(name: &str) -> String {
     // Native casing leaves surrogate code units unchanged, preserving valid UTF-16.
     String::from_utf16_lossy(&uppercase)
 }
+
+#[cfg(windows)]
+use uppercase_native_registry_name as uppercase_registry_name;
 
 #[cfg(not(windows))]
 fn uppercase_registry_name(name: &str) -> String {
@@ -410,6 +413,17 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn registry_identity_keeps_distinct_names_on_every_platform() {
+        let (_dir, path) = write_temp_toml(
+            "[console]\npath = 'HKCU:\\Console'\n[console.values]\nFontSize = 14\nHistorySize = 20\n",
+        );
+        let entries = load(&path).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_ne!(target_key(&entries[0]), target_key(&entries[1]));
+        assert!(validate_conflicts(&entries).is_empty());
     }
 
     #[test]

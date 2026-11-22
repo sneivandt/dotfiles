@@ -763,3 +763,23 @@ fn copy_populates_read_only_directories_before_preserving_permissions() {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
 }
+
+#[test]
+fn directory_like_entries_include_only_directories_removed_with_remove_dir() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let file = fixture.path().join("file");
+    std::fs::write(&file, b"data").unwrap();
+    assert!(is_dir_like(&fixture.path().symlink_metadata().unwrap()));
+    assert!(!is_dir_like(&file.symlink_metadata().unwrap()));
+    let dir_link = fixture.path().join("dir-link");
+    create_native_symlink(Path::new("."), &dir_link, true).unwrap();
+    assert_eq!(
+        is_dir_like(&dir_link.symlink_metadata().unwrap()),
+        cfg!(windows)
+    );
+    if cfg!(windows) {
+        std::fs::remove_dir(dir_link).unwrap();
+    } else {
+        std::fs::remove_file(dir_link).unwrap();
+    }
+}

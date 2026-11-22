@@ -46,7 +46,10 @@ impl DefaultShellResource {
             target_shell,
             executor,
             env,
-            running_as_root: process_is_root(),
+            #[cfg(unix)]
+            running_as_root: nix::unistd::Uid::effective().is_root(),
+            #[cfg(not(unix))]
+            running_as_root: false,
             allow_prompt: false,
             #[cfg(not(test))]
             allowed_shells: RegisteredShells::File("/etc/shells".into()),
@@ -145,16 +148,6 @@ impl DefaultShellResource {
         )?;
         Ok(result.success)
     }
-}
-
-#[cfg(unix)]
-fn process_is_root() -> bool {
-    nix::unistd::Uid::effective().is_root()
-}
-
-#[cfg(not(unix))]
-const fn process_is_root() -> bool {
-    false
 }
 
 fn shell_is_listed(allowed: &str, shell: &str) -> bool {

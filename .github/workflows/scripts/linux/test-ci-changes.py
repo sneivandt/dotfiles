@@ -933,7 +933,7 @@ class GateTests(unittest.TestCase):
             workflow.replace("  mutation:\n", "  mutation:\n    continue-on-error: true\n"),
             workflow.replace("if: always()", "if: success()"),
             workflow.replace("raise SystemExit(1)", "pass"),
-            workflow.replace('shard: [0, 1, 2, 3, 4, 5, 6, 7]', 'shard: [0, 1]'),
+            re.sub(r"shard: \[0, 1, 2, [^\n]+", "shard: [0, 1]", workflow),
             workflow.replace("needs.select.outputs.run_linux", "needs.select.outputs.run_windows"),
         ):
             with self.subTest(broken=broken):

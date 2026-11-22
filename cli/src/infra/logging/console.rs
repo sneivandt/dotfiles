@@ -524,16 +524,17 @@ mod tests {
         ] {
             let mut state = super::ConsoleState {
                 mode,
+                startup_separator_emitted: true,
                 ..super::ConsoleState::default()
             };
             state.active_status("Running old task");
-            state.replace_status("Running new task");
+            state.active_status("Running new task");
             if mode == super::super::OutputMode::Human {
                 assert_eq!(
                     state.captured.last(),
                     Some(&(false, "\r\x1b[KRunning new task".into()))
                 );
-                assert!(state.progress_rows > 0);
+                assert_eq!(state.progress_rows, 2);
             } else {
                 assert!(state.captured.is_empty());
                 assert_eq!(state.progress_rows, 0);

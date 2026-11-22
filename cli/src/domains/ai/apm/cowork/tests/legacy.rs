@@ -218,3 +218,24 @@ fn legacy_cleanup_requires_a_matching_deployment_hash() {
         );
     }
 }
+
+#[test]
+fn legacy_cleanup_distinguishes_missing_unreadable_and_unrelated_locks() {
+    let fixture = tempfile::tempdir().unwrap();
+    let ctx = make_context_with_home(
+        fixture.path(),
+        Platform::new(Os::Linux, false),
+        MockExecutor::new(),
+    );
+    let lock = fixture.path().join(".apm/apm.lock.yaml");
+    assert!(!remove_legacy_cowork_lock_deployments(&ctx).unwrap());
+    std::fs::create_dir_all(&lock).unwrap();
+    let error = remove_legacy_cowork_lock_deployments(&ctx).unwrap_err();
+    assert!(format!("{error:#}").contains("reading APM lockfile"));
+    std::fs::remove_dir(&lock).unwrap();
+    // Without legacy markers, this adapter leaves parsing to APM.
+    let unrelated = b"dependencies: [";
+    std::fs::write(&lock, unrelated).unwrap();
+    assert!(!remove_legacy_cowork_lock_deployments(&ctx).unwrap());
+    assert_eq!(std::fs::read(lock).unwrap(), unrelated);
+}

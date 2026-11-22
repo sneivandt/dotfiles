@@ -565,7 +565,7 @@ fn set_permissions(path: &std::path::Path, mode: u32) -> ResourceResult<()> {
         crate::infra::fs::require_single_link(&metadata)?;
     }
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).map_err(|error| {
-        if error.kind() == std::io::ErrorKind::PermissionDenied {
+        if error_is_permission_denied(&error) {
             ResourceError::permission_denied(path.display().to_string())
         } else {
             anyhow::Error::new(error)

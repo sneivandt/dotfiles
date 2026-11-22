@@ -81,7 +81,9 @@ fn relocated_referent(
         .context("skill link has no parent")?
         .to_owned();
     let mut pending: Vec<_> = payload.components().rev().collect();
-    let mut hops = 0;
+    // A finite iterator supplies the budget even when a link adds components
+    // to the pending path on each expansion.
+    let mut hops = 0..63;
     while let Some(part) = pending.pop() {
         match part {
             Component::CurDir => {}
@@ -95,9 +97,8 @@ fn relocated_referent(
                     .get(&path)
                     .with_context(|| format!("{} is not in the copied skill", path.display()))?
                 {
-                    // Bound expansion of cycles even when a payload adds a suffix.
-                    hops += 1;
-                    anyhow::ensure!(hops <= 63, "cyclic or excessively deep link chain");
+                    hops.next()
+                        .context("cyclic or excessively deep link chain")?;
                     path.pop();
                     pending.extend(next.components().rev());
                 }
@@ -186,11 +187,15 @@ pub(super) fn skill_files_match(source: &Path, target: &Path) -> Result<bool> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(error).with_context(|| format!("reading {}", target.display())),
     };
-    if !target_meta.file_type().is_symlink()
-        || (!source_meta.file_type().is_symlink()
-            && (source_meta.is_dir() || is_dir_like(&target_meta)))
-    {
-        reject_destination_link(target)?;
+    match (
+        target_meta.file_type().is_symlink(),
+        source_meta.file_type().is_symlink(),
+    ) {
+        (false, _) => reject_destination_link(target)?,
+        (true, false) if source_meta.is_dir() || is_dir_like(&target_meta) => {
+            reject_destination_link(target)?;
+        }
+        _ => {}
     }
     if source_meta.file_type() != target_meta.file_type() {
         return Ok(false);
@@ -221,17 +226,19 @@ pub(super) fn copy_skill_files(source: &Path, target: &Path) -> Result<()> {
     }
     let source_meta = source.symlink_metadata()?;
     let target_meta = symlink_metadata_optional(target, "inspecting Cowork skill destination")?;
-    if target_meta.as_ref().is_some_and(|meta| {
-        !meta.file_type().is_symlink()
-            || (is_dir_like(meta) && !source_meta.file_type().is_symlink())
-    }) {
-        reject_destination_link(target)?;
+    if let Some(meta) = &target_meta {
+        match (
+            meta.file_type().is_symlink(),
+            source_meta.file_type().is_symlink(),
+        ) {
+            (false, _) => reject_destination_link(target)?,
+            (true, false) if is_dir_like(meta) => reject_destination_link(target)?,
+            _ => {}
+        }
     }
-    if source_meta.is_dir() && !source_meta.file_type().is_symlink() {
+    if source_meta.is_dir() {
         anyhow::ensure!(
-            target_meta
-                .as_ref()
-                .is_none_or(|meta| meta.is_dir() && !meta.file_type().is_symlink()),
+            target_meta.as_ref().is_none_or(std::fs::Metadata::is_dir),
             "Cowork skill directory is not a regular directory: {}",
             target.display()
         );
@@ -265,7 +272,7 @@ pub(super) fn copy_skill_files(source: &Path, target: &Path) -> Result<()> {
         if source_meta.file_type().is_symlink() {
             check_link_replacement(target, target_meta.as_ref())?;
             let parent = target.parent().context("Cowork symlink has no parent")?;
-            let mut staged =
+            let staged =
                 crate::infra::fs::TempGuard::create_unique_dir(parent, ".dotfiles-cowork", "link")?;
             let link = staged.path().join("entry");
             create_native_symlink(
@@ -275,25 +282,31 @@ pub(super) fn copy_skill_files(source: &Path, target: &Path) -> Result<()> {
             )?;
             let current = symlink_metadata_optional(target, "inspect Cowork link publication")?;
             check_link_replacement(target, current.as_ref())?;
-            if target_meta.is_none() || current.is_none() {
-                crate::infra::fs::rename_noreplace(&link, target)?;
-            } else if current
-                .is_some_and(|metadata| metadata.is_symlink() && is_dir_like(&metadata))
-            {
-                let previous = staged.path().join("previous");
-                std::fs::rename(target, &previous)?;
-                if let Err(error) = crate::infra::fs::rename_into_place(&link, target) {
-                    if let Err(restore) = std::fs::rename(&previous, target) {
-                        staged.persist();
-                        anyhow::bail!(
-                            "Cowork link publication failed: {error:#}; restore failed: {restore}; original preserved at {}",
-                            previous.display()
-                        );
+            match (target_meta, current) {
+                (None, _) | (_, None) => crate::infra::fs::rename_noreplace(&link, target)?,
+                (Some(_), Some(_current)) => {
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::fs::FileTypeExt as _;
+                        if _current.file_type().is_symlink_dir() {
+                            let previous = staged.path().join("previous");
+                            std::fs::rename(target, &previous)?;
+                            if let Err(error) = crate::infra::fs::rename_into_place(&link, target) {
+                                if let Err(restore) = std::fs::rename(&previous, target) {
+                                    let mut staged = staged;
+                                    staged.persist();
+                                    anyhow::bail!(
+                                        "Cowork link publication failed: {error:#}; restore failed: {restore}; original preserved at {}",
+                                        previous.display()
+                                    );
+                                }
+                                return Err(error);
+                            }
+                            return Ok(());
+                        }
                     }
-                    return Err(error);
+                    crate::infra::fs::rename_into_place(&link, target)?;
                 }
-            } else {
-                crate::infra::fs::rename_into_place(&link, target)?;
             }
         } else {
             copy_regular_skill_file(source, target, target_meta.as_ref())?;

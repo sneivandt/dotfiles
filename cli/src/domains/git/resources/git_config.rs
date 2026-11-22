@@ -380,6 +380,25 @@ mod tests {
     }
 
     #[test]
+    fn config_metadata_errors_are_not_treated_as_missing() {
+        let error = require_regular_config(std::path::Path::new("config\0invalid")).unwrap_err();
+        assert!(format!("{error:#}").contains("inspecting Git config"));
+    }
+
+    #[test]
+    fn only_include_path_keys_control_config_discovery() {
+        for (key, expected) in [
+            ("include.path", true),
+            ("includeif.gitdir:/fixture/.path", true),
+            ("include.other", false),
+            ("includeif.gitdir:/fixture/.other", false),
+            ("core.path", false),
+        ] {
+            assert_eq!(is_include(key), expected, "{key}");
+        }
+    }
+
+    #[test]
     fn transactions_respect_git_locks_and_retry_with_new_desired_values() {
         for include in [false, true] {
             let dir = tempfile::tempdir().unwrap();

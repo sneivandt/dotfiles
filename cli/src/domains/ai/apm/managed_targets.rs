@@ -38,16 +38,12 @@ impl ManagedTargets {
         })
     }
 
-    #[must_use]
-    const fn includes(self, target: CopilotTarget) -> bool {
-        self.active.includes(target)
-    }
-
     /// Snapshot Copilot App state that must survive the APM command.
     #[must_use]
     pub(super) fn snapshot(self, ctx: &Context) -> ManagedTargetSnapshot {
         ManagedTargetSnapshot {
             copilot_app: self
+                .active
                 .includes(CopilotTarget::CopilotApp)
                 .then(|| snapshot_desired_apm_workflow_ids(ctx)),
         }
@@ -157,25 +153,20 @@ impl ManagedTargets {
             changed,
         })
     }
-
-    /// Re-apply the retained Copilot App autopilot policy.
-    pub(super) fn finish(
-        self,
-        ctx: &Context,
-        snapshot: &ManagedTargetSnapshot,
-    ) -> Result<WorkflowRepair> {
-        if self.includes(CopilotTarget::CopilotApp)
-            && let Some(pre) = &snapshot.copilot_app
-        {
-            apply_workflow_autopilot_fixup(ctx, pre)
-        } else {
-            Ok(WorkflowRepair::NotApplicable)
-        }
-    }
 }
 
 /// Target state captured before APM mutates deployments.
 #[derive(Debug)]
 pub(super) struct ManagedTargetSnapshot {
     copilot_app: Option<DesiredApmWorkflows>,
+}
+
+impl ManagedTargetSnapshot {
+    /// Re-apply the retained Copilot App autopilot policy.
+    pub(super) fn finish(&self, ctx: &Context) -> Result<WorkflowRepair> {
+        self.copilot_app.as_ref().map_or_else(
+            || Ok(WorkflowRepair::NotApplicable),
+            |pre| apply_workflow_autopilot_fixup(ctx, pre),
+        )
+    }
 }

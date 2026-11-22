@@ -72,6 +72,7 @@ pub struct Logger {
     invocation_started: SystemTime,
     elapsed_before_start: Duration,
     startup_transition: Mutex<Option<String>>,
+    progress_terminal: bool,
     /// Whether console task rows use compact status glyphs.
     pub(super) symbols: bool,
     /// Whether the current command is previewing changes without applying them.
@@ -147,6 +148,7 @@ impl Logger {
             invocation_started: SystemTime::now() - start.elapsed(),
             elapsed_before_start: Duration::ZERO,
             startup_transition: Mutex::new(None),
+            progress_terminal: stdout_supports_progress(),
             symbols: true,
             dry_run: false,
             finished: AtomicBool::new(false),
@@ -562,7 +564,7 @@ impl Output for Logger {
     }
 
     fn status_line(&self, msg: &str) {
-        if !stdout_supports_progress() {
+        if !self.progress_terminal {
             return;
         }
         let _guard = self.lock_flush();
@@ -570,9 +572,7 @@ impl Output for Logger {
     }
 
     fn clear_status_line(&self) {
-        if stdout_supports_progress() {
-            self.clear_status();
-        }
+        self.clear_status();
     }
 }
 

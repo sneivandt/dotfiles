@@ -369,3 +369,75 @@ fn reconcile_retargets_owned_links_and_preserves_modified_destination_links() {
     );
     assert!(!reconcile_cowork_skills(&ctx).expect("repeat repair"));
 }
+
+#[test]
+fn skill_comparison_reports_destination_metadata_failures() {
+    let fixture = tempfile::tempdir().unwrap();
+    let source = fixture.path().join("source");
+    std::fs::write(&source, b"content").unwrap();
+    assert!(!skill_files_match(&source, &fixture.path().join("missing")).unwrap());
+    let invalid = fixture.path().join("invalid\0file");
+    let error = skill_files_match(&source, &invalid).unwrap_err();
+    assert!(format!("{error:#}").contains("reading"));
+}
+
+#[cfg(unix)]
+#[test]
+fn an_owned_stale_symlink_is_unlinked_without_removing_its_referent() {
+    let fixture = tempfile::tempdir().unwrap();
+    let (source, target, ctx) = setup_skill(fixture.path(), "[copilot-cowork]");
+    std::os::unix::fs::symlink("SKILL.md", source.join("alias.md")).unwrap();
+    assert!(reconcile_cowork_skills(&ctx).unwrap());
+    assert_eq!(
+        std::fs::read_link(target.join("alias.md")).unwrap(),
+        Path::new("SKILL.md")
+    );
+    std::fs::remove_file(source.join("alias.md")).unwrap();
+    assert!(reconcile_cowork_skills(&ctx).unwrap());
+    assert!(target.join("alias.md").symlink_metadata().is_err());
+    assert_eq!(std::fs::read(target.join("SKILL.md")).unwrap(), b"current");
+}
+
+#[test]
+fn copying_replaces_an_owned_directory_symlink_without_touching_its_referent() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let root = fixture.path();
+    let source = root.join("source");
+    let target = root.join("target");
+    for name in ["previous", "desired"] {
+        std::fs::create_dir(root.join(name)).unwrap();
+        std::fs::write(root.join(name).join("keep"), name).unwrap();
+    }
+    create_native_symlink(Path::new("desired"), &source, true).unwrap();
+    create_native_symlink(Path::new("previous"), &target, true).unwrap();
+    copy_skill_files(&source, &target).unwrap();
+    assert_eq!(std::fs::read_link(&target).unwrap(), Path::new("desired"));
+    assert_eq!(
+        std::fs::read_to_string(root.join("previous/keep")).unwrap(),
+        "previous"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("desired/keep")).unwrap(),
+        "desired"
+    );
+    remove_directory_link(&target);
+    remove_directory_link(&source);
+}
+
+#[test]
+fn copying_may_replace_an_owned_file_symlink_with_a_regular_file() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let root = fixture.path();
+    let source = root.join("source");
+    let target = root.join("target");
+    std::fs::write(&source, b"desired contents").unwrap();
+    std::fs::write(root.join("previous"), b"previous contents").unwrap();
+    create_native_symlink(Path::new("previous"), &target, false).unwrap();
+    copy_skill_files(&source, &target).unwrap();
+    assert!(target.symlink_metadata().unwrap().is_file());
+    assert_eq!(std::fs::read(target).unwrap(), b"desired contents");
+    assert_eq!(
+        std::fs::read(root.join("previous")).unwrap(),
+        b"previous contents"
+    );
+}

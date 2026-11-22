@@ -189,7 +189,9 @@ def check_mutation(workflow: str) -> None:
             raise ValueError(f"native Windows mutation contract missing {required}")
     for required in ('shard: [0, 1]', '--shard "$MUTATION_SHARD/2"', 'native::raw_value_type|run_elevated_child',
                      '--file src/app/commands/execution/elevation.rs', '|prepare_windows_elevation',
-                     '--file src/infra/fs/mutation/windows.rs', '|ensure_single_link'):
+                     '--file src/infra/fs/mutation/windows.rs', '|ensure_single_link',
+                     '--file src/infra/fs/mod.rs', '|is_dir_like',
+                     '--file src/domains/system/config/registry.rs', '|uppercase_native_registry_name'):
         if required not in native:
             raise ValueError(f"native Windows mutation coverage missing {required}")
     if "continue-on-error:" in native:

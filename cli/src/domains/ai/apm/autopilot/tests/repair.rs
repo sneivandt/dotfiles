@@ -128,6 +128,9 @@ fn run_restores_workflows_when_cowork_reconciliation_fails() {
 
 #[test]
 fn run_restores_workflows_without_masking_native_failure_outcomes() {
+    use crate::test_helpers::CapturingOutput;
+    use std::sync::Arc;
+
     for (auth_failure, repair_failure) in
         [(false, false), (true, false), (false, true), (true, true)]
     {
@@ -151,8 +154,20 @@ fn run_restores_workflows_without_masking_native_failure_outcomes() {
             ExecResult::success("1 1\napm--a\n")
         };
         run.workflow_script(WORKFLOW_AUTOPILOT_SCRIPT, &["apm--a"], repair);
-        let ctx = make_home_context_with_executor(dir.path(), run.mock);
+        let output = Arc::new(CapturingOutput::default());
+        let ctx =
+            make_home_context_with_executor(dir.path(), run.mock)
+                .with_log(Arc::<CapturingOutput>::clone(&output));
         let result = install_task().run(&ctx);
+        let warnings = output.messages_of(crate::infra::logging::MsgKind::Warn);
+        assert_eq!(
+            warnings
+                .iter()
+                .filter(|warning| warning.contains("workflow repair also failed"))
+                .count(),
+            usize::from(repair_failure),
+            "{warnings:?}"
+        );
 
         if auth_failure {
             assert!(task_skipped(&result.unwrap()).contains("GitHub authentication"));

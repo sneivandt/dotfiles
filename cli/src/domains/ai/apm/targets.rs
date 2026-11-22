@@ -237,6 +237,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn target_diagnostics_identify_the_surface_and_missing_prerequisite() {
+        let home = tempfile::tempdir().unwrap();
+        let ctx = make_context_with_home(
+            home.path(),
+            Platform::new(Os::Linux, false),
+            MockExecutor::new(),
+        );
+        assert_eq!(CopilotTarget::CopilotApp.display_name(), "Copilot App");
+        assert_eq!(
+            CopilotTarget::Cowork.display_name(),
+            "Microsoft 365 Copilot Cowork"
+        );
+        assert_eq!(
+            CopilotTarget::CopilotApp.unavailable_detail(&ctx),
+            home.path().join(".copilot/data.db").display().to_string()
+        );
+        assert_eq!(
+            CopilotTarget::Cowork.unavailable_detail(&ctx),
+            "no Cowork skills directory is configured or auto-detected"
+        );
+    }
+
+    #[test]
     fn detect_collects_available_managed_targets() {
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::create_dir_all(dir.path().join(".copilot")).expect("create Copilot directory");

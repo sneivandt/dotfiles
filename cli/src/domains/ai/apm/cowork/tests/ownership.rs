@@ -364,3 +364,19 @@ fn reconcile_rejects_corrupt_or_unsafe_ownership_without_mutating_skills() {
         );
     }
 }
+
+#[test]
+fn ownership_read_failures_are_distinct_from_absent_records() {
+    use super::super::ownership::{read_file_inventory, read_owned_skills};
+
+    let fixture = tempfile::tempdir().unwrap();
+    assert!(read_file_inventory(fixture.path()).unwrap().is_empty());
+    assert!(read_owned_skills(fixture.path()).unwrap().is_empty());
+    for name in [FILE_OWNERSHIP_FILE, OWNERSHIP_FILE] {
+        std::fs::create_dir(fixture.path().join(name)).unwrap();
+    }
+    let inventory_error = read_file_inventory(fixture.path()).unwrap_err();
+    assert!(format!("{inventory_error:#}").contains("reading Cowork file ownership"));
+    let owners_error = read_owned_skills(fixture.path()).unwrap_err();
+    assert!(format!("{owners_error:#}").contains(OWNERSHIP_FILE));
+}

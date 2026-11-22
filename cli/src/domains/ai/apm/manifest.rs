@@ -301,6 +301,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn filesystem_failures_are_distinct_from_missing_apm_state() {
+        let fixture = tempfile::tempdir().unwrap();
+        let missing = fixture.path().join("missing");
+        assert_eq!(read_lock_snapshot(&missing).unwrap(), None);
+        assert!(merged_manifest_needs_write(&missing, "desired").unwrap());
+
+        let bad_lock = read_lock_snapshot(fixture.path()).unwrap_err();
+        assert!(format!("{bad_lock:#}").contains("reading APM lockfile"));
+        let invalid = fixture.path().join("invalid\0manifest");
+        let bad_path = merged_manifest_needs_write(&invalid, "desired").unwrap_err();
+        assert!(format!("{bad_path:#}").contains("reading metadata for merged manifest"));
+        let directory = merged_manifest_needs_write(fixture.path(), "desired").unwrap_err();
+        assert!(format!("{directory:#}").contains("merged manifest target is not a regular file"));
+    }
+
+    #[test]
+    fn lock_changes_use_the_source_when_the_dependency_name_is_empty() {
+        let after = b"dependencies:\n  - repo_url: owner/package\n    name: ''\n";
+        assert_eq!(
+            describe_lock_changes(None, Some(after)),
+            [("install", "owner/package".into())]
+        );
+    }
+
+    #[test]
     fn lock_changes_name_remote_ref_and_commit_updates() {
         let before = b"\
 dependencies:

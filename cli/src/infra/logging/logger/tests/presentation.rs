@@ -194,3 +194,34 @@ fn command_titles_are_sentence_case() {
         assert_eq!(log.command_title(), expected);
     }
 }
+
+#[test]
+fn public_status_operations_draw_only_on_a_terminal_and_clear_the_row() {
+    for terminal in [false, true] {
+        let mut log = Logger::test();
+        log.progress_terminal = terminal;
+        log.status_line("Checking");
+        assert_eq!(log.progress_rows_count(), u16::from(terminal));
+        assert_eq!(
+            log.captured_lines()
+                .iter()
+                .any(|line| line.contains("Checking")),
+            terminal
+        );
+        log.clear_status_line();
+        assert_eq!(log.progress_rows_count(), 0);
+        assert!(log.console.lock().custom_progress.is_none());
+    }
+}
+
+#[test]
+fn dry_run_uses_the_preview_progress_color_until_cleared() {
+    let mut log = Logger::test();
+    Arc::get_mut(&mut log.console).unwrap().stdout_style =
+        crate::infra::logging::style::StyleChoice::colored();
+    for (dry_run, color) in [(true, "\x1b[35m"), (false, "\x1b[36m")] {
+        log.set_dry_run(dry_run);
+        log.replace_status_line("Checking");
+        assert!(log.captured_output().last().unwrap().1.contains(color));
+    }
+}

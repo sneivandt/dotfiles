@@ -435,3 +435,32 @@ fn lifecycle_preserves_parent_and_records_one_finish() {
     ));
     assert_eq!(records.len(), 2);
 }
+
+#[test]
+fn degraded_persistence_warns_once_in_a_fresh_process() {
+    const CHILD: &str = "DOTFILES_TEST_DEGRADED_LOG_WARNING";
+    if std::env::var_os(CHILD).is_some() {
+        warn_degraded("first failure");
+        warn_degraded("repeat failure");
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "infra::logging::runlog::tests::records::degraded_persistence_warns_once_in_a_fresh_process",
+            "--nocapture",
+        ])
+        .env(CHILD, "1")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(
+        stderr
+            .matches("persistent run logging is unavailable")
+            .count(),
+        1,
+        "{stderr}"
+    );
+    assert!(stderr.contains("first failure"), "{stderr}");
+}

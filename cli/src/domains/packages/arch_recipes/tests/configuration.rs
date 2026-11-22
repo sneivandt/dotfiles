@@ -309,3 +309,33 @@ fn config_overrides_control_publication_and_readiness() {
         }
     }
 }
+
+#[test]
+fn paru_configuration_is_selected_only_for_aur_platforms() {
+    let fixture = tempfile::tempdir().unwrap();
+    for (platform, selected) in [
+        (Platform::new(Os::Linux, true), true),
+        (Platform::new(Os::Linux, false), false),
+        (Platform::new(Os::Windows, false), false),
+    ] {
+        let ctx = make_context(
+            fixture.path().into(),
+            None,
+            platform,
+            Arc::new(MockExecutor::new()),
+        );
+        assert_eq!(paru_task(&ctx).should_run(&ctx), selected);
+    }
+}
+
+#[test]
+fn unreadable_optional_recipe_files_propagate_the_error() {
+    let fixture = tempfile::tempdir().unwrap();
+    assert_eq!(
+        read_optional(&fixture.path().join("missing")).unwrap(),
+        None
+    );
+    let invalid = fixture.path().join("invalid\0file");
+    let error = read_optional(&invalid).unwrap_err();
+    assert!(format!("{error:#}").contains("reading"));
+}

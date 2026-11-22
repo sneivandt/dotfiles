@@ -174,15 +174,30 @@ fn is_linked_worktree(path: &Path) -> Result<bool> {
     Ok(metadata.is_file())
 }
 
+fn prompt_on_terminal(
+    input_terminal: bool,
+    error_terminal: bool,
+    prompt: impl FnOnce() -> Result<bool>,
+) -> Result<bool> {
+    if !input_terminal || !error_terminal {
+        return Ok(false);
+    }
+    prompt()
+}
+
+fn confirm_linked_worktree(path: &Path) -> Result<bool> {
+    prompt_on_terminal(
+        io::stdin().is_terminal(),
+        io::stderr().is_terminal(),
+        || read_worktree_confirmation(path),
+    )
+}
+
 #[allow(
     clippy::print_stderr,
     reason = "the interactive safety prompt must remain on one terminal line"
 )]
-fn confirm_linked_worktree(path: &Path) -> Result<bool> {
-    if !io::stdin().is_terminal() || !io::stderr().is_terminal() {
-        return Ok(false);
-    }
-
+fn read_worktree_confirmation(path: &Path) -> Result<bool> {
     eprint!(
         "Overlay path {} is a linked Git worktree. Use this worktree anyway? [y/N] ",
         path.display()
@@ -206,6 +221,19 @@ fn is_affirmative(answer: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn worktree_prompt_requires_both_terminal_streams() {
+        for (input, error) in [(false, false), (false, true), (true, false)] {
+            assert!(!prompt_on_terminal(input, error, || panic!("cannot prompt")).unwrap());
+        }
+        for answer in [false, true] {
+            assert_eq!(
+                prompt_on_terminal(true, true, || Ok(answer)).unwrap(),
+                answer
+            );
+        }
+    }
 
     #[test]
     fn parse_env_overlay_returns_some_for_valid_path() {
@@ -382,6 +410,32 @@ mod tests {
         assert_eq!(result, Some(overlay));
         assert_eq!(read_persisted(&root).unwrap(), None);
         drop(dir);
+    }
+
+    #[test]
+    fn an_empty_overlay_only_suppresses_saved_selection_on_resume() {
+        use crate::infra::env::MapEnv;
+
+        let (_dir, root) = init_test_repo();
+        let overlay = root.join("saved-overlay");
+        std::fs::create_dir(&overlay).unwrap();
+        persist(&root, &overlay).unwrap();
+        for (resuming, explicit_empty) in
+            [(false, false), (false, true), (true, false), (true, true)]
+        {
+            let mut env = MapEnv::new();
+            if resuming {
+                env = env.with("DOTFILES_RESUME_VSCODE_EXTENSIONS", "1");
+            }
+            if explicit_empty {
+                env = env.with("DOTFILES_OVERLAY", "");
+            }
+            let expected = (!(resuming && explicit_empty)).then_some(overlay.as_path());
+            assert_eq!(
+                resolve_read_only(None, &root, &env).unwrap().as_deref(),
+                expected
+            );
+        }
     }
 
     #[test]

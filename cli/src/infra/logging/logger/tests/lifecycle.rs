@@ -243,3 +243,18 @@ fn summary_does_not_report_the_persistent_log_path() {
         "test summary should omit unchanged checks: {contents}"
     );
 }
+
+#[test]
+fn invocation_clock_accounts_for_elapsed_time_before_logger_setup() {
+    let before = SystemTime::now();
+    let start = Instant::now().checked_sub(Duration::from_secs(1)).unwrap();
+    let log = Logger::build("update", None, start, false);
+    assert!(log.invocation_start() < before);
+}
+
+#[test]
+fn run_log_health_reflects_the_availability_of_persistent_storage() {
+    let (log, _tmp, _guard) = isolated_logger();
+    assert!(log.run_log_is_healthy());
+    assert!(!Logger::test().run_log_is_healthy());
+}

@@ -291,6 +291,24 @@ mod tests {
     use std::os::unix::fs::PermissionsExt as _;
 
     #[test]
+    fn cleanup_ignores_missing_paths_but_records_other_errors() {
+        let (log, fixture, _guard) = crate::infra::logging::isolated_logger();
+        let missing = fixture.path().join("already-clean");
+        let wrong_kind = fixture.path().join("expected-file");
+        std::fs::create_dir(&wrong_kind).unwrap();
+        drop(TempGuard::file(missing));
+        drop(TempGuard::file(wrong_kind.clone()));
+        let records = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+        let errors: Vec<_> = records
+            .lines()
+            .filter(|line| line.contains("failed to remove temporary file"))
+            .collect();
+        assert_eq!(errors.len(), 1, "{records}");
+        assert!(errors[0].contains("expected-file"), "{errors:?}");
+        assert!(wrong_kind.is_dir());
+    }
+
+    #[test]
     fn unique_file_variants_reserve_distinct_paths_and_clean_up() {
         let dir = tempfile::tempdir().unwrap();
         let (ordinary, ordinary_file) =

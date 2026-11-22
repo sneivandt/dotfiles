@@ -93,7 +93,14 @@ fn cowork_repairs_report_changes_even_when_the_lock_is_unchanged() {
         } else {
             install_task()
         };
-        assert_task_changed(&task.run(&ctx).unwrap());
+        let result = task.run(&ctx).unwrap();
+        assert_task_changed(&result);
+        let message = if update {
+            "updated APM deployments"
+        } else {
+            "updated APM configuration"
+        };
+        assert_eq!(task_batch(&result).message(), Some(message));
         assert_task_ok(&task.run(&ctx).unwrap());
         assert_eq!(
             std::fs::read_to_string(target.join("SKILL.md")).unwrap(),
@@ -351,6 +358,10 @@ fn update_then_install_reports_exact_lock_changes() {
                 && message == "update example-plugin · 1111111 -> 2222222"
         }),
         "agent package change should be emitted as task detail: {contents}"
+    );
+    assert!(
+        !contents.contains("APM lock state"),
+        "dependency-level detail should stand on its own: {contents}"
     );
 }
 
@@ -897,4 +908,52 @@ fn missing_apm_blocks_ordering_and_update_preview_but_not_install_preview() {
     assert!(task_skipped(&update_task().run(&ctx).unwrap()).contains("apm not found"));
     assert!(!dir.path().join(".apm/apm.yml").exists());
     assert!(!dir.path().join(".apm/apm.lock.yaml").exists());
+}
+
+#[test]
+fn apm_respects_an_inactive_owned_fragment_left_in_the_home() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join(".apm/config");
+    let retired = dir.path().join("retired.yml");
+    let link = config.join("retired.yml");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(&retired, test_fixture::DEFAULT_FRAGMENT).unwrap();
+    crate::infra::fs::create_native_symlink(&retired, &link, false).unwrap();
+    let ctx = linux_context(dir.path(), MockExecutor::new());
+    let task = InstallApmPackages::new(
+        crate::infra::ConfigHandle::new(Vec::new()),
+        ApmPackageMode::Install,
+    )
+    .with_inactive_fragments(crate::infra::ConfigHandle::new(vec![
+        ApmFragmentSource::new(retired, ".apm/config/retired.yml".into()),
+    ]));
+    assert!(!task.should_run(&ctx));
+    assert!(install_task().should_run(&ctx));
+    assert!(link.symlink_metadata().unwrap().is_symlink());
+}
+
+#[test]
+fn install_reports_lock_metadata_changes_without_inventing_dependency_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    write_current_manifest_and_lock(dir.path());
+    let mut run = ApmRun::new(dir.path(), 1);
+    run.command(INSTALL, |home| {
+        std::fs::write(
+            home.join(".apm/apm.lock.yaml"),
+            "dependencies: []\nmetadata: updated\n",
+        )
+        .unwrap();
+        Ok(ExecResult::success(""))
+    });
+    let capture = Arc::new(CapturingOutput::default());
+    let ctx = linux_context(dir.path(), run.mock).with_log(Arc::<CapturingOutput>::clone(&capture));
+    let result = install_task().run(&ctx).unwrap();
+    assert_task_changed(&result);
+    assert_eq!(
+        task_batch(&result).message(),
+        Some("updated APM configuration")
+    );
+    let actions = capture.actions();
+    assert_eq!(actions.len(), 1, "{actions:?}");
+    assert_eq!(actions[0].subject, "APM lock state");
 }

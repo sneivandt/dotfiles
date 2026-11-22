@@ -215,7 +215,7 @@ impl ApmInstallPlan {
         let command = self.targets.run_apm_command(ctx, self.mode.command());
         // A later target can fail after APM reset Copilot App workflows.
         // Restore retained policy before propagating any convergence failure.
-        let repair = self.targets.finish(ctx, &target_snapshot);
+        let repair = target_snapshot.finish(ctx);
         if (command.is_err()
             || matches!(&command, Ok(result) if matches!(&result.outcome, ApmCommandResult::AuthSkipped(_))))
             && let Err(error) = &repair
@@ -257,11 +257,14 @@ impl ApmInstallPlan {
         let changed =
             self.manifest_needs_write || lock_changed || autopilot_changed || command.changed;
         if changed {
-            let message = match (self.mode, dependency_changes.is_empty()) {
-                (_, true) if self.manifest_needs_write => "updated APM configuration".to_string(),
-                (ApmPackageMode::Install, true) => "updated APM configuration".to_string(),
-                (ApmPackageMode::UpdatePins, true) => "updated APM deployments".to_string(),
-                (mode, false) => {
+            let message = match (
+                dependency_changes.is_empty(),
+                self.mode,
+                self.manifest_needs_write,
+            ) {
+                (true, ApmPackageMode::UpdatePins, false) => "updated APM deployments".to_string(),
+                (true, _, _) => "updated APM configuration".to_string(),
+                (false, mode, _) => {
                     let verb = match mode {
                         ApmPackageMode::Install => "changed",
                         ApmPackageMode::UpdatePins => "updated",

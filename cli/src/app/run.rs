@@ -23,7 +23,8 @@ pub fn run() -> ExitCode {
     clap_complete::CompleteEnv::with_factory(super::completion::command)
         .var(super::completion::environment_variable())
         .complete();
-    drop(enable_ansi_support::enable_ansi_support()); // best-effort; no-op on non-Windows
+    #[cfg(windows)]
+    logging::enable_console_ansi();
     let args = cli::Cli::parse();
 
     // Meta commands run standalone and exit before the logging subsystem,

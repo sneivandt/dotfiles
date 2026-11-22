@@ -19,6 +19,7 @@ pub(crate) mod records;
 mod runlog;
 mod style;
 mod subscriber;
+mod terminal;
 mod types;
 mod utils;
 
@@ -28,6 +29,8 @@ pub use logger::Logger;
 pub(crate) use runlog::RunLog;
 pub use runlog::{log_task_context, log_thread_name, set_log_thread_name};
 pub(crate) use style::{StyleChoice, stdout_style};
+#[cfg(windows)]
+pub(crate) use terminal::enable_console_ansi;
 pub(crate) use types::TaskEntry;
 pub use types::{
     ActionCounts, CompletionDisposition, Log, LogEvent, Output, OutputExt, TaskResultDisplay,

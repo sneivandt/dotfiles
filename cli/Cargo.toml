@@ -23,7 +23,6 @@ clap_lex = "1"
 ctrlc = "3.5"
 dunce = "1"
 thiserror = "2"
-enable-ansi-support = "0.3"
 git2 = "0.21.0"
 rayon = "1.10"
 serde = { version = "1", features = ["derive"] }
@@ -33,16 +32,14 @@ strsim = "0.11"
 toml = "1"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 ureq = "3"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "tracing-log"] }
 which = "8.0.3"
-terminal_size = "0.4.4"
 serde-saphyr = { version = "2.0", default-features = false, features = ["serialize", "deserialize"] }
 unicode-width = "0.2"
 toml_edit = "0.25"
 
 [dev-dependencies]
 mockall = "0.15"
-proptest = { version = "1", default-features = false, features = ["std"] }
 tempfile = "3"
 # tests/domain_boundaries.rs parses src/ as a syntax tree instead of scanning it
 # as text. `span-locations` is what makes line numbers available outside a
@@ -69,13 +66,11 @@ proc-macro2 = { version = "1", default-features = false, features = ["span-locat
 [target.'cfg(windows)'.dependencies]
 process-wrap = { version = "10", default-features = false, features = ["std", "job-object"] }
 winreg = "0.56"
-windows-sys = { version = "0.61", features = ["Wdk_Foundation", "Wdk_Storage_FileSystem", "Win32_Globalization", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Memory", "Win32_System_SystemServices", "Win32_UI_Shell"] }
-
-[target.'cfg(any(target_os = "linux", target_vendor = "apple"))'.dependencies]
-rustix = { version = "1", features = ["fs"] }
+windows-sys = { version = "0.61", features = ["Wdk_Foundation", "Wdk_Storage_FileSystem", "Win32_Globalization", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Memory", "Win32_System_SystemServices", "Win32_UI_Shell"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["fs", "poll", "process", "signal", "user"] }
+rustix = { version = "1", features = ["fs", "termios"] }
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }

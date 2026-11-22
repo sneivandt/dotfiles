@@ -142,7 +142,6 @@ pub fn matches(section_categories: &[Category], active_categories: &[Category]) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
 
     fn category(code: u8) -> Category {
         match code {
@@ -238,26 +237,30 @@ mod tests {
         assert!(matches(&section, &active));
     }
 
-    proptest! {
-        #[test]
-        fn matching_is_duplicate_insensitive_and_monotonic(
-            section_codes in proptest::collection::vec(0_u8..7, 0..12),
-            active_codes in proptest::collection::vec(0_u8..7, 0..12),
-            additions in proptest::collection::vec(0_u8..7, 0..12),
-        ) {
-            let section = section_codes.into_iter().map(category).collect::<Vec<_>>();
-            let active = active_codes.into_iter().map(category).collect::<Vec<_>>();
-            let mut duplicated = section.clone();
-            duplicated.extend(section.iter().cloned());
-            prop_assert_eq!(
-                matches(&section, &active),
-                matches(&duplicated, &active),
-            );
-
-            if matches(&section, &active) {
-                let mut expanded = active;
-                expanded.extend(additions.into_iter().map(category));
-                prop_assert!(matches(&section, &expanded));
+    #[test]
+    fn matching_is_subset_inclusion_even_with_duplicates() {
+        let sets: Vec<Vec<_>> = (0..128)
+            .map(|mask| {
+                (0..7)
+                    .filter(|bit| mask & (1 << bit) != 0)
+                    .map(category)
+                    .collect()
+            })
+            .collect();
+        for (required, section) in sets.iter().enumerate() {
+            let duplicated: Vec<_> = section.iter().rev().chain(section).cloned().collect();
+            for (available, active) in sets.iter().enumerate() {
+                let expected = required & available == required;
+                assert_eq!(
+                    matches(section, active),
+                    expected,
+                    "{section:?}, {active:?}"
+                );
+                assert_eq!(
+                    matches(&duplicated, active),
+                    expected,
+                    "{duplicated:?}, {active:?}"
+                );
             }
         }
     }

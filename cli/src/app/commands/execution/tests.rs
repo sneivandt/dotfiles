@@ -4,8 +4,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::elevation::ElevationBroker;
 
-use proptest::prelude::*;
-
 use crate::engine::{TaskAssessment, TaskMeta, TaskOutcome, TaskResult};
 use crate::test_helpers::{empty_config, make_static_context, numeric_task_id};
 

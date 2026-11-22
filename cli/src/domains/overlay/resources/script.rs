@@ -339,10 +339,11 @@ mod tests {
     fn missing_script_is_invalid_and_never_invoked_by_any_mode() {
         let dir = tempfile::tempdir_in(".").unwrap();
         let resource = make_script_resource(
-            "test",
+            "Managed workspace setup",
             &dir.path().join("missing.ps1"),
             Arc::new(MockExecutor::new()),
         );
+        assert_eq!(resource.description(), "Managed workspace setup");
         let state = resource.current_state().unwrap();
         assert!(matches!(state, ResourceState::Invalid { .. }));
         for mode in [ScriptMode::Apply, ScriptMode::DryRun, ScriptMode::Remove] {

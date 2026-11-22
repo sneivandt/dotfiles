@@ -37,6 +37,26 @@ fn creation_skips_closed_log_collisions_without_truncating_them() {
 }
 
 #[test]
+fn an_operational_log_creation_failure_stops_and_removes_the_unused_lease() {
+    use super::super::retention::create_run_log_file_with;
+
+    let fixture = tempfile::tempdir().unwrap();
+    let attempts = std::cell::Cell::new(0);
+    let result = create_run_log_file_with("check", fixture.path(), "20200101T000000Z", |path| {
+        assert!(lease_path(path).is_file());
+        attempts.set(attempts.get() + 1);
+        Err(std::io::ErrorKind::PermissionDenied.into())
+    });
+    assert!(result.is_none());
+    assert_eq!(attempts.get(), 1);
+    let remaining: Vec<_> = fs::read_dir(fixture.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(remaining, [std::ffi::OsString::from(RETENTION_LOCK)]);
+}
+
+#[test]
 fn nonregular_log_entries_do_not_count_toward_retention() {
     let fixture = tempfile::tempdir().unwrap();
     let blocked = fixture.path().join("20200101T000000Z-update-1.log");

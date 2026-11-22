@@ -907,7 +907,7 @@ mod tests {
 
     #[test]
     fn registration_uses_runtime_completion_and_keeps_the_dot_completer() {
-        let zsh = registration(clap_complete::Shell::Zsh);
+        let zsh = crate::app::catalog::generate_zsh_completions();
         assert_eq!(zsh, "source <(DOTFILES_COMPLETE=zsh dotfiles)\n");
 
         let powershell = registration(clap_complete::Shell::PowerShell);

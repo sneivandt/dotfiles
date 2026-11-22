@@ -56,6 +56,20 @@ pub(super) fn create_run_log_file(
     log_dir: &Path,
     stamp: &str,
 ) -> Option<(PathBuf, fs::File, fs::File)> {
+    create_run_log_file_with(command, log_dir, stamp, |path| {
+        private_file_options()
+            .create_new(true)
+            .append(true)
+            .open(path)
+    })
+}
+
+pub(super) fn create_run_log_file_with(
+    command: &str,
+    log_dir: &Path,
+    stamp: &str,
+    open_log: impl Fn(&Path) -> std::io::Result<fs::File>,
+) -> Option<(PathBuf, fs::File, fs::File)> {
     let _directory_lock = lock_log_directory(log_dir)
         .map_err(|error| {
             warn_degraded(&format!(
@@ -82,11 +96,7 @@ pub(super) fn create_run_log_file(
                 return None;
             }
         }
-        match private_file_options()
-            .create_new(true)
-            .append(true)
-            .open(&path)
-        {
+        match open_log(&path) {
             Ok(file) => return Some((path, file, lease)),
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => (),
             Err(error) => {

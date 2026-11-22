@@ -235,13 +235,13 @@ impl ConsoleState {
         self.write(false, &format!("\r\x1b[K{line}"));
     }
 
-    /// Redraw active work with exactly one separator after durable output.
+    /// Leave a spacer after ordinary output, but keep lifecycle notices together.
     pub(super) fn active_status(&mut self, line: &str) {
         if self.mode != super::OutputMode::Human {
             return;
         }
         self.custom_progress = None;
-        if self.progress_rows > 0 {
+        if self.progress_rows > 0 || self.last_was_transition {
             self.replace_status(line);
         } else {
             self.separate_from_startup();
@@ -540,6 +540,28 @@ mod tests {
                 assert_eq!(state.progress_rows, 0);
             }
         }
+    }
+
+    #[test]
+    fn sync_progress_and_notice_share_the_row_below_the_upgrade_notice() {
+        use super::{Console, MsgKind};
+
+        let console = Console::new(false);
+        console.emit(MsgKind::Startup, "Update", false);
+        console.emit(MsgKind::Transition, "CLI upgraded", false);
+        console.lock().active_status("Syncing repository");
+        console.emit(MsgKind::Transition, "Repository synced", false);
+
+        let output: String = console
+            .lock()
+            .captured
+            .iter()
+            .map(|(_, text)| text.as_str())
+            .collect();
+        assert_eq!(
+            output,
+            "Update\n\nCLI upgraded\n\r\x1b[KSyncing repository\r\x1b[KRepository synced\n"
+        );
     }
 
     #[test]

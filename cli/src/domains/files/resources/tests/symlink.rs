@@ -1,0 +1,922 @@
+use super::super::symlink::*;
+use crate::engine::{IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceState};
+use crate::infra::exec::{Executor, ProcessExecutor};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+fn system_executor() -> Arc<dyn Executor> {
+    Arc::new(ProcessExecutor::system())
+}
+
+#[cfg(windows)]
+#[test]
+fn create_junction_invokes_mklink_with_directory_args() {
+    use crate::infra::exec::{ExecResult, MockExecutor};
+
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "cmd"
+                    && !spec.is_checked()
+                    && spec.working_dir().is_none()
+                    && spec.windows_command_line()
+                    == Some(r#""mklink /J C:\Users\test\.config\templates C:\repo\symlinks\config\git\templates""#)
+            })
+            .returning(|_| {
+                Ok(ExecResult::success(""))
+            });
+
+    create_junction(
+        Path::new(r"C:\repo\symlinks\config\git\templates"),
+        Path::new(r"C:\Users\test\.config\templates"),
+        &mock,
+    )
+    .unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn junction_failure_preserves_both_diagnostic_streams() {
+    use crate::infra::exec::{ExecResult, MockExecutor};
+
+    let mut mock = MockExecutor::new();
+    mock.expect_execute().once().returning(|spec| {
+        assert_eq!(spec.program(), "cmd");
+        assert!(!spec.is_checked());
+        assert_eq!(spec.working_dir(), None);
+        assert_eq!(
+            spec.windows_command_line(),
+            Some(r#""mklink /J "C:\fixture home\link" "C:\fixture source\directory"""#)
+        );
+        Ok(ExecResult::failure(
+            "partial stdout",
+            "access denied",
+            Some(1),
+        ))
+    });
+    let error = create_junction(
+        Path::new(r"C:\fixture source\directory"),
+        Path::new(r"C:\fixture home\link"),
+        &mock,
+    )
+    .unwrap_err();
+    let detail = format!("{error:#}");
+    for expected in [
+        "mklink",
+        "fixture home",
+        "fixture source",
+        "partial stdout; access denied",
+    ] {
+        assert!(detail.contains(expected), "{detail}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn paths_equal_resolves_through_symlinks() {
+    let dir = tempfile::tempdir().unwrap();
+    let real = dir.path().join("real_file");
+    std::fs::write(&real, "content").unwrap();
+    let link = dir.path().join("link_to_file");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    // Should be equal despite different literal paths
+    assert!(paths_equal(&real, &link));
+}
+
+#[test]
+fn paths_equal_handles_nonexistent_paths() {
+    // When both paths don't exist and are different, should not be equal
+    assert!(!paths_equal(
+        Path::new("/nonexistent/path/a"),
+        Path::new("/nonexistent/path/b")
+    ));
+    // When both are the same nonexistent path, should be equal (fast path)
+    assert!(paths_equal(
+        Path::new("/nonexistent/same"),
+        Path::new("/nonexistent/same")
+    ));
+}
+
+#[test]
+fn symlink_resource_description() {
+    let resource = SymlinkResource::new(
+        PathBuf::from("/source"),
+        PathBuf::from("/target"),
+        system_executor(),
+    );
+    assert_eq!(resource.description(), "/target \u{2192} /source");
+}
+
+#[test]
+fn apply_preserves_nonempty_user_directory() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let source = fixture.path().join("source");
+    let target = fixture.path().join("target");
+    std::fs::write(&source, "managed content").unwrap();
+    std::fs::create_dir(&target).unwrap();
+    std::fs::write(target.join("user-file"), "user content").unwrap();
+    let resource = SymlinkResource::new(
+        source.clone(),
+        target.clone(),
+        Arc::new(crate::infra::exec::MockExecutor::new()),
+    );
+
+    let error = resource.apply().unwrap_err();
+    assert!(format!("{error:#}").contains("move it aside"), "{error:#}");
+    assert!(std::fs::symlink_metadata(&target).unwrap().is_dir());
+    assert_eq!(
+        std::fs::read_to_string(target.join("user-file")).unwrap(),
+        "user content"
+    );
+    assert_eq!(std::fs::read_to_string(source).unwrap(), "managed content");
+}
+
+#[test]
+fn failed_materialization_keeps_original_link_and_cleans_staging() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let root = fixture.path().canonicalize().unwrap();
+    let source = root.join("source");
+    let target = root.join("target");
+    std::fs::write(&source, "managed content").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&source, &target).unwrap();
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(&source, &target).unwrap();
+    let original_link = std::fs::read_link(&target).unwrap();
+    std::fs::remove_file(&source).unwrap();
+    let resource = SymlinkResource::new(
+        source.clone(),
+        target.clone(),
+        Arc::new(crate::infra::exec::MockExecutor::new()),
+    );
+
+    let error = resource.remove().unwrap_err();
+    let detail = format!("{error:#}");
+    assert!(
+        detail.contains("inspect copy source")
+            && detail.contains("source does not exist")
+            && detail.contains(&source.display().to_string()),
+        "{detail}"
+    );
+    assert_eq!(std::fs::read_link(&target).unwrap(), original_link);
+    assert_eq!(
+        std::fs::read_dir(&root).unwrap().count(),
+        1,
+        "staging must be removed"
+    );
+
+    std::fs::write(&source, "restored content").unwrap();
+    assert_eq!(resource.remove().unwrap(), ResourceChange::Applied);
+    assert!(!std::fs::symlink_metadata(&target).unwrap().is_symlink());
+    assert_eq!(std::fs::read_to_string(target).unwrap(), "restored content");
+    assert_eq!(std::fs::read_dir(root).unwrap().count(), 2);
+}
+
+#[test]
+fn source_entries_are_not_replaced_through_an_aliased_target_parent() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let root = fixture.path().canonicalize().unwrap();
+    let sources = root.join("sources");
+    let home = root.join("home");
+    std::fs::create_dir(&sources).unwrap();
+    std::fs::create_dir(&home).unwrap();
+    std::fs::write(sources.join("managed"), "source content").unwrap();
+    crate::infra::fs::create_native_symlink(Path::new("managed"), &sources.join("alias"), false)
+        .unwrap();
+    crate::infra::fs::create_native_symlink(&sources, &home.join(".config"), true).unwrap();
+    let original_config_target = std::fs::read_link(home.join(".config")).unwrap();
+    assert!(paths_equal(&original_config_target, &sources));
+    for (source, target, expected_reason) in [
+        (
+            "managed",
+            "managed",
+            "target aliases the source entry through its parent directory",
+        ),
+        (
+            "alias",
+            "alias",
+            "target aliases the source entry through its parent directory",
+        ),
+        (
+            "alias",
+            "managed",
+            "target resolves to the source instead of a separate managed link",
+        ),
+    ] {
+        let resource = SymlinkResource::new(
+            sources.join(source),
+            home.join(".config").join(target),
+            system_executor(),
+        );
+        assert_eq!(
+            resource.current_state().unwrap(),
+            ResourceState::Invalid {
+                reason: expected_reason.to_string(),
+            },
+            "{source} -> {target} would mutate the source entry"
+        );
+        assert!(resource.apply().is_err(), "{source} -> {target}");
+        assert!(
+            matches!(resource.remove().unwrap(), ResourceChange::Skipped { .. }),
+            "{source} -> {target}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(sources.join("managed")).unwrap(),
+            "source content"
+        );
+        assert_eq!(
+            std::fs::read_link(sources.join("alias")).unwrap(),
+            Path::new("managed")
+        );
+        assert_eq!(
+            std::fs::read_link(home.join(".config")).unwrap(),
+            original_config_target
+        );
+    }
+
+    let independent_target = home.join("managed");
+    let independent = SymlinkResource::new(
+        sources.join("managed"),
+        independent_target.clone(),
+        system_executor(),
+    );
+    independent.apply().unwrap();
+    assert_eq!(independent.current_state().unwrap(), ResourceState::Correct);
+    assert_eq!(independent.remove().unwrap(), ResourceChange::Applied);
+    assert_eq!(
+        std::fs::read_to_string(independent_target).unwrap(),
+        "source content"
+    );
+    assert_eq!(
+        std::fs::read_to_string(sources.join("managed")).unwrap(),
+        "source content"
+    );
+}
+
+#[test]
+fn retired_parent_link_cannot_turn_checkout_entries_into_home_targets() {
+    let fixture = tempfile::tempdir().unwrap();
+    let home = fixture.path().canonicalize().unwrap();
+    let repo = home.join("checkout");
+    let sources = repo.join("symlinks");
+    let source = sources.join("settings");
+    let old_source = sources.join("old-directory");
+    let old_parent = home.join(".app");
+    std::fs::create_dir_all(&old_source).unwrap();
+    std::fs::write(&source, "managed").unwrap();
+    crate::infra::fs::create_native_symlink(&old_source, &old_parent, true).unwrap();
+    let tracked_link = old_source.join("existing");
+    let referent = Path::new("../settings");
+    crate::infra::fs::create_native_symlink(referent, &tracked_link, false).unwrap();
+    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::MockExecutor::new());
+
+    for name in ["existing", "absent"] {
+        let target = old_parent.join(name);
+        let resource = SymlinkResource::new(&source, &target, Arc::clone(&executor))
+            .with_display_roots(&home, &repo)
+            .with_restore_missing(true)
+            .with_external_target_allowed(true);
+        assert!(
+            matches!(resource.current_state().unwrap(), ResourceState::Invalid { reason }
+                if reason.contains("managed source tree"))
+        );
+        assert!(matches!(
+            resource.removal_state().unwrap(),
+            ResourceState::Unknown { .. }
+        ));
+        assert!(resource.apply().is_err());
+        assert!(resource.remove().is_err());
+        assert_eq!(std::fs::read_link(&tracked_link).unwrap(), referent);
+        assert_eq!(std::fs::read_dir(&old_source).unwrap().count(), 1);
+    }
+
+    std::fs::rename(&old_parent, home.join(".app.previous")).unwrap();
+    let target = old_parent.join("existing");
+    let resource =
+        SymlinkResource::new(&source, &target, executor).with_display_roots(&home, &repo);
+    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    assert_eq!(resource.remove().unwrap(), ResourceChange::Applied);
+    assert!(!target.is_symlink());
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "managed");
+    assert_eq!(std::fs::read_link(&tracked_link).unwrap(), referent);
+}
+
+#[test]
+fn materialization_preserves_a_link_retargeted_after_state_discovery() {
+    for directory in [false, true] {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let source = root.join("source");
+        let user = root.join("user");
+        let target = root.join("target");
+        let content_path = |path: &Path| {
+            if directory {
+                path.join("content")
+            } else {
+                path.to_path_buf()
+            }
+        };
+        if directory {
+            std::fs::create_dir(&source).unwrap();
+            std::fs::create_dir(&user).unwrap();
+        }
+        std::fs::write(content_path(&source), "managed content").unwrap();
+        std::fs::write(content_path(&user), "user content").unwrap();
+        crate::infra::fs::create_native_symlink(&source, &target, directory).unwrap();
+        let resource = SymlinkResource::new(source.clone(), target.clone(), system_executor());
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+
+        if cfg!(windows) && directory {
+            std::fs::remove_dir(&target).unwrap();
+        } else {
+            std::fs::remove_file(&target).unwrap();
+        }
+        crate::infra::fs::create_native_symlink(Path::new("user"), &target, directory).unwrap();
+
+        let error = resource.remove().unwrap_err();
+        assert!(
+            format!("{error:#}").contains("no longer points to the managed source"),
+            "{error:#}"
+        );
+        assert_eq!(std::fs::read_link(&target).unwrap(), Path::new("user"));
+        assert_eq!(
+            std::fs::read_to_string(content_path(&target)).unwrap(),
+            "user content"
+        );
+        assert_eq!(
+            std::fs::read_to_string(content_path(&source)).unwrap(),
+            "managed content"
+        );
+        assert_eq!(
+            std::fs::read_dir(&root).unwrap().count(),
+            3,
+            "failed materialization must clean its staging path"
+        );
+    }
+}
+
+#[test]
+fn symlink_resource_description_abbreviates_managed_paths() {
+    let resource = SymlinkResource::new(
+        PathBuf::from("/repo/symlinks/bashrc"),
+        PathBuf::from("/home/user/.bashrc"),
+        system_executor(),
+    )
+    .with_display_roots("/home/user", "/repo");
+
+    assert_eq!(resource.description(), "~/.bashrc \u{2192} symlinks/bashrc");
+}
+
+#[test]
+fn copy_dir_into_place_preserves_an_unrelated_former_staging_directory() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let source = temp_dir.path().join("source");
+    let target = temp_dir.path().join("target");
+    let stale_tmp = temp_dir.path().join("target_dotfiles_tmp");
+
+    std::fs::create_dir(&source).unwrap();
+    std::fs::write(source.join("kept.txt"), "fresh").unwrap();
+    std::fs::create_dir(&stale_tmp).unwrap();
+    std::fs::write(stale_tmp.join("stale.txt"), "stale").unwrap();
+
+    copy_dir_into_place(&source, &target, temp_dir.path()).unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(target.join("kept.txt")).unwrap(),
+        "fresh"
+    );
+    assert!(!target.join("stale.txt").exists());
+    assert_eq!(
+        std::fs::read_to_string(stale_tmp.join("stale.txt")).unwrap(),
+        "stale",
+        "materialization must clean up only the temporary directory it created"
+    );
+}
+
+#[test]
+fn symlink_resource_invalid_when_source_missing() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let resource = SymlinkResource::new(
+        temp_dir.path().join("nonexistent"),
+        temp_dir.path().join("target"),
+        system_executor(),
+    );
+
+    let state = resource.current_state().unwrap();
+    assert!(matches!(state, ResourceState::Invalid { .. }));
+}
+
+#[test]
+fn symlink_resource_missing_when_target_not_exists() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let source = temp_dir.path().join("source");
+    std::fs::write(&source, "test").unwrap();
+
+    let resource = SymlinkResource::new(source, temp_dir.path().join("target"), system_executor());
+
+    let state = resource.current_state().unwrap();
+    assert_eq!(state, ResourceState::Missing);
+}
+
+#[test]
+fn applying_correct_symlink_preserves_its_relative_target() {
+    for directory in [false, true] {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let source = root.join("source");
+        let target = root.join("target");
+        if directory {
+            std::fs::create_dir(&source).unwrap();
+        } else {
+            std::fs::write(&source, "managed content").unwrap();
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("source", &target).unwrap();
+        #[cfg(windows)]
+        if directory {
+            std::os::windows::fs::symlink_dir("source", &target).unwrap();
+        } else {
+            std::os::windows::fs::symlink_file("source", &target).unwrap();
+        }
+        let resource = SymlinkResource::new(
+            source,
+            target.clone(),
+            Arc::new(crate::infra::exec::MockExecutor::new()),
+        );
+
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        for _ in 0..2 {
+            assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+            assert_eq!(std::fs::read_link(&target).unwrap(), Path::new("source"));
+        }
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 2);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_resource_classifies_absolute_relative_wrong_and_dangling_targets() {
+    for (existing, absolute, correct) in [
+        ("source", true, true),
+        ("source", false, true),
+        ("other", true, false),
+        ("does_not_exist", true, false),
+    ] {
+        let fixture = tempfile::tempdir().unwrap();
+        let source = fixture.path().join("source");
+        let target = fixture.path().join("target");
+        std::fs::write(&source, "managed content").unwrap();
+        std::fs::write(fixture.path().join("other"), "other content").unwrap();
+        let existing = if absolute {
+            fixture.path().join(existing)
+        } else {
+            existing.into()
+        };
+        std::os::unix::fs::symlink(&existing, &target).unwrap();
+        assert!(target.symlink_metadata().unwrap().is_symlink());
+        if existing.ends_with("does_not_exist") {
+            assert!(!existing.exists(), "dangling-link precondition");
+        }
+        let resource = SymlinkResource::new(source, target, system_executor());
+        let state = resource.current_state().unwrap();
+        if correct {
+            assert_eq!(state, ResourceState::Correct, "{existing:?}");
+        } else {
+            assert!(
+                matches!(state, ResourceState::Invalid { .. }),
+                "{existing:?}: {state:?}"
+            );
+        }
+        assert_eq!(resource.pre_apply_warning().unwrap(), None);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_resource_does_not_resolve_relative_target_from_process_directory() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let source = std::env::current_dir().unwrap().join("Cargo.toml");
+    let target = temp_dir.path().join("target");
+    std::fs::write(temp_dir.path().join("Cargo.toml"), "unrelated").unwrap();
+    std::os::unix::fs::symlink("Cargo.toml", &target).unwrap();
+
+    let resource = SymlinkResource::new(source, target, system_executor());
+
+    assert!(matches!(
+        resource.current_state().unwrap(),
+        ResourceState::Invalid { .. }
+    ));
+}
+
+#[test]
+fn symlink_resource_rejects_existing_regular_file() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let source = temp_dir.path().join("source");
+    let target = temp_dir.path().join("target");
+    std::fs::write(&source, "content").unwrap();
+    std::fs::write(&target, "other content").unwrap(); // regular file, not a symlink
+
+    let resource = SymlinkResource::new(source, target, system_executor());
+
+    let state = resource.current_state().unwrap();
+    assert!(matches!(state, ResourceState::Invalid { .. }));
+}
+
+#[test]
+fn symlink_resource_preserves_source_inspection_errors() {
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("target");
+    std::fs::write(&target, "keep existing content").unwrap();
+    let resource = SymlinkResource::new(
+        root.path().join("invalid\0source"),
+        target.clone(),
+        system_executor(),
+    );
+    let error = resource.current_state().unwrap_err();
+    assert!(format!("{error:#}").contains("inspect source"));
+    assert!(resource.apply().is_err());
+    assert_eq!(
+        std::fs::read_to_string(target).unwrap(),
+        "keep existing content"
+    );
+}
+
+#[test]
+fn symlink_apply_requires_existing_target_to_be_moved_aside() {
+    for directory in [false, true] {
+        for existing in ["file", "empty directory", "wrong link", "dangling link"] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let root = fixture.path().canonicalize().unwrap();
+            let source = root.join("source");
+            let target = root.join("target");
+            let other = root.join("other");
+            let source_file = if directory {
+                std::fs::create_dir(&source).unwrap();
+                source.join("content")
+            } else {
+                source.clone()
+            };
+            std::fs::write(&source_file, "managed content").unwrap();
+            std::fs::write(&other, "unmanaged content").unwrap();
+            match existing {
+                "file" => std::fs::write(&target, "replaced content").unwrap(),
+                "empty directory" => std::fs::create_dir(&target).unwrap(),
+                "wrong link" => {
+                    crate::infra::fs::create_native_symlink(&other, &target, false).unwrap();
+                }
+                "dangling link" => {
+                    crate::infra::fs::create_native_symlink(&root.join("absent"), &target, false)
+                        .unwrap();
+                }
+                _ => panic!("unexpected target kind: {existing}"),
+            }
+            let resource = SymlinkResource::new(
+                source,
+                target.clone(),
+                Arc::new(crate::infra::exec::MockExecutor::new()),
+            );
+
+            assert!(
+                matches!(
+                    resource.current_state().unwrap(),
+                    ResourceState::Invalid { .. }
+                ),
+                "directory={directory}, existing={existing}"
+            );
+            let error = resource.apply().unwrap_err();
+            assert!(format!("{error:#}").contains("move it aside"));
+            let backup = root.join("backup");
+            std::fs::rename(&target, &backup).unwrap();
+            assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+            assert!(target.symlink_metadata().unwrap().is_symlink());
+            assert!(paths_equal(
+                &std::fs::read_link(&target).unwrap(),
+                &resource.source
+            ));
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+            assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+            assert_eq!(
+                std::fs::read_to_string(&source_file).unwrap(),
+                "managed content"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&other).unwrap(),
+                "unmanaged content"
+            );
+            assert_eq!(std::fs::read_dir(&root).unwrap().count(), 4);
+        }
+    }
+}
+
+#[track_caller]
+fn assert_dry_run_target_unchanged(parent: &Path, target: &Path, existing: &str) {
+    if existing == "missing" {
+        assert!(!parent.exists(), "preview must not create target parents");
+        assert!(target.symlink_metadata().is_err());
+    } else {
+        assert_eq!(std::fs::read_dir(parent).unwrap().count(), 1);
+        match existing {
+            "file" => {
+                assert!(target.symlink_metadata().unwrap().is_file());
+                assert_eq!(std::fs::read_to_string(target).unwrap(), "user content");
+            }
+            "directory" => {
+                assert!(target.symlink_metadata().unwrap().is_dir());
+                assert_eq!(
+                    std::fs::read_to_string(target.join("user-file")).unwrap(),
+                    "user content"
+                );
+            }
+            _ => assert!(target.symlink_metadata().unwrap().is_symlink()),
+        }
+    }
+}
+
+#[test]
+fn symlink_apply_and_remove_dry_runs_preserve_every_target_kind() {
+    use crate::engine::{ProcessOpts, process_resources, process_resources_remove};
+    use crate::test_helpers::{ContextBuilder, task_batch};
+
+    for directory in [false, true] {
+        for existing in ["missing", "managed", "file", "directory", "dangling"] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let root = fixture.path().canonicalize().unwrap();
+            let source = root.join("source");
+            let parent = root.join("home");
+            let target = parent.join("target");
+            let source_file = if directory {
+                std::fs::create_dir(&source).unwrap();
+                source.join("content")
+            } else {
+                source.clone()
+            };
+            std::fs::write(&source_file, "managed content").unwrap();
+            if existing != "missing" {
+                std::fs::create_dir(&parent).unwrap();
+            }
+            match existing {
+                "managed" => {
+                    crate::infra::fs::create_native_symlink(&source, &target, directory).unwrap();
+                }
+                "file" => std::fs::write(&target, "user content").unwrap(),
+                "directory" => {
+                    std::fs::create_dir(&target).unwrap();
+                    std::fs::write(target.join("user-file"), "user content").unwrap();
+                }
+                "dangling" => {
+                    crate::infra::fs::create_native_symlink(
+                        Path::new("missing-user-source"),
+                        &target,
+                        false,
+                    )
+                    .unwrap();
+                }
+                "missing" => {}
+                _ => panic!("unexpected target kind: {existing}"),
+            }
+            let original_link = std::fs::read_link(&target).ok();
+            let resource = SymlinkResource::new(
+                source,
+                target.clone(),
+                Arc::new(crate::infra::exec::MockExecutor::new()),
+            );
+            let ctx = ContextBuilder::new(root)
+                .overlay(None)
+                .build()
+                .with_dry_run(true);
+            for remove in [false, true] {
+                let result = if remove {
+                    process_resources_remove(&ctx, [resource.clone()], "unlink")
+                } else {
+                    process_resources(&ctx, [resource.clone()], &ProcessOpts::strict("link"))
+                }
+                .unwrap();
+                let expected_change = if remove {
+                    existing == "managed"
+                } else {
+                    existing == "missing"
+                };
+                let blocked = !remove && !matches!(existing, "missing" | "managed");
+                let stats = task_batch(&result);
+                assert_eq!(
+                    stats.changed_count(),
+                    u32::from(expected_change),
+                    "directory={directory}, existing={existing}, remove={remove}"
+                );
+                assert_eq!(
+                    stats.already_ok_count(),
+                    u32::from(!expected_change && !blocked)
+                );
+                assert_eq!(stats.failed_count(), u32::from(blocked));
+                assert_eq!(stats.skipped_count(), 0);
+                assert_eq!(
+                    std::fs::read_to_string(&source_file).unwrap(),
+                    "managed content"
+                );
+                assert_eq!(std::fs::read_link(&target).ok(), original_link);
+                assert_dry_run_target_unchanged(&parent, &target, existing);
+            }
+        }
+    }
+}
+
+#[test]
+fn symlink_target_inspection_errors_never_trigger_install_or_materialization() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let source = fixture.path().join("source");
+    std::fs::write(&source, "managed content").unwrap();
+    let resource = SymlinkResource::new(
+        source.clone(),
+        fixture.path().join("invalid\0target"),
+        Arc::new(crate::infra::exec::MockExecutor::new()),
+    );
+
+    for error in [
+        resource.current_state().unwrap_err(),
+        resource.apply().unwrap_err(),
+        resource.remove().unwrap_err(),
+    ] {
+        assert!(format!("{error:#}").contains("stat target"), "{error:#}");
+    }
+    assert_eq!(std::fs::read_to_string(&source).unwrap(), "managed content");
+    assert_eq!(std::fs::read_dir(fixture.path()).unwrap().count(), 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_parent_resolution_preserves_non_missing_errors() {
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path();
+    let source = root.join("source");
+    let parent = root.join("file");
+    std::fs::write(&source, "managed content").unwrap();
+    std::fs::write(&parent, "user content").unwrap();
+    let resource = SymlinkResource::new(source, parent.join("subdir/target"), system_executor())
+        .with_display_roots(root, root);
+
+    let state = resource.current_state().unwrap();
+    assert!(
+        matches!(&state, ResourceState::Invalid { reason } if reason.contains("resolve target parent")),
+        "{state:?}"
+    );
+    for error in [
+        resource.apply().unwrap_err(),
+        resource.remove().unwrap_err(),
+    ] {
+        assert!(
+            format!("{error:#}").contains("resolve target parent"),
+            "{error:#}"
+        );
+    }
+    assert_eq!(std::fs::read_to_string(&parent).unwrap(), "user content");
+}
+
+#[test]
+fn absent_source_only_blocks_removal_when_restoring_an_absent_target() {
+    let fixture = tempfile::tempdir().unwrap();
+    let resource = SymlinkResource::new(
+        fixture.path().join("missing-source"),
+        fixture.path().join("missing-target"),
+        Arc::new(crate::infra::exec::MockExecutor::new()),
+    );
+    assert_eq!(resource.removal_state().unwrap(), ResourceState::Missing);
+    assert_eq!(resource.remove().unwrap(), ResourceChange::AlreadyCorrect);
+    assert!(!resource.target.exists());
+    assert!(matches!(
+        resource.with_restore_missing(true).removal_state().unwrap(),
+        ResourceState::Unknown { reason } if reason.contains("source does not exist")
+    ));
+}
+
+#[test]
+fn remove_materializes_files_and_directories_even_when_links_are_gone() {
+    for directory in [false, true] {
+        for missing_link in [false, true] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let root = fixture.path().canonicalize().unwrap();
+            let source = root.join("source");
+            let target = root.join("target");
+            let files = if directory {
+                std::fs::create_dir_all(source.join("sub")).unwrap();
+                &[("a.txt", "aaa"), ("sub/b.txt", "bbb")][..]
+            } else {
+                &[("", "hello dotfiles")][..]
+            };
+            let content_path = |base: &Path, relative: &str| {
+                if relative.is_empty() {
+                    base.to_path_buf()
+                } else {
+                    base.join(relative)
+                }
+            };
+            for &(relative, content) in files {
+                std::fs::write(content_path(&source, relative), content).unwrap();
+            }
+            #[cfg(unix)]
+            if directory {
+                use std::os::unix::fs::PermissionsExt as _;
+                for (relative, mode) in [("", 0o700), ("sub", 0o750)] {
+                    std::fs::set_permissions(
+                        source.join(relative),
+                        std::fs::Permissions::from_mode(mode),
+                    )
+                    .unwrap();
+                }
+            }
+            let resource = SymlinkResource::new(
+                source.clone(),
+                target.clone(),
+                Arc::new(crate::infra::exec::MockExecutor::new()),
+            );
+            let resource = resource.with_restore_missing(missing_link);
+            resource.apply().unwrap();
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+            if missing_link {
+                if cfg!(windows) && directory {
+                    std::fs::remove_dir(&target).unwrap();
+                } else {
+                    std::fs::remove_file(&target).unwrap();
+                }
+                assert!(target.symlink_metadata().is_err(), "target must be absent");
+            }
+
+            assert_eq!(resource.remove().unwrap(), ResourceChange::Applied);
+
+            let metadata = target.symlink_metadata().unwrap();
+            assert!(
+                !metadata.is_symlink(),
+                "materialization must replace the link"
+            );
+            assert_eq!(metadata.is_dir(), directory);
+            assert_eq!(metadata.is_file(), !directory);
+            for &(relative, content) in files {
+                assert_eq!(
+                    std::fs::read_to_string(content_path(&target, relative)).unwrap(),
+                    content
+                );
+                assert_eq!(
+                    std::fs::read_to_string(content_path(&source, relative)).unwrap(),
+                    content
+                );
+            }
+            #[cfg(unix)]
+            if directory {
+                use std::os::unix::fs::PermissionsExt as _;
+                for (relative, mode) in [("", 0o700), ("sub", 0o750)] {
+                    assert_eq!(
+                        std::fs::metadata(target.join(relative))
+                            .unwrap()
+                            .permissions()
+                            .mode()
+                            & 0o777,
+                        mode,
+                        "materialization must preserve directory permissions"
+                    );
+                }
+            }
+            let (relative, original_content) = files[0];
+            let materialized_file = content_path(&target, relative);
+            std::fs::write(&materialized_file, "user edit after uninstall").unwrap();
+            assert!(matches!(
+                resource.remove().unwrap(),
+                ResourceChange::Skipped { .. }
+            ));
+            assert_eq!(
+                std::fs::read_to_string(&materialized_file).unwrap(),
+                "user edit after uninstall"
+            );
+            assert_eq!(
+                std::fs::read_to_string(content_path(&source, relative)).unwrap(),
+                original_content
+            );
+            assert_eq!(std::fs::read_dir(&root).unwrap().count(), 2);
+        }
+    }
+}
+
+#[test]
+fn remove_does_not_overwrite_user_files_or_directories() {
+    for directory in [false, true] {
+        let fixture = tempfile::tempdir().unwrap();
+        let source = fixture.path().join("source");
+        let target = fixture.path().join("target");
+        let (source_file, user_file) = if directory {
+            std::fs::create_dir(&source).unwrap();
+            std::fs::create_dir(&target).unwrap();
+            (source.join("source.txt"), target.join("user.txt"))
+        } else {
+            (source.clone(), target.clone())
+        };
+        std::fs::write(source_file, "source content").unwrap();
+        std::fs::write(&user_file, "user content").unwrap();
+        let resource = SymlinkResource::new(source, target, system_executor());
+        let result = resource.remove().unwrap();
+        assert!(
+            matches!(result, ResourceChange::Skipped { .. }),
+            "remove must preserve non-link targets, got {result:?}"
+        );
+        assert_eq!(std::fs::read_to_string(user_file).unwrap(), "user content");
+    }
+}

@@ -138,10 +138,9 @@ these instead of partially enabling the unit. Conflicting declarations for the s
 scope and unit are rejected.
 
 See [Systemd units](#what-it-does) for when the task can run. Contributors changing
-offline unit lookup or enablement parsing should start with the [systemd_unit.rs
-implementation](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/systemd_unit.rs)
-and its [regression
-tests](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/tests/systemd_unit.rs).
+offline unit lookup should start with the [offline enablement implementation](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/systemd_unit/offline.rs).
+For changes to `[Install]` parsing, see the [target parser](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/systemd_unit/install_targets.rs)
+and its [regression tests](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/tests/systemd_unit_install_targets.rs).
 
 For the illustrative `backup.timer` above, inspect both dimensions without
 changing it. Replace the name with an existing user declaration on your machine:

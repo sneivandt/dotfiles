@@ -109,8 +109,8 @@ If the same module name appears under different paths in the stack, make the
 fragment use the intended path before retrying. Dotfiles skips blank lines and
 full-line comments in fragments. A fragment can repeat an identical rule but can
 assign only one rule per facility and module path.
-The [PAM merge implementation and
-tests](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/system_file.rs)
+The [PAM merge implementation](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/system_file/merge_pam.rs)
+and its [tests](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/tests/system_file_pam.rs)
 cover detailed rule matching and placement.
 
 **These are privileged changes, not a reversible patch.** An overlay replaces the whole

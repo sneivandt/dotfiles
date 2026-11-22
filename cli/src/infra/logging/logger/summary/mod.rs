@@ -141,5 +141,4 @@ impl Logger {
 }
 
 #[cfg(test)]
-#[path = "tests.rs"]
 mod tests;

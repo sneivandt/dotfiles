@@ -38,7 +38,7 @@ fn top_level_help_is_small_and_uses_canonical_commands() {
 fn mutation_help_explains_package_and_file_preservation_scope() {
     let update = display_output(&["dotfiles", "update", "--help"], ErrorKind::DisplayHelp);
     assert!(
-        update.contains("does not upgrade installed system packages"),
+        update.contains("On Arch, installing one can also upgrade the system."),
         "{update}"
     );
     assert!(update.contains("Changes and safety:"), "{update}");

@@ -177,6 +177,10 @@ Nested symlinks are preserved. A directory link is left in place if copying it w
 relocate a relative link that points outside the copied tree. Ownership is checked again
 before replacement, so a link retargeted after inspection is preserved. File copies are
 staged privately on Unix and receive source permissions before publication.
+On Windows, removal leaves the managed link in place if it cannot verify that
+the copy has the same access policy as the source, or if the source is encrypted.
+This applies to entries inside a linked directory too. With `--restore-missing`,
+the target stays absent on refusal. Do not loosen source permissions to force removal.
 
 ```sh
 dotfiles remove --only symlinks --dry-run

@@ -189,7 +189,7 @@ impl<'a> SectionLoader<'a> {
         };
         let main = prepare(main, &self.main)?;
         let overlay = prepare(overlay, self.overlay.as_ref().unwrap_or(&self.main))?;
-        Ok(merge::overlay(main, overlay, self.platform))
+        Ok(T::merge(main, overlay, self.platform))
     }
 
     /// Decode once and derive active and validation views with identical origins.

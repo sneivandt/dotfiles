@@ -105,7 +105,7 @@ pub(super) fn normalize_command_position(
 pub enum Command {
     /// Sync the repository and apply configuration
     #[command(
-        after_help = "Installs missing system packages; does not upgrade installed system packages.
+        after_help = "Installs missing system packages. On Arch, installing one can also upgrade the system.
 Startup may check for CLI updates before running tasks.
 Dry runs may query tools and save logs, caches, or selections.
 Use list with an existing binary for read-only discovery.

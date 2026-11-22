@@ -19,7 +19,7 @@ downloads and the source-build route.
 
 | Command | Purpose |
 |---|---|
-| `update` (default) | Sync the repository and apply configuration; install missing system packages, not upgrade installed ones |
+| `update` (default) | Sync the repository and apply configuration. Installing a missing Arch package can also [upgrade the system](system-packages.md#what-it-does). |
 | `remove` | Detach a limited set of integrations, not restore machine defaults |
 | `check` | Validate configuration and repository files |
 | `list` | Discover selectors or inspect a dependency graph |

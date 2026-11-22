@@ -297,6 +297,36 @@ fn open_target(path: &Path) -> Result<Option<File>> {
     }
 }
 
+pub(in crate::infra::fs) fn verify_copy_access(source: &File, staged: &File) -> Result<()> {
+    require_query_support()?;
+    require_persistent_acls(staged)?;
+    anyhow::ensure!(
+        source.metadata()?.file_attributes() & FILE_ATTRIBUTE_ENCRYPTED == 0,
+        "cannot materialize an encrypted source"
+    );
+    anyhow::ensure!(
+        Access::read(source)? == Access::read(staged)?,
+        "cannot materialize this entry without changing its Windows access policy"
+    );
+    Ok(())
+}
+
+pub(in crate::infra::fs) fn copy_destination_options() -> std::fs::OpenOptions {
+    let mut options = File::options();
+    // GetVolumeInformationByHandleW also needs FILE_READ_ATTRIBUTES.
+    options
+        .write(true)
+        .access_mode(GENERIC_WRITE | READ_CONTROL | FILE_READ_ATTRIBUTES);
+    options
+}
+
+pub(in crate::infra::fs) fn verify_copy_entry_access(source: &Path, staged: &Path) -> Result<()> {
+    // Inspect the entry itself, including a directory junction or a dangling link.
+    let source = open_target(source)?.context("copy source disappeared")?;
+    let staged = open_target(staged)?.context("staged copy disappeared")?;
+    verify_copy_access(&source, &staged)
+}
+
 fn target_access(path: &Path) -> Result<Option<Access>> {
     open_target(path)?
         .as_ref()

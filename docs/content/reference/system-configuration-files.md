@@ -86,7 +86,9 @@ The Arch `paccache` timer uses a dedicated drop-in and environment file. Systemd
 accumulates `EnvironmentFile=` directives; treating them as ordinary INI keys
 can discard administrator settings. The drop-in adds a file that sets only
 `PACCACHE_ARGS` instead of clearing the environment-file list. Both files are
-create-only. The environment file is installed first; an interruption at that
+create-only. An overlay can replace the environment file without moving it
+after the drop-in: system-file overrides keep their main declaration's position.
+The environment file is installed first; an interruption at that
 point leaves the service using its previous configuration. Once the drop-in is
 loaded, a missing policy file skips cleanup rather than falling back to other
 retention settings. If the task reports a conflict, compare the installed files under

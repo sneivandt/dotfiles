@@ -19,7 +19,10 @@ mod windows;
 #[cfg(all(windows, test))]
 pub(crate) use windows::check_private_fixture;
 #[cfg(windows)]
-pub(super) use windows::{create_private_dir, verify_private_child};
+pub(super) use windows::{
+    copy_destination_options, create_private_dir, verify_copy_access, verify_copy_entry_access,
+    verify_private_child,
+};
 
 /// Move an entry without replacing an existing destination.
 #[cfg(any(target_os = "linux", target_vendor = "apple"))]

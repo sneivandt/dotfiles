@@ -43,6 +43,9 @@ fn copy_tree(
     reject_recursive_destination(src, dst)?;
     std::fs::create_dir_all(dst)
         .with_context(|| format!("creating directory {}", dst.display()))?;
+    #[cfg(windows)]
+    super::place::verify_copy_entry_access(&std::fs::canonicalize(src)?, dst)
+        .with_context(|| format!("checking directory access for {}", src.display()))?;
     // Keep staged contents private while copying, and defer the source mode
     // until children are populated so read-only directories can be copied.
     #[cfg(unix)]
@@ -71,6 +74,8 @@ fn copy_tree(
             // traversal of symlinks that point outside the intended source tree.
             let link_target = std::fs::read_link(&src_path)
                 .with_context(|| format!("reading symlink {}", src_path.display()))?;
+            #[cfg(windows)]
+            verify_link_creation_access(&src_path, dst, super::is_dir_like(&meta))?;
             super::create_native_symlink(&link_target, &dst_path, super::is_dir_like(&meta))
                 .with_context(|| {
                     format!(
@@ -81,6 +86,8 @@ fn copy_tree(
                 })?;
             #[cfg(target_os = "linux")]
             preserve_link_attributes(&src_path, &dst_path)?;
+            #[cfg(windows)]
+            super::place::verify_copy_entry_access(&src_path, &dst_path)?;
         } else if meta.is_dir() {
             copy_tree(&src_path, &dst_path, skip_git, hard_links)?;
         } else {
@@ -102,8 +109,14 @@ fn copy_tree(
                 })?;
                 continue;
             }
-            let mut destination = std::fs::File::create(&dst_path)
-                .with_context(|| format!("create {}", dst_path.display()))?;
+            #[cfg(windows)]
+            let destination = super::place::copy_destination_options()
+                .create(true)
+                .open(&dst_path);
+            #[cfg(not(windows))]
+            let destination = std::fs::File::create(&dst_path);
+            let mut destination =
+                destination.with_context(|| format!("create {}", dst_path.display()))?;
             copy_regular_contents(&mut source, &mut destination).with_context(|| {
                 format!("copying {} to {}", src_path.display(), dst_path.display())
             })?;
@@ -124,11 +137,43 @@ fn copy_tree(
     Ok(())
 }
 
+#[cfg(windows)]
+fn verify_link_creation_access(source: &Path, parent: &Path, directory: bool) -> Result<()> {
+    // CreateSymbolicLinkW takes no security descriptor. Verify inheritance
+    // on an empty sibling of the same type before exposing the link target.
+    let probe = if directory {
+        super::TempGuard::create_unique_dir(parent, ".dotfiles-access", "tmp")?
+    } else {
+        super::TempGuard::create_unique_file(parent, ".dotfiles-access", "tmp")?.0
+    };
+    super::place::verify_copy_entry_access(source, probe.path())
+}
+
+pub(crate) fn create_staged_file(target: &Path) -> Result<(super::TempGuard, std::fs::File)> {
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let prefix = ".dotfiles-materialize-file";
+    #[cfg(windows)]
+    let stage = super::TempGuard::reserve_file_with(parent, prefix, "tmp", |path| {
+        super::place::copy_destination_options()
+            .create_new(true)
+            .open(path)
+    });
+    #[cfg(not(windows))]
+    let stage = super::TempGuard::create_unique_file_with_mode(parent, prefix, "tmp", 0o600);
+    stage.with_context(|| format!("create temporary file beside {}", target.display()))
+}
+
 /// Copy regular file contents, preserving sparse extents on supporting Linux filesystems.
 pub(crate) fn copy_regular_contents(
     source: &mut std::fs::File,
     destination: &mut std::fs::File,
 ) -> Result<()> {
+    #[cfg(windows)]
+    {
+        // Do not truncate an existing destination before checking its access.
+        super::place::verify_copy_access(source, destination)?;
+        destination.set_len(0)?;
+    }
     #[cfg(target_os = "linux")]
     {
         use std::os::unix::fs::MetadataExt as _;
@@ -192,6 +237,8 @@ pub(crate) fn preserve_copy_metadata(
     #[cfg(target_os = "linux")]
     preserve_attributes(source, destination, access_identity(&metadata), |_| true)?;
     destination.set_permissions(metadata.permissions())?;
+    #[cfg(windows)]
+    super::place::verify_copy_access(source, destination)?;
     Ok(())
 }
 
@@ -402,6 +449,33 @@ pub(crate) fn open_regular_source(path: &Path) -> Result<std::fs::File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_copy_checks_access_before_truncating_or_writing() {
+        let root = tempfile::tempdir().unwrap();
+        let src = root.path().join("source");
+        let dst = root.path().join("destination");
+        std::fs::create_dir(&src).unwrap();
+        std::fs::create_dir(&dst).unwrap();
+        let source = src.join("entry");
+        let destination = dst.join("entry");
+        crate::infra::fs::write_atomic(&source, "private").unwrap();
+        std::fs::write(&destination, "original").unwrap();
+        let error = copy_dir_recursive(&src, &dst, false).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("Windows access policy"),
+            "{error:#}"
+        );
+        assert_eq!(std::fs::read_to_string(&destination).unwrap(), "original");
+
+        // A destination with the same protected descriptor can receive the bytes.
+        std::fs::remove_file(&destination).unwrap();
+        crate::infra::fs::write_atomic(&destination, "original").unwrap();
+        copy_dir_recursive(&src, &dst, false).unwrap();
+        assert_eq!(std::fs::read_to_string(&destination).unwrap(), "private");
+        super::super::place::verify_copy_entry_access(&source, &destination).unwrap();
+    }
 
     #[cfg(target_os = "linux")]
     #[test]

@@ -409,6 +409,43 @@ fn load_permission_overrides_match_dot_prefixed_and_plain_paths() {
 
 #[cfg(unix)]
 #[test]
+fn overlay_retention_policy_is_checked_before_the_main_drop_in() {
+    let (main, mut profile, platform) = setup_load(
+        linux(),
+        &[(
+            "system-files.toml",
+            include_str!("../../../../conf/system-files.toml"),
+        )],
+    );
+    profile.active_categories.push(Category::Arch);
+    let overlay = tempfile::tempdir().unwrap();
+    let directory = "/etc/systemd/system/paccache.service.d";
+    write_overlay_config(
+        &overlay,
+        "system-files.toml",
+        &format!(
+            "[arch]\nfiles = [{{ target = '{directory}/retention.env', source = 'local.env', merge = 'create-only' }}]\n"
+        ),
+    );
+    let config = Config::load(main.path(), &profile, platform, Some(overlay.path())).unwrap();
+    let sources: Vec<_> = config
+        .system_files
+        .iter()
+        .filter(|file| file.target.starts_with(directory))
+        .map(system_files::SystemFile::source_path)
+        .collect();
+    assert_eq!(
+        sources,
+        [
+            overlay.path().join("system/local.env"),
+            main.path()
+                .join("system/systemd/system/paccache.service.d/retention.conf"),
+        ]
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn load_system_file_override_replaces_fragment_and_strategy_from_overlay() {
     let (main, profile, platform) = setup_load(
         linux(),

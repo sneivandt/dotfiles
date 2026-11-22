@@ -3,7 +3,7 @@ use std::path::{Component, Path};
 
 use super::platform::{create_symlink, is_link_like};
 use crate::infra::exec::Executor;
-use crate::infra::fs::{TempGuard, ensure_parent_dir, rename_noreplace};
+use crate::infra::fs::{TempGuard, create_staged_file, ensure_parent_dir, rename_noreplace};
 use crate::infra::fs::{link_points_to_source, resolve_directory, same_entry};
 
 /// Stage a copy beside the target before replacing its managed link.
@@ -167,12 +167,6 @@ fn copy_file_into_place(
     )?;
     guard.persist();
     Ok(())
-}
-
-fn create_staged_file(target: &Path) -> Result<(TempGuard, std::fs::File)> {
-    let parent = target.parent().unwrap_or_else(|| Path::new("."));
-    TempGuard::create_unique_file_with_mode(parent, ".dotfiles-materialize-file", "tmp", 0o600)
-        .with_context(|| format!("create temporary file beside {}", target.display()))
 }
 
 pub(super) fn copy_dir_into_place(
@@ -486,6 +480,43 @@ mod tests {
         assert_eq!(std::fs::read_dir(fixture.path()).unwrap().count(), 3);
         publish(&source, &staged, &target, true, rename_noreplace).unwrap();
         assert_eq!(std::fs::read_to_string(target).unwrap(), "staged content");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn removal_preserves_the_link_when_a_file_has_a_protected_dacl() {
+        for nested in [false, true] {
+            let fixture = tempfile::tempdir().unwrap();
+            let root = fixture.path();
+            let source = root.join("source");
+            let file = if nested {
+                std::fs::create_dir(&source).unwrap();
+                source.join("private")
+            } else {
+                source.clone()
+            };
+            // New atomic documents have a protected owner-only DACL, unlike
+            // the ordinary staging file that would inherit its parent's ACL.
+            crate::infra::fs::write_atomic(&file, "private fixture").unwrap();
+            let target = root.join("installed");
+            crate::infra::fs::create_native_symlink(&source, &target, nested).unwrap();
+            let error = copy_into_place(&source, &target, &source, &[], false).unwrap_err();
+            assert!(
+                format!("{error:#}").contains("Windows access policy"),
+                "{error:#}"
+            );
+            assert_eq!(std::fs::read_link(&target).unwrap(), source);
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), "private fixture");
+            assert_eq!(std::fs::read_dir(root).unwrap().count(), 2);
+            let missing = root.join("missing");
+            let restore_error = copy_into_place(&source, &missing, &source, &[], true).unwrap_err();
+            assert!(
+                format!("{restore_error:#}").contains("Windows access policy"),
+                "{restore_error:#}"
+            );
+            assert!(!missing.exists());
+            assert_eq!(std::fs::read_dir(root).unwrap().count(), 2);
+        }
     }
 
     #[test]

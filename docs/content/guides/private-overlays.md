@@ -175,8 +175,10 @@ of entry; matching section names or array positions do not cause replacement:
 | System configuration files | Normalized destination path |
 | VS Code extensions | Case-insensitive extension ID |
 
-Unmatched main entries remain, followed by overlay entries. Missing or empty
-overlay files contribute nothing; they do not erase the base. Inactive overlay
+Unmatched main entries remain, followed by overlay entries. System configuration
+files are the exception: replacements keep their main declaration's position so
+a prerequisite still runs before a file that activates it. New destinations come
+last. Missing or empty overlay files do not erase the base, and inactive overlay
 categories cannot override active main entries.
 
 Replacement uses the **entire overlay entry**, with source paths still relative

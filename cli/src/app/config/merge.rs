@@ -14,20 +14,16 @@ pub(super) trait OverlayEntry: Sized {
     fn prepare(entries: Vec<Self>, _root: &Path) -> Result<Vec<Self>> {
         Ok(entries)
     }
-}
 
-pub(super) fn overlay<T: OverlayEntry>(
-    mut main: Vec<T>,
-    overlay: Vec<T>,
-    platform: Platform,
-) -> Vec<T> {
-    main.retain(|entry| {
-        !overlay
-            .iter()
-            .any(|replacement| entry.same_target(replacement, platform))
-    });
-    main.extend(overlay);
-    main
+    fn merge(mut main: Vec<Self>, overlay: Vec<Self>, platform: Platform) -> Vec<Self> {
+        main.retain(|entry| {
+            !overlay
+                .iter()
+                .any(|replacement| entry.same_target(replacement, platform))
+        });
+        main.extend(overlay);
+        main
+    }
 }
 
 impl OverlayEntry for packages::Package {
@@ -119,5 +115,21 @@ impl OverlayEntry for system_files::SystemFile {
     fn prepare(entries: Vec<Self>, _root: &Path) -> Result<Vec<Self>> {
         system_files::validate_entries(&entries).context("validating system file targets")?;
         Ok(entries)
+    }
+
+    fn merge(mut main: Vec<Self>, overlay: Vec<Self>, platform: Platform) -> Vec<Self> {
+        // A later system file may activate an earlier one. Keep a replaced
+        // prerequisite in its main declaration's position.
+        for replacement in overlay {
+            if let Some(slot) = main
+                .iter_mut()
+                .find(|e| e.same_target(&replacement, platform))
+            {
+                *slot = replacement;
+            } else {
+                main.push(replacement);
+            }
+        }
+        main
     }
 }

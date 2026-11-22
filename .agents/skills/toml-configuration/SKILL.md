@@ -52,7 +52,8 @@ data, fixtures, and owning task. Do not copy a hand-written public/overlay merge
 
 Preserve resource-aware precedence through
 [`merge::OverlayEntry`](../../../cli/src/app/config/merge.rs): active overlay
-entries replace matching base identities, with unmatched base entries first.
+entries replace matching base identities, with unmatched base entries first
+except for system files, whose replacements retain their original positions.
 Retain complete entries and source origins; this is not whole-file merging.
 Validate within-source conflicts before replacement, and retain both sources
 in unfiltered validation views. See

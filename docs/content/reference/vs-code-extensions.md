@@ -16,7 +16,7 @@ are present; it does not pin extension versions or configure their preferences.
 | Commands | `update` |
 | Availability | Configured extensions |
 | [Requires success](task-reference.md#scheduling-model) | None |
-| [Runs after](task-reference.md#scheduling-model) | [System packages](system-packages.md), [AUR packages](aur-packages.md), conditional on readiness |
+| [Runs after](task-reference.md#scheduling-model) | [System packages](system-packages.md) and [AUR packages](aur-packages.md) when needed for readiness; [Systemd units](systemd-units.md) when the first-login user service and its link are selected for setup |
 | Implementation | [editors/vscode_extensions.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/editors/vscode_extensions.rs) |
 
 ## What it does
@@ -39,11 +39,12 @@ Insiders shim whose editor has been removed is skipped. The selected CLI receive
 configured extensions; having stable Code open does not make it the selected
 edition. There is no editor-selection key in this declaration.
 
-Arch chroot provisioning defers installation when the selected profile
-configures and enables `dotfiles-first-login.service`. The service retries
-with the recorded profile, overlay, and extension list in a real user session.
-If the service is unavailable, run
-the extension task manually after login.
+An Arch chroot has no graphical user session. To defer installation, the
+selected configuration must link the `dotfiles-first-login.service` unit file
+and declare the user service enabled. During apply, dotfiles checks that the
+unit is installed and enabled before queuing the extensions. At first
+graphical login the service uses the recorded profile, overlay, and
+extension list. If deferral fails, run the extension task after login.
 
 ## Configuration
 

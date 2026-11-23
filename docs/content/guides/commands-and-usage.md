@@ -5,33 +5,32 @@ description: Preview and apply configuration, select tasks, interpret results, a
 
 # Commands and usage
 
-Use dotfiles to apply the packages, files, and settings declared in this checkout.
-Start with [Getting started](getting-started.md) for a first installation, or the
-[Windows guide](windows-and-wsl.md) for PowerShell examples.
-
-The examples use the checkout behind your installed dotfiles launcher and
-your saved profile. Before installation, use `./dotfiles.sh` on Linux or
-`.\dotfiles.ps1` on Windows; see [Wrapper bootstrap](../reference/cli-reference.md#wrapper-bootstrap).
-In an interactive terminal, update, remove, and check prompt when no profile
-is selected. The read-only list and explain commands need an existing selection
-or an explicit `--profile`. See [Unattended runs](#unattended-runs) for automation.
+These commands use your installed launcher and its checkout. For a first
+installation, follow [Getting started](getting-started.md) instead. Before
+the launcher is installed, you can use the checkout's `./dotfiles.sh` on
+Linux or `.\dotfiles.ps1` on Windows.
 
 ## Everyday commands
 
 | Goal | What to run |
 |---|---|
 | See the available tasks | `dotfiles list` |
-| Preview an update | `dotfiles update --dry-run` |
+| Preview an update without applying the planned changes | `dotfiles update --dry-run` |
 | Sync the repository and apply updates | `dotfiles update` |
 | Validate configuration and repository files | `dotfiles check` |
 | Inspect a managed home symlink | `dotfiles explain <path>` |
 | Read the latest run | `dotfiles log` |
 | Preview removal | `dotfiles remove --dry-run` |
 
-Use `--profile base` or `--profile desktop` to override the saved role for one
-run. Neither profile is a user-files-only mode.
-Preview before the first apply. Back up and move aside any entries that block
-managed links. Changes to linked application settings may take effect immediately.
+**Running `dotfiles` with no command applies an update.** To see what would
+change, use `--dry-run` explicitly. Neither profile limits work to your home
+directory. Back up entries that block managed links before moving them
+aside; edits to linked settings can take effect immediately.
+
+Without a saved profile, `update`, `remove`, and `check` can prompt in an
+interactive terminal. For `list`, `explain`, or an [unattended run](#unattended-runs),
+supply a profile if none is selected. `--profile base` and `--profile desktop`
+override the role for one run.
 
 ## Dry-run scope
 
@@ -76,7 +75,6 @@ for graph markers and structured formats.
 this checkout. It syncs the repository and applies the selected profile's
 packages, links, and settings in one run, so you don't have to pull first or
 remember which tasks to run afterward. Tasks leave already-correct state alone.
-Running the launcher without a command also applies an update.
 
 When you want to change just one thing, narrow the run with `--only`. For
 example, to preview changes to managed symlinks:
@@ -190,20 +188,14 @@ remain available while a run is active.
 
 ## Console output
 
-Check the header's profile, platform, overlay, and dry-run indicator first.
-The command is bold; metadata is dim, with dry-run mode in magenta.
-Overlay paths inside your home use `~`. Completed CLI upgrades and repository
-syncs appear together beneath the header. Both notices have bold labels. The
-new CLI version uses normal contrast; the previous version is dim.
-The repository notice keeps “restarting to load configuration” so the pause
-has an explanation. The restarted process continues with task output or the
-summary, without repeating the header.
-Tasks print as they finish, so output order is not configuration order.
-In an interactive terminal, the release check has a transient spinner.
-During task execution, the spinner shows a compact remaining count first,
-then active names, such as `⠋  4 left · System packages, Home symlinks +2`.
-The count covers scheduled work, not a fixed total for every phase. Spinners
-are cyan normally and magenta in preview; their accompanying text is dim.
+Read the header first: is this the profile, platform, overlay, and run mode
+you intended? A CLI upgrade or repository sync appears beneath it. A sync
+can restart the process to load the new configuration; task output continues
+without a second header.
+
+In an interactive terminal, the spinner shows what's still running. Tasks
+print as they finish, not in configuration order. Read the status and the
+indented actions together: one task can change many files or packages.
 
 | Status | Meaning |
 |---|---|
@@ -221,19 +213,8 @@ including profile-prompt emphasis, but not functional terminal redraws.
 Redirected streams have no ANSI styling. Inapplicable and internal tasks
 do not appear in normal rows or totals, but remain in logs.
 
-Task names are bold except for verbose `UNCHANGED` rows. Consecutive rows
-without visible details stay compact; expanded blocks have a blank line
-around them. Indented actions describe each task's work, with applied verbs
-in cyan and planned verbs in magenta, including completion writes and workflow
-repairs. Action subjects line up within each task. On narrow terminals, the
-gap can shrink to keep an action on one line. Informational messages and
-script-provided output remain plain; their first words are not treated as action
-verbs. All concrete actions remain visible.
-An expanded row with multiple quantified actions adds `· 35 actions applied`
-or `· planned · 35 actions`. Task-owned warnings and verbose errors stay
-indented under their row, with warnings between the actions they concern.
-If an unchanged task emits a warning, the warning still appears on stderr
-with the task name, even in quiet mode. A routine unchanged task stays silent.
+Task warnings appear alongside the actions they concern. Even in quiet mode,
+a warning from an unchanged task still appears on stderr with the task name.
 
 The final summary names its unit once, as in **Tasks · 3 changed · 14 unchanged**
 or **Checks: 5 passed · 1 skipped**. Previews use **planned** instead of **changed**.
@@ -258,16 +239,14 @@ Tasks · 17 unchanged · 3.4s
 The final duration covers the CLI invocation, including self-update and
 repository restarts; retained logs keep separate timings for each process.
 Failed, interrupted, blocked, and skipped work appears before successful counts.
-This line has no symbol
-prefix, regardless of `--no-symbols`. Failure and interruption remain explicit even
-when the affected work is internal and absent from visible task counts.
+Failure and interruption remain explicit even when the affected work is
+internal and absent from visible task counts.
 **Exit 0 with skipped work is not necessarily a complete installation.**
 Use `--fail-on-skip` when it must be.
 
-After failure or force quit, a healthy persistent log provides an indented
-recovery hint. The quoted command is cyan and copyable; the surrounding text
-is dim. It selects that exact run with `--id` and includes `-v` for diagnostics.
-No hint is offered when the log is unavailable or degraded.
+After a failure or force quit, copy the log command if one is printed. Its
+`--id` selects that exact run even after another invocation, and `-v` shows
+the diagnostics. If logging failed, keep the terminal error instead.
 
 ## Check configuration
 

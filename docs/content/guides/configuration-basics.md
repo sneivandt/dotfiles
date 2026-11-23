@@ -5,17 +5,25 @@ description: Find configuration files and understand categories, paths, loading,
 
 # Configuration basics
 
-Declarations under `conf/` choose the packages, files, and settings that dotfiles
-manages. This guide explains how to find the owning file, make a change, and
-interpret the category and path rules shared by those files. Individual
-[task pages](../reference/task-reference.md) describe each declaration's exact format and
-what applying it changes.
+Edit `conf/` to change **what dotfiles manages**. For example, a declaration
+can select a Git configuration file to link into your home. To change the
+default branch name **inside that file**, edit its source under
+[symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/).
+Once the link exists, Git reads the source directly; you don't need to run
+another update for Git to see the new default.
 
-To change an application's own settings, edit its tracked source under
-[symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/), not the
-installed copy. Live links can make source edits take effect immediately. [Application
-settings](application-settings.md) helps you find the right source. Administrator-file
-fragments live under [system/](https://github.com/sneivandt/dotfiles/tree/main/system/).
+```mermaid
+flowchart TB
+    accTitle: How Git reads a managed configuration file
+    accDescr: The declaration in conf/symlinks.toml tells update to create a home link at ~/.config/git/config. That link points to symlinks/config/git/config in the checkout, where you edit Git defaults.
+    declaration["conf/symlinks.toml"] -->|update creates the link| home["~/.config/git/config"]
+    home -->|points to| source["symlinks/config/git/config"]
+```
+
+[Application settings](application-settings.md) lists common files to edit.
+For administrator-owned files, look under
+[system/](https://github.com/sneivandt/dotfiles/tree/main/system/) for the
+fragments dotfiles merges rather than links.
 
 ## Files
 

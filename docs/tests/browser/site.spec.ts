@@ -872,7 +872,8 @@ test('client navigation and theme changes rerender diagrams', async ({ page, isM
   expect(errors).toEqual([]);
 });
 
-for (const guide of ['profiles-and-categories', 'arch-desktop', 'architecture', 'agent-configuration', 'package-management', 'ci-and-releases']) {
+for (const { name } of documents.filter(({ source }) => /^```mermaid\s*$/m.test(source))) {
+  const guide = name.replace(/\.md$/, '');
   for (const theme of ['light', 'dark'] as const) {
     test(`${guide} has readable, accessible diagrams in ${theme} mode`, async ({ page }) => {
       test.setTimeout(180_000);

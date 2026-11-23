@@ -46,8 +46,8 @@ editing the public source. From the main checkout, these POSIX shell commands
 create a new sibling overlay; use a different directory if it already exists:
 
 ```sh
-mkdir ../dotfiles-private
-mkdir -p ../dotfiles-private/conf ../dotfiles-private/symlinks/config/git
+mkdir ../dotfiles-private &&
+mkdir -p ../dotfiles-private/conf ../dotfiles-private/symlinks/config/git &&
 cp symlinks/config/git/config ../dotfiles-private/symlinks/config/git/config
 ```
 
@@ -70,10 +70,11 @@ With a saved profile and installed launcher, preview from the main checkout:
 dotfiles update --overlay ../dotfiles-private --only symlinks --dry-run
 ```
 
-Look for `~/.config/git/config` pointing into `dotfiles-private`, and review all
-other selected links too. On a fresh installation, an absent target can receive
-the overlay link directly. On an already configured machine, the existing base
-link is a conflict: dotfiles does not retarget it automatically.
+This preview saves the overlay selection. Check the overlay path in the
+header and review all selected links. If `~/.config/git/config` is absent,
+the preview should propose linking it to the overlay. If it still points to
+the main checkout, expect a conflict: changing the declaration does not
+retarget an installed link.
 
 Inspect the destination before changing it:
 
@@ -93,10 +94,17 @@ and recorded target using the [backup procedure](application-settings.md#back-up
 then move the destination link itself aside, not the source it points to.
 Preserve an ordinary file or unrelated link instead of assuming it is managed.
 Repeat the preview until the new overlay link is planned without conflicts,
-then remove `--dry-run` to apply. Run
-`git config --show-origin --get user.name` afterward: the origin should be the
-overlay configuration and the value your chosen identity. Keep the overlay
-and backup available until verification succeeds.
+then remove `--dry-run` to apply. Verify two things afterward:
+
+1. Run `dotfiles explain .config/git/config`. The `Source` should be in the
+   overlay, and `Update: already linked` confirms the home link matches it.
+2. In a repository where you use this identity, run
+   `git config --show-origin --get user.name`. Check the **value** as well as
+   the file Git read. Git may show the home path rather than the resolved
+   symlink source, and a repository-local value can override the shared one.
+
+Keep the overlay in place while the link is in use, and keep the backup
+until you have verified both results.
 
 ## Select and preview
 

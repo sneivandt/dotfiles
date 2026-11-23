@@ -5,10 +5,10 @@ description: Understand change-aware CI, required checks, platform coverage, doc
 
 # CI and releases
 
-CI verifies that the checks selected for a patch pass. After a successful push
-to `main`, separate workflows publish the documentation and decide whether a
-new CLI release is needed. A docs-only push can update the website without
-releasing a new binary.
+After CI passes for a push to `main`, the site and CLI have separate
+publication decisions. Pages deploys only if that run built the site and
+its commit is still current. A docs-only change can update the website
+without triggering a binary release of its own.
 
 For local commands, use [Testing](testing.md). Workflow files and the
 [path classifier](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/classify-ci-changes.py)
@@ -23,12 +23,12 @@ could leave required checks pending.
 ```mermaid
 flowchart TB
     accTitle: CI gates documentation and binary publication separately
-    accDescr: Changed paths select CI jobs. The ci-success gate verifies their results. Only a successful same-repository push to main can publish the checked documentation artifact or select an unpublished binary or publishing change for release.
+    accDescr: Changed paths select CI jobs. After successful same-repository push CI on main, Pages deploys a built site only while its commit is current. Release selection separately checks for pending binary or publishing changes.
     Changes["Changed paths"] --> Jobs["Selected CI jobs"]
     Jobs --> Gate["ci-success"]
     Gate --> Push{"Successful push to main?"}
     Push -- No --> Done["No publication"]
-    Push -- Yes --> Docs["Publish tested site artifact"]
+    Push -- Yes --> Docs["Deploy site if built and current"]
     Push -- Yes --> Select{"Binary or publishing change pending?"}
     Select -- Yes --> Release["Build and publish release"]
     Select -- No --> Done

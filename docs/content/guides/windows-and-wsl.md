@@ -9,8 +9,8 @@ Run dotfiles from your **normal Windows account**, not an Administrator shell.
 It asks for elevation only where needed. Windows and WSL have separate home
 directories and must be configured separately.
 
-For shared commands and options, see [Usage](commands-and-usage.md). This guide covers
-Windows setup, permissions, packages, and the changes that need a new session.
+If you're configuring WSL, first [check which side owns the setting](#wsl).
+For commands shared by both environments, see [Commands and usage](commands-and-usage.md).
 
 ## Requirements
 
@@ -252,36 +252,29 @@ review the repository diff after editing settings in the app.
 
 ## WSL
 
-Run the **Linux wrapper inside the distribution** to manage its Linux home
-and `/etc` settings. Running the Windows executable does not manage
-`/etc/wsl.conf`.
+| To configure | Run dotfiles in | What this checkout changes |
+|---|---|---|
+| WSL 2 networking for all distributions | Windows PowerShell, using `.\dotfiles.ps1` | Links [.wslconfig](https://github.com/sneivandt/dotfiles/blob/main/symlinks/wslconfig) into your Windows home to select NAT networking |
+| Startup and PATH for one distribution | A Linux shell inside that distribution, using `./dotfiles.sh` | Merges the [wsl.conf fragment](https://github.com/sneivandt/dotfiles/blob/main/system/wsl.conf) into `/etc/wsl.conf` to enable systemd and turn off automatic Windows PATH imports |
 
-On Windows, the linked
-[.wslconfig](https://github.com/sneivandt/dotfiles/blob/main/symlinks/wslconfig)
-in your home selects NAT networking for WSL 2. It controls WSL 2 globally.
-
-Inside each distribution, the
-[/etc/wsl.conf fragment](https://github.com/sneivandt/dotfiles/blob/main/system/wsl.conf)
-enables systemd and disables automatic Windows PATH injection.
-The Linux `system-files` task preserves unrelated INI settings
-and can need sudo. Disabling PATH injection means Windows commands are not
-automatically discoverable by name inside Linux; use their full paths or add
-only the directories you need.
+The Windows executable does not manage `/etc/wsl.conf`. The Linux
+`system-files` task preserves unrelated INI settings and may need sudo.
+Without the Windows PATH entries, use full paths for Windows commands or
+add only the directories you need.
 
 `ssh-wsl` resolves the Windows profile when you run it. It can find
 `cmd.exe` under `C:\Windows` with Windows PATH injection disabled. If Windows
 is installed elsewhere, set `WSL_CMD_EXE` to the Linux path to `cmd.exe` or
 set `WINHOME` to the Linux path to your Windows profile.
 
-Changes to WSL startup settings need a restart. Save all WSL work, then run
-this from Windows:
+**Save work in every running distribution before restarting WSL.** Run
+this from Windows; it terminates all WSL distributions and their processes:
 
 ```powershell
 wsl --shutdown
 ```
 
-**This terminates all running WSL distributions and their processes.** Reopen
-the intended distribution afterward. Until systemd starts, configuring its
+Reopen the intended distribution afterward. Until systemd starts, configuring its
 startup setting alone does not make service tasks applicable.
 
 ## Remove

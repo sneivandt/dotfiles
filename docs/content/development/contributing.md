@@ -5,16 +5,14 @@ description: Find the right place for a change, set up the pinned toolchain, and
 
 # Contributing
 
-Most changes start with one application's files, not the CLI engine. This guide
-helps you find the right place, make a bounded change, and verify what you will
-push. Use [Architecture](architecture.md) for design details and
-[Testing](testing.md) for exact checks. For implementation work, use
-[Adding a task](adding-a-task.md) to follow a feature through configuration and
-scheduling, and [Writing tests](writing-tests.md) to build isolated regressions.
+For a new package or a different editor preference, start with the
+[owning files](#2-find-the-owning-files); you usually don't need to change or
+build the Rust CLI. If you're changing what the CLI does, choose the guide
+that matches your next step:
 
 | What do you need to do? | Guide |
 |---|---|
-| Find a change's owner and prepare the toolchain | This page |
+| Build and run the CLI from source | [Development setup](#development-setup) |
 | Understand execution boundaries | [Architecture](architecture.md) |
 | Implement a new kind of managed state | [Adding a task](adding-a-task.md) |
 | Trace an unexpected result to its cause | [Debugging](debugging.md) |

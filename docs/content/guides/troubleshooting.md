@@ -108,10 +108,12 @@ Forks do not silently fall back to this project's binaries. A fork without
 releases needs a deliberate publisher override or a source build; the
 [fork instructions](getting-started.md#using-a-fork) show both choices.
 
-Bootstrap warns and continues if GitHub CLI is absent. If `gh` is present,
-verification failure blocks it; self-update also refuses unverifiable updates.
-Do not bypass checksums or set `DOTFILES_SKIP_ATTESTATION=1` as a routine fix.
-See [Build provenance verification](security-and-trust.md#build-provenance-verification).
+If the wrapper reports `gh not found`, it stops without installing the
+download. Install GitHub CLI and retry, or [build from the reviewed
+checkout](../development/contributing.md#source-builds). If `gh` is already
+installed, check its access to the release repository. A matching checksum
+does not replace [build provenance verification](security-and-trust.md#build-provenance-verification);
+do not disable verification to get past an unexplained failure.
 
 Wrappers clean failed downloads. Do not delete the checkout or all of `bin/`.
 If one stale binary must be moved aside, first confirm no run is using it.

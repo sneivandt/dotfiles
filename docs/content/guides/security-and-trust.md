@@ -155,11 +155,11 @@ Coordinate any history cleanup separately.
 
 ## Dependency and CI controls
 
-[CI](../development/ci-and-releases.md) runs selected build, test, and dependency checks. Its aggregate gate
-requires selected jobs, including selected mutation shards, to succeed. Coverage
-reports are informational. The separate scheduled dependency workflow runs weekly and on
-manual dispatch. Enable failure notifications and GitHub's Dependabot features
-separately rather than assuming a workflow does that for you.
+Passing [CI](../development/ci-and-releases.md) means the required checks
+selected for that patch passed. Coverage reports are informational.
+[Mutation testing](../development/ci-and-releases.md#scheduled-mutation-testing)
+runs separately and does not block publishing. The dependency workflow
+runs weekly or on demand; enable notifications and Dependabot separately.
 
 [Release publication](../development/ci-and-releases.md#release-selection) is tied to successful
 same-repository push CI on `main` and the exact tested commit. Publishing uses

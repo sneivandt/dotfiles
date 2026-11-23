@@ -6,29 +6,28 @@ outline: [2, 3]
 
 # Getting started
 
-Dotfiles uses a Rust command-line program to apply the packages, files, and
-settings declared in this repository to an existing Arch Linux or Windows
-installation. It does not install the operating system.
-
-This is a personal setup, not a collection of universally safe defaults.
-Review the configuration before applying changes.
+Start with a working operating system. Dotfiles configures an existing
+installation; it does not install Arch Linux or Windows. This walkthrough
+uses a Git checkout so you can read the author's settings, back up your own,
+and preview the changes before applying them.
 
 Already installed? See [Commands and usage](commands-and-usage.md) or
 [Troubleshooting](troubleshooting.md).
 
 ## Choose your setup route
 
-| Configuration and binary | Before the first preview | Next step |
-|---|---|---|
-| This checkout and its released CLI | Git, a POSIX shell on Linux or PowerShell on Windows, and the download requirements below | [Choose a permanent checkout](#1-choose-a-permanent-checkout) |
-| Your fork and this project's released CLI | Deliberately select this project's release publisher | [Using a fork](#using-a-fork), then the setup walkthrough |
-| Your fork and its own released CLI | Publish compatible release assets in your fork | Review [download verification](security-and-trust.md#release-downloads), then the setup walkthrough |
-| Current source instead of a released CLI | The pinned Rust toolchain and native build prerequisites; keep `--build` in each wrapper invocation | [Source builds](../development/contributing.md#source-builds), then the setup walkthrough |
+If you're using this repository and its released CLI, go straight to
+[Choose a permanent checkout](#1-choose-a-permanent-checkout). The wrapper
+downloads the executable; you don't need Rust.
 
-These routes change where the executable comes from, not which configuration
-is safe for your machine. All require reviewing the selected declarations and
-backing up existing configuration before applying. Use the Windows commands
-in the walkthrough for Windows; run the Linux commands inside each WSL distribution.
+| If you want to… | Before you start |
+|---|---|
+| Keep your configuration in a fork | [Choose a release publisher](#using-a-fork). A new fork doesn't inherit upstream binaries. |
+| Run the CLI from source | Install the [build prerequisites](../development/contributing.md#source-builds) and pass `--build` on every wrapper or launcher invocation. |
+
+The checkout supplies the settings; the release publisher or source build
+supplies the program that applies them. On WSL, follow the Linux instructions
+inside each distribution and the Windows instructions for the host.
 
 ## Supported environments
 
@@ -50,9 +49,6 @@ Use this repository directly if you want to follow its shared configuration.
 To maintain your own public changes, fork it and clone your fork instead.
 Either way, review the personal defaults before applying them. Private
 additions can stay in a [separate overlay](private-overlays.md).
-
-The wrapper scripts download and verify the CLI, so the normal setup needs no
-Rust toolchain. A fork needs one extra choice before its first download.
 
 ### Using a fork
 
@@ -76,12 +72,10 @@ terminal; keep it in your shell configuration if future bootstrap downloads
 should use the same publisher. A fork with compatible releases can use its
 own default publisher.
 
-Alternatively, follow [Source builds](../development/contributing.md#source-builds). With that
-route, add `--build` after the wrapper or installed launcher name in **every
-dotfiles command** below, including verification through the launcher.
-For example, `./dotfiles.sh --build --version` or
-`.\dotfiles.ps1 --build --version` builds and prints the version without
-applying configuration. Build mode is not remembered between invocations.
+To build instead, try `./dotfiles.sh --build --version` or
+`.\dotfiles.ps1 --build --version` from the checkout. This prints the version
+without applying configuration. Keep `--build` even for the final verification
+through the installed launcher; build mode is not remembered.
 
 ## Set up your machine
 
@@ -91,9 +85,9 @@ the changes before applying them.
 ### 1. Choose a permanent checkout
 
 You need Git and a POSIX shell on Linux, or Git and PowerShell on Windows.
-On Linux, downloading the CLI also needs `curl` or `wget`. Install GitHub CLI
-(`gh`) before downloading to verify where release binaries were built.
-Bootstrap and CLI self-update both reject downloads without it. See
+For a released CLI, install GitHub CLI (`gh`) before the first download:
+the wrapper uses it to verify where the binary was built. On Linux, the
+download also needs `curl` or `wget`, `sha256sum`, and `flock`. See
 [download verification](security-and-trust.md#build-provenance-verification)
 or the [Windows requirements](windows-and-wsl.md#requirements) for details.
 

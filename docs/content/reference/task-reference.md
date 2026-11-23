@@ -5,17 +5,13 @@ description: Find a task by selector, then review its behavior, configuration, p
 
 # Task reference
 
-Find the task below, then open its page for configuration examples and the
-changes it makes. A selector chooses a kind of work, such as `symlinks` or
-`packages`, rather than one file or package inside that task.
+A selector names a task, not an individual item. For example, `--only symlinks`
+selects the Home symlinks task; your configuration determines which links it
+manages. Use the [lookup table](#find-the-right-task) if you know the change
+you want but not its selector.
 
-A task manages one area of setup, such as home links or services. Its
-declarations choose the individual items. The task
-page explains the underlying tool, what dotfiles manages on top of it, and
-what it deliberately leaves alone. `check` tasks inspect configuration or
-source instead of applying that desired state.
-
-Start with the installed launcher and a selected profile:
+To see the tasks for your checkout, use the installed launcher and a selected
+profile:
 
 ```sh
 dotfiles list
@@ -45,10 +41,9 @@ Use the selector index below for exact names, or search for a task page by title
 
 ## Catalog overview
 
-These are the built-in update selectors. Follow a label for details. The table
-shows which configuration or platform makes each task relevant; required tools
-or privileges may still be missing. Only `git-hooks`, `launcher`
-and `symlinks` also belong to [remove](#remove-tasks).
+These built-in selectors belong to `update`. Availability tells you whether
+the task is relevant, not whether the required tools or privileges are present.
+Only `git-hooks`, `launcher`, and `symlinks` also support [removal](#remove-tasks).
 
 | Selector | Task and availability |
 |---|---|

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Select accumulated nightly mutation inputs without inheriting failed coverage."""
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -8,8 +9,8 @@ import re
 import subprocess
 
 
-def git(*args):
-    return subprocess.check_output(["git", *args])
+def git(*args, input=None):
+    return subprocess.run(["git", *args], input=input, stdout=subprocess.PIPE, check=True).stdout
 
 
 def api_pages(endpoint, key):
@@ -107,6 +108,7 @@ def selection(paths):
             "rust-toolchain", "rust-toolchain.toml",
             ".github/workflows/mutation.yml",
             ".github/workflows/scripts/linux/select-mutations.py",
+            ".github/workflows/scripts/linux/run-mutations.py",
         }
         or (path.startswith("cli/src/") and (
             not path.endswith(".rs") or "/tests/" in path or path.endswith("/tests.rs")
@@ -120,10 +122,8 @@ def selection(paths):
     return (["cli/src"] if broad else source), bool(source or broad)
 
 
-def main():
-    head = os.environ["GITHUB_SHA"]
-    base = baseline(os.environ["GITHUB_REPOSITORY"], head, os.environ.get("MUTATION_BASE", ""))
-    empty_tree = git("hash-object", "-t", "tree", "/dev/null").decode().strip()
+def select_inputs(base, head):
+    empty_tree = git("hash-object", "-t", "tree", "--stdin", input=b"").decode().strip()
     paths = [
         os.fsdecode(path) for path in git(
             "diff", "--name-only", "--no-renames", "-z", base or empty_tree, head, "--",
@@ -135,18 +135,41 @@ def main():
         empty_tree, head, "--", *sources,
     ) if sources else b""
     Path("cli/mutants.diff").write_bytes(diff)
-    outputs = {"run_linux": bool(diff), "run_windows": windows}
-    with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as stream:
-        for name, value in outputs.items():
-            stream.write(f"{name}={str(value).lower()}\n")
+    manifest = {"base": base, "head": head, "linux_sources": sources, "run_windows": windows}
+    Path("cli/mutation-plan.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return manifest
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    local = parser.add_mutually_exclusive_group()
+    local.add_argument("--base", help="Select local replay inputs from this full ancestor SHA to HEAD.")
+    local.add_argument("--all-source", action="store_true", help="Select all source for local replay.")
+    args = parser.parse_args(argv)
+    local_replay = args.base is not None or args.all_source
+    if local_replay:
+        head = git("rev-parse", "HEAD").decode().strip()
+        base = "" if args.all_source else args.base
+        if not args.all_source and not ancestor(base, head):
+            parser.error("--base must be an ancestor of HEAD")
+    else:
+        head = os.environ["GITHUB_SHA"]
+        base = baseline(os.environ["GITHUB_REPOSITORY"], head, os.environ.get("MUTATION_BASE", ""))
+    manifest = select_inputs(base, head)
     summary = (
         f"Mutation range: {base or 'all source (no passing baseline)'}..{head}\n\n"
-        f"Linux scope: {', '.join(sources) or 'none'}\n\n"
-        f"Native Windows suite selected: {windows}\n"
+        f"Linux scope: {', '.join(manifest['linux_sources']) or 'none'}\n\n"
+        f"Native Windows suite selected: {manifest['run_windows']}\n"
     )
     print(summary)
-    with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as stream:
-        stream.write(summary)
+    if not local_replay:
+        outputs = {"has_linux_inputs": bool(Path("cli/mutants.diff").stat().st_size),
+                   "run_windows": manifest["run_windows"]}
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as stream:
+            for name, value in outputs.items():
+                stream.write(f"{name}={str(value).lower()}\n")
+        with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as stream:
+            stream.write(summary)
 
 
 if __name__ == "__main__":

@@ -22,60 +22,63 @@ checker's `--all` do not run mutation testing.
 
 ## Prepare an isolated source snapshot
 
-Install `cargo-mutants` only if you intend to run this check. Use the pinned
+Install cargo-mutants 27.1.0 to match the hosted workflow. Use the pinned
 Rust toolchain and a native filesystem for the platform under test; Windows
 and Linux mutations cover different runtime contracts.
 
-Commit the source and tests you want to check first. From the primary checkout,
-run the [pre-push plan](testing.md#implementation-and-mixed-patches) and record
-the left SHA of its `Committed range: BASE..HEAD` line. The default planner verifies
-the upstream CI baseline and can recover to a successful ancestor. If you
-provided `--base`, you are responsible for that baseline's verification.
+For a hosted failure, open the **Mutation: Results** summary. Record the base
+and tested commit, and use the listed focused command to replay a survivor or
+timeout. To reproduce the original location, start at the tested commit. After
+committing a fix, use the new commit and the same base to recheck the full
+selection, even if the fix only changes tests.
 
-In the commands below, replace `ORIGINAL_BASE_SHA` with that full SHA.
-Keep it with the mutation report and reuse it after test-only fixes. Do not
-replace it with a failed push's tip or a newly advanced upstream branch.
+For a change that has not run in CI, commit the source and tests, then use the
+left SHA of the [pre-push plan](testing.md#implementation-and-mixed-patches)'s
+committed range as the base. If you provided a custom base to the planner,
+verify that it covers the changes you intend to test.
 
-From the primary repository root, create a detached worktree in the unused
-`.mutation-review` directory:
+Create a disposable worktree from the repository root. Use the tested SHA in
+place of HEAD when reproducing a hosted failure.
 
 ```sh
 git worktree add --detach .mutation-review HEAD
 ```
 
-Only committed files are copied. Uncommitted and untracked fixes in the primary
-checkout are not part of this test. Never stage the disposable directory or its
-reports as part of your patch.
+Only committed files are copied. Keep this checkout and its reports out of
+your patch.
 
 ## Select and run the mutations
 
-Enter `.mutation-review/cli` in a POSIX shell, or
-`.mutation-review\cli` in PowerShell. Generate a source-only diff using the
-recorded baseline:
+Run the following commands from the root of the disposable worktree. Replace
+ORIGINAL_BASE_SHA with the recorded full SHA. Use `--all-source` instead of
+`--base ORIGINAL_BASE_SHA` when the report says the run used all source without
+a passing baseline. The selector uses the same whole-file and shared-input
+rules as the hosted workflow.
 
 ```sh
-git diff --relative=cli --no-renames --unified=0 --output=mutants.diff ORIGINAL_BASE_SHA HEAD -- src
-cargo mutants --in-place --in-diff mutants.diff --cargo-arg=--profile=ci --cargo-arg=--locked
+python3 -B .github/workflows/scripts/linux/select-mutations.py --base ORIGINAL_BASE_SHA
 ```
 
-These two commands also work in PowerShell. Git writes the diff itself so
-shell redirection cannot change its encoding. Check that the diff contains the
-intended source changes before running the second command. A test-only recovery
-should still include the original source change. An empty diff supplies no
-changed-code coverage.
-
-`--in-place` confines source mutations to this disposable worktree. To test a
-specific module rather than the committed diff, substitute:
+On Linux, paste the focused command from the report or use `run linux` to run
+the ordinary mutants in the selection. Use `run liveness`, `run context`, or
+`run process` for the suites with bounded test targets. For instance:
 
 ```sh
-cargo mutants --in-place --file src/app/filter.rs --cargo-arg=--profile=ci --cargo-arg=--locked
+python3 -B .github/workflows/scripts/linux/run-mutations.py run process
 ```
 
-Use `--re` to replay a specific mutant by its report description. Inspect
-`mutants.out` for survivors, timeouts, tool errors, and which tests actually ran.
-After adding and committing assertions in the primary checkout, preserve the
-old report, remove the disposable worktree, and repeat this procedure at the
-new commit with the same `ORIGINAL_BASE_SHA`.
+On Windows, use `python` in the selection command and run the native suite
+on a Windows filesystem.
+
+```powershell
+python -B .github/workflows/scripts/linux/run-mutations.py run windows
+```
+
+The replay commands mutate the disposable worktree in place. Inspect
+`cli/mutants.out` for survivors, timeouts, and tool errors. Save any report
+you need before running another suite, because cargo-mutants rotates this
+directory. If a focused replay reports that the mutation description changed,
+rerun the original suite or reproduce it at the tested commit.
 
 ## Preserve evidence and remove the worktree
 

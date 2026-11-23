@@ -134,7 +134,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             full = True
         elif path in {
             LINUX + "check-ci-contract.py", LINUX + "test-ci-changes.py",
-            LINUX + "select-mutations.py", ".github/workflows/mutation.yml",
+            LINUX + "select-mutations.py", LINUX + "run-mutations.py",
+            LINUX + "report-mutations.py", ".github/workflows/mutation.yml",
         }:
             pass  # Always executed by classify-changes.
         elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh", LINUX + "release-tag.sh"}:

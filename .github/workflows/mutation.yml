@@ -21,12 +21,13 @@ jobs:
   select:
     name: "Mutation: Select accumulated changes"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: read
     outputs:
-      run_linux: ${{ steps.select.outputs.run_linux }}
+      run_linux: ${{ steps.plan.outputs.run_linux }}
+      linux_matrix: ${{ steps.plan.outputs.linux_matrix }}
       run_windows: ${{ steps.select.outputs.run_windows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,16 +40,28 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MUTATION_BASE: ${{ inputs.mutation_base }}
         run: python3 -B .github/workflows/scripts/linux/select-mutations.py
+      - name: Install Rust toolchain for mutant discovery
+        if: steps.select.outputs.has_linux_inputs == 'true'
+        working-directory: cli
+        run: rustup toolchain install
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        if: steps.select.outputs.has_linux_inputs == 'true'
+        with:
+          tool: cargo-mutants@27.1.0
+      - name: Plan Linux shards
+        id: plan
+        run: python3 -B .github/workflows/scripts/linux/run-mutations.py plan
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: steps.select.outputs.run_linux == 'true'
         with:
           name: mutation-inputs
-          path: cli/mutants.diff
+          path: |
+            cli/mutation-plan.json
+            cli/mutants.diff
           if-no-files-found: error
           retention-days: 7
 
   mutation:
-    name: "Rust: Mutation (changed code, shard ${{ matrix.shard }})"
+    name: "Rust: Mutation (changed code, shard ${{ matrix.id }})"
     runs-on: ubuntu-latest
     timeout-minutes: 180
     needs: [select]
@@ -57,21 +70,7 @@ jobs:
       fail-fast: false
       # Leave runner capacity for ordinary CI while the nightly replay runs.
       max-parallel: 14
-      matrix:
-        # A full-source replay selects about 6,200 mutants. Keep each runner
-        # below roughly 130 builds before exclusions.
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
-        include:
-          - shard: liveness
-          - shard: context
-          - shard: process
-    env:
-      LIVENESS_MUTATIONS: '^src/(engine/access\.rs|infra/(atomic_flag|cancellation)\.rs):[0-9]+:[0-9]+: replace (AccessRegistry::try_acquire -> Option<AccessGuard> with None|AtomicFlag::set with \(\)|AtomicFlag::get -> bool with false|CancellationToken::cancel with \(\)|CancellationToken::is_cancelled -> bool with false)$'
-      CONTEXT_MUTATIONS: '^src/engine/context/mod\.rs:[0-9]+:[0-9]+: (delete ! in Context::scoped_access|replace Context::try_access -> Option<AccessGuard> with None|replace Context::cancellation_token -> CancellationToken with Default::default\(\))$'
-      PROCESS_MUTATIONS: '^src/infra/exec/(mod|process)\.rs:[0-9]+:[0-9]+: replace (\|\| with && in collect_child|wait_for_pipe_close -> bool with false|child_exited_without_reaping -> nix::Result<bool> with Ok\(false\))$'
-    defaults:
-      run:
-        working-directory: cli
+      matrix: ${{ fromJSON(needs.select.outputs.linux_matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -79,6 +78,7 @@ jobs:
           name: mutation-inputs
           path: cli/
       - name: Install Rust toolchain
+        working-directory: cli
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
@@ -88,63 +88,28 @@ jobs:
         uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
           tool: cargo-mutants@27.1.0
-      - name: Test changed-code mutants
-        if: matrix.shard != 'liveness' && matrix.shard != 'context' && matrix.shard != 'process'
+      - name: Test selected Linux mutations
         env:
-          MUTATION_SHARD: ${{ matrix.shard }}
-        # Native Windows functions are absent on Linux, not coverage gaps.
-        # The settings guard and disjoint lock-flag XOR are equivalent mutants.
+          MUTATION_SUITE: ${{ matrix.suite }}
+          MUTATION_PARTITION: ${{ matrix.partition }}
         run: >-
-          cargo mutants --in-place --no-shuffle --in-diff mutants.diff
-          --shard "$MUTATION_SHARD/48"
-          --exclude-re "$LIVENESS_MUTATIONS"
-          --exclude-re "$CONTEXT_MUTATIONS"
-          --exclude-re "$PROCESS_MUTATIONS"
-          --exclude 'src/infra/run_lock/windows.rs'
-          --exclude 'src/infra/fs/mutation/windows.rs'
-          --exclude-re '^src/infra/fs/mod\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]) in is_dir_like$'
-          --exclude-re '^src/infra/exec/process\.rs:.*\btake_stdout_windows\b'
-          --exclude-re '^src/domains/system/config/registry\.rs:.*\buppercase_native_registry_name\b'
-          --exclude-re '^src/infra/fs/mutation\.rs:[0-9]+:[0-9]+: replace \| with \^ in open_in_place$'
-          --exclude-re '^src/infra/fs/place\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported)\b'
-          --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b'
-          --exclude-re '^src/app/commands/execution/elevation\.rs:.*\bprepare_windows_elevation\b'
-          --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|encode_reg_string|append_user_path|user_path_contains)\b'
-          --exclude-re '^src/domains/ai/apm/cowork\.rs:.*\bis_desired_skill_directory\b'
-          --exclude-re '^src/domains/system/resources/registry\.rs:.*\bnative::'
-          --exclude-re '^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$'
-          --cargo-arg=--profile=ci --cargo-arg=--locked
-      - name: Test mutants that can block task and process completion
-        if: matrix.shard == 'liveness' || matrix.shard == 'context' || matrix.shard == 'process'
-        shell: bash
-        env:
-          MUTATION_SHARD: ${{ matrix.shard }}
-        # Exercise liveness primitives directly. Their broken variants can
-        # otherwise strand unrelated scheduler tests waiting for a worker.
-        run: |
-          if [[ "$MUTATION_SHARD" == liveness ]]; then
-            selection=(--file src/engine/access.rs --file src/infra/atomic_flag.rs --file src/infra/cancellation.rs --re "$LIVENESS_MUTATIONS")
-            tests=engine::access::tests::
-          elif [[ "$MUTATION_SHARD" == context ]]; then
-            selection=(--file src/engine/context/mod.rs --re "$CONTEXT_MUTATIONS")
-            tests=engine::context::tests::
-          else
-            selection=(--file src/infra/exec/mod.rs --file src/infra/exec/process.rs --re "$PROCESS_MUTATIONS")
-            tests=infra::exec::tests::interruption::bounded_command_wait_
-          fi
-          selection+=(--in-diff mutants.diff)
-          selected=$(cargo mutants --list "${selection[@]}")
-          if [[ -n "$selected" ]]; then
-            cargo mutants --in-place "${selection[@]}" --cargo-arg=--profile=ci --cargo-arg=--locked --cargo-arg=--lib -- "$tests"
-          else
-            mkdir -p mutants.out
-            printf '%s\n' 'No liveness mutants selected for this range.' > mutants.out/selection.txt
-          fi
+          python3 -B .github/workflows/scripts/linux/run-mutations.py
+          run "$MUTATION_SUITE" --partition "$MUTATION_PARTITION"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: rust-mutation-results-${{ matrix.shard }}
+          name: rust-mutation-results-${{ matrix.id }}
           path: cli/mutants.out
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutation-result-${{ matrix.id }}
+          path: |
+            cli/mutants.out/outcomes.json
+            cli/mutants.out/missed.txt
+            cli/mutants.out/timeout.txt
           if-no-files-found: error
           retention-days: 7
 
@@ -173,28 +138,26 @@ jobs:
         with:
           tool: cargo-mutants@27.1.0
       - name: Check native registry, PATH and elevation contracts
-        shell: bash
         env:
           MUTATION_SHARD: ${{ matrix.shard }}
-        # Keep the fixed native suite: its runtime no longer delays normal CI.
         run: >-
-          cargo mutants --in-place --no-shuffle
-          --shard "$MUTATION_SHARD/2"
-          --file src/domains/dotfiles/resources/path_entry.rs
-          --file src/domains/system/resources/registry.rs
-          --file src/infra/elevation.rs
-          --file src/app/commands/execution/elevation.rs
-          --file src/infra/fs/mutation/windows.rs
-          --file src/infra/fs/mod.rs
-          --file src/infra/exec/process.rs
-          --file src/domains/system/config/registry.rs
-          --re '(decode_reg_string|encode_reg_string|native::raw_value_to_string|native::raw_value_type|run_elevated_child|prepare_windows_elevation|ensure_single_link|check_information|is_dir_like|uppercase_native_registry_name|take_stdout_windows)'
-          --cargo-arg=--profile=ci --cargo-arg=--locked --cargo-arg=--lib
+          python -B ../.github/workflows/scripts/linux/run-mutations.py
+          run windows --partition "$env:MUTATION_SHARD/2"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: rust-mutation-results-windows-${{ matrix.shard }}
           path: cli/mutants.out
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutation-result-windows-${{ matrix.shard }}
+          path: |
+            cli/mutants.out/outcomes.json
+            cli/mutants.out/missed.txt
+            cli/mutants.out/timeout.txt
           if-no-files-found: error
           retention-days: 7
 
@@ -205,30 +168,30 @@ jobs:
     if: always()
     needs: [select, mutation, mutation-windows]
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.select.result == 'success'
+        with:
+          name: mutation-inputs
+          path: mutation-inputs
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: always() && (needs.select.outputs.run_linux == 'true' || needs.select.outputs.run_windows == 'true')
+        with:
+          pattern: mutation-result-*
+          path: mutation-results
       - name: Report selected mutation results
+        if: always()
         env:
           MUTATION_NEEDS: ${{ toJSON(needs) }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          needs = json.loads(os.environ["MUTATION_NEEDS"])
-          selected = needs["select"]
-          failures = []
-          if selected["result"] != "success":
-              failures.append("Mutation selection did not succeed.")
-          rows = ["| Job | Result |", "|---|---|"]
-          for job, flag in (("mutation", "run_linux"), ("mutation-windows", "run_windows")):
-              value = selected["outputs"].get(flag)
-              result = needs[job]["result"]
-              rows.append(f"| {job} | {result} |")
-              if value not in ("true", "false") or result != ("success" if value == "true" else "skipped"):
-                  failures.append(f"{job}: unexpected result {result} (selected={value}).")
-          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text("\n".join(rows + [""] + failures) + "\n")
-          if failures:
-              for failure in failures:
-                  print(f"::error::{failure}")
-              raise SystemExit(1)
-          PY
+        run: >-
+          python3 -B .github/workflows/scripts/linux/report-mutations.py
+          mutation-inputs/mutation-plan.json mutation-results mutation-summary.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutation-summary
+          path: mutation-summary.md
+          if-no-files-found: error
+          retention-days: 7

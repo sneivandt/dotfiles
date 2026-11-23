@@ -148,8 +148,11 @@ configuration changes skip both suites. Exact filters live in the workflow.
 For manual replay, dispatch **Mutation Testing** and optionally supply the
 original full ancestor SHA as `mutation_base`. Manual runs never advance the
 nightly baseline, so a narrow replay cannot discard pending coverage. Reports
-and selected Linux inputs are retained as artifacts for seven days. The result
-job reports failures and unexpected skips; survivors, timeouts, and tool errors
+and selected Linux inputs are retained as artifacts for seven days. Linux
+shards are sized from the selected mutant count. The results summary gives
+the tested range, counts per platform, missing reports, and focused replay
+commands for survivors and timeouts. The mutation-summary artifact contains
+the complete report. Survivors, timeouts, tool errors, and incomplete coverage
 fail this separate workflow.
 
 Enable Actions failure notifications for this workflow and investigate red

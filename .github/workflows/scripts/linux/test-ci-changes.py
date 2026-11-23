@@ -21,6 +21,8 @@ POLICY = runpy.run_path(str(SCRIPTS / "classify-ci-changes.py"))
 CONTRACT = runpy.run_path(str(SCRIPTS / "check-ci-contract.py"))
 PRE_PUSH = runpy.run_path(str(SCRIPTS / "pre-push.py"))
 MUTATION = runpy.run_path(str(SCRIPTS / "select-mutations.py"))
+MUTATION_RUN = runpy.run_path(str(SCRIPTS / "run-mutations.py"))
+MUTATION_REPORT = runpy.run_path(str(SCRIPTS / "report-mutations.py"))
 classify = POLICY["classify"]
 LINUX = POLICY["LINUX"]
 WINDOWS = POLICY["WINDOWS"]
@@ -155,6 +157,8 @@ class ClassificationTests(unittest.TestCase):
             (LINUX + "check-ci-contract.py", set()),
             (LINUX + "test-ci-changes.py", set()),
             (LINUX + "select-mutations.py", set()),
+            (LINUX + "run-mutations.py", set()),
+            (LINUX + "report-mutations.py", set()),
             (".github/workflows/mutation.yml", set()),
             (".github/workflows/release.yml", {"release"}),
             (LINUX + "classify-release.sh", {"release", "lint"}),
@@ -836,7 +840,7 @@ class GateTests(unittest.TestCase):
         self.assertIn("runs-on: ubuntu-latest", mutation)
         exclusions = [
             re.compile(pattern)
-            for pattern in re.findall(r"--exclude-re '([^']+)'", mutation)
+            for option, pattern in MUTATION_RUN["LINUX_EXCLUSIONS"] if option == "--exclude-re"
         ]
         self.assertTrue(exclusions)
 
@@ -908,21 +912,18 @@ class GateTests(unittest.TestCase):
                 self.assertFalse(excluded(path, description))
 
     def test_windows_elevation_broker_mutations_stay_in_native_shards(self):
-        workflow = CONTRACT["WORKFLOW"].with_name("mutation.yml").read_text(encoding="utf-8")
-        native = CONTRACT["job_blocks"](workflow)["mutation-windows"]
-        selected = re.search(r"--re '([^']+)'", native).group(1)
-        self.assertRegex(
-            "src/app/commands/execution/elevation.rs:306:5: replace "
-            "prepare_windows_elevation -> ElevationPlan with Default::default()",
-            selected,
-        )
-        for omitted in (
-            "--file src/app/commands/execution/elevation.rs",
-            "|prepare_windows_elevation",
+        options, target = MUTATION_RUN["suite_options"]("windows")
+        for path, function in (
+            ("src/app/commands/execution/elevation.rs", "prepare_windows_elevation"),
+            ("src/infra/elevation.rs", "run_elevated_child"),
+            ("src/infra/fs/mutation/windows.rs", "ensure_single_link"),
+            ("src/infra/fs/mod.rs", "is_dir_like"),
+            ("src/domains/system/config/registry.rs", "uppercase_native_registry_name"),
+            ("src/infra/exec/process.rs", "take_stdout_windows"),
         ):
-            with self.subTest(omitted=omitted):
-                with self.assertRaisesRegex(ValueError, "native Windows mutation coverage"):
-                    CONTRACT["check_mutation"](workflow.replace(omitted, ""))
+            self.assertIn(("--file", path), tuple(zip(options, options[1:])))
+            self.assertRegex(f"{path}:306:5: replace {function}", options[options.index("--re") + 1])
+        self.assertEqual(target, ["--cargo-arg=--lib"])
 
     def test_mutations_are_separate_and_fail_visibly(self):
         workflow = CONTRACT["WORKFLOW"].with_name("mutation.yml").read_text(encoding="utf-8")
@@ -932,13 +933,10 @@ class GateTests(unittest.TestCase):
             workflow.replace("  schedule:", "  push:"),
             workflow.replace("  mutation:\n", "  mutation:\n    continue-on-error: true\n"),
             workflow.replace("if: always()", "if: success()"),
-            workflow.replace("raise SystemExit(1)", "pass"),
-            re.sub(r"shard: \[0, 1, 2, [^\n]+", "shard: [0, 1]", workflow),
+            workflow.replace("report-mutations.py", "other.py"),
+            workflow.replace("fromJSON(needs.select.outputs.linux_matrix)", "'{}'"),
             workflow.replace("      max-parallel: 14\n", ""),
             workflow.replace("      max-parallel: 14\n", "      max-parallel: 48\n"),
-            workflow.replace("tests=engine::access::tests::", ""),
-            workflow.replace("tests=engine::context::tests::", ""),
-            workflow.replace("tests=infra::exec::tests::interruption::bounded_command_wait_", ""),
             workflow.replace("needs.select.outputs.run_linux", "needs.select.outputs.run_windows"),
         ):
             with self.subTest(broken=broken):
@@ -946,36 +944,105 @@ class GateTests(unittest.TestCase):
                     CONTRACT["check_mutation"](broken)
 
     def test_mutation_result_gate_rejects_failures_and_accidental_skips(self):
-        workflow = CONTRACT["WORKFLOW"].with_name("mutation.yml").read_text()
-        block = CONTRACT["job_blocks"](workflow)["mutation-results"]
-        script = block.split("          python3 - <<'PY'\n", 1)[1].split("          PY\n", 1)[0]
-        script = "\n".join(line[10:] for line in script.splitlines())
+        for linux, windows, result, success in (
+            ("false", "false", "skipped", True),
+            ("true", "false", "failure", False),
+            ("true", "false", "skipped", False),
+            ("true", "false", "cancelled", False),
+            ("false", "false", "success", False),
+            ("", "false", "skipped", False),
+        ):
+            with self.subTest(linux=linux, windows=windows, result=result):
+                needs = {
+                    "select": {"result": "success", "outputs": {
+                        "run_linux": linux, "run_windows": windows,
+                    }},
+                    "mutation": {"result": result},
+                    "mutation-windows": {"result": "skipped"},
+                }
+                plan = {
+                    "base": "a" * 40, "head": "b" * 40, "linux_sources": [],
+                    "linux_shards": [], "run_windows": False,
+                }
+                _, _, failures = MUTATION_REPORT["summarize"](plan, Path("."), needs)
+                self.assertEqual(not failures, success)
+
+    def test_selected_linux_report_must_be_complete(self):
+        plan = {
+            "base": "a" * 40, "head": "b" * 40, "linux_sources": ["cli/src"],
+            "linux_shards": [{"id": "process", "suite": "process", "count": 2}],
+            "run_windows": False,
+        }
+        needs = {
+            "select": {"result": "success", "outputs": {"run_linux": "true", "run_windows": "false"}},
+            "mutation": {"result": "success"},
+            "mutation-windows": {"result": "skipped"},
+        }
         with tempfile.TemporaryDirectory() as temporary:
-            for linux, windows, result, success in (
-                ("false", "false", "skipped", True),
-                ("true", "true", "success", True),
-                ("true", "false", "failure", False),
-                ("true", "false", "skipped", False),
-                ("true", "false", "cancelled", False),
-                ("false", "false", "success", False),
-                ("", "false", "skipped", False),
+            root = Path(temporary)
+            _, _, failures = MUTATION_REPORT["summarize"](plan, root, needs)
+            self.assertTrue(failures)
+            shard = root / "mutation-result-process"
+            shard.mkdir()
+            report = {
+                "start_time": "2026-11-22T09:00:00Z", "end_time": "2026-11-22T09:01:00Z",
+                "caught": 1, "missed": 0, "timeout": 0, "unviable": 1, "total_mutants": 2,
+            }
+            for missed, timed_out, end, count, expected in (
+                (0, 0, report["end_time"], 2, True),
+                (0, 0, None, 2, False),
+                (0, 0, report["end_time"], 3, False),
+                (1, 0, report["end_time"], 2, False),
+                (0, 1, report["end_time"], 2, False),
             ):
-                with self.subTest(linux=linux, windows=windows, result=result):
-                    needs = {
-                        "select": {"result": "success", "outputs": {
-                            "run_linux": linux, "run_windows": windows,
-                        }},
-                        "mutation": {"result": result},
-                        "mutation-windows": {"result": "success" if windows == "true" else "skipped"},
+                with self.subTest(missed=missed, timed_out=timed_out, end=end, count=count):
+                    outcome = report | {
+                        "missed": missed, "timeout": timed_out, "end_time": end,
+                        "caught": 1 - missed - timed_out, "total_mutants": count,
                     }
-                    run = subprocess.run(
-                        [sys.executable, "-c", script], capture_output=True, text=True,
-                        env=os.environ | {
-                            "MUTATION_NEEDS": json.dumps(needs),
-                            "GITHUB_STEP_SUMMARY": str(Path(temporary) / "summary"),
-                        },
-                    )
-                    self.assertEqual(run.returncode == 0, success, run.stderr)
+                    mutation = "src/infra/exec/process.rs:30:4: replace || with && in collect_child"
+                    (shard / "outcomes.json").write_text(json.dumps(outcome), encoding="utf-8")
+                    (shard / "missed.txt").write_text((mutation + "\n") * missed, encoding="utf-8")
+                    (shard / "timeout.txt").write_text((mutation + "\n") * timed_out, encoding="utf-8")
+                    lines, details, failures = MUTATION_REPORT["summarize"](plan, root, needs)
+                    self.assertEqual(not failures, expected)
+                    self.assertIn(plan["base"], "\n".join(lines))
+                    if details:
+                        _, _, suite, name = details[0]
+                        self.assertEqual(name, mutation)
+                        self.assertIn("run process --exact", MUTATION_REPORT["replay"](suite, name))
+
+    def test_linux_shards_cover_inventory_without_empty_jobs(self):
+        for count, expected in ((0, 0), (1, 1), (130, 1), (131, 2), (6200, 48), (20881, 48)):
+            with self.subTest(count=count):
+                shards = MUTATION_RUN["linux_matrix"](
+                    {"linux": count, "liveness": 2, "context": 0, "process": 1},
+                )
+                ordinary = [shard for shard in shards if shard["suite"] == "linux"]
+                self.assertEqual(len(ordinary), expected)
+                self.assertEqual(sum(shard["count"] for shard in ordinary), count)
+                self.assertTrue(all(shard["count"] > 0 for shard in ordinary))
+                self.assertEqual([shard["suite"] for shard in shards[expected:]], ["liveness", "process"])
+
+    def test_focused_mutants_are_excluded_from_the_ordinary_suite(self):
+        options, _ = MUTATION_RUN["suite_options"]("linux")
+        for suite, example, expected_target in (
+            ("liveness", "src/engine/access.rs:6:3: replace AccessRegistry::try_acquire -> Option<AccessGuard> with None",
+             "engine::access::tests::"),
+            ("context", "src/engine/context/mod.rs:6:3: delete ! in Context::scoped_access",
+             "engine::context::tests::"),
+            ("process", "src/infra/exec/process.rs:6:3: replace || with && in collect_child",
+             "infra::exec::tests::interruption::bounded_command_wait_"),
+        ):
+            focused, target = MUTATION_RUN["suite_options"](suite)
+            pattern = focused[focused.index("--re") + 1]
+            self.assertIn(("--exclude-re", pattern), tuple(zip(options, options[1:])))
+            self.assertRegex(example, pattern)
+            self.assertEqual(target, ["--cargo-arg=--lib", "--", expected_target])
+            exact, _ = MUTATION_RUN["suite_options"](suite, example)
+            self.assertEqual(exact.count("--re"), 1)
+            self.assertRegex(example, exact[-1])
+            self.assertNotRegex(example + "_other", exact[-1])
 
 
 class MutationSelectionTests(unittest.TestCase):
@@ -991,6 +1058,7 @@ class MutationSelectionTests(unittest.TestCase):
             (["rust-toolchain.toml"], ["cli/src"], True),
             ([".github/workflows/mutation.yml"], ["cli/src"], True),
             ([LINUX + "select-mutations.py"], ["cli/src"], True),
+            ([LINUX + "run-mutations.py"], ["cli/src"], True),
             (["conf/symlinks.toml"], ["cli/src"], True),
             (["packages/apm/release.json"], ["cli/src"], True),
             (["symlinks/config/systemd/user/dotfiles-first-login.service"], ["cli/src"], True),
@@ -1224,12 +1292,16 @@ class GitRangeTests(unittest.TestCase):
         with contextlib.chdir(self.repo), patch.dict(os.environ, self.env | {
             "GITHUB_SHA": head, "MUTATION_BASE": base, "GITHUB_STEP_SUMMARY": str(summary),
         }):
-            MUTATION["main"]()
+            MUTATION["main"]([])
         diff = (self.repo / "cli/mutants.diff").read_text()
         self.assertIn("+fn original() -> bool { true }", diff)
-        self.assertIn("run_linux=true", Path(self.env["GITHUB_OUTPUT"]).read_text())
+        self.assertIn("has_linux_inputs=true", Path(self.env["GITHUB_OUTPUT"]).read_text())
         self.assertIn(f"{base}..{head}", summary.read_text())
+        manifest = (self.repo / "cli/mutation-plan.json").read_bytes()
         with contextlib.chdir(self.repo):
+            MUTATION["main"](["--base", base])
+            self.assertEqual((self.repo / "cli/mutants.diff").read_text(), diff)
+            self.assertEqual((self.repo / "cli/mutation-plan.json").read_bytes(), manifest)
             with self.assertRaises(ValueError):
                 MUTATION["baseline"]("fixture/repository", head, "HEAD")
             with self.assertRaises(ValueError):
@@ -1244,7 +1316,7 @@ class GitRangeTests(unittest.TestCase):
             "GITHUB_SHA": head, "MUTATION_BASE": base,
             "GITHUB_STEP_SUMMARY": str(self.root / "summary"),
         }):
-            MUTATION["main"]()
+            MUTATION["main"]([])
         diff = (self.repo / "cli/mutants.diff").read_text()
         self.assertIn("src/moved.rs", diff)
         self.assertNotIn("src/feature.rs", diff)
@@ -1252,10 +1324,10 @@ class GitRangeTests(unittest.TestCase):
             "GITHUB_SHA": head, "MUTATION_BASE": head,
             "GITHUB_STEP_SUMMARY": str(self.root / "summary"),
         }):
-            MUTATION["main"]()
+            MUTATION["main"]([])
         self.assertEqual((self.repo / "cli/mutants.diff").read_bytes(), b"")
         self.assertTrue(Path(self.env["GITHUB_OUTPUT"]).read_text().endswith(
-            "run_linux=false\nrun_windows=false\n",
+            "has_linux_inputs=false\nrun_windows=false\n",
         ))
 
     def test_rename_deletion_and_unusual_paths(self):

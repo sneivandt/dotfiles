@@ -166,54 +166,32 @@ def check_mutation(workflow: str) -> None:
         "select", "mutation", "mutation-windows",
     }:
         raise ValueError("mutation results must report every selected job")
-    if "continue-on-error:" in workflow or 'raise SystemExit(1)' not in jobs["mutation-results"]:
+    if "continue-on-error:" in workflow:
         raise ValueError("mutation workflow must propagate failures")
+    results = jobs["mutation-results"]
+    for required in ("pattern: mutation-result-*", "report-mutations.py",
+                     "mutation-inputs/mutation-plan.json"):
+        if required not in results:
+            raise ValueError(f"mutation results must consume shard reports: {required}")
     mutation = jobs["mutation"]
-    if re.search(r"(?m)^\s+continue-on-error:", mutation):
-        raise ValueError("mutation jobs and steps must propagate failures")
-    if "name: mutation-inputs" not in mutation or "--in-diff mutants.diff" not in mutation:
-        raise ValueError("Linux mutations must consume the selected source diff")
-    shards = re.search(r"(?m)^        shard: \[([0-9, ]+)\]$", mutation)
-    partition = re.search(r'--shard "\$MUTATION_SHARD/([0-9]+)"', mutation)
-    if shards is None or partition is None:
-        raise ValueError("mutation testing must declare its complete shard partition")
-    total = int(partition.group(1))
-    indices = [int(index.strip()) for index in shards.group(1).split(",")]
-    if total < 1 or sorted(indices) != list(range(total)):
-        raise ValueError("mutation shard matrix must cover every shard exactly once")
-    if "fail-fast: false" not in mutation or "--cargo-arg=--profile=ci" not in mutation:
-        raise ValueError("mutation shards must all run using the ci Cargo profile")
+    for required in (
+        "matrix: ${{ fromJSON(needs.select.outputs.linux_matrix) }}",
+        "name: mutation-inputs", "run-mutations.py", 'run "$MUTATION_SUITE" --partition',
+        "fail-fast: false",
+    ):
+        if required not in mutation:
+            raise ValueError(f"Linux mutation coverage missing {required}")
+    for required in ("run-mutations.py plan", "cli/mutation-plan.json", "cli/mutants.diff"):
+        if required not in jobs["select"]:
+            raise ValueError(f"mutation selection missing {required}")
     parallel = re.search(r"(?m)^      max-parallel: ([0-9]+)$", mutation)
     if parallel is None or not 1 <= int(parallel.group(1)) <= 14:
         raise ValueError("Linux mutation concurrency must leave runner capacity for ordinary CI")
-    for required in (
-        "- shard: liveness", "- shard: context", "- shard: process",
-        "if: matrix.shard != 'liveness' && matrix.shard != 'context' && matrix.shard != 'process'",
-        "if: matrix.shard == 'liveness' || matrix.shard == 'context' || matrix.shard == 'process'",
-        '--exclude-re "$LIVENESS_MUTATIONS"', '--re "$LIVENESS_MUTATIONS"',
-        '--exclude-re "$CONTEXT_MUTATIONS"', '--re "$CONTEXT_MUTATIONS"',
-        "--file src/engine/access.rs --file src/infra/atomic_flag.rs --file src/infra/cancellation.rs",
-        "--file src/engine/context/mod.rs",
-        "tests=engine::access::tests::", "tests=engine::context::tests::",
-        '--exclude-re "$PROCESS_MUTATIONS"', '--re "$PROCESS_MUTATIONS"',
-        "tests=infra::exec::tests::interruption::bounded_command_wait_",
-    ):
-        if required not in mutation:
-            raise ValueError(f"Linux liveness mutation coverage missing {required}")
     native = jobs["mutation-windows"]
-    for required in ("runs-on: windows-latest", "decode_reg_string|encode_reg_string", "--cargo-arg=--profile=ci"):
-        if required not in native:
-            raise ValueError(f"native Windows mutation contract missing {required}")
-    for required in ('shard: [0, 1]', '--shard "$MUTATION_SHARD/2"', 'native::raw_value_type|run_elevated_child',
-                     '--file src/app/commands/execution/elevation.rs', '|prepare_windows_elevation',
-                     '--file src/infra/fs/mutation/windows.rs', '|ensure_single_link',
-                     '--file src/infra/fs/mod.rs', '|is_dir_like',
-                     '--file src/domains/system/config/registry.rs', '|uppercase_native_registry_name',
-                     '--file src/infra/exec/process.rs', '|take_stdout_windows'):
+    for required in ("runs-on: windows-latest", "shard: [0, 1]",
+                     "run-mutations.py", 'run windows --partition "$env:MUTATION_SHARD/2"'):
         if required not in native:
             raise ValueError(f"native Windows mutation coverage missing {required}")
-    if "continue-on-error:" in native:
-        raise ValueError("native Windows mutations must propagate failures")
 
 
 def check_release(workflow: str) -> None:

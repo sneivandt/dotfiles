@@ -136,12 +136,13 @@ baseline it selects all source. API or invalid-history errors fail selection
 rather than silently skipping coverage.
 
 Linux mutates whole changed Rust source files, including production functions
-beside edited inline tests. Changes to standalone tests, shared test helpers,
-embedded assets, Cargo/build/toolchain inputs, or the mutation workflow and
-selector recheck all source. The same applies to tracked inputs to Rust tests,
+beside edited inline tests. Tests and fixtures with an explicit owner recheck
+that module. Unmapped standalone tests, shared test helpers, embedded assets,
+Cargo/build/toolchain inputs, and changes to the mutation workflow or selector
+recheck all source. The same applies to other tracked inputs to Rust tests,
 including configuration, package recipes, and executable documentation examples.
 Selected changes also run the existing fixed Windows suite for
-registry values, PATH encoding, elevation dispatch, and native file safety;
+registry values, PATH encoding, elevation dispatch, file placement, and locks;
 there is no fine-grained Windows dependency classifier. Unrelated docs and
 configuration changes skip both suites. Exact filters live in the workflow.
 
@@ -154,6 +155,11 @@ the tested range, counts per platform, missing reports, and focused replay
 commands for survivors and timeouts. The mutation-summary artifact contains
 the complete report. Survivors, timeouts, tool errors, and incomplete coverage
 fail this separate workflow.
+
+If a runner shuts down during a shard before publishing results, recovery can
+retry one shard on the original commit and recompute the summary. It runs
+once per failed run on `main`, and does not retry reported survivors, mutant
+timeouts, or a run you cancelled. Other missing reports still fail the run.
 
 Enable Actions failure notifications for this workflow and investigate red
 runs; successful push CI does not mean nightly mutations passed. Check that the

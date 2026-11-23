@@ -23,6 +23,7 @@ PRE_PUSH = runpy.run_path(str(SCRIPTS / "pre-push.py"))
 MUTATION = runpy.run_path(str(SCRIPTS / "select-mutations.py"))
 MUTATION_RUN = runpy.run_path(str(SCRIPTS / "run-mutations.py"))
 MUTATION_REPORT = runpy.run_path(str(SCRIPTS / "report-mutations.py"))
+MUTATION_RECOVERY = runpy.run_path(str(SCRIPTS / "recover-mutation.py"))
 classify = POLICY["classify"]
 LINUX = POLICY["LINUX"]
 WINDOWS = POLICY["WINDOWS"]
@@ -159,6 +160,8 @@ class ClassificationTests(unittest.TestCase):
             (LINUX + "select-mutations.py", set()),
             (LINUX + "run-mutations.py", set()),
             (LINUX + "report-mutations.py", set()),
+            (LINUX + "recover-mutation.py", set()),
+            (".github/workflows/mutation-recovery.yml", set()),
             (".github/workflows/mutation.yml", set()),
             (".github/workflows/release.yml", {"release"}),
             (LINUX + "classify-release.sh", {"release", "lint"}),
@@ -925,6 +928,20 @@ class GateTests(unittest.TestCase):
             self.assertRegex(f"{path}:306:5: replace {function}", options[options.index("--re") + 1])
         self.assertEqual(target, ["--cargo-arg=--lib"])
 
+    def test_native_file_mutants_only_run_on_windows(self):
+        linux, _ = MUTATION_RUN["suite_options"]("linux")
+        windows, _ = MUTATION_RUN["suite_options"]("windows")
+        native_pattern = windows[windows.index("--re") + 1]
+        for file, function in (
+            ("src/infra/fs/place/windows.rs", "wide_path"),
+            ("src/infra/fs/place/windows/private_dir.rs", "verify_directory"),
+            ("src/infra/run_lock/coordination/windows.rs", "acquire"),
+        ):
+            self.assertIn(("--exclude", file), list(zip(linux, linux[1:])))
+            self.assertIn(("--file", file), list(zip(windows, windows[1:])))
+            self.assertRegex(f"{file}:43:5: replace {function} with ()", native_pattern)
+        self.assertNotRegex("src/infra/fs/place.rs:65:5: replace wide_path with ()", native_pattern)
+
     def test_mutations_are_separate_and_fail_visibly(self):
         workflow = CONTRACT["WORKFLOW"].with_name("mutation.yml").read_text(encoding="utf-8")
         CONTRACT["check_mutation"](workflow)
@@ -1057,6 +1074,10 @@ class MutationSelectionTests(unittest.TestCase):
             (["cli/src/feature/tests.rs"], ["cli/src"], True),
             (["cli/src/app/test_helpers/fixture.rs"], ["cli/src"], True),
             (["cli/tests/update_command.rs"], ["cli/src"], True),
+            (["cli/src/domains/ai/apm/autopilot/tests/schedules.rs", "cli/src/feature.rs"],
+             ["cli/src/domains/ai/apm/autopilot", "cli/src/feature.rs"], True),
+            (["cli/tests/fixtures/apm-yaml-fragment.yaml"], ["cli/src/infra/yaml.rs"], True),
+            (["cli/tests/fixtures/apm-yaml-fragment.yaml", "cli/tests/common/mod.rs"], ["cli/src"], True),
             (["cli/src/example.json"], ["cli/src"], True),
             (["cli/Cargo.lock"], ["cli/src"], True),
             (["rust-toolchain.toml"], ["cli/src"], True),
@@ -1110,6 +1131,33 @@ class MutationSelectionTests(unittest.TestCase):
         }):
             with self.assertRaises(subprocess.CalledProcessError):
                 MUTATION["baseline"]("fixture/repository", "a" * 40)
+
+
+class MutationRecoveryTests(unittest.TestCase):
+    def test_retry_only_confirmed_interruption_on_first_attempt(self):
+        run = {"status": "completed", "conclusion": "failure", "run_attempt": 1,
+               "path": ".github/workflows/mutation.yml", "head_branch": "main",
+               "head_repository": {"full_name": "example/repo"}, "event": "schedule"}
+        job = {"id": 2, "run_attempt": 1, "conclusion": "failure", "name": "Rust: Mutation (changed code, shard 0)",
+               "steps": [{"name": "Test mutation partition", "conclusion": "cancelled"},
+                         {"name": "Run actions/upload-artifact@sha", "conclusion": "skipped"}]}
+        shutdown = b"##[error]The runner has received a shutdown signal."
+        for state, partition, log, retry in (
+            (run, job, shutdown, True),
+            (run, job, b"The operation was canceled.", False),
+            (run, job, b"MISSED src/foo.rs\n" + shutdown, False),
+            (run, job, b"TIMEOUT src/foo.rs\n" + shutdown, False),
+            (run, job | {"steps": [{"name": "Test mutation partition", "conclusion": "failure"}]}, shutdown, False),
+            (run | {"run_attempt": 2}, job, shutdown, False),
+            (run | {"conclusion": "cancelled"}, job, shutdown, False),
+            (run | {"head_repository": {"full_name": "another/repo"}}, job, shutdown, False),
+        ):
+            request = Mock(side_effect=[json.dumps(state), json.dumps([{"jobs": [partition]}]), log, b""])
+            recover = MUTATION_RECOVERY["recover"]
+            with self.subTest(state=state, job=partition, log=log), patch.dict(recover.__globals__, {"api": request}):
+                recover("example/repo", 1)
+                writes = [call.args for call in request.call_args_list if "POST" in call.args]
+                self.assertEqual(writes, [("repos/example/repo/actions/jobs/2/rerun", "--method", "POST")] if retry else [])
 
 
 class GitRangeTests(unittest.TestCase):

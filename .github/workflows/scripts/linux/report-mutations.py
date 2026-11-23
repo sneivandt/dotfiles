@@ -68,7 +68,7 @@ def summarize(plan, results, needs):
     details = []
     timings = []
     linux = plan["linux_shards"]
-    windows = [{"id": f"windows-{index}", "suite": "windows", "count": None} for index in range(2)]
+    windows = [{"id": f"windows-{index}", "suite": "windows", "count": None} for index in range(8)]
     platforms = (
         ("Linux", "mutation", "run_linux", linux),
         ("Windows", "mutation-windows", "run_windows", windows if plan["run_windows"] else []),

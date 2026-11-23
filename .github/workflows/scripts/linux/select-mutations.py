@@ -97,8 +97,20 @@ def repository_test_input(path):
     }
 
 
+# Explicit owners rather than inferring that every tests/ directory is local:
+# integration tests and shared helpers can exercise unrelated production code.
+TEST_OWNERS = {
+    "cli/src/domains/ai/apm/autopilot/tests/lock.rs": "cli/src/domains/ai/apm/autopilot",
+    "cli/src/domains/ai/apm/autopilot/tests/schedules.rs": "cli/src/domains/ai/apm/autopilot",
+    "cli/src/infra/logging/subscriber/tests.rs": "cli/src/infra/logging",
+    "cli/tests/fixtures/apm-yaml-fragment.yaml": "cli/src/infra/yaml.rs",
+}
+
+
 def selection(paths):
-    source = [path for path in paths if path.startswith("cli/src/") and path.endswith(".rs")]
+    owners = {TEST_OWNERS[path] for path in paths if path in TEST_OWNERS}
+    paths = [path for path in paths if path not in TEST_OWNERS]
+    source = sorted(owners | {path for path in paths if path.startswith("cli/src/") and path.endswith(".rs")})
     broad = any(
         repository_test_input(path)
         or path.startswith(("cli/tests/", "cli/.cargo/", ".cargo/"))

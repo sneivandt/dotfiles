@@ -45,8 +45,16 @@ FOCUSED = {
     ),
 }
 
-# Native Windows functions and narrowly scoped equivalent mutations.
+# These entire modules are compiled only on Windows. Use the same list on
+# both platforms so a Linux exclusion cannot accidentally remove coverage.
+NATIVE_MODULES = (
+    "src/infra/fs/place/windows.rs",
+    "src/infra/fs/place/windows/private_dir.rs",
+    "src/infra/run_lock/coordination/windows.rs",
+)
+
 LINUX_EXCLUSIONS = (
+    *(("--exclude", path) for path in NATIVE_MODULES),
     ("--exclude", r"src/infra/run_lock/windows.rs"),
     ("--exclude", r"src/infra/fs/mutation/windows.rs"),
     ("--exclude-re", r"^src/infra/fs/mod\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]) in is_dir_like$"),
@@ -63,6 +71,7 @@ LINUX_EXCLUSIONS = (
 )
 
 WINDOWS_FILES = (
+    *NATIVE_MODULES,
     "src/domains/dotfiles/resources/path_entry.rs",
     "src/domains/system/resources/registry.rs",
     "src/infra/elevation.rs",
@@ -73,6 +82,7 @@ WINDOWS_FILES = (
     "src/domains/system/config/registry.rs",
 )
 WINDOWS_PATTERN = r"(decode_reg_string|encode_reg_string|native::raw_value_to_string|native::raw_value_type|run_elevated_child|prepare_windows_elevation|ensure_single_link|check_information|is_dir_like|uppercase_native_registry_name|take_stdout_windows)"
+WINDOWS_PATTERN += "|^(?:" + "|".join(re.escape(path) for path in NATIVE_MODULES) + "):"
 
 
 def suite_options(suite, exact=None):

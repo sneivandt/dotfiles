@@ -271,10 +271,14 @@ impl ConsoleState {
         self.task_output_emitted && (self.last_task_block_had_details || expanded)
     }
 
-    pub(super) fn begin_task_block(&mut self, expanded: bool) {
+    pub(super) fn separate_after_transition(&mut self) {
         if self.last_was_transition {
             self.separate_block();
         }
+    }
+
+    pub(super) fn begin_task_block(&mut self, expanded: bool) {
+        self.separate_after_transition();
         self.separate_from_startup();
         if self.should_separate_task_blocks(expanded) {
             self.line(false, "");
@@ -561,6 +565,37 @@ mod tests {
         assert_eq!(
             output,
             "Update\n\nCLI upgraded\n\r\x1b[KSyncing repository\r\x1b[KRepository synced\n"
+        );
+    }
+
+    #[test]
+    fn post_sync_progress_reuses_the_final_separator_after_a_silent_sync() {
+        use super::{Console, MsgKind};
+
+        let console = Console::new(false);
+        console.emit(MsgKind::Startup, "Update", false);
+        console.emit(MsgKind::Transition, "CLI upgraded", false);
+        let mut state = console.lock();
+        state.active_status("Syncing repository");
+        state.clear_progress();
+        state.separate_after_transition();
+        state.active_status("Checking files");
+        state.active_status("Checking packages");
+        state.begin_task_block(false);
+        state.line(false, "Task result");
+
+        let output: String = state
+            .captured
+            .iter()
+            .map(|(_, text)| text.as_str())
+            .collect();
+        assert_eq!(
+            output,
+            concat!(
+                "Update\n\nCLI upgraded\n",
+                "\r\x1b[KSyncing repository\r\x1b[K\n",
+                "Checking files\r\x1b[KChecking packages\r\x1b[KTask result\n"
+            )
         );
     }
 

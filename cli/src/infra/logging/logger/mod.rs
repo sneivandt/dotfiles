@@ -489,6 +489,11 @@ impl Logger {
     pub fn separate_console_block(&self) {
         self.console.lock().separate_block();
     }
+
+    /// Let task progress use the row below the separator once no restart notice can follow.
+    pub(crate) fn separate_after_transition(&self) {
+        self.console.lock().separate_after_transition();
+    }
 }
 
 impl Output for Logger {

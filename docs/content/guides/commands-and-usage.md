@@ -193,8 +193,12 @@ you intended? A CLI upgrade or repository sync appears beneath it. A sync
 can restart the process to load the new configuration; task output continues
 without a second header.
 
-In an interactive terminal, the spinner shows what's still running. Tasks
-print as they finish, not in configuration order. Read the status and the
+In an interactive terminal, the spinner shows what's still running. After a
+CLI upgrade, it uses the next line while the repository is checked. Once that
+check finishes, a blank line separates the notices from further progress,
+even if the checkout was already current.
+
+Tasks print as they finish, not in configuration order. Read the status and the
 indented actions together: one task can change many files or packages.
 
 | Status | Meaning |

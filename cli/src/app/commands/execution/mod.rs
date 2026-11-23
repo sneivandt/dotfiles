@@ -112,6 +112,7 @@ impl<'a> RunCoordinator<'a> {
     ) -> Result<Option<crate::engine::scheduler::ExecutionSummary>> {
         let boundary_closure = dependency_closure(&tasks, restart.boundary.clone())?;
         if boundary_closure.is_empty() {
+            self.log.separate_after_transition();
             return run_task_graph(tasks, self.ctx, self.log, None).map(Some);
         }
 
@@ -128,7 +129,7 @@ impl<'a> RunCoordinator<'a> {
             Some(crate::engine::TaskOutcome::Satisfied)
         );
         match (restart.decide)()? {
-            BoundaryAction::Continue => {}
+            BoundaryAction::Continue => self.log.separate_after_transition(),
             BoundaryAction::Restart
                 if boundary_satisfied
                     && summary.failure_count() == 0

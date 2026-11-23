@@ -197,20 +197,21 @@ pub(crate) fn parse_dword(value: &str) -> Result<u32> {
 }
 
 /// Normalize a registry path/value pair using registry identity semantics.
-pub(crate) fn target_key(entry: &RegistryEntry) -> String {
-    let path = entry
-        .key_path
+pub(crate) fn target_identity(key_path: &str, value_name: &str) -> (String, String) {
+    let path = key_path
         .split('\\')
         .filter(|component| !component.is_empty())
         .collect::<Vec<_>>()
         .join("\\");
-    format!(
-        "{:?}",
-        (
-            uppercase_registry_name(&path),
-            uppercase_registry_name(&entry.value_name)
-        )
+    (
+        uppercase_registry_name(&path),
+        uppercase_registry_name(value_name),
     )
+}
+
+/// Normalize a registry path/value pair into a conflict-key string.
+pub(crate) fn target_key(entry: &RegistryEntry) -> String {
+    format!("{:?}", target_identity(&entry.key_path, &entry.value_name))
 }
 
 /// Find contradictory values for case-insensitive registry target identities.
@@ -239,7 +240,7 @@ pub(crate) fn validate_conflicts(entries: &[RegistryEntry]) -> Vec<Diagnostic> {
 pub fn validate(entries: &[RegistryEntry]) -> Vec<Diagnostic> {
     use crate::infra::config::validation::{check, check_error};
 
-    Validator::new(REGISTRY_TOML)
+    let mut diagnostics = Validator::new(REGISTRY_TOML)
         .check_each(entries, |e| &e.value_name, |e| {
             [
                 check(e.key_path.trim().is_empty(), REGISTRY_EMPTY_KEY_PATH, "registry key path is empty"),
@@ -256,7 +257,9 @@ pub fn validate(entries: &[RegistryEntry]) -> Vec<Diagnostic> {
                 ),
             ]
         })
-        .finish()
+        .finish();
+    diagnostics.extend(validate_conflicts(entries));
+    diagnostics
 }
 
 /// TOML filename that backs this config section.

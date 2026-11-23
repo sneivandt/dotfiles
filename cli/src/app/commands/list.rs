@@ -17,10 +17,10 @@ use crate::engine::{Task, TaskId, TaskVisibility};
 use crate::infra::platform::Platform;
 
 #[derive(Debug, Default, PartialEq, Eq, Serialize)]
-struct TaskListing {
-    selector: String,
-    task: String,
-    commands: Vec<TaskGraphCommand>,
+pub(crate) struct TaskListing {
+    pub(crate) selector: String,
+    pub(crate) task: String,
+    pub(crate) commands: Vec<TaskGraphCommand>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -83,6 +83,31 @@ pub fn run(opts: &ListOpts) -> Result<()> {
         }
         write_listings(&listings, opts.format, &mut stdout.lock())
     }
+}
+
+pub(crate) fn discover_all_listings(
+    repository: &crate::app::cli::RepositoryOpts,
+) -> Result<Vec<TaskListing>> {
+    let env = crate::infra::env::system();
+    let platform = Platform::detect();
+    let root = super::runner::resolve_root_path(repository.root.as_deref())?;
+    let overlay = crate::domains::overlay::resolution::resolve_from_args(
+        repository.overlay.as_deref(),
+        &root,
+        env.as_ref(),
+        true,
+    )?
+    .map(|(path, _)| path);
+    let profile = crate::app::config::profiles::resolve_read_only(
+        repository.profile.as_deref(),
+        &root,
+        platform,
+        env.as_ref(),
+    )?;
+    let config = Config::load(&root, &profile, platform, overlay.as_deref())?;
+    let resolved_overlay = config.overlay.clone();
+    let store = ConfigStore::from_config(config);
+    collect_listings(&store, resolved_overlay.as_deref())
 }
 
 pub(super) fn load_discovery_config(

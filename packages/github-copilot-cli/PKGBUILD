@@ -27,5 +27,5 @@ package() {
   install -Dm644 "${srcdir}/copilot.bash" "${pkgdir}/usr/share/bash-completion/completions/copilot"
   install -Dm644 "${srcdir}/copilot.zsh" "${pkgdir}/usr/share/zsh/site-functions/_copilot"
   install -Dm644 "${srcdir}/copilot.fish" "${pkgdir}/usr/share/fish/vendor_completions.d/copilot.fish"
-  install -Dm644 "${startdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }

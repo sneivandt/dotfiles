@@ -222,17 +222,27 @@ impl RunLog {
 
     pub(crate) fn record_in_context(&self, context: &str, record: Record) {
         match serde_json::to_string(&StoredRecord::new(context, record)) {
-            Ok(message) => {
-                // The JSON envelope retains identities that cannot fit the text header.
-                let header_context = if needs_structured_context(context) {
-                    "record-context"
-                } else {
-                    context
-                };
-                self.write_event(LogEvent::Record, header_context, &message);
-            }
+            Ok(message) => self.write_encoded_record(context, &message),
             Err(error) => self.mark_degraded(&format!("encoding record failed: {error}")),
         }
+    }
+
+    pub(crate) fn emit_encoded_record(&self, json: &str) {
+        let trimmed = json.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        self.write_encoded_record(&log_thread_name(), trimmed);
+    }
+
+    fn write_encoded_record(&self, context: &str, json: &str) {
+        // The JSON envelope retains identities that cannot fit the text header.
+        let header_context = if needs_structured_context(context) {
+            "record-context"
+        } else {
+            context
+        };
+        self.write_event(LogEvent::Record, header_context, json);
     }
 
     /// Emit an event, attributing it to the current thread's task context.

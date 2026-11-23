@@ -82,22 +82,28 @@ and section headers must have matching, non-nested brackets. Bare flags such as
 section header, fix the reported line before retrying. Dotfiles cannot tell which
 section owns the settings that follow it.
 
-The Arch `paccache` timer uses a dedicated drop-in and environment file. Systemd
-accumulates `EnvironmentFile=` directives; treating them as ordinary INI keys
-can discard administrator settings. The drop-in adds a file that sets only
-`PACCACHE_ARGS` instead of clearing the environment-file list. Both files are
-create-only. An overlay can replace the environment file without moving it
-after the drop-in: system-file overrides keep their main declaration's position.
-The environment file is installed first; an interruption at that
-point leaves the service using its previous configuration. Once the drop-in is
-loaded, a missing policy file skips cleanup rather than falling back to other
-retention settings. If the task reports a conflict, compare the installed files under
+The Arch `paccache` timer uses a dedicated create-only drop-in and environment
+file. Because systemd accumulates `EnvironmentFile=` directives, treating them
+as ordinary INI keys can discard administrator settings; the drop-in instead
+adds a file that sets only `PACCACHE_ARGS` without clearing the
+environment-file list.
+
+Ordering and overrides follow these rules:
+
+- The environment file is installed before the drop-in, so an interruption
+  leaves the service using its previous configuration.
+- An overlay can replace the environment file without moving it after the
+  drop-in, because system-file overrides keep their main declaration's position.
+- Once the drop-in is loaded, a missing policy file skips cleanup rather than
+  falling back to other retention settings.
+
+If the task reports a conflict, compare the installed files under
 `/etc/systemd/system/paccache.service.d/` with their `system/` sources. An older
 managed `retention.conf` contains an empty `EnvironmentFile=` reset. Back up
 that file outside the active `.conf` files before replacing it with the exact
-tracked `retention.conf`. Move any local overrides you still need into their
-own drop-in. Retry the task, then [reload the service manager and preview the
-retention policy](../guides/package-management.md).
+tracked `retention.conf`, and move any local overrides you still need into their
+own drop-in. Retry the task, then
+[reload the service manager and preview the retention policy](../guides/package-management.md).
 
 PAM needs an existing service file and a stack of the same type as each fragment rule.
 Unrecognized facilities and simple control names in fragments are rejected.

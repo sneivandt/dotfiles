@@ -1,5 +1,6 @@
 """Exercise launch argument handling without executing an application."""
 
+import hashlib
 import os
 import shlex
 import shutil
@@ -49,9 +50,18 @@ command() {
     if [ "$1" = "-v" ] && [ "$2" = "$MISSING_TOOL" ]; then
         return 1
     fi
+    if [ "$1" = "-v" ] && [ "$2" = "uwsm" ]; then
+        return 0
+    fi
     builtin command "$@"
 }
 logger() { printf 'LOGGER %s\n' "$*" >&2; return "${LOGGER_STATUS:-0}"; }
+uwsm() {
+    if [ "$1" = "check" ] && [ "$2" = "is-active" ]; then
+        return "${UWSM_ACTIVE_STATUS:-0}"
+    fi
+    return 99
+}
 exec() { printf '%s\0' "$@"; exit 0; }
 hyprctl() {
     printf 'Unexpected compositor action\n' >&2
@@ -67,7 +77,17 @@ busctl() {
         *Title)
             case "$*" in
                 *:1.4*) printf '{"type":"s","data":"Other App"}\n' ;;
-                *) printf '{"type":"s","data":"github"}\n' ;;
+                *:1.10*) printf '{"type":"s","data":""}\n' ;;
+                *:1.11*) return 1 ;;
+                *) printf '{"type":"s","data":"%s"}\n' "${COPILOT_TITLE:-github}" ;;
+            esac
+            ;;
+        *" Id")
+            case "$*" in
+                *:1.4*) printf '{"type":"s","data":"other-app"}\n' ;;
+                *:1.10*) printf '{"type":"s","data":" Copilot "}\n' ;;
+                *:1.11*) printf '{"type":"s","data":"GitHub Copilot"}\n' ;;
+                *) printf '{"type":"s","data":"%s"}\n' "${COPILOT_ID:-ordinary}" ;;
             esac
             ;;
         *" Menu")
@@ -89,6 +109,11 @@ busctl() {
 
 @unittest.skipUnless(BASH and shutil.which("jq"), "Requires Bash and jq")
 class GitHubLauncherTests(ScriptFixture):
+    UWSM_PREFIX = [
+        "uwsm", "app", "-t", "service", "-a", "github", "--",
+        "env", "GDK_BACKEND=x11", "GTK_CSD=0",
+    ]
+
     def launch(self, *args, **overrides):
         return self.run_script(
             "launch-github.sh",
@@ -97,6 +122,7 @@ class GitHubLauncherTests(ScriptFixture):
             env={
                 "MISSING_APP": "0",
                 "MISSING_TOOL": "",
+                "UWSM_ACTIVE_STATUS": "0",
                 "FAIL_STAGE": "",
                 "REGISTRY": '{"type":"as","data":[":1.4/StatusNotifierItem",":1.9/tray"]}',
                 "LAYOUT": (
@@ -125,25 +151,54 @@ class GitHubLauncherTests(ScriptFixture):
         self.assertNotIn("Activate", calls)
         self.assertNotIn(":1.4 /StatusNotifierItem org.kde.StatusNotifierItem Menu", calls)
 
-    def test_cold_start_uses_deep_link(self):
+    def test_tray_matches_copilot_title_and_id_case_insensitively(self):
+        cases = [
+            ("copilot-title", '{"type":"as","data":[":1.9/tray"]}', {"COPILOT_TITLE": " Copilot "}),
+            ("copilot-id-empty-title", '{"type":"as","data":[":1.10/tray"]}', {}),
+            ("copilot-id-failed-title", '{"type":"as","data":[":1.11/tray"]}', {}),
+        ]
+        for label, registry, extra in cases:
+            with self.subTest(case=label):
+                (self.work / "calls").unlink(missing_ok=True)
+                result = self.launch(REGISTRY=registry, **extra)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("com.canonical.dbusmenu Event isvu 42 clicked i 0 0", self.calls())
+
+    def test_cold_start_uses_deep_link_via_uwsm_service_or_fallback(self):
         for registry in (
             '{"type":"as","data":[]}',
             '{"type":"as","data":[":1.4/StatusNotifierItem"]}',
         ):
-            with self.subTest(registry=registry):
+            with self.subTest(registry=registry, uwsm=True):
                 result = self.launch(REGISTRY=registry)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(
                     result.stdout.split("\0")[:-1],
-                    ["/usr/bin/github", "ghapp://mywork"],
+                    [*self.UWSM_PREFIX, "/usr/bin/github", "ghapp://mywork"],
                 )
+        with self.subTest(uwsm="missing"):
+            result = self.launch(REGISTRY='{"type":"as","data":[]}', MISSING_TOOL="uwsm")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                result.stdout.split("\0")[:-1],
+                ["/usr/bin/github", "ghapp://mywork"],
+            )
+        with self.subTest(uwsm="inactive"):
+            result = self.launch(REGISTRY='{"type":"as","data":[]}', UWSM_ACTIVE_STATUS="1")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                result.stdout.split("\0")[:-1],
+                ["/usr/bin/github", "ghapp://mywork"],
+            )
 
     def test_missing_watcher_reports_fallback(self):
         result = self.launch(FAIL_STAGE="registry")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Could not query tray items", result.stderr)
         self.assertEqual(
-            result.stdout.split("\0")[:-1], ["/usr/bin/github", "ghapp://mywork"]
+            result.stdout.split("\0")[:-1],
+            [*self.UWSM_PREFIX, "/usr/bin/github", "ghapp://mywork"],
         )
 
     def test_logging_failure_does_not_prevent_cold_start(self):
@@ -151,7 +206,8 @@ class GitHubLauncherTests(ScriptFixture):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("jq is unavailable", result.stderr)
         self.assertEqual(
-            result.stdout.split("\0")[:-1], ["/usr/bin/github", "ghapp://mywork"]
+            result.stdout.split("\0")[:-1],
+            [*self.UWSM_PREFIX, "/usr/bin/github", "ghapp://mywork"],
         )
 
     def test_invalid_registry_is_an_explicit_failure(self):
@@ -161,7 +217,11 @@ class GitHubLauncherTests(ScriptFixture):
         self.assertIn("Invalid tray item response", result.stderr)
 
     def test_protocol_arguments_are_forwarded_without_window_recovery(self):
-        args = ["ghapp://synthetic/path?q=space%20value", "github-app://test", ""]
+        args = [
+            "ghapp://synthetic/path?q=space%20value&token=a$$b&ref=$HOME",
+            "github-app://test",
+            "",
+        ]
         result = self.launch(*args)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.split("\0")[:-1], ["/usr/bin/github", *args])
@@ -183,7 +243,7 @@ class GitHubLauncherTests(ScriptFixture):
                 self.assertIn(f"{tool} is unavailable", result.stderr)
                 self.assertEqual(
                     result.stdout.split("\0")[:-1],
-                    ["/usr/bin/github", "ghapp://mywork"],
+                    [*self.UWSM_PREFIX, "/usr/bin/github", "ghapp://mywork"],
                 )
 
     def test_tray_failures_are_not_reported_as_success(self):
@@ -254,6 +314,49 @@ class GitHubDesktopEntryTests(ScriptFixture):
                 self.assertEqual(actual.split("\0")[:-1] if actual else [], args)
 
 
+LEGACY_CODE_INSIDERS_SHIM = (
+    b'#!/usr/bin/env python3\n'
+    b'\n'
+    b'import os\n'
+    b'import sys\n'
+    b'\n'
+    b'REAL_BINARY = "/usr/bin/code-insiders"\n'
+    b'PASSWORD_STORE = "--password-store=gnome-libsecret"\n'
+    b'\n'
+    b'\n'
+    b'def normalized_args(arguments: list[str]) -> list[str]:\n'
+    b'    forwarded: list[str] = []\n'
+    b'    index = 0\n'
+    b'\n'
+    b'    while index < len(arguments):\n'
+    b'        argument = arguments[index]\n'
+    b'        if argument == "--":\n'
+    b'            forwarded.extend(arguments[index:])\n'
+    b'            break\n'
+    b'        if argument == "--password-store":\n'
+    b'            index += 1\n'
+    b'            if index < len(arguments) and not arguments[index].startswith("-"):\n'
+    b'                index += 1\n'
+    b'            continue\n'
+    b'        if argument.startswith("--password-store="):\n'
+    b'            index += 1\n'
+    b'            continue\n'
+    b'\n'
+    b'        forwarded.append(argument)\n'
+    b'        index += 1\n'
+    b'\n'
+    b'    return [PASSWORD_STORE, *forwarded]\n'
+    b'\n'
+    b'\n'
+    b'def main() -> None:\n'
+    b'    os.execv(REAL_BINARY, [REAL_BINARY, *normalized_args(sys.argv[1:])])\n'
+    b'\n'
+    b'\n'
+    b'if __name__ == "__main__":\n'
+    b'    main()\n'
+)
+
+
 @unittest.skipUnless(BASH, "Requires Bash (Git Bash on Windows)")
 class LauncherTests(ScriptFixture):
     def launch(self, name, args, available, cwd=None, missing_insiders=False):
@@ -294,12 +397,16 @@ class LauncherTests(ScriptFixture):
         )
 
     def test_missing_insiders_backend_only_skips_the_managed_launcher(self):
+        self.assertEqual(
+            hashlib.sha256(LEGACY_CODE_INSIDERS_SHIM).hexdigest(),
+            "abbafb0e03fa9c8534a5a74a46cbfc4357e73a34497da0966f96cddd6017eec9",
+        )
         source = SCRIPTS.parents[2] / "local/bin/code-insiders"
         launcher = self.work / ".local/bin/code-insiders"
         launcher.parent.mkdir(parents=True)
         args = ["report 1.txt", "--wait", ""]
-        for install, expected in [("copy", "code"), ("link", "code"),
-                                  ("custom", "code-insiders")]:
+        for install, expected in [("copy", "code"), ("legacy-copy", "code"),
+                                  ("link", "code"), ("custom", "code-insiders")]:
             with self.subTest(install=install):
                 if install == "link":
                     if os.name == "nt":
@@ -307,6 +414,8 @@ class LauncherTests(ScriptFixture):
                     launcher.symlink_to(source)
                 elif install == "copy":
                     shutil.copyfile(source, launcher)
+                elif install == "legacy-copy":
+                    launcher.write_bytes(LEGACY_CODE_INSIDERS_SHIM)
                 else:
                     launcher.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
                 if not launcher.is_symlink():

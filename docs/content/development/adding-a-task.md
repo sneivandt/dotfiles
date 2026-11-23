@@ -39,9 +39,9 @@ permissions are not recorded.
 
 ### Follow one declaration through the task
 
-This excerpt from
+This declaration from
 [conf/chmod.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml)
-omits the other permission entry:
+sets the Linux default permission entry:
 
 ```toml
 [linux]

@@ -924,9 +924,13 @@ fn apm_respects_an_inactive_owned_fragment_left_in_the_home() {
         crate::infra::ConfigHandle::new(Vec::new()),
         ApmPackageMode::Install,
     )
-    .with_inactive_fragments(crate::infra::ConfigHandle::new(vec![
-        ApmFragmentSource::new(retired, ".apm/config/retired.yml".into()),
-    ]));
+    .with_inactive_fragments(crate::infra::ConfigHandle::new(InactiveApmFragments::new(
+        vec![ApmFragmentSource::new(
+            retired,
+            ".apm/config/retired.yml".into(),
+        )],
+        Vec::new(),
+    )));
     assert!(!task.should_run(&ctx));
     assert!(install_task().should_run(&ctx));
     assert!(link.symlink_metadata().unwrap().is_symlink());

@@ -155,10 +155,11 @@ a later run does not remember the path.
 
 Passing a linked Git worktree (`.git` is a file) with `--overlay` requires
 confirmation, defaulting to no. Update, remove, and check decline it in
-non-interactive mode, including CI. List and explain can ask when both input
-and error output are terminals. The prompt applies to the explicit flag, not every use
-of a saved overlay. Prefer a stable primary checkout for an unattended overlay;
-an ordinary `.git` directory does not need that confirmation.
+non-interactive mode, including CI. List and explain also decline it whenever
+`CI` is set, and otherwise ask only when both input and error output are
+terminals. The prompt applies to the explicit flag, not every use of a saved
+overlay. Prefer a stable primary checkout for an unattended overlay; an ordinary
+`.git` directory does not need that confirmation.
 
 During `update`, `remove`, and `check`, Dotfiles coordinates Git overlays
 through locks in local storage for the current OS account. A read-only overlay
@@ -200,16 +201,27 @@ Their filename ordering is separate from TOML overlay precedence.
 
 ### Conflicting desired state
 
-Within either repository, active Git settings and Windows registry entries
-cannot assign different values to the same target. Identical assignments are
-allowed. Conflicts stop loading before tasks run, even with `--only` or
-`--dry-run`; an overlay cannot hide an invalid base.
+Within either repository, active declarations cannot assign conflicting values
+to the same target. Identical assignments are allowed. Conflicts in active
+sections stop loading before tasks run, even with `--only` or `--dry-run`; an
+overlay cannot hide an invalid base.
 
-Git values compare literally; registry values must agree in both type and
-data. Diagnostics use `git.conflicting-values` or `registry.conflicting-values`.
-Inactive Git categories and registry entries off Windows do not participate
-in these active-value checks. Agent settings also check
-[overlapping parent/child keys](../reference/agent-settings.md#configuration).
+- **Git settings (`git.conflicting-values`):** Active entries for the same
+  normalized key must match literally.
+- **Windows registry entries (`registry.conflicting-values`):** Entries for the
+  same case-insensitive key path and value name must agree in both type and
+  data. Conflicts stop loading on Windows; off Windows, `registry.toml` is
+  still decoded and conflicts are reported as validation diagnostics (via
+  `dotfiles check`) without aborting configuration loading.
+- **Systemd units (`systemd.conflicting-values`):** Active entries for the same
+  scope and exact unit name must agree on `enabled` and `graphical`.
+- **Agent settings (`agent-settings.conflicting-values`):** Active entries for
+  the same harness and exact case-sensitive key must have identical values.
+  [Overlapping parent/child keys](../reference/agent-settings.md#configuration)
+  must also agree within a repository and after merging the overlay.
+
+Inactive categories for Git settings, systemd units, and agent settings do not
+participate in these active-value checks.
 
 ## Overlay scripts
 

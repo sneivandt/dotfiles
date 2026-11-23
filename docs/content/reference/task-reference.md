@@ -29,12 +29,14 @@ if the launcher or profile is not configured yet.
 | What do you want to do? | Task pages |
 |---|---|
 | Link application settings or inspect their permissions | [Home symlinks](home-symlinks.md), [File permissions](file-permissions.md) |
-| Install applications or editor extensions | [System packages](system-packages.md), [AUR packages](aur-packages.md), [VS Code extensions](vs-code-extensions.md) |
+| Install applications, AUR helpers, or editor extensions | [System packages](system-packages.md), [Paru package manager](paru-package-manager.md), [AUR packages](aur-packages.md), [VS Code extensions](vs-code-extensions.md) |
+| Refresh or prepare custom Arch package recipes | [Custom package versions](custom-package-versions.md), [Custom package repository](custom-package-repository.md) |
 | Configure services or administrator-owned files | [Systemd units](systemd-units.md), [System configuration files](system-configuration-files.md) |
 | Change Windows preferences or allow file links | [User registry settings](user-registry-settings.md), [Windows Developer Mode](windows-developer-mode.md) |
 | Change Git defaults or install contributor hooks | [Global Git settings](global-git-settings.md), [Git hooks](git-hooks.md) |
 | Set agent preferences or deploy reusable content | [Agent settings](agent-settings.md), [Agent packages](agent-packages.md) |
-| Make the dotfiles command available in a shell | [Dotfiles launcher](dotfiles-launcher.md), [Shell PATH](shell-path.md), [Shell completions](shell-completions.md) |
+| Make dotfiles available in a shell or set the Linux login shell | [Dotfiles launcher](dotfiles-launcher.md), [Shell PATH](shell-path.md), [Shell completions](shell-completions.md), [Login shell](login-shell.md) |
+| Sync the dotfiles checkout or run private setup scripts | [Dotfiles repository](dotfiles-repository.md), [Overlay scripts](overlay-scripts.md) |
 | Diagnose configuration or source problems | [Validation tasks](#validation-tasks) |
 
 Use the selector index below for exact names, or search for a task page by title.

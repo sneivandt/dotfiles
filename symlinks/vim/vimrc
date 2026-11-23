@@ -103,6 +103,9 @@ try
   highlight LineNr guifg=#565f89 ctermfg=239
   highlight SignColumn guibg=#1a1b26 ctermbg=234
   highlight VertSplit guifg=#414868 guibg=#1a1b26 ctermfg=239 ctermbg=234
+  if has('nvim')
+    highlight WinSeparator guifg=#414868 guibg=#1a1b26 ctermfg=239 ctermbg=234
+  endif
 catch
   try
     colorscheme jellybeans
@@ -402,9 +405,6 @@ nmap ga <Plug>(EasyAlign)
 
 " }}}
 " Vim-go {{{
-
-" Auto-install Go tools when needed
-let g:go_install_all_tools=1
 
 " Disable autocreate templates
 let g:go_template_autocreate=0

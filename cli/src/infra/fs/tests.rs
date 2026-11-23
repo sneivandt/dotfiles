@@ -603,16 +603,17 @@ fn removing_optional_files_is_idempotent_but_does_not_suppress_directory_errors(
 }
 
 #[test]
-fn file_reads_preserve_bytes_and_report_invalid_utf8_with_path_context() {
+fn file_reads_preserve_bytes_and_report_errors_with_path_context() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("binary");
     std::fs::write(&file, [b'a', 0xff, b'b']).unwrap();
     assert_eq!(read_bytes(&file).unwrap(), [b'a', 0xff, b'b']);
-    let error = read_string(&file).unwrap_err();
-    assert_eq!(error.to_string(), format!("read {}", file.display()));
+    let missing = root.path().join("missing");
+    let error = read_bytes(&missing).unwrap_err();
+    assert_eq!(error.to_string(), format!("read {}", missing.display()));
     assert_eq!(
         error.downcast_ref::<std::io::Error>().unwrap().kind(),
-        std::io::ErrorKind::InvalidData
+        std::io::ErrorKind::NotFound
     );
 }
 

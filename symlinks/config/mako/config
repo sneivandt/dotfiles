@@ -27,7 +27,7 @@ max-icon-size=32
 icon-location=left
 
 # Behaviour
-# Retain recent notifications in memory for the bar history menu.
+# Retain recent notifications in memory for makoctl history and restore.
 max-history=100
 default-timeout=8000
 group-by=app-name

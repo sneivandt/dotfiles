@@ -32,9 +32,9 @@ QtObject {
     }
 
     function finish(code, output, errors) {
-        if (stdout)
+        if (stdout && "text" in stdout)
             stdout.text = output || "";
-        if (stderr)
+        if (stderr && "text" in stderr)
             stderr.text = errors || "";
         // Match the native signal order; no executable is ever launched.
         exited(code);

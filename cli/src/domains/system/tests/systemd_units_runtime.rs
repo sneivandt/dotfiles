@@ -385,6 +385,8 @@ fn stale_active_system_unit_reloads_without_restarting_it() {
 
 #[test]
 fn a_system_reload_invalidates_other_units_previously_observed_as_current() {
+    use crate::domains::system::resources::systemd_unit::BATCH_SHOW_PROPERTIES;
+
     let first = "first.timer";
     let stale = "stale.timer";
     let task = ConfigureSystemd::new(ConfigHandle::new(
@@ -397,35 +399,316 @@ fn a_system_reload_invalidates_other_units_previously_observed_as_current() {
             })
             .to_vec(),
     ));
-    let enabled = || Ok(ExecResult::success("enabled"));
-    let active = || Ok(ExecResult::success("ActiveState=active\n"));
+    let prop_arg = format!("--property={BATCH_SHOW_PROPERTIES}");
+    let batch_enabled = || systemctl(&["is-enabled", first, stale]);
+    let batch_show = || systemctl(&["show", &prop_arg, first, stale]);
+    let pre_reload_stdout = format!(
+        "Id={first}\nLoadState=loaded\nActiveState=active\nNeedDaemonReload=no\n\n\
+         Id={stale}\nLoadState=loaded\nActiveState=active\nNeedDaemonReload=yes\n"
+    );
+    let post_reload_stdout = format!(
+        "Id={first}\nLoadState=loaded\nActiveState=inactive\nNeedDaemonReload=no\n\n\
+         Id={stale}\nLoadState=loaded\nActiveState=active\nNeedDaemonReload=no\n"
+    );
     let executor = script()
-        .command(systemctl(&["is-enabled", first]), enabled())
-        .command(runtime_probe(&UnitScope::System, first), active())
-        .command(systemctl(&["is-enabled", stale]), enabled())
         .command(
-            runtime_probe(&UnitScope::System, stale),
-            Ok(ExecResult::success(
-                "ActiveState=active\nNeedDaemonReload=yes\n",
-            )),
+            batch_enabled(),
+            Ok(ExecResult::success("enabled\nenabled\n")),
         )
+        .command(batch_show(), Ok(ExecResult::success(pre_reload_stdout)))
         .command(
             CommandSpec::new("sudo").args(&["systemctl", "daemon-reload"]),
             Ok(ExecResult::success("")),
         )
-        .command(systemctl(&["is-enabled", first]), Ok(disabled_result()))
+        .command(
+            batch_enabled(),
+            Ok(ExecResult::success("disabled\nenabled\n")),
+        )
+        .command(batch_show(), Ok(ExecResult::success(post_reload_stdout)))
         .command(
             CommandSpec::new("sudo")
                 .args(&["systemctl", "enable", "--now", first])
                 .unchecked(),
             Ok(ExecResult::success("")),
         )
-        .command(systemctl(&["is-enabled", stale]), enabled())
-        .command(runtime_probe(&UnitScope::System, stale), active());
+        // Mutating `first` invalidates the remaining cached scope entries so `stale` re-probes live.
+        .command(
+            systemctl(&["is-enabled", stale]),
+            Ok(ExecResult::success("enabled")),
+        )
+        .command(
+            runtime_probe(&UnitScope::System, stale),
+            Ok(ExecResult::success("ActiveState=active\n")),
+        );
     let result = task.run(&context(executor)).unwrap();
     let result = crate::test_helpers::task_batch(&result);
     assert_eq!(result.changed_count(), 1);
     assert_eq!(result.already_ok_count(), 1);
+}
+
+#[test]
+fn batch_probe_converges_multiple_steady_state_units_in_one_show_call() {
+    use crate::domains::system::resources::systemd_unit::BATCH_SHOW_PROPERTIES;
+
+    let units = ["alpha.service", "beta.timer", "gamma.service"];
+    let task = ConfigureSystemd::new(ConfigHandle::new(
+        units
+            .iter()
+            .map(|name| SystemdUnit {
+                name: (*name).into(),
+                scope: UnitScope::User,
+                enabled: true,
+                graphical: false,
+            })
+            .collect(),
+    ));
+    let prop_arg = format!("--property={BATCH_SHOW_PROPERTIES}");
+    let batch_stdout = units
+        .iter()
+        .map(|name| format!("Id={name}\nLoadState=loaded\nActiveState=active\n"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let executor = script()
+        .command(user_manager_probe(), Ok(ExecResult::success("")))
+        .command(user_reload(), Ok(ExecResult::success("")))
+        .command(
+            systemctl(&["--user", "is-enabled", units[0], units[1], units[2]]),
+            Ok(ExecResult::success("enabled\nenabled\nenabled\n")),
+        )
+        .command(
+            systemctl(&["--user", "show", &prop_arg, units[0], units[1], units[2]]),
+            Ok(ExecResult::success(batch_stdout)),
+        );
+    let result = task.run(&context(executor)).unwrap();
+    let stats = crate::test_helpers::task_batch(&result);
+    assert_eq!(stats.already_ok_count(), 3);
+    assert_eq!(stats.changed_count(), 0);
+}
+
+#[test]
+fn batch_probe_falls_back_to_is_enabled_for_ambiguous_unit_file_states() {
+    use crate::domains::system::resources::systemd_unit::BATCH_SHOW_PROPERTIES;
+
+    let alias = "alias.service";
+    let runtime_only = "runtime.service";
+    let task = ConfigureSystemd::new(ConfigHandle::new(vec![
+        SystemdUnit {
+            name: alias.into(),
+            scope: UnitScope::System,
+            enabled: true,
+            graphical: false,
+        },
+        SystemdUnit {
+            name: runtime_only.into(),
+            scope: UnitScope::System,
+            enabled: true,
+            graphical: false,
+        },
+    ]));
+    let prop_arg = format!("--property={BATCH_SHOW_PROPERTIES}");
+    let batch_stdout = format!(
+        "Id=canonical.service\nLoadState=loaded\nActiveState=active\n\n\
+         Id={runtime_only}\nLoadState=loaded\nActiveState=active\n"
+    );
+    let executor = script()
+        .command(
+            systemctl(&["is-enabled", alias, runtime_only]),
+            Ok(ExecResult::success("alias\nenabled-runtime\n")),
+        )
+        .command(
+            systemctl(&["show", &prop_arg, alias, runtime_only]),
+            Ok(ExecResult::success(batch_stdout)),
+        )
+        // Alias falls back to individual is-enabled -> alias_state().
+        .command(
+            systemctl(&["is-enabled", alias]),
+            Ok(ExecResult::success("alias\n")),
+        )
+        .command(
+            systemctl(&["show", "--property=Id", "--value", alias]),
+            Ok(ExecResult::success("canonical.service\n")),
+        )
+        // enabled-runtime falls back to individual is-enabled -> Missing.
+        .command(
+            systemctl(&["is-enabled", runtime_only]),
+            Ok(ExecResult::success("enabled-runtime\n")),
+        );
+    let result = task.run(&context(executor).with_dry_run(true)).unwrap();
+    let stats = crate::test_helpers::task_batch(&result);
+    assert_eq!(stats.failed_count(), 1, "alias unit must report Invalid");
+    assert_eq!(
+        stats.changed_count(),
+        1,
+        "enabled-runtime unit must plan persistent enablement"
+    );
+}
+
+#[test]
+fn batch_probe_uses_authoritative_is_enabled_over_stale_show_unit_file_state() {
+    use crate::domains::system::resources::systemd_unit::BATCH_SHOW_PROPERTIES;
+
+    assert!(
+        !BATCH_SHOW_PROPERTIES.contains("UnitFileState"),
+        "batch show must not rely on cached manager UnitFileState"
+    );
+
+    let unlinked = "unlinked.service";
+    let intact = "intact.service";
+    let task = ConfigureSystemd::new(ConfigHandle::new(
+        [unlinked, intact]
+            .map(|name| SystemdUnit {
+                name: name.into(),
+                scope: UnitScope::System,
+                enabled: true,
+                graphical: false,
+            })
+            .to_vec(),
+    ));
+    let prop_arg = format!("--property={BATCH_SHOW_PROPERTIES}");
+    // Even if `systemctl show` emitted a stale cached UnitFileState=enabled for an
+    // active unit whose .wants/ symlink was removed on disk, authoritative
+    // `is-enabled` reports disabled so the unit does not falsely converge.
+    let stale_show_stdout = format!(
+        "Id={unlinked}\nLoadState=loaded\nUnitFileState=enabled\nActiveState=active\nNeedDaemonReload=no\n\n\
+         Id={intact}\nLoadState=loaded\nUnitFileState=enabled\nActiveState=active\nNeedDaemonReload=no\n"
+    );
+    let executor = script()
+        .command(
+            systemctl(&["is-enabled", unlinked, intact]),
+            Ok(ExecResult::success("disabled\nenabled\n")),
+        )
+        .command(
+            systemctl(&["show", &prop_arg, unlinked, intact]),
+            Ok(ExecResult::success(stale_show_stdout)),
+        );
+    let result = task.run(&context(executor).with_dry_run(true)).unwrap();
+    let stats = crate::test_helpers::task_batch(&result);
+    assert_eq!(
+        stats.changed_count(),
+        1,
+        "unit whose on-disk link was removed must plan enablement"
+    );
+    assert_eq!(stats.already_ok_count(), 1);
+}
+
+#[test]
+fn user_batch_probe_timeout_falls_back_without_aborting_system_units() {
+    use crate::domains::system::resources::systemd_unit::BATCH_SHOW_PROPERTIES;
+
+    let usr_a = "usr-a.service";
+    let usr_b = "usr-b.service";
+    let sys_a = "sys-a.service";
+    let sys_b = "sys-b.service";
+    let task = ConfigureSystemd::new(ConfigHandle::new(vec![
+        SystemdUnit {
+            name: usr_a.into(),
+            scope: UnitScope::User,
+            enabled: true,
+            graphical: false,
+        },
+        SystemdUnit {
+            name: usr_b.into(),
+            scope: UnitScope::User,
+            enabled: true,
+            graphical: false,
+        },
+        SystemdUnit {
+            name: sys_a.into(),
+            scope: UnitScope::System,
+            enabled: true,
+            graphical: false,
+        },
+        SystemdUnit {
+            name: sys_b.into(),
+            scope: UnitScope::System,
+            enabled: true,
+            graphical: false,
+        },
+    ]));
+    let prop_arg = format!("--property={BATCH_SHOW_PROPERTIES}");
+    let system_show_stdout = format!(
+        "Id={sys_a}\nLoadState=loaded\nActiveState=active\nNeedDaemonReload=no\n\n\
+         Id={sys_b}\nLoadState=loaded\nActiveState=active\nNeedDaemonReload=no\n"
+    );
+    let timeout = || ExecError::TimedOut {
+        command: "systemctl".into(),
+        timeout: std::time::Duration::from_secs(30),
+        result: ExecResult::failure("", "", None),
+    };
+    let executor = script()
+        .command(user_manager_probe(), Ok(ExecResult::success("")))
+        .command(
+            systemctl(&["is-enabled", sys_a, sys_b]),
+            Ok(ExecResult::success("enabled\nenabled\n")),
+        )
+        .command(
+            systemctl(&["show", &prop_arg, sys_a, sys_b]),
+            Ok(ExecResult::success(system_show_stdout)),
+        )
+        .command(user_reload(), Ok(ExecResult::success("")))
+        // User-scope batch probe times out; system units are unaffected and user
+        // units fall back to independent per-unit discovery under lenient processing.
+        .command(
+            systemctl(&["--user", "is-enabled", usr_a, usr_b]),
+            Err(timeout()),
+        )
+        .command(
+            systemctl(&["--user", "is-enabled", usr_a]),
+            Ok(ExecResult::failure("", "unit query failed", Some(1))),
+        )
+        .command(
+            systemctl(&["--user", "is-enabled", usr_b]),
+            Ok(ExecResult::success("enabled\n")),
+        )
+        .command(
+            runtime_probe(&UnitScope::User, usr_b),
+            Ok(ExecResult::success("ActiveState=active\n")),
+        );
+    let result = task.run(&context(executor)).unwrap();
+    let stats = crate::test_helpers::task_batch(&result);
+    assert_eq!(
+        stats.already_ok_count(),
+        3,
+        "both system units and healthy user unit must converge"
+    );
+    assert_eq!(
+        stats.failed_count(),
+        1,
+        "only the failing user unit should be recorded as failed"
+    );
+}
+
+#[test]
+fn batch_probe_cancellation_propagates_without_fallback() {
+    let task = ConfigureSystemd::new(ConfigHandle::new(vec![
+        SystemdUnit {
+            name: "alpha.service".into(),
+            scope: UnitScope::System,
+            enabled: true,
+            graphical: false,
+        },
+        SystemdUnit {
+            name: "beta.service".into(),
+            scope: UnitScope::System,
+            enabled: true,
+            graphical: false,
+        },
+    ]));
+    let executor = script().command(
+        systemctl(&["is-enabled", "alpha.service", "beta.service"]),
+        Err(ExecError::Cancelled {
+            command: "systemctl".into(),
+            result: ExecResult::failure("", "", None),
+        }),
+    );
+    let err = task
+        .run(&context(executor).with_dry_run(true))
+        .expect_err("cancellation must abort instead of falling back");
+    assert!(
+        err.downcast_ref::<crate::testing::error::ResourceError>()
+            .is_some_and(crate::testing::error::ResourceError::is_cancelled),
+        "unexpected error: {err:#}"
+    );
 }
 
 #[test]
@@ -546,6 +829,59 @@ fn early_systemd_readiness_requires_converged_unit_state() {
             ready,
             "runtime={runtime:?}"
         );
+    }
+}
+
+#[test]
+fn early_systemd_readiness_rejects_invalid_unit_scope() {
+    use crate::engine::requirement::RequirementStage;
+
+    let valid = "example.service";
+    let invalid = "bad.service";
+    let task = ConfigureSystemd::new(ConfigHandle::new(vec![
+        SystemdUnit {
+            name: valid.into(),
+            scope: UnitScope::System,
+            enabled: true,
+            graphical: false,
+        },
+        SystemdUnit {
+            name: invalid.into(),
+            scope: UnitScope::Invalid("bogus".into()),
+            enabled: true,
+            graphical: false,
+        },
+    ]));
+    let executor = script()
+        .command(
+            systemctl(&["is-enabled", valid]),
+            Ok(ExecResult::success("enabled\n")),
+        )
+        .command(
+            runtime_probe(&UnitScope::System, valid),
+            Ok(ExecResult::success("ActiveState=active\nType=simple\n")),
+        );
+    let ctx = make_context(
+        "/tmp".into(),
+        None,
+        Platform::new(Os::Linux, true),
+        Arc::new(executor),
+    );
+    let requirements = task.ordering_requirements();
+    let units_req = requirements
+        .iter()
+        .find(|req| req.id() == "systemd-units-current")
+        .expect("systemd-units-current requirement");
+    match units_req.check(&ctx, RequirementStage::Ordering) {
+        RequirementState::Unsatisfied { reason } => {
+            assert!(
+                reason.contains(invalid) && reason.contains("bogus"),
+                "expected invalid unit and scope in reason, got: {reason}"
+            );
+        }
+        other @ (RequirementState::Satisfied(()) | RequirementState::Unknown { .. }) => {
+            panic!("expected Unsatisfied for invalid unit scope, got: {other:?}")
+        }
     }
 }
 

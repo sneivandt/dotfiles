@@ -207,8 +207,12 @@ impl CommandLocks {
         // The overlay's account-local lock covers this handoff, even when its
         // Git directory permits opening the original but forbids creating a file.
         for lock in self.owned.iter().chain(self.legacy_overlay.as_ref()) {
-            // A legacy contender can win between unlock and the shared
-            // acquisition. Fail before starting the successor in that case.
+            // On Linux, `flock(2)` exclusive-to-shared conversion is not atomic
+            // (see `flock(2)` NOTES): another waiter can acquire the lock during
+            // conversion, and `take_shared` surfaces that contention safely if a
+            // legacy contender wins. Windows requires releasing the exclusive
+            // lock first.
+            #[cfg(windows)]
             lock.file
                 .unlock()
                 .with_context(|| format!("releasing exclusive lock {}", lock.path.display()))?;

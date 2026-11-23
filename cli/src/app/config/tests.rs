@@ -5,6 +5,24 @@ use crate::infra::config::category_matcher::Category;
 use crate::infra::platform::{Os, Platform};
 
 #[test]
+fn conflicting_registry_entries_are_reported_by_validate_off_windows() {
+    let conflicting = "[a]\npath = \"HKCU:\\\\Console\"\n[a.values]\nFontSize = 14\n\
+                       [b]\npath = \"hkcu:\\\\console\"\n[b.values]\nfontsize = 20\n";
+    let (dir, profile, platform) = setup_load(linux(), &[("registry.toml", conflicting)]);
+    let config = Config::load(dir.path(), &profile, platform, None)
+        .expect("inactive Windows registry conflicts must not fail active Linux load");
+    assert!(config.registry.is_empty());
+
+    let diagnostics = config.validate(platform);
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diag| diag.code.to_string() == "registry.conflicting-values"),
+        "Config::validate on Linux must report registry conflicts: {diagnostics:?}"
+    );
+}
+
+#[test]
 fn section_inventory_reports_every_user_configured_slice() {
     let config = crate::test_helpers::empty_config(PathBuf::from("/repo"));
     let labels: Vec<&str> = config

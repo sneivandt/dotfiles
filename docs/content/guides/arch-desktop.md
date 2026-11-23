@@ -120,9 +120,10 @@ in the same state.
 Only one bar popup opens at a time across monitors. The bar reserves space for
 tiled windows, sits below floating windows and hides on fullscreen workspaces.
 
-The bar checks the current connection every ten seconds. Open the network menu
-to load nearby Wi-Fi networks and saved profiles. The list refreshes while the
-menu stays open.
+The bar follows connection changes from `nmcli monitor`, falling back to
+ten-second polling while the monitor or NetworkManager status is unavailable.
+Open the network menu to load nearby Wi-Fi networks and saved profiles. The
+list refreshes while the menu stays open.
 If you have several saved profiles for the same Wi-Fi network on one adapter,
 look below the network name for the profile name. If the names repeat, the menu
 shows the pinned access point address or the profile UUID instead. If the text
@@ -131,13 +132,14 @@ enterprise Wi-Fi in the NetworkManager connection editor rather than the bar men
 
 ### Tray applications
 
-GitHub Copilot and ChatGPT use monochrome brand icons in
+GitHub Copilot, ChatGPT, and Spotify use monochrome brand icons in
 the regular tray, visible only while the applications expose tray items.
-Other applications retain their own icons. Context menus, middle-click and
+Other applications retain their own icons. Context menus, middle-click, and
 scrolling remain available.
 
-Left-click either icon to open its application. Copilot launcher failures
-appear in its tooltip and log.
+Left-click a tray icon to activate its application or open its menu.
+Copilot uses its dedicated launcher script, and launcher failures appear in
+its tooltip and log.
 
 ### Markets
 
@@ -208,9 +210,12 @@ configuration on launch. Existing GTK applications may need reopening.
 The managed
 [zprofile](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zprofile)
 starts `hyprland-uwsm.desktop` through UWSM on `tty1` when a session may start.
-Other terminals remain ordinary shells. UWSM manages the session;
-application environment settings belong in
-[conf/env.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/env.lua).
+Other terminals remain ordinary shells. UWSM manages the session and exports
+shared Wayland and toolkit environment settings from
+[uwsm/env-hyprland.d/session.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/uwsm/env-hyprland.d/session.sh),
+with matching fallbacks in
+[conf/env.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/env.lua)
+for direct Hyprland launches.
 
 ```mermaid
 flowchart TB

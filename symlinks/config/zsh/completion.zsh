@@ -26,17 +26,23 @@ _dotfiles_complete() {
   # Generic candidates quote the leading tilde. Let Zsh complete home paths.
   if [[ $PREFIX == '~/'* && -z $QIPREFIX ]]; then
     _files
-  else
+    return
+  fi
+  if (( ! $+functions[_clap_dynamic_completer_dotfiles] )); then
+    [[ -r ~/.config/zsh/completions/_dotfiles ]] || return 1
+    source ~/.config/zsh/completions/_dotfiles
+    if [[ ${_comps[dotfiles]:-} == _clap_dynamic_completer_dotfiles ]]; then
+      compdef _dotfiles_complete dotfiles
+    fi
+  fi
+  if (( $+functions[_clap_dynamic_completer_dotfiles] )); then
     _clap_dynamic_completer_dotfiles "$@"
   fi
 }
 
-# The generated dynamic registration is a source script, not a #compdef file.
+# Register the lazy wrapper without forking dotfiles during shell startup.
 if [[ -r ~/.config/zsh/completions/_dotfiles ]] && command -v dotfiles >/dev/null 2>&1; then
-  source ~/.config/zsh/completions/_dotfiles
-  if [[ ${_comps[dotfiles]:-} == _clap_dynamic_completer_dotfiles ]]; then
-    compdef _dotfiles_complete dotfiles
-  fi
+  compdef _dotfiles_complete dotfiles
 fi
 
 setopt always_to_end
@@ -71,58 +77,80 @@ zstyle ':completion:*:processes' command 'ps -u "$USER" -o pid,tty,time,args'
 
 # use /etc/hosts and known_hosts for hostname completion
 typeset -g _ZSH_HOSTS_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/hosts.cache"
+typeset -gaU hosts
 
-# Track readable inputs so removal invalidates the cache as well as edits.
-_zsh_hosts_inputs='# Inputs '
-_zsh_hosts_newer=false
-for _zsh_hosts_source in /etc/hosts /etc/ssh/ssh_known_hosts ~/.ssh/known_hosts ~/.ssh/config; do
-  if [[ -r "$_zsh_hosts_source" ]]; then
-    _zsh_hosts_inputs+=1
-    if [[ "$_zsh_hosts_source" -nt "$_ZSH_HOSTS_CACHE" ]]; then
-      _zsh_hosts_newer=true
+() {
+  # Track readable inputs so removal invalidates the cache as well as edits.
+  local inputs='# Inputs '
+  local newer=false
+  local source_file cached_inputs line field tmp_hosts_cache host
+  local -a known_hosts etc_hosts ssh_config
+
+  for source_file in /etc/hosts /etc/ssh/ssh_known_hosts ~/.ssh/known_hosts ~/.ssh/config; do
+    if [[ -r "$source_file" ]]; then
+      inputs+=1
+      if [[ "$source_file" -nt "$_ZSH_HOSTS_CACHE" ]]; then
+        newer=true
+      fi
+    else
+      inputs+=0
     fi
-  else
-    _zsh_hosts_inputs+=0
-  fi
-done
-
-if [[ $_zsh_hosts_newer == false && -f "$_ZSH_HOSTS_CACHE" &&
-      -n ${_ZSH_HOSTS_CACHE}(#qNmh-24) ]] &&
-   IFS= read -r _zsh_hosts_cached_inputs < "$_ZSH_HOSTS_CACHE" &&
-   [[ $_zsh_hosts_cached_inputs == "$_zsh_hosts_inputs" ]]; then
-  source "$_ZSH_HOSTS_CACHE"
-else
-  _known_hosts=()
-  for _zsh_hosts_source in /etc/ssh/ssh_known_hosts ~/.ssh/known_hosts; do
-    [[ -r "$_zsh_hosts_source" ]] || continue
-    for _zsh_hosts_line in "${(@f)$(<"$_zsh_hosts_source")}"; do
-      _zsh_hosts_field=${_zsh_hosts_line%%[[:blank:]]*}
-      [[ -z $_zsh_hosts_field || $_zsh_hosts_field == [\|\#]* ]] && continue
-      _known_hosts+=("${(@s:,:)_zsh_hosts_field}")
-    done
   done
-  [ -r /etc/hosts ] && : ${(A)_etc_hosts:=${(s: :)${(ps:\t:)${${(f)~~"$(</etc/hosts)"}%%\#*}##[:blank:]#[^[:blank:]]#}}} || _etc_hosts=()
-  [ -r ~/.ssh/config ] && _ssh_config=($(sed -ne 's/Host[=\t ]//p' ~/.ssh/config)) || _ssh_config=()
-  hosts=(
-    "$_known_hosts[@]"
-    "$_etc_hosts[@]"
-    "$_ssh_config[@]"
-    "$HOST"
-    localhost
-  )
 
-  if mkdir -p "${_ZSH_HOSTS_CACHE:h}"; then
-    tmp_hosts_cache="$(mktemp "${_ZSH_HOSTS_CACHE}.XXXXXX")" || return 1
-    {
-      print -r -- "$_zsh_hosts_inputs"
-      print -r -- "typeset -ga hosts=("
-      for host in "${hosts[@]}"; do
-        print -r -- "  ${(qqq)host}"
+  if [[ $newer == false && -f "$_ZSH_HOSTS_CACHE" &&
+        -n ${_ZSH_HOSTS_CACHE}(#qNmh-24) ]] &&
+     IFS= read -r cached_inputs < "$_ZSH_HOSTS_CACHE" &&
+     [[ $cached_inputs == "$inputs" ]]; then
+    source "$_ZSH_HOSTS_CACHE"
+  else
+    known_hosts=()
+    for source_file in /etc/ssh/ssh_known_hosts ~/.ssh/known_hosts; do
+      [[ -r "$source_file" ]] || continue
+      for line in "${(@f)$(<"$source_file")}"; do
+        field=${line%%[[:blank:]]*}
+        [[ -z $field || $field == [\|\#]* ]] && continue
+        known_hosts+=("${(@s:,:)field}")
       done
-      print -r -- ")"
-    } > "$tmp_hosts_cache"
-    mv "$tmp_hosts_cache" "$_ZSH_HOSTS_CACHE"
+    done
+    [ -r /etc/hosts ] && : ${(A)etc_hosts:=${(s: :)${(ps:\t:)${${(f)~~"$(</etc/hosts)"}%%\#*}##[:blank:]#[^[:blank:]]#}}} || etc_hosts=()
+    ssh_config=()
+    if [[ -r ~/.ssh/config ]] && command -v awk >/dev/null 2>&1; then
+      ssh_config=("${(@f)$(awk '
+        {
+          sub(/#.*/, "")
+          sub(/^[[:space:]]+/, "")
+          if (tolower($0) ~ /^host([[:space:]]+|=)/) {
+            sub(/^[^[:space:]=]+[[:space:]]*=*[[:space:]]*/, "")
+            n = split($0, parts, /[[:space:]]+/)
+            for (i = 1; i <= n; i++) {
+              if (parts[i] != "" && parts[i] !~ /[*?!]/) print parts[i]
+            }
+          }
+        }
+      ' ~/.ssh/config)}")
+      ssh_config=(${ssh_config:#})
+    fi
+    hosts=(
+      "${known_hosts[@]}"
+      "${etc_hosts[@]}"
+      "${ssh_config[@]}"
+      "${HOST:-}"
+      localhost
+    )
+    hosts=(${hosts:#})
+
+    if mkdir -p "${_ZSH_HOSTS_CACHE:h}" 2>/dev/null &&
+       tmp_hosts_cache="$(mktemp "${_ZSH_HOSTS_CACHE}.XXXXXX" 2>/dev/null)"; then
+      {
+        print -r -- "$inputs"
+        print -r -- "typeset -gaU hosts=("
+        for host in "${hosts[@]}"; do
+          print -r -- "  ${(qqq)host}"
+        done
+        print -r -- ")"
+      } > "$tmp_hosts_cache" && mv "$tmp_hosts_cache" "$_ZSH_HOSTS_CACHE" || rm -f "$tmp_hosts_cache"
+    fi
   fi
-fi
-unset _zsh_hosts_inputs _zsh_hosts_newer _zsh_hosts_cached_inputs _zsh_hosts_source _zsh_hosts_line _zsh_hosts_field _known_hosts
+}
+typeset -gaU hosts
 zstyle ':completion:*:hosts' hosts $hosts

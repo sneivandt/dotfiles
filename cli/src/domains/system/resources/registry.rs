@@ -272,7 +272,7 @@ impl RegistryResource {
     }
 
     pub(crate) fn cache_key(&self) -> RegistryTarget {
-        (self.key_path.clone(), self.value_name.clone())
+        crate::domains::system::config::registry::target_identity(&self.key_path, &self.value_name)
     }
 
     /// Determine the resource state from a pre-fetched current value.
@@ -501,6 +501,23 @@ mod tests {
                 "{label}"
             );
         }
+    }
+
+    #[test]
+    fn cache_key_case_folds_and_normalizes_separators() {
+        let upper = RegistryResource::new(
+            r"HKCU:\Console".to_string(),
+            "FontSize".to_string(),
+            "14".to_string(),
+            RegistryValueType::Dword,
+        );
+        let mixed = RegistryResource::new(
+            r"hkcu:\\console\".to_string(),
+            "fontsize".to_string(),
+            "14".to_string(),
+            RegistryValueType::Dword,
+        );
+        assert_eq!(upper.cache_key(), mixed.cache_key());
     }
 
     #[test]

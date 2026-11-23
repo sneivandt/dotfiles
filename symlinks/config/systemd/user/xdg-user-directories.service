@@ -2,6 +2,8 @@
 Description=Create configured XDG user directories
 Documentation=man:xdg-user-dir(1)
 PartOf=graphical-session.target
+After=dbus.socket
+Before=graphical-session.target
 
 [Service]
 Type=oneshot

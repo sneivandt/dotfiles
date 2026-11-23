@@ -45,6 +45,10 @@ impl DeferredExtensionsResource {
         })
     }
 
+    fn expected_content(&self) -> String {
+        format!("{MARKER_CONTENT}{}", self.assignments)
+    }
+
     fn marker_contents(&self) -> std::io::Result<Option<String>> {
         match deferred_extensions_state(&self.marker)? {
             DeferredExtensionsState::Pending => std::fs::read_to_string(&self.marker).map(Some),
@@ -120,11 +124,9 @@ impl Resource for DeferredExtensionsResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
+        let desired = self.expected_content();
         self.update_marker(|content| {
-            if !content.is_empty() && !content.ends_with('\n') {
-                content.push('\n');
-            }
-            content.push_str(&self.assignments);
+            *content = desired;
         })
     }
 }
@@ -147,7 +149,7 @@ impl IntrinsicState for DeferredExtensionsResource {
         Ok(match deferred_extensions_state(&self.marker)? {
             DeferredExtensionsState::Pending => {
                 let content = std::fs::read_to_string(&self.marker)?;
-                if content.ends_with(&self.assignments) {
+                if content == self.expected_content() {
                     ResourceState::Correct
                 } else {
                     ResourceState::Incorrect {
@@ -241,6 +243,32 @@ mod tests {
                 .unwrap()
                 .contains("dotfiles-first-login service"),
             "the marker should explain who consumes it"
+        );
+    }
+
+    #[test]
+    fn marker_apply_replaces_stale_content_instead_of_appending() {
+        let home = tempfile::tempdir().unwrap();
+        let first =
+            DeferredExtensionsResource::new(home.path(), "base", None, &["ext.one".to_string()])
+                .unwrap();
+        let second =
+            DeferredExtensionsResource::new(home.path(), "desktop", None, &["ext.two".to_string()])
+                .unwrap();
+
+        first.apply().unwrap();
+        second.apply().unwrap();
+
+        let content = std::fs::read_to_string(&second.marker).unwrap();
+        assert_eq!(content, second.expected_content());
+        assert_eq!(
+            content.matches("DOTFILES_PROFILE=").count(),
+            1,
+            "marker must replace prior assignments instead of appending:\n{content}"
+        );
+        assert!(
+            !content.contains("ext.one"),
+            "stale selection must not remain in the marker:\n{content}"
         );
     }
 

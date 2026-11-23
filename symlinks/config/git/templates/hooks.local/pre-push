@@ -22,17 +22,217 @@ case $remote in
     remote_owner=${remote#git@github.com:}
     remote_owner=${remote_owner%%/*}
     ;;
+  git@github-internal:*)
+    remote_owner=${remote#git@github-internal:}
+    remote_owner=${remote_owner%%/*}
+    ;;
   https://github.com/*)
     remote_owner=${remote#https://github.com/}
     remote_owner=${remote_owner%%/*}
+    ;;
+  https://*@github.com/*)
+    remote_userinfo=${remote#https://}
+    remote_userinfo=${remote_userinfo%"@github.com/"*}
+    case $remote_userinfo in
+      */*|*\?*|*\#*) ;;
+      *)
+        remote_owner=${remote#*"@github.com/"}
+        remote_owner=${remote_owner%%/*}
+        ;;
+    esac
     ;;
   ssh://git@github.com/*)
     remote_owner=${remote#ssh://git@github.com/}
     remote_owner=${remote_owner%%/*}
     ;;
+  ssh://git@github.com:*)
+    remote_rest=${remote#ssh://git@github.com:}
+    case $remote_rest in
+      */*)
+        remote_port=${remote_rest%%/*}
+        case $remote_port in
+          ''|*[!0-9]*) ;;
+          *)
+            remote_owner=${remote_rest#*/}
+            remote_owner=${remote_owner%%/*}
+            ;;
+        esac
+        ;;
+    esac
+    ;;
+  ssh://git@github-internal/*|ssh://git@github-internal:*)
+    remote_rest=${remote#ssh://git@github-internal}
+    case $remote_rest in
+      /*)
+        remote_owner=${remote_rest#/}
+        remote_owner=${remote_owner%%/*}
+        ;;
+      :*/*)
+        remote_port=${remote_rest#:}
+        remote_port=${remote_port%%/*}
+        case $remote_port in
+          ''|*[!0-9]*) ;;
+          *)
+            remote_owner=${remote_rest#*/}
+            remote_owner=${remote_owner%%/*}
+            ;;
+        esac
+        ;;
+    esac
+    ;;
 esac
 
-if [ -n "$github_user" ] && [ "$remote_owner" = "$github_user" ]
+lowercase() {
+  printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]'
+}
+
+normalize_repo_identity() {
+  _nr_url=$1
+  _nr_host=
+  _nr_port=
+  _nr_port_tag=default
+  _nr_path=
+  _nr_ipv6=false
+  case $_nr_url in
+    *://*)
+      _nr_scheme=$(lowercase "${_nr_url%%://*}")
+      case $_nr_scheme in
+        http)
+          _nr_family=http
+          _nr_default_port=80
+          ;;
+        https)
+          _nr_family=https
+          _nr_default_port=443
+          ;;
+        ssh|git+ssh|ssh+git)
+          _nr_family=ssh
+          _nr_default_port=22
+          ;;
+        git)
+          _nr_family=git
+          _nr_default_port=9418
+          ;;
+        *) return 1 ;;
+      esac
+      _nr_rest=${_nr_url#*://}
+      case $_nr_rest in
+        */*)
+          _nr_authority=${_nr_rest%%/*}
+          _nr_path=${_nr_rest#*/}
+          ;;
+        *) return 1 ;;
+      esac
+      case $_nr_authority in
+        ''|*\?*|*\#*) return 1 ;;
+      esac
+      _nr_hostport=${_nr_authority##*@}
+      case $_nr_hostport in
+        \[*\]*)
+          _nr_ipv6=true
+          _nr_host=${_nr_hostport#\[}
+          _nr_host=${_nr_host%%\]*}
+          _nr_port_rest=${_nr_hostport#*\]}
+          case $_nr_port_rest in
+            '') ;;
+            :*)
+              _nr_port=${_nr_port_rest#:}
+              case $_nr_port in
+                ''|*[!0-9]*) return 1 ;;
+              esac
+              ;;
+            *) return 1 ;;
+          esac
+          ;;
+        *:*)
+          _nr_host=${_nr_hostport%%:*}
+          _nr_port=${_nr_hostport#*:}
+          case $_nr_port in
+            ''|*[!0-9]*) return 1 ;;
+          esac
+          ;;
+        *)
+          _nr_host=$_nr_hostport
+          ;;
+      esac
+      if [ -n "$_nr_port" ]; then
+        while :; do
+          case $_nr_port in
+            0?*) _nr_port=${_nr_port#0} ;;
+            *) break ;;
+          esac
+        done
+        if [ "$_nr_port" = 0 ] || [ "${#_nr_port}" -gt 5 ] || [ "$_nr_port" -gt 65535 ]; then
+          return 1
+        fi
+        if [ "$_nr_port" != "$_nr_default_port" ]; then
+          _nr_port_tag="$_nr_family:$_nr_port"
+        fi
+      fi
+      ;;
+    *:*)
+      _nr_authority=${_nr_url%%:*}
+      _nr_path=${_nr_url#*:}
+      case $_nr_authority in
+        ''|*/*|*\\*|*\?*|*\#*) return 1 ;;
+      esac
+      case $_nr_authority in
+        *@*) _nr_host=${_nr_authority##*@} ;;
+        ?) return 1 ;;
+        *) _nr_host=$_nr_authority ;;
+      esac
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  case $_nr_host in
+    ''|*[[:space:]]*|*/*|*\\*|*\?*|*\#*|*\[*|*\]*) return 1 ;;
+  esac
+  if [ "$_nr_ipv6" = false ]; then
+    case $_nr_host in
+      *:*) return 1 ;;
+    esac
+  fi
+  # Restrict cross-form URL/SCP normalization to known GitHub hosting semantics;
+  # arbitrary Git servers can map relative SCP and absolute URL paths differently.
+  _nr_host=$(lowercase "$_nr_host")
+  [ "$_nr_host" = github.com ] || return 1
+
+  case $_nr_path in
+    ''|*\?*|*\#*|*\\*) return 1 ;;
+  esac
+
+  while :; do
+    case $_nr_path in
+      /*) _nr_path=${_nr_path#/} ;;
+      *) break ;;
+    esac
+  done
+  while :; do
+    case $_nr_path in
+      */) _nr_path=${_nr_path%/} ;;
+      *) break ;;
+    esac
+  done
+  case $_nr_path in
+    .git|*/.git) ;;
+    *.git) _nr_path=${_nr_path%.git} ;;
+  esac
+  [ -n "$_nr_path" ] || return 1
+
+  printf '%s/%s/%s\n' "$_nr_host" "$_nr_port_tag" "$_nr_path"
+}
+
+same_repo_identity() {
+  _sr_left=$(normalize_repo_identity "$1") || return 1
+  _sr_right=$(normalize_repo_identity "$2") || return 1
+  [ "$_sr_left" = "$_sr_right" ]
+}
+
+if [ -n "$github_user" ] && [ -n "$remote_owner" ] &&
+  [ "$(lowercase "$remote_owner")" = "$(lowercase "$github_user")" ]
 then
   exit 0
 fi
@@ -40,10 +240,17 @@ fi
 # Use a tracking ref only for the endpoint it describes.
 remote_name=${1:-}
 read_protection() {
+  explicit_pushurl=$(optional_config --get-all "remote.$remote_name.pushurl")
   if default_ref=$(git symbolic-ref --quiet "refs/remotes/$remote_name/HEAD" 2>/dev/null) &&
     [ "${default_ref#"refs/remotes/$remote_name/"}" != "$default_ref" ] &&
     fetch_url=$(git remote get-url -- "$remote_name" 2>/dev/null) &&
-    [ "$fetch_url" = "$remote" ]; then
+    {
+      [ "$fetch_url" = "$remote" ] ||
+      { [ -z "$explicit_pushurl" ] &&
+        push_url=$(git remote get-url --push -- "$remote_name" 2>/dev/null) &&
+        [ "$push_url" = "$remote" ] &&
+        same_repo_identity "$fetch_url" "$remote"; }
+    }; then
     default_branch=${default_ref#"refs/remotes/$remote_name/"}
   else
     # Do not consume push input. Check Git's status before parsing stdout.

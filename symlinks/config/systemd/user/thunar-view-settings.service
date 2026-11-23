@@ -1,6 +1,8 @@
 [Unit]
 Description=Apply managed Thunar view settings
 PartOf=graphical-session.target
+After=dbus.socket
+Before=graphical-session.target
 ConditionFileIsExecutable=/usr/bin/xfconf-query
 
 [Service]

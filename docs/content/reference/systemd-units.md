@@ -99,21 +99,25 @@ With a live manager:
   reports a stale definition. Reloading reads the updated unit definition into the manager.
 
 User unit files usually arrive through symlinks; packages may provide others.
-An enabled first-login service (`dotfiles-first-login.service`) can stay idle
-once the deferred VS Code extensions marker is gone. If the marker exists,
-Dotfiles queues the idle service. The service waits for the current update to
-release its locks, then installs the deferred extensions. It reads a regular
-marker file, not a symlink. After installation succeeds, the service compares
-and removes the marker under the same lock used to queue extensions. A newer
-selection stays queued, and an interrupted installation can retry from the marker.
-If the queue is busy, the service leaves it untouched and retries after five
-minutes. If an update reports that the queue is busy, rerun it after the other
-operation finishes.
-When the managed Thunar settings service has already run, Dotfiles checks its
-two managed preferences and reruns the service if either differs. Both the check
-and the service use the installed helper, including an overlay replacement.
-System-scope changes can require sudo. Inside WSL, systemd must already be running or
-degraded; changing `wsl.conf` cannot start it in the current session.
+System-scope changes can require sudo. Inside WSL, systemd must already be
+running or degraded; changing `wsl.conf` cannot start it in the current session.
+
+Two managed user services have additional runtime checks:
+
+- **First-login service (`dotfiles-first-login.service`):** An enabled unit can
+  stay idle once the deferred VS Code extensions marker is gone. When the
+  marker exists (as a regular file, not a symlink), Dotfiles queues the idle
+  service; it waits for the current update to release its run locks, installs
+  the deferred extensions, and then acquires the queue-directory lock on
+  `~/.local/state/dotfiles/` (the same `flock` the producer holds while writing
+  the marker) to compare and remove the marker. A newer selection stays queued,
+  and an interrupted installation can retry from the marker. If the queue is
+  busy, the service leaves it untouched and retries after five minutes; if an
+  update reports a busy queue, rerun it after the other operation finishes.
+- **Thunar settings service:** When the managed service has already run,
+  Dotfiles checks its two managed preferences and reruns the service if either
+  differs. Both the check and the service use the installed helper, including
+  an overlay replacement.
 
 Enabled units can execute consequential actions, including scheduled cleanup.
 Inspect their commands and drop-ins before enabling an unfamiliar unit.
@@ -123,19 +127,23 @@ directory entries does not refresh the access times of the regular files inside.
 To stop managing a service and also stop it running, first apply an explicit `enabled =
 false` declaration. Deleting its entry alone does not disable it.
 
-Without a user manager, the task prepares per-user enablement links for the next login
-rather than starting services. If access to the manager is denied or its state cannot
-be determined, the task stops rather than changing links offline. A masked unit
-cannot be enabled offline, even if a drop-in supplies install targets.
-Disabling a unit removes its matching enablement links
-even if the unit file is gone. Enablement links still work after managed home links are
-replaced with local copies during removal. Offline enablement honors unit-specific
-drop-ins for `WantedBy` and `RequiredBy`. When those targets change, Dotfiles installs
-the requested links and removes obsolete links that point to the unit.
-Templates, other install relationships, and install directives in shared
-drop-ins require a live user manager. The task reports
-these instead of partially enabling the unit. Conflicting declarations for the same
-scope and unit are rejected.
+Without a user manager, the task prepares per-user enablement links for the next
+login rather than starting services. If access to the manager is denied or its
+state cannot be determined, the task stops rather than changing links offline.
+Offline enablement follows these rules:
+
+- A masked unit cannot be enabled offline, even if a drop-in supplies install
+  targets.
+- Disabling a unit removes its matching enablement links even if the unit file
+  is gone. Enablement links still work after managed home links are replaced
+  with local copies during removal.
+- Unit-specific drop-ins for `WantedBy` and `RequiredBy` are honored; when
+  those targets change, Dotfiles installs the requested links and removes
+  obsolete links that point to the unit.
+- Templates, other install relationships, and install directives in shared
+  drop-ins require a live user manager and are reported instead of partially
+  enabled.
+- Conflicting declarations for the same scope and unit are rejected.
 
 See [Systemd units](#what-it-does) for when the task can run. Contributors changing
 offline unit lookup should start with the [offline enablement implementation](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/systemd_unit/offline.rs).

@@ -4,11 +4,13 @@ Description=Hypridle idle daemon
 PartOf=graphical-session.target
 After=graphical-session.target
 
+ConditionEnvironment=WAYLAND_DISPLAY
 ConditionFileIsExecutable=/usr/bin/hypridle
 ConditionPathExists=%h/.config/hypr/hypridle.conf
 
 [Service]
 Type=simple
+Slice=session.slice
 
 ExecStart=/usr/bin/hypridle
 Restart=on-failure

@@ -4,11 +4,13 @@ Description=Gammastep color temperature adjustment
 PartOf=graphical-session.target
 After=graphical-session.target
 
+ConditionEnvironment=WAYLAND_DISPLAY
 ConditionFileIsExecutable=/usr/bin/gammastep
 ConditionPathExists=%h/.config/gammastep/config.ini
 
 [Service]
 Type=simple
+Slice=session.slice
 
 ExecStart=/usr/bin/gammastep -c %h/.config/gammastep/config.ini
 Restart=on-failure

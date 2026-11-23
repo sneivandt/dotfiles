@@ -69,3 +69,9 @@
   path = ~/.config/git/private/config
 [includeIf "hasconfig:remote.*.url:git@ssh.dev.azure.com:*/**"]
   path = ~/.config/git/private/config
+[includeIf "hasconfig:remote.*.url:ssh://git@ssh.dev.azure.com/**"]
+  path = ~/.config/git/private/config
+[includeIf "hasconfig:remote.*.url:*@vs-ssh.visualstudio.com:*/**"]
+  path = ~/.config/git/private/config
+[includeIf "hasconfig:remote.*.url:ssh://*@vs-ssh.visualstudio.com/**"]
+  path = ~/.config/git/private/config

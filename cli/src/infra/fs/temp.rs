@@ -62,6 +62,10 @@ impl PrivateTempDir {
         self.directory.path()
     }
 
+    pub(crate) const fn persist(&mut self) {
+        self.directory.persist();
+    }
+
     pub(crate) fn create_file(&self, prefix: &str) -> anyhow::Result<(TempGuard, File)> {
         let (guard, file) =
             TempGuard::create_unique_file_with_mode(self.path(), prefix, "tmp", 0o600)?;
@@ -385,5 +389,37 @@ mod tests {
             .mode()
             & 0o777;
         assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn private_temp_dir_cleans_up_by_default_and_retains_files_when_persisted() {
+        let dir = tempfile::tempdir().unwrap();
+        let transient_path = {
+            let transient = PrivateTempDir::create(dir.path(), ".transient").unwrap();
+            let path = transient.path().to_path_buf();
+            #[cfg(unix)]
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+            #[cfg(windows)]
+            crate::infra::fs::check_private_fixture(&path).unwrap();
+            std::fs::write(path.join("entry"), "temporary").unwrap();
+            path
+        };
+        assert!(!transient_path.exists());
+
+        let persisted_path = {
+            let mut persisted = PrivateTempDir::create(dir.path(), ".persisted").unwrap();
+            let path = persisted.path().to_path_buf();
+            std::fs::write(path.join("entry"), "keep me").unwrap();
+            persisted.persist();
+            path
+        };
+        assert!(persisted_path.is_dir());
+        assert_eq!(
+            std::fs::read_to_string(persisted_path.join("entry")).unwrap(),
+            "keep me"
+        );
     }
 }

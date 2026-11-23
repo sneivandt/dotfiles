@@ -288,6 +288,24 @@ test_wrapper_recovers_truncated_cli()
   fi
   [ -f "$backup" ] && [ ! -e "$installed" ] ||
     log_error "Failed legacy recovery modified either image"
+
+  cat > "$installed" <<'EOF'
+#!/bin/sh
+if [ -n "${DOTFILES_COMPLETE:-}" ]; then
+  printf 'complete:%s\n' "$DOTFILES_COMPLETE"
+  exit 0
+fi
+[ "${1:-}" = --version ] && printf 'dotfiles v9.9.9\n'
+EOF
+  cp "$installed" "$backup"
+  chmod +x "$installed" "$backup"
+  printf x > "$journal"
+  completion_out=$(DOTFILES_COMPLETE=zsh "$fixture/dotfiles.sh" 2> "$fixture/stderr") ||
+    log_error "Journal recovery rejected a healthy CLI while DOTFILES_COMPLETE was set: $(cat "$fixture/stderr")"
+  [ "$completion_out" = 'complete:zsh' ] ||
+    log_error "Wrapper stripped DOTFILES_COMPLETE from dispatched CLI: $completion_out"
+  [ ! -s "$journal" ] && [ -f "$backup" ] ||
+    log_error "Healthy CLI recovery with DOTFILES_COMPLETE did not clear the journal cleanly"
 )}
 
 test_wrapper_release_metadata_formats()

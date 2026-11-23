@@ -64,7 +64,7 @@ fn make_package_context(
     overlay: Option<PathBuf>,
     os: Os,
     is_arch: bool,
-    executor: impl crate::infra::exec::Executor + 'static,
+    executor: impl Executor + 'static,
 ) -> Context {
     use crate::infra::platform::Platform;
     crate::test_helpers::make_context(

@@ -165,7 +165,7 @@ impl GitConfigResource {
                 ResourceState::Correct
             });
         }
-        let after_includes = self.include_order(config)?.1;
+        let after_includes = is_include(&target_key(&self.key)) || self.include_order(config)?.1;
         Ok(
             if after_includes
                 && self.desired.as_ref().is_some_and(|desired| {
@@ -187,35 +187,51 @@ impl GitConfigResource {
         )
     }
 
+    fn entry_count_across_includes(&self, config: &git2::Config) -> Result<usize> {
+        let mut count = 0_usize;
+        let mut entries = config.multivar(&self.key, None)?;
+        while let Some(entry) = entries.next() {
+            entry?;
+            count = count.saturating_add(1);
+        }
+        Ok(count)
+    }
+
     /// Apply config change to a mutable config handle.
     ///
     /// This enables unit testing without touching the real global git config.
     fn apply_to_config(&self, config: &mut git2::Config) -> Result<ResourceChange> {
         let values = self.values_from_config(config)?;
+        let total_entries = self.entry_count_across_includes(config)?;
+        // libgit2's single-value `set_str`/`remove` checks uniqueness across
+        // expanded includes, so any included entry for the same key requires
+        // multivar mutation (which edits only the depth-0 file in place).
+        let needs_multivar = values.len() > 1 || total_entries > values.len();
         // libgit2's regex mutation can dereference a null implicit value.
-        if values.len() > 1 && values.iter().any(Option::is_none) {
+        if needs_multivar && values.iter().any(Option::is_none) {
             anyhow::bail!(
                 "cannot safely replace repeated implicit values for git config {}; give each entry an explicit value first",
                 self.key
             );
         }
-        match &self.desired {
-            Some(desired) => {
-                if values.len() <= 1 {
-                    config.set_str(&self.key, desired)
-                } else {
-                    config.set_multivar(&self.key, ".*", desired)
-                }
-                .with_context(|| format!("setting {} = {desired}", self.key))?;
+        if let Some(desired) = &self.desired {
+            if needs_multivar {
+                let escaped = escape_multivar_value(desired);
+                config.set_multivar(&self.key, ".*", &escaped)
+            } else {
+                config.set_str(&self.key, desired)
             }
-            None => {
-                if values.len() == 1 {
-                    config.remove(&self.key)
-                } else {
-                    config.remove_multivar(&self.key, ".*")
-                }
-                .with_context(|| format!("removing git config {}", self.key))?;
+            .with_context(|| format!("setting {} = {desired}", self.key))?;
+        } else {
+            if values.is_empty() {
+                return Ok(ResourceChange::AlreadyCorrect);
             }
+            if needs_multivar {
+                config.remove_multivar(&self.key, ".*")
+            } else {
+                config.remove(&self.key)
+            }
+            .with_context(|| format!("removing git config {}", self.key))?;
         }
         Ok(ResourceChange::Applied)
     }
@@ -375,7 +391,7 @@ fn stage_setting(
     original: &git2::Config,
 ) -> Result<()> {
     let mut staged = open_file(stage_path)?;
-    if !setting.include_order(&staged)?.0 {
+    if is_include(&target_key(&setting.key)) || !setting.include_order(&staged)?.0 {
         setting.apply_to_config(&mut staged)?;
         return Ok(());
     }
@@ -422,6 +438,21 @@ impl Resource for GitConfigResource {
             .apply_transaction()
             .with_context(|| format!("setting git config {}", self.key))?)
     }
+}
+
+fn escape_multivar_value(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\t' => escaped.push_str("\\t"),
+            '\x08' => escaped.push_str("\\b"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
 }
 
 fn read_config_bytes(path: &Path) -> Result<Option<Vec<u8>>> {
@@ -813,6 +844,92 @@ mod tests {
         }
     }
 
+    fn git_config_path(path: &Path) -> String {
+        path.to_string_lossy().replace('\\', "/")
+    }
+
+    #[test]
+    fn nested_include_defining_include_path_updates_and_removes_depth_zero_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config");
+        let outer = dir.path().join("outer.gitconfig");
+        let inner = dir.path().join("inner.gitconfig");
+        let work = dir.path().join("work.gitconfig");
+        let updated = dir.path().join("updated.gitconfig");
+
+        let inner_content = "[user]\n\tname = Inner\n";
+        let outer_content = format!("[include]\n\tpath = {}\n", git_config_path(&inner));
+        let work_content = "[user]\n\temail = work@test.local\n";
+        let updated_content = "[user]\n\tname = Updated\n";
+        std::fs::write(&inner, inner_content).unwrap();
+        std::fs::write(&outer, &outer_content).unwrap();
+        std::fs::write(&work, work_content).unwrap();
+        std::fs::write(&updated, updated_content).unwrap();
+
+        let initial = format!(
+            "[include]\n\tpath = {}\n[includeIf \"gitdir:/work/\"]\n\tpath = {}\n[user]\n\tname = Managed\n",
+            git_config_path(&outer),
+            git_config_path(&work)
+        );
+        std::fs::write(&config_path, &initial).unwrap();
+
+        // Update depth-0 `include.path` alongside a managed scalar value while
+        // the currently included `outer.gitconfig` also defines `include.path`.
+        let settings = vec![
+            GitConfigResource::with_config_path(
+                "include.path".into(),
+                git_config_path(&updated),
+                config_path.clone(),
+            ),
+            GitConfigResource::with_config_path(
+                "user.name".into(),
+                "Managed".into(),
+                config_path.clone(),
+            ),
+        ];
+        let plan = GitConfigPlan::inspect(&config_path, &settings).unwrap();
+        assert_eq!(plan.apply(&config_path).unwrap(), ResourceChange::Applied);
+
+        let rewritten = std::fs::read_to_string(&config_path).unwrap();
+        let include_pos = rewritten
+            .find("[include]")
+            .expect("depth-0 [include] section must remain");
+        let include_if_pos = rewritten
+            .find("[includeIf \"gitdir:/work/\"]")
+            .expect("depth-0 [includeIf] section must remain");
+        let user_pos = rewritten
+            .rfind("[user]")
+            .expect("managed [user] section must remain");
+        assert!(
+            include_pos < include_if_pos,
+            "in-place edit must preserve [include] before [includeIf]:\n{rewritten}"
+        );
+        assert!(
+            include_if_pos < user_pos,
+            "managed values must stay after include directives:\n{rewritten}"
+        );
+        for setting in &settings {
+            assert_eq!(setting.current_state().unwrap(), ResourceState::Correct);
+        }
+        assert_eq!(std::fs::read_to_string(&outer).unwrap(), outer_content);
+        assert_eq!(std::fs::read_to_string(&inner).unwrap(), inner_content);
+
+        // Removing depth-0 `include.path` must also succeed when the included
+        // file itself defines `include.path`.
+        std::fs::write(&config_path, &initial).unwrap();
+        let remove =
+            GitConfigResource::absent("include.path".into()).using_config_path(config_path.clone());
+        assert_eq!(remove.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(remove.current_state().unwrap(), ResourceState::Correct);
+        let after_remove = std::fs::read_to_string(&config_path).unwrap();
+        assert!(
+            after_remove.contains("[includeIf \"gitdir:/work/\"]"),
+            "sibling includeIf must remain after removing depth-0 include.path:\n{after_remove}"
+        );
+        assert_eq!(std::fs::read_to_string(&outer).unwrap(), outer_content);
+        assert_eq!(std::fs::read_to_string(&inner).unwrap(), inner_content);
+    }
+
     #[test]
     fn open_failure_names_the_key() {
         let dir = tempfile::tempdir().unwrap();
@@ -1095,6 +1212,83 @@ mod tests {
         assert_eq!(
             observed.get_string("core.editor").unwrap(),
             "fixture-editor"
+        );
+    }
+
+    #[test]
+    fn managed_includes_converge_without_oscillating() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let resources = vec![
+            GitConfigResource::with_config_path(
+                "include.path".into(),
+                "~/.gitconfig.base".into(),
+                path.clone(),
+            ),
+            GitConfigResource::with_config_path(
+                "includeIf.gitdir:~/work/.path".into(),
+                "~/.gitconfig.work".into(),
+                path.clone(),
+            ),
+            GitConfigResource::with_config_path(
+                "core.autocrlf".into(),
+                "false".into(),
+                path.clone(),
+            ),
+        ];
+
+        let plan = GitConfigPlan::inspect(&path, &resources).unwrap();
+        assert_eq!(plan.changed().len(), 3);
+        plan.apply(&path).unwrap();
+
+        let second_plan = GitConfigPlan::inspect(&path, &resources).unwrap();
+        assert!(
+            second_plan.changed().is_empty(),
+            "repeat inspection must converge without oscillating: {:?}",
+            second_plan.changed()
+        );
+        for resource in &resources {
+            assert_eq!(
+                resource.current_state().unwrap(),
+                ResourceState::Correct,
+                "managed setting {} must report Correct after one apply",
+                resource.key
+            );
+        }
+    }
+
+    #[test]
+    fn managed_include_preserves_precedence_before_existing_include_if() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        std::fs::write(
+            &path,
+            "[include]\n\tpath = ~/.gitconfig.old\n[includeIf \"gitdir:~/work/\"]\n\tpath = ~/.gitconfig.work\n",
+        )
+        .unwrap();
+
+        let resource = GitConfigResource::with_config_path(
+            "include.path".into(),
+            "~/.gitconfig.base".into(),
+            path.clone(),
+        );
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let include_pos = contents
+            .find("~/.gitconfig.base")
+            .expect("updated include.path must be present");
+        let include_if_pos = contents
+            .find("[includeIf \"gitdir:~/work/\"]")
+            .expect("existing includeIf section must be preserved");
+        assert!(
+            include_pos < include_if_pos,
+            "managed include.path must stay before existing includeIf to preserve precedence:\n{contents}"
         );
     }
 }

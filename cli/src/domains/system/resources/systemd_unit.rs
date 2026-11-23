@@ -19,6 +19,18 @@ use crate::infra::provisioning::{
 const THUNAR_SETTINGS_UNIT: &str = "thunar-view-settings.service";
 const THUNAR_SETTINGS_SCRIPT: &str = ".config/Thunar/managed-view-settings.sh";
 
+/// Properties requested together during batched live unit discovery.
+pub(crate) const BATCH_SHOW_PROPERTIES: &str = "Id,LoadState,ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult,NeedDaemonReload";
+
+/// Batched live probe output for a single systemd unit.
+#[derive(Debug, Clone)]
+pub(crate) struct BatchUnitProbe {
+    /// Authoritative on-disk enablement line from `systemctl is-enabled`.
+    pub(crate) is_enabled: String,
+    /// Unit properties stanza from `systemctl show`.
+    pub(crate) properties: String,
+}
+
 /// A systemd unit resource that converges its configured enablement state.
 #[derive(Debug)]
 pub struct SystemdUnitResource {
@@ -86,6 +98,184 @@ impl SystemdUnitResource {
             resource.thunar_settings_script = Some(home.join(THUNAR_SETTINGS_SCRIPT));
         }
         resource
+    }
+
+    /// Whether this resource can participate in a batched live `systemctl show` probe.
+    #[must_use]
+    pub(crate) fn is_batch_probeable(&self) -> bool {
+        self.retired_source.is_none()
+            && self.manager_available
+            && !matches!(self.scope, UnitScope::Invalid(_))
+            && safe_unit_name(&self.name)
+    }
+
+    /// Query multiple live units in one batched `is-enabled` + `show` pair for
+    /// a scope.
+    ///
+    /// Uses `systemctl is-enabled` for authoritative on-disk enablement (rather
+    /// than `systemctl show`'s cached `UnitFileState`) and `systemctl show` for
+    /// runtime and reload properties. Returns an empty map when fewer than two
+    /// units are supplied, when `is-enabled` writes stderr or lacks an exit
+    /// code, when `show` fails, or when line/stanza counts do not match
+    /// `names`, allowing callers to fall back to individual unit probes.
+    pub(crate) fn batch_probe_scope(
+        executor: &dyn Executor,
+        scope: &UnitScope,
+        names: &[&str],
+    ) -> ResourceResult<std::collections::HashMap<String, BatchUnitProbe>> {
+        if names.len() < 2 || matches!(scope, UnitScope::Invalid(_)) {
+            return Ok(std::collections::HashMap::new());
+        }
+
+        let mut enabled_args = Vec::with_capacity(names.len().saturating_add(2));
+        if *scope == UnitScope::User {
+            enabled_args.push("--user");
+        }
+        enabled_args.push("is-enabled");
+        enabled_args.extend_from_slice(names);
+
+        // `systemctl is-enabled u1 u2 ...` exits non-zero when all units are
+        // disabled/not-found, but still prints one authoritative state per unit.
+        let enabled_result = executor.execute(
+            CommandSpec::new("systemctl")
+                .args(&enabled_args)
+                .unchecked(),
+        )?;
+        if enabled_result.code.is_none() || !enabled_result.stderr.trim().is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let enabled_normalized = enabled_result.stdout.replace("\r\n", "\n");
+        let enabled_trimmed = enabled_normalized.trim_end_matches('\n');
+        if enabled_trimmed.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let enabled_states: Vec<&str> = enabled_trimmed.split('\n').map(str::trim).collect();
+        if enabled_states.len() != names.len() {
+            return Ok(std::collections::HashMap::new());
+        }
+
+        let property_arg = format!("--property={BATCH_SHOW_PROPERTIES}");
+        let mut show_args = Vec::with_capacity(names.len().saturating_add(3));
+        if *scope == UnitScope::User {
+            show_args.push("--user");
+        }
+        show_args.push("show");
+        show_args.push(&property_arg);
+        show_args.extend_from_slice(names);
+
+        let show_result =
+            executor.execute(CommandSpec::new("systemctl").args(&show_args).unchecked())?;
+        if !show_result.success {
+            return Ok(std::collections::HashMap::new());
+        }
+        let show_normalized = show_result.stdout.replace("\r\n", "\n");
+        let show_trimmed = show_normalized.trim_matches('\n');
+        if show_trimmed.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let stanzas: Vec<&str> = show_trimmed.split("\n\n").collect();
+        if stanzas.len() != names.len() {
+            return Ok(std::collections::HashMap::new());
+        }
+        Ok(names
+            .iter()
+            .zip(enabled_states)
+            .zip(stanzas)
+            .map(|((name, is_enabled), stanza)| {
+                (
+                    (*name).to_owned(),
+                    BatchUnitProbe {
+                        is_enabled: is_enabled.to_owned(),
+                        properties: stanza.to_owned(),
+                    },
+                )
+            })
+            .collect())
+    }
+
+    /// Derive this resource's state from a batched `is-enabled` + `show` probe.
+    ///
+    /// Returns `Ok(None)` for alias, runtime-only, indirect, or ambiguous states
+    /// so callers fall back to individual unit discovery.
+    pub(crate) fn state_from_batch_probe(
+        &self,
+        probe: &BatchUnitProbe,
+    ) -> ResourceResult<Option<ResourceState>> {
+        if !self.is_batch_probeable() {
+            return Ok(None);
+        }
+        if systemd_property(&probe.properties, "Id") != Some(self.name.as_str()) {
+            return Ok(None);
+        }
+        let enablement = match probe.is_enabled.as_str() {
+            "enabled" => {
+                if self.enabled {
+                    ResourceState::Correct
+                } else {
+                    ResourceState::Incorrect {
+                        current: "enabled".into(),
+                    }
+                }
+            }
+            "disabled" | "linked" | "linked-runtime" | "masked" => {
+                if self.enabled {
+                    ResourceState::Missing
+                } else {
+                    ResourceState::Correct
+                }
+            }
+            "static" => {
+                if self.enabled {
+                    ResourceState::Invalid {
+                        reason:
+                            "static unit has no [Install] instructions for persistent enablement"
+                                .into(),
+                    }
+                } else {
+                    ResourceState::Correct
+                }
+            }
+            "not-found" if !self.enabled => ResourceState::Correct,
+            _ => return Ok(None),
+        };
+
+        if !self.enabled
+            && self.scope == UnitScope::User
+            && self.home.is_some()
+            && matches!(enablement, ResourceState::Incorrect { .. })
+            && let Some(conflict) = self.global_enablement_conflict()?
+        {
+            return Ok(Some(conflict));
+        }
+        if matches!(enablement, ResourceState::Correct)
+            && let Some(state) = self.live_user_link_state()?
+            && !matches!(state, ResourceState::Correct)
+        {
+            return Ok(Some(state));
+        }
+        if !matches!(enablement, ResourceState::Correct)
+            || (self.enabled && !self.start)
+            || (!self.enabled && probe.is_enabled == "not-found")
+        {
+            return Ok(Some(enablement));
+        }
+        if self.scope == UnitScope::System
+            && systemd_property(&probe.properties, "NeedDaemonReload") == Some("yes")
+        {
+            return Ok(Some(ResourceState::Incorrect {
+                current: "systemd has a stale unit definition".into(),
+            }));
+        }
+        if let Some(state) = self.marker_state_if_idle(&probe.properties)? {
+            return Ok(Some(state));
+        }
+        let state = runtime_state(self.enabled, &probe.properties);
+        if matches!(state, ResourceState::Correct)
+            && let Some(script) = &self.thunar_settings_script
+        {
+            return self.thunar_settings_state(script).map(Some);
+        }
+        Ok(Some(state))
     }
 
     fn check_args<'a>(&'a self, args: &[&'a str]) -> ResourceResult<Vec<&'a str>> {

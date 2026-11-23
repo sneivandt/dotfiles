@@ -16,10 +16,18 @@ Item {
         Shell.MarketState {}
     }
     Component {
+        id: stockCardComponent
+        Shell.StockCard {}
+    }
+    Component {
         id: powerComponent
         Shell.PowerMenu {
             anchorItem: null
         }
+    }
+    Component {
+        id: spyComponent
+        SignalSpy {}
     }
 
     TestCase {
@@ -232,6 +240,145 @@ Item {
             compare(network.error, data.error);
         }
 
+        function test_network_monitor_debounces_events_and_controls_polling() {
+            const network = make(networkComponent);
+            const query = process(network, "networkStatusProcess");
+            const monitor = process(network, "networkMonitorProcess");
+            const debounce = findChild(network, "networkMonitorDebounce");
+            const restart = findChild(network, "networkMonitorRestart");
+            const poll = findChild(network, "networkPollTimer");
+            verify(debounce !== null && restart !== null && poll !== null);
+
+            compare(monitor.command, ["nmcli", "monitor"]);
+            compare(monitor.running, true);
+            compare(network.available, false);
+            compare(poll.running, true);
+
+            query.finish(0, JSON.stringify({ ok: true, state: { connected: true, connectionName: "Wired", connectionType: "ethernet" } }));
+            compare(query.attempts, 1);
+            compare(network.available, true);
+            compare(poll.running, false);
+
+            // Burst of monitor lines collapses into one debounced refresh.
+            monitor.stdout.read("eth0: disconnected");
+            monitor.stdout.read("Connectivity is now 'none'");
+            compare(debounce.running, true);
+            compare(query.attempts, 1);
+            debounce.stop();
+            debounce.triggered();
+            compare(query.attempts, 2);
+            query.finish(0, JSON.stringify({ ok: true, state: { connected: false, connectionName: "", connectionType: "" } }));
+
+            // Opening the menu enables 10s polling; closing disables it while monitor runs.
+            network.lastScan = Date.now();
+            network.menuOpen = true;
+            compare(poll.running, true);
+            query.finish(0, statusResult());
+            network.menuOpen = false;
+            compare(poll.running, false);
+
+            // Monitor exit enables fallback polling and schedules backoff restart.
+            monitor.finish(1);
+            compare(monitor.running, false);
+            compare(poll.running, true);
+            compare(restart.running, true);
+
+            // Backoff restart keeps fallback polling running until a real event arrives.
+            restart.stop();
+            restart.triggered();
+            compare(monitor.running, true);
+            compare(monitor.attempts, 2);
+            compare(poll.running, true);
+
+            // An actual monitor event while running confirms recovery and stops fallback polling.
+            monitor.stdout.read("eth0: connected");
+            compare(poll.running, false);
+            debounce.stop();
+        }
+
+        function test_network_flapping_monitor_does_not_reset_fallback_poll() {
+            const network = make(networkComponent);
+            const query = process(network, "networkStatusProcess");
+            const monitor = process(network, "networkMonitorProcess");
+            const restart = findChild(network, "networkMonitorRestart");
+            const poll = findChild(network, "networkPollTimer");
+            const debounce = findChild(network, "networkMonitorDebounce");
+            verify(restart !== null && poll !== null && debounce !== null);
+
+            query.finish(0, JSON.stringify({ ok: true, state: { connected: true, connectionName: "Wired", connectionType: "ethernet" } }));
+            compare(network.available, true);
+            compare(poll.running, false);
+
+            // Monitor exits without emitting an event -> fallback polling starts.
+            monitor.finish(1);
+            compare(poll.running, true);
+
+            const pollRunningSpy = createTemporaryObject(spyComponent, parent, {
+                target: poll,
+                signalName: "runningChanged"
+            });
+            verify(pollRunningSpy !== null);
+
+            // Repeated 5s restarts and exits without events never toggle or reset the 10s poll timer.
+            for (let i = 0; i < 3; i++) {
+                restart.stop();
+                restart.triggered();
+                compare(monitor.running, true);
+                compare(poll.running, true);
+                monitor.finish(1);
+                compare(monitor.running, false);
+                compare(poll.running, true);
+            }
+            compare(pollRunningSpy.count, 0);
+
+            // Post-exit stdout flush must not clear fallback polling while monitor is stopped.
+            monitor.stdout.read("stale output after exit");
+            debounce.stop();
+            compare(poll.running, true);
+
+            // Fallback poll fires and refreshes the closed bar even while monitor flaps.
+            poll.triggered();
+            compare(query.attempts, 2);
+            query.finish(0, JSON.stringify({ ok: true, state: { connected: false, connectionName: "", connectionType: "" } }));
+            compare(network.connected, false);
+            compare(poll.running, true);
+
+            // Once monitor restarts and emits an actual event, fallback polling stops.
+            restart.stop();
+            restart.triggered();
+            compare(poll.running, true);
+            monitor.stdout.read("wlan0: connected");
+            compare(poll.running, false);
+            debounce.stop();
+        }
+
+        function test_network_unavailable_polls_until_recovery_with_running_monitor() {
+            const network = make(networkComponent);
+            const query = process(network, "networkStatusProcess");
+            const monitor = process(network, "networkMonitorProcess");
+            const poll = findChild(network, "networkPollTimer");
+            verify(poll !== null);
+
+            query.finish(0, JSON.stringify({ ok: true, state: { connected: true, connectionName: "Wired", connectionType: "ethernet" } }));
+            compare(monitor.running, true);
+            compare(network.available, true);
+            compare(poll.running, false);
+
+            // A failed summary while monitor stays running enables recovery polling.
+            network.refresh();
+            query.finish(1, JSON.stringify({ ok: false, error: "Temporary failure" }));
+            compare(monitor.running, true);
+            compare(network.available, false);
+            compare(poll.running, true);
+
+            // Recovery poll retries and disables polling once available recovers.
+            poll.triggered();
+            compare(query.attempts, 3);
+            query.finish(0, JSON.stringify({ ok: true, state: { connected: true, connectionName: "Wired", connectionType: "ethernet" } }));
+            compare(network.available, true);
+            compare(poll.running, false);
+        }
+
         function test_market_start_failure_preserves_previous_quotes_and_recovers() {
             const market = make(marketComponent);
             const query = process(market, "marketQueryProcess");
@@ -268,10 +415,43 @@ Item {
 
         function test_market_partial_refresh_reports_stale_quotes() {
             const market = make(marketComponent);
-            process(market, "marketQueryProcess").finish(0,
+            const query = process(market, "marketQueryProcess");
+            compare(query.command, ["python3", "/fixture-home/.config/hypr/scripts/stocks.py"]);
+            query.finish(0,
                 JSON.stringify({ quotes: [{ symbol: "OLD", updated: 1 }], updated: 1 }));
             verify(market.error.includes("stale"));
             compare(market.quotes[0].symbol, "OLD");
+
+            // Manual refresh passes --force; a 300s-old quote is below the 900s stale threshold.
+            const now = Math.floor(Date.now() / 1000);
+            market.refresh(true);
+            compare(query.command, ["python3", "/fixture-home/.config/hypr/scripts/stocks.py", "--force"]);
+            query.finish(0, JSON.stringify({ quotes: [{ symbol: "FRESH", updated: now - 300 }], updated: now - 300 }));
+            compare(market.error, "");
+        }
+
+        function test_stock_card_stale_label_reacts_to_current_date() {
+            const base = Date.UTC(2024, 0, 1) / 1000;
+            const card = createTemporaryObject(stockCardComponent, parent, {
+                quote: {
+                    symbol: "TEST",
+                    name: "Test Corp",
+                    prefix: "$",
+                    price: 100,
+                    change: 1.5,
+                    history: [90, 100],
+                    historyStart: base - 86400,
+                    yearChange: 11.1,
+                    yearLow: 80,
+                    yearHigh: 120,
+                    updated: base
+                },
+                currentDate: new Date((base + 300) * 1000)
+            });
+            verify(card !== null);
+            compare(card.stale, false);
+            card.currentDate = new Date((base + 900) * 1000);
+            compare(card.stale, true);
         }
 
         function test_market_partial_refresh_exposes_missing_symbols_until_recovery() {

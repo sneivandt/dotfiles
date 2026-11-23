@@ -146,15 +146,6 @@ pub fn read_bytes(path: &Path) -> Result<Vec<u8>> {
     std::fs::read(path).with_context(|| format!("read {}", path.display()))
 }
 
-/// Read a UTF-8 file with consistent path context.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be read as a string.
-pub fn read_string(path: &Path) -> Result<String> {
-    std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))
-}
-
 /// Remove a file with consistent path context.
 ///
 /// # Errors

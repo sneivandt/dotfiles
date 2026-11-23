@@ -7,7 +7,6 @@ if has('nvim-0.11')
 endif
 if has('nvim-0.12')
   set completeopt+=nearest
-  nnoremap <leader>u :Undotree<cr>
 endif
 
 " Terminal navigation
@@ -38,3 +37,9 @@ EOF
 
 " Key mappings for Neovim plugins
 nnoremap <silent><c-e> :NvimTreeToggle<cr>
+
+" Built-in optional packages must load after lazy.nvim resets runtimepath.
+if has('nvim-0.12')
+  packadd nvim.undotree
+  nnoremap <leader>u :Undotree<cr>
+endif

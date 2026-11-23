@@ -10,7 +10,8 @@ param()
 function Add-PathEntry
 {
     param (
-        [string]$Directory
+        [string]$Directory,
+        [switch]$Prepend
     )
 
     if (-not (Test-Path -LiteralPath $Directory -PathType Container))
@@ -32,20 +33,42 @@ function Add-PathEntry
         [IO.Path]::AltDirectorySeparatorChar, [IO.Path]::DirectorySeparatorChar
     ).TrimEnd($trimChars)
 
-    foreach ($entry in @($env:PATH -split [System.IO.Path]::PathSeparator))
+    $entries = @($env:PATH -split [System.IO.Path]::PathSeparator | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $remaining = [System.Collections.Generic.List[string]]::new()
+    $found = $false
+    $firstMatches = $false
+    for ($i = 0; $i -lt $entries.Count; $i++)
     {
-        if ([string]::IsNullOrWhiteSpace($entry))
-        {
-            continue
-        }
-
+        $entry = $entries[$i]
         $normalizedEntry = $entry.Replace(
             [IO.Path]::AltDirectorySeparatorChar, [IO.Path]::DirectorySeparatorChar
         ).TrimEnd($trimChars)
         if ([string]::Equals($normalizedEntry, $normalizedDirectory, $comparison))
         {
+            if ($i -eq 0)
+            {
+                $firstMatches = $true
+            }
+            $found = $true
+            continue
+        }
+        $remaining.Add($entry)
+    }
+
+    if ($Prepend)
+    {
+        if ($firstMatches -and $remaining.Count -eq ($entries.Count - 1))
+        {
             return
         }
+        $newEntries = @($Directory) + @($remaining)
+        $env:PATH = $newEntries -join [System.IO.Path]::PathSeparator
+        return
+    }
+
+    if ($found)
+    {
+        return
     }
 
     if ([string]::IsNullOrEmpty($env:PATH))
@@ -59,15 +82,15 @@ function Add-PathEntry
 }
 
 # Discover user-installed commands before configuring optional integrations.
-$localBinDir = Join-Path (Join-Path $HOME ".local") "bin"
-Add-PathEntry -Directory $localBinDir
-
 $cargoHome = $env:CARGO_HOME
 if ([string]::IsNullOrEmpty($cargoHome))
 {
     $cargoHome = Join-Path $HOME ".cargo"
 }
-Add-PathEntry -Directory (Join-Path $cargoHome "bin")
+Add-PathEntry -Directory (Join-Path $cargoHome "bin") -Prepend
+
+$localBinDir = Join-Path (Join-Path $HOME ".local") "bin"
+Add-PathEntry -Directory $localBinDir -Prepend
 
 if (Get-Module PSReadLine)
 {
@@ -170,13 +193,63 @@ function Test-PromptRoot
     return -not $WindowsPlatform -and $UserName -ceq 'root'
 }
 
+function Resolve-ExecutablePath
+{
+    param (
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path))
+    {
+        return $Path
+    }
+
+    try
+    {
+        $info = [System.IO.FileInfo]::new($Path)
+        if ($info.Exists -and ($info | Get-Member -Name 'ResolveLinkTarget' -MemberType Method))
+        {
+            $target = $info.ResolveLinkTarget($true)
+            if ($null -ne $target)
+            {
+                return $target.FullName
+            }
+            if ($null -ne $info.Directory)
+            {
+                $dirTarget = $info.Directory.ResolveLinkTarget($true)
+                if ($null -ne $dirTarget)
+                {
+                    return Join-Path $dirTarget.FullName $info.Name
+                }
+            }
+        }
+        return $info.FullName
+    }
+    catch
+    {
+        return $Path
+    }
+}
+
 $Global:IsNestedPwsh = $false
 if ($null -eq $env:windir)
 {
     $pwshCmd = Get-Command "pwsh" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($null -ne $pwshCmd -and $pwshCmd.Path -ne $env:SHELL)
+    if ($null -ne $pwshCmd)
     {
-        $Global:IsNestedPwsh = $true
+        if ([string]::IsNullOrEmpty($env:SHELL))
+        {
+            $Global:IsNestedPwsh = $true
+        }
+        else
+        {
+            $resolvedPwsh = Resolve-ExecutablePath -Path $pwshCmd.Path
+            $resolvedShell = Resolve-ExecutablePath -Path $env:SHELL
+            if ($resolvedPwsh -cne $resolvedShell)
+            {
+                $Global:IsNestedPwsh = $true
+            }
+        }
     }
 }
 

@@ -89,8 +89,18 @@ pub fn resolve_read_only(
     root: &Path,
     env: &dyn crate::infra::env::Env,
 ) -> Result<Option<PathBuf>> {
+    resolve_read_only_with_confirmation(cli_overlay, root, env, confirm_linked_worktree)
+}
+
+fn resolve_read_only_with_confirmation(
+    cli_overlay: Option<&Path>,
+    root: &Path,
+    env: &dyn crate::infra::env::Env,
+    confirm: impl FnOnce(&Path) -> Result<bool>,
+) -> Result<Option<PathBuf>> {
+    let non_interactive = env.var_os("CI").is_some();
     Ok(
-        resolve_with_confirmation(cli_overlay, root, env, confirm_linked_worktree)?
+        resolve_from_args_with_confirmation(cli_overlay, root, env, non_interactive, confirm)?
             .map(|(path, _)| path),
     )
 }
@@ -387,6 +397,24 @@ mod tests {
         assert_eq!(result, Some((cli_path, OverlaySource::Argument)));
         assert_eq!(read_persisted(&root).unwrap(), None);
         drop(dir);
+    }
+
+    #[test]
+    fn resolve_read_only_declines_linked_worktree_in_ci_without_prompting() {
+        let (_dir, root) = init_test_repo();
+        let worktree = root.join("linked-worktree");
+        std::fs::create_dir(&worktree).unwrap();
+        std::fs::write(worktree.join(".git"), "gitdir: /repo/.git/worktrees/wt\n").unwrap();
+        let ci_env = crate::infra::env::MapEnv::new().with("CI", "1");
+
+        let error = resolve_read_only_with_confirmation(Some(&worktree), &root, &ci_env, |_| {
+            panic!("CI must decline linked worktrees without prompting")
+        })
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("linked Git worktree"),
+            "{error:#}"
+        );
     }
 
     #[test]

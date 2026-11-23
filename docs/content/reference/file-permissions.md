@@ -48,21 +48,25 @@ Both fields are required. `mode` is a three- or four-digit octal string. `path` 
 dot-prefixed home convention: `ssh/config` means `~/.ssh/config`. `./` components
 normalize; absolute paths, parent traversal and home itself are invalid.
 
-Missing targets are not created. A directory entry applies recursively: directories
-gain execute bits for each permission class with read access, and ordinary files have
-execute bits cleared. Recursion leaves sockets, named pipes, and other special
-files alone. Give executable files their own entries. Explicit descendant
-entries are excluded from recursive ancestors regardless of ordering or parallel
-execution, including when a parent is reached through a symlink. Parent modes must
-still allow owner traversal for separate descendant entries to be checked.
-Declarations requesting different modes for the same readable resolved destination fail
-before the task changes any permissions. Destinations hidden by inaccessible directories
-are checked again after access is restored, before applying modes within that tree.
-Keep one mode for each destination.
-Files with multiple hard links are refused, including within recursive trees:
-changing their mode would also change every other name for the same file.
-Give the managed file an independent copy before retrying. The external-target
-opt-in does not bypass this check.
+Missing targets are not created. Permission convergence follows these rules:
+
+- **Recursive directories:** A directory entry applies recursively. Directories
+  gain execute bits for each permission class with read access, and ordinary
+  files have execute bits cleared. Recursion leaves sockets, named pipes, and
+  other special files alone; give executable files their own entries.
+- **Explicit descendants:** Separate descendant entries are excluded from
+  recursive ancestors regardless of ordering or parallel execution, including
+  when a parent is reached through a symlink. Parent modes must still allow
+  owner traversal for descendant entries to be checked.
+- **Conflicting modes:** Declarations requesting different modes for the same
+  readable resolved destination fail before any permissions change. Destinations
+  hidden by inaccessible directories are checked again after access is restored,
+  before applying modes within that tree. Keep one mode for each destination.
+- **Multiple hard links:** Files with multiple hard links are refused,
+  including within recursive trees, because changing their mode would also
+  change every other name for the same file. Give the managed file an
+  independent copy before retrying; the external-target opt-in does not bypass
+  this check.
 
 When a directory lacks owner read or traversal access, apply temporarily grants
 owner read and traversal to inspect its contents. Directory modes are applied

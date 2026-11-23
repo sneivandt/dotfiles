@@ -10,7 +10,7 @@ if ($parseErrors.Count -gt 0)
     throw "Profile parse errors: $parseErrors"
 }
 $definitions = @{}
-foreach ($name in @('Prompt', 'Format-PromptPath', 'Test-PromptRoot', 'dot', 'Add-PathEntry'))
+foreach ($name in @('Prompt', 'Format-PromptPath', 'Test-PromptRoot', 'dot', 'Add-PathEntry', 'Resolve-ExecutablePath'))
 {
     $definition = $ast.Find({
             param($node)
@@ -234,7 +234,37 @@ foreach ($case in $cases)
         {
             throw 'Equivalent directory separators and trailing slashes must not duplicate PATH entries.'
         }
-        Write-Output 'PASS: literal PATH directories, file rejection and idempotency'
+        $systemDir = Join-Path $pathFixture 'system-bin'
+        [IO.Directory]::CreateDirectory($systemDir) | Out-Null
+        $sep = [IO.Path]::PathSeparator
+        $env:PATH = "$systemDir$sep$directory"
+        Add-PathEntry -Directory $directory -Prepend
+        if ($env:PATH -cne "$directory$sep$systemDir")
+        {
+            throw "Prepending must promote an existing PATH entry ahead of system directories: $env:PATH"
+        }
+        $env:PATH = $alternateDirectory
+        Add-PathEntry -Directory $directory -Prepend
+        if ($env:PATH -cne $alternateDirectory)
+        {
+            throw 'Prepending an already-leading equivalent PATH entry must remain idempotent.'
+        }
+        if ([IO.Path]::DirectorySeparatorChar -eq '/')
+        {
+            $linkTarget = Join-Path $pathFixture 'real-pwsh'
+            $linkAliasA = Join-Path $pathFixture 'bin-pwsh'
+            $linkAliasB = Join-Path $pathFixture 'usr-bin-pwsh'
+            [IO.File]::WriteAllText($linkTarget, "#!/bin/sh`n")
+            New-Item -ItemType SymbolicLink -Path $linkAliasA -Target $linkTarget | Out-Null
+            New-Item -ItemType SymbolicLink -Path $linkAliasB -Target $linkTarget | Out-Null
+            $resolvedA = Resolve-ExecutablePath -Path $linkAliasA
+            $resolvedB = Resolve-ExecutablePath -Path $linkAliasB
+            if ($resolvedA -cne $resolvedB -or $resolvedA -cne $linkTarget)
+            {
+                throw "Symlinked pwsh executables must resolve identically: '$resolvedA' vs '$resolvedB'"
+            }
+        }
+        Write-Output 'PASS: literal PATH directories, prepending, symlink resolution, file rejection and idempotency'
     }
     finally
     {

@@ -78,12 +78,23 @@ impl<'a> ExecutionPlan<'a> {
 pub(crate) struct RunCoordinator<'a> {
     ctx: &'a Context,
     log: &'a Arc<Logger>,
+    profile: Option<&'a str>,
 }
 
 impl<'a> RunCoordinator<'a> {
     /// Create a coordinator for one command run.
     pub(crate) const fn new(ctx: &'a Context, log: &'a Arc<Logger>) -> Self {
-        Self { ctx, log }
+        Self {
+            ctx,
+            log,
+            profile: None,
+        }
+    }
+
+    /// Attach the resolved profile name so delegated children preserve it.
+    pub(crate) const fn with_profile(mut self, profile: &'a str) -> Self {
+        self.profile = Some(profile);
+        self
     }
 
     /// Execute an application plan to completion.
@@ -99,7 +110,13 @@ impl<'a> RunCoordinator<'a> {
         let summary = if let Some(restart) = plan.restart.take() {
             self.execute_with_restart(plan.tasks, restart)?
         } else {
-            Some(run_task_graph(plan.tasks, self.ctx, self.log, None)?)
+            Some(run_task_graph(
+                plan.tasks,
+                self.ctx,
+                self.log,
+                None,
+                self.profile,
+            )?)
         };
 
         summary.map_or(Ok(()), |summary| finish_run(self.ctx, self.log, &summary))
@@ -113,13 +130,13 @@ impl<'a> RunCoordinator<'a> {
         let boundary_closure = dependency_closure(&tasks, restart.boundary.clone())?;
         if boundary_closure.is_empty() {
             self.log.separate_after_transition();
-            return run_task_graph(tasks, self.ctx, self.log, None).map(Some);
+            return run_task_graph(tasks, self.ctx, self.log, None, self.profile).map(Some);
         }
 
         let (prefix, remaining): (Vec<_>, Vec<_>) = tasks
             .into_iter()
             .partition(|task| boundary_closure.contains(&task.task_id()));
-        let mut summary = run_task_graph(prefix, self.ctx, self.log, None)?;
+        let mut summary = run_task_graph(prefix, self.ctx, self.log, None, self.profile)?;
 
         if self.ctx.is_cancelled() || summary.was_interrupted() {
             return Ok(Some(summary));
@@ -141,7 +158,7 @@ impl<'a> RunCoordinator<'a> {
             BoundaryAction::Stop | BoundaryAction::Restart => return Ok(Some(summary)),
         }
 
-        let next = run_task_graph(remaining, self.ctx, self.log, Some(&summary))?;
+        let next = run_task_graph(remaining, self.ctx, self.log, Some(&summary), self.profile)?;
         summary.merge(next);
         Ok(Some(summary))
     }
@@ -218,12 +235,13 @@ fn run_task_graph(
     ctx: &Context,
     log: &Arc<Logger>,
     prior: Option<&crate::engine::scheduler::ExecutionSummary>,
+    profile: Option<&str>,
 ) -> Result<crate::engine::scheduler::ExecutionSummary> {
     if tasks.is_empty() {
         return Ok(crate::engine::scheduler::ExecutionSummary::default());
     }
 
-    let (phase, mut summary) = PreparedPhase::prepare(tasks, ctx, log, prior)?;
+    let (phase, mut summary) = PreparedPhase::prepare(tasks, ctx, log, prior, profile)?;
     let mut combined_prior = prior.cloned().unwrap_or_default();
     combined_prior.merge(summary.clone());
     summary.merge(phase.run(ctx, log, &combined_prior));

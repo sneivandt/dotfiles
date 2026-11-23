@@ -163,7 +163,7 @@ dotfiles update --only systemd --with-deps --dry-run
 ```
 
 Inspect the graph first: the systemd example adds package work, AUR setup,
-custom package preparation, symlinks, and file permissions where applicable.
+custom package preparation, symlinks, and the dotfiles launcher where applicable.
 Other selections, such as `git-hooks`, can also add repository synchronization.
 `--skip` is applied after expansion, so it can remove a prerequisite again.
 `--with-deps` is available only for update and update graphs.
@@ -331,10 +331,13 @@ Home-link actions read `copy <home path> from <source>`. Links that point
 directly to their configured checkout entries become independent copies.
 Hard links within a directory copy still share a file inside that copy.
 Linux preserves holes in sparse files when the source filesystem reports those extents.
-Links through another home path are preserved. On Linux, removal leaves the
-managed link in place if a staged file or directory has a different owner or
-group from its source, or if an ACL or extended attribute cannot be preserved.
-It does not request elevated privileges to change ownership.
+Links through another home path are preserved. On Linux, removal preserves
+user extended attributes (`user.*`) and ACLs (`system.posix_acl_*` and
+`system.nfs4_acl`), while skipping host-managed security labels and
+capabilities. It leaves the managed link in place if a staged file or
+directory has a different owner or group from its source, or if a preserved
+ACL or extended attribute cannot be copied. It does not request elevated
+privileges to change ownership.
 
 **Remove is not rollback.** The copies contain current configured content,
 not your pre-install files. Missing targets stay missing. Use

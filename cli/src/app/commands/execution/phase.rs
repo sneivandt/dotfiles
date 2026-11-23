@@ -27,25 +27,25 @@ impl<'a> PreparedPhase<'a> {
         ctx: &Context,
         log: &Arc<Logger>,
         prior: Option<&ExecutionSummary>,
+        profile: Option<&str>,
     ) -> Result<(Self, ExecutionSummary)> {
         let task_count = tasks.len();
         let declared = resolve_task_graph(&tasks, log)?;
         let has_provider =
             |id: &TaskId| declared.contains(id) || prior.is_some_and(|s| s.outcome(id).is_some());
         let mut inputs = crate::engine::AssessmentInputs::new(&has_provider);
-        let mut assessments = if ctx.is_cancelled() {
-            HashMap::new()
-        } else {
-            tasks
-                .iter()
-                .map(|task| (task.task_id(), task.assess(ctx, &mut inputs)))
-                .collect()
-        };
+        let mut assessments = HashMap::new();
+        for task in &tasks {
+            if ctx.is_cancelled() {
+                break;
+            }
+            assessments.insert(task.task_id(), task.assess(ctx, &mut inputs));
+        }
         let mut graph = ResolvedTaskGraph::resolve_assessed(&tasks, &assessments)?;
         let summary = if ctx.is_cancelled() {
             ExecutionSummary::default()
         } else {
-            ElevationBroker::new(ctx, log).prepare(&mut tasks, &assessments, &graph)
+            ElevationBroker::new(ctx, log, profile).prepare(&mut tasks, &assessments, &graph)
         };
         if tasks.len() != task_count {
             graph = ResolvedTaskGraph::resolve_assessed(&tasks, &assessments)?;

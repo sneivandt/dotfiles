@@ -11,6 +11,7 @@ fn elevated_child_args_scope_the_run_to_the_elevating_selectors() {
         &["developer-mode"],
         std::path::Path::new("fixture-root"),
         None,
+        None,
     );
 
     assert_eq!(
@@ -41,9 +42,19 @@ fn elevated_child_args_preserve_configuration_flags() {
         &["developer-mode"],
         std::path::Path::new(r"C:\resolved repo"),
         Some(std::path::Path::new(r"\\server\resolved overlay")),
+        Some("desktop"),
     );
 
-    assert_eq!(&built[..3], &args(&["update", "--profile", "desktop",])[..]);
+    assert_eq!(
+        built.iter().filter(|arg| *arg == "--profile").count(),
+        1,
+        "resolved profile should appear once: {built:?}"
+    );
+    assert!(
+        built
+            .windows(2)
+            .any(|pair| pair == ["--profile", "desktop"])
+    );
     assert!(built.contains(&"--only".to_string()));
     assert_eq!(
         &built[built.len() - 4..],
@@ -55,6 +66,48 @@ fn elevated_child_args_preserve_configuration_flags() {
         ])
     );
     assert!(!built.iter().any(|arg| arg.contains("relative-")));
+}
+
+#[test]
+fn elevated_child_args_inject_and_replace_resolved_profile() {
+    for (input, expect_dry_run) in [
+        (args(&["update"]), false),
+        (args(&["update", "-p", "old"]), false),
+        (args(&["update", "-p=old"]), false),
+        (args(&["update", "-pold"]), false),
+        (args(&["update", "-np", "old"]), true),
+        (args(&["update", "--profile", "old"]), false),
+        (args(&["update", "--profile=old"]), false),
+    ] {
+        let built = build_elevated_child_args(
+            &input,
+            &["developer-mode"],
+            std::path::Path::new("fixture-root"),
+            None,
+            Some("resolved"),
+        );
+
+        assert_eq!(
+            built.iter().filter(|arg| *arg == "--profile").count(),
+            1,
+            "input={input:?}, built={built:?}"
+        );
+        assert!(
+            built
+                .windows(2)
+                .any(|pair| pair == ["--profile", "resolved"]),
+            "input={input:?}, built={built:?}"
+        );
+        assert!(
+            !built.iter().any(|arg| arg.contains("old")),
+            "stale profile must be stripped: input={input:?}, built={built:?}"
+        );
+        assert_eq!(
+            built.iter().any(|arg| arg == "-n"),
+            expect_dry_run,
+            "short cluster flags before -p must be preserved: input={input:?}, built={built:?}"
+        );
+    }
 }
 
 #[test]
@@ -84,6 +137,7 @@ fn elevated_child_args_drop_inherited_task_filters() {
             &["developer-mode"],
             std::path::Path::new("fixture-root"),
             None,
+            None,
         );
 
         assert_eq!(built.iter().filter(|arg| *arg == "--only").count(), 1);
@@ -107,6 +161,7 @@ fn elevated_child_selection_does_not_expand_the_parents_dependency_closure() {
         ]),
         &["developer-mode"],
         std::path::Path::new("fixture-root"),
+        None,
         None,
     );
     let parsed =
@@ -150,6 +205,7 @@ fn elevated_child_args_do_not_duplicate_repeated_flags() {
         &args(&["update", "--no-parallel", "--elevated-child"]),
         &["developer-mode"],
         std::path::Path::new("fixture-root"),
+        None,
         None,
     );
 
@@ -311,7 +367,7 @@ fn unavailable_elevation_prunes_roots_and_transitive_dependents() {
     let ctx = ctx.with_non_interactive(true);
 
     let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).expect("valid graph");
-    let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
+    let summary = ElevationBroker::new(&ctx, &log, None).prepare(&mut tasks, &assessments, &graph);
 
     assert_eq!(
         tasks.iter().map(|task| task.name()).collect::<Vec<_>>(),
@@ -357,7 +413,8 @@ fn unavailable_elevation_preserves_task_presentation_metadata() {
         let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).expect("valid graph");
         let (ctx, log) = execution_context(false);
         let ctx = ctx.with_non_interactive(true).with_require_complete(strict);
-        let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
+        let summary =
+            ElevationBroker::new(&ctx, &log, None).prepare(&mut tasks, &assessments, &graph);
 
         assert!(tasks.is_empty());
         assert_eq!(summary.outcome(&task.task_id()), Some(TaskOutcome::Unmet));
@@ -418,7 +475,7 @@ fn elevated_child_does_not_request_elevation_again() {
     )]);
     let (ctx, log) = elevated_child_context();
     let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).unwrap();
-    let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
+    let summary = ElevationBroker::new(&ctx, &log, None).prepare(&mut tasks, &assessments, &graph);
     assert_eq!(
         tasks.len(),
         1,
@@ -498,7 +555,7 @@ fn windows_broker_does_not_delegate_user_scoped_assessments() {
     let (base, log) = execution_context(false);
     let ctx = crate::test_helpers::make_windows_context(base.root().to_path_buf(), None)
         .with_non_interactive(true);
-    let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
+    let summary = ElevationBroker::new(&ctx, &log, None).prepare(&mut tasks, &assessments, &graph);
     assert_eq!(
         tasks.len(),
         1,
@@ -520,9 +577,292 @@ fn strict_completion_counts_unavailable_elevation_as_failure() {
     let ctx = ctx.with_non_interactive(true).with_require_complete(true);
 
     let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).expect("valid graph");
-    let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
+    let summary = ElevationBroker::new(&ctx, &log, None).prepare(&mut tasks, &assessments, &graph);
 
     assert!(tasks.is_empty());
     assert_eq!(summary.failure_count(), 1);
     assert_eq!(summary.outcome(&root.task_id()), Some(TaskOutcome::Unmet));
+}
+
+#[test]
+fn cancellation_during_assessment_stops_remaining_task_assessments() {
+    use crate::app::commands::error::CommandInterrupted;
+
+    struct CancellingAssessTask {
+        token: crate::engine::CancellationToken,
+    }
+    impl Task for CancellingAssessTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("Cancelling assess")
+        }
+        fn should_run(&self, _ctx: &Context) -> bool {
+            self.token.cancel();
+            true
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            panic!("cancelled task must not run");
+        }
+    }
+
+    struct MustNotAssessTask {
+        assessed: Arc<AtomicUsize>,
+    }
+    impl Task for MustNotAssessTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("Later task")
+        }
+        fn should_run(&self, _ctx: &Context) -> bool {
+            self.assessed.fetch_add(1, Ordering::SeqCst);
+            true
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            panic!("cancelled task must not run");
+        }
+    }
+
+    let token = crate::engine::CancellationToken::new();
+    let assessed = Arc::new(AtomicUsize::new(0));
+    let first = CancellingAssessTask {
+        token: token.clone(),
+    };
+    let second = MustNotAssessTask {
+        assessed: Arc::clone(&assessed),
+    };
+    let (ctx, log) = execution_context(false);
+    let ctx = ctx.with_cancellation(token);
+
+    let tasks: Vec<&dyn Task> = vec![&first, &second];
+    let err = run_tasks_to_completion(tasks, &ctx, &log).unwrap_err();
+    assert!(
+        err.downcast_ref::<CommandInterrupted>().is_some(),
+        "expected CommandInterrupted, got {err:#}"
+    );
+    assert_eq!(
+        assessed.load(Ordering::SeqCst),
+        0,
+        "remaining tasks must not be assessed once cancelled"
+    );
+}
+
+#[test]
+fn failed_elevated_child_is_preserved_even_when_parent_is_cancelled() {
+    use super::super::elevation::ElevationPlan;
+    use crate::infra::logging::TaskStatus;
+
+    let trace = trace();
+    let root = ProbeTask::new("Developer Mode", 1, &trace);
+    let dependent = ProbeTask::new("Home symlinks", 2, &trace).depends_on(&[1]);
+    let mut tasks: Vec<&dyn Task> = vec![&root, &dependent];
+    let assessments = HashMap::from([(
+        root.task_id(),
+        TaskAssessment::applicable().with_elevation(true),
+    )]);
+    let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).expect("valid graph");
+    let token = crate::engine::CancellationToken::new();
+    let (ctx, log) = execution_context(false);
+    let ctx = ctx.with_cancellation(token.clone());
+
+    let summary = ElevationBroker::new(&ctx, &log, None).prepare_with(
+        &mut tasks,
+        &assessments,
+        &graph,
+        |_, _, _, _, _| {
+            token.cancel();
+            ElevationPlan::Failed {
+                reason: "elevated step failed",
+            }
+        },
+    );
+
+    assert!(tasks.is_empty());
+    assert_eq!(summary.failure_count(), 1);
+    assert_eq!(summary.outcome(&root.task_id()), Some(TaskOutcome::Unmet));
+    assert_eq!(
+        summary.outcome(&dependent.task_id()),
+        Some(TaskOutcome::Blocked)
+    );
+    let root_entry = log
+        .task_entries()
+        .into_iter()
+        .find(|entry| entry.name == "Developer Mode")
+        .expect("root failure must be logged");
+    assert_eq!(root_entry.status, TaskStatus::Failed);
+    assert_eq!(root_entry.message.as_deref(), Some("elevated step failed"));
+}
+
+#[test]
+fn windows_elevation_maps_child_and_parent_interrupts() {
+    use super::super::elevation::{ElevationPlan, windows_elevation_result};
+    use crate::infra::elevation::ElevationOutcome;
+    use crate::infra::exec::{ExecError, ExecResult};
+
+    let log = Logger::test();
+    assert_eq!(
+        windows_elevation_result(&log, Ok(ElevationOutcome::Failed(130))),
+        ElevationPlan::Interrupted
+    );
+    let parent_cancelled = anyhow::Error::new(ExecError::Cancelled {
+        command: "pwsh".into(),
+        result: ExecResult::failure("", "", None),
+    })
+    .context("failed to start elevated process");
+    assert_eq!(
+        windows_elevation_result(&log, Err(parent_cancelled)),
+        ElevationPlan::Interrupted
+    );
+    let direct_cancelled = anyhow::Error::new(ExecError::Cancelled {
+        command: "pwsh".into(),
+        result: ExecResult::failure("", "", None),
+    });
+    assert_eq!(
+        windows_elevation_result(&log, Err(direct_cancelled)),
+        ElevationPlan::Interrupted
+    );
+    assert_eq!(
+        windows_elevation_result(&log, Ok(ElevationOutcome::Failed(1))),
+        ElevationPlan::Failed {
+            reason: "elevated step failed",
+        }
+    );
+    let helper_timeout = anyhow::Error::new(ExecError::TimedOut {
+        command: "pwsh".into(),
+        timeout: std::time::Duration::from_secs(30),
+        result: ExecResult::failure("", "", None),
+    })
+    .context("failed to start elevated process");
+    assert_eq!(
+        windows_elevation_result(&log, Err(helper_timeout)),
+        ElevationPlan::Failed {
+            reason: "failed to request elevation",
+        }
+    );
+}
+
+#[test]
+fn windows_elevation_broker_distinguishes_parent_cancel_from_failure() {
+    use super::super::elevation::windows_elevation_result;
+    use crate::infra::exec::{ExecError, ExecResult};
+    use crate::infra::logging::TaskStatus;
+
+    for cancelled_err in [true, false] {
+        let trace = trace();
+        let root = ProbeTask::new("Developer Mode", 1, &trace);
+        let dependent = ProbeTask::new("Home symlinks", 2, &trace).depends_on(&[1]);
+        let mut tasks: Vec<&dyn Task> = vec![&root, &dependent];
+        let assessments = HashMap::from([(
+            root.task_id(),
+            TaskAssessment::applicable().with_elevation(true),
+        )]);
+        let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).expect("valid graph");
+        let token = crate::engine::CancellationToken::new();
+        let (ctx, broker_log) = execution_context(false);
+        let ctx = ctx.with_cancellation(token.clone());
+
+        let summary = ElevationBroker::new(&ctx, &broker_log, None).prepare_with(
+            &mut tasks,
+            &assessments,
+            &graph,
+            |_, target_log, _, _, _| {
+                token.cancel();
+                let result = if cancelled_err {
+                    Err(anyhow::Error::new(ExecError::Cancelled {
+                        command: "pwsh".into(),
+                        result: ExecResult::failure("", "", None),
+                    })
+                    .context("failed to start elevated process"))
+                } else {
+                    Err(anyhow::anyhow!("fixture: helper failed to start"))
+                };
+                windows_elevation_result(target_log, result)
+            },
+        );
+
+        assert!(tasks.is_empty());
+        let root_entry = broker_log
+            .task_entries()
+            .into_iter()
+            .find(|entry| entry.name == "Developer Mode")
+            .expect("root result must be logged");
+        if cancelled_err {
+            assert_eq!(summary.failure_count(), 0);
+            assert!(summary.was_interrupted());
+            assert_eq!(
+                summary.outcome(&root.task_id()),
+                Some(TaskOutcome::Cancelled)
+            );
+            assert_eq!(
+                summary.outcome(&dependent.task_id()),
+                Some(TaskOutcome::Cancelled)
+            );
+            assert_eq!(root_entry.status, TaskStatus::Interrupted);
+        } else {
+            assert_eq!(summary.failure_count(), 1);
+            assert_eq!(summary.outcome(&root.task_id()), Some(TaskOutcome::Unmet));
+            assert_eq!(
+                summary.outcome(&dependent.task_id()),
+                Some(TaskOutcome::Blocked)
+            );
+            assert_eq!(root_entry.status, TaskStatus::Failed);
+            assert_eq!(
+                root_entry.message.as_deref(),
+                Some("failed to request elevation")
+            );
+        }
+    }
+}
+
+#[test]
+fn elevated_child_args_place_injected_flags_before_double_dash_terminator() {
+    let built = build_elevated_child_args(
+        &args(&["update", "--"]),
+        &["developer-mode"],
+        std::path::Path::new("fixture-root"),
+        Some(std::path::Path::new("fixture-overlay")),
+        Some("desktop"),
+    );
+    let linked = crate::infra::logging::records::child_args(&built, "parent-run");
+
+    let terminator = linked
+        .iter()
+        .position(|arg| arg == "--")
+        .expect("trailing terminator should be preserved");
+    let before = &linked[..terminator];
+    assert!(
+        before
+            .windows(2)
+            .any(|pair| pair == ["--profile", "desktop"])
+    );
+    assert!(
+        before
+            .windows(2)
+            .any(|pair| pair == ["--only", "developer-mode"])
+    );
+    assert!(before.iter().any(|arg| arg == "--no-parallel"));
+    assert!(before.iter().any(|arg| arg == "--elevated-child"));
+    assert!(
+        before
+            .windows(2)
+            .any(|pair| pair == ["--root", "fixture-root"])
+    );
+    assert!(
+        before
+            .windows(2)
+            .any(|pair| pair == ["--overlay", "fixture-overlay"])
+    );
+    assert!(
+        before
+            .windows(2)
+            .any(|pair| pair == ["--parent-run-id", "parent-run"])
+    );
+    assert_eq!(&linked[terminator..], &["--"]);
+
+    let parsed =
+        crate::app::cli::Cli::try_parse_from(std::iter::once("dotfiles".to_string()).chain(linked))
+            .expect("elevated child args with trailing `--` must remain valid CLI input");
+    assert_eq!(parsed.parent_run_id.as_deref(), Some("parent-run"));
+    let crate::app::cli::Command::Update(opts) = parsed.command else {
+        panic!("expected Update command");
+    };
+    assert_eq!(opts.repository.profile.as_deref(), Some("desktop"));
+    assert!(opts.elevated_child);
 }

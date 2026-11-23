@@ -11,14 +11,29 @@ struct GlobMatch {
 }
 
 pub(super) fn expand_glob_patterns(symlinks: &[Symlink], fallback: &Path) -> Result<Vec<Symlink>> {
+    expand_glob_patterns_with_policy(symlinks, fallback, false)
+}
+
+pub(super) fn expand_optional_glob_patterns(
+    symlinks: &[Symlink],
+    fallback: &Path,
+) -> Result<Vec<Symlink>> {
+    expand_glob_patterns_with_policy(symlinks, fallback, true)
+}
+
+fn expand_glob_patterns_with_policy(
+    symlinks: &[Symlink],
+    fallback: &Path,
+    allow_empty: bool,
+) -> Result<Vec<Symlink>> {
     let mut expanded = Vec::new();
     for symlink in symlinks {
-        expanded.extend(expand_one(symlink, fallback)?);
+        expanded.extend(expand_one(symlink, fallback, allow_empty)?);
     }
     Ok(expanded)
 }
 
-fn expand_one(symlink: &Symlink, fallback: &Path) -> Result<Vec<Symlink>> {
+fn expand_one(symlink: &Symlink, fallback: &Path, allow_empty: bool) -> Result<Vec<Symlink>> {
     validate_supported_pattern("source", &symlink.source)?;
     if let Some(target) = &symlink.target {
         validate_supported_pattern("target", target)?;
@@ -63,6 +78,9 @@ fn expand_one(symlink: &Symlink, fallback: &Path) -> Result<Vec<Symlink>> {
         )
     })?;
     if matches.is_empty() {
+        if allow_empty {
+            return Ok(Vec::new());
+        }
         bail!(
             "symlink glob '{}' matched no entries under {}",
             symlink.source,
@@ -288,5 +306,36 @@ mod tests {
 
         let error = expand_glob_patterns(&[entry], fixture.path()).unwrap_err();
         assert!(format!("{error:#}").contains("UTF-8"), "{error:#}");
+    }
+
+    #[test]
+    fn optional_glob_allows_absent_sources_but_surfaces_non_enumerable_directory_errors() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir().unwrap();
+        let absent = fixture.path().join("absent-overlay");
+        assert!(
+            expand_optional_glob_patterns(&[symlink("apm/config/*", None)], &absent)
+                .unwrap()
+                .is_empty()
+        );
+
+        let root = fixture.path().join("repo");
+        let dir = root.join("symlinks/apm/config");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("desktop.yml"), "name: desktop\n").unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o111)).unwrap();
+        let probe = std::fs::read_dir(&dir);
+        let result = expand_optional_glob_patterns(&[symlink("apm/config/*", None)], &root);
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if probe.is_ok() {
+            return;
+        }
+        assert_eq!(
+            probe.unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        let error = format!("{:#}", result.unwrap_err());
+        assert_mentions(&error, &["expanding symlink glob", "reading directory"]);
     }
 }

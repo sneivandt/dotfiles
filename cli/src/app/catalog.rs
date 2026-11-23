@@ -21,7 +21,9 @@ use crate::domains::git::git_config::ConfigureGit;
 use crate::domains::git::hooks::{InstallGitHooks, UninstallGitHooks};
 use crate::domains::overlay::scripts::ReportOverlayScriptSnapshot;
 use crate::domains::packages::arch_recipes::{ConfigureParu, UpdateCustomPackageVersions};
-use crate::domains::packages::install::{InstallAurPackages, InstallPackages, InstallParu};
+use crate::domains::packages::install::{
+    InstallAurPackages, InstallPackages, InstallParu, PacmanInventoryCache,
+};
 use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::domains::shell::completions::GenerateCompletions;
 use crate::domains::shell::login_shell::ConfigureShell;
@@ -93,8 +95,12 @@ pub(crate) fn update_tasks_for_run(
     apm_mode: ApmPackageMode,
 ) -> Vec<Box<dyn Task>> {
     use crate::infra::provisioning::{FIRST_LOGIN_UNIT, FIRST_LOGIN_UNIT_PATH};
+    let pacman_inventory = PacmanInventoryCache::new();
     let package_stability = Arc::new(
-        crate::domains::packages::install::package_stability_requirement(store.packages.clone()),
+        crate::domains::packages::install::package_stability_requirement_with_cache(
+            store.packages.clone(),
+            Some(pacman_inventory.clone()),
+        ),
     );
     let conditional_packages =
         |inner: Box<dyn Task>, blocking: &[TaskId], ordering: &[TaskId]| -> Box<dyn Task> {
@@ -138,9 +144,14 @@ pub(crate) fn update_tasks_for_run(
             GenerateCompletions::new(generate_zsh_completions, generate_powershell_completions),
             &[id::<UpdateRepository>()],
         ),
-        Box::new(InstallPackages::new(store.packages.clone())),
-        Box::new(InstallParu),
-        Box::new(InstallAurPackages::new(store.packages.clone())),
+        Box::new(
+            InstallPackages::new(store.packages.clone())
+                .with_inventory_cache(pacman_inventory.clone()),
+        ),
+        Box::new(InstallParu::new().with_inventory_cache(pacman_inventory.clone())),
+        Box::new(
+            InstallAurPackages::new(store.packages.clone()).with_inventory_cache(pacman_inventory),
+        ),
         Box::new(ConfigureParu::new(store.paru_base.clone())),
         Box::new(UpdateCustomPackageVersions),
         with_ordering_deps(

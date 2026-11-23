@@ -1,11 +1,14 @@
 //! Tasks: install system packages.
 
-use anyhow::{Context as _, Result};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+
+use anyhow::{Context as _, Result};
 
 use crate::domains::packages::config::packages::Package;
 use crate::domains::packages::resources::package::{
-    PackageManager, PackageResource, install_missing_packages,
+    InstalledPackages, PackageManager, PackageResource, get_installed_packages,
+    install_missing_packages,
 };
 use crate::engine::Resource as _;
 use crate::engine::{
@@ -14,7 +17,7 @@ use crate::engine::{
     task_metadata,
 };
 use crate::infra::ConfigHandle;
-use crate::infra::exec::ExecError;
+use crate::infra::exec::{ExecError, Executor};
 use crate::infra::logging::OutputExt as _;
 
 mod paru;
@@ -26,23 +29,122 @@ use planning::{
     select_packages,
 };
 
+/// Execution phase owning a cached `pacman -Q` snapshot.
+///
+/// Assessment probes share one snapshot; entering task execution refreshes
+/// once so external package changes made between assessment and execution are
+/// observed while sibling execution tasks still share a single query.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum InventoryPhase {
+    /// Pre-execution elevation and ordering-requirement probes.
+    Assessment,
+    /// Task execution planning (`InstallPackages` / `InstallAurPackages`).
+    Execution,
+}
+
+/// Shared per-run cache for `pacman -Q` installed-package snapshots.
+///
+/// Shared across `InstallPackages`, `InstallParu`, `InstallAurPackages`, and
+/// package-stability requirements within one command run. Assessment probes
+/// share one snapshot; entering execution refreshes once so external changes
+/// made after assessment are visible, and any package mutation invalidates
+/// the snapshot immediately before running.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct PacmanInventoryCache(Arc<Mutex<Option<(InventoryPhase, InstalledPackages)>>>);
+
+impl PacmanInventoryCache {
+    /// Create an empty cache for a single command run.
+    #[must_use]
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    /// Return the cached `pacman -Q` snapshot for `phase`, querying once on a
+    /// miss or phase transition without holding the mutex across subprocess
+    /// execution.
+    pub(super) fn query(
+        &self,
+        phase: InventoryPhase,
+        manager: PackageManager,
+        executor: &dyn Executor,
+    ) -> Result<InstalledPackages> {
+        if !matches!(manager, PackageManager::Pacman | PackageManager::Paru) {
+            return get_installed_packages(manager, executor);
+        }
+        let cached = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .filter(|(cached_phase, _)| *cached_phase == phase)
+            .map(|(_, installed)| installed.clone());
+        if let Some(cached) = cached {
+            return Ok(cached);
+        }
+        let queried = get_installed_packages(PackageManager::Pacman, executor)?;
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((phase, queried.clone()));
+        Ok(queried)
+    }
+
+    /// Drop any cached snapshot so the next query reads live pacman state.
+    pub(crate) fn invalidate(&self) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
+}
+
+pub(super) fn query_installed_with_cache(
+    cache: Option<&PacmanInventoryCache>,
+    phase: InventoryPhase,
+    manager: PackageManager,
+    executor: &dyn Executor,
+) -> Result<InstalledPackages> {
+    cache.map_or_else(
+        || get_installed_packages(manager, executor),
+        |cache| cache.query(phase, manager, executor),
+    )
+}
+
 /// Prove selected package work cannot invalidate a consumer's observed inputs.
+#[cfg(test)]
 pub(crate) fn package_stability_requirement(
     packages: ConfigHandle<Vec<Package>>,
 ) -> Requirement<'static> {
+    package_stability_requirement_with_cache(packages, None)
+}
+
+/// Prove selected package work cannot invalidate a consumer's observed inputs,
+/// reusing a shared per-run pacman inventory cache when provided.
+pub(crate) fn package_stability_requirement_with_cache(
+    packages: ConfigHandle<Vec<Package>>,
+    inventory_cache: Option<PacmanInventoryCache>,
+) -> Requirement<'static> {
     Requirement::new("package-inputs-stable", move |ctx, _| {
-        check_package_stability(ctx, packages.get())
+        check_package_stability(ctx, packages.get(), inventory_cache.as_ref())
     })
 }
 
-fn check_package_stability(ctx: &Context, packages: &[Package]) -> Result<RequirementState<()>> {
+fn check_package_stability(
+    ctx: &Context,
+    packages: &[Package],
+    inventory_cache: Option<&PacmanInventoryCache>,
+) -> Result<RequirementState<()>> {
     if !ctx.platform().uses_pacman() || !ctx.which("pacman") {
         return Ok(RequirementState::unsatisfied(
             "package stability requires a supported pacman inventory",
         ));
     }
-    let installed =
-        super::resources::package::get_installed_packages(PackageManager::Pacman, ctx.executor())?;
+    let installed = query_installed_with_cache(
+        inventory_cache,
+        InventoryPhase::Assessment,
+        PackageManager::Pacman,
+        ctx.executor(),
+    )?;
     if packages
         .iter()
         .any(|package| !installed.contains_package(&package.name))
@@ -63,9 +165,29 @@ fn check_package_stability(ctx: &Context, packages: &[Package]) -> Result<Requir
 // Tasks
 // ---------------------------------------------------------------------------
 
-crate::engine::config_task! {
-    /// Install system packages via pacman or winget.
-    pub struct InstallPackages(Vec<Package>);
+/// Install system packages via pacman or winget.
+#[derive(Debug)]
+pub struct InstallPackages {
+    config: ConfigHandle<Vec<Package>>,
+    inventory_cache: Option<PacmanInventoryCache>,
+}
+
+impl InstallPackages {
+    /// Construct this task with its configuration handle.
+    #[must_use]
+    pub const fn new(config: ConfigHandle<Vec<Package>>) -> Self {
+        Self {
+            config,
+            inventory_cache: None,
+        }
+    }
+
+    /// Share a per-run pacman inventory cache with sibling package tasks.
+    #[must_use]
+    pub(crate) fn with_inventory_cache(mut self, cache: PacmanInventoryCache) -> Self {
+        self.inventory_cache = Some(cache);
+        self
+    }
 }
 
 impl Task for InstallPackages {
@@ -79,17 +201,41 @@ impl Task for InstallPackages {
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        PackageTaskKind::Native.needs_elevation(ctx, self.config.get())
+        PackageTaskKind::Native.needs_elevation(
+            ctx,
+            self.config.get(),
+            self.inventory_cache.as_ref(),
+        )
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        PackageTaskKind::Native.run(ctx, self.config.get())
+        PackageTaskKind::Native.run(ctx, self.config.get(), self.inventory_cache.as_ref())
     }
 }
 
-crate::engine::config_task! {
-    /// Install AUR packages via paru.
-    pub struct InstallAurPackages(Vec<Package>);
+/// Install AUR packages via paru.
+#[derive(Debug)]
+pub struct InstallAurPackages {
+    config: ConfigHandle<Vec<Package>>,
+    inventory_cache: Option<PacmanInventoryCache>,
+}
+
+impl InstallAurPackages {
+    /// Construct this task with its configuration handle.
+    #[must_use]
+    pub const fn new(config: ConfigHandle<Vec<Package>>) -> Self {
+        Self {
+            config,
+            inventory_cache: None,
+        }
+    }
+
+    /// Share a per-run pacman inventory cache with sibling package tasks.
+    #[must_use]
+    pub(crate) fn with_inventory_cache(mut self, cache: PacmanInventoryCache) -> Self {
+        self.inventory_cache = Some(cache);
+        self
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -118,16 +264,33 @@ impl PackageTaskKind {
                 .any(|package| package.is_aur == self.is_aur())
     }
 
-    fn needs_elevation(self, ctx: &Context, packages: &[Package]) -> bool {
+    fn needs_elevation(
+        self,
+        ctx: &Context,
+        packages: &[Package],
+        inventory_cache: Option<&PacmanInventoryCache>,
+    ) -> bool {
         let platform = ctx.platform();
         let (supported, manager, executable) = match self {
             Self::Native => (platform.uses_pacman(), PackageManager::Pacman, "pacman"),
             Self::Aur => (platform.supports_aur(), PackageManager::Paru, "paru"),
         };
-        supported && predict_sudo(ctx, manager, executable, &self.select(packages))
+        supported
+            && predict_sudo(
+                ctx,
+                manager,
+                executable,
+                &self.select(packages),
+                inventory_cache,
+            )
     }
 
-    fn run(self, ctx: &Context, packages: &[Package]) -> Result<TaskResult> {
+    fn run(
+        self,
+        ctx: &Context,
+        packages: &[Package],
+        inventory_cache: Option<&PacmanInventoryCache>,
+    ) -> Result<TaskResult> {
         let selected = self.select(packages);
         if selected.is_empty() {
             let reason = match self {
@@ -141,7 +304,11 @@ impl PackageTaskKind {
             Self::Native => {
                 ctx.trace_fmt(|| format!("{} non-AUR packages to process", selected.len()));
                 return process_requirement(ctx, &native_manager_requirement(), |manager| {
-                    process_operation(ctx, &PackageInstallOperation::new(selected, manager))
+                    process_operation(
+                        ctx,
+                        &PackageInstallOperation::new(selected, manager)
+                            .with_inventory_cache(inventory_cache.cloned()),
+                    )
                 });
             }
             // A preview queries pacman's database but must not require the helper
@@ -164,7 +331,11 @@ impl PackageTaskKind {
             }
         };
 
-        process_operation(ctx, &PackageInstallOperation::new(selected, manager))
+        process_operation(
+            ctx,
+            &PackageInstallOperation::new(selected, manager)
+                .with_inventory_cache(inventory_cache.cloned()),
+        )
     }
 }
 
@@ -190,20 +361,54 @@ impl Task for InstallAurPackages {
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        PackageTaskKind::Aur.needs_elevation(ctx, self.config.get())
+        PackageTaskKind::Aur.needs_elevation(ctx, self.config.get(), self.inventory_cache.as_ref())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        PackageTaskKind::Aur.run(ctx, self.config.get())
+        PackageTaskKind::Aur.run(ctx, self.config.get(), self.inventory_cache.as_ref())
     }
 }
 
 /// Install paru AUR helper.
-#[derive(Debug)]
-pub struct InstallParu;
+#[derive(Debug, Default)]
+pub struct InstallParu {
+    inventory_cache: Option<PacmanInventoryCache>,
+}
 
+impl InstallParu {
+    /// Construct the paru installation task.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            inventory_cache: None,
+        }
+    }
+
+    /// Share a per-run pacman inventory cache so paru builds invalidate it.
+    #[must_use]
+    pub(crate) fn with_inventory_cache(mut self, cache: PacmanInventoryCache) -> Self {
+        self.inventory_cache = Some(cache);
+        self
+    }
+}
+
+#[cfg(test)]
 fn run_paru_install(ctx: &Context, build_root: &Path) -> Result<TaskResult> {
-    process_operation(ctx, &ParuInstallOperation { build_root })
+    run_paru_install_with_cache(ctx, build_root, None)
+}
+
+fn run_paru_install_with_cache(
+    ctx: &Context,
+    build_root: &Path,
+    inventory_cache: Option<&PacmanInventoryCache>,
+) -> Result<TaskResult> {
+    process_operation(
+        ctx,
+        &ParuInstallOperation {
+            build_root,
+            inventory_cache,
+        },
+    )
 }
 
 impl Task for InstallParu {
@@ -234,13 +439,14 @@ impl Task for InstallParu {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        run_paru_install(ctx, &std::env::temp_dir())
+        run_paru_install_with_cache(ctx, &std::env::temp_dir(), self.inventory_cache.as_ref())
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct ParuInstallOperation<'a> {
     build_root: &'a Path,
+    inventory_cache: Option<&'a PacmanInventoryCache>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -341,6 +547,9 @@ impl Operation for ParuInstallOperation<'_> {
             crate::infra::fs::TempGuard::create_unique_dir(self.build_root, "paru-build", "")
                 .context("reserving paru build directory")?;
         clone_paru_from_aur(ctx, guard.path())?;
+        if let Some(cache) = self.inventory_cache {
+            cache.invalidate();
+        }
         build_paru(ctx, guard.path())
             .with_context(|| format!("paru {} attempt failed", plan.action()))?;
 
@@ -383,15 +592,30 @@ impl Operation for ParuInstallOperation<'_> {
 struct PackageInstallOperation {
     packages: Vec<Package>,
     manager: PackageManager,
+    inventory_cache: Option<PacmanInventoryCache>,
 }
 
 impl PackageInstallOperation {
     const fn new(packages: Vec<Package>, manager: PackageManager) -> Self {
-        Self { packages, manager }
+        Self {
+            packages,
+            manager,
+            inventory_cache: None,
+        }
+    }
+
+    fn with_inventory_cache(mut self, inventory_cache: Option<PacmanInventoryCache>) -> Self {
+        self.inventory_cache = inventory_cache;
+        self
     }
 
     fn plan(&self, ctx: &Context) -> Result<PackageInstallPlan> {
-        build_install_plan(ctx, &self.packages, self.manager)
+        build_install_plan(
+            ctx,
+            &self.packages,
+            self.manager,
+            self.inventory_cache.as_ref(),
+        )
     }
 }
 
@@ -442,6 +666,11 @@ impl Operation for PackageInstallOperation {
             ctx.log()
                 .action("install", package, false, &format!("install {package}"));
         };
+        if let Some(cache) = &self.inventory_cache
+            && matches!(self.manager, PackageManager::Pacman | PackageManager::Paru)
+        {
+            cache.invalidate();
+        }
         let report = match install_missing_packages(
             self.manager,
             &missing_refs,

@@ -1,16 +1,17 @@
 //! Task: configure systemd units.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Context as _, Result};
 
 use crate::domains::system::config::systemd_units::{SystemdUnit, UnitScope};
-use crate::domains::system::resources::systemd_unit::SystemdUnitResource;
+use crate::domains::system::resources::systemd_unit::{BatchUnitProbe, SystemdUnitResource};
 use crate::engine::{
-    Context, IntrinsicState, ProcessOpts, Requirement, RequirementState, ResourceState, Task,
-    TaskMeta, TaskResult, process_requirement, process_resources_with_cache,
+    Context, IntrinsicState, ProcessOpts, Requirement, RequirementState, ResourceResult,
+    ResourceState, Task, TaskMeta, TaskResult, process_requirement, process_resources_with_cache,
 };
-use crate::infra::exec::{CommandSpec, OutputLog};
+use crate::infra::exec::{CommandSpec, Executor, OutputLog};
 use crate::infra::logging::OutputExt as _;
 
 crate::engine::config_task! {
@@ -51,28 +52,45 @@ impl Task for ConfigureSystemd {
                 let user_manager = user_manager_available(ctx, self.config.get())?;
                 let graphical_session =
                     graphical_session_active(ctx, self.config.get(), user_manager)?;
+                let executor = ctx.executor_arc();
+                let resources: Vec<_> = self
+                    .config
+                    .get()
+                    .iter()
+                    .map(|entry| {
+                        SystemdUnitResource::from_entry(
+                            entry,
+                            Arc::clone(&executor),
+                            ctx.home(),
+                            target_manager_available(ctx, &entry.scope, user_manager),
+                            graphical_session,
+                        )
+                    })
+                    .collect();
+                let system_batch =
+                    batch_probe_scope_resources(executor.as_ref(), &UnitScope::System, &resources)?;
+                let user_batch =
+                    batch_probe_scope_resources(executor.as_ref(), &UnitScope::User, &resources)?;
                 // Non-current units may still need package-provided inputs.
-                for entry in self.config.get() {
-                    match SystemdUnitResource::from_entry(
-                        entry,
-                        ctx.executor_arc(),
-                        ctx.home(),
-                        target_manager_available(ctx, &entry.scope, user_manager),
-                        graphical_session,
-                    )
-                    .current_state()
-                    .with_context(|| format!("checking systemd unit {}", entry.name))?
+                for resource in &resources {
+                    let batch = match resource.scope {
+                        UnitScope::System => Some(&system_batch),
+                        UnitScope::User => Some(&user_batch),
+                        UnitScope::Invalid(_) => None,
+                    };
+                    match resource_state_with_batch(resource, batch)
+                        .with_context(|| format!("checking systemd unit {}", resource.name))?
                     {
                         ResourceState::Correct => {}
                         ResourceState::Unknown { reason } => {
-                            anyhow::bail!("{}: {reason}", entry.name)
+                            anyhow::bail!("{}: {reason}", resource.name)
                         }
                         state @ (ResourceState::Missing
                         | ResourceState::Incorrect { .. }
                         | ResourceState::Invalid { .. }) => {
                             return Ok(RequirementState::unsatisfied(format!(
                                 "{} is {state}",
-                                entry.name
+                                resource.name
                             )));
                         }
                     }
@@ -126,35 +144,21 @@ impl Task for ConfigureSystemd {
                 .collect();
             let inspect_system_units =
                 !ctx.dry_run() && !crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref());
-            let mut system_units_current = inspect_system_units;
-            let system_reload_required = inspect_system_units
-                && resources
-                    .iter()
-                    .filter(|resource| resource.scope == UnitScope::System)
-                    .any(|resource| match resource.current_state() {
-                        Ok(ResourceState::Correct) => false,
-                        state => {
-                            system_units_current = false;
-                            matches!(
-                                state,
-                                Ok(ResourceState::Missing | ResourceState::Incorrect { .. })
-                            )
-                        }
-                    });
+            let (system_units_current, system_reload_required) =
+                probe_system_reload_state(executor.as_ref(), &resources, inspect_system_units)?;
             reload_daemons(ctx, user_manager_available, system_reload_required)?;
             // Reinspect the whole system scope after a reload or when any unit
             // was unconfirmed. Changes to one unit can affect another.
+            let batch_cache = Mutex::new(ScopeBatchCache::prepare(
+                executor.as_ref(),
+                &resources,
+                system_units_current,
+            )?);
             process_resources_with_cache(
                 ctx,
                 retired.into_iter().chain(resources),
-                &system_units_current,
-                |resource, &current| {
-                    if resource.scope == UnitScope::System && current {
-                        Ok(ResourceState::Correct)
-                    } else {
-                        resource.current_state()
-                    }
-                },
+                &batch_cache,
+                |resource, cache| resolve_cached_unit_state(ctx, resource, cache),
                 &ProcessOpts::lenient("configure").sequential(),
             )
         })
@@ -181,24 +185,168 @@ fn target_manager_available(ctx: &Context, scope: &UnitScope, user_manager: bool
     }
 }
 
+struct ScopeBatchCache {
+    system_units_current: bool,
+    system: HashMap<String, BatchUnitProbe>,
+    user: HashMap<String, BatchUnitProbe>,
+}
+
+impl ScopeBatchCache {
+    fn prepare(
+        executor: &dyn Executor,
+        resources: &[SystemdUnitResource],
+        system_units_current: bool,
+    ) -> ResourceResult<Self> {
+        let system = if system_units_current {
+            HashMap::new()
+        } else {
+            batch_probe_scope_resources(executor, &UnitScope::System, resources)?
+        };
+        let user = batch_probe_scope_resources(executor, &UnitScope::User, resources)?;
+        Ok(Self {
+            system_units_current,
+            system,
+            user,
+        })
+    }
+
+    fn get(&self, scope: &UnitScope, name: &str) -> Option<BatchUnitProbe> {
+        match scope {
+            UnitScope::System => self.system.get(name).cloned(),
+            UnitScope::User => self.user.get(name).cloned(),
+            UnitScope::Invalid(_) => None,
+        }
+    }
+
+    fn invalidate_scope(&mut self, scope: &UnitScope) {
+        match scope {
+            UnitScope::System => self.system.clear(),
+            UnitScope::User => self.user.clear(),
+            UnitScope::Invalid(_) => {}
+        }
+    }
+}
+
+fn probe_system_reload_state(
+    executor: &dyn Executor,
+    resources: &[SystemdUnitResource],
+    inspect_system_units: bool,
+) -> ResourceResult<(bool, bool)> {
+    if !inspect_system_units {
+        return Ok((false, false));
+    }
+    let mut system_units_current = true;
+    let pre_reload_system_batch =
+        batch_probe_scope_resources(executor, &UnitScope::System, resources)?;
+    for resource in resources
+        .iter()
+        .filter(|resource| resource.scope == UnitScope::System)
+    {
+        match resource_state_with_batch(resource, Some(&pre_reload_system_batch)) {
+            Ok(ResourceState::Correct) => {}
+            Ok(ResourceState::Missing | ResourceState::Incorrect { .. }) => {
+                return Ok((false, true));
+            }
+            Err(error) if error.is_cancelled() => return Err(error),
+            Ok(ResourceState::Invalid { .. } | ResourceState::Unknown { .. }) | Err(_) => {
+                system_units_current = false;
+            }
+        }
+    }
+    Ok((system_units_current, false))
+}
+
+fn resolve_cached_unit_state(
+    ctx: &Context,
+    resource: &SystemdUnitResource,
+    cache: &Mutex<ScopeBatchCache>,
+) -> ResourceResult<ResourceState> {
+    let cached = {
+        let guard = cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if resource.scope == UnitScope::System && guard.system_units_current {
+            return Ok(ResourceState::Correct);
+        }
+        guard.get(&resource.scope, &resource.name)
+    };
+    let state = match cached {
+        Some(probe) => match resource.state_from_batch_probe(&probe)? {
+            Some(state) => state,
+            None => resource.current_state()?,
+        },
+        None => resource.current_state()?,
+    };
+    if !ctx.dry_run()
+        && matches!(
+            state,
+            ResourceState::Missing | ResourceState::Incorrect { .. }
+        )
+    {
+        cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .invalidate_scope(&resource.scope);
+    }
+    Ok(state)
+}
+
+fn batch_probe_scope_resources(
+    executor: &dyn Executor,
+    scope: &UnitScope,
+    resources: &[SystemdUnitResource],
+) -> ResourceResult<HashMap<String, BatchUnitProbe>> {
+    let names: Vec<&str> = resources
+        .iter()
+        .filter(|resource| resource.scope == *scope && resource.is_batch_probeable())
+        .map(|resource| resource.name.as_str())
+        .collect();
+    // Propagate typed cancellation; fall back to per-unit discovery on other
+    // batch errors so one scope's failure does not abort unrelated units.
+    match SystemdUnitResource::batch_probe_scope(executor, scope, &names) {
+        Ok(batch) => Ok(batch),
+        Err(error) if error.is_cancelled() => Err(error),
+        Err(_) => Ok(HashMap::new()),
+    }
+}
+
+fn resource_state_with_batch(
+    resource: &SystemdUnitResource,
+    batch: Option<&HashMap<String, BatchUnitProbe>>,
+) -> ResourceResult<ResourceState> {
+    if let Some(probe) = batch.and_then(|batch| batch.get(&resource.name))
+        && let Some(state) = resource.state_from_batch_probe(probe)?
+    {
+        return Ok(state);
+    }
+    resource.current_state()
+}
+
 fn system_unit_needs_change(ctx: &Context, units: &[SystemdUnit]) -> bool {
     let executor = ctx.executor_arc();
-    units
+    let resources: Vec<_> = units
         .iter()
         .filter(|unit| unit.scope == UnitScope::System)
-        .any(|unit| {
-            matches!(
-                SystemdUnitResource::from_entry(
-                    unit,
-                    Arc::clone(&executor),
-                    ctx.home(),
-                    target_manager_available(ctx, &unit.scope, false),
-                    false
-                )
-                .current_state(),
-                Ok(ResourceState::Missing | ResourceState::Incorrect { .. })
+        .map(|unit| {
+            SystemdUnitResource::from_entry(
+                unit,
+                Arc::clone(&executor),
+                ctx.home(),
+                target_manager_available(ctx, &unit.scope, false),
+                false,
             )
         })
+        .collect();
+    let Ok(batch) = batch_probe_scope_resources(executor.as_ref(), &UnitScope::System, &resources)
+    else {
+        return false;
+    };
+    resources.iter().any(|resource| {
+        matches!(
+            resource_state_with_batch(resource, Some(&batch)),
+            Ok(ResourceState::Missing | ResourceState::Incorrect { .. })
+        )
+    })
 }
 
 fn systemd_available(ctx: &Context) -> Result<bool> {

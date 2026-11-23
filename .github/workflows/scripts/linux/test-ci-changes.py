@@ -73,20 +73,32 @@ class ClassificationTests(unittest.TestCase):
             ("conf/packages.toml", profiles | {"app_tests", "app_windows"}),
             ("packages/apm/PKGBUILD", config | {"rust_checks", "lint", "apm"}),
             ("packages/apm/release.json", config | {"rust_checks", "lint", "apm"}),
+            ("packages/example/example.install", config | {"rust_checks", "lint"}),
             ("symlinks/apm/config/base.yml", config | {"apm"}),
             ("symlinks/apm/plugins/dot-skill/.apm/skills/example/SKILL.md", config | {"apm"}),
             (LINUX + "test-apm.py", {"apm", "validate_config", "build_linux"}),
             (".gitignore", set()),
             ("conf/agent-settings.toml", profiles),
+            ("conf/chmod.toml", profiles | {"rust_checks"}),
+            ("conf/system-files.toml", profiles | {"rust_checks"}),
             ("conf/systemd-units.toml", profiles | desktop_scripts),
-            ("system/pam.d/login", config | {"profile_linux", "roundtrip_linux"}),
+            ("system/pam.d/login", config | {"profile_linux", "roundtrip_linux", "rust_checks"}),
             ("symlinks/config/git/config", config | {"app_tests", "app_windows", "build_windows"}),
             ("symlinks/config/git/aliases", config | {"git_hooks", "app_tests", "app_windows", "build_windows"}),
+            ("symlinks/config/git/ignore", config | {"app_tests", "app_windows", "build_windows"}),
             ("symlinks/config/git/windows", config | {"app_tests", "app_windows", "build_windows"}),
+            ("symlinks/config/git/windows-desktop", config | {"app_tests", "app_windows", "build_windows"}),
+            ("symlinks/config/tmux/tmux.conf", config | {"app_tests"}),
+            ("symlinks/config/readline/inputrc", config | {"app_tests"}),
+            ("symlinks/config/pacman.conf", config | {"app_tests"}),
             ("symlinks/vim/init.vim", config | {"app_tests"}),
             ("symlinks/config/zsh/prompt.zsh", config | {"app_tests"}),
-            ("symlinks/bash_profile", config | {"app_tests"}),
-            ("symlinks/bashrc", config | {"app_tests"}),
+            ("symlinks/config/bash/prompt.bash", config | {"app_tests", "lint"}),
+            ("symlinks/bash_profile", config | {"app_tests", "lint"}),
+            ("symlinks/bashrc", config | {"app_tests", "lint"}),
+            ("symlinks/local/bin/code-insiders", config | desktop_scripts | {"rust_checks", "app_tests"}),
+            ("symlinks/config/powershell/Module.psd1",
+             config | {"lint", "managed_scripts", "prompt"}),
             ("symlinks/config/wgetrc", config | {"app_tests"}),
             ("symlinks/config/user-dirs.dirs", config | {"app_tests"}),
             ("symlinks/config/hypr/conf/appearance.lua",
@@ -137,7 +149,9 @@ class ClassificationTests(unittest.TestCase):
             (WINDOWS + "Test-InstallUninstall.ps1", {"roundtrip_windows", "build_windows", "lint"}),
             (WINDOWS + "Test-Applications.ps1", {"app_windows", "build_windows", "lint"}),
             ("symlinks/config/git/templates/hooks/post-rewrite",
-             config | {"app_tests", "app_windows", "build_windows", "git_hooks"}),
+             config | {"app_tests", "app_windows", "build_windows", "git_hooks", "lint", "rust_checks"}),
+            ("symlinks/config/git/templates/hooks.local/pre-push",
+             config | {"app_tests", "app_windows", "build_windows", "git_hooks", "lint", "rust_checks"}),
             ("symlinks/config/systemd/user/clean-home-tmp.service", config | desktop_scripts | {"git_hooks", "desktop_qml"}),
             ("symlinks/config/systemd/user/clean-screenshots.service", config | desktop_scripts | {"git_hooks", "desktop_qml"}),
             ("symlinks/config/systemd/user/dotfiles-first-login.service",
@@ -223,7 +237,10 @@ class ClassificationTests(unittest.TestCase):
             (["symlinks/vim/init.vim"], [], ["vim", "nvim"]),
             ([LINUX + "test-nvim-config.lua"], [], ["nvim"]),
             ([LINUX + "test-shell-config.py"], [], ["zsh"]),
-            (["symlinks/bashrc", "symlinks/config/wgetrc"], [], ["zsh"]),
+            (["symlinks/bashrc", "symlinks/config/wgetrc"], ["ShellCheck"], ["zsh"]),
+            (["symlinks/config/bash/prompt.bash"], ["ShellCheck"], ["zsh"]),
+            (["packages/example/example.install"], ["ShellCheck"], []),
+            (["symlinks/config/powershell/Module.psd1"], ["PSScriptAnalyzer"], []),
             (["symlinks/config/zsh/prompt.zsh", "symlinks/config/git/config"],
              [], ["git", "zsh"]),
         ]
@@ -250,6 +267,36 @@ class ClassificationTests(unittest.TestCase):
         self.assertIn("libarchive-tools", matrix[0]["packages"].split())
         self.assertIn("bat", matrix[0]["packages"].split())
         self.assertIn("zstd", matrix[0]["packages"].split())
+
+    def test_uwsm_session_script_selects_shell_config_job(self):
+        outputs = classify(["symlinks/config/uwsm/env-hyprland.d/session.sh"])
+        self.assertTrue(outputs["run_app_tests"])
+        self.assertEqual(
+            [item["application"] for item in outputs["app_matrix"]["include"]],
+            ["zsh"],
+        )
+        self.assertTrue(outputs["run_lint"])
+        self.assertEqual(
+            [item["name"] for item in outputs["lint_matrix"]["include"]],
+            ["ShellCheck"],
+        )
+        self.assertTrue(outputs["run_build_linux"])
+        self.assertTrue(outputs["run_validate_config"])
+        self.assertTrue(outputs["run_config_drift"])
+
+    def test_code_insiders_wrapper_selects_shell_launcher_and_rust_checks(self):
+        outputs = classify(["symlinks/local/bin/code-insiders"])
+        self.assertTrue(outputs["run_app_tests"])
+        self.assertEqual(
+            [item["application"] for item in outputs["app_matrix"]["include"]],
+            ["zsh"],
+        )
+        self.assertTrue(outputs["run_managed_scripts"])
+        self.assertTrue(outputs["run_lock"])
+        self.assertTrue(outputs["run_rust_checks"])
+        self.assertTrue(outputs["run_build_linux"])
+        self.assertTrue(outputs["run_validate_config"])
+        self.assertTrue(outputs["run_config_drift"])
 
     def test_binary_inputs(self):
         for path in ("cli/src/main.rs", "cli/src/data.json", "cli/src/embedded.md", "cli/build.rs",
@@ -827,6 +874,21 @@ class GateTests(unittest.TestCase):
             workflow.replace("      - desktop-qml\n", ""),
             workflow.replace("run_build_windows == 'true'", "run_build_linux == 'true'"),
             workflow.replace("check-ci-contract.py --results", "echo success"),
+            workflow.replace(
+                "        with:\n          persist-credentials: false",
+                "      with:\n        persist-credentials: false",
+                1,
+            ),
+            workflow.replace(
+                "        with:\n          fetch-depth: 0\n          persist-credentials: false",
+                "        with:\n          persist-credentials: false\n        with:\n          fetch-depth: 0",
+                1,
+            ),
+            workflow.replace(
+                "        with:\n          fetch-depth: 0\n          persist-credentials: false",
+                "        with:\n          fetch-depth: 0",
+                1,
+            ),
         ):
             with self.assertRaises(ValueError):
                 CONTRACT["check"](broken)
@@ -839,6 +901,42 @@ class GateTests(unittest.TestCase):
                     f"- name: {step}\n        if: needs.classify-changes.outputs.run_rust_checks == 'true'",
                     build,
                 )
+
+    def test_checkout_contract_decodes_quoted_yaml_scalars(self):
+        def make_workflow(uses: str, with_block: str = "") -> str:
+            return (
+                "name: Fixture\n"
+                "jobs:\n"
+                "  sample:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                f"      - uses: {uses}\n"
+                f"{with_block}"
+            )
+
+        sha = "de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+        for uses in (
+            f"actions/checkout@{sha} # v6.0.2",
+            f"'actions/checkout@{sha}' # v6.0.2",
+            f'"actions/checkout@{sha}" # v6.0.2',
+        ):
+            for persist in ("false", "'false'", '"false"', "'false' # required", '"false"\t# required'):
+                with self.subTest(valid=True, uses=uses, persist=persist):
+                    CONTRACT["check_checkout_steps"](
+                        make_workflow(uses, f"        with:\n          persist-credentials: {persist}\n"),
+                        "fixture.yml",
+                    )
+            for with_block in (
+                "",
+                "        with:\n          fetch-depth: 0\n",
+                "        with:\n          persist-credentials: true\n",
+                "        with:\n          persist-credentials: 'true'\n",
+                '        with:\n          persist-credentials: "true"\n',
+                "        with:\n          persist-credentials: 'false' extra\n",
+            ):
+                with self.subTest(valid=False, uses=uses, with_block=with_block):
+                    with self.assertRaises(ValueError):
+                        CONTRACT["check_checkout_steps"](make_workflow(uses, with_block), "fixture.yml")
 
     def test_linux_mutation_excludes_only_native_backends_and_equivalent_guard(self):
         workflow = CONTRACT["WORKFLOW"].with_name("mutation.yml").read_text(encoding="utf-8")
@@ -923,6 +1021,7 @@ class GateTests(unittest.TestCase):
             ("src/app/commands/execution/elevation.rs", "prepare_windows_elevation"),
             ("src/infra/elevation.rs", "run_elevated_child"),
             ("src/infra/fs/mutation/windows.rs", "ensure_single_link"),
+            ("src/infra/fs/place.rs", "rename_noreplace_windows"),
             ("src/infra/fs/mod.rs", "is_dir_like"),
             ("src/domains/system/config/registry.rs", "uppercase_native_registry_name"),
             ("src/infra/exec/process.rs", "take_stdout_windows"),
@@ -936,14 +1035,37 @@ class GateTests(unittest.TestCase):
         windows, _ = MUTATION_RUN["suite_options"]("windows")
         native_pattern = windows[windows.index("--re") + 1]
         for file, function in (
+            ("src/infra/fs/mutation/windows.rs", "ensure_single_link"),
             ("src/infra/fs/place/windows.rs", "wide_path"),
             ("src/infra/fs/place/windows/private_dir.rs", "verify_directory"),
             ("src/infra/run_lock/coordination/windows.rs", "acquire"),
+            ("src/infra/run_lock/windows.rs", "legacy_owner"),
         ):
             self.assertIn(("--exclude", file), list(zip(linux, linux[1:])))
             self.assertIn(("--file", file), list(zip(windows, windows[1:])))
             self.assertRegex(f"{file}:43:5: replace {function} with ()", native_pattern)
         self.assertNotRegex("src/infra/fs/place.rs:65:5: replace wide_path with ()", native_pattern)
+
+    def test_mutation_symbol_contract(self):
+        CONTRACT["check_mutation_symbols"]()
+        for broken in (
+            MUTATION_RUN | {"NATIVE_MODULES": (*MUTATION_RUN["NATIVE_MODULES"], "src/missing.rs")},
+            MUTATION_RUN | {"WINDOWS_FILES": (*MUTATION_RUN["WINDOWS_FILES"], "src/missing.rs")},
+            MUTATION_RUN | {
+                "LINUX_EXCLUSIONS": (
+                    *MUTATION_RUN["LINUX_EXCLUSIONS"],
+                    ("--exclude-re", r"^src/infra/fs/place\.rs:.*\bmissing_symbol\b"),
+                ),
+            },
+            MUTATION_RUN | {
+                "WINDOWS_PATTERN": MUTATION_RUN["WINDOWS_PATTERN"].replace(
+                    "rename_noreplace_windows", "check_information",
+                ),
+            },
+        ):
+            with self.subTest(broken=broken["WINDOWS_PATTERN"]):
+                with self.assertRaises(ValueError):
+                    CONTRACT["check_mutation_symbols"](mutation_run=broken)
 
     def test_mutations_are_separate_and_fail_visibly(self):
         workflow = CONTRACT["WORKFLOW"].with_name("mutation.yml").read_text(encoding="utf-8")
@@ -1089,11 +1211,32 @@ class MutationSelectionTests(unittest.TestCase):
             ([LINUX + "run-mutations.py"], ["cli/src"], True),
             (["conf/symlinks.toml"], ["cli/src"], True),
             (["packages/apm/release.json"], ["cli/src"], True),
+            (["packages/example/example.install"], ["cli/src"], True),
+            (["system/pam.d/login"], ["cli/src"], True),
+            (["symlinks/config/git/templates/hooks/post-rewrite"], ["cli/src"], True),
             (["symlinks/config/systemd/user/dotfiles-first-login.service"], ["cli/src"], True),
             (["docs/content/reference/home-symlinks.md"], ["cli/src"], True),
+            (["cli/src/domains/system/resources/system_file/merge_pam.rs"],
+             ["cli/src/domains/system/resources/system_file/merge_pam.rs"], False),
+            (["cli/src/domains/packages/arch_recipes.rs", "cli/src/domains/files/chmod.rs"],
+             ["cli/src/domains/files/chmod.rs", "cli/src/domains/packages/arch_recipes.rs"], False),
+            (["cli/src/infra/fs/planned/linux.rs", "cli/src/domains/shell/login_shell.rs"],
+             ["cli/src/domains/shell/login_shell.rs", "cli/src/infra/fs/planned/linux.rs"], False),
+            (["cli/src/domains/files/chmod.rs", "cli/src/infra/fs/place.rs"],
+             ["cli/src/domains/files/chmod.rs", "cli/src/infra/fs/place.rs"], True),
         ):
             with self.subTest(paths=paths):
                 self.assertEqual(MUTATION["selection"](paths), (sources, windows))
+
+    def test_shell_completions_selects_windows_mutations_while_login_shell_skips(self):
+        for path, expected_windows in (
+            ("cli/src/domains/shell/completions.rs", True),
+            ("cli/src/domains/shell/mod.rs", True),
+            ("cli/src/domains/shell/login_shell.rs", False),
+            ("cli/src/domains/shell/resources/shell.rs", False),
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(MUTATION["selection"]([path]), ([path], expected_windows))
 
     def test_only_successful_schedules_advance_the_baseline(self):
         head, base = "a" * 40, "b" * 40

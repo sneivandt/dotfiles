@@ -37,6 +37,7 @@ Scope {
     property bool _detailQuery: false
     property bool _hasMenuSnapshot: false
     property bool _actionActive: false
+    property bool _monitorFallbackPolling: false
     readonly property string helperPath: decodeURIComponent(Qt.resolvedUrl("network_helper.py").toString().replace(/^file:\/\//, ""))
 
     signal credentialsRequested(var accessPoint)
@@ -248,6 +249,49 @@ Scope {
         stderr: StdioCollector {}
     }
 
+    Process {
+        id: monitorProcess
+        objectName: "networkMonitorProcess"
+
+        command: ["nmcli", "monitor"]
+        running: true
+        onRunningChanged: {
+            if (running) {
+                monitorRestart.stop();
+            } else {
+                root._monitorFallbackPolling = true;
+                monitorRestart.restart();
+            }
+        }
+
+        stdout: SplitParser {
+            id: monitorOutput
+            onRead: {
+                if (monitorProcess.running)
+                    root._monitorFallbackPolling = false;
+                monitorDebounce.restart();
+            }
+        }
+    }
+
+    Timer {
+        id: monitorDebounce
+        objectName: "networkMonitorDebounce"
+
+        interval: 500
+        repeat: false
+        onTriggered: root.refresh()
+    }
+
+    Timer {
+        id: monitorRestart
+        objectName: "networkMonitorRestart"
+
+        interval: 5000
+        repeat: false
+        onTriggered: monitorProcess.running = true
+    }
+
     Timer {
         id: scanSettled
 
@@ -256,9 +300,12 @@ Scope {
     }
 
     Timer {
+        id: pollTimer
+        objectName: "networkPollTimer"
+
         interval: 10000
         repeat: true
-        running: true
+        running: root.menuOpen || !monitorProcess.running || !root.available || root._monitorFallbackPolling
         onTriggered: root.refresh()
     }
 }

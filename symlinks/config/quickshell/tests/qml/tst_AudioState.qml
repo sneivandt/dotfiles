@@ -10,6 +10,12 @@ Item {
         Shell.AudioState {}
     }
     Component {
+        id: volumeMenuComponent
+        Shell.VolumeMenu {
+            anchorItem: null
+        }
+    }
+    Component {
         id: nodeComponent
         QtObject {
             property string name: "fixture-speaker"
@@ -170,6 +176,34 @@ Item {
             audio.selectOutput("headset");
             compare(audio.switchingOutput, true);
             compare(audio.error, "");
+        }
+
+        function test_volume_menu_dismiss_button_only_shows_for_action_errors() {
+            const speaker = node();
+            const audio = createTemporaryObject(audioComponent, parent);
+            const menu = createTemporaryObject(volumeMenuComponent, parent, { audio: audio });
+            menu.visible = true;
+            const dismissButton = findChild(menu, "volumeDismissErrorButton");
+            verify(dismissButton !== null);
+
+            // PipeWire unavailable is not a dismissible action error.
+            compare(Pipewire.ready, false);
+            verify(audio.error.includes("unavailable"));
+            compare(audio.actionError, "");
+            compare(dismissButton.visible, false);
+
+            // Action errors show a Dismiss button that clears the error cleanly.
+            Pipewire.nodes.values = [speaker];
+            Pipewire.defaultAudioSink = speaker;
+            Pipewire.ready = true;
+            audio.selectOutput("missing-sink");
+            verify(audio.actionError.includes("no longer available"));
+            compare(dismissButton.visible, true);
+            compare(dismissButton.label, "Dismiss");
+            dismissButton.triggered();
+            compare(audio.actionError, "");
+            compare(audio.error, "");
+            compare(dismissButton.visible, false);
         }
     }
 }

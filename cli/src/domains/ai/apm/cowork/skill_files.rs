@@ -9,17 +9,19 @@ pub(super) fn prepare_skill_paths(
     target: &Path,
     previous: Option<&FileInventory>,
     desired: &FileInventory,
-) -> Result<()> {
+) -> Result<bool> {
     let retiring_directories = check_active_files(target, previous, desired)?;
+    let mut pruned = false;
     if let Some(previous) = previous {
-        prune_stale_files(target, previous, desired)?;
+        pruned |= prune_stale_files(target, previous, desired)?;
     }
     for directory in retiring_directories {
         reject_destination_link(&directory)?;
         std::fs::remove_dir(&directory)
             .with_context(|| format!("retiring Cowork directory {}", directory.display()))?;
+        pruned = true;
     }
-    Ok(())
+    Ok(pruned)
 }
 
 pub(super) fn selected_skill_inventory(source: &Path) -> Result<FileInventory> {

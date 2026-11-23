@@ -52,6 +52,19 @@ PROMPT_COMMAND=("${PROMPT_COMMAND[@]}" __bash_history_append)
 # shellcheck disable=SC1090
 [ -r ~/.config/shell/path.sh ] && . ~/.config/shell/path.sh
 
+# virtualenvwrapper
+# Prefer the lazy loader: it installs stub functions and only sources the real
+# script (a ~200-500 ms Python startup) on first use.
+if command -v virtualenvwrapper_lazy.sh >/dev/null 2>&1; then
+  export WORKON_HOME="${WORKON_HOME:-$HOME/.venv}"
+  # shellcheck disable=SC1091
+  . virtualenvwrapper_lazy.sh
+elif command -v virtualenvwrapper.sh >/dev/null 2>&1; then
+  export WORKON_HOME="${WORKON_HOME:-$HOME/.venv}"
+  # shellcheck disable=SC1091
+  . virtualenvwrapper.sh
+fi
+
 # Aliases
 # shellcheck disable=SC1090
 [ -r ~/.config/shell/aliases.sh ] && . ~/.config/shell/aliases.sh

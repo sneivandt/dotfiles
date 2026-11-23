@@ -296,7 +296,7 @@ fn completed_task_stays_satisfied_but_cancelled_command_does_not_succeed() {
     let fixture = ExecutionFixture::with_parallel(false);
     let task = fixture.task("completed", 1).cancelling();
 
-    let summary = run_task_graph(vec![&task], &fixture.ctx, &fixture.log, None).unwrap();
+    let summary = run_task_graph(vec![&task], &fixture.ctx, &fixture.log, None, None).unwrap();
 
     assert_eq!(
         summary.outcome(&task.task_id()),

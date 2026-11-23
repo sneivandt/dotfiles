@@ -1,6 +1,6 @@
 ---
 title: Configuration diagnostics
-description: Reports all configuration diagnostics, including warnings that make the check unsuccessful.
+description: Report all configuration diagnostics, including warnings that make the check unsuccessful.
 ---
 
 # Configuration diagnostics

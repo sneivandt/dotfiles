@@ -68,6 +68,17 @@ setopt pushdtohome
 # Path
 [ -r ~/.config/shell/path.sh ] && . ~/.config/shell/path.sh
 
+# virtualenvwrapper
+# Prefer the lazy loader: it installs stub functions and only sources the real
+# script (a ~200-500 ms Python startup) on first use.
+if command -v virtualenvwrapper_lazy.sh >/dev/null 2>&1; then
+  export WORKON_HOME="${WORKON_HOME:-$HOME/.venv}"
+  . virtualenvwrapper_lazy.sh
+elif command -v virtualenvwrapper.sh >/dev/null 2>&1; then
+  export WORKON_HOME="${WORKON_HOME:-$HOME/.venv}"
+  . virtualenvwrapper.sh
+fi
+
 # Aliases
 [ -r ~/.config/shell/aliases.sh ] && . ~/.config/shell/aliases.sh
 

@@ -9,13 +9,17 @@ Scope {
     property int updated: 0
     property string error: ""
     property bool _queryActive: false
+    readonly property int staleAfterSeconds: 15 * 60
     readonly property bool loading: _queryActive || query.running
 
-    function refresh() {
+    function refresh(force) {
         if (loading)
             return;
         _queryActive = true;
-        query.running = true;
+        const command = ["python3", Quickshell.env("HOME") + "/.config/hypr/scripts/stocks.py"];
+        if (force === true)
+            command.push("--force");
+        query.exec(command);
     }
 
     Component.onCompleted: refresh()
@@ -23,7 +27,6 @@ Scope {
     Process {
         id: query
         objectName: "marketQueryProcess"
-        command: ["python3", Quickshell.env("HOME") + "/.config/hypr/scripts/stocks.py"]
         onRunningChanged: {
             if (!running && root._queryActive) {
                 root._queryActive = false;
@@ -61,7 +64,7 @@ Scope {
             root.quotes = payload.quotes;
             root.missingSymbols = Array.isArray(payload.missing) ? payload.missing : [];
             root.updated = payload.updated;
-            root.error = refreshError || (payload.quotes.some(quote => !Number.isFinite(quote.updated) || Date.now() / 1000 - quote.updated >= 300)
+            root.error = refreshError || (payload.quotes.some(quote => !Number.isFinite(quote.updated) || Date.now() / 1000 - quote.updated >= root.staleAfterSeconds)
                 ? "Some market quotes are stale. Showing the last available prices." : "");
         }
     }

@@ -295,3 +295,93 @@ fn download_and_install_restores_on_smoke_test_failure() {
         "cache should not be written after a failed update"
     );
 }
+
+fn journal_path(bin: &Path) -> PathBuf {
+    let name = bin.file_name().unwrap().to_str().unwrap();
+    bin.with_file_name(format!(".{name}.update-state"))
+}
+
+#[test]
+fn pre_mutation_replacement_failure_clears_journal_for_retry() {
+    let dir = tempfile::tempdir_in(".").unwrap();
+    let bin = binary_path(dir.path());
+    fs::create_dir_all(bin.parent().unwrap()).unwrap();
+    fs::write(&bin, b"old-binary").unwrap();
+    let occupied_backup = old_binary_path(dir.path());
+    fs::create_dir(&occupied_backup).unwrap();
+
+    let new_binary = b"dotfiles v1.0.0\n";
+    let hash = super::super::super::hex_encode(&Sha256::digest(new_binary));
+    let checksums = format!("{hash}  {}\n", asset_name());
+    let client = MockHttpClient::new(vec![Ok(checksums.into_bytes()), Ok(new_binary.to_vec())]);
+
+    let error = install_release(
+        dir.path(),
+        "v1.0.0",
+        &client,
+        &StubGh { verified: true },
+        Policy::Required,
+        |path| Ok(fs::read_to_string(path)?),
+    )
+    .unwrap_err();
+
+    assert!(
+        format!("{error:#}").contains("removing stale backup"),
+        "unexpected error: {error:#}"
+    );
+    assert_eq!(fs::read(&bin).unwrap(), b"old-binary");
+    assert_eq!(fs::metadata(journal_path(&bin)).unwrap().len(), 0);
+    begin_replacement(&bin).expect("journal must be clean after pre-mutation failure");
+}
+
+#[test]
+fn rename_failure_with_clean_rollback_clears_journal() {
+    let dir = tempfile::tempdir_in(".").unwrap();
+    let bin = dir.path().join("dotfiles");
+    let missing_staged = dir.path().join("missing-staged");
+    fs::write(&bin, b"old-binary").unwrap();
+
+    let journal = begin_replacement(&bin).unwrap();
+    let replacement_err = super::super::replace_binary(&bin, &missing_staged).unwrap_err();
+    let error = finish_failed_replacement(&journal, replacement_err);
+    drop(journal);
+
+    assert!(
+        format!("{error:#}").contains("moving new binary into place"),
+        "unexpected error: {error:#}"
+    );
+    assert_eq!(fs::read(&bin).unwrap(), b"old-binary");
+    assert!(!dir.path().join(old_binary_name()).exists());
+    assert_eq!(fs::metadata(journal_path(&bin)).unwrap().len(), 0);
+    begin_replacement(&bin).expect("journal must be clean after successful rollback");
+}
+
+#[test]
+fn failed_rollback_preserves_pending_journal() {
+    let dir = tempfile::tempdir_in(".").unwrap();
+    let bin = dir.path().join("dotfiles");
+    let staged = dir.path().join("staged");
+    fs::write(&bin, b"old-binary").unwrap();
+    fs::write(&staged, b"new-binary").unwrap();
+
+    let journal = begin_replacement(&bin).unwrap();
+    let replacement_err = install_staged_binary_with(
+        &bin,
+        &staged,
+        |_, _| Err(std::io::Error::other("simulated rename failure")),
+        |_, _| Err(std::io::Error::other("simulated rollback failure")),
+    )
+    .unwrap_err();
+    let error = finish_failed_replacement(&journal, replacement_err);
+    drop(journal);
+
+    let msg = format!("{error:#}");
+    assert!(msg.contains("simulated rename failure"), "{msg}");
+    assert!(msg.contains("simulated rollback failure"), "{msg}");
+    assert_eq!(fs::metadata(journal_path(&bin)).unwrap().len(), 1);
+    let retry_err = begin_replacement(&bin).unwrap_err();
+    assert!(
+        format!("{retry_err:#}").contains("unfinished self-update"),
+        "failed rollback must leave recovery required: {retry_err:#}"
+    );
+}

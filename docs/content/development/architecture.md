@@ -271,7 +271,8 @@ VS Code, agent packages, and systemd use this mechanism for package waits.
 On pacman platforms, provider stability requires all configured packages to be
 installed and Paru to be healthy. Other package managers and failed/unknown
 probes retain the waits. Systemd also requires already-converged units and
-still waits for symlinks and permissions; agent packages retains its blocking
+still waits for symlinks (and for the dotfiles launcher when enabling the
+first-login user service); agent packages retains its blocking
 symlink prerequisite. The declared graph and `--with-deps` expansion do not change.
 
 ## Resources

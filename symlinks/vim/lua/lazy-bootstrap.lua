@@ -152,6 +152,10 @@ if not manager_ready(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
+-- Disable netrw before lazy.nvim / nvim-tree.lua initialize.
+vim.g.loaded_netrw = 1
+vim.g.loaded_netrwPlugin = 1
+
 -- Configure lazy.nvim with plugins
 local ok, lazy = pcall(require, "lazy")
 if not ok then
@@ -176,14 +180,9 @@ lazy.setup({
 
   -- Language support
   { "neovimhaskell/haskell-vim", ft = "haskell" },
-  { "Vimjas/vim-python-pep8-indent", ft = "python" },
   { "pangloss/vim-javascript", ft = "javascript" },
   { "fatih/vim-go", ft = "go" },
   { "rust-lang/rust.vim", ft = "rust" },
-  { "octol/vim-cpp-enhanced-highlight", ft = { "c", "cpp" } },
-
-  -- Tags
-  { "craigemery/vim-autotag" },
 
   -- Color schemes
   { "nanotech/jellybeans.vim" },
@@ -199,6 +198,7 @@ lazy.setup({
       vim.cmd("highlight LineNr guifg=#565f89 ctermfg=239")
       vim.cmd("highlight SignColumn guibg=#1a1b26 ctermbg=234")
       vim.cmd("highlight VertSplit guifg=#414868 guibg=#1a1b26 ctermfg=239 ctermbg=234")
+      vim.cmd("highlight WinSeparator guifg=#414868 guibg=#1a1b26 ctermfg=239 ctermbg=234")
     end,
   },
 
@@ -260,7 +260,7 @@ lazy.setup({
         tabline = {
           lualine_a = {},
           lualine_b = {},
-          lualine_c = { { "tabs", mode = 1, path = 3, max_length = vim.o.columns } },
+          lualine_c = { { "tabs", mode = 1, path = 3, max_length = function() return vim.o.columns end } },
           lualine_x = {},
           lualine_y = {},
           lualine_z = {}
@@ -308,8 +308,6 @@ lazy.setup({
       })
     end,
   },
-
-  { "nvim-lua/plenary.nvim", cond = function() return vim.fn.has("nvim") == 1 end },
 
   -- Modern indent guides
   {
@@ -364,7 +362,6 @@ lazy.setup({
         linehl = false,
         word_diff = false,
         watch_gitdir = {
-          interval = 1000,
           follow_files = true
         },
         current_line_blame = false,
@@ -427,6 +424,8 @@ lazy.setup({
     rtp = {
       disabled_plugins = {
         "gzip",
+        "netrw",
+        "netrwPlugin",
         "tarPlugin",
         "tohtml",
         "tutor",

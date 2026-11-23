@@ -82,21 +82,24 @@ run_config_validation() {
   fi
 
   prepare_staged_tree
+  if [ -f "$REPO_ROOT/cli/rust-toolchain.toml" ]; then
+    sh "$(dirname -- "$0")/check-toolchain.sh" "$REPO_ROOT/cli"
+  fi
   printf "Running typed config validation...\n"
-  if ! run_cargo run --quiet --profile ci --manifest-path "$MANIFEST" -- \
+  if ! run_cargo run --locked --quiet --profile ci --manifest-path "$MANIFEST" -- \
     check --root "$REPO_ROOT" -p desktop \
     --only config-diagnostics,symlink-sources,config-files 2>&1; then
     abort_with_hint \
       "configuration validation failed." \
-      "cd cli && cargo run --profile ci -- check --root .. -p desktop --only config-diagnostics,symlink-sources,config-files"
+      "cd cli && cargo run --locked --profile ci -- check --root .. -p desktop --only config-diagnostics,symlink-sources,config-files"
   fi
 
   if full_checks_enabled; then
     printf "Running config drift integration test...\n"
-    if ! run_cargo test --profile ci --manifest-path "$MANIFEST" --test config_drift 2>&1; then
+    if ! run_cargo test --locked --profile ci --manifest-path "$MANIFEST" --test config_drift 2>&1; then
       abort_with_hint \
         "config drift tests failed." \
-        "cd cli && cargo test --profile ci --test config_drift"
+        "cd cli && cargo test --locked --profile ci --test config_drift"
     fi
   else
     printf '%sSkipping config drift integration test: set DOTFILES_HOOKS_FULL=1 to run it.%s\n' "$DIM" "$NC"
@@ -131,7 +134,9 @@ run_shell_guards() {
     prepare_staged_tree
     printf "Running ShellCheck...\n"
     git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- \
-      '*.sh' hooks/pre-commit > "$CHECK_ROOT/.shell-inputs"
+      '*.sh' '*.bash' hooks/pre-commit symlinks/bashrc symlinks/bash_profile \
+      'symlinks/config/git/templates/hooks/*' 'symlinks/config/git/templates/hooks.local/*' \
+      'packages/*/PKGBUILD' 'packages/*/*.install' > "$CHECK_ROOT/.shell-inputs"
     if [ ! -s "$CHECK_ROOT/.shell-inputs" ]; then
       return 0
     fi
@@ -241,7 +246,7 @@ run_release_workflow_guards() {
   fi
 }
 
-if has_staged_match 'conf/*.toml' 'symlinks/*'; then
+if has_staged_match 'conf/*.toml' 'symlinks/*' 'system/*' 'packages/*'; then
   run_config_validation
 fi
 
@@ -249,7 +254,9 @@ if has_staged_match cli/Cargo.toml cli/Cargo.lock cli/deny.toml; then
   run_dependency_guards
 fi
 
-if has_staged_match '*.sh' 'hooks/*'; then
+if has_staged_match '*.sh' '*.bash' hooks/pre-commit symlinks/bashrc symlinks/bash_profile \
+  'symlinks/config/git/templates/hooks/*' 'symlinks/config/git/templates/hooks.local/*' \
+  'packages/*/PKGBUILD' 'packages/*/*.install'; then
   run_shell_guards
 fi
 

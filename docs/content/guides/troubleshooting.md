@@ -277,7 +277,8 @@ dotfiles update --only systemd --dry-run --verbose
 ```
 
 Add `--with-deps` only after reviewing its graph: it can bring in package
-installation, AUR setup, links, and permissions. It is not a narrower retry.
+installation, AUR setup, custom package preparation, links, and the dotfiles
+launcher where applicable. It is not a narrower retry.
 
 ### Repository is locked
 

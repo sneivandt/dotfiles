@@ -12,14 +12,16 @@ pub(crate) fn child_args<T: AsRef<std::ffi::OsStr> + From<String> + Clone>(
     parent: &str,
 ) -> Vec<T> {
     let mut out = Vec::new();
-    let mut skip = false;
-    for arg in args {
-        if skip {
-            skip = false;
-            continue;
+    let mut trailing = Vec::new();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg.as_ref() == "--" {
+            trailing.push(arg.clone());
+            trailing.extend(iter.cloned());
+            break;
         }
         if arg.as_ref() == PARENT_RUN_ARG {
-            skip = true;
+            let _ = iter.next();
             continue;
         }
         if arg
@@ -32,6 +34,7 @@ pub(crate) fn child_args<T: AsRef<std::ffi::OsStr> + From<String> + Clone>(
         out.push(arg.clone());
     }
     out.extend([PARENT_RUN_ARG.to_string().into(), parent.to_string().into()]);
+    out.extend(trailing);
     out
 }
 
@@ -274,5 +277,17 @@ mod tests {
                 ]
             );
         }
+    }
+
+    #[test]
+    fn child_linkage_inserts_parent_run_id_before_double_dash_terminator() {
+        let args: Vec<String> = ["update", "--parent-run-id", "ancestor", "--", "positional"]
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        assert_eq!(
+            child_args(&args, "parent"),
+            ["update", "--parent-run-id", "parent", "--", "positional"]
+        );
     }
 }

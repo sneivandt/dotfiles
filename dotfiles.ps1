@@ -220,7 +220,8 @@ function Test-Attestation
         return $true
     }
 
-    if (-not (Get-Command gh -ErrorAction SilentlyContinue))
+    $ghCommand = Get-Command gh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $ghCommand -or $ghCommand.CommandType -ne 'Application' -or [string]::IsNullOrWhiteSpace($ghCommand.Source))
     {
         [Console]::Error.WriteLine("WARNING: gh not found. Install GitHub CLI or use --build; DOTFILES_SKIP_ATTESTATION=1 explicitly bypasses provenance, not checksums.")
         return $false
@@ -228,18 +229,37 @@ function Test-Attestation
 
     $previousPromptDisabled = $env:GH_PROMPT_DISABLED
     $previousBusAddress = $env:DBUS_SESSION_BUS_ADDRESS
+    $prevErrorActionPreference = $ErrorActionPreference
+    $verified = $false
     try
     {
         $env:GH_PROMPT_DISABLED = '1'
         $env:DBUS_SESSION_BUS_ADDRESS = 'disabled:'
-        & gh attestation verify $Path --repo $Repo 2>&1 | Out-Null
+        if (Test-Path Variable:PSNativeCommandArgumentPassing)
+        {
+            Set-Variable -Name PSNativeCommandArgumentPassing -Value Standard -Scope Local
+        }
+        # Windows PowerShell 5.1 ignores $PSNativeCommandUseErrorActionPreference
+        # and turns redirected native stderr into a terminating error under Stop.
+        $ErrorActionPreference = 'Continue'
+        $global:LASTEXITCODE = $null
+        & $ghCommand.Source attestation verify $Path --repo $Repo 2>&1 | Out-Null
+        if ($LASTEXITCODE -is [int] -and $LASTEXITCODE -eq 0)
+        {
+            $verified = $true
+        }
+    }
+    catch
+    {
+        $verified = $false
     }
     finally
     {
+        $ErrorActionPreference = $prevErrorActionPreference
         $env:GH_PROMPT_DISABLED = $previousPromptDisabled
         $env:DBUS_SESSION_BUS_ADDRESS = $previousBusAddress
     }
-    if ($LASTEXITCODE -eq 0)
+    if ($verified)
     {
         return $true
     }
@@ -255,12 +275,17 @@ function Resolve-ReleaseRepo
     if ($null -eq $repo)
     {
         $remote = $null
+        $prevErrorActionPreference = $ErrorActionPreference
         try
         {
+            # Windows PowerShell 5.1 ignores $PSNativeCommandUseErrorActionPreference
+            # and turns redirected native stderr into a terminating error under Stop.
+            $ErrorActionPreference = 'Continue'
             $remote = & git -C $DotfilesRoot remote get-url origin 2>$null
             if ($LASTEXITCODE -ne 0) { $remote = $null }
         }
         catch { $remote = $null }
+        finally { $ErrorActionPreference = $prevErrorActionPreference }
         if ($remote -is [string] -and $remote -cmatch '^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)(.+)\z')
         {
             $repo = $Matches[1] -creplace '\.git$', ''
@@ -288,126 +313,158 @@ function Test-UsableCache
 function Get-Binary
 {
     $Repo = Resolve-ReleaseRepo
-    $tag = Resolve-ReleaseTag -Repo $Repo
-    if (-not $tag)
+    $previousSecurityProtocol = $null
+    if ($PSVersionTable.PSEdition -eq 'Desktop')
     {
-        Write-Error "Failed to resolve latest release tag. Check your internet connection or use --build to build from source."
-        exit 1
+        $currentSecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol
+        if ($currentSecurityProtocol -ne [System.Net.SecurityProtocolType]::SystemDefault -and
+            (($currentSecurityProtocol -band [System.Net.SecurityProtocolType]::Tls12) -eq 0))
+        {
+            $previousSecurityProtocol = $currentSecurityProtocol
+            [System.Net.ServicePointManager]::SecurityProtocol = $currentSecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+        }
     }
-
-    $releaseBaseUrl = "https://github.com/$Repo/releases/download/$tag"
-    $assetName = Get-TargetAssetName
-    $url = "$releaseBaseUrl/$assetName"
-
-    if (-not (Test-Path -LiteralPath $BinDir))
-    {
-        New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
-    }
-    $stagedBinary = if (Test-IsWindows) { "$Binary.download-$PID.exe" } else { "$Binary.download-$PID" }
-    if (Test-Path -LiteralPath $stagedBinary) { Remove-Item -LiteralPath $stagedBinary -Force }
 
     try
     {
-        [Console]::Error.WriteLine("Bootstrap · dotfiles $tag · $($assetName -replace '^dotfiles-', '' -replace '\.exe$', '')")
+        $tag = Resolve-ReleaseTag -Repo $Repo
+        if (-not $tag)
+        {
+            Write-Error "Failed to resolve latest release tag. Check your internet connection or use --build to build from source."
+            exit 1
+        }
+
+        $releaseBaseUrl = "https://github.com/$Repo/releases/download/$tag"
+        $assetName = Get-TargetAssetName
+        $url = "$releaseBaseUrl/$assetName"
+
+        if (-not (Test-Path -LiteralPath $BinDir))
+        {
+            New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+        }
+        $bootstrapDir = Join-Path $BinDir ".bootstrap-$([guid]::NewGuid().ToString('N'))"
+        $stagedBinary = Join-Path $bootstrapDir $BinaryName
+
         try
         {
-            Invoke-WebRequest -Uri $url -Method Get -OutFile $stagedBinary -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
-        }
-        catch
-        {
-            Write-Error "Failed to download dotfiles binary. Check your internet connection or use --build to build from source."
-            exit 1
-        }
-
-        if (-not (Test-Path -LiteralPath $stagedBinary))
-        {
-            Write-Error "Download did not produce a binary at '$stagedBinary'. Check your internet connection or use --build to build from source."
-            exit 1
-        }
-
-        # Download and verify checksum
-        $checksumUrl = "$releaseBaseUrl/checksums.sha256"
-        try
-        {
-            $checksumResponse = Invoke-WebRequest -Uri $checksumUrl -Method Get -UseBasicParsing -TimeoutSec $TransferTimeout
-            $checksumContent = if ($checksumResponse.Content -is [byte[]])
+            [void][System.IO.Directory]::CreateDirectory($bootstrapDir)
+            [Console]::Error.WriteLine("Bootstrap · dotfiles $tag · $($assetName -replace '^dotfiles-', '' -replace '\.exe$', '')")
+            try
             {
-                [System.Text.Encoding]::UTF8.GetString($checksumResponse.Content)
+                Invoke-WebRequest -Uri $url -Method Get -OutFile $stagedBinary -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
             }
-            else
+            catch
             {
-                $checksumResponse.Content
-            }
-        }
-        catch
-        {
-            Write-Error "Failed to download checksum file: $($_.Exception.Message)"
-            exit 1
-        }
-        $expected = Get-ChecksumForAsset -ChecksumContent $checksumContent -AssetName $assetName
-        if ([string]::IsNullOrWhiteSpace($expected))
-        {
-            Write-Error "Checksum not found in checksum file for $assetName."
-            exit 1
-        }
-        $actual = (Get-FileHash -LiteralPath $stagedBinary -Algorithm SHA256).Hash.ToLower()
-        if ($expected -ne $actual)
-        {
-            Write-Error "Checksum verification failed!"
-            exit 1
-        }
-
-        if (-not (Test-Attestation -Path $stagedBinary -Repo $Repo))
-        {
-            Write-Error "Build provenance verification failed for $assetName."
-            exit 1
-        }
-
-        # Make binary executable on Linux
-        if ($IsLinux -or $IsMacOS)
-        {
-            chmod +x $stagedBinary
-            if ($LASTEXITCODE -ne 0)
-            {
-                Write-Error "Failed to make binary executable"
+                Write-Error "Failed to download dotfiles binary. Check your internet connection or use --build to build from source."
                 exit 1
             }
-        }
 
-        try
-        {
-            $stagedVersion = @(& $stagedBinary --version)
-            if ($LASTEXITCODE -ne 0 -or $stagedVersion.Count -ne 1 -or $stagedVersion[0] -cne "dotfiles $tag")
+            if (-not (Test-Path -LiteralPath $stagedBinary))
             {
-                throw "Downloaded CLI did not start as dotfiles $tag."
+                Write-Error "Download did not produce a binary at '$stagedBinary'. Check your internet connection or use --build to build from source."
+                exit 1
             }
-            $publishLock = [IO.File]::Open($statePath, 'OpenOrCreate', 'ReadWrite', 'None')
-            try {
-                if ($publishLock.Length -ne 0) { throw 'CLI update recovery is pending; retry.' }
-                if ((Test-Path -LiteralPath $Binary) -and -not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
-                    throw "CLI cache path is not a regular file: $Binary"
-                }
-                if ($repairCached) {
-                    if (Test-UsableCache) { throw 'CLI cache changed during bootstrap; retry.' }
-                    Move-Item -LiteralPath $stagedBinary -Destination $Binary -Force
-                } else {
-                    [IO.File]::Move($stagedBinary, $Binary)
-                }
-            } finally {
-                $publishLock.Dispose()
-            }
-        }
-        catch
-        {
-            Write-Error "Failed to install downloaded binary: $($_.Exception.Message)"
-            exit 1
-        }
 
-        [Console]::Error.WriteLine("Downloaded · checksum verified · $Binary")
+            # Download and verify checksum
+            $checksumUrl = "$releaseBaseUrl/checksums.sha256"
+            try
+            {
+                $checksumResponse = Invoke-WebRequest -Uri $checksumUrl -Method Get -UseBasicParsing -TimeoutSec $TransferTimeout
+                $checksumContent = if ($checksumResponse.Content -is [byte[]])
+                {
+                    [System.Text.Encoding]::UTF8.GetString($checksumResponse.Content)
+                }
+                else
+                {
+                    $checksumResponse.Content
+                }
+            }
+            catch
+            {
+                Write-Error "Failed to download checksum file: $($_.Exception.Message)"
+                exit 1
+            }
+            $expected = Get-ChecksumForAsset -ChecksumContent $checksumContent -AssetName $assetName
+            if ([string]::IsNullOrWhiteSpace($expected))
+            {
+                Write-Error "Checksum not found in checksum file for $assetName."
+                exit 1
+            }
+            $actual = (Get-FileHash -LiteralPath $stagedBinary -Algorithm SHA256).Hash.ToLower()
+            if ($expected -ne $actual)
+            {
+                Write-Error "Checksum verification failed!"
+                exit 1
+            }
+
+            if (-not (Test-Attestation -Path $stagedBinary -Repo $Repo))
+            {
+                Write-Error "Build provenance verification failed for $assetName."
+                exit 1
+            }
+
+            # Make binary executable on Linux
+            if ($IsLinux -or $IsMacOS)
+            {
+                chmod +x $stagedBinary
+                if ($LASTEXITCODE -ne 0)
+                {
+                    Write-Error "Failed to make binary executable"
+                    exit 1
+                }
+            }
+
+            try
+            {
+                $previousComplete = [Environment]::GetEnvironmentVariable('DOTFILES_COMPLETE')
+                try
+                {
+                    Remove-Item Env:DOTFILES_COMPLETE -ErrorAction SilentlyContinue
+                    $stagedVersion = @(& $stagedBinary --version)
+                }
+                finally
+                {
+                    [Environment]::SetEnvironmentVariable('DOTFILES_COMPLETE', $previousComplete)
+                }
+                if ($LASTEXITCODE -ne 0 -or $stagedVersion.Count -ne 1 -or $stagedVersion[0] -cne "dotfiles $tag")
+                {
+                    throw "Downloaded CLI did not start as dotfiles $tag."
+                }
+                $publishLock = [IO.File]::Open($statePath, 'OpenOrCreate', 'ReadWrite', 'None')
+                try {
+                    if ($publishLock.Length -ne 0) { throw 'CLI update recovery is pending; retry.' }
+                    if ((Test-Path -LiteralPath $Binary) -and -not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
+                        throw "CLI cache path is not a regular file: $Binary"
+                    }
+                    if ($repairCached) {
+                        if (Test-UsableCache) { throw 'CLI cache changed during bootstrap; retry.' }
+                        Move-Item -LiteralPath $stagedBinary -Destination $Binary -Force
+                    } else {
+                        [IO.File]::Move($stagedBinary, $Binary)
+                    }
+                } finally {
+                    $publishLock.Dispose()
+                }
+            }
+            catch
+            {
+                Write-Error "Failed to install downloaded binary: $($_.Exception.Message)"
+                exit 1
+            }
+
+            [Console]::Error.WriteLine("Downloaded · checksum verified · $Binary")
+        }
+        finally
+        {
+            if (Test-Path -LiteralPath $bootstrapDir) { Remove-Item -LiteralPath $bootstrapDir -Recurse -Force }
+        }
     }
     finally
     {
-        if (Test-Path -LiteralPath $stagedBinary) { Remove-Item -LiteralPath $stagedBinary -Force }
+        if ($null -ne $previousSecurityProtocol)
+        {
+            [System.Net.ServicePointManager]::SecurityProtocol = $previousSecurityProtocol
+        }
     }
 }
 
@@ -418,18 +475,21 @@ function Test-CliStartup([string]$Path)
     $startInfo.UseShellExecute = $false
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
+    [void]$startInfo.EnvironmentVariables.Remove('DOTFILES_COMPLETE')
     try {
         $process = [System.Diagnostics.Process]::Start($startInfo)
     } catch [System.ComponentModel.Win32Exception] {
         return $false
     }
     try {
-        $stdout = $process.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)
-        $stderr = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
         $process.WaitForExit()
-        [void]$stdout.GetAwaiter().GetResult()
-        [void]$stderr.GetAwaiter().GetResult()
-        return ($process.ExitCode -eq 0)
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        [void]$stderrTask.GetAwaiter().GetResult()
+        if ($process.ExitCode -ne 0) { return $false }
+        $lines = @($stdout -replace '\r?\n\z', '' -split '\r?\n')
+        return ($lines.Count -eq 1 -and $lines[0] -cmatch '^dotfiles \S+$')
     } finally {
         $process.Dispose()
     }
@@ -441,7 +501,12 @@ $backup = Join-Path $BinDir $backupName
 if ((Test-Path -LiteralPath $statePath -PathType Leaf) -and (Get-Item -Force -LiteralPath $statePath).Length -gt 0)
 {
     # FileShare.None uses flock on Unix and excludes open updater handles on Windows.
-    $state = [IO.File]::Open($statePath, 'Open', 'ReadWrite', 'None')
+    try {
+        $state = [IO.File]::Open($statePath, 'Open', 'ReadWrite', 'None')
+    } catch [System.IO.IOException] {
+        Write-Error 'CLI update recovery is in progress; retry.'
+        exit 1
+    }
     try {
         if ($state.Length -gt 0) {
             if (-not (Test-CliStartup $Binary)) {

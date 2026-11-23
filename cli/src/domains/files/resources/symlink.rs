@@ -53,7 +53,7 @@ impl SymlinkResource {
         else {
             return Ok(false);
         };
-        if !metadata.file_type().is_symlink() {
+        if !is_link_like(&target, &metadata) {
             return Ok(false);
         }
         let linked_source = std::fs::read_link(&target)?;

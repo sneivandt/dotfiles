@@ -13,7 +13,7 @@ if ! command -v locate >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
   return 1
 fi
 
-local opts edit query file
+local opts edit query file raw statuses search_status fzf_status
 opts=$(getopt -o e -n ff -- "$@") || return 1
 eval set -- "$opts"
 
@@ -43,16 +43,39 @@ fi
 query="$1"
 
 if command -v fd >/dev/null 2>&1; then
-  file="$(fd -0 --type f -- "$query" | fzf --read0 --print0 --no-multi -0 -1)" || return $?
+  raw="$(fd -0 --type f -- "$query" | fzf --read0 --print0 --no-multi -0 -1; printf '\0%s %s' "${pipestatus[1]}" "${pipestatus[2]}")"
 else
-  file="$(locate -0 -- "$query" | fzf --read0 --print0 --no-multi -0 -1)" || return $?
+  raw="$(locate -0 -- "$query" | fzf --read0 --print0 --no-multi -0 -1; printf '\0%s %s' "${pipestatus[1]}" "${pipestatus[2]}")"
 fi
+statuses=${raw##*$'\0'}
+file=${raw%$'\0'*}
 # Zsh preserves the NUL terminator in command substitution. Remove only that
 # terminator so filenames ending in newlines retain their exact spelling.
 file=${file%$'\0'}
+search_status=${statuses%% *}
+fzf_status=${statuses#* }
 
+if (( fzf_status != 0 )); then
+  # Cancelling fzf closes its stdin pipe while fd may still be writing (EPIPE
+  # exits 1 in fd); preserve the cancellation status.
+  if (( fzf_status == 130 )); then
+    return 130
+  fi
+  if (( search_status != 0 && search_status != 141 )); then
+    return "$search_status"
+  fi
+  return "$fzf_status"
+fi
 if [ -z "$file" ]; then
+  if (( search_status != 0 )); then
+    return "$search_status"
+  fi
   return 1
+fi
+# Selecting a match early closes the pipe while fd/locate is still writing
+# (EPIPE exits 1 in fd, SIGPIPE exits 141 in locate). Propagate other errors.
+if (( search_status != 0 && search_status != 1 && search_status != 141 )); then
+  return "$search_status"
 fi
 
 if [ -z "$edit" ]

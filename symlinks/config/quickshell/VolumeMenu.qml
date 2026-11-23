@@ -198,13 +198,13 @@ ShellPopup {
         }
 
         MenuButton {
+            objectName: "volumeDismissErrorButton"
             Layout.fillWidth: true
-            visible: root.audio.error.length > 0
-            label: root.audio.loading ? "Retrying..." : "Retry"
-            glyph: "\uf2f1"
-            enabled: !root.audio.loading
+            visible: root.audio.actionError.length > 0
+            label: "Dismiss"
+            glyph: "\uf00d"
             showChevron: false
-            onTriggered: root.audio.refresh(true)
+            onTriggered: root.audio.clearError()
         }
     }
 }

@@ -1,7 +1,6 @@
 ---
 title: Getting started
 description: Install dotfiles on Arch Linux, Windows, or WSL, choose a release or source build, back up existing configuration, and preview the first setup.
-outline: [2, 3]
 ---
 
 # Getting started
@@ -20,7 +19,7 @@ If you're using this repository and its released CLI, go straight to
 [Choose a permanent checkout](#1-choose-a-permanent-checkout). The wrapper
 downloads the executable; you don't need Rust.
 
-| If you want to… | Before you start |
+| Goal | Before you start |
 |---|---|
 | Keep your configuration in a fork | [Choose a release publisher](#using-a-fork). A new fork doesn't inherit upstream binaries. |
 | Run the CLI from source | Install the [build prerequisites](../development/contributing.md#source-builds) and pass `--build` on every wrapper or launcher invocation. |

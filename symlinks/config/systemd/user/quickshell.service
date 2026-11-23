@@ -4,10 +4,12 @@ Description=Quickshell desktop bar
 PartOf=graphical-session.target
 After=graphical-session.target
 
+ConditionEnvironment=WAYLAND_DISPLAY
 ConditionFileIsExecutable=/usr/bin/qs
 
 [Service]
 Type=simple
+Slice=session.slice
 
 ExecStart=/usr/bin/qs
 Restart=on-failure

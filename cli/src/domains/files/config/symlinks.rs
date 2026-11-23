@@ -168,6 +168,15 @@ pub fn expand_glob_patterns(symlinks: &[Symlink], fallback: &Path) -> Result<Vec
     glob_expansion::expand_glob_patterns(symlinks, fallback)
 }
 
+/// Expand optional source glob patterns, returning empty matches for absent
+/// source trees while preserving pattern and filesystem inspection errors.
+pub(crate) fn expand_optional_glob_patterns(
+    symlinks: &[Symlink],
+    fallback: &Path,
+) -> Result<Vec<Symlink>> {
+    glob_expansion::expand_optional_glob_patterns(symlinks, fallback)
+}
+
 /// Reject symlink entries that resolve to the same or overlapping targets.
 ///
 /// # Errors

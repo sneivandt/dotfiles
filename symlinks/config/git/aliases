@@ -112,9 +112,12 @@
   # Delete merged branches
   # Git ref names cannot contain whitespace. Finish discovery before deleting anything.
   delete-merged = "!f() { set -f; current=$(git branch --show-current) || return; \
+    worktrees=$(git worktree list --porcelain) || return; \
     branches=$(git for-each-ref --format='%(refname:lstrip=2)' --merged=HEAD refs/heads/) || return; \
+    nl=$(printf '\\nx'); nl=${nl%x}; \
     status=0; for branch in $branches; do \
       case \"$branch\" in \"$current\"|main|master|dev|develop) continue ;; esac; \
+      case \"${nl}${worktrees}${nl}\" in *\"${nl}branch refs/heads/${branch}${nl}\"*) continue ;; esac; \
       git branch -d -- \"$branch\" || status=1; \
     done; return \"$status\"; }; f"
 

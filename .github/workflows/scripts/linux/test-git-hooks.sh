@@ -529,6 +529,14 @@ printf "\nTesting password patterns...\n"
 test_hook_blocks "Password" 'password = "MySecretPass123"'
 test_hook_blocks "Passwd" 'passwd: "AnotherPassword456"'
 
+# Test bearer and authorization tokens
+printf "\nTesting bearer and authorization patterns...\n"
+sample_jwt="$(printf '%s.%s.%s' 'eyJhbGciOiJIUzI1NiJ9' 'eyJzdWIiOiJ0ZXN0In0' 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')"
+sample_val="$(printf '%s%s' 'abc123+def456/' 'ghi789==abcd')"
+test_hook_blocks "Authorization Bearer JWT" "Authorization: Bearer $sample_jwt"
+test_hook_blocks "Quoted bearer assignment" "bearer = \"$sample_val\""
+test_hook_blocks "Quoted authorization Bearer" "authorization: \"Bearer $sample_val\""
+
 # Test private keys
 printf "\nTesting private key patterns...\n"
 test_hook_blocks "RSA private key" "-----BEGIN RSA PRIVATE KEY-----"

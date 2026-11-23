@@ -142,11 +142,17 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
                 &format!("remove Copilot Cowork skill {name}"),
             );
         }
-        let before = inventory.len();
+        let before_owned = owned.len();
+        let before_inventory = inventory.len();
         for alias in &aliases {
+            owned.remove(alias);
             inventory.remove(alias);
         }
-        if inventory.len() != before {
+        if owned.len() != before_owned {
+            write_owned_skills(&target, &owned)?;
+            changed = true;
+        }
+        if inventory.len() != before_inventory {
             write_file_inventory(&target, &inventory)?;
             changed = true;
         }
@@ -173,9 +179,9 @@ fn reconcile_selected(
     let files = selected_skill_inventory(&source_skill)?;
     let previous = prior_files(&target_skill, inventory, aliases)?;
     let active = index_files(&target_skill, std::iter::once(&files), false)?;
-    prepare_skill_paths(&target_skill, previous.as_ref(), &active)?;
-    let mut changed = !skill_files_match(&source_skill, &target_skill)?;
-    if changed {
+    let pruned = prepare_skill_paths(&target_skill, previous.as_ref(), &active)?;
+    let files_changed = !skill_files_match(&source_skill, &target_skill)?;
+    if files_changed {
         copy_skill_files(&source_skill, &target_skill).with_context(|| {
             format!(
                 "reconciling APM skill {name} into Copilot Cowork at {}",
@@ -192,6 +198,9 @@ fn reconcile_selected(
         // distinct. Never publish an ambiguous inventory.
         #[cfg(windows)]
         index_files(&target_skill, std::iter::once(&files), false)?;
+    }
+    let mut changed = pruned || files_changed;
+    if changed {
         ctx.log().action(
             "update",
             &format!("Copilot Cowork skill {name}"),

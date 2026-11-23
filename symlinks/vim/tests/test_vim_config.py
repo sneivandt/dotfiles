@@ -459,6 +459,7 @@ class VimConfigTests(unittest.TestCase):
                 cwd=fixture, env=env, text=True, capture_output=True, timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(result.stderr.replace("-- TERMINAL --", ""), "", result.stderr)
             self.assertFalse((Path(env["XDG_DATA_HOME"]) / "nvim/lazy").exists())
 
 

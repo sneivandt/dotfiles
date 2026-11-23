@@ -1,13 +1,13 @@
 use anyhow::Result;
 
 use crate::domains::packages::config::packages::Package;
-use crate::domains::packages::resources::package::{
-    PackageManager, PackageResource, get_installed_packages,
-};
+use crate::domains::packages::resources::package::{PackageManager, PackageResource};
 use crate::engine::{
     Context, Requirement, RequirementState, Resource as _, ResourceState, TaskStats,
 };
 use crate::infra::logging::OutputExt as _;
+
+use super::{InventoryPhase, PacmanInventoryCache, query_installed_with_cache};
 
 #[derive(Debug, Clone)]
 pub(super) struct PackageInstallPlan {
@@ -91,11 +91,17 @@ pub(super) fn predict_sudo(
     manager: PackageManager,
     tool: &str,
     packages: &[Package],
+    inventory_cache: Option<&PacmanInventoryCache>,
 ) -> bool {
     if !ctx.which(tool) || packages.is_empty() {
         return false;
     }
-    let Ok(installed) = get_installed_packages(manager, ctx.executor()) else {
+    let Ok(installed) = query_installed_with_cache(
+        inventory_cache,
+        InventoryPhase::Assessment,
+        manager,
+        ctx.executor(),
+    ) else {
         return false;
     };
     packages
@@ -107,6 +113,7 @@ pub(super) fn build_install_plan(
     ctx: &Context,
     packages: &[Package],
     manager: PackageManager,
+    inventory_cache: Option<&PacmanInventoryCache>,
 ) -> Result<PackageInstallPlan> {
     ctx.trace_fmt(|| {
         format!(
@@ -115,7 +122,12 @@ pub(super) fn build_install_plan(
         )
     });
 
-    let installed = get_installed_packages(manager, ctx.executor())?;
+    let installed = query_installed_with_cache(
+        inventory_cache,
+        InventoryPhase::Execution,
+        manager,
+        ctx.executor(),
+    )?;
     let unavailable_custom = if manager == PackageManager::Paru {
         super::super::arch_recipes::unavailable_packages(ctx, |name| {
             !installed.contains_package(name) && packages.iter().any(|package| package.name == name)

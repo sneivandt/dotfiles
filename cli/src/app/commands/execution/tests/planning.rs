@@ -64,8 +64,14 @@ fn conditional_readiness_checks_consumers_and_shares_selected_provider_probe_per
             prior.record(provider.task_id(), provider.name(), TaskOutcome::Cancelled);
         }
         for phase_count in 1..=2 {
-            let summary =
-                run_task_graph(tasks.clone(), &fixture.ctx, &fixture.log, Some(&prior)).unwrap();
+            let summary = run_task_graph(
+                tasks.clone(),
+                &fixture.ctx,
+                &fixture.log,
+                Some(&prior),
+                None,
+            )
+            .unwrap();
             let expected = usize::from(selected || ran_earlier) * phase_count;
             assert_eq!(probes.load(Ordering::SeqCst), consumers.len() * expected);
             assert_eq!(provider_probes.load(Ordering::SeqCst), expected);
@@ -92,7 +98,7 @@ fn prepared_phase_rebuilds_after_elevation_without_reassessing() {
             fixture.task("independent", 3),
             fixture.task("blocked", 2).depends_on(&[1]),
         ];
-        let summary = run_task_graph(as_dyn(&tasks), &ctx, &fixture.log, None).unwrap();
+        let summary = run_task_graph(as_dyn(&tasks), &ctx, &fixture.log, None, None).unwrap();
 
         assert_eq!(fixture.entries(), ["independent", "dependent"]);
         for (task, expected) in tasks.iter().zip([

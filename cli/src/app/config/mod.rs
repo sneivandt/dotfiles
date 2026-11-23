@@ -303,8 +303,9 @@ macro_rules! define_config {
             pub validation_system_files: Vec<system_files::SystemFile>,
             /// Main and overlay chmod definitions before category filtering.
             pub validation_chmod: Vec<chmod::ChmodEntry>,
-            /// Registry declarations retained for diagnostics on non-Windows hosts.
-            validation_registry: Vec<registry::RegistryEntry>,
+            /// Registry declarations retained per source (main, overlay) for
+            /// diagnostics on non-Windows hosts without failing active loads.
+            validation_registry: (Vec<registry::RegistryEntry>, Vec<registry::RegistryEntry>),
             $(#[doc = $doc] pub $field: $ty,)+
         }
 
@@ -319,7 +320,7 @@ macro_rules! define_config {
                     validation_symlinks: Vec::new(),
                     validation_system_files: Vec::new(),
                     validation_chmod: Vec::new(),
-                    validation_registry: Vec::new(),
+                    validation_registry: (Vec::new(), Vec::new()),
                     $($field: Vec::new(),)+
                 }
             }
@@ -360,13 +361,10 @@ impl Config {
         let (registry, validation_registry) = if platform.has_registry() {
             (
                 sections.merge(registry::REGISTRY_TOML, main_registry, overlay_registry)?,
-                Vec::new(),
+                (Vec::new(), Vec::new()),
             )
         } else {
-            (
-                Vec::new(),
-                main_registry.into_iter().chain(overlay_registry).collect(),
-            )
+            (Vec::new(), (main_registry, overlay_registry))
         };
         let units =
             sections.collect_filtered(systemd_units::SYSTEMD_UNITS_TOML, systemd_units::decode)?;
@@ -442,7 +440,8 @@ impl Config {
         diagnostics.extend(apm::validate(&self.root, self.overlay.as_deref()));
         diagnostics.extend(packages::validate(&self.packages, platform));
         diagnostics.extend(registry::validate(&self.registry));
-        diagnostics.extend(registry::validate(&self.validation_registry));
+        diagnostics.extend(registry::validate(&self.validation_registry.0));
+        diagnostics.extend(registry::validate(&self.validation_registry.1));
         diagnostics.extend(chmod::validate(&self.chmod, platform));
         diagnostics.extend(systemd_units::validate(&self.units, platform));
         diagnostics.extend(system_files::validate(&self.validation_system_files));

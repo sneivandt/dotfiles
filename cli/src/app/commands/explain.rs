@@ -78,11 +78,7 @@ pub(crate) fn run(opts: &ExplainOpts) -> Result<()> {
     {
         format!("blocked ({error})")
     } else {
-        match ApplyOperation::from_state(&resource.current_state()?, &ProcessOpts::strict("link")) {
-            ApplyOperation::Apply { .. } => "create managed link".into(),
-            ApplyOperation::Noop => "already linked".into(),
-            ApplyOperation::Skip { reason, .. } => format!("blocked ({reason})"),
-        }
+        format_update_action(resource.current_state())
     };
     writeln!(output, "Update: {update_action}")?;
     let removal_action = match resource.removal_state() {
@@ -95,4 +91,40 @@ pub(crate) fn run(opts: &ExplainOpts) -> Result<()> {
     };
     writeln!(output, "Remove: {removal_action}")?;
     Ok(())
+}
+
+fn format_update_action(
+    state: crate::engine::ResourceResult<crate::engine::ResourceState>,
+) -> String {
+    match state {
+        Ok(state) => match ApplyOperation::from_state(&state, &ProcessOpts::strict("link")) {
+            ApplyOperation::Apply { .. } => "create managed link".into(),
+            ApplyOperation::Noop => "already linked".into(),
+            ApplyOperation::Skip { reason, .. } => format!("blocked ({reason})"),
+        },
+        Err(error) => format!("blocked ({error:#})"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::ResourceState;
+
+    #[test]
+    fn update_action_reports_state_errors_as_blocked() {
+        let error = anyhow::anyhow!("cannot inspect target").into();
+        assert_eq!(
+            format_update_action(Err(error)),
+            "blocked (cannot inspect target)"
+        );
+        assert_eq!(
+            format_update_action(Ok(ResourceState::Correct)),
+            "already linked"
+        );
+        assert_eq!(
+            format_update_action(Ok(ResourceState::Missing)),
+            "create managed link"
+        );
+    }
 }

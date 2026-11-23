@@ -27,8 +27,9 @@ PanelWindow {
     readonly property var battery: UPower.displayDevice
     readonly property bool hasBattery: battery && battery.ready && battery.isLaptopBattery
     readonly property real charge: hasBattery ? battery.percentage : 0
-    readonly property bool charging: hasBattery && (battery.state === UPowerDeviceState.Charging || battery.state === UPowerDeviceState.FullyCharged)
-    readonly property string batteryIcon: charging ? "\uf0e7" : (charge <= 0.15 ? "\uf244" : (charge <= 0.35 ? "\uf243" : (charge <= 0.6 ? "\uf242" : (charge <= 0.85 ? "\uf241" : "\uf240"))))
+    readonly property bool charging: hasBattery && battery.state === UPowerDeviceState.Charging
+    readonly property bool fullyCharged: hasBattery && battery.state === UPowerDeviceState.FullyCharged
+    readonly property string batteryIcon: charging ? "\uf0e7" : (fullyCharged ? "\uf240" : (charge <= 0.15 ? "\uf244" : (charge <= 0.35 ? "\uf243" : (charge <= 0.6 ? "\uf242" : (charge <= 0.85 ? "\uf241" : "\uf240")))))
 
     function toggleMenu(menu) {
         menuController.toggle(menu);
@@ -152,8 +153,8 @@ PanelWindow {
                     id: batteryButton
                     visible: bar.hasBattery
                     glyph: bar.batteryIcon
-                    tooltip: Math.round(bar.charge * 100) + "% battery" + (bar.charging ? " - Charging" : "")
-                    textColor: bar.charging ? Theme.green : (bar.charge <= 0.15 ? Theme.red : (bar.charge <= 0.3 ? Theme.yellow : Theme.foreground))
+                    tooltip: Math.round(bar.charge * 100) + "% battery" + (bar.charging ? " - Charging" : (bar.fullyCharged ? " - Fully charged" : ""))
+                    textColor: bar.charging || bar.fullyCharged ? Theme.green : (bar.charge <= 0.15 ? Theme.red : (bar.charge <= 0.3 ? Theme.yellow : Theme.foreground))
                     selected: batteryMenu.visible && !batteryMenu.closing
                     onActivated: bar.toggleMenu(batteryMenu)
                 }
@@ -199,7 +200,7 @@ PanelWindow {
         currentDate: bar.currentDate
         loading: bar.markets.loading
         error: bar.markets.error
-        onRefreshRequested: bar.markets.refresh()
+        onRefreshRequested: bar.markets.refresh(true)
     }
     NetworkMenu {
         id: networkMenu
@@ -221,6 +222,6 @@ PanelWindow {
     }
     Process {
         id: networkEditor
-        command: ["nm-connection-editor"]
+        command: ["sh", "-c", "if command -v uwsm >/dev/null 2>&1 && uwsm check is-active >/dev/null 2>&1; then exec uwsm app -t service -- nm-connection-editor; fi; exec nm-connection-editor"]
     }
 }

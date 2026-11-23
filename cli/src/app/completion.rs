@@ -1,13 +1,14 @@
 //! Runtime completion candidates and shell registration scripts.
 
 use std::ffi::{OsStr, OsString};
-use std::process::Command as ProcessCommand;
 
 use clap_complete::CompletionCandidate;
 use clap_lex::RawArgs;
-use serde::Deserialize;
 
 use super::cli_words::{self, Word};
+use super::commands::list::TaskListing;
+
+static CANONICAL_CLI: std::sync::OnceLock<clap::Command> = std::sync::OnceLock::new();
 
 /// Completion uses the same command context as argument parsing, including
 /// options before an explicit command and the implicit update command.
@@ -69,25 +70,21 @@ fn command_for_words(words: &[OsString]) -> clap::Command {
     // Every traversal uses the selected command's syntax. The completion
     // engine otherwise treats command names used as option values (for example
     // --root log) as changes of context.
-    canonical
-        .mut_subcommands(|subcommand| {
-            let name = match subcommand.get_name() {
-                "update" => "update",
-                "remove" => "remove",
-                "check" => "check",
-                "list" => "list",
-                "log" => "log",
-                "completions" => "completions",
-                "help" => "help",
-                _ => return subcommand,
-            };
+    for name in CANONICAL_CLI
+        .get_or_init(super::cli::Cli::command)
+        .get_subcommands()
+        .map(clap::Command::get_name)
+        .chain(std::iter::once("help"))
+    {
+        canonical = canonical.mut_subcommand(name, |subcommand| {
             context
                 .clone()
                 .name(name)
                 .about(subcommand.get_about().cloned().unwrap_or_default())
                 .hide(subcommand.is_hide_set())
-        })
-        .args(options)
+        });
+    }
+    canonical.args(options)
 }
 
 /// Collect option identities, respecting value boundaries and short clusters.
@@ -156,13 +153,6 @@ Register-ArgumentCompleter -Native -CommandName 'dot' -ScriptBlock {
 }
 ";
 
-#[derive(Deserialize)]
-struct TaskListing {
-    selector: String,
-    task: String,
-    commands: Vec<String>,
-}
-
 /// Name of the environment variable that activates runtime completion.
 pub const fn environment_variable() -> &'static str {
     COMPLETION_ENV
@@ -211,23 +201,23 @@ pub fn profile_candidates() -> Vec<CompletionCandidate> {
 pub fn task_candidates() -> Vec<CompletionCandidate> {
     let words = completion_words(std::env::args_os().collect());
     let memberships = task_memberships(&words);
-    let repository_args = repository_args(&words);
-    let Ok(executable) = std::env::current_exe() else {
-        return Vec::new();
-    };
-    let Ok(output) = ProcessCommand::new(executable)
-        .args(["list", "--all", "--format", "json"])
-        .args(repository_args)
-        .env_remove(COMPLETION_ENV)
-        .output()
+    let mut args = vec![
+        OsString::from("dotfiles"),
+        OsString::from("list"),
+        OsString::from("--all"),
+    ];
+    args.extend(repository_args(&words));
+    let Ok(super::cli::Cli {
+        command: super::cli::Command::List(opts),
+        ..
+    }) = super::cli::Cli::try_parse_from(args)
     else {
         return Vec::new();
     };
-    if !output.status.success() {
+    let Ok(listings) = super::commands::list::discover_all_listings(&opts.repository) else {
         return Vec::new();
-    }
-
-    task_candidates_from_json(&output.stdout, memberships)
+    };
+    task_candidates_from_listings(listings, memberships)
 }
 
 fn completion_words(args: Vec<OsString>) -> Vec<OsString> {
@@ -283,10 +273,10 @@ fn option_values<'a>(
     })
 }
 
-fn task_candidates_from_json(json: &[u8], memberships: &[&str]) -> Vec<CompletionCandidate> {
-    let Ok(listings) = serde_json::from_slice::<Vec<TaskListing>>(json) else {
-        return Vec::new();
-    };
+fn task_candidates_from_listings(
+    listings: Vec<TaskListing>,
+    memberships: &[&str],
+) -> Vec<CompletionCandidate> {
     listings
         .into_iter()
         .filter(|listing| {
@@ -294,7 +284,7 @@ fn task_candidates_from_json(json: &[u8], memberships: &[&str]) -> Vec<Completio
                 || listing
                     .commands
                     .iter()
-                    .any(|command| memberships.contains(&command.as_str()))
+                    .any(|command| memberships.contains(&command.label()))
         })
         .map(|listing| CompletionCandidate::new(listing.selector).help(Some(listing.task.into())))
         .collect()
@@ -531,6 +521,7 @@ mod tests {
         for name in [
             "log",
             "list",
+            "explain",
             "check",
             "remove",
             "update",
@@ -556,6 +547,12 @@ mod tests {
                 "root named {name}"
             );
         }
+        let update_after_explain_root =
+            complete(&["dotfiles", "update", "--root", "explain", "--"], 4);
+        assert!(
+            update_after_explain_root.contains(&"--dry-run".to_owned()),
+            "expected update options after --root explain: {update_after_explain_root:?}"
+        );
         assert_eq!(
             complete(&["dotfiles", "--root", "log", "list", "--format", ""], 5),
             ["table", "plain", "json"]
@@ -889,18 +886,34 @@ mod tests {
 
     #[test]
     fn task_candidates_follow_command_membership() {
-        let json = br#"[
-            {"selector":"symlinks","task":"Home symlinks","commands":["update","remove"]},
-            {"selector":"shellcheck","task":"ShellCheck","commands":["check"]},
-            {"selector":"pin-only","task":"Pin updater","commands":["update"]}
-        ]"#;
+        use super::super::cli::TaskGraphCommand;
 
-        let update = task_candidates_from_json(json, &["update"]);
+        let listings = || {
+            vec![
+                TaskListing {
+                    selector: "symlinks".into(),
+                    task: "Home symlinks".into(),
+                    commands: vec![TaskGraphCommand::Update, TaskGraphCommand::Remove],
+                },
+                TaskListing {
+                    selector: "shellcheck".into(),
+                    task: "ShellCheck".into(),
+                    commands: vec![TaskGraphCommand::Check],
+                },
+                TaskListing {
+                    selector: "pin-only".into(),
+                    task: "Pin updater".into(),
+                    commands: vec![TaskGraphCommand::Update],
+                },
+            ]
+        };
+
+        let update = task_candidates_from_listings(listings(), &["update"]);
         assert_eq!(update.len(), 2);
         assert_eq!(update[0].get_value(), "symlinks");
         assert_eq!(update[1].get_value(), "pin-only");
 
-        let check = task_candidates_from_json(json, &["check"]);
+        let check = task_candidates_from_listings(listings(), &["check"]);
         assert_eq!(check.len(), 1);
         assert_eq!(check[0].get_value(), "shellcheck");
     }

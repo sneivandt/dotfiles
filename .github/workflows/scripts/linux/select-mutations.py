@@ -72,10 +72,16 @@ def repository_test_input(path):
     # Config::load in config_drift and the tracked Arch recipe descriptor tests.
     if path.startswith("conf/") and path.endswith(".toml"):
         return True
-    if path.startswith("packages/") and path.rsplit("/", 1)[-1] in {"PKGBUILD", "release.json"}:
-        return True
+    if path.startswith("packages/"):
+        parts = path.split("/")
+        if len(parts) == 3 and (
+            parts[2] in {"PKGBUILD", "release.json"} or parts[2].endswith(".install")
+        ):
+            return True
     # Repository assets and embedded Markdown examples read by Rust tests.
     return path.startswith((
+        "system/",
+        "symlinks/config/git/templates/",
         "symlinks/config/systemd/user/",
         "symlinks/config/hypr/scripts/",
         "symlinks/local/bin/",
@@ -107,6 +113,37 @@ TEST_OWNERS = {
 }
 
 
+def linux_only_source(path):
+    # Modules compiled or exercised only for Linux domains so strictly Linux
+    # source edits do not schedule the 8 native Windows mutation shards.
+    return (
+        path.endswith("/linux.rs")
+        or path.startswith((
+            "cli/src/domains/packages/arch_recipes/",
+            "cli/src/domains/system/resources/system_file/",
+            "cli/src/domains/system/resources/systemd_unit/",
+        ))
+        or path in {
+            "cli/src/domains/files/chmod.rs",
+            "cli/src/domains/files/config/chmod.rs",
+            "cli/src/domains/files/resources/chmod.rs",
+            "cli/src/domains/packages/arch_recipes.rs",
+            "cli/src/domains/packages/install/paru.rs",
+            "cli/src/domains/packages/resources/pacman.rs",
+            "cli/src/domains/packages/resources/paru.rs",
+            "cli/src/domains/shell/login_shell.rs",
+            "cli/src/domains/shell/resources/shell.rs",
+            "cli/src/domains/system/config/system_files.rs",
+            "cli/src/domains/system/config/systemd_units.rs",
+            "cli/src/domains/system/resources/system_file.rs",
+            "cli/src/domains/system/resources/systemd_unit.rs",
+            "cli/src/domains/system/system_files.rs",
+            "cli/src/domains/system/systemd_fixture.rs",
+            "cli/src/domains/system/systemd_units.rs",
+        }
+    )
+
+
 def selection(paths):
     owners = {TEST_OWNERS[path] for path in paths if path in TEST_OWNERS}
     paths = [path for path in paths if path not in TEST_OWNERS]
@@ -129,9 +166,10 @@ def selection(paths):
         ))
         for path in paths
     )
+    run_windows = broad or any(not linux_only_source(path) for path in source)
     # Whole changed files include unchanged production code beside edited inline
     # tests. Harness, external test, and build changes recheck all source.
-    return (["cli/src"] if broad else source), bool(source or broad)
+    return (["cli/src"] if broad else source), run_windows
 
 
 def select_inputs(base, head):

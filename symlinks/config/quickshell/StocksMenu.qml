@@ -16,8 +16,9 @@ ShellPopup {
     property string error: ""
     property string expandedSymbol: ""
     signal refreshRequested
+    readonly property int staleAfterSeconds: 15 * 60
     readonly property bool hasQuotes: Boolean(quotes && quotes.length > 0)
-    readonly property bool stale: hasQuotes && (updated <= 0 || currentDate.getTime() / 1000 - updated > 15 * 60)
+    readonly property bool stale: hasQuotes && (updated <= 0 || currentDate.getTime() / 1000 - updated >= staleAfterSeconds)
     readonly property string statusText: {
         if (loading)
             return hasQuotes ? "Refreshing quotes..." : "Loading quotes...";
@@ -122,6 +123,8 @@ ShellPopup {
 
                         width: quotesColumn.width
                         quote: modelData
+                        currentDate: root.currentDate
+                        staleAfterSeconds: root.staleAfterSeconds
                         expanded: root.expandedSymbol === modelData.symbol
                         onTriggered: root.expandedSymbol = expanded ? "" : modelData.symbol
                         onActiveFocusChanged: {

@@ -7,9 +7,10 @@
 //! repository updates restart the command to publish a fresh snapshot.
 
 use crate::app::config::Config;
-use crate::domains::ai::apm::ApmFragmentSource;
+use crate::domains::ai::apm::{ApmFragmentSource, InactiveApmFragments};
 use crate::domains::files::config::symlinks::{
-    Symlink, default_target, path_identity, resolve_symlinks_dir, target_identity,
+    Symlink, default_target, expand_optional_glob_patterns, path_identity, resolve_symlinks_dir,
+    target_identity,
 };
 use crate::domains::packages::arch_recipes::ParuBase;
 use crate::infra::ConfigHandle;
@@ -27,7 +28,7 @@ macro_rules! define_config_store {
             pub aggregate: ConfigHandle<Config>,
             /// Resolved APM fragment sources derived from managed symlinks.
             pub(crate) apm_fragments: ConfigHandle<Vec<ApmFragmentSource>>,
-            pub(crate) inactive_apm_fragments: ConfigHandle<Vec<ApmFragmentSource>>,
+            pub(crate) inactive_apm_fragments: ConfigHandle<InactiveApmFragments>,
             /// Selected source for the generated Paru configuration.
             pub(crate) paru_base: ConfigHandle<Option<ParuBase>>,
             $(
@@ -41,10 +42,14 @@ macro_rules! define_config_store {
             #[must_use]
             pub fn from_config(config: Config) -> Self {
                 let apm_fragments = apm_fragment_sources(&config.symlinks, &config.root);
-                let inactive_apm_fragments = apm_fragment_sources(&config.validation_symlinks, &config.root)
+                let (expanded_validation_apm, inactive_apm_errors) =
+                    expand_apm_validation_symlinks(&config.validation_symlinks, &config.root);
+                let inactive_sources = apm_fragment_sources(&expanded_validation_apm, &config.root)
                     .into_iter()
                     .filter(|fragment| !apm_fragments.contains(fragment))
                     .collect();
+                let inactive_apm_fragments =
+                    InactiveApmFragments::new(inactive_sources, inactive_apm_errors);
                 let paru_target = path_identity(Path::new(".config/paru/paru.conf.base"));
                 let paru_base = config.symlinks.iter().find_map(|link| {
                     (target_identity(link) == paru_target)
@@ -66,6 +71,55 @@ macro_rules! define_config_store {
 }
 
 config_section_inventory!(define_config_store);
+
+fn expand_apm_validation_symlinks(
+    symlinks: &[Symlink],
+    root: &Path,
+) -> (Vec<Symlink>, Vec<String>) {
+    let mut expanded = Vec::new();
+    let mut errors = Vec::new();
+    for symlink in symlinks {
+        let is_glob = symlink.source.contains('*')
+            || symlink.target.as_deref().is_some_and(|t| t.contains('*'));
+        if !is_glob {
+            if targets_apm_config(symlink) {
+                expanded.push(symlink.clone());
+            }
+            continue;
+        }
+        if may_target_apm_config(symlink) {
+            match expand_optional_glob_patterns(std::slice::from_ref(symlink), root) {
+                Ok(matches) => expanded.extend(matches),
+                Err(error) => errors.push(format!("{error:#}")),
+            }
+        }
+    }
+    (expanded, errors)
+}
+
+fn may_target_apm_config(symlink: &Symlink) -> bool {
+    if targets_apm_config(symlink) {
+        return true;
+    }
+    let target = symlink
+        .target
+        .clone()
+        .unwrap_or_else(|| default_target(&symlink.source));
+    Path::new(&target)
+        .parent()
+        .and_then(|parent| parent.to_str())
+        .is_some_and(|parent| parent.contains('*'))
+}
+
+fn targets_apm_config(symlink: &Symlink) -> bool {
+    let target = symlink
+        .target
+        .clone()
+        .unwrap_or_else(|| default_target(&symlink.source));
+    Path::new(&target)
+        .parent()
+        .is_some_and(|parent| path_identity(parent) == path_identity(Path::new(".apm/config")))
+}
 
 fn apm_fragment_sources(symlinks: &[Symlink], root: &Path) -> Vec<ApmFragmentSource> {
     symlinks
@@ -166,6 +220,125 @@ mod tests {
             target: None,
             allow_external_target: false,
             origin: Some(root.to_path_buf()),
+        }
+    }
+
+    #[test]
+    fn expands_glob_declared_inactive_apm_fragments() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("repo");
+        let missing_overlay = fixture.path().join("absent-overlay");
+        let fragment_dir = root.join("symlinks/apm/config");
+        std::fs::create_dir_all(&fragment_dir).unwrap();
+        std::fs::write(fragment_dir.join("base.yml"), "name: base\n").unwrap();
+        std::fs::write(fragment_dir.join("desktop.yml"), "name: desktop\n").unwrap();
+
+        let mut config = empty_config(root.clone());
+        config.symlinks = vec![symlink(&root, "apm/config/base.yml")];
+        config.validation_symlinks = vec![
+            symlink(&root, "apm/config/*"),
+            symlink(&missing_overlay, "apm/config/*"),
+        ];
+
+        let store = ConfigStore::from_config(config);
+
+        assert_eq!(
+            *store.apm_fragments.get(),
+            vec![ApmFragmentSource::new(
+                fragment_dir.join("base.yml"),
+                ".apm/config/base.yml".into(),
+            )]
+        );
+        assert_eq!(
+            store.inactive_apm_fragments.get().sources().unwrap(),
+            &[ApmFragmentSource::new(
+                fragment_dir.join("desktop.yml"),
+                ".apm/config/desktop.yml".into(),
+            )]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_enumerable_inactive_apm_glob_surfaces_error_before_reconciliation() {
+        use crate::domains::ai::apm::{ApmPackageMode, InstallApmPackages};
+        use crate::engine::Task as _;
+        use crate::test_helpers::make_linux_context;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        struct RestoreMode(PathBuf);
+        impl Drop for RestoreMode {
+            fn drop(&mut self) {
+                drop(std::fs::set_permissions(
+                    &self.0,
+                    std::fs::Permissions::from_mode(0o755),
+                ));
+            }
+        }
+
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("repo");
+        let home = fixture.path().join("home");
+        let missing_overlay = fixture.path().join("absent-overlay");
+        let fragment_dir = root.join("symlinks/apm/config");
+        let inactive_source = fragment_dir.join("desktop.yml");
+        let home_config = home.join(".apm/config");
+        std::fs::create_dir_all(&fragment_dir).unwrap();
+        std::fs::create_dir_all(&home_config).unwrap();
+        std::fs::write(
+            &inactive_source,
+            "dependencies:\n  apm:\n    - inactive/plugin\n",
+        )
+        .unwrap();
+        let retained_link = home_config.join("desktop.yml");
+        std::os::unix::fs::symlink(&inactive_source, &retained_link).unwrap();
+
+        std::fs::set_permissions(&fragment_dir, std::fs::Permissions::from_mode(0o111)).unwrap();
+        let _restore = RestoreMode(fragment_dir.clone());
+        if std::fs::read_dir(&fragment_dir).is_ok() {
+            return;
+        }
+        // Traversing the 0o111 directory still lets the retained symlink be read.
+        assert!(
+            std::fs::read_to_string(&retained_link)
+                .unwrap()
+                .contains("inactive/plugin")
+        );
+
+        let mut config = empty_config(root.clone());
+        config.validation_symlinks = vec![
+            symlink(&root, "apm/config/*"),
+            symlink(&missing_overlay, "apm/config/*"),
+        ];
+        let store = ConfigStore::from_config(config);
+        let inspection_err = store
+            .inactive_apm_fragments
+            .get()
+            .sources()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            inspection_err.contains("could not inspect inactive APM fragment sources"),
+            "{inspection_err}"
+        );
+
+        let task = InstallApmPackages::new(store.apm_fragments, ApmPackageMode::Install)
+            .with_inactive_fragments(store.inactive_apm_fragments);
+        let ctx = make_linux_context(root, None).with_home(home.clone());
+
+        assert!(task.should_run(&ctx));
+        for dry_run in [true, false] {
+            let err = task.run(&ctx.with_dry_run(dry_run)).unwrap_err();
+            let rendered = format!("{err:#}");
+            assert!(
+                rendered.contains("could not inspect inactive APM fragment sources")
+                    && rendered.contains("reading directory"),
+                "dry_run={dry_run}: {rendered}"
+            );
+            assert!(
+                !home.join(".apm/apm.yml").exists(),
+                "inactive dependencies must not be reconciled into apm.yml"
+            );
         }
     }
 

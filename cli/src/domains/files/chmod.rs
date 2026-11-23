@@ -59,14 +59,18 @@ impl Task for ApplyFilePermissions {
                     .map(|mode| (resource.target.clone(), mode.as_u32()))
             })
             .collect();
-        ChmodResource::validate_declared_modes(&modes)?;
+        let validated = ChmodResource::validate_declared_modes(&modes)?;
+        let modes_validated = std::sync::Arc::new(std::sync::Mutex::new(validated));
         let mut resources = resources
             .into_iter()
             .map(|resource| {
                 let order = resource.ordering_target()?.components().count();
                 Ok((
                     order,
-                    resource.excluding(&targets).with_declared_modes(&modes),
+                    resource
+                        .excluding(&targets)
+                        .with_declared_modes(&modes)
+                        .with_modes_validated(std::sync::Arc::clone(&modes_validated)),
                 ))
             })
             .collect::<Result<Vec<_>>>()?;

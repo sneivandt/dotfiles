@@ -32,7 +32,11 @@ def normalized_args(arguments: list[str]) -> list[str]:
 
 
 def main() -> None:
-    os.execv(REAL_BINARY, [REAL_BINARY, *normalized_args(sys.argv[1:])])
+    try:
+        os.execv(REAL_BINARY, [REAL_BINARY, *normalized_args(sys.argv[1:])])
+    except FileNotFoundError:
+        print(f"code-insiders: {REAL_BINARY} not found", file=sys.stderr)
+        sys.exit(127)
 
 
 if __name__ == "__main__":

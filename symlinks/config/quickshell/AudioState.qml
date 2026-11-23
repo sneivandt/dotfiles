@@ -21,6 +21,7 @@ Scope {
     readonly property bool loading: !Pipewire.ready || (sink !== null && !sink.ready)
     readonly property bool switchingOutput: _requestedOutput !== ""
     readonly property bool busy: loading || switchingOutput
+    readonly property string actionError: _actionError
     readonly property string error: _actionError || (!Pipewire.ready ? "Audio service unavailable; waiting for PipeWire." : "")
     property string _requestedOutput: ""
     property string _actionError: ""
@@ -30,9 +31,13 @@ Scope {
         objects: root.sinkNodes
     }
 
-    function refresh() {
-        // PipeWire pushes state changes; menu-open and retry need no subprocess.
+    function clearError() {
         _actionError = "";
+    }
+
+    function refresh() {
+        // PipeWire pushes state changes; menu-open needs no subprocess.
+        clearError();
     }
 
     function setVolume(value) {

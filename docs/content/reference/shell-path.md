@@ -32,17 +32,25 @@ are refused; resolve those destinations before retrying. Updates preserve existi
 file permissions and replace the content atomically.
 
 Open a new terminal to use the updated PATH. Existing processes keep the
-environment they inherited at startup. On Linux, loading also depends on the
-shell's startup files. An empty profile gets one `# Added by dotfiles` block.
-Put new commands **after** it. On the next update Dotfiles adds a trailing
-block so a command that resets PATH does not hide the launcher. Each block
-adds `~/.local/bin` only if it is absent. If you have two blocks, keep shell
-commands between them. Blank lines and comments can stay outside.
-If your profile replaces PATH and then returns early, include
-`~/.local/bin` in that assignment. The [Bash invocation reference](https://www.gnu.org/software/bash/manual/html_node/Invoking-Bash.html)
+environment they inherited at startup, and on Linux loading also depends on the
+shell's startup files.
+
+On Linux, Dotfiles manages `# Added by dotfiles` blocks in `~/.profile`:
+
+- An empty profile gets one `# Added by dotfiles` block; put new commands
+  **after** it.
+- On the next update, Dotfiles adds a trailing block so a command that resets
+  PATH does not hide the launcher. Each block adds `~/.local/bin` only if it is
+  absent.
+- When two blocks are present, keep shell commands between them; blank lines
+  and comments can stay outside.
+- If your profile replaces PATH and then returns early, include `~/.local/bin`
+  in that assignment.
+
+The [Bash invocation reference](https://www.gnu.org/software/bash/manual/html_node/Invoking-Bash.html)
 explains login and interactive shell modes; the managed
-[shell configuration](../guides/application-settings.md#shell-configuration) supplies
-the repository-specific startup behavior.
+[shell configuration](../guides/application-settings.md#shell-configuration)
+supplies the repository-specific startup behavior.
 
 ## Configuration
 
@@ -79,8 +87,8 @@ with a temporary PATH for its standard utilities. After fixing the profile, run:
 PATH=/usr/bin:/bin "$HOME/.local/bin/dotfiles" update --only path --no-repo-update
 ```
 
-The same launcher and temporary PATH work with the `log --id … -v` arguments
-printed after a failure.
+The same launcher and temporary PATH work with the `log --id <run-id> -v`
+arguments printed after a failure.
 
 ## Removal
 

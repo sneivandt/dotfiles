@@ -234,6 +234,41 @@ function Test-VersionPinnedBootstrapUrl {
     return $false
 }
 
+function Write-NativeStderrShim {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Directory,
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+    $isWindowsPlatform = ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    if ($isWindowsPlatform) {
+        $shimPath = Join-Path $Directory "$Name.cmd"
+        $script = @(
+            '@echo off'
+            'if defined WRAPPER_TEST_NATIVE_MARKER echo invoked>"%WRAPPER_TEST_NATIVE_MARKER%"'
+            '>&2 echo native stderr diagnostic'
+            'if defined WRAPPER_TEST_NATIVE_STDOUT echo %WRAPPER_TEST_NATIVE_STDOUT%'
+            'exit /b %WRAPPER_TEST_NATIVE_EXIT%'
+        ) -join "`r`n"
+        [System.IO.File]::WriteAllText($shimPath, "$script`r`n", $utf8NoBom)
+        return $shimPath
+    }
+    $shimPath = Join-Path $Directory $Name
+    $script = @(
+        '#!/bin/sh'
+        'if [ -n "${WRAPPER_TEST_NATIVE_MARKER:-}" ]; then printf "invoked\n" > "$WRAPPER_TEST_NATIVE_MARKER"; fi'
+        'printf "native stderr diagnostic\n" >&2'
+        'if [ -n "${WRAPPER_TEST_NATIVE_STDOUT:-}" ]; then printf "%s\n" "$WRAPPER_TEST_NATIVE_STDOUT"; fi'
+        'exit "${WRAPPER_TEST_NATIVE_EXIT:-0}"'
+    ) -join "`n"
+    [System.IO.File]::WriteAllText($shimPath, "$script`n", $utf8NoBom)
+    & chmod +x $shimPath
+    if ($LASTEXITCODE -ne 0) { throw "Failed to mark native shim executable: $shimPath" }
+    return $shimPath
+}
+
 function Test-AttestationVerification {
     Write-TestStage "Testing build provenance verification in bootstrap download"
 
@@ -264,44 +299,194 @@ function Test-AttestationVerification {
     }, $true)
     if (-not $verifier) { throw "Wrapper has no attestation verifier" }
     . ([scriptblock]::Create($verifier.Extent.Text))
-    $savedSkip = $env:DOTFILES_SKIP_ATTESTATION
+    $isWindowsPlatform = ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $savedEnvironment = @{}
+    foreach ($name in @(
+        'DOTFILES_SKIP_ATTESTATION', 'PATH', 'GH_PROMPT_DISABLED', 'DBUS_SESSION_BUS_ADDRESS',
+        'WRAPPER_TEST_NATIVE_EXIT', 'WRAPPER_TEST_GH_CAPTURE'
+    )) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    }
     $savedStderr = [Console]::Error
     $stderr = [System.IO.StringWriter]::new()
-    $probe = @{ Available = $false; Arguments = $null }
-    Set-Item Function:Get-Command -Value {
-        if ($probe.Available) { return @{ Name = 'gh' } }
-        return $null
-    }
-    function gh {
-        $probe.Arguments = @($args)
-        $global:LASTEXITCODE = 0
-    }
+    $nativeFixture = [System.IO.Path]::GetFullPath(
+        (Join-Path (Join-Path $PSScriptRoot '../../../..') ".wrapper-native-gh-$([guid]::NewGuid())"))
     try {
         [Console]::SetError($stderr)
+
+        $emptyDir = Join-Path $nativeFixture 'empty'
+        $shimDir = Join-Path $nativeFixture 'bin'
+        $brokenDir = Join-Path $nativeFixture 'broken'
+        [void][System.IO.Directory]::CreateDirectory($emptyDir)
+        [void][System.IO.Directory]::CreateDirectory($shimDir)
+        [void][System.IO.Directory]::CreateDirectory($brokenDir)
+
+        # A PowerShell function named gh that emits a nonterminating error without
+        # touching $LASTEXITCODE must never be invoked or inherit a prior exit code 0.
+        $script:functionGhInvoked = $false
+        Set-Item -LiteralPath 'Function:global:gh' -Value {
+            $script:functionGhInvoked = $true
+            Write-Error 'PowerShell gh shim error'
+        }
+
+        $env:PATH = $emptyDir
         $env:DOTFILES_SKIP_ATTESTATION = '0'
+        $global:LASTEXITCODE = 0
         if (Test-Attestation -Path 'fixture asset' -Repo 'fixture/releases') {
-            throw 'Missing gh accepted an unattested asset'
+            throw 'Missing native gh accepted an unattested asset via Function:gh or stale LASTEXITCODE'
+        }
+        if ($script:functionGhInvoked) {
+            throw 'Test-Attestation invoked a PowerShell function instead of a native gh application'
         }
         if (-not $stderr.ToString().Contains('WARNING: gh not found. Install GitHub CLI')) {
             throw 'Missing gh did not explain the refusal on stderr'
         }
+
+        # Explicit bypass must succeed without invoking any gh command.
         $env:DOTFILES_SKIP_ATTESTATION = '1'
         if (-not (Test-Attestation -Path 'fixture asset' -Repo 'fixture/releases')) {
             throw 'Explicit bypass did not accept the asset'
         }
-        if ($null -ne $probe.Arguments) { throw 'Bypass invoked gh' }
-        $env:DOTFILES_SKIP_ATTESTATION = '0'
-        $probe.Available = $true
-        if (-not (Test-Attestation -Path 'fixture asset' -Repo 'fixture/releases')) {
-            throw 'Verified asset was rejected'
+        if ($script:functionGhInvoked) {
+            throw 'Explicit bypass invoked Function:gh'
         }
-        if (($probe.Arguments -join '|') -cne 'attestation|verify|fixture asset|--repo|fixture/releases') {
-            throw 'Verification did not receive the explicit release repository'
+        $env:PATH = $savedEnvironment['PATH']
+
+        # Real native gh shim writing to stderr, recording args and env vars,
+        # while Function:gh is still defined to prove the native app wins.
+        $captureFile = Join-Path $nativeFixture 'gh-capture.txt'
+        if ($isWindowsPlatform) {
+            $ghShim = Join-Path $shimDir 'gh.cmd'
+            $shimLines = @(
+                '@echo off'
+                '('
+                '  echo PROMPT=%GH_PROMPT_DISABLED%'
+                '  echo DBUS=%DBUS_SESSION_BUS_ADDRESS%'
+                '  echo ARG1=%~1'
+                '  echo ARG2=%~2'
+                '  echo ARG3=%~3'
+                '  echo ARG4=%~4'
+                '  echo ARG5=%~5'
+                ')>"%WRAPPER_TEST_GH_CAPTURE%"'
+                '>&2 echo native stderr diagnostic'
+                'exit /b %WRAPPER_TEST_NATIVE_EXIT%'
+            ) -join "`r`n"
+            [System.IO.File]::WriteAllText($ghShim, "$shimLines`r`n", $utf8NoBom)
+        } else {
+            $ghShim = Join-Path $shimDir 'gh'
+            $shimLines = @(
+                '#!/bin/sh'
+                '{'
+                '  printf "PROMPT=%s\n" "${GH_PROMPT_DISABLED:-}"'
+                '  printf "DBUS=%s\n" "${DBUS_SESSION_BUS_ADDRESS:-}"'
+                '  printf "ARG1=%s\n" "${1:-}"'
+                '  printf "ARG2=%s\n" "${2:-}"'
+                '  printf "ARG3=%s\n" "${3:-}"'
+                '  printf "ARG4=%s\n" "${4:-}"'
+                '  printf "ARG5=%s\n" "${5:-}"'
+                '} > "$WRAPPER_TEST_GH_CAPTURE"'
+                'printf "native stderr diagnostic\n" >&2'
+                'exit "${WRAPPER_TEST_NATIVE_EXIT:-0}"'
+            ) -join "`n"
+            [System.IO.File]::WriteAllText($ghShim, "$shimLines`n", $utf8NoBom)
+            & chmod +x $ghShim
+            if ($LASTEXITCODE -ne 0) { throw "Failed to mark native gh shim executable: $ghShim" }
+        }
+
+        $env:PATH = "$shimDir$([System.IO.Path]::PathSeparator)$($savedEnvironment['PATH'])"
+        $resolvedGh = Get-Command gh -CommandType Application -ErrorAction Stop | Select-Object -First 1
+        if ($resolvedGh.CommandType -ne 'Application' -or $resolvedGh.Source -ne $ghShim) {
+            throw "Expected native gh shim at $ghShim, got $($resolvedGh.CommandType): $($resolvedGh.Source)"
+        }
+        $env:DOTFILES_SKIP_ATTESTATION = '0'
+        $env:GH_PROMPT_DISABLED = 'caller'
+        $env:DBUS_SESSION_BUS_ADDRESS = 'caller'
+        $env:WRAPPER_TEST_GH_CAPTURE = $captureFile
+        $env:WRAPPER_TEST_NATIVE_EXIT = '0'
+        $stderr.GetStringBuilder().Clear() | Out-Null
+
+        if (-not (Test-Attestation -Path 'fixture asset' -Repo 'fixture/releases')) {
+            throw 'Native gh shim with stderr output and exit 0 was rejected under ErrorActionPreference=Stop'
+        }
+        if ($script:functionGhInvoked) {
+            throw 'Test-Attestation invoked Function:gh instead of the native gh application'
+        }
+        if (-not (Test-Path -LiteralPath $captureFile)) {
+            throw 'Native gh shim did not execute on exit 0 test'
+        }
+        $captured = @(Get-Content -LiteralPath $captureFile)
+        $expectedCapture = @(
+            'PROMPT=1'
+            'DBUS=disabled:'
+            'ARG1=attestation'
+            'ARG2=verify'
+            'ARG3=fixture asset'
+            'ARG4=--repo'
+            'ARG5=fixture/releases'
+        )
+        if (($captured -join '|') -cne ($expectedCapture -join '|')) {
+            throw "Native gh received unexpected env/args: $($captured -join '|')"
+        }
+        Remove-Item -LiteralPath $captureFile -Force
+        if ($ErrorActionPreference -cne 'Stop') {
+            throw 'Test-Attestation did not restore ErrorActionPreference after native exit 0'
+        }
+        if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
+            throw 'Test-Attestation did not restore credential environment after native exit 0'
+        }
+
+        $env:WRAPPER_TEST_NATIVE_EXIT = '1'
+        if (Test-Attestation -Path 'fixture asset' -Repo 'fixture/releases') {
+            throw 'Native gh shim with stderr output and exit 1 accepted the asset'
+        }
+        if (-not (Test-Path -LiteralPath $captureFile)) {
+            throw 'Native gh shim did not execute on exit 1 test'
+        }
+        if ($ErrorActionPreference -cne 'Stop') {
+            throw 'Test-Attestation did not restore ErrorActionPreference after native exit 1'
+        }
+        if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
+            throw 'Test-Attestation did not restore credential environment after native exit 1'
+        }
+        if (-not $stderr.ToString().Contains('Check GitHub access and GH_TOKEN/GITHUB_TOKEN')) {
+            throw 'Failed native gh verification did not emit token guidance on stderr'
+        }
+
+        # Native gh that fails to launch must fail closed even after a prior exit code 0.
+        if ($isWindowsPlatform) {
+            $brokenGh = Join-Path $brokenDir 'gh.exe'
+            [System.IO.File]::WriteAllText($brokenGh, 'not a valid executable', $utf8NoBom)
+        } else {
+            $brokenGh = Join-Path $brokenDir 'gh'
+            [System.IO.File]::WriteAllText($brokenGh, "#!/nonexistent/dotfiles-test-interpreter`n", $utf8NoBom)
+            & chmod +x $brokenGh
+            if ($LASTEXITCODE -ne 0) { throw "Failed to mark broken gh executable: $brokenGh" }
+        }
+        $env:PATH = $brokenDir
+        $stderr.GetStringBuilder().Clear() | Out-Null
+        $global:LASTEXITCODE = 0
+        if (Test-Attestation -Path 'fixture asset' -Repo 'fixture/releases') {
+            throw 'Unlaunchable native gh accepted the asset by inheriting stale LASTEXITCODE'
+        }
+        if ($ErrorActionPreference -cne 'Stop') {
+            throw 'Test-Attestation did not restore ErrorActionPreference after launch failure'
+        }
+        if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
+            throw 'Test-Attestation did not restore credential environment after launch failure'
+        }
+        if (-not $stderr.ToString().Contains('WARNING: Build provenance verification failed')) {
+            throw 'Launch failure did not emit verification failure warning on stderr'
         }
     } finally {
         [Console]::SetError($savedStderr)
         $stderr.Dispose()
-        $env:DOTFILES_SKIP_ATTESTATION = $savedSkip
+        Remove-Item -LiteralPath 'Function:gh' -ErrorAction SilentlyContinue
+        Remove-Variable functionGhInvoked -Scope Script -ErrorAction SilentlyContinue
+        foreach ($name in $savedEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+        }
+        Remove-Item -LiteralPath $nativeFixture -Recurse -Force -ErrorAction SilentlyContinue
     }
     Write-TestPass "Wrapper requires provenance unless explicitly bypassed"
     return $true
@@ -366,7 +551,7 @@ function Test-IsolatedWrapperPath {
     $savedEnvironment = @{}
     foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'DOTFILES_SKIP_ATTESTATION', 'DOTFILES_REEXEC_GUARD', 'DOTFILES_RELEASE_REPO',
             'WRAPPER_TEST_BUILD_EXIT', 'WRAPPER_TEST_BAD_CHECKSUM', 'WRAPPER_TEST_BAD_BINARY', 'WRAPPER_TEST_GH_EXIT',
-            'GH_PROMPT_DISABLED', 'DBUS_SESSION_BUS_ADDRESS')) {
+            'WRAPPER_TEST_CONCURRENT_BINARY', 'GH_PROMPT_DISABLED', 'DBUS_SESSION_BUS_ADDRESS', 'PATH')) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
     try {
@@ -400,18 +585,21 @@ sys.exit(7)
                 ConvertTo-Json -Compress
             $global:LASTEXITCODE = 7
         }
-        $download = if ($IsLinux) { "$binary.download-$PID" } else { "$binary.download-$PID.exe" }
+        $smokeCheck = {
+            if ($args.Count -ne 1 -or $args[0] -cne '--version') { throw 'Unexpected smoke check arguments' }
+            $global:LASTEXITCODE = if ($env:WRAPPER_TEST_BAD_BINARY -eq '1') { 42 } else { 0 }
+            'dotfiles v2026.09.17-1'
+        }
+        $registeredFunctions = [System.Collections.Generic.List[string]]::new()
+        $binDir = Split-Path -Parent $binary
         if ($IsLinux) {
             & chmod +x $binary $buildBinary
             if ($LASTEXITCODE -ne 0) { throw 'Cannot make native fixture executable' }
         } else {
-            Set-Item -LiteralPath "Function:$binary" -Value $child
-            Set-Item -LiteralPath "Function:$buildBinary" -Value $child
-            Set-Item -LiteralPath "Function:$download" -Value {
-                if ($args.Count -ne 1 -or $args[0] -cne '--version') { throw 'Unexpected smoke check arguments' }
-                $global:LASTEXITCODE = if ($env:WRAPPER_TEST_BAD_BINARY -eq '1') { 42 } else { 0 }
-                'dotfiles v2026.09.17-1'
-            }
+            Set-Item -LiteralPath "Function:global:$binary" -Value $child
+            Set-Item -LiteralPath "Function:global:$buildBinary" -Value $child
+            $registeredFunctions.Add($binary)
+            $registeredFunctions.Add($buildBinary)
         }
         Set-Item Function:cargo -Value {
             [System.IO.File]::WriteAllText(
@@ -423,36 +611,72 @@ sys.exit(7)
             } | ConvertTo-Json -Compress
             $global:LASTEXITCODE = [int]$env:WRAPPER_TEST_BUILD_EXIT
         }
-        Set-Item Function:gh -Value {
-            if ($env:GH_PROMPT_DISABLED -cne '1' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'disabled:') {
-                throw 'Verification allowed terminal or desktop keyring prompts'
-            }
-            if ($env:WRAPPER_TEST_GH_EXIT -eq 'throw') {
-                # A concurrent bootstrap must survive this failed verification.
-                [System.IO.File]::WriteAllText($Binary, 'concurrent fixture')
-                throw 'Fixture attestation process could not start'
-            }
-            if ($env:WRAPPER_TEST_GH_EXIT -eq 'publish') {
-                [System.IO.File]::WriteAllText($Binary, 'concurrent fixture')
-                $global:LASTEXITCODE = 0
-                return
-            }
-            $global:LASTEXITCODE = [int]$env:WRAPPER_TEST_GH_EXIT
+        $ghBinDir = Join-Path $fixture 'gh-bin'
+        [void][System.IO.Directory]::CreateDirectory($ghBinDir)
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        if ($isWindowsPlatform) {
+            $ghShimPath = Join-Path $ghBinDir 'gh.cmd'
+            $ghShimScript = @(
+                '@echo off'
+                'if not "%GH_PROMPT_DISABLED%"=="1" exit /b 99'
+                'if not "%DBUS_SESSION_BUS_ADDRESS%"=="disabled:" exit /b 99'
+                'if "%WRAPPER_TEST_GH_EXIT%"=="publish" ('
+                '  <nul set /p =concurrent fixture>"%WRAPPER_TEST_CONCURRENT_BINARY%"'
+                '  exit /b 0'
+                ')'
+                'if "%WRAPPER_TEST_GH_EXIT%"=="throw" ('
+                '  <nul set /p =concurrent fixture>"%WRAPPER_TEST_CONCURRENT_BINARY%"'
+                '  exit /b 1'
+                ')'
+                'exit /b %WRAPPER_TEST_GH_EXIT%'
+            ) -join "`r`n"
+            [System.IO.File]::WriteAllText($ghShimPath, "$ghShimScript`r`n", $utf8NoBom)
+        } else {
+            $ghShimPath = Join-Path $ghBinDir 'gh'
+            $ghShimScript = @(
+                '#!/bin/sh'
+                'if [ "${GH_PROMPT_DISABLED:-}" != "1" ] || [ "${DBUS_SESSION_BUS_ADDRESS:-}" != "disabled:" ]; then exit 99; fi'
+                'if [ "${WRAPPER_TEST_GH_EXIT:-0}" = "publish" ]; then'
+                '  printf "concurrent fixture" > "$WRAPPER_TEST_CONCURRENT_BINARY"'
+                '  exit 0'
+                'fi'
+                'if [ "${WRAPPER_TEST_GH_EXIT:-0}" = "throw" ]; then'
+                '  printf "concurrent fixture" > "$WRAPPER_TEST_CONCURRENT_BINARY"'
+                '  exit 1'
+                'fi'
+                'exit "${WRAPPER_TEST_GH_EXIT:-0}"'
+            ) -join "`n"
+            [System.IO.File]::WriteAllText($ghShimPath, "$ghShimScript`n", $utf8NoBom)
+            & chmod +x $ghShimPath
+            if ($LASTEXITCODE -ne 0) { throw "Failed to mark native gh shim executable: $ghShimPath" }
         }
-        $downloadCapture = @{ Count = 0 }
+        $env:PATH = "$ghBinDir$([System.IO.Path]::PathSeparator)$($savedEnvironment['PATH'])"
+        $env:WRAPPER_TEST_CONCURRENT_BINARY = $binary
+        $downloadCapture = @{ Count = 0; LastPath = $null; LastDir = $null }
         Set-Item Function:Invoke-WebRequest -Value {
             param([string]$Uri, [string]$OutFile)
             if ($Uri.EndsWith('/releases/latest')) {
                 return @{ Content = '{"tag_name":"v2026.09.17-1"}' }
             }
             if ($Uri.EndsWith('/checksums.sha256')) {
-                $hash = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash
+                $hash = (Get-FileHash -LiteralPath $downloadCapture.LastPath -Algorithm SHA256).Hash
                 if ($env:WRAPPER_TEST_BAD_CHECKSUM -eq '1') { $hash = '0' * 64 }
                 return @{ Content = "$hash  $(Get-TargetAssetName)" }
             }
             if ($OutFile) {
+                $stageDir = Split-Path -Parent $OutFile
+                if ((Split-Path -Leaf $stageDir) -cnotmatch '^\.bootstrap-[0-9a-f]{32}$') {
+                    throw "Unexpected bootstrap staging directory: $OutFile"
+                }
                 $downloadCapture.Count++
+                $downloadCapture.LastPath = $OutFile
+                $downloadCapture.LastDir = $stageDir
                 [System.IO.File]::WriteAllText($OutFile, $nativeFixture)
+                if (-not $IsLinux) {
+                    # Register in global scope so the mock survives Invoke-WebRequest returning.
+                    Set-Item -LiteralPath "Function:global:$OutFile" -Value $smokeCheck
+                    $registeredFunctions.Add($OutFile)
+                }
                 return
             }
             throw "Unexpected fixture request: $Uri"
@@ -529,7 +753,7 @@ sys.exit(7)
         if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
             throw 'Failed verification changed the caller credential environment'
         }
-        if ((Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath $download)) {
+        if ((Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath $downloadCapture.LastDir)) {
             throw 'Failed verification left a downloaded binary'
         }
         [System.IO.File]::WriteAllText($binary, 'fixture')
@@ -545,7 +769,7 @@ sys.exit(7)
             $rejected = $true
         }
         if (-not $rejected) { throw 'Wrapper accepted a mismatched checksum' }
-        if ((Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath $download)) {
+        if ((Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath $downloadCapture.LastDir)) {
             throw 'Rejected download was not removed from the literal path'
         }
         $env:WRAPPER_TEST_BAD_CHECKSUM = '0'
@@ -557,7 +781,7 @@ sys.exit(7)
             if ($_ -notmatch 'Downloaded CLI did not start') { throw }
             $rejected = $true
         }
-        if (-not $rejected -or (Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath $download)) {
+        if (-not $rejected -or (Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath $downloadCapture.LastDir)) {
             throw 'Bootstrap published or leaked a verified binary that did not start'
         }
         $env:WRAPPER_TEST_BAD_BINARY = '0'
@@ -575,7 +799,7 @@ sys.exit(7)
                 $rejected = $true
             }
             if (-not $rejected -or [System.IO.File]::ReadAllText($binary) -cne 'concurrent fixture' -or
-                (Test-Path -LiteralPath $download)) { throw 'Bootstrap overwrote a concurrently installed CLI' }
+                (Test-Path -LiteralPath $downloadCapture.LastDir)) { throw 'Bootstrap overwrote a concurrently installed CLI' }
             Remove-Item -LiteralPath $binary
         }
         $env:WRAPPER_TEST_GH_EXIT = 'throw'
@@ -583,18 +807,21 @@ sys.exit(7)
         try {
             & $wrapper --version | Out-Null
         } catch {
-            if ($_ -notmatch 'Fixture attestation process could not start') { throw }
+            if ($_ -notmatch 'Build provenance verification failed') { throw }
             $rejected = $true
         }
-        if (-not $rejected) { throw 'Wrapper ignored an attestation invocation error' }
-        if (Test-Path -LiteralPath $download) {
+        if (-not $rejected) { throw 'Wrapper ignored an attestation failure during concurrent install' }
+        if (Test-Path -LiteralPath $downloadCapture.LastDir) {
             throw 'Unexpected verification failure leaked the downloaded binary'
+        }
+        if (@(Get-ChildItem -LiteralPath $binDir -Force -Filter '.bootstrap-*').Count -ne 0) {
+            throw 'Bootstrap left a staging directory behind'
         }
         if ([System.IO.File]::ReadAllText($binary) -cne 'concurrent fixture') {
             throw 'Failed bootstrap changed the concurrently installed binary'
         }
         if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
-            throw 'Attestation invocation error changed the caller credential environment'
+            throw 'Attestation failure changed the caller credential environment'
         }
         Write-TestPass 'Wrappers preserve literal paths, cwd, arguments, exit codes, and failed-download cleanup'
         return $true
@@ -605,6 +832,11 @@ sys.exit(7)
         Set-Location -LiteralPath $originalLocation.Path
         foreach ($name in $savedEnvironment.Keys) {
             [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+        }
+        # PowerShell's Function provider ignores a global: prefix on Remove-Item,
+        # whereas Function:<name> resolves and removes the global function cleanly.
+        foreach ($fn in $registeredFunctions) {
+            Remove-Item -LiteralPath "Function:$fn" -ErrorAction SilentlyContinue
         }
         Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -858,10 +1090,11 @@ function Test-CargoArtifactFailure {
 function Test-ReleaseRepository {
     Write-TestStage 'Testing GitHub release repository discovery and overrides'
     $savedEnvironment = @{}
-    foreach ($name in @('DOTFILES_RELEASE_REPO', 'DOTFILES_ROOT', 'DOTFILES_WRAPPER')) {
+    foreach ($name in @('DOTFILES_RELEASE_REPO', 'DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'PATH', 'WRAPPER_TEST_NATIVE_EXIT', 'WRAPPER_TEST_NATIVE_MARKER', 'WRAPPER_TEST_NATIVE_STDOUT')) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
-    $fixture = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+    $fixture = [System.IO.Path]::GetFullPath(
+        (Join-Path (Join-Path $PSScriptRoot '../../../..') ".wrapper-release-repo-$([guid]::NewGuid())"))
     try {
         $wrapper = Join-Path $PSScriptRoot '../../../../dotfiles.ps1'
         $tokens = $null
@@ -876,11 +1109,55 @@ function Test-ReleaseRepository {
         . ([scriptblock]::Create($resolver.Extent.Text))
         # The resolver loaded above reads this variable through dynamic scope.
         Set-Variable -Name DotfilesRoot -Value 'fixture root with spaces'
+
+        # Exercise a real native git child process writing to stderr on exit 0
+        # and exit 1 before installing PowerShell function mocks.
+        $shimDir = Join-Path $fixture 'bin'
+        [void][System.IO.Directory]::CreateDirectory($shimDir)
+        $gitShim = Write-NativeStderrShim -Directory $shimDir -Name 'git'
+        $marker = Join-Path $fixture 'git-invoked'
+        $env:PATH = "$shimDir$([System.IO.Path]::PathSeparator)$($savedEnvironment['PATH'])"
+        $resolvedGit = Get-Command git -ErrorAction Stop
+        if ($resolvedGit.CommandType -ne 'Application' -or $resolvedGit.Source -ne $gitShim) {
+            throw "Expected native git shim at $gitShim, got $($resolvedGit.CommandType): $($resolvedGit.Source)"
+        }
+        Remove-Item Env:DOTFILES_RELEASE_REPO -ErrorAction SilentlyContinue
+        $env:WRAPPER_TEST_NATIVE_MARKER = $marker
+        $env:WRAPPER_TEST_NATIVE_STDOUT = 'https://github.com/fork-owner/custom-name.git'
+        $env:WRAPPER_TEST_NATIVE_EXIT = '0'
+        if ((Resolve-ReleaseRepo) -cne 'fork-owner/custom-name') {
+            throw 'Native git shim with stderr output and exit 0 discarded a valid GitHub remote under ErrorActionPreference=Stop'
+        }
+        if (-not (Test-Path -LiteralPath $marker)) {
+            throw 'Native git shim did not execute on exit 0 test'
+        }
+        Remove-Item -LiteralPath $marker -Force
+        if ($ErrorActionPreference -cne 'Stop') {
+            throw 'Resolve-ReleaseRepo did not restore ErrorActionPreference after native exit 0'
+        }
+        $env:WRAPPER_TEST_NATIVE_STDOUT = ''
+        $env:WRAPPER_TEST_NATIVE_EXIT = '1'
+        $rejected = $false
+        try { Resolve-ReleaseRepo | Out-Null } catch {
+            if ($_ -notmatch 'DOTFILES_RELEASE_REPO') { throw }
+            $rejected = $true
+        }
+        if (-not $rejected) { throw 'Failed native git lookup with stderr accepted' }
+        if (-not (Test-Path -LiteralPath $marker)) {
+            throw 'Native git shim did not execute on exit 1 test'
+        }
+        if ($ErrorActionPreference -cne 'Stop') {
+            throw 'Resolve-ReleaseRepo did not restore ErrorActionPreference after native exit 1'
+        }
+        $env:PATH = $savedEnvironment['PATH']
+
         $script:releaseRemote = $null
+        $script:releaseGitStderr = $null
         function git {
             if (($args -join '|') -cne '-C|fixture root with spaces|remote|get-url|origin') {
                 throw 'Repository discovery used the wrong arguments'
             }
+            if ($script:releaseGitStderr) { Write-Error $script:releaseGitStderr }
             $global:LASTEXITCODE = if ($null -eq $script:releaseRemote) { 1 } else { 0 }
             $script:releaseRemote
         }
@@ -891,6 +1168,25 @@ function Test-ReleaseRepository {
             $script:releaseRemote = $remote
             if ((Resolve-ReleaseRepo) -cne 'fork-owner/custom-name') { throw "Wrong repository: $remote" }
         }
+        $script:releaseGitStderr = 'git stderr warning'
+        $script:releaseRemote = 'https://github.com/fork-owner/custom-name.git'
+        if ((Resolve-ReleaseRepo) -cne 'fork-owner/custom-name') {
+            throw 'Stderr warning discarded a valid GitHub remote under ErrorActionPreference=Stop'
+        }
+        if ($ErrorActionPreference -cne 'Stop') {
+            throw 'Resolve-ReleaseRepo did not restore ErrorActionPreference after stderr warning'
+        }
+        $script:releaseRemote = $null
+        $rejected = $false
+        try { Resolve-ReleaseRepo | Out-Null } catch {
+            if ($_ -notmatch 'DOTFILES_RELEASE_REPO') { throw }
+            $rejected = $true
+        }
+        if (-not $rejected) { throw 'Failed git lookup with stderr accepted' }
+        if ($ErrorActionPreference -cne 'Stop') {
+            throw 'Resolve-ReleaseRepo did not restore ErrorActionPreference after failed lookup'
+        }
+        $script:releaseGitStderr = $null
         $script:releaseRemote = 'https://example.com/other/repo'
         $env:DOTFILES_RELEASE_REPO = 'publisher/releases'
         if ((Resolve-ReleaseRepo) -cne 'publisher/releases') { throw 'Override was ignored' }
@@ -939,10 +1235,114 @@ function Test-ReleaseRepository {
         Write-TestFail "Release repository regression failed: $_"
         return $false
     } finally {
+        Remove-Item -LiteralPath 'Function:Invoke-WebRequest' -ErrorAction SilentlyContinue
         foreach ($name in $savedEnvironment.Keys) {
             [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
         }
         Remove-Variable releaseRemote -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable releaseGitStderr -Scope Script -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Test-CliStartupCompletionEnv {
+    Write-TestStage 'Testing CLI startup probe clears DOTFILES_COMPLETE while preserving it for dispatch'
+    $isWindowsPlatform = ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
+    $binaryName = if ($isWindowsPlatform) { 'dotfiles.exe' } else { 'dotfiles' }
+    $backupName = if ($isWindowsPlatform) { '.dotfiles-old.exe' } else { '.dotfiles.old' }
+    $fixture = [System.IO.Path]::GetFullPath(
+        (Join-Path (Join-Path $PSScriptRoot '../../../..') ".wrapper-complete-probe-$([guid]::NewGuid())"))
+    $savedEnvironment = @{}
+    foreach ($name in @('DOTFILES_COMPLETE', 'DOTFILES_ROOT', 'DOTFILES_WRAPPER')) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    }
+    try {
+        $wrapperSource = Join-Path $PSScriptRoot '../../../../dotfiles.ps1'
+        $tokens = $null
+        $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+            $wrapperSource, [ref]$tokens, [ref]$errors)
+        if ($errors.Count -ne 0) { throw "Wrapper parse failed: $errors" }
+        $probeAst = $ast.Find({ param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq 'Test-CliStartup'
+        }, $true)
+        if (-not $probeAst) { throw 'Wrapper has no Test-CliStartup function' }
+        . ([scriptblock]::Create($probeAst.Extent.Text))
+
+        $binDir = Join-Path $fixture 'bin'
+        [void][System.IO.Directory]::CreateDirectory($binDir)
+        $wrapper = Join-Path $fixture 'dotfiles.ps1'
+        Copy-Item -LiteralPath $wrapperSource -Destination $wrapper
+        $binary = Join-Path $binDir $binaryName
+        $backup = Join-Path $binDir $backupName
+        $journal = Join-Path $binDir ".$binaryName.update-state"
+
+        if ($env:BINARY_PATH -and (Test-Path -LiteralPath $env:BINARY_PATH -PathType Leaf)) {
+            Copy-Item -LiteralPath $env:BINARY_PATH -Destination $binary
+            Copy-Item -LiteralPath $env:BINARY_PATH -Destination $backup
+        } elseif (-not $isWindowsPlatform) {
+            $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+            $fakeCli = @(
+                '#!/bin/sh'
+                'if [ -n "${DOTFILES_COMPLETE:-}" ]; then'
+                '  printf "Register-ArgumentCompleter -Native -CommandName dotfiles (%s)\n" "$DOTFILES_COMPLETE"'
+                '  exit 0'
+                'fi'
+                'if [ "${1:-}" = "--version" ]; then'
+                '  printf "dotfiles v2026.09.17-1\n"'
+                '  exit 0'
+                'fi'
+                'exit 1'
+            ) -join "`n"
+            [System.IO.File]::WriteAllText($binary, "$fakeCli`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText($backup, "$fakeCli`n", $utf8NoBom)
+            & chmod +x $binary $backup
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to mark completion probe fixture executable' }
+        } else {
+            Write-Information 'Skipping native completion probe on Windows without BINARY_PATH' -InformationAction Continue
+            return $true
+        }
+
+        $env:DOTFILES_COMPLETE = 'powershell'
+        if (-not (Test-CliStartup $binary)) {
+            throw 'Test-CliStartup rejected a healthy CLI when DOTFILES_COMPLETE was set'
+        }
+        if ($env:DOTFILES_COMPLETE -cne 'powershell') {
+            throw 'Test-CliStartup mutated DOTFILES_COMPLETE in the caller environment'
+        }
+
+        # With an update journal present and DOTFILES_COMPLETE set, recovery must
+        # keep the healthy installed CLI, clear the journal, and still pass
+        # DOTFILES_COMPLETE through to the dispatched CLI.
+        [System.IO.File]::WriteAllText($journal, 'pending')
+        $output = @(& $wrapper)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Wrapper failed during completion registration with update journal (exit $LASTEXITCODE)"
+        }
+        $joined = ($output -join "`n")
+        if ($joined -notmatch 'Register-ArgumentCompleter') {
+            throw "Dispatched CLI did not receive DOTFILES_COMPLETE=powershell: $joined"
+        }
+        if ((Get-Item -Force -LiteralPath $journal).Length -ne 0) {
+            throw 'Healthy CLI recovery did not clear the update journal'
+        }
+        if (-not (Test-Path -LiteralPath $backup -PathType Leaf)) {
+            throw 'Healthy CLI recovery unexpectedly overwrote the installed CLI from backup'
+        }
+        if ($env:DOTFILES_COMPLETE -cne 'powershell') {
+            throw 'Wrapper mutated DOTFILES_COMPLETE in the caller environment'
+        }
+
+        Write-TestPass 'CLI startup probe clears DOTFILES_COMPLETE without stripping it from dispatch'
+        return $true
+    } catch {
+        Write-TestFail "CLI startup completion-env regression failed: $_"
+        return $false
+    } finally {
+        foreach ($name in $savedEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+        }
         Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
@@ -958,6 +1358,7 @@ function Invoke-TestSuite {
     $results += Test-AdvancedFlagForwarding
     $results += Test-VersionPinnedBootstrapUrl
     $results += Test-AttestationVerification
+    $results += Test-CliStartupCompletionEnv
     $results += Test-ErrorHandling
     $results += Test-IsolatedWrapperPath
     $results += Test-NativeExitCode

@@ -98,7 +98,19 @@ pub(super) fn create_run_log_file_with(
         }
         match open_log(&path) {
             Ok(file) => return Some((path, file, lease)),
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => (),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                // Holding both the directory lock and this exclusive lease proves
+                // the existing log is closed, so cleaning up the lease leaves no orphan.
+                drop(lease);
+                if let Err(cleanup_error) = fs::remove_file(lease_path(&path))
+                    && cleanup_error.kind() != std::io::ErrorKind::NotFound
+                {
+                    tracing::debug!(
+                        "could not remove unused log lease {}: {cleanup_error}",
+                        path.display()
+                    );
+                }
+            }
             Err(error) => {
                 warn_degraded(&format!("creating run log {}: {error}", path.display()));
                 drop(lease);
@@ -122,6 +134,14 @@ pub(super) fn create_run_log_file_with(
 /// skipped even if that leaves more than `keep` logs. Cleanup failures are
 /// diagnostic-only: retention is housekeeping and must never fail a run.
 pub(super) fn prune_run_logs(dir: &Path, keep: usize) {
+    prune_run_logs_with(dir, keep, read_dotfiles_header);
+}
+
+pub(super) fn prune_run_logs_with(
+    dir: &Path,
+    keep: usize,
+    mut read_header: impl FnMut(&Path) -> Option<String>,
+) {
     let _directory_lock = match lock_log_directory(dir) {
         Ok(lock) => lock,
         Err(error) => {
@@ -132,7 +152,7 @@ pub(super) fn prune_run_logs(dir: &Path, keep: usize) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
-    let mut runs: Vec<(String, String)> = entries
+    let candidates: Vec<(PathBuf, String, String)> = entries
         .flatten()
         .filter_map(|entry| {
             if !entry.file_type().ok()?.is_file() {
@@ -140,8 +160,18 @@ pub(super) fn prune_run_logs(dir: &Path, keep: usize) {
             }
             let name = entry.file_name().into_string().ok()?;
             let parsed = parse_run_log_file_name(&name)?;
-            let header = read_dotfiles_header(&entry.path())?;
-            Some((sort_stamp(Some(&header), parsed.stamp), name))
+            let stamp = parsed.stamp.to_string();
+            Some((entry.path(), stamp, name))
+        })
+        .collect();
+    if candidates.len() <= keep {
+        return;
+    }
+    let mut runs: Vec<(String, String)> = candidates
+        .into_iter()
+        .filter_map(|(path, stamp, name)| {
+            let header = read_header(&path)?;
+            Some((sort_stamp(Some(&header), &stamp), name))
         })
         .collect();
     let mut excess = runs.len().saturating_sub(keep);

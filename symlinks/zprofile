@@ -16,7 +16,9 @@ else
 fi
 
 # Start graphical session on tty1 if not already running
-if command -v uwsm >/dev/null 2>&1 && [ "$(tty)" = "/dev/tty1" ]; then
+if command -v uwsm >/dev/null 2>&1 &&
+   [[ -o interactive ]] && [[ -t 0 ]] &&
+   { [[ ${TTY:-} == /dev/tty1 ]] || { [[ -z ${TTY:-} ]] && [ "$(tty 2>/dev/null)" = "/dev/tty1" ]; }; }; then
   if uwsm check may-start 2>/dev/null; then
     uwsm start hyprland-uwsm.desktop || echo "Could not start Hyprland; continuing to shell." >&2
   elif uwsm check is-active 2>/dev/null; then

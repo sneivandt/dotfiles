@@ -252,7 +252,13 @@ Documentation-only work can use the native checker above without provisioning
 WSL. Host installation and full application integration remain disposable-runner
 coverage; safe shell and editor fixtures are included locally when selected.
 
-#### Validation cache
+If documentation already passed the native checker for this commit, add
+`--docs-checked <commit>` to both commands, using the SHA printed by the native
+checker. The Linux checker then omits npm setup and the docs stage, but keeps
+all selected CLI and platform checks. A different commit is rejected.
+Do not provision another OS just to repeat documentation validation.
+
+### Validation cache
 
 The coordinator keeps a separate Cargo cache for each checkout and platform
 under `~/.cache/dotfiles-pre-push/`. Preview its location, approximate size,
@@ -268,12 +274,6 @@ locks its cache. If the cache filesystem has less than 10 GiB free, it clears
 its own build output and checks again. Validation stops if space is still below
 10 GiB. The next run rebuilds any evicted artifacts. Ordinary Cargo builds
 use the checkout's own build directory.
-
-If documentation already passed the native checker for this commit, add
-`--docs-checked <commit>` to both commands, using the SHA printed by the native
-checker. The Linux checker then omits npm setup and the docs stage, but keeps
-all selected CLI and platform checks. A different commit is rejected.
-Do not provision another OS just to repeat documentation validation.
 
 ### Baseline and prerequisites
 
@@ -371,9 +371,9 @@ to run it during a commit. Guards are selected by staged paths, not run wholesal
 | Trigger | Additional coverage |
 |---|---|
 | Rust/build inputs | Windows GNU-target Clippy when available, then full Rust tests |
-| `conf/*.toml` or `symlinks/` | Typed configuration and `config_drift` |
+| `conf/*.toml`, `symlinks/`, `system/`, or `packages/` | Typed configuration and `config_drift` |
 | Cargo inputs or deny policy | Wildcard dependency guard and available cargo-deny checks |
-| Shell or hook paths | Available ShellCheck on affected inputs |
+| Shell, hook, or package recipe paths (`packages/*/PKGBUILD`, `packages/*/*.install`) | Available ShellCheck on affected inputs |
 | POSIX wrapper or its tests | Linux wrapper tests |
 | Release workflow | Staged publishing invariants, including provenance and permissions |
 
@@ -473,9 +473,9 @@ skip fail too. Install the prerequisites for the checks you intend to run.
 
 ### Wrapper and hook tests
 
-### Isolated wrapper and hook regressions
-
-These use fixture tools rather than bootstrapping or installing the real CLI:
+Isolated wrapper and hook regressions use fixture tools rather than
+bootstrapping or installing the real CLI. For full commit-hook integration,
+see [Full commit-hook suite](#full-commit-hook-suite) below.
 
 ```sh
 sh .github/workflows/scripts/linux/test-hook-inputs.sh \

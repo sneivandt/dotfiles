@@ -119,6 +119,42 @@ fn run_log_layer_omits_empty_messages() {
 }
 
 #[test]
+fn run_log_layer_preserves_encoded_records_under_structured_task_context() {
+    use crate::infra::logging::records::{Record, StoredRecord, trace_record};
+
+    let (path, _tmp, _guard) = isolated_run_log_layer();
+    let structured_context = "overlay\0scripts/post.sh";
+    let _task = crate::infra::logging::log_task_context(structured_context);
+
+    trace_record(Record::Command {
+        command: "sh scripts/post.sh".into(),
+        outcome: "ok".into(),
+        exit_code: Some(0),
+        elapsed_us: 42,
+        stdout: None,
+        stderr: None,
+        stdout_bytes: 0,
+        stderr_bytes: 0,
+    });
+
+    let content = fs::read_to_string(&path).unwrap();
+    let record_line = content
+        .lines()
+        .find(|line| line.contains("[record] "))
+        .expect("record line should be present");
+    assert!(
+        record_line.contains("[record-context] [record] "),
+        "structured context should use record-context header: {record_line}"
+    );
+    let stored = StoredRecord::from_line(record_line).expect("record should parse cleanly");
+    assert_eq!(stored.context, structured_context);
+    assert!(
+        matches!(stored.record, Record::Command { ref command, .. } if command == "sh scripts/post.sh"),
+        "expected Record::Command, not double-wrapped Record::Message: {stored:?}"
+    );
+}
+
+#[test]
 fn message_presentation_golden_matrix() {
     for (kind, verbose_only, plain, colored) in [
         (MsgKind::Stage, true, "detail", "detail"),

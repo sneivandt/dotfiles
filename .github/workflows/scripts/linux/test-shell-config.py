@@ -2,6 +2,7 @@
 """Isolated regressions for managed shell startup and command helpers."""
 
 import gzip
+import hashlib
 import json
 import http.server
 import os
@@ -209,22 +210,98 @@ class ShellConfigTests(unittest.TestCase):
             executable=True,
         )
         script = (
-            'tty() { [ "$1" = -s ] || printf "/dev/tty1\\n"; }\n'
-            'source "$ROOT/symlinks/zprofile"\n'
+            'f() {\n'
+            '  local -h TTY=""\n'
+            '  tty() { [ "$1" = -s ] || printf "/dev/tty1\\n"; }\n'
+            '  source "$ROOT/symlinks/zprofile"\n'
+            '}\n'
+            'f\n'
             'echo shell-ready\n'
         )
-        self.assertEqual(self.run_shell(script).stdout, "shell-ready\n")
+        master, slave = pty.openpty()
+        try:
+            def run_interactive_tty():
+                result = subprocess.run(
+                    ["zsh", "-dfi", "-c", script], cwd=self.fixture, env=self.env,
+                    stdin=slave, text=True, capture_output=True, timeout=20,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                return result
+
+            self.assertEqual(run_interactive_tty().stdout, "shell-ready\n")
+            (self.home / ".config/shell/profile-arch-desktop.sh").symlink_to(
+                ROOT / "symlinks/config/shell/profile-arch-desktop.sh"
+            )
+            for status in ("0", "42"):
+                with self.subTest(status=status):
+                    self.env["UWSM_STATUS"] = status
+                    result = run_interactive_tty()
+                    path, shell = result.stdout.splitlines()
+                    self.assertIn(str(self.home / ".local/bin"), path.split(":"))
+                    self.assertEqual(shell, "shell-ready")
+                    self.assertEqual("Could not start Hyprland" in result.stderr, status != "0")
+        finally:
+            os.close(master)
+            os.close(slave)
+
+    def test_uwsm_skips_non_interactive_or_redirected_stdin_on_tty1(self):
+        self.install_profile()
         (self.home / ".config/shell/profile-arch-desktop.sh").symlink_to(
             ROOT / "symlinks/config/shell/profile-arch-desktop.sh"
         )
-        for status in ("0", "42"):
-            with self.subTest(status=status):
-                self.env["UWSM_STATUS"] = status
-                result = self.run_shell(script)
-                path, shell = result.stdout.splitlines()
-                self.assertIn(str(self.home / ".local/bin"), path.split(":"))
-                self.assertEqual(shell, "shell-ready")
-                self.assertEqual("Could not start Hyprland" in result.stderr, status != "0")
+        marker = self.fixture / "uwsm-invoked"
+        self.env["UWSM_MARKER"] = str(marker)
+        self.write(
+            self.home / ".local/bin/uwsm",
+            '#!/bin/sh\nprintf invoked > "$UWSM_MARKER"\nexit 99\n',
+            executable=True,
+        )
+        self.write(
+            self.home / ".local/bin/tty",
+            '#!/bin/sh\n[ "${1:-}" = -s ] || printf "/dev/tty1\\n"\n',
+            executable=True,
+        )
+        (self.home / ".zprofile").symlink_to(ROOT / "symlinks/zprofile")
+        tty_set_script = (
+            'f() {\n'
+            '  local -h TTY=/dev/tty1\n'
+            '  source "$ROOT/symlinks/zprofile"\n'
+            '}\n'
+            'f\n'
+            'echo shell-ready\n'
+        )
+        tty_empty_script = (
+            'f() {\n'
+            '  local -h TTY=""\n'
+            '  source "$ROOT/symlinks/zprofile"\n'
+            '}\n'
+            'f\n'
+            'echo shell-ready\n'
+        )
+        master, slave = pty.openpty()
+        try:
+            cases = (
+                ("non-interactive-tty-set", ["zsh", "-df", "-c", tty_set_script], slave),
+                ("redirected-stdin-tty-set", ["zsh", "-dfi", "-c", tty_set_script], subprocess.DEVNULL),
+                ("non-interactive-login-empty-tty", ["zsh", "-dl", "-c", "echo shell-ready"], slave),
+                ("non-interactive-empty-tty", ["zsh", "-df", "-c", tty_empty_script], slave),
+                ("redirected-stdin-empty-tty", ["zsh", "-dfi", "-c", tty_empty_script], subprocess.DEVNULL),
+            )
+            env = {**self.env, "ZDOTDIR": str(self.home), "TTY": ""}
+            for label, args, stdin in cases:
+                with self.subTest(case=label):
+                    if marker.exists():
+                        marker.unlink()
+                    result = subprocess.run(
+                        args, cwd=self.fixture, env=env,
+                        stdin=stdin, text=True, capture_output=True, timeout=20,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(result.stdout, "shell-ready\n")
+                    self.assertFalse(marker.exists(), f"{label} must not invoke uwsm")
+        finally:
+            os.close(master)
+            os.close(slave)
 
     def test_path_finds_cargo_commands_in_custom_cargo_home(self):
         cargo_home = self.fixture / "custom cargo home"
@@ -359,24 +436,29 @@ class ShellConfigTests(unittest.TestCase):
 
     def test_qt_backend_respects_overrides_and_session(self):
         for shell in ("bash", "zsh"):
-            for display, backend, expected in (
-                ("wayland-1", "offscreen", "offscreen"),
-                ("wayland-1", "xcb", "xcb"),
-                ("wayland-1", None, "wayland;xcb"),
-                (None, None, "unset"),
+            for backend, expected in (
+                ("offscreen", "offscreen"),
+                ("xcb", "xcb"),
+                (None, "wayland;xcb"),
             ):
-                with self.subTest(shell=shell, display=display, backend=backend):
-                    self.env.pop("WAYLAND_DISPLAY", None)
+                with self.subTest(shell=shell, source="uwsm", backend=backend):
                     self.env.pop("QT_QPA_PLATFORM", None)
-                    if display is not None:
-                        self.env["WAYLAND_DISPLAY"] = display
                     if backend is not None:
                         self.env["QT_QPA_PLATFORM"] = backend
                     result = self.run_shell(
-                        '. "$ROOT/symlinks/config/shell/profile-arch-desktop.sh"\n'
+                        '. "$ROOT/symlinks/config/uwsm/env-hyprland.d/session.sh"\n'
                         'printf "%s\\n" "${QT_QPA_PLATFORM-unset}"\n', shell=shell,
                     )
                     self.assertEqual(result.stdout.strip(), expected)
+            with self.subTest(shell=shell, source="profile-arch-desktop"):
+                self.env.pop("QT_QPA_PLATFORM", None)
+                self.env.pop("MOZ_ENABLE_WAYLAND", None)
+                result = self.run_shell(
+                    '. "$ROOT/symlinks/config/shell/profile-arch-desktop.sh"\n'
+                    'printf "%s\\n%s\\n" "${QT_QPA_PLATFORM-unset}" "${MOZ_ENABLE_WAYLAND-unset}"\n',
+                    shell=shell,
+                )
+                self.assertEqual(result.stdout.splitlines(), ["unset", "1"])
 
     def test_profile_preserves_locale_and_scoped_linter_preferences(self):
         for shell in ("bash", "zsh"):
@@ -974,6 +1056,16 @@ class ShellConfigTests(unittest.TestCase):
         directories = {Path(line.split("=", 1)[1].strip('"').replace("$HOME", str(self.home)))
                        for line in configured} - {self.home}
         self.assertEqual({Path(part) for part in command[3:]}, directories)
+        if shutil.which("xdg-user-dir"):
+            config_dir = self.home / ".config"
+            config_dir.mkdir(exist_ok=True)
+            (config_dir / "user-dirs.dirs").symlink_to(ROOT / "symlinks/config/user-dirs.dirs")
+            resolved = subprocess.run(
+                ["xdg-user-dir", "DESKTOP"],
+                env={**self.env, "XDG_CONFIG_HOME": str(config_dir)},
+                check=True, text=True, capture_output=True, timeout=10,
+            )
+            self.assertEqual(Path(resolved.stdout.strip()), self.home)
         preserved = self.write(self.home / "media/documents/existing", "keep\n")
         for _ in range(2):
             subprocess.run(command, env=self.env, check=True, timeout=10)
@@ -1377,6 +1469,17 @@ class ShellConfigTests(unittest.TestCase):
                     )
                     self.assertEqual(result.stdout, "")
 
+    def test_ff_cancel_prioritizes_fzf_130_over_fd_broken_pipe(self):
+        result = self.run_shell(
+            'fd() { return 1; }\n'
+            'fzf() { return 130; }\n'
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz ff\n'
+            'ff needle\n',
+            expected=130,
+        )
+        self.assertEqual(result.stdout, "")
+
     def test_ff_keeps_option_like_queries_as_search_patterns(self):
         backend = self.write(
             self.fixture / "search.py",
@@ -1761,6 +1864,144 @@ class ShellConfigTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join()
+
+
+    def test_desktop_code_alias_requires_usable_code_insiders(self):
+        legacy_shim = (
+            b'#!/usr/bin/env python3\n'
+            b'\n'
+            b'import os\n'
+            b'import sys\n'
+            b'\n'
+            b'REAL_BINARY = "/usr/bin/code-insiders"\n'
+            b'PASSWORD_STORE = "--password-store=gnome-libsecret"\n'
+            b'\n'
+            b'\n'
+            b'def normalized_args(arguments: list[str]) -> list[str]:\n'
+            b'    forwarded: list[str] = []\n'
+            b'    index = 0\n'
+            b'\n'
+            b'    while index < len(arguments):\n'
+            b'        argument = arguments[index]\n'
+            b'        if argument == "--":\n'
+            b'            forwarded.extend(arguments[index:])\n'
+            b'            break\n'
+            b'        if argument == "--password-store":\n'
+            b'            index += 1\n'
+            b'            if index < len(arguments) and not arguments[index].startswith("-"):\n'
+            b'                index += 1\n'
+            b'            continue\n'
+            b'        if argument.startswith("--password-store="):\n'
+            b'            index += 1\n'
+            b'            continue\n'
+            b'\n'
+            b'        forwarded.append(argument)\n'
+            b'        index += 1\n'
+            b'\n'
+            b'    return [PASSWORD_STORE, *forwarded]\n'
+            b'\n'
+            b'\n'
+            b'def main() -> None:\n'
+            b'    os.execv(REAL_BINARY, [REAL_BINARY, *normalized_args(sys.argv[1:])])\n'
+            b'\n'
+            b'\n'
+            b'if __name__ == "__main__":\n'
+            b'    main()\n'
+        )
+        self.assertEqual(
+            hashlib.sha256(legacy_shim).hexdigest(),
+            "abbafb0e03fa9c8534a5a74a46cbfc4357e73a34497da0966f96cddd6017eec9",
+        )
+        shim_source = ROOT / "symlinks/local/bin/code-insiders"
+        shim_target = self.home / ".local/bin/code-insiders"
+        other_bin = self.fixture / "other-bin"
+        base_bin = self.fixture / "base-bin"
+        base_bin.mkdir()
+        for tool in ("bash", "zsh", "sha256sum"):
+            resolved = shutil.which(tool, path=self.env["PATH"])
+            if resolved:
+                (base_bin / tool).symlink_to(resolved)
+
+        cases = (
+            ("missing", None, False, False),
+            ("shim-link-no-backend", "link", False, False),
+            ("shim-copy-no-backend", "copy", False, False),
+            ("legacy-shim-copy-no-backend", "legacy-copy", False, False),
+            ("shim-with-backend", "link", True, True),
+            ("custom-at-shim-path-no-backend", "custom", False, True),
+            ("other-path-no-backend", "other", False, True),
+        )
+        for label, mode, backend_exists, expect_alias in cases:
+            if shim_target.exists() or shim_target.is_symlink():
+                shim_target.unlink()
+            if (other_bin / "code-insiders").exists():
+                (other_bin / "code-insiders").unlink()
+            path_parts = [str(self.home / ".local/bin"), str(base_bin)]
+            if mode == "link":
+                shim_target.parent.mkdir(parents=True, exist_ok=True)
+                shim_target.symlink_to(shim_source)
+            elif mode == "copy":
+                shim_target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(shim_source, shim_target)
+                shim_target.chmod(0o755)
+            elif mode == "legacy-copy":
+                shim_target.parent.mkdir(parents=True, exist_ok=True)
+                shim_target.write_bytes(legacy_shim)
+                shim_target.chmod(0o755)
+            elif mode == "custom":
+                self.write(shim_target, "#!/bin/sh\nexit 0\n", executable=True)
+            elif mode == "other":
+                self.write(other_bin / "code-insiders", "#!/bin/sh\nexit 0\n", executable=True)
+                path_parts.insert(0, str(other_bin))
+
+            self.env["PATH"] = ":".join(path_parts)
+            backend_rc = "0" if backend_exists else "1"
+            guard_hash = "sha256sum() { exit 99; }\n" if backend_exists else ""
+            for shell in ("bash", "zsh"):
+                with self.subTest(case=label, shell=shell):
+                    script = (
+                        'set -u\n'
+                        f'{guard_hash}'
+                        '[() {\n'
+                        '  if builtin [ "$#" -eq 3 ] && builtin [ "$1" = "-x" ] && '
+                        'builtin [ "$2" = "/usr/bin/code-insiders" ]; then\n'
+                        f'    return {backend_rc}\n'
+                        '  fi\n'
+                        '  builtin [ "$@"\n'
+                        '}\n'
+                        '. "$ROOT/symlinks/config/shell/aliases-desktop.sh"\n'
+                        '[ "${_code_insiders+x}" != x ] || exit 2\n'
+                        '[ "${_code_insiders_digest+x}" != x ] || exit 3\n'
+                        'if alias code >/dev/null 2>&1; then\n'
+                        '  alias code\n'
+                        'else\n'
+                        '  printf "none\\n"\n'
+                        'fi\n'
+                    )
+                    result = self.run_shell(script, shell=shell)
+                    output = result.stdout.strip()
+                    if expect_alias:
+                        self.assertIn("code-insiders", output)
+                    else:
+                        self.assertEqual(output, "none")
+
+    def test_code_insiders_shim_reports_missing_backend_cleanly(self):
+        source = (ROOT / "symlinks/local/bin/code-insiders").read_text(encoding="utf-8")
+        missing = self.fixture / "missing-code-insiders"
+        patched = source.replace(
+            'REAL_BINARY = "/usr/bin/code-insiders"',
+            f"REAL_BINARY = {str(missing)!r}",
+        )
+        self.assertNotEqual(patched, source)
+        shim = self.write(self.fixture / "code-insiders-shim", patched, executable=True)
+        result = subprocess.run(
+            ["python3", str(shim), "--version"],
+            cwd=self.fixture, env=self.env, text=True, capture_output=True, timeout=10,
+        )
+        self.assertEqual(result.returncode, 127, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertIn(str(missing), result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
 
 if __name__ == "__main__":

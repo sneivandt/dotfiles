@@ -7,8 +7,11 @@ FocusScope {
     id: root
 
     required property var quote
+    property date currentDate: new Date()
+    property int staleAfterSeconds: 15 * 60
     property bool expanded: false
     property real expansionProgress: expanded ? 1 : 0
+    readonly property bool stale: !Number.isFinite(Number(quote.updated)) || Number(quote.updated) <= 0 || currentDate.getTime() / 1000 - Number(quote.updated) >= staleAfterSeconds
     readonly property color accentColor: Number(quote.change) === 0 ? Theme.mutedStrong : (quote.change > 0 ? Theme.green : Theme.red)
 
     signal triggered()
@@ -78,7 +81,7 @@ FocusScope {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.quote.name + (Date.now() / 1000 - Number(root.quote.updated || 0) >= 300 ? " · stale" : "")
+                    text: root.quote.name + (root.stale ? " · stale" : "")
                     color: Theme.mutedStrong
                     font.family: Theme.font
                     font.pixelSize: Theme.textSmall

@@ -370,20 +370,47 @@ test_github_ssh_allowlist()
   cp "$DIR/hooks/check-sensitive.sh" "$DIR/hooks/sensitive-patterns.ini" \
     "$DIR/hooks/sensitive-allowlist.ini" "$fixture/hooks/"
   cd "$fixture"
-  for remote in git@github.com:fixture/repo.git ssh://git@github.com/fixture/repo.git; do
+  for remote in \
+    git@github.com:fixture/repo.git \
+    ssh://git@github.com/fixture/repo.git \
+    git@ssh.dev.azure.com:v3/fixture/project/repo \
+    ssh://git@ssh.dev.azure.com/v3/fixture/project/repo; do
     printf '%s\n' "$remote" > remote.txt
     git add remote.txt
-    sh hooks/check-sensitive.sh > "$fixture/output" 2>&1 || log_error "Public GitHub SSH URL was rejected"
+    sh hooks/check-sensitive.sh > "$fixture/output" 2>&1 || log_error "Public Git SSH URL was rejected: $remote"
     printf '%s token = ghp_%s\n' "$remote" 'abcdefghijklmnopqrstuvwxyzabcdefghijklmn' > remote.txt
     git add remote.txt
     if sh hooks/check-sensitive.sh > "$fixture/output" 2>&1; then
-      log_error "GitHub SSH exception hid a token on the same line"
+      log_error "Git SSH exception hid a token on the same line: $remote"
     fi
   done
-  printf 'git@%s\n' 'github.com.example' > remote.txt
-  git add remote.txt
+  for lookalike in github.com.example ssh.dev.azure.com.example; do
+    printf 'git@%s\n' "$lookalike" > remote.txt
+    git add remote.txt
+    if sh hooks/check-sensitive.sh > "$fixture/output" 2>&1; then
+      log_error "Git SSH exception accepted a lookalike email domain: $lookalike"
+    fi
+  done
+)}
+
+test_shell_sha256_case_allowlist()
+{(
+  log_stage "Checking shell SHA-256 case arm exceptions preserve scanning of appended secrets"
+  fixture=$(mktemp -d)
+  trap 'rm -rf "$fixture"' EXIT
+  git init -q "$fixture"
+  mkdir "$fixture/hooks"
+  cp "$DIR/hooks/check-sensitive.sh" "$DIR/hooks/sensitive-patterns.ini" \
+    "$DIR/hooks/sensitive-allowlist.ini" "$fixture/hooks/"
+  cd "$fixture"
+  checksum=$(printf '%064d' 0)
+  printf '  %s | \\\n  %s)\n' "$checksum" "$checksum" > shim.sh
+  git add shim.sh
+  sh hooks/check-sensitive.sh > "$fixture/output" 2>&1 || log_error "Shell SHA-256 case digest was rejected"
+  printf '  %s) token = ghp_%s\n' "$checksum" 'abcdefghijklmnopqrstuvwxyzabcdefghijklmn' > shim.sh
+  git add shim.sh
   if sh hooks/check-sensitive.sh > "$fixture/output" 2>&1; then
-    log_error "GitHub SSH exception accepted a lookalike email domain"
+    log_error "Shell SHA-256 case digest exception hid a token on the same line"
   fi
 )}
 
@@ -719,6 +746,7 @@ test_staged_ci_guards
 test_staged_ci_guard_deletions
 test_build_version_ref_triggers
 test_github_ssh_allowlist
+test_shell_sha256_case_allowlist
 test_pkgbuild_checksum_allowlist
 test_sensitive_posix_patterns
 test_staged_quoted_shell

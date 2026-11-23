@@ -27,10 +27,13 @@ description: >
 - Sources are relative to the declaring repository's `system/` directory;
   targets must be absolute paths below `/etc`.
 - `toml` recursively merges tables, `ini` converges assigned keys and bare flags
-  within their sections, and `pam` places module rules after the matching
-  facility stack. All strategies preserve unrelated target content.
-- Refuse malformed content, non-regular targets, missing PAM service files,
-  and PAM fragments whose facilities do not exist.
+  within their sections, `pam` places module rules after the matching facility
+  stack, and `create-only` writes the tracked fragment only when the target does
+  not exist (accepting an identical file and leaving differing existing files
+  untouched). All strategies preserve unrelated target content.
+- Refuse malformed content, non-regular targets, differing `create-only`
+  targets, missing PAM service files, and PAM fragments whose facilities do not
+  exist.
 - Install through the executor from a unique staged file. Preserve existing
   owner, group, and permissions. New files use `root:root` and mode `0644`.
   Constructors, state discovery, and dry runs stay read-only.

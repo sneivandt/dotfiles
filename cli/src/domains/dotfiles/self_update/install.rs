@@ -40,32 +40,87 @@ fn backup_current_binary(path: &Path) -> Result<Option<PathBuf>> {
     }
 }
 
-fn install_staged_binary(path: &Path, staged: &Path) -> Result<()> {
-    let backup = backup_current_binary(path)?;
+#[derive(Debug, thiserror::Error)]
+pub(super) enum ReplacementError {
+    /// Failed before replacing the binary or rolled back cleanly; the previous
+    /// binary is intact and the update journal can be cleared.
+    #[error(transparent)]
+    Intact(anyhow::Error),
+    /// Replacement failed and rollback also failed; the binary state is
+    /// unverified and the update journal must remain pending for recovery.
+    #[error(transparent)]
+    NeedsRecovery(anyhow::Error),
+}
 
-    if let Err(install_error) = fs::rename(staged, path) {
-        if let Some(old) = backup {
-            // On Unix the original entry is still in place. Renaming its hard
-            // link over it would be a no-op and leave the backup behind.
-            #[cfg(unix)]
-            let recovery = fs::remove_file(&old);
-            #[cfg(not(unix))]
-            let recovery = fs::rename(&old, path);
-            if let Err(recovery_error) = recovery {
-                return Err(anyhow::anyhow!(
-                    "moving new binary into place failed ({install_error}); \
-                     recovering previous binary also failed ({recovery_error})"
-                ));
-            }
+fn rollback_backup(old: &Path, path: &Path) -> std::io::Result<()> {
+    // On Unix the original entry is still in place. Renaming its hard
+    // link over it would be a no-op and leave the backup behind.
+    #[cfg(unix)]
+    {
+        let _ = path;
+        fs::remove_file(old)
+    }
+    #[cfg(not(unix))]
+    {
+        fs::rename(old, path)
+    }
+}
+
+fn install_staged_binary_with(
+    path: &Path,
+    staged: &Path,
+    rename_into_place: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+    rollback: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+) -> std::result::Result<(), ReplacementError> {
+    let backup = backup_current_binary(path).map_err(ReplacementError::Intact)?;
+
+    if let Err(install_error) = rename_into_place(staged, path) {
+        if let Some(old) = backup
+            && let Err(recovery_error) = rollback(&old, path)
+        {
+            return Err(ReplacementError::NeedsRecovery(anyhow::anyhow!(
+                "moving new binary into place failed ({install_error}); \
+                 recovering previous binary also failed ({recovery_error})"
+            )));
         }
-        return Err(install_error).context("moving new binary into place");
+        return Err(ReplacementError::Intact(
+            anyhow::Error::new(install_error).context("moving new binary into place"),
+        ));
     }
     Ok(())
 }
 
+fn install_staged_binary(path: &Path, staged: &Path) -> std::result::Result<(), ReplacementError> {
+    install_staged_binary_with(
+        path,
+        staged,
+        |from, to| fs::rename(from, to),
+        rollback_backup,
+    )
+}
+
+#[derive(Debug)]
+struct UpdateJournal(fs::File);
+
+impl UpdateJournal {
+    fn clear(&self, context: &'static str) -> Result<()> {
+        self.0.set_len(0).context(context)?;
+        self.0.sync_all().context(context)?;
+        Ok(())
+    }
+}
+
+impl Drop for UpdateJournal {
+    fn drop(&mut self) {
+        // Explicitly release the lock before closing so a concurrently forked
+        // sibling cannot keep an open file description locked until exec.
+        drop(self.0.unlock());
+    }
+}
+
 // Both launchers understand this journal: nonempty means publication hasn't
 // been confirmed. Keep the inode even when clean so all processes lock it.
-fn begin_replacement(bin: &Path) -> Result<fs::File> {
+fn begin_replacement(bin: &Path) -> Result<UpdateJournal> {
     let name = bin
         .file_name()
         .and_then(|name| name.to_str())
@@ -86,7 +141,17 @@ fn begin_replacement(bin: &Path) -> Result<fs::File> {
     );
     journal.set_len(1).context("marking self-update pending")?;
     journal.sync_all().context("saving self-update journal")?;
-    Ok(journal)
+    Ok(UpdateJournal(journal))
+}
+
+fn finish_failed_replacement(journal: &UpdateJournal, error: ReplacementError) -> anyhow::Error {
+    match error {
+        ReplacementError::Intact(error) => match journal.clear("clearing self-update journal") {
+            Ok(()) => error,
+            Err(clear_err) => clear_err.context(format!("{error:#}")),
+        },
+        ReplacementError::NeedsRecovery(error) => error,
+    }
 }
 
 /// Replace the binary at `path` with a verified staging file.
@@ -95,9 +160,15 @@ fn begin_replacement(bin: &Path) -> Result<fs::File> {
 /// Unix uses a hard link so the installed path stays available until the
 /// staged binary atomically replaces it. Windows renames the old executable
 /// first because a running executable cannot be replaced directly there.
-pub(super) fn replace_binary(path: &Path, staged: &Path) -> Result<()> {
+pub(super) fn replace_binary(
+    path: &Path,
+    staged: &Path,
+) -> std::result::Result<(), ReplacementError> {
     if path.is_dir() {
-        bail!("binary path points to a directory: {}", path.display());
+        return Err(ReplacementError::Intact(anyhow::anyhow!(
+            "binary path points to a directory: {}",
+            path.display()
+        )));
     }
 
     install_staged_binary(path, staged)
@@ -257,7 +328,9 @@ fn install_release(
     // Do not make a runnable but wrong release eligible for that recovery.
     verify_version(staged.path()).context("checking staged release")?;
     let journal = begin_replacement(&bin)?;
-    replace_binary(&bin, staged.path())?;
+    if let Err(error) = replace_binary(&bin, staged.path()) {
+        return Err(finish_failed_replacement(&journal, error));
+    }
     staged.persist();
     if let Err(smoke_err) = verify_version(&bin) {
         let old = old_binary_path(root);
@@ -272,12 +345,12 @@ fn install_release(
                 )
             })?;
             journal
-                .set_len(0)
-                .context("finishing self-update rollback")?;
+                .clear("finishing self-update rollback")
+                .with_context(|| format!("{smoke_err:#}"))?;
         }
         return Err(smoke_err);
     }
-    journal.set_len(0).context("confirming self-update")?;
+    journal.clear("confirming self-update")?;
     write_cache_best_effort(root, tag);
 
     Ok(())

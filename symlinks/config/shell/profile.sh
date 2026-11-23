@@ -77,13 +77,24 @@ unset MAILCHECK
 # man
 if [ -n "${MANPAGER:-}" ]; then
   export MANPAGER
-elif command -v bat >/dev/null 2>&1 && command -v col >/dev/null 2>&1; then
-  # MANPAGER is executed through shell; quotes are part of the command string
-  # shellcheck disable=SC2089,SC2090
-  export MANPAGER="sh -c 'col -bx | bat -l man -p'"
 else
-  # shellcheck disable=SC2090
-  export MANPAGER="less"
+  _man_bat=
+  if command -v bat >/dev/null 2>&1; then
+    _man_bat=bat
+  elif command -v batcat >/dev/null 2>&1; then
+    _man_bat=batcat
+  fi
+  if [ -n "$_man_bat" ] && command -v col >/dev/null 2>&1; then
+    # MANPAGER is executed through shell; quotes are part of the command string
+    # shellcheck disable=SC2089,SC2090
+    export MANPAGER="sh -c 'col -bx | $_man_bat -l man -p'"
+    # Disable groff SGR output so col -bx does not leave raw escape fragments.
+    export MANROFFOPT="${MANROFFOPT:--c}"
+  else
+    # shellcheck disable=SC2090
+    export MANPAGER="less"
+  fi
+  unset _man_bat
 fi
 
 # readline
@@ -110,10 +121,20 @@ fi
 
 # fzf
 export FZF_CTRL_R_OPTS="${FZF_CTRL_R_OPTS---no-preview}"
+_fd_cmd=
 if command -v fd >/dev/null 2>&1; then
-  export FZF_DEFAULT_COMMAND="${FZF_DEFAULT_COMMAND-fd --type f --strip-cwd-prefix --hidden --follow --exclude .git}"
+  _fd_cmd=fd
+elif command -v fdfind >/dev/null 2>&1; then
+  _fd_cmd=fdfind
+fi
+if [ -n "$_fd_cmd" ]; then
+  export FZF_DEFAULT_COMMAND="${FZF_DEFAULT_COMMAND-$_fd_cmd --type f --strip-cwd-prefix --hidden --follow --exclude .git}"
   export FZF_CTRL_T_COMMAND="${FZF_CTRL_T_COMMAND-$FZF_DEFAULT_COMMAND}"
-  export FZF_ALT_C_COMMAND="${FZF_ALT_C_COMMAND-fd --type d --strip-cwd-prefix --hidden --follow --exclude .git}"
+  export FZF_ALT_C_COMMAND="${FZF_ALT_C_COMMAND-$_fd_cmd --type d --strip-cwd-prefix --hidden --follow --exclude .git}"
+fi
+unset _fd_cmd
+
+if command -v fzf >/dev/null 2>&1; then
   export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS---height 40% --layout=reverse --border}"
 
   # Preview one directory level and cap the output for large directories.
@@ -129,14 +150,21 @@ if command -v fd >/dev/null 2>&1; then
   # shellcheck disable=SC2090
   export FZF_ALT_C_OPTS
 
+  _bat_cmd=
   if command -v bat >/dev/null 2>&1; then
+    _bat_cmd=bat
+  elif command -v batcat >/dev/null 2>&1; then
+    _bat_cmd=batcat
+  fi
+  if [ -n "$_bat_cmd" ]; then
     if [ "${FZF_CTRL_T_OPTS+x}" != x ]; then
       # shellcheck disable=SC2089
-      FZF_CTRL_T_OPTS="--preview 'bat --style=numbers --color=always --line-range :500 -- {}'"
+      FZF_CTRL_T_OPTS="--preview '$_bat_cmd --style=numbers --color=always --line-range :500 -- {}'"
     fi
     # shellcheck disable=SC2090
     export FZF_CTRL_T_OPTS
   fi
+  unset _bat_cmd
 fi
 
 # bat
@@ -158,12 +186,9 @@ nb=0:\
 nk=0:nm=0:ng=0:nt=0"
 
 # virtualenvwrapper
-# Prefer the lazy loader: it installs stub functions and only sources the real
-# script (a ~200-500 ms Python startup) on first use.
-if command -v virtualenvwrapper_lazy.sh >/dev/null 2>&1; then
-  export WORKON_HOME=~/.venv
-  . virtualenvwrapper_lazy.sh
-elif command -v virtualenvwrapper.sh >/dev/null 2>&1; then
-  export WORKON_HOME=~/.venv
-  . virtualenvwrapper.sh
+# Export WORKON_HOME at session login; interactive shells load the wrapper
+# functions so workon/mkvirtualenv are available in non-login terminals too.
+if command -v virtualenvwrapper_lazy.sh >/dev/null 2>&1 ||
+   command -v virtualenvwrapper.sh >/dev/null 2>&1; then
+  export WORKON_HOME="${WORKON_HOME:-$HOME/.venv}"
 fi

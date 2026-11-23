@@ -21,9 +21,9 @@ use super::winget::WingetProvider;
 
 /// Membership index for one inventory snapshot, separate from the spelling
 /// used in provider output and install arguments.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstalledPackages {
-    keys: HashSet<String>,
+    keys: Arc<HashSet<String>>,
     manager: PackageManager,
 }
 
@@ -39,7 +39,10 @@ impl InstalledPackages {
                 .collect(),
             PackageManager::Pacman | PackageManager::Paru => names,
         };
-        Self { keys, manager }
+        Self {
+            keys: Arc::new(keys),
+            manager,
+        }
     }
 
     /// Compare a configured name using the inventory provider's identity rules.

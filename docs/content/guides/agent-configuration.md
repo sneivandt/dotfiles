@@ -362,15 +362,16 @@ The destination is the first available value in this order:
 Set `APM_COPILOT_COWORK_SKILLS_DIR` to choose a destination explicitly,
 including on Linux. Dotfiles copies selected skills from `~/.agents/skills`
 while preserving the destination directories and their Windows permissions.
-Choose a directory separate from `~/.agents/skills`: neither path can be
+If a package restricts its targets, include `copilot-cowork` to send its skills
+here.
+
+Choose a destination separate from `~/.agents/skills`: neither path can be
 inside the other, including through a directory link or a Linux bind mount.
 On Linux, this protection includes unselected skills. Before copying or
 pruning, dotfiles checks directory identities throughout the shared skill tree
 without following symlinks inside it or reading unselected file contents. If
 the tree is unreadable, cyclic, or exceeds the scan limit, the check stops
 rather than assuming the destination is safe.
-If a package restricts its targets, include `copilot-cowork` to send its skills
-here.
 
 Keep `SKILL.md` and its assets inside the skill directory. Cowork copies
 symbolic links as links: a relative link such as `docs/entry.md` works if its
@@ -387,16 +388,19 @@ reported destination file to a safe location and retry. Existing managed links
 can still be updated without moving them aside.
 
 Dotfiles records deployed file hashes and removes unchanged owned files that
-disappear from the source or leave the selected skill set. Dotfiles can take
-ownership of an existing destination file if it matches the source. It reports a conflict when
-a destination file differs from both the source and its last deployed version,
-or when a stale file has local edits. Move the conflicting file aside before
-retrying. Unrelated skills and unowned files remain. Keep the destination's
-`.dotfiles-apm-skills.json` and `.dotfiles-apm-files.json` ownership records.
-For older deployments, Dotfiles removes a stale `SKILL.md` only when its
-recorded hash matches. Move unverified files aside to continue cleanup. For
-path-resolution failures or copy conflicts, check the selected destination
-above and the reported ownership conflict before retrying.
+disappear from the source or leave the selected skill set. It can take
+ownership of an existing destination file if it matches the source, and leaves
+unrelated skills and unowned files untouched. When a destination file differs
+from both the source and its last deployed version, or when a stale file has
+local edits, dotfiles reports a conflict; move the conflicting file aside
+before retrying.
+
+Keep the destination's `.dotfiles-apm-skills.json` and
+`.dotfiles-apm-files.json` ownership records. For older deployments, Dotfiles
+removes a stale `SKILL.md` only when its recorded hash matches; move unverified
+files aside to continue cleanup. For path-resolution failures or copy
+conflicts, check the selected destination above and the reported ownership
+conflict before retrying.
 
 ## Removing packages and targets
 

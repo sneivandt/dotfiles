@@ -6,7 +6,7 @@ fn installed_target_paru_is_accepted_when_host_path_lookup_would_miss() {
     expect_installed_paru_package(&mut mock, 1);
     expect_healthy_paru(&mut mock, 1);
     let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock);
-    let result = InstallParu.run(&ctx).unwrap();
+    let result = InstallParu::new().run(&ctx).unwrap();
     assert_task_ok(&result);
 }
 
@@ -17,7 +17,7 @@ fn install_paru_run_returns_ok_when_already_installed_in_dry_run() {
     expect_healthy_paru(&mut mock, 1);
     let mut ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock);
     ctx = ctx.with_dry_run(true);
-    let result = InstallParu.run(&ctx).unwrap();
+    let result = InstallParu::new().run(&ctx).unwrap();
     assert_task_ok(&result);
 }
 
@@ -28,7 +28,7 @@ fn install_paru_run_returns_dry_run_when_not_installed_in_dry_run() {
     expect_missing_paru_path(&mut mock, 1);
     let mut ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock);
     ctx = ctx.with_dry_run(true);
-    let result = InstallParu.run(&ctx).unwrap();
+    let result = InstallParu::new().run(&ctx).unwrap();
     assert_task_changed(&result);
 }
 
@@ -63,6 +63,7 @@ fn paru_previews_keep_install_and_rebuild_verbs_separate_from_context() {
         .with_dry_run(true);
         let operation = ParuInstallOperation {
             build_root: Path::new("/fixture"),
+            inventory_cache: None,
         };
         assert_task_changed(&operation.preview(&ctx, &plan).unwrap());
         let actions = output.actions();
@@ -451,7 +452,7 @@ fn paru_inventory_failure_never_plans_a_bootstrap_or_rebuild() {
         )
         .with_dry_run(dry_run);
 
-        let error = InstallParu.run(&ctx).unwrap_err();
+        let error = InstallParu::new().run(&ctx).unwrap_err();
 
         assert!(
             format!("{error:#}").contains("fixture unreadable package database"),
@@ -539,7 +540,7 @@ fn paru_probe_errors_are_not_converted_to_rebuild_plans() {
                 )
                 .with_dry_run(dry_run);
 
-                let error = InstallParu.run(&ctx).unwrap_err();
+                let error = InstallParu::new().run(&ctx).unwrap_err();
 
                 let exec_error = error.downcast_ref::<ExecError>().unwrap();
                 assert_eq!(
@@ -576,7 +577,7 @@ fn paru_probe_failure_does_not_request_elevation() {
         mock,
     );
 
-    assert!(!InstallParu.needs_elevation(&ctx));
+    assert!(!InstallParu::new().needs_elevation(&ctx));
 }
 
 #[test]
@@ -717,7 +718,7 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
     let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock)
         .with_log(log_output);
     let install_paru = FixtureParuTask {
-        inner: InstallParu,
+        inner: InstallParu::new(),
         build_dir: fixture.path().into(),
     };
     let install_aur = InstallAurPackages::new(packages);

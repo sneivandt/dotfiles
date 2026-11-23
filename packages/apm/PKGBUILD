@@ -20,7 +20,7 @@ depends=(
 )
 optdepends=('git: Git-based agent packages' 'github-cli: GitHub authentication')
 conflicts=('apm' 'apm-bin')
-options=('!strip')
+options=('!strip' '!debug')
 source ./version.sh
 provides=("apm=${pkgver}" "apm-bin=${pkgver}")
 source_x86_64=("apm-${pkgver}-x86_64.tar.gz::${url}/releases/download/v${pkgver}/apm-linux-x86_64.tar.gz")

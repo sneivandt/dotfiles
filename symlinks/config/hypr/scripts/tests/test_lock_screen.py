@@ -24,7 +24,16 @@ pgrep() {
 }
 systemctl() {
     printf 'SYSTEMCTL %s\n' "$*" >&3
-    builtin [ "$ACTIVE_SERVICE" = 1 ]
+    case "$*" in
+        *" show -p ActiveState --value hyprlock.service")
+            printf '%s\n' "${SERVICE_STATE:-inactive}"
+            return 0
+            ;;
+        *" reset-failed hyprlock.service")
+            return 0
+            ;;
+        *) return 1 ;;
+    esac
 }
 systemd-run() { printf 'Unexpected direct launcher invocation\n' >&2; return 99; }
 logger() { printf 'LOGGER %s\n' "$*" >&2; }
@@ -55,7 +64,7 @@ class HypridleConfigTests(unittest.TestCase):
 
 @unittest.skipUnless(BASH, "Requires Bash (Git Bash on Windows)")
 class LockScreenTests(unittest.TestCase):
-    def run_script(self, current_locker=False, active_service=False):
+    def run_script(self, current_locker=False, service_state="inactive"):
         result = subprocess.run(
             [BASH, "--noprofile", "--norc", "-s"],
             input=MOCKS + SCRIPT.read_text(encoding="utf-8"),
@@ -67,7 +76,7 @@ class LockScreenTests(unittest.TestCase):
                 "BASH_ENV": "",
                 "ENV": "",
                 "CURRENT_LOCKER": str(int(current_locker)),
-                "ACTIVE_SERVICE": str(int(active_service)),
+                "SERVICE_STATE": service_state,
             },
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -77,7 +86,11 @@ class LockScreenTests(unittest.TestCase):
 
     def test_foreign_locker_does_not_suppress_current_user_lock(self):
         result = self.run_script()
-        self.assertIn("SYSTEMCTL --user --quiet is-active hyprlock.service\n", result.stderr)
+        self.assertIn(
+            "SYSTEMCTL --user show -p ActiveState --value hyprlock.service\n",
+            result.stderr,
+        )
+        self.assertNotIn("reset-failed", result.stderr)
         self.assertEqual(
             result.stdout.splitlines(),
             [
@@ -100,10 +113,27 @@ class LockScreenTests(unittest.TestCase):
         self.assertEqual(result.stdout, "")
         self.assertNotIn("SYSTEMCTL", result.stderr)
 
-    def test_active_current_user_service_is_not_started_twice(self):
-        result = self.run_script(active_service=True)
-        self.assertIn("SYSTEMCTL --user --quiet is-active hyprlock.service\n", result.stderr)
-        self.assertEqual(result.stdout, "")
+    def test_active_or_activating_service_is_not_started_twice(self):
+        for state in ("active", "activating"):
+            with self.subTest(state=state):
+                result = self.run_script(service_state=state)
+                self.assertIn(
+                    "SYSTEMCTL --user show -p ActiveState --value hyprlock.service\n",
+                    result.stderr,
+                )
+                self.assertEqual(result.stdout, "")
+
+    def test_failed_service_is_reset_before_starting_transient_unit(self):
+        result = self.run_script(service_state="failed")
+        self.assertIn(
+            "SYSTEMCTL --user show -p ActiveState --value hyprlock.service\n",
+            result.stderr,
+        )
+        self.assertIn(
+            "SYSTEMCTL --user reset-failed hyprlock.service\n",
+            result.stderr,
+        )
+        self.assertEqual(result.stdout.splitlines()[0], "systemd-run")
 
 
 if __name__ == "__main__":

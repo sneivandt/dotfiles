@@ -5,10 +5,13 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import sys
 
 
 WORKFLOW = Path(__file__).resolve().parents[2] / "ci.yml"
+CLI_ROOT = Path(__file__).resolve().parents[4] / "cli"
+RUN_MUTATIONS = Path(__file__).resolve().with_name("run-mutations.py")
 INFORMATIONAL_JOBS = {"coverage"}
 JOB_CONDITIONS = {
     "rust-fmt": "run_rust_fmt",
@@ -75,7 +78,192 @@ def job_needs(block: str) -> set[str]:
     return {name.strip() for name in match.group(1).split(",")} if match else set()
 
 
+_BLOCK_SCALAR_RE = re.compile(r"^[|>][+-]?\d*(?:\s+#.*)?$")
+_KEY_LINE_RE = re.compile(r"^([A-Za-z0-9_-]+):(?:\s*(.*))?$")
+_YAML_DOUBLE_ESCAPES = {
+    "\\": "\\", '"': '"', "/": "/", "n": "\n", "r": "\r", "t": "\t",
+    "0": "\0", "a": "\a", "b": "\b", "v": "\v", "f": "\f", "e": "\x1b", " ": " ",
+}
+
+
+def _decode_yaml_scalar(raw: str) -> str:
+    """Decode a single-line YAML plain, single-quoted, or double-quoted scalar."""
+    text = raw.strip()
+    if not text:
+        return ""
+    if text[0] == "'":
+        out: list[str] = []
+        i = 1
+        while i < len(text):
+            if text[i] == "'":
+                if i + 1 < len(text) and text[i + 1] == "'":
+                    out.append("'")
+                    i += 2
+                    continue
+                trailing = text[i + 1 :].lstrip(" \t")
+                if not trailing or trailing.startswith("#"):
+                    return "".join(out)
+                break
+            out.append(text[i])
+            i += 1
+        return text
+    if text[0] == '"':
+        out = []
+        i = 1
+        while i < len(text):
+            ch = text[i]
+            if ch == "\\" and i + 1 < len(text):
+                nxt = text[i + 1]
+                if nxt in _YAML_DOUBLE_ESCAPES:
+                    out.append(_YAML_DOUBLE_ESCAPES[nxt])
+                    i += 2
+                    continue
+                hex_lengths = {"x": 2, "u": 4, "U": 8}
+                if nxt in hex_lengths and i + 2 + hex_lengths[nxt] <= len(text):
+                    digits = text[i + 2 : i + 2 + hex_lengths[nxt]]
+                    try:
+                        out.append(chr(int(digits, 16)))
+                        i += 2 + hex_lengths[nxt]
+                        continue
+                    except ValueError:
+                        pass
+                out.append(nxt)
+                i += 2
+                continue
+            if ch == '"':
+                trailing = text[i + 1 :].lstrip(" \t")
+                if not trailing or trailing.startswith("#"):
+                    return "".join(out)
+                break
+            out.append(ch)
+            i += 1
+        return text
+    return re.split(r"[ \t]+#", text, maxsplit=1)[0].strip()
+
+
+def check_checkout_steps(workflow: str, workflow_name: str = "workflow") -> None:
+    """Validate step/with indentation, duplicate keys, and checkout persist-credentials."""
+    for job_name, block in job_blocks(workflow).items():
+        lines = block.splitlines()
+        index = 0
+        while index < len(lines) and not re.match(r"^    steps:[ \t]*(?:#.*)?$", lines[index]):
+            index += 1
+        if index >= len(lines):
+            continue
+        index += 1
+
+        step_lines: list[tuple[int, str]] = []
+        block_scalar_indent: int | None = None
+        while index < len(lines):
+            raw = lines[index]
+            stripped = raw.strip()
+            indent = len(raw) - len(raw.lstrip(" "))
+            if block_scalar_indent is not None:
+                if stripped and indent <= block_scalar_indent:
+                    block_scalar_indent = None
+                else:
+                    step_lines.append((index, raw))
+                    index += 1
+                    continue
+            if not stripped or stripped.startswith("#"):
+                step_lines.append((index, raw))
+                index += 1
+                continue
+            if indent <= 4:
+                break
+            if indent == 6 and not raw.startswith("      - "):
+                raise ValueError(
+                    f"{workflow_name} job {job_name!r} has malformed step indentation: {raw.strip()!r}"
+                )
+            key_text = raw[8:] if raw.startswith("      - ") else (raw[8:] if indent == 8 else "")
+            if key_text:
+                match = _KEY_LINE_RE.match(key_text)
+                if match and _BLOCK_SCALAR_RE.match(match.group(2) or ""):
+                    block_scalar_indent = 8
+            step_lines.append((index, raw))
+            index += 1
+
+        steps: list[list[str]] = []
+        for _, raw in step_lines:
+            if raw.startswith("      - "):
+                steps.append([raw])
+            elif steps:
+                steps[-1].append(raw)
+
+        for step_index, step in enumerate(steps, start=1):
+            seen_keys: set[str] = set()
+            uses_value: str | None = None
+            in_with = False
+            with_keys: set[str] = set()
+            persist_credentials: str | None = None
+            scalar_indent: int | None = None
+
+            for raw in step:
+                stripped = raw.strip()
+                indent = len(raw) - len(raw.lstrip(" "))
+                if scalar_indent is not None:
+                    if stripped and indent <= scalar_indent:
+                        scalar_indent = None
+                    else:
+                        continue
+                if not stripped or stripped.startswith("#"):
+                    continue
+
+                if raw.startswith("      - ") or indent == 8:
+                    in_with = False
+                    entry = raw[8:]
+                    match = _KEY_LINE_RE.match(entry)
+                    if match is None:
+                        raise ValueError(
+                            f"{workflow_name} job {job_name!r} step {step_index} has invalid step key: {entry!r}"
+                        )
+                    key, value = match.group(1), _decode_yaml_scalar(match.group(2) or "")
+                    if key in seen_keys:
+                        raise ValueError(
+                            f"{workflow_name} job {job_name!r} step {step_index} has duplicate key {key!r}"
+                        )
+                    seen_keys.add(key)
+                    if key == "uses":
+                        uses_value = value
+                    elif key == "with":
+                        in_with = True
+                    if _BLOCK_SCALAR_RE.match((match.group(2) or "").strip()):
+                        scalar_indent = 8
+                elif in_with and indent == 10:
+                    entry = raw[10:]
+                    match = _KEY_LINE_RE.match(entry)
+                    if match is None:
+                        raise ValueError(
+                            f"{workflow_name} job {job_name!r} step {step_index} has invalid with entry: {entry!r}"
+                        )
+                    key, value = match.group(1), _decode_yaml_scalar(match.group(2) or "")
+                    if key in with_keys:
+                        raise ValueError(
+                            f"{workflow_name} job {job_name!r} step {step_index} has duplicate with key {key!r}"
+                        )
+                    with_keys.add(key)
+                    if key == "with":
+                        raise ValueError(
+                            f"{workflow_name} job {job_name!r} step {step_index} has nested 'with:' inside 'with:'"
+                        )
+                    if key == "persist-credentials":
+                        persist_credentials = value
+                    if _BLOCK_SCALAR_RE.match((match.group(2) or "").strip()):
+                        scalar_indent = 10
+                elif in_with and indent < 10:
+                    raise ValueError(
+                        f"{workflow_name} job {job_name!r} step {step_index} has malformed with indentation: {stripped!r}"
+                    )
+
+            if uses_value and uses_value.startswith("actions/checkout@"):
+                if "with" not in seen_keys or persist_credentials != "false":
+                    raise ValueError(
+                        f"{workflow_name} job {job_name!r} step {step_index} checkout must set persist-credentials: false in a properly nested with block"
+                    )
+
+
 def check(workflow: str) -> None:
+    check_checkout_steps(workflow, "ci.yml")
     jobs = job_blocks(workflow)
     gate = jobs.get("ci-success")
     if gate is None:
@@ -148,6 +336,7 @@ def check(workflow: str) -> None:
 
 
 def check_mutation(workflow: str) -> None:
+    check_checkout_steps(workflow, "mutation.yml")
     jobs = job_blocks(workflow)
     if jobs.keys() != {"select", "mutation", "mutation-windows", "mutation-results"}:
         raise ValueError("unexpected mutation workflow jobs")
@@ -195,6 +384,7 @@ def check_mutation(workflow: str) -> None:
 
 
 def check_release(workflow: str) -> None:
+    check_checkout_steps(workflow, "release.yml")
     jobs = job_blocks(workflow)
     if job_condition(jobs["version"]) != "needs.check-ci.outputs.run_release == 'true'":
         raise ValueError("release version resolution must require changed binary inputs")
@@ -276,6 +466,194 @@ def check_pages(workflow: str, ci_workflow: str) -> None:
             raise ValueError(f"CI documentation artifact is missing {required}")
 
 
+def check_mutation_symbols(cli_root: Path = CLI_ROOT, mutation_run: dict | None = None) -> None:
+    if mutation_run is None:
+        mutation_run = runpy.run_path(str(RUN_MUTATIONS))
+
+    def read_source(rel_path: str) -> str:
+        if not rel_path.startswith("src/"):
+            raise ValueError(f"mutation path must stay under src/: {rel_path}")
+        target = cli_root / rel_path
+        if not target.is_file():
+            raise ValueError(f"mutation reference points to missing file: {rel_path}")
+        return target.read_text(encoding="utf-8")
+
+    def require_fn(rel_path: str, source: str, symbol: str) -> None:
+        if not re.search(rf"\bfn\s+{re.escape(symbol)}\b", source):
+            raise ValueError(f"mutation reference {rel_path} is missing fn {symbol}")
+
+    native_modules = mutation_run["NATIVE_MODULES"]
+    for rel_path in native_modules:
+        read_source(rel_path)
+
+    windows_sources = {rel_path: read_source(rel_path) for rel_path in mutation_run["WINDOWS_FILES"]}
+
+    for option, value in mutation_run["LINUX_EXCLUSIONS"]:
+        if option == "--exclude":
+            read_source(value)
+        elif option == "--exclude-re":
+            match = re.match(r"^\^(src/[^:]+?):(.*)$", value)
+            if match is None:
+                raise ValueError(f"unrecognized LINUX_EXCLUSIONS file prefix: {value}")
+            rel_path = match.group(1).replace(r"\.", ".")
+            remainder = match.group(2)
+            source = read_source(rel_path)
+            if group := re.fullmatch(r"\.\*\\b\(([^)]+)\)\\b", remainder):
+                for symbol in group.group(1).split("|"):
+                    require_fn(rel_path, source, symbol)
+            elif single := re.fullmatch(r"\.\*\\b([A-Za-z_][A-Za-z0-9_]*)\\b", remainder):
+                require_fn(rel_path, source, single.group(1))
+            elif module := re.fullmatch(r"\.\*\\b([A-Za-z_][A-Za-z0-9_]*)::", remainder):
+                if not re.search(rf"\bmod\s+{re.escape(module.group(1))}\b", source):
+                    raise ValueError(f"mutation reference {rel_path} is missing mod {module.group(1)}")
+            elif impl := re.search(
+                r"\bin <impl ([A-Za-z0-9_:]+) for ([A-Za-z0-9_]+)(?:<[^>]*>)?>::([A-Za-z_][A-Za-z0-9_]*)\$$",
+                remainder,
+            ):
+                trait, target_type, method = impl.groups()
+                if not re.search(rf"\bimpl\b[^{{;]*\b{re.escape(trait)}\b\s+for\s+{re.escape(target_type)}\b", source):
+                    raise ValueError(f"mutation reference {rel_path} is missing impl {trait} for {target_type}")
+                require_fn(rel_path, source, method)
+            elif target_fn := re.search(r"\bin ([A-Za-z_][A-Za-z0-9_]*)\$$", remainder):
+                require_fn(rel_path, source, target_fn.group(1))
+            else:
+                raise ValueError(f"unrecognized LINUX_EXCLUSIONS symbol pattern: {value}")
+        else:
+            raise ValueError(f"unexpected LINUX_EXCLUSIONS option: {option}")
+
+    native_suffix = "|^(?:" + "|".join(re.escape(path) for path in native_modules) + "):"
+    windows_pattern = mutation_run["WINDOWS_PATTERN"]
+    if not windows_pattern.endswith(native_suffix):
+        raise ValueError("WINDOWS_PATTERN must include all NATIVE_MODULES")
+    symbol_group = windows_pattern[: -len(native_suffix)]
+    if not (symbol_group.startswith("(") and symbol_group.endswith(")")):
+        raise ValueError(f"unrecognized WINDOWS_PATTERN symbol list: {symbol_group}")
+    for symbol in symbol_group[1:-1].split("|"):
+        if "::" in symbol:
+            module, fn_name = symbol.split("::", 1)
+            found = any(
+                re.search(rf"\bmod\s+{re.escape(module)}\b", src)
+                and re.search(rf"\bfn\s+{re.escape(fn_name)}\b", src)
+                for src in windows_sources.values()
+            )
+        else:
+            found = any(re.search(rf"\bfn\s+{re.escape(symbol)}\b", src) for src in windows_sources.values())
+        if not found:
+            raise ValueError(f"WINDOWS_PATTERN symbol not found in WINDOWS_FILES: {symbol}")
+
+    def expand_path_pattern(expr: str) -> set[str]:
+        unescaped = expr.replace(r"\.", ".")
+
+        def parse(pos: int, nested: bool = False) -> tuple[list[str], int]:
+            alts: list[str] = []
+            cur = [""]
+            while pos < len(unescaped):
+                ch = unescaped[pos]
+                if ch == "(":
+                    sub, pos = parse(pos + 1, nested=True)
+                    cur = [prefix + part for prefix in cur for part in sub]
+                elif ch == "|":
+                    alts.extend(cur)
+                    cur = [""]
+                    pos += 1
+                elif ch == ")":
+                    if not nested:
+                        raise ValueError(f"unbalanced FOCUSED file prefix: {expr}")
+                    alts.extend(cur)
+                    return alts, pos + 1
+                else:
+                    cur = [prefix + ch for prefix in cur]
+                    pos += 1
+            if nested:
+                raise ValueError(f"unclosed FOCUSED file prefix: {expr}")
+            alts.extend(cur)
+            return alts, pos
+
+        paths, end = parse(0)
+        if end != len(unescaped) or not paths or any(
+            re.search(r"[\\*+?\[\]{}^$]", path) for path in paths
+        ):
+            raise ValueError(f"unrecognized FOCUSED file prefix: {expr}")
+        return set(paths)
+
+    def split_top_level_alts(expr: str) -> list[str]:
+        parts: list[str] = []
+        buf: list[str] = []
+        depth = 0
+        index = 0
+        while index < len(expr):
+            ch = expr[index]
+            if ch == "\\" and index + 1 < len(expr):
+                buf.append(ch)
+                buf.append(expr[index + 1])
+                index += 2
+                continue
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth < 0:
+                    raise ValueError(f"unbalanced FOCUSED symbol group: {expr}")
+            elif ch == "|" and depth == 0:
+                parts.append("".join(buf))
+                buf = []
+                index += 1
+                continue
+            buf.append(ch)
+            index += 1
+        if depth != 0:
+            raise ValueError(f"unclosed FOCUSED symbol group: {expr}")
+        parts.append("".join(buf))
+        return parts
+
+    for suite, (files, pattern, _test) in mutation_run["FOCUSED"].items():
+        if not files:
+            raise ValueError(f"FOCUSED suite {suite!r} has no files")
+        focused_sources = {rel_path: read_source(rel_path) for rel_path in files}
+        match = re.match(r"^\^(src/[^:]+):\[0-9\]\+:\[0-9\]\+: (.+)\$$", pattern)
+        if match is None:
+            raise ValueError(f"unrecognized FOCUSED pattern for {suite!r}: {pattern}")
+        pattern_files = expand_path_pattern(match.group(1))
+        missing_files = pattern_files - focused_sources.keys()
+        if missing_files:
+            raise ValueError(
+                f"FOCUSED suite {suite!r} omits files matched by its regex: {sorted(missing_files)}"
+            )
+        body = match.group(2)
+        if body.startswith("replace (") and body.endswith(")"):
+            clauses = split_top_level_alts(body[len("replace (") : -1])
+        elif body.startswith("(") and body.endswith(")"):
+            clauses = split_top_level_alts(body[1:-1])
+        else:
+            clauses = [body]
+        for clause in clauses:
+            in_fn = re.search(
+                r"\bin (?:([A-Za-z_][A-Za-z0-9_]*)::)?([A-Za-z_][A-Za-z0-9_]*)$",
+                clause,
+            )
+            replace_fn = re.match(
+                r"^(?:replace )?(?:([A-Za-z_][A-Za-z0-9_]*)::)?([A-Za-z_][A-Za-z0-9_]*)(?: -> | with )",
+                clause,
+            )
+            symbol_match = in_fn or replace_fn
+            if symbol_match is None:
+                raise ValueError(f"unrecognized FOCUSED symbol clause for {suite!r}: {clause}")
+            type_name, fn_name = symbol_match.groups()
+            found = any(
+                re.search(rf"\bfn\s+{re.escape(fn_name)}\b", src)
+                and (
+                    type_name is None
+                    or re.search(rf"\bimpl\b[^{{;]*\b{re.escape(type_name)}\b", src)
+                )
+                for src in focused_sources.values()
+            )
+            if not found:
+                qualified = f"{type_name}::{fn_name}" if type_name else fn_name
+                raise ValueError(
+                    f"FOCUSED suite {suite!r} symbol not found in its files: {qualified}"
+                )
+
+
 def check_results(needs: dict) -> None:
     expected_jobs = JOB_CONDITIONS.keys() - INFORMATIONAL_JOBS
     if needs.keys() != expected_jobs | {"classify-changes"}:
@@ -297,8 +675,11 @@ def check_results(needs: dict) -> None:
 
 if __name__ == "__main__":
     try:
+        for workflow_path in sorted(WORKFLOW.parent.glob("*.yml")):
+            check_checkout_steps(workflow_path.read_text(encoding="utf-8"), workflow_path.name)
         check(WORKFLOW.read_text(encoding="utf-8"))
         check_mutation(WORKFLOW.with_name("mutation.yml").read_text(encoding="utf-8"))
+        check_mutation_symbols()
         check_release(WORKFLOW.with_name("release.yml").read_text(encoding="utf-8"))
         check_pages(WORKFLOW.with_name("pages.yml").read_text(encoding="utf-8"),
                     WORKFLOW.read_text(encoding="utf-8"))

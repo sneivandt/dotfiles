@@ -281,7 +281,7 @@ download_binary() {(
   fi
 
   chmod +x "$staged_binary"
-  if ! staged_version=$("$staged_binary" --version) ||
+  if ! staged_version=$(unset DOTFILES_COMPLETE; "$staged_binary" --version) ||
     [ "$staged_version" != "dotfiles $tag" ]; then
     echo "ERROR: Downloaded CLI did not start as dotfiles $tag; it was not installed." >&2
     exit 1
@@ -313,7 +313,7 @@ download_binary() {(
 cli_starts() {
   [ -f "$1" ] || return 1
   # The shell can interpret an invalid executable as a script and exit zero.
-  _cs_version=$("$1" --version 2>/dev/null) || return 1
+  _cs_version=$(unset DOTFILES_COMPLETE; "$1" --version 2>/dev/null) || return 1
   case "$_cs_version" in
     'dotfiles '?*) return 0 ;;
     *) return 1 ;;

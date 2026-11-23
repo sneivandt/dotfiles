@@ -4,11 +4,13 @@ Description=Hyprpaper wallpaper daemon
 PartOf=graphical-session.target
 After=graphical-session.target
 
+ConditionEnvironment=WAYLAND_DISPLAY
 ConditionFileIsExecutable=/usr/bin/hyprpaper
 ConditionPathExists=%h/.config/hypr/hyprpaper.conf
 
 [Service]
 Type=simple
+Slice=session.slice
 
 ExecStart=/usr/bin/hyprpaper
 Restart=on-failure

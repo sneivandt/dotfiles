@@ -1,7 +1,9 @@
 """Market parsing and isolated cache lifecycle; never query the live market."""
 
+import contextlib
 import copy
 import importlib.util
+import io
 import json
 import os
 import select
@@ -140,6 +142,47 @@ class StocksCacheTests(unittest.TestCase):
         self.assertEqual(stocks.quotes(self.cache, self.fetch)["updated"], self.cached["updated"])
         self.fetch.assert_not_called()
         self.assertFalse(self.lock.exists())
+
+    def test_force_bypasses_fresh_cache_and_refetches_all_symbols(self):
+        self.write_cache(stale=False)
+        updated_payload = copy.deepcopy(PAYLOAD)
+        updated_payload["chart"]["result"][0]["meta"]["regularMarketPrice"] = 222
+        fetch = unittest.mock.Mock(
+            side_effect=lambda query, symbol, name, prefix, now:
+                stocks.parse_quote(updated_payload, symbol, name, prefix, now)
+        )
+        result = stocks.quotes(self.cache, fetch, force=True)
+        self.assertEqual(fetch.call_count, len(stocks.QUOTES))
+        self.assertTrue(all(quote["price"] == 222 for quote in result["quotes"]))
+        self.assertEqual(json.loads(self.path.read_text()), result)
+
+    def test_force_preserves_fresh_cache_when_all_fetches_fail(self):
+        self.write_cache(stale=False)
+        result = stocks.quotes(self.cache, self.fetch, force=True)
+        self.assertEqual(self.fetch.call_count, len(stocks.QUOTES))
+        self.assertEqual(result["quotes"], self.cached["quotes"])
+        self.assertEqual(result["updated"], self.cached["updated"])
+        self.assertIn("Could not refresh", result.get("error", ""))
+
+    def test_main_force_failed_refresh_preserves_recent_cache_and_exits_nonzero(self):
+        cache_dir = self.cache / "quickshell-stocks"
+        cache_dir.mkdir()
+        self.path = cache_dir / "quotes.json"
+        self.write_cache(stale=False)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache)}), \
+             patch.object(stocks, "fetch_quote", side_effect=OSError("offline")), \
+             contextlib.redirect_stdout(stdout), \
+             contextlib.redirect_stderr(stderr):
+            code = stocks.main(["--force"])
+        self.assertEqual(code, 1)
+        self.assertIn("Could not refresh", stderr.getvalue())
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["quotes"], self.cached["quotes"])
+        self.assertEqual(payload["updated"], self.cached["updated"])
+        self.assertEqual(payload["missing"], [])
+        self.assertIn("Could not refresh", payload["error"])
+        self.assertEqual(json.loads(self.path.read_text()), self.cached)
 
     def test_cache_refreshed_during_lock_acquisition_is_reused(self):
         lock = stocks.fcntl.flock
@@ -294,6 +337,13 @@ class StocksCacheTests(unittest.TestCase):
                 self.assertEqual(stocks.main(), 0)
                 expected = Path(base) if base and Path(base).is_absolute() else self.cache / "home" / ".cache"
                 fetch.assert_called_once_with(expected / "quickshell-stocks")
+
+    def test_main_force_flag_passes_force_true(self):
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache)}), \
+             patch.object(stocks, "quotes", return_value={"quotes": [], "updated": 0}) as fetch, \
+             patch("builtins.print"):
+            self.assertEqual(stocks.main(["--force"]), 0)
+            fetch.assert_called_once_with(self.cache / "quickshell-stocks", force=True)
 
 
 if __name__ == "__main__":

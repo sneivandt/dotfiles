@@ -545,8 +545,8 @@ fn arch_chroot_provisioning_creates_then_preserves_the_first_session_marker() {
             .contains("dotfiles-first-login"),
         "the durable marker must identify its consumer"
     );
-    let preserved_content = "pending extensions; preserve first-session notes\n";
-    std::fs::write(&marker, preserved_content).unwrap();
+    let stale_content = "pending extensions; stale selection\n";
+    std::fs::write(&marker, stale_content).unwrap();
 
     assert_eq!(task_batch(&task.run(&ctx).unwrap()).changed_count(), 1);
     let result = task.run(&ctx).unwrap();
@@ -557,11 +557,12 @@ fn arch_chroot_provisioning_creates_then_preserves_the_first_session_marker() {
             TaskResult::Batch(ref stats)
                 if stats.already_ok_count() == 1 && stats.changed_count() == 0
         ),
-        "rerunning provisioning should preserve the existing deferral: {result:?}"
+        "rerunning provisioning should converge cleanly: {result:?}"
     );
     let resumed = std::fs::read_to_string(marker).unwrap();
-    assert!(resumed.starts_with(preserved_content));
+    assert!(!resumed.contains(stale_content));
     assert!(resumed.contains("DOTFILES_PROFILE=\"base\"\n"));
+    assert_eq!(resumed.matches("DOTFILES_PROFILE=").count(), 1);
 }
 
 #[test]

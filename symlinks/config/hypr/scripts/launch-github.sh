@@ -18,15 +18,33 @@ fi
 export GDK_BACKEND=x11
 export GTK_CSD=0
 
-# Protocol launches must retain their original URI, including authentication links.
+launch_app()
+{
+  if command -v uwsm >/dev/null 2>&1 && uwsm check is-active >/dev/null 2>&1; then
+    exec uwsm app -t service -a github -- env GDK_BACKEND=x11 GTK_CSD=0 "$app" "$@"
+  fi
+  exec "$app" "$@"
+}
+
+# Protocol launches must retain their original URI verbatim, including
+# authentication links. Bypass uwsm/systemd-run so systemd does not expand
+# $VAR or $$ sequences in opaque URIs.
 if [ "$#" -gt 0 ]; then
   exec "$app" "$@"
 fi
 
 if ! command -v jq >/dev/null 2>&1; then
   report "jq is unavailable; Copilot window recovery is disabled"
-  exec "$app" "ghapp://mywork"
+  launch_app "ghapp://mywork"
 fi
+
+matches_copilot()
+{
+  printf '%s\n' "$1" | jq -e '
+    .data | strings | gsub("^\\s+|\\s+$"; "") | ascii_downcase |
+    . == "github" or . == "github copilot" or . == "copilot"
+  ' >/dev/null
+}
 
 reopen_from_tray()
 {
@@ -47,14 +65,23 @@ reopen_from_tray()
       */*) service=${item%%/*}; path=/${item#*/} ;;
       *) service=$item; path=/StatusNotifierItem ;;
     esac
-    if ! title=$(busctl --user --timeout=3 --json=short get-property \
-      "$service" "$path" org.kde.StatusNotifierItem Title); then
+    matched=0
+    inspected=0
+    for prop in Title Id; do
+      if value=$(busctl --user --timeout=3 --json=short get-property \
+        "$service" "$path" org.kde.StatusNotifierItem "$prop" 2>/dev/null); then
+        inspected=1
+        if matches_copilot "$value"; then
+          matched=1
+          break
+        fi
+      fi
+    done
+    if [ "$inspected" -eq 0 ]; then
       report "Could not inspect a tray item; it may have exited"
       continue
     fi
-    if ! printf '%s\n' "$title" | jq -e '
-      .data | ascii_downcase | . == "github" or . == "github copilot"
-    ' >/dev/null; then
+    if [ "$matched" -eq 0 ]; then
       continue
     fi
 
@@ -96,4 +123,4 @@ else
 fi
 
 # Retain the deep link for cold starts; it does not restore a tray-only instance.
-exec "$app" "ghapp://mywork"
+launch_app "ghapp://mywork"

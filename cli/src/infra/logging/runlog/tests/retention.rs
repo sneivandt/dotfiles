@@ -30,10 +30,39 @@ fn creation_skips_closed_log_collisions_without_truncating_them() {
         create_run_log_file("check", fixture.path(), stamp).unwrap();
     drop(first_file);
     drop(first_lease);
+    fs::remove_file(lease_path(&first_path)).unwrap();
     fs::write(&first_path, "preserve original").unwrap();
     let (second_path, _, _) = create_run_log_file("check", fixture.path(), stamp).unwrap();
     assert_ne!(first_path, second_path);
-    assert_eq!(fs::read_to_string(first_path).unwrap(), "preserve original");
+    assert_eq!(
+        fs::read_to_string(&first_path).unwrap(),
+        "preserve original"
+    );
+    assert!(
+        !lease_path(&first_path).exists(),
+        "colliding creation attempt must not leave an orphan .log.lock file"
+    );
+}
+
+#[test]
+fn prune_skips_opening_files_when_candidates_within_keep_limit() {
+    use super::super::retention::prune_run_logs_with;
+
+    let fixture = tempfile::tempdir().unwrap();
+    for index in 1..=3 {
+        let name = format!("2020010{index}T000000Z-update-{index}.log");
+        fs::write(fixture.path().join(name), "# Dotfiles test\n").unwrap();
+    }
+    let header_reads = std::cell::Cell::new(0);
+    prune_run_logs_with(fixture.path(), 3, |_| {
+        header_reads.set(header_reads.get() + 1);
+        Some("# Dotfiles test".to_string())
+    });
+    assert_eq!(
+        header_reads.get(),
+        0,
+        "retention must not open log files when candidate count is within keep"
+    );
 }
 
 #[test]

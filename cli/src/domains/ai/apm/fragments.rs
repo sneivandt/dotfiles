@@ -25,6 +25,36 @@ impl ApmFragmentSource {
     }
 }
 
+/// Inactive APM fragment sources resolved from non-selected categories, plus
+/// any glob inspection errors that must block reconciliation.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct InactiveApmFragments {
+    sources: Vec<ApmFragmentSource>,
+    inspection_errors: Vec<String>,
+}
+
+impl InactiveApmFragments {
+    #[must_use]
+    pub(crate) const fn new(
+        sources: Vec<ApmFragmentSource>,
+        inspection_errors: Vec<String>,
+    ) -> Self {
+        Self {
+            sources,
+            inspection_errors,
+        }
+    }
+
+    pub(crate) fn sources(&self) -> Result<&[ApmFragmentSource]> {
+        anyhow::ensure!(
+            self.inspection_errors.is_empty(),
+            "could not inspect inactive APM fragment sources: {}",
+            self.inspection_errors.join("; ")
+        );
+        Ok(&self.sources)
+    }
+}
+
 /// Discover `*.yml` and `*.yaml` files in `~/.apm/config/`.
 ///
 /// Returns an empty vector if the directory does not exist.  Results are

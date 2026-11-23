@@ -228,6 +228,16 @@ fn copy_sparse_contents(
     Ok(true)
 }
 
+#[cfg(target_os = "linux")]
+fn is_acl_xattr(name: &[u8]) -> bool {
+    name.starts_with(b"system.posix_acl_") || name == b"system.nfs4_acl"
+}
+
+#[cfg(target_os = "linux")]
+fn is_user_preservable_xattr(name: &[u8]) -> bool {
+    name.starts_with(b"user.") || is_acl_xattr(name)
+}
+
 /// Preserve metadata before publishing a staged copy.
 pub(crate) fn preserve_copy_metadata(
     source: &std::fs::File,
@@ -235,7 +245,14 @@ pub(crate) fn preserve_copy_metadata(
 ) -> Result<()> {
     let metadata = source.metadata()?;
     #[cfg(target_os = "linux")]
-    preserve_attributes(source, destination, access_identity(&metadata), |_| true)?;
+    preserve_attributes_and_permissions(
+        source,
+        destination,
+        access_identity(&metadata),
+        is_user_preservable_xattr,
+        || destination.set_permissions(metadata.permissions()),
+    )?;
+    #[cfg(not(target_os = "linux"))]
     destination.set_permissions(metadata.permissions())?;
     #[cfg(windows)]
     super::place::verify_copy_access(source, destination)?;
@@ -250,11 +267,14 @@ pub(super) fn preserve_replacement_metadata(
     use std::os::unix::fs::PermissionsExt as _;
     // Content signatures and capabilities must not be attached to new bytes.
     let metadata = source.metadata()?;
-    preserve_attributes(source, destination, access_identity(&metadata), |name| {
-        name.starts_with(b"user.") || name.starts_with(b"system.posix_acl_")
-    })?;
     let mode = metadata.permissions().mode() & 0o777;
-    destination.set_permissions(std::fs::Permissions::from_mode(mode))?;
+    preserve_attributes_and_permissions(
+        source,
+        destination,
+        access_identity(&metadata),
+        is_user_preservable_xattr,
+        || destination.set_permissions(std::fs::Permissions::from_mode(mode)),
+    )?;
     Ok(())
 }
 
@@ -265,11 +285,12 @@ fn access_identity(metadata: &std::fs::Metadata) -> (u32, u32) {
 }
 
 #[cfg(target_os = "linux")]
-fn preserve_attributes(
+fn preserve_attributes_and_permissions(
     source: &std::fs::File,
     destination: &std::fs::File,
     source_identity: (u32, u32),
     preserve: impl Fn(&[u8]) -> bool,
+    set_permissions: impl FnOnce() -> std::io::Result<()>,
 ) -> Result<()> {
     use rustix::fs::{
         XattrFlags, fgetxattr, fgetxattr_query, flistxattr, flistxattr_query, fremovexattr,
@@ -300,13 +321,24 @@ fn preserve_attributes(
             }
         }
     }
-    for name in names {
+    let copy_xattr = |name: &[u8]| -> Result<()> {
         let name = std::ffi::OsStr::from_bytes(name);
         let mut value = vec![0; fgetxattr_query(source, name)?.max(1)];
         let size = fgetxattr(source, name, value.as_mut_slice())?;
         value.truncate(size);
         fsetxattr(destination, name, &value, XattrFlags::empty())
             .with_context(|| format!("copy extended attribute {}", name.to_string_lossy()))?;
+        Ok(())
+    };
+    // Write user.* xattrs before fchmod so read-only targets remain writable.
+    for name in names.iter().copied().filter(|name| !is_acl_xattr(name)) {
+        copy_xattr(name)?;
+    }
+    set_permissions()?;
+    // Restore ACL xattrs after fchmod: on NFSv4 (RFC 7530/8881), SETATTR
+    // mode rewrites/masks an existing system.nfs4_acl if applied afterward.
+    for name in names.iter().copied().filter(|name| is_acl_xattr(name)) {
+        copy_xattr(name)?;
     }
     Ok(())
 }
@@ -341,7 +373,7 @@ fn preserve_link_attributes(source: &Path, destination: &Path) -> Result<()> {
     })?;
     for name in names
         .split(|byte| *byte == 0)
-        .filter(|name| !name.is_empty())
+        .filter(|name| !name.is_empty() && is_user_preservable_xattr(name))
     {
         let name = std::ffi::OsStr::from_bytes(name);
         let mut value = vec![0; lgetxattr_query(source, name)?.max(1)];
@@ -513,7 +545,14 @@ mod tests {
             let (uid, gid) = access_identity(&source.metadata().unwrap());
             // Inject only the IDs: no chown, other account, or privileged test runner.
             for mismatch in [(uid ^ 1, gid), (uid, gid ^ 1)] {
-                let error = preserve_attributes(&source, &staged, mismatch, |_| true).unwrap_err();
+                let error = preserve_attributes_and_permissions(
+                    &source,
+                    &staged,
+                    mismatch,
+                    |_| true,
+                    || Ok(()),
+                )
+                .unwrap_err();
                 assert!(
                     error.to_string().contains("different owner or group"),
                     "{error:#}"
@@ -529,6 +568,110 @@ mod tests {
                 );
                 assert_eq!(actual, acl);
             }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn preserve_copy_metadata_restores_user_xattr_and_acl_on_readonly_file() {
+        use rustix::fs::{XattrFlags, fgetxattr, fgetxattr_query, fsetxattr};
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let root = tempfile::tempdir_in(".").unwrap();
+        let source_path = root.path().join("source-ro");
+        let staged_path = root.path().join("staged-ro");
+        let source = std::fs::File::create_new(&source_path).unwrap();
+        let staged = std::fs::File::create_new(&staged_path).unwrap();
+
+        let (uid, _) = access_identity(&source.metadata().unwrap());
+        // Extended POSIX access ACL (owner, named user, group, mask, other).
+        let mut acl = 2_u32.to_le_bytes().to_vec();
+        for (tag, rights, id) in [
+            (1_u16, 4_u16, u32::MAX),
+            (2, 4, uid),
+            (4, 0, u32::MAX),
+            (16, 4, u32::MAX),
+            (32, 0, u32::MAX),
+        ] {
+            acl.extend(tag.to_le_bytes());
+            acl.extend(rights.to_le_bytes());
+            acl.extend(id.to_le_bytes());
+        }
+        fsetxattr(&source, "user.dotfiles.tag", b"ok", XattrFlags::empty()).unwrap();
+        source
+            .set_permissions(std::fs::Permissions::from_mode(0o400))
+            .unwrap();
+        fsetxattr(
+            &source,
+            "system.posix_acl_access",
+            &acl,
+            XattrFlags::empty(),
+        )
+        .unwrap();
+
+        let mut acl_present_during_chmod = false;
+        preserve_attributes_and_permissions(
+            &source,
+            &staged,
+            access_identity(&source.metadata().unwrap()),
+            is_user_preservable_xattr,
+            || {
+                acl_present_during_chmod =
+                    fgetxattr_query(&staged, "system.posix_acl_access").is_ok();
+                staged.set_permissions(source.metadata()?.permissions())
+            },
+        )
+        .unwrap();
+
+        assert!(
+            !acl_present_during_chmod,
+            "ACL xattrs must be restored after set_permissions so fchmod cannot rewrite NFSv4/POSIX ACLs"
+        );
+        let mut actual_tag = vec![0; 2];
+        assert_eq!(
+            fgetxattr(&staged, "user.dotfiles.tag", actual_tag.as_mut_slice()).unwrap(),
+            2
+        );
+        assert_eq!(actual_tag, b"ok");
+        let mut actual_acl = vec![0; acl.len()];
+        assert_eq!(
+            fgetxattr(
+                &staged,
+                "system.posix_acl_access",
+                actual_acl.as_mut_slice()
+            )
+            .unwrap(),
+            acl.len()
+        );
+        assert_eq!(actual_acl, acl);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn user_preservable_xattr_filter_excludes_privileged_namespaces() {
+        for allowed in [
+            b"user.dotfiles.tag".as_slice(),
+            b"system.posix_acl_access",
+            b"system.posix_acl_default",
+            b"system.nfs4_acl",
+        ] {
+            assert!(
+                is_user_preservable_xattr(allowed),
+                "should preserve {}",
+                String::from_utf8_lossy(allowed)
+            );
+        }
+        for excluded in [
+            b"security.selinux".as_slice(),
+            b"security.capability",
+            b"security.ima",
+            b"trusted.overlay.opaque",
+        ] {
+            assert!(
+                !is_user_preservable_xattr(excluded),
+                "must exclude privileged xattr {}",
+                String::from_utf8_lossy(excluded)
+            );
         }
     }
 

@@ -49,9 +49,12 @@ jobs.
 | `config_drift` | Real configuration, source, and category invariants |
 | `domain_boundaries` | Architectural dependencies and platform/environment boundaries |
 | `update_command`, `remove_command`, `list_command`, `check_command` | Command membership, selection, loading, and outcomes |
+| `completion_contracts` | Runtime shell completion, parsing parity, and read-only task discovery |
 | `task_execution` | Task/resource convergence and dry-run |
 | `task_output` | Statuses, reasons, logs, and exit behavior |
 | `lifecycle_contracts` | Preview, apply/repeat, retry, and conservative removal across real tasks |
+| `audit_lifecycle` | Existing user-state preservation across preview, convergence, conflicts, and removal |
+| `docs_contracts` | Configuration examples and state transitions in human documentation |
 | `e2e_apply` | CLI convergence against controlled state |
 | `behavioral_ci` | Cross-cutting regressions for CI assumptions |
 

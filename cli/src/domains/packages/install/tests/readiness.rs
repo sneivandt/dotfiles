@@ -94,7 +94,7 @@ fn package_task_applicability_follows_platform_and_package_kind() {
         let actual = [
             InstallPackages::new(packages.clone()).should_run(&ctx),
             InstallAurPackages::new(packages).should_run(&ctx),
-            InstallParu.should_run(&ctx),
+            InstallParu::new().should_run(&ctx),
         ];
         assert_eq!(actual, expected, "{label}: [native, AUR, paru]");
     }
@@ -306,4 +306,111 @@ fn consumer_package_readiness_retains_waits_without_a_supported_manager() {
             RequirementState::Unsatisfied { .. },
         ));
     }
+}
+
+#[test]
+fn shared_pacman_inventory_cache_avoids_duplicate_queries_and_invalidates_on_install() {
+    let cache = PacmanInventoryCache::new();
+    let configured = packages(&[("native-tool", false), ("aur-tool", true)]);
+
+    // Steady state: assessment probes share one `pacman -Q`, and execution
+    // tasks refresh once on entering execution and share that fresh snapshot.
+    let mut steady_mock = MockExecutor::new();
+    steady_mock.expect_which().return_const(true);
+    steady_mock
+        .expect_execute()
+        .times(2)
+        .withf(is_native_inventory)
+        .returning(|_| Ok(ExecResult::success("native-tool 1.0\naur-tool 1.0\n")));
+    expect_installed_paru_package(&mut steady_mock, 2);
+    expect_healthy_paru(&mut steady_mock, 2);
+    let steady_ctx =
+        make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, steady_mock);
+
+    let native_task = InstallPackages::new(configured.clone()).with_inventory_cache(cache.clone());
+    let aur_task = InstallAurPackages::new(configured.clone()).with_inventory_cache(cache.clone());
+    let stability = package_stability_requirement_with_cache(configured, Some(cache));
+
+    assert!(!native_task.needs_elevation(&steady_ctx));
+    assert!(!aur_task.needs_elevation(&steady_ctx));
+    assert!(matches!(
+        stability.check(&steady_ctx, crate::engine::RequirementStage::Ordering),
+        RequirementState::Satisfied(())
+    ));
+    assert_task_ok(&native_task.run(&steady_ctx).unwrap());
+    assert_task_ok(&aur_task.run(&steady_ctx).unwrap());
+
+    // Mutation: entering execution refreshes, and installing invalidates the
+    // cache so post-install verification and subsequent queries observe live state.
+    let mutation_cache = PacmanInventoryCache::new();
+    let missing_pkg = packages(&[("missing-tool", false)]);
+    let mut mutation_mock = MockExecutor::new();
+    mutation_mock.expect_which().return_const(true);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls_for_mock = Arc::clone(&calls);
+    mutation_mock
+        .expect_execute()
+        .times(4)
+        .withf(is_native_inventory)
+        .returning(move |_| {
+            let n = calls_for_mock.fetch_add(1, Ordering::SeqCst);
+            Ok(ExecResult::success(if n < 2 {
+                ""
+            } else {
+                "missing-tool 1.0\n"
+            }))
+        });
+    let expected_install = native_install(PackageManager::Pacman, &["missing-tool"]);
+    mutation_mock
+        .expect_execute()
+        .once()
+        .withf(move |spec| *spec == expected_install)
+        .returning(|_| Ok(ExecResult::success("")));
+    let mutation_ctx =
+        make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mutation_mock);
+
+    let install_task = InstallPackages::new(missing_pkg).with_inventory_cache(mutation_cache);
+    // Populates assessment snapshot during elevation check.
+    assert!(install_task.needs_elevation(&mutation_ctx));
+    // Run refreshes on entering execution, invalidates before install, and verifies.
+    assert_task_changed(&install_task.run(&mutation_ctx).unwrap());
+    // Subsequent query must observe live post-install inventory.
+    assert!(!install_task.needs_elevation(&mutation_ctx));
+}
+
+#[test]
+fn execution_refreshes_pacman_inventory_after_external_change_between_assessment_and_run() {
+    let cache = PacmanInventoryCache::new();
+    let configured = packages(&[("external-pkg", false)]);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls_for_mock = Arc::clone(&calls);
+
+    let mut mock = MockExecutor::new();
+    mock.expect_which().return_const(true);
+    mock.expect_execute()
+        .times(3)
+        .withf(is_native_inventory)
+        .returning(move |_| {
+            // Assessment (0) sees `external-pkg` installed, execution (1) sees
+            // it externally removed, and post-install verification (2) sees it
+            // reinstalled.
+            let output = if calls_for_mock.fetch_add(1, Ordering::SeqCst) == 1 {
+                ""
+            } else {
+                "external-pkg 1.0\n"
+            };
+            Ok(ExecResult::success(output))
+        });
+    let expected_install = native_install(PackageManager::Pacman, &["external-pkg"]);
+    mock.expect_execute()
+        .once()
+        .withf(move |spec| *spec == expected_install)
+        .returning(|_| Ok(ExecResult::success("")));
+    let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock);
+
+    let install_task = InstallPackages::new(configured).with_inventory_cache(cache);
+    // Assessment thinks no sudo is needed because the package was present.
+    assert!(!install_task.needs_elevation(&ctx));
+    // Execution refreshes the cache, detects external removal, and installs it.
+    assert_task_changed(&install_task.run(&ctx).unwrap());
 }

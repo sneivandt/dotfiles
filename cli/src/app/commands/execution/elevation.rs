@@ -66,7 +66,7 @@ pub(super) fn validate_elevated_tasks(ctx: &Context, tasks: &[&dyn Task]) -> any
 
 /// Outcome of arranging privilege for the tasks that declared they need it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ElevationPlan {
+pub(super) enum ElevationPlan {
     /// Privilege is available to this process; run the tasks normally.
     Ready,
     /// The tasks already ran elsewhere; drop them from this run's graph.
@@ -75,6 +75,8 @@ enum ElevationPlan {
         allow(dead_code, reason = "only the Windows broker delegates to a child")
     )]
     Delegated,
+    /// Elevation was interrupted by cancellation before completing.
+    Interrupted,
     /// Privilege could not be arranged; skip the tasks and continue.
     Unavailable { reason: &'static str },
     /// The elevated child ran but failed; fail its tasks and block dependents.
@@ -92,11 +94,16 @@ enum ElevationPlan {
 pub(super) struct ElevationBroker<'a> {
     ctx: &'a Context,
     log: &'a Arc<Logger>,
+    profile: Option<&'a str>,
 }
 
 impl<'a> ElevationBroker<'a> {
-    pub(super) const fn new(ctx: &'a Context, log: &'a Arc<Logger>) -> Self {
-        Self { ctx, log }
+    pub(super) const fn new(
+        ctx: &'a Context,
+        log: &'a Arc<Logger>,
+        profile: Option<&'a str>,
+    ) -> Self {
+        Self { ctx, log, profile }
     }
 
     /// Prepare elevation and remove tasks already delegated or unable to run.
@@ -105,6 +112,16 @@ impl<'a> ElevationBroker<'a> {
         tasks: &mut Vec<&dyn Task>,
         assessments: &HashMap<TaskId, TaskAssessment>,
         graph: &ResolvedTaskGraph,
+    ) -> ExecutionSummary {
+        self.prepare_with(tasks, assessments, graph, prepare_elevation)
+    }
+
+    pub(super) fn prepare_with(
+        &self,
+        tasks: &mut Vec<&dyn Task>,
+        assessments: &HashMap<TaskId, TaskAssessment>,
+        graph: &ResolvedTaskGraph,
+        arrange: impl FnOnce(&Context, &Arc<Logger>, &[&str], &[&str], Option<&str>) -> ElevationPlan,
     ) -> ExecutionSummary {
         let mut summary = ExecutionSummary::default();
         let elevating: Vec<&dyn Task> = if self.ctx.execution_policy().elevated_child {
@@ -130,11 +147,23 @@ impl<'a> ElevationBroker<'a> {
 
         let names: Vec<&str> = elevating.iter().map(|task| task.name()).collect();
         let selectors: Vec<&str> = elevating.iter().map(|task| task.selector()).collect();
-        let plan = prepare_elevation(self.ctx, self.log, &names, &selectors);
+        let plan = arrange(self.ctx, self.log, &names, &selectors, self.profile);
+        let plan = if self.ctx.is_cancelled()
+            && matches!(
+                plan,
+                ElevationPlan::Ready | ElevationPlan::Unavailable { .. }
+            ) {
+            ElevationPlan::Interrupted
+        } else {
+            plan
+        };
+        if plan == ElevationPlan::Interrupted {
+            self.ctx.cancellation_token().cancel();
+        }
 
         // Delegation is not degradation: the tasks really ran, just in the
         // elevated child, so their dependents must still run here. Only an
-        // unavailable plan leaves prerequisites unmet.
+        // unavailable or interrupted plan leaves prerequisites unmet.
         let Some((reason, root_outcome, root_status)) =
             elevation_plan_disposition(plan, self.ctx.require_complete())
         else {
@@ -147,7 +176,7 @@ impl<'a> ElevationBroker<'a> {
         if root_status == TaskStatus::Failed {
             summary.add_failures(roots.len());
         }
-        let blocked = if root_outcome == TaskOutcome::Unmet {
+        let blocked = if matches!(root_outcome, TaskOutcome::Unmet | TaskOutcome::Cancelled) {
             graph.blocked_dependents(&roots)
         } else {
             HashMap::new()
@@ -158,11 +187,19 @@ impl<'a> ElevationBroker<'a> {
             let (message, status, outcome) = if roots.contains_key(&id) {
                 (reason.to_string(), root_status, root_outcome)
             } else if let Some(cause) = blocked.get(&id) {
-                (
-                    format!("requires {cause}"),
-                    TaskStatus::Blocked,
-                    TaskOutcome::Blocked,
-                )
+                if root_outcome == TaskOutcome::Cancelled {
+                    (
+                        "cancelled".to_string(),
+                        TaskStatus::Interrupted,
+                        TaskOutcome::Cancelled,
+                    )
+                } else {
+                    (
+                        format!("requires {cause}"),
+                        TaskStatus::Blocked,
+                        TaskOutcome::Blocked,
+                    )
+                }
             } else {
                 return true;
             };
@@ -198,6 +235,9 @@ const fn elevation_plan_disposition(
             TaskOutcome::Satisfied,
             TaskStatus::Skipped,
         )),
+        ElevationPlan::Interrupted => {
+            Some(("cancelled", TaskOutcome::Cancelled, TaskStatus::Interrupted))
+        }
         ElevationPlan::Unavailable { reason } => Some((
             reason,
             TaskOutcome::Unmet,
@@ -222,6 +262,7 @@ fn prepare_elevation(
     log: &Arc<Logger>,
     names: &[&str],
     _selectors: &[&str],
+    _profile: Option<&str>,
 ) -> ElevationPlan {
     prepare_sudo_elevation(
         ctx,
@@ -274,6 +315,10 @@ fn prepare_sudo_elevation(
     let result = prime_credentials();
     log.separate_console_block();
 
+    if ctx.is_cancelled() {
+        return ElevationPlan::Interrupted;
+    }
+
     match result {
         Ok(true) => ElevationPlan::Ready,
         Ok(false) => {
@@ -305,6 +350,7 @@ fn prepare_windows_elevation(
     log: &Arc<Logger>,
     names: &[&str],
     selectors: &[&str],
+    profile: Option<&str>,
 ) -> ElevationPlan {
     use crate::infra::elevation::run_elevated_child;
 
@@ -326,7 +372,19 @@ fn prepare_windows_elevation(
         };
     }
 
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args = match collect_utf8_args(std::env::args_os().skip(1)) {
+        Ok(args) => args,
+        Err(invalid) => {
+            log.separate_from_startup();
+            log.error(format!(
+                "cannot pass non-UTF-8 argument to elevated child: {}",
+                invalid.to_string_lossy()
+            ));
+            return ElevationPlan::Failed {
+                reason: "elevated child arguments contain non-UTF-8 text",
+            };
+        }
+    };
     let resolved_paths = std::path::absolute(ctx.root()).and_then(|root| {
         ctx.overlay()
             .map(std::path::absolute)
@@ -342,7 +400,8 @@ fn prepare_windows_elevation(
             };
         }
     };
-    let child_args = build_elevated_child_args(&args, selectors, &root, overlay.as_deref());
+    let child_args =
+        build_elevated_child_args(&args, selectors, &root, overlay.as_deref(), profile);
 
     log.separate_from_startup();
     log.always(format!(
@@ -355,8 +414,20 @@ fn prepare_windows_elevation(
     windows_elevation_result(log, run_elevated_child(ctx.executor(), &**log, &child_args))
 }
 
+#[cfg_attr(
+    not(any(windows, test)),
+    allow(dead_code, reason = "used by the Windows elevation broker")
+)]
+fn collect_utf8_args(
+    args: impl IntoIterator<Item = std::ffi::OsString>,
+) -> Result<Vec<String>, std::ffi::OsString> {
+    args.into_iter()
+        .map(std::ffi::OsString::into_string)
+        .collect()
+}
+
 #[cfg(any(windows, test))]
-fn windows_elevation_result(
+pub(super) fn windows_elevation_result(
     log: &Logger,
     result: anyhow::Result<crate::infra::elevation::ElevationOutcome>,
 ) -> ElevationPlan {
@@ -374,12 +445,28 @@ fn windows_elevation_result(
                 reason: "elevation declined",
             }
         }
+        Ok(ElevationOutcome::Failed(130)) => {
+            log.separate_from_startup();
+            log.warn("elevated step interrupted");
+            ElevationPlan::Interrupted
+        }
         Ok(ElevationOutcome::Failed(code)) => {
             log.separate_from_startup();
             log.error(format!("elevated step failed (exit code {code})"));
             ElevationPlan::Failed {
                 reason: "elevated step failed",
             }
+        }
+        Err(error)
+            if error.chain().any(|cause| {
+                cause
+                    .downcast_ref::<crate::infra::exec::ExecError>()
+                    .is_some_and(crate::infra::exec::ExecError::is_cancelled)
+            }) =>
+        {
+            log.separate_from_startup();
+            log.warn("elevated step interrupted");
+            ElevationPlan::Interrupted
         }
         Err(error) => {
             log.separate_from_startup();
@@ -398,6 +485,7 @@ const fn prepare_elevation(
     _log: &Arc<Logger>,
     _names: &[&str],
     _selectors: &[&str],
+    _profile: Option<&str>,
 ) -> ElevationPlan {
     ElevationPlan::Ready
 }
@@ -407,7 +495,8 @@ const fn prepare_elevation(
 /// Existing `--only` / `--skip` filters and `--with-deps` are dropped because the
 /// parent has already resolved the child's exact scope. `--no-parallel` is
 /// forced so output stays readable in the separate console `Start-Process`
-/// opens. Repository paths are replaced with the parent's resolved paths.
+/// opens. Repository paths and, when resolved, `--profile` are replaced with
+/// the parent's resolved values.
 #[cfg_attr(
     not(any(windows, test)),
     allow(dead_code, reason = "used by the Windows elevation broker")
@@ -417,13 +506,20 @@ pub(super) fn build_elevated_child_args(
     selectors: &[&str],
     root: &std::path::Path,
     overlay: Option<&std::path::Path>,
+    profile: Option<&str>,
 ) -> Vec<String> {
     /// Filters whose values the child must not inherit.
     const DROPPED_WITH_VALUE: [&str; 4] = ["--only", "--skip", "--root", "--overlay"];
 
-    let mut out: Vec<String> = Vec::with_capacity(args.len().saturating_add(4));
+    let mut out: Vec<String> = Vec::with_capacity(args.len().saturating_add(6));
+    let mut trailing: Vec<String> = Vec::new();
     let mut args = args.iter();
     while let Some(arg) = args.next() {
+        if arg == "--" {
+            trailing.push(arg.clone());
+            trailing.extend(args.cloned());
+            break;
+        }
         if DROPPED_WITH_VALUE.contains(&arg.as_str()) {
             let _inherited_value = args.next();
             continue;
@@ -432,6 +528,9 @@ pub(super) fn build_elevated_child_args(
             .split_once('=')
             .is_some_and(|(flag, _)| DROPPED_WITH_VALUE.contains(&flag))
         {
+            continue;
+        }
+        if profile.is_some() && strip_profile_arg(arg, &mut args, &mut out) {
             continue;
         }
         if matches!(
@@ -443,6 +542,10 @@ pub(super) fn build_elevated_child_args(
         out.push(arg.clone());
     }
 
+    if let Some(profile) = profile {
+        out.push("--profile".to_string());
+        out.push(profile.to_string());
+    }
     out.push("--only".to_string());
     out.push(selectors.join(","));
     out.push("--no-parallel".to_string());
@@ -453,7 +556,39 @@ pub(super) fn build_elevated_child_args(
         out.push("--overlay".to_string());
         out.push(overlay.display().to_string());
     }
+    out.extend(trailing);
     out
+}
+
+#[cfg_attr(
+    not(any(windows, test)),
+    allow(dead_code, reason = "used by the Windows elevation broker")
+)]
+fn strip_profile_arg(
+    arg: &str,
+    rest: &mut std::slice::Iter<'_, String>,
+    out: &mut Vec<String>,
+) -> bool {
+    if arg == "--profile" || arg == "-p" {
+        let _inherited_value = rest.next();
+        return true;
+    }
+    if arg.starts_with("--profile=") || arg.starts_with("-p=") {
+        return true;
+    }
+    if let Some(cluster) = arg.strip_prefix('-')
+        && !cluster.starts_with('-')
+        && let Some((prefix, rest_after_p)) = cluster.split_once('p')
+    {
+        if !prefix.is_empty() {
+            out.push(format!("-{prefix}"));
+        }
+        if rest_after_p.is_empty() {
+            let _inherited_value = rest.next();
+        }
+        return true;
+    }
+    false
 }
 
 #[cfg(test)]
@@ -473,6 +608,10 @@ mod tests {
                 ElevationPlan::Unavailable {
                     reason: "elevation declined",
                 },
+            ),
+            (
+                Ok(ElevationOutcome::Failed(130)),
+                ElevationPlan::Interrupted,
             ),
             (
                 Ok(ElevationOutcome::Failed(7)),
@@ -497,11 +636,17 @@ mod tests {
         let (ctx, log) = make_static_context("fixture-root".into(), None);
         let ctx = ctx.with_non_interactive(true);
         assert_eq!(
-            prepare_windows_elevation(&ctx, &log, &[], &[]),
+            prepare_windows_elevation(&ctx, &log, &[], &[], None),
             ElevationPlan::Ready
         );
         assert_eq!(
-            prepare_windows_elevation(&ctx, &log, &["Windows Developer Mode"], &["developer-mode"]),
+            prepare_windows_elevation(
+                &ctx,
+                &log,
+                &["Windows Developer Mode"],
+                &["developer-mode"],
+                None,
+            ),
             ElevationPlan::Unavailable {
                 reason: "elevation unavailable in a non-interactive session",
             }
@@ -789,6 +934,255 @@ mod tests {
                 reason: "sudo credentials unavailable",
             }
         );
+    }
+
+    #[test]
+    fn sudo_interrupted_during_prime_returns_interrupted_without_auth_error() {
+        for require_complete in [false, true] {
+            let (ctx, log) = make_static_context("fixture-root".into(), None);
+            let token = crate::engine::CancellationToken::new();
+            let ctx = ctx
+                .with_non_interactive(false)
+                .with_require_complete(require_complete)
+                .with_cancellation(token.clone());
+
+            let plan = prepare_sudo_elevation(
+                &ctx,
+                &log,
+                &["System configuration files"],
+                true,
+                || false,
+                || {
+                    token.cancel();
+                    Ok(false)
+                },
+            );
+            assert_eq!(
+                plan,
+                ElevationPlan::Interrupted,
+                "require_complete={require_complete}"
+            );
+        }
+    }
+
+    #[test]
+    fn broker_records_interrupted_elevation_and_dependents_without_failures() {
+        use crate::app::commands::error::CommandInterrupted;
+        use crate::engine::{TaskMeta, TaskResult};
+
+        struct StubTask {
+            id: u8,
+            name: &'static str,
+            deps: Vec<TaskId>,
+        }
+        impl Task for StubTask {
+            fn meta(&self) -> TaskMeta<'_> {
+                TaskMeta::new(self.name)
+            }
+            fn task_id(&self) -> TaskId {
+                TaskId::dynamic::<Self>(self.id.to_string())
+            }
+            fn dependencies(&self) -> &[TaskId] {
+                &self.deps
+            }
+            fn run(&self, _ctx: &Context) -> anyhow::Result<TaskResult> {
+                panic!("interrupted task should not run");
+            }
+        }
+
+        for require_complete in [false, true] {
+            let root = StubTask {
+                id: 1,
+                name: "System configuration files",
+                deps: Vec::new(),
+            };
+            let dependent = StubTask {
+                id: 2,
+                name: "Systemd units",
+                deps: vec![root.task_id()],
+            };
+            let unrelated = StubTask {
+                id: 3,
+                name: "Home symlinks",
+                deps: Vec::new(),
+            };
+            let mut tasks: Vec<&dyn Task> = vec![&root, &dependent, &unrelated];
+            let assessments = HashMap::from([(
+                root.task_id(),
+                TaskAssessment::applicable().with_elevation(true),
+            )]);
+            let graph = ResolvedTaskGraph::resolve(&tasks).expect("valid graph");
+            let (ctx, log) = make_static_context("fixture-root".into(), None);
+            let token = crate::engine::CancellationToken::new();
+            let ctx = ctx
+                .with_require_complete(require_complete)
+                .with_cancellation(token.clone());
+
+            let summary = ElevationBroker::new(&ctx, &log, None).prepare_with(
+                &mut tasks,
+                &assessments,
+                &graph,
+                |_, _, _, _, _| {
+                    token.cancel();
+                    ElevationPlan::Interrupted
+                },
+            );
+
+            assert_eq!(
+                tasks.iter().map(|task| task.name()).collect::<Vec<_>>(),
+                vec!["Home symlinks"],
+                "require_complete={require_complete}"
+            );
+            assert_eq!(summary.failure_count(), 0);
+            assert!(summary.was_interrupted());
+            assert_eq!(
+                summary.outcome(&root.task_id()),
+                Some(TaskOutcome::Cancelled)
+            );
+            assert_eq!(
+                summary.outcome(&dependent.task_id()),
+                Some(TaskOutcome::Cancelled)
+            );
+            let entries = log.task_entries();
+            assert_eq!(entries.len(), 2);
+            assert!(
+                entries
+                    .iter()
+                    .all(|entry| entry.status == TaskStatus::Interrupted),
+                "elevating task and dependents must be Interrupted: {entries:?}"
+            );
+            let finish_err =
+                crate::app::commands::execution::finish_run(&ctx, &log, &summary).unwrap_err();
+            assert!(
+                finish_err.downcast_ref::<CommandInterrupted>().is_some(),
+                "expected CommandInterrupted (exit 130), got {finish_err:#}"
+            );
+        }
+    }
+
+    struct RecordingStubTask {
+        id: u8,
+        name: &'static str,
+        deps: Vec<TaskId>,
+        executed: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl Task for RecordingStubTask {
+        fn meta(&self) -> crate::engine::TaskMeta<'_> {
+            crate::engine::TaskMeta::new(self.name)
+        }
+        fn task_id(&self) -> TaskId {
+            TaskId::dynamic::<Self>(self.id.to_string())
+        }
+        fn dependencies(&self) -> &[TaskId] {
+            &self.deps
+        }
+        fn run(&self, _ctx: &Context) -> anyhow::Result<crate::engine::TaskResult> {
+            self.executed
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            panic!(
+                "task {} must not run after interrupted elevation",
+                self.name
+            );
+        }
+    }
+
+    #[test]
+    fn interrupted_elevation_cancels_parent_token_and_skips_remaining_tasks() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        use crate::app::commands::error::CommandInterrupted;
+
+        for (parallel, require_complete) in
+            [(false, false), (false, true), (true, false), (true, true)]
+        {
+            let executed = Arc::new(AtomicBool::new(false));
+            let root = RecordingStubTask {
+                id: 1,
+                name: "Windows Developer Mode",
+                deps: Vec::new(),
+                executed: Arc::clone(&executed),
+            };
+            let dependent = RecordingStubTask {
+                id: 2,
+                name: "Dependent task",
+                deps: vec![root.task_id()],
+                executed: Arc::clone(&executed),
+            };
+            let unrelated = RecordingStubTask {
+                id: 3,
+                name: "Home symlinks",
+                deps: Vec::new(),
+                executed: Arc::clone(&executed),
+            };
+            let mut tasks: Vec<&dyn Task> = vec![&root, &dependent, &unrelated];
+            let mut assessments = HashMap::from([
+                (
+                    root.task_id(),
+                    TaskAssessment::applicable().with_elevation(true),
+                ),
+                (dependent.task_id(), TaskAssessment::applicable()),
+                (unrelated.task_id(), TaskAssessment::applicable()),
+            ]);
+            let graph =
+                ResolvedTaskGraph::resolve_assessed(&tasks, &assessments).expect("valid graph");
+            let (ctx, log) = make_static_context("fixture-root".into(), None);
+            let ctx = ctx
+                .with_parallel(parallel)
+                .with_require_complete(require_complete)
+                .with_cancellation(crate::engine::CancellationToken::new());
+
+            // Return Interrupted without pre-cancelling the token, modeling a
+            // Windows elevated child that exited with Ctrl-C (130).
+            let mut summary = ElevationBroker::new(&ctx, &log, None).prepare_with(
+                &mut tasks,
+                &assessments,
+                &graph,
+                |_, _, _, _, _| ElevationPlan::Interrupted,
+            );
+            assert!(ctx.is_cancelled());
+
+            let remaining_graph =
+                ResolvedTaskGraph::resolve_assessed(&tasks, &assessments).expect("valid graph");
+            assessments.retain(|id, _| remaining_graph.contains(id));
+            let prior = summary.clone();
+            summary.merge(crate::engine::scheduler::run_tasks(
+                &tasks,
+                &remaining_graph,
+                &assessments,
+                &ctx,
+                &log,
+                Some(&prior),
+            ));
+
+            assert!(!executed.load(Ordering::SeqCst));
+            assert_eq!(summary.failure_count(), 0);
+            assert!(summary.was_interrupted());
+            for task_id in [root.task_id(), dependent.task_id(), unrelated.task_id()] {
+                assert_eq!(summary.outcome(&task_id), Some(TaskOutcome::Cancelled));
+            }
+            let entries = log.task_entries();
+            assert_eq!(entries.len(), 3);
+            assert!(
+                entries
+                    .iter()
+                    .all(|entry| entry.status == TaskStatus::Interrupted)
+            );
+            let finish_err =
+                crate::app::commands::execution::finish_run(&ctx, &log, &summary).unwrap_err();
+            assert!(finish_err.downcast_ref::<CommandInterrupted>().is_some());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn collect_utf8_args_rejects_non_utf8_without_panicking() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt as _;
+
+        let invalid = OsString::from_vec(vec![b'b', b'a', b'd', 0xff]);
+        let err = collect_utf8_args([OsString::from("update"), invalid.clone()]).unwrap_err();
+        assert_eq!(err, invalid);
     }
 
     #[test]

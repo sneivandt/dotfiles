@@ -79,6 +79,23 @@ def binary_input(path: str) -> bool:
     }
 
 
+def shell_script(path: str) -> bool:
+    parts = path.split("/")
+    return (
+        path.endswith((".sh", ".bash"))
+        or path in {"hooks/pre-commit", "symlinks/bashrc", "symlinks/bash_profile"}
+        or path.startswith((
+            "symlinks/config/git/templates/hooks/",
+            "symlinks/config/git/templates/hooks.local/",
+        ))
+        or (
+            len(parts) == 3
+            and parts[0] == "packages"
+            and (parts[2] == "PKGBUILD" or parts[2].endswith(".install"))
+        )
+    )
+
+
 def changed_paths(root: str, base: str, head: str) -> list[str]:
     # Include removed paths and both sides of renames, without Git's quoting or
     # newline ambiguity. Never turn an invalid comparison into a successful skip.
@@ -120,9 +137,9 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("apm")
         if binary_input(path):
             enable("release")
-        if path.endswith(".sh") or path in {"hooks/pre-commit"}:
+        if shell_script(path):
             linters.add("shell")
-        if path.endswith((".ps1", ".psm1")):
+        if path.endswith((".ps1", ".psm1", ".psd1")):
             linters.add("powershell")
 
         if path == ".github/workflows/ci.yml" or path in {
@@ -201,6 +218,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             linters.add("shell")
         elif path.startswith("conf/"):
             profiles("linux", "windows")
+            if path in {"conf/system-files.toml", "conf/chmod.toml"}:
+                enable("rust_checks")
             if path == "conf/systemd-units.toml":
                 enable("lock")  # GraphicalUnitTests reads the declarations.
             if path in {"conf/symlinks.toml", "conf/git-config.toml", "conf/packages.toml"}:
@@ -208,9 +227,17 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 enable("app_windows")
         elif path.startswith("system/"):
             profiles("linux")
+            enable("rust_checks")
         elif path.startswith("symlinks/"):
             # Config-drift tests inspect managed content as well as source paths.
             enable("validate_config", "config_drift")
+            if path.startswith("symlinks/config/git/templates/"):
+                enable("rust_checks")
+            if path == "symlinks/local/bin/code-insiders":
+                # Exercised by Rust config tests, test-shell-config.py (zsh),
+                # and hypr/scripts/tests/test_launchers.py (lock).
+                enable("rust_checks", "lock")
+                apps.add("zsh")
             if path.startswith("symlinks/config/git/templates/") or path in {
                 "symlinks/config/git/aliases",
                 "symlinks/config/systemd/user/clean-home-tmp.service",
@@ -223,8 +250,13 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             if path.startswith(("symlinks/config/zsh/", "symlinks/config/bash/", "symlinks/config/shell/")) or path in {
                 "symlinks/zshrc", "symlinks/zprofile", "symlinks/bashrc",
                 "symlinks/bash_profile", "symlinks/config/wgetrc", "symlinks/config/git/windows",
+                "symlinks/config/git/windows-desktop", "symlinks/config/git/ignore",
                 "symlinks/config/git/aliases", "symlinks/config/user-dirs.dirs",
                 "symlinks/config/systemd/user/xdg-user-directories.service",
+                "symlinks/config/uwsm/env-hyprland.d/session.sh",
+                "symlinks/config/tmux/tmux.conf",
+                "symlinks/config/readline/inputrc",
+                "symlinks/config/pacman.conf",
             }:
                 apps.add("zsh")
             if path.startswith("symlinks/vim/"):

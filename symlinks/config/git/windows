@@ -3,7 +3,7 @@
   pager = less -imRj8X
 
 [interactive]
-  diffFilter =
+  diffFilter = cat
 
 [include]
   path = windows-desktop

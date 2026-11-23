@@ -53,6 +53,71 @@ fn reconcile_updates_files_without_replacing_cowork_directory() {
     assert!(target_skill.join("placeholder.txt").exists());
 }
 
+#[test]
+fn pruning_stale_file_inside_selected_skill_logs_update_action() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let (source_skill, target_skill, base_ctx) =
+        setup_skill(dir.path(), "[agent-skills, copilot-cowork]");
+    std::fs::write(source_skill.join("obsolete.txt"), "old helper").unwrap();
+    assert!(reconcile_cowork_skills(&base_ctx).unwrap());
+    assert!(target_skill.join("obsolete.txt").exists());
+
+    // Remove the helper from source while SKILL.md stays unchanged.
+    std::fs::remove_file(source_skill.join("obsolete.txt")).unwrap();
+    let capture = Arc::new(crate::test_helpers::CapturingOutput::default());
+    let ctx = base_ctx.with_log(Arc::<crate::test_helpers::CapturingOutput>::clone(&capture));
+
+    assert!(reconcile_cowork_skills(&ctx).unwrap());
+    assert!(!target_skill.join("obsolete.txt").exists());
+    let actions = capture.actions();
+    assert!(
+        actions
+            .iter()
+            .any(|action| action.verb == "update" && action.subject.contains("example")),
+        "pruning a stale file inside a selected skill must log an update action, got: {actions:?}"
+    );
+}
+
+#[test]
+fn retiring_skills_keeps_owned_and_file_ledgers_in_sync_on_partial_failure() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let home = dir.path();
+    let onedrive = home.join("OneDrive - Test");
+    let skills_root = home.join(".agents").join("skills");
+    let cowork_root = onedrive.join("Documents").join("Cowork").join("skills");
+    for name in ["alpha", "beta"] {
+        std::fs::create_dir_all(skills_root.join(name)).unwrap();
+        std::fs::create_dir_all(cowork_root.join(name)).unwrap();
+        std::fs::write(skills_root.join(name).join("SKILL.md"), name).unwrap();
+    }
+    std::fs::create_dir_all(home.join(".apm")).unwrap();
+    let lock = home.join(".apm").join("apm.lock.yaml");
+    std::fs::write(
+        &lock,
+        "dependencies:\n  - deployed_files:\n      - .agents/skills/alpha/SKILL.md\n      - .agents/skills/beta/SKILL.md\n    target_subset: [copilot-cowork]\n",
+    )
+    .unwrap();
+    let ctx = make_context_with_home(home, Platform::new(Os::Windows, false), MockExecutor::new())
+        .with_env(Arc::new(MapEnv::new().with(ONEDRIVE_COMMERCIAL, &onedrive)));
+
+    assert!(reconcile_cowork_skills(&ctx).unwrap());
+    // Modify beta's deployed file so retiring beta fails after alpha retires.
+    std::fs::write(cowork_root.join("beta").join("SKILL.md"), "user modified").unwrap();
+    std::fs::write(&lock, "dependencies: []\n").unwrap();
+
+    assert!(reconcile_cowork_skills(&ctx).is_err());
+    let owned = read_owned_skills(&cowork_root).unwrap();
+    let inventory = read_file_inventory(&cowork_root).unwrap();
+    assert!(
+        !owned.contains("alpha") && !inventory.contains_key("alpha"),
+        "retired skill must be removed from both ledgers on partial failure: owned={owned:?}, inventory={inventory:?}"
+    );
+    assert!(
+        owned.contains("beta") && inventory.contains_key("beta"),
+        "unretired skill must remain tracked in both ledgers: owned={owned:?}, inventory={inventory:?}"
+    );
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn updating_an_owned_script_preserves_its_destination_acl_owner_and_execute_mode() {

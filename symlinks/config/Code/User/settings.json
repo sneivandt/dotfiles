@@ -135,9 +135,6 @@
         "sync": false
     },
     "git.showCommitInput": false,
-    "github.copilot.chat.search.semanticTextResults": true,
-    "github.copilot.chat.agent.thinkingTool": true,
-    "github.username": "sneivandt",
     "go.toolsManagement.autoUpdate": true,
     "notebook.cellToolbarLocation": {
         "default": "right",
@@ -155,7 +152,6 @@
     "rust-analyzer.inlayHints.lifetimeElisionHints.enable": "skip_trivial",
     "rust-analyzer.inlayHints.lifetimeElisionHints.useParameterNames": true,
     "rust-analyzer.inlayHints.typeHints.hideClosureInitialization": false,
-    "scm.showHistoryGraph": false,
     "security.promptForLocalFileProtocolHandling": false,
     "search.exclude": {
         "**/.git": true,

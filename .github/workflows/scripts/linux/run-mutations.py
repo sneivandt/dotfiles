@@ -29,7 +29,7 @@ FOCUSED = {
         "engine::context::tests::",
     ),
     "process": (
-        ("src/infra/exec/process.rs",),
+        ("src/infra/exec/mod.rs", "src/infra/exec/process.rs"),
         r"^src/infra/exec/(mod|process)\.rs:[0-9]+:[0-9]+: replace (\|\| with && in collect_child|wait_for_pipe_close -> bool with false|child_exited_without_reaping -> nix::Result<bool> with Ok\(false\))$",
         "infra::exec::tests::interruption::bounded_command_wait_",
     ),
@@ -48,15 +48,15 @@ FOCUSED = {
 # These entire modules are compiled only on Windows. Use the same list on
 # both platforms so a Linux exclusion cannot accidentally remove coverage.
 NATIVE_MODULES = (
+    "src/infra/fs/mutation/windows.rs",
     "src/infra/fs/place/windows.rs",
     "src/infra/fs/place/windows/private_dir.rs",
     "src/infra/run_lock/coordination/windows.rs",
+    "src/infra/run_lock/windows.rs",
 )
 
 LINUX_EXCLUSIONS = (
     *(("--exclude", path) for path in NATIVE_MODULES),
-    ("--exclude", r"src/infra/run_lock/windows.rs"),
-    ("--exclude", r"src/infra/fs/mutation/windows.rs"),
     ("--exclude-re", r"^src/infra/fs/mod\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]) in is_dir_like$"),
     ("--exclude-re", r"^src/infra/exec/process\.rs:.*\btake_stdout_windows\b"),
     ("--exclude-re", r"^src/domains/system/config/registry\.rs:.*\buppercase_native_registry_name\b"),
@@ -65,7 +65,6 @@ LINUX_EXCLUSIONS = (
     ("--exclude-re", r"^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b"),
     ("--exclude-re", r"^src/app/commands/execution/elevation\.rs:.*\bprepare_windows_elevation\b"),
     ("--exclude-re", r"^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|encode_reg_string|append_user_path|user_path_contains)\b"),
-    ("--exclude-re", r"^src/domains/ai/apm/cowork\.rs:.*\bis_desired_skill_directory\b"),
     ("--exclude-re", r"^src/domains/system/resources/registry\.rs:.*\bnative::"),
     ("--exclude-re", r"^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$"),
 )
@@ -76,12 +75,12 @@ WINDOWS_FILES = (
     "src/domains/system/resources/registry.rs",
     "src/infra/elevation.rs",
     "src/app/commands/execution/elevation.rs",
-    "src/infra/fs/mutation/windows.rs",
+    "src/infra/fs/place.rs",
     "src/infra/fs/mod.rs",
     "src/infra/exec/process.rs",
     "src/domains/system/config/registry.rs",
 )
-WINDOWS_PATTERN = r"(decode_reg_string|encode_reg_string|native::raw_value_to_string|native::raw_value_type|run_elevated_child|prepare_windows_elevation|ensure_single_link|check_information|is_dir_like|uppercase_native_registry_name|take_stdout_windows)"
+WINDOWS_PATTERN = r"(decode_reg_string|encode_reg_string|native::raw_value_to_string|native::raw_value_type|run_elevated_child|prepare_windows_elevation|rename_noreplace_windows|is_dir_like|uppercase_native_registry_name|take_stdout_windows)"
 WINDOWS_PATTERN += "|^(?:" + "|".join(re.escape(path) for path in NATIVE_MODULES) + "):"
 
 

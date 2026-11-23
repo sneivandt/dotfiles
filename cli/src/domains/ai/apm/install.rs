@@ -5,7 +5,6 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
-use super::ApmFragmentSource;
 use super::commands::{ApmCommand, ApmCommandResult};
 use super::fragments::{discover_effective_fragment_files, merge_fragments};
 use super::managed_targets::ManagedTargets;
@@ -15,6 +14,7 @@ use super::manifest::{
 use super::skip;
 use super::targets::missing_apm_reason;
 use super::update::preview_apm_update;
+use super::{ApmFragmentSource, InactiveApmFragments};
 use crate::engine::{
     Context, Requirement, RequirementStage, RequirementState, Task, TaskMeta, TaskResult,
     TaskStats, process_requirement,
@@ -48,7 +48,7 @@ impl ApmPackageMode {
 #[derive(Debug)]
 pub struct InstallApmPackages {
     fragments: ConfigHandle<Vec<ApmFragmentSource>>,
-    inactive: Option<ConfigHandle<Vec<ApmFragmentSource>>>,
+    inactive: Option<ConfigHandle<InactiveApmFragments>>,
     mode: ApmPackageMode,
 }
 
@@ -69,14 +69,16 @@ impl InstallApmPackages {
 
     pub(crate) fn with_inactive_fragments(
         mut self,
-        fragments: ConfigHandle<Vec<ApmFragmentSource>>,
+        fragments: ConfigHandle<InactiveApmFragments>,
     ) -> Self {
         self.inactive = Some(fragments);
         self
     }
 
-    fn inactive_fragments(&self) -> &[ApmFragmentSource] {
-        self.inactive.as_ref().map_or(&[], |handle| handle.get())
+    fn inactive_fragments(&self) -> Result<&[ApmFragmentSource]> {
+        self.inactive
+            .as_ref()
+            .map_or(Ok(&[]), |handle| handle.get().sources())
     }
 }
 
@@ -96,6 +98,7 @@ impl Task for InstallApmPackages {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let inactive = self.inactive_fragments()?;
         process_requirement(ctx, &environment_requirement(self.mode), |targets| {
             let _lock = if ctx.dry_run() {
                 None
@@ -105,11 +108,8 @@ impl Task for InstallApmPackages {
                     "Agent packages",
                 )?)
             };
-            let fragments = discover_effective_fragment_files(
-                ctx.home(),
-                self.fragments.get(),
-                self.inactive_fragments(),
-            )?;
+            let fragments =
+                discover_effective_fragment_files(ctx.home(), self.fragments.get(), inactive)?;
             if fragments.is_empty() {
                 return Ok(skip("no manifest fragments found under ~/.apm/config/"));
             }
@@ -295,10 +295,13 @@ fn dependency_summary(verb: &str, count: usize) -> String {
 fn apm_task_should_run(
     ctx: &Context,
     fragments: &[ApmFragmentSource],
-    inactive: &[ApmFragmentSource],
+    inactive: Result<&[ApmFragmentSource]>,
 ) -> bool {
-    match discover_effective_fragment_files(ctx.home(), fragments, inactive) {
-        Ok(fragments) => !fragments.is_empty(),
+    let discovered = inactive.and_then(|inactive_sources| {
+        discover_effective_fragment_files(ctx.home(), fragments, inactive_sources)
+    });
+    match discovered {
+        Ok(effective_fragments) => !effective_fragments.is_empty(),
         Err(err) => {
             ctx.log().warn(format!(
                 "could not inspect APM fragments; task will run: {err:#}"

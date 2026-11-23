@@ -364,7 +364,10 @@ impl CommandRunner {
     ///
     /// Returns an error if one or more tasks fail.
     pub fn run<'a>(&self, tasks: impl IntoIterator<Item = &'a dyn Task>) -> Result<()> {
-        RunCoordinator::new(&self.ctx, &self.log).execute(ExecutionPlan::single(tasks))
+        let config = self.store.aggregate.get();
+        RunCoordinator::new(&self.ctx, &self.log)
+            .with_profile(config.profile.name.as_str())
+            .execute(ExecutionPlan::single(tasks))
     }
 
     pub(super) const fn run_lock(&self) -> Option<&crate::infra::run_lock::CommandLocks> {
@@ -392,7 +395,9 @@ impl CommandRunner {
             }
             Ok(decision)
         };
+        let config = self.store.aggregate.get();
         RunCoordinator::new(&self.ctx, &self.log)
+            .with_profile(config.profile.name.as_str())
             .execute(ExecutionPlan::with_restart(tasks, boundary, decide, action))
     }
 }

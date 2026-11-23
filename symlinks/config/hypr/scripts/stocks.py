@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fetch desktop market quotes with a shared, atomically replaced JSON cache."""
 
+import argparse
 import json
 from concurrent.futures import ThreadPoolExecutor
 import math
@@ -136,28 +137,32 @@ def write_cache(path, payload):
             temporary.unlink(missing_ok=True)
 
 
-def quotes(cache_dir, fetch=fetch_quote):
+def quotes(cache_dir, fetch=None, force=False):
+    if fetch is None:
+        fetch = fetch_quote
     cache_dir.mkdir(parents=True, exist_ok=True)
     path = cache_dir / "quotes.json"
-    cached = fresh_cache(path, time.time())
-    if cached is not None:
-        return cached
+    if not force:
+        cached = fresh_cache(path, time.time())
+        if cached is not None:
+            return cached
     # Keep the inode: unlinking the lock file would allow simultaneous owners.
     with (cache_dir / "quotes-prices.flock").open("a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return read_cache(path)
-        cached = fresh_cache(path, time.time())
-        if cached is not None:
-            return cached
+        if not force:
+            cached = fresh_cache(path, time.time())
+            if cached is not None:
+                return cached
         now = int(time.time())
         previous = {quote["symbol"]: quote for quote in read_cache(path)["quotes"]}
 
         def refresh(item):
             query, symbol, name, prefix = item
             cached_quote = previous.get(symbol)
-            if cached_quote is not None and fresh_quote(cached_quote, now):
+            if not force and cached_quote is not None and fresh_quote(cached_quote, now):
                 return cached_quote, False
             try:
                 quote = {**fetch(query, symbol, name, prefix, now), "updated": now}
@@ -171,7 +176,14 @@ def quotes(cache_dir, fetch=fetch_quote):
         with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
             refreshed = list(pool.map(refresh, QUOTES))
         if not any(success for _, success in refreshed):
-            return read_cache(path)
+            cached = read_cache(path)
+            if force:
+                error = (
+                    "Could not refresh market data. Showing cached prices."
+                    if cached["quotes"] else "Could not refresh market data."
+                )
+                return {**cached, "error": error}
+            return cached
         results = [quote for quote, _ in refreshed if quote is not None]
         payload = {"version": CACHE_VERSION, "quotes": results,
                    "updated": min(quote["updated"] for quote in results)}
@@ -182,12 +194,19 @@ def quotes(cache_dir, fetch=fetch_quote):
         return payload
 
 
-def main():
+def main(argv=()):
+    parser = argparse.ArgumentParser(description="Fetch desktop market quotes.")
+    parser.add_argument("--force", action="store_true", help="Bypass fresh cache and refetch quotes.")
+    args = parser.parse_args(list(argv))
     base = os.environ.get("XDG_CACHE_HOME")
     cache_dir = (Path(base) if base and Path(base).is_absolute() else Path.home() / ".cache") / "quickshell-stocks"
     try:
-        payload = quotes(cache_dir)
-        code = 0
+        payload = quotes(cache_dir, force=True) if args.force else quotes(cache_dir)
+        if payload.get("error"):
+            print(payload["error"], file=sys.stderr)
+            code = 1
+        else:
+            code = 0
     except OSError as error:
         print(f"Cannot refresh market cache: {error.strerror or error}", file=sys.stderr)
         payload = read_cache(cache_dir / "quotes.json")
@@ -199,4 +218,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

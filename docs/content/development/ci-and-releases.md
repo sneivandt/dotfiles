@@ -68,10 +68,10 @@ runs full CI so earlier changes still receive coverage.
 | Standalone Rust integration tests/fixtures | Both platform builds and Rust checks, not unrelated application/wrapper jobs |
 | Cargo manifests/lockfiles | Dependency audit and deny in addition to Rust checks |
 | `cli/deny.toml` or formatting policy | Dependency-policy or formatting check respectively |
-| `conf/` | Validation, drift, and profile/round-trip checks; some files also select applications |
-| `system/` | Linux configuration and profile/round-trip checks |
+| `conf/` | Validation, drift, and profile/round-trip checks; `conf/system-files.toml` and `conf/chmod.toml` also select Rust checks, `conf/systemd-units.toml` selects lock-script checks, and package/Git/symlink manifests select applications |
+| `system/` | Linux Rust checks, configuration validation/drift, and profile/round-trip checks |
 | `packages/` recipes | Linux build/Rust checks, config validation/drift, and ShellCheck |
-| Managed application files | Configuration checks and the affected application/script fixtures |
+| Managed application files | Configuration checks and the affected application/script fixtures; Rust-tested files (`symlinks/config/git/templates/`, `symlinks/local/bin/code-insiders`, and `symlinks/config/systemd/user/dotfiles-first-login.service`) also select Rust checks |
 | Quickshell | Python fixtures on both platforms and Linux offscreen QML |
 | Wrappers | The affected platform's build and wrapper integration |
 | Hooks | Hook and staged-input fixtures; hook-only edits do not request CLI builds |
@@ -142,8 +142,9 @@ Cargo/build/toolchain inputs, and changes to the mutation workflow or selector
 recheck all source. The same applies to other tracked inputs to Rust tests,
 including configuration, package recipes, and executable documentation examples.
 Selected changes also run the existing fixed Windows suite for
-registry values, PATH encoding, elevation dispatch, file placement, and locks;
-there is no fine-grained Windows dependency classifier. Unrelated docs and
+registry values, PATH encoding, elevation dispatch, file placement, and locks,
+except that strictly Linux-only Rust source changes skip the Windows suite;
+otherwise there is no fine-grained Windows dependency classifier. Unrelated docs and
 configuration changes skip both suites. Exact filters live in the workflow.
 
 For manual replay, dispatch **Mutation Testing** and optionally supply the
@@ -156,9 +157,11 @@ commands for survivors and timeouts. The mutation-summary artifact contains
 the complete report. Survivors, timeouts, tool errors, and incomplete coverage
 fail this separate workflow.
 
-If a runner shuts down during a shard before publishing results, recovery can
-retry one shard on the original commit and recompute the summary. It runs
-once per failed run on `main`, and does not retry reported survivors, mutant
+If a runner shuts down during a shard before publishing results,
+[mutation-recovery.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/mutation-recovery.yml)
+can retry one confirmed runner interruption on the original commit and
+recompute the summary. It runs once per failed scheduled or manual run on
+`main` (first attempt only), and does not retry reported survivors, mutant
 timeouts, or a run you cancelled. Other missing reports still fail the run.
 
 Enable Actions failure notifications for this workflow and investigate red

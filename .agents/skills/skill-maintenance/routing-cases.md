@@ -26,6 +26,7 @@ Companions are needed only when the request changes their contract.
 | Add an ordinary conf/packages.toml entry | `package-management` | No arch-package-recipes skill unless packaging changes |
 | Change APM fragment target deployment | `agent-tooling` | No arch-package-recipes skill unless the APM executable recipe changes |
 | Change an optional overlay section's generic TOML loader | `toml-configuration` | Add overlay-scripts only for resolution or execution changes |
+| “The mutation test run failed” | `ci-cd-patterns` | Find the failed dedicated GitHub Actions run in `mutation.yml`, inspect its shards, and replay its comparison range for fixes |
 | Monitor checks after pushing a skill wording change | `ci-cd-patterns` | Follow exact-SHA CI and Pages; do not rerun local suites while waiting |
 | Select tests before committing an isolated Rust resource change | [Testing guide](../../../docs/content/development/testing.md#choosing-coverage) | Affected targets and host checks; no separate verification skill |
 | Choose Windows coverage after a Rust path-handling change | [Testing guide](../../../docs/content/development/testing.md#platform-coverage-parity) | Platform coverage parity; windows-specific-patterns only for implementation choices |

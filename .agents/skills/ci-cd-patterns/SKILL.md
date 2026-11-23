@@ -2,8 +2,8 @@
 name: ci-cd-patterns
 description: >
   Use for .github/workflows/, CI guard scripts, release tags/assets, action
-  pinning, ci-success gating, or monitoring CI after a push. Not for ordinary
-  local test selection.
+  pinning, ci-success gating, monitoring CI after a push, or investigating a
+  failed mutation test run. Not for ordinary local test selection.
 ---
 
 # CI/CD Patterns
@@ -37,6 +37,17 @@ action-version inventories in guidance.
   for the exact commit, run the remaining selected checks, and report docs as
   unavailable, not passed. Other failures remain blocking, TLS validation stays
   enabled, and the exact commit's CI documentation job must still pass.
+
+## Dedicated mutation workflow
+
+A request about a “mutation test run” refers to the dedicated GitHub Actions
+workflow [Mutation Testing](../../../.github/workflows/mutation.yml). If no run
+is given, find the latest failed run of that workflow with `gh run list -w
+mutation.yml`. Inspect the selection job for the tested SHA and comparison base,
+then read the results and logs for every selected shard. For a fix, dispatch
+the same workflow for the shipped revision with the original `mutation_base`
+and monitor it through completion. Local checks can reproduce individual
+failures and validate fixes before pushing.
 
 ## After pushing
 

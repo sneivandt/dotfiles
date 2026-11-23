@@ -59,13 +59,15 @@ rules as the hosted workflow.
 python3 -B .github/workflows/scripts/linux/select-mutations.py --base ORIGINAL_BASE_SHA
 ```
 
-On Linux, paste the focused command from the report or use `run linux` to run
-the ordinary mutants in the selection. Use `run liveness`, `run context`, or
-`run process` for the suites with bounded test targets. For instance:
+On Linux, paste the focused command from the report to replay one mutant.
+Remove `--exact` and its argument to replay the selected suite. For example,
+this command replays the process mutants with their bounded test target.
 
 ```sh
 python3 -B .github/workflows/scripts/linux/run-mutations.py run process
 ```
+
+Use `run linux` to replay the ordinary Linux suite.
 
 On Windows, use `python` in the selection command and run the native suite
 on a Windows filesystem.

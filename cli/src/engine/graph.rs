@@ -368,7 +368,7 @@ mod tests {
         }
         CycA {
             name: "cyc-a",
-            deps: [CycB],
+            deps: [TaskA, CycB],
         }
         CycB {
             name: "cyc-b",
@@ -404,7 +404,8 @@ mod tests {
 
     #[test]
     fn cycle_detected() {
-        let tasks: Vec<&dyn Task> = vec![&CycA, &CycB];
+        // Complete TaskA before traversing the cycle that depends on it.
+        let tasks: Vec<&dyn Task> = vec![&TaskA, &CycA, &CycB];
         assert!(matches!(
             validate(&tasks),
             Err(GraphError::Cycle { ref path })

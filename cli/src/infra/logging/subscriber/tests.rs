@@ -57,6 +57,16 @@ fn run_log_layer_records_level_as_event_name() {
 }
 
 #[test]
+fn run_log_layer_records_string_messages_and_ignores_other_string_fields() {
+    let (path, _tmp, _guard) = isolated_run_log_layer();
+    tracing::info!(message = "plain message", unrelated = "outside the message");
+
+    let content = fs::read_to_string(path).unwrap();
+    assert!(content.contains("[info] plain message"), "{content}");
+    assert!(!content.contains("outside the message"), "{content}");
+}
+
+#[test]
 fn run_log_layer_uses_thread_task_context() {
     let (path, _tmp, _guard) = isolated_run_log_layer();
     let _task = crate::infra::logging::log_task_context("example-task");

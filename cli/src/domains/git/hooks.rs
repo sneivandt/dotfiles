@@ -2,7 +2,7 @@
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
 
@@ -20,23 +20,7 @@ fn discover_hooks(ctx: &Context, installing: bool) -> Result<Vec<HookFileResourc
     let repository =
         git2::Repository::open(ctx.root()).context("opening repository for Git hooks")?;
     let config = repository.config()?;
-    let hooks_dst = match config.get_path("core.hooksPath") {
-        Ok(path) => {
-            let entry = config.get_entry("core.hooksPath")?;
-            anyhow::ensure!(
-                matches!(
-                    entry.level(),
-                    git2::ConfigLevel::Local | git2::ConfigLevel::Worktree
-                ),
-                "core.hooksPath is inherited from shared Git configuration; set a repository-local hooksPath before installing dotfiles hooks"
-            );
-            ctx.root().join(path)
-        }
-        Err(error) if error.code() == git2::ErrorCode::NotFound => {
-            repository.commondir().join("hooks")
-        }
-        Err(error) => return Err(error).context("reading core.hooksPath"),
-    };
+    let hooks_dst = hooks_destination(ctx.root(), repository.commondir(), &config)?;
 
     let mut names = BTreeSet::new();
     for entry in read_hooks_directory(hooks_src, !installing)? {
@@ -70,6 +54,24 @@ fn discover_hooks(ctx: &Context, installing: bool) -> Result<Vec<HookFileResourc
         }
     }
     Ok(resources)
+}
+
+fn hooks_destination(root: &Path, common_dir: &Path, config: &git2::Config) -> Result<PathBuf> {
+    match config.get_path("core.hooksPath") {
+        Ok(path) => {
+            let entry = config.get_entry("core.hooksPath")?;
+            anyhow::ensure!(
+                matches!(
+                    entry.level(),
+                    git2::ConfigLevel::Local | git2::ConfigLevel::Worktree
+                ),
+                "core.hooksPath is inherited from shared Git configuration; set a repository-local hooksPath before installing dotfiles hooks"
+            );
+            Ok(root.join(path))
+        }
+        Err(error) if error.code() == git2::ErrorCode::NotFound => Ok(common_dir.join("hooks")),
+        Err(error) => Err(error).context("reading core.hooksPath"),
+    }
 }
 
 fn read_hooks_directory(
@@ -263,6 +265,27 @@ mod tests {
             .collect();
         names.sort();
         assert_eq!(names, ["commit-msg", "pre-commit"]);
+    }
+
+    #[test]
+    fn hook_destination_defaults_only_when_hooks_path_is_unset() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("worktree");
+        let common_dir = dir.path().join("common");
+        let config_path = dir.path().join("config");
+        std::fs::write(&config_path, "").unwrap();
+        let mut config = git2::Config::open(&config_path).unwrap();
+
+        assert_eq!(
+            hooks_destination(&root, &common_dir, &config).unwrap(),
+            common_dir.join("hooks")
+        );
+
+        config
+            .set_str("core.hooksPath", "~fixture-other-user/hooks")
+            .unwrap();
+        let error = hooks_destination(&root, &common_dir, &config).unwrap_err();
+        assert_eq!(error.to_string(), "reading core.hooksPath");
     }
 
     #[test]

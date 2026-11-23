@@ -89,6 +89,25 @@ fn parse_deployed_workflow_ids_empty_cases() {
 }
 
 #[test]
+fn workflow_ownership_distinguishes_missing_and_unreadable_lockfiles() {
+    let home = tempfile::tempdir_in(".").unwrap();
+    let ctx = make_home_context_with_executor(home.path(), MockExecutor::new());
+    let lock = home.path().join(".apm/apm.lock.yaml");
+
+    assert_eq!(
+        super::super::read_deployed_workflow_ids(&ctx).unwrap(),
+        None
+    );
+
+    std::fs::create_dir_all(&lock).unwrap();
+    let error = super::super::read_deployed_workflow_ids(&ctx).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        format!("reading workflow ownership {}", lock.display())
+    );
+}
+
+#[test]
 fn malformed_workflow_ownership_is_not_a_successful_empty_repair() {
     let home = tempfile::tempdir_in(".").unwrap();
     let ctx = make_home_context_with_executor(home.path(), MockExecutor::new());

@@ -33,6 +33,16 @@ FOCUSED = {
         r"^src/infra/exec/(mod|process)\.rs:[0-9]+:[0-9]+: replace (\|\| with && in collect_child|wait_for_pipe_close -> bool with false|child_exited_without_reaping -> nix::Result<bool> with Ok\(false\))$",
         "infra::exec::tests::interruption::bounded_command_wait_",
     ),
+    "dispatch": (
+        ("src/engine/orchestrate.rs",),
+        r"^src/engine/orchestrate\.rs:[0-9]+:[0-9]+: delete ! in process_items$",
+        "engine::tests::orchestrate::pipelines_accumulate_mixed_states_in_both_execution_modes",
+    ),
+    "utc": (
+        ("src/infra/logging/utils.rs",),
+        r"^src/infra/logging/utils\.rs:[0-9]+:[0-9]+: replace .* in civil_from_epoch_secs$",
+        "infra::logging::utils::tests::unix_seconds_convert_to_utc_across_day_and_calendar_boundaries",
+    ),
 }
 
 # Native Windows functions and narrowly scoped equivalent mutations.

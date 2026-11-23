@@ -213,6 +213,22 @@ mod tests {
     }
 
     #[test]
+    fn source_cron_treats_only_missing_lockfile_as_empty() {
+        let home = tempfile::tempdir().unwrap();
+        let ids = ["apm--_local--fixture--review".to_string()];
+        assert!(
+            read_source_cron_schedules(home.path(), &ids)
+                .unwrap()
+                .is_empty()
+        );
+
+        let lock = home.path().join(".apm/apm.lock.yaml");
+        std::fs::create_dir_all(&lock).unwrap();
+        let error = read_source_cron_schedules(home.path(), &ids).unwrap_err();
+        assert_eq!(error.to_string(), format!("reading {}", lock.display()));
+    }
+
+    #[test]
     fn source_cron_metadata_is_scoped_to_deployed_ids() {
         let dir = tempfile::tempdir().unwrap();
         let prompts = write_sources(

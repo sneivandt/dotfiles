@@ -115,10 +115,6 @@ impl Task for GenerateCompletions {
         TaskMeta::new("Shell completions").with_selector("completions")
     }
 
-    fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform().is_linux() || ctx.platform().is_windows()
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let (content, destination) = if ctx.platform().is_windows() {
             (

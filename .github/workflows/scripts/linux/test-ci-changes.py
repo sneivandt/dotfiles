@@ -1016,7 +1016,7 @@ class GateTests(unittest.TestCase):
         for count, expected in ((0, 0), (1, 1), (130, 1), (131, 2), (6200, 48), (20881, 48)):
             with self.subTest(count=count):
                 shards = MUTATION_RUN["linux_matrix"](
-                    {"linux": count, "liveness": 2, "context": 0, "process": 1},
+                    {"linux": count, **dict.fromkeys(MUTATION_RUN["FOCUSED"], 0), "liveness": 2, "process": 1},
                 )
                 ordinary = [shard for shard in shards if shard["suite"] == "linux"]
                 self.assertEqual(len(ordinary), expected)
@@ -1033,6 +1033,10 @@ class GateTests(unittest.TestCase):
              "engine::context::tests::"),
             ("process", "src/infra/exec/process.rs:6:3: replace || with && in collect_child",
              "infra::exec::tests::interruption::bounded_command_wait_"),
+            ("dispatch", "src/engine/orchestrate.rs:34:11: delete ! in process_items",
+             "engine::tests::orchestrate::pipelines_accumulate_mixed_states_in_both_execution_modes"),
+            ("utc", "src/infra/logging/utils.rs:197:64: replace / with % in civil_from_epoch_secs",
+             "infra::logging::utils::tests::unix_seconds_convert_to_utc_across_day_and_calendar_boundaries"),
         ):
             focused, target = MUTATION_RUN["suite_options"](suite)
             pattern = focused[focused.index("--re") + 1]

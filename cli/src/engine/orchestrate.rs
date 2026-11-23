@@ -61,7 +61,8 @@ fn process_items<T: Send>(
             }
             continue;
         }
-        let wave = if ctx.parallel() && !sequential && ready.len() > 1 {
+        // Sequential dispatch reserves at most one item per wave.
+        let wave = if ready.len() > 1 {
             parallel::collect_parallel_stats(ctx, ready, |(item, _guard)| process_one(item))
         } else {
             let mut wave = BatchProgress::default();

@@ -37,6 +37,9 @@ fn ownership_compares_entries_and_declared_routes_not_referents() {
     let target = home.join("link");
     assert!(!paths_equal(&declared, &other).unwrap());
     assert!(!same_entry(&source, &other.join("item")).unwrap());
+    let filesystem_root = home.ancestors().last().unwrap();
+    assert!(!same_entry(filesystem_root, &source).unwrap());
+    assert!(!same_entry(&source, filesystem_root).unwrap());
     assert!(!link_points_to_source(&target, Path::new("\u{212a}/item"), &source).unwrap());
     // A directory redirect aliases the final entry but isn't the declared route.
     let redirect = home.join("redirect");

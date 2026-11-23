@@ -7,14 +7,44 @@ fn version_capable_binary() -> Vec<u8> {
         b"#!/bin/sh\n[ \"$#:$1\" = 1:--version ] || exit 42\nprintf 'dotfiles fixture\\n'\n"
             .to_vec()
     }
-    // Prefer the System32 copy explicitly: a `curl.exe` earlier on PATH
-    // (for example the one shipped with Git for Windows) loads DLLs from
-    // its own directory and would not run once copied elsewhere.
     #[cfg(windows)]
     {
-        let system_root =
-            std::env::var_os("SystemRoot").expect("SystemRoot is not set on this system");
-        fs::read(Path::new(&system_root).join("System32").join("curl.exe")).unwrap()
+        static FIXTURE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+        FIXTURE
+            .get_or_init(|| {
+                let dir = tempfile::tempdir().unwrap();
+                let src = dir.path().join("fixture.rs");
+                let exe = dir.path().join("fixture.exe");
+                fs::write(
+                    &src,
+                    concat!(
+                        "fn main() {\n",
+                        "    let mut args = std::env::args().skip(1);\n",
+                        "    if args.next().as_deref() != Some(\"--version\") || args.next().is_some() {\n",
+                        "        std::process::exit(42);\n",
+                        "    }\n",
+                        "    println!(\"dotfiles fixture\");\n",
+                        "}\n",
+                    ),
+                )
+                .unwrap();
+                let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+                let output = std::process::Command::new(rustc)
+                    .env_remove("RUSTFLAGS")
+                    .env_remove("CARGO_ENCODED_RUSTFLAGS")
+                    .args(["--edition", "2024", "-o"])
+                    .arg(&exe)
+                    .arg(&src)
+                    .output()
+                    .expect("failed to invoke rustc for fixture binary");
+                assert!(
+                    output.status.success(),
+                    "failed to compile fixture binary: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                fs::read(&exe).unwrap()
+            })
+            .clone()
     }
 }
 

@@ -1057,15 +1057,18 @@ class ShellConfigTests(unittest.TestCase):
                        for line in configured} - {self.home}
         self.assertEqual({Path(part) for part in command[3:]}, directories)
         if shutil.which("xdg-user-dir"):
-            config_dir = self.home / ".config"
-            config_dir.mkdir(exist_ok=True)
+            # Older xdg-user-dir shell scripts (xdg-user-dirs 0.18) do not quote
+            # $XDG_CONFIG_HOME or $HOME when sourcing user-dirs.dirs.
+            xdg_home = self.fixture / "xdg-home"
+            config_dir = xdg_home / ".config"
+            config_dir.mkdir(parents=True, exist_ok=True)
             (config_dir / "user-dirs.dirs").symlink_to(ROOT / "symlinks/config/user-dirs.dirs")
             resolved = subprocess.run(
                 ["xdg-user-dir", "DESKTOP"],
-                env={**self.env, "XDG_CONFIG_HOME": str(config_dir)},
+                env={**self.env, "HOME": str(xdg_home), "XDG_CONFIG_HOME": str(config_dir)},
                 check=True, text=True, capture_output=True, timeout=10,
             )
-            self.assertEqual(Path(resolved.stdout.strip()), self.home)
+            self.assertEqual(Path(resolved.stdout.strip()), xdg_home)
         preserved = self.write(self.home / "media/documents/existing", "keep\n")
         for _ in range(2):
             subprocess.run(command, env=self.env, check=True, timeout=10)

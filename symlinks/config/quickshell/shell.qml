@@ -29,6 +29,7 @@ ShellRoot {
     }
     NetworkState {
         id: networkState
+        menuOpen: shell.openMenu instanceof NetworkMenu && shell.openMenu.visible
     }
     MarketState {
         id: marketState

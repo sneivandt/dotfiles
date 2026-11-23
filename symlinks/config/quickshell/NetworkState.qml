@@ -11,6 +11,8 @@ Scope {
     property string deviceName: ""
     readonly property string icon: !available ? "\uf071" : connected ? (connectionType === "wifi" ? "\uf1eb" : "\uf6ff") : "\uf127"
     property bool available: false
+    property bool menuOpen: false
+    readonly property bool detailsAvailable: _hasMenuSnapshot && available
     property bool wifiEnabled: false
     property bool wifiHardwareEnabled: false
     property bool wifiAvailable: false
@@ -32,6 +34,8 @@ Scope {
     property bool scanOnRefresh: false
     property double lastScan: 0
     property bool _statusActive: false
+    property bool _detailQuery: false
+    property bool _hasMenuSnapshot: false
     property bool _actionActive: false
     readonly property string helperPath: decodeURIComponent(Qt.resolvedUrl("network_helper.py").toString().replace(/^file:\/\//, ""))
 
@@ -45,16 +49,22 @@ Scope {
         refreshQueue.request();
     }
 
-    function refreshOnOpen() {
-        scanOnRefresh = Date.now() - lastScan > 10000;
-        refresh();
+    onMenuOpenChanged: {
+        scanOnRefresh = menuOpen && Date.now() - lastScan > 10000;
+        if (menuOpen) {
+            refresh();
+        } else {
+            // A late result from this menu visit must not enable choices on the next.
+            _detailQuery = false;
+            _hasMenuSnapshot = false;
+        }
     }
 
     function rescan() {
         if (working)
             return;
 
-        if (!available || !wifiAvailable || !wifiEnabled) {
+        if (!detailsAvailable || !wifiAvailable || !wifiEnabled) {
             refresh();
             return;
         }
@@ -66,7 +76,7 @@ Scope {
     }
 
     function setWifiEnabled(enabled) {
-        if (!available || !wifiAvailable || working)
+        if (!detailsAvailable || !wifiAvailable || working)
             return;
 
         if (enabled && !wifiHardwareEnabled) {
@@ -80,7 +90,7 @@ Scope {
     }
 
     function connectNetwork(accessPoint, password, ssid) {
-        if (!available || !wifiEnabled || working)
+        if (!detailsAvailable || !wifiEnabled || working)
             return;
 
         if (accessPoint.advanced) {
@@ -128,7 +138,8 @@ Scope {
         blocked: root.loading || root.working
         onReady: {
             root._statusActive = true;
-            statusQuery.running = true;
+            root._detailQuery = root.menuOpen;
+            statusQuery.exec(["python3", root.helperPath, root.menuOpen ? "status" : "summary"]);
         }
     }
 
@@ -136,14 +147,14 @@ Scope {
         id: statusQuery
         objectName: "networkStatusProcess"
 
-        command: ["python3", root.helperPath, "status"]
         onRunningChanged: {
             // FailedToStart emits runningChanged without an exited signal.
             if (!running && root._statusActive) {
                 root._statusActive = false;
                 root.available = false;
                 root.statusError = "Cannot start the network helper. Check that Python is installed and executable.";
-                root.scanOnRefresh = false;
+                if (root._detailQuery)
+                    root.scanOnRefresh = false;
             }
         }
         onExited: code => {
@@ -156,24 +167,28 @@ Scope {
                 root.connected = state.connected;
                 root.connectionName = state.connectionName;
                 root.connectionType = state.connectionType;
-                root.deviceName = state.deviceName;
-                root.wifiEnabled = state.wifiEnabled;
-                root.wifiHardwareEnabled = state.wifiHardwareEnabled;
-                root.wifiAvailable = state.wifiAvailable;
-                root.adapters = state.adapters;
-                root.networks = state.networks;
-                root.connections = state.connections;
-                root.connectivity = state.connectivity;
+                if (root._detailQuery) {
+                    root.deviceName = state.deviceName;
+                    root.wifiEnabled = state.wifiEnabled;
+                    root.wifiHardwareEnabled = state.wifiHardwareEnabled;
+                    root.wifiAvailable = state.wifiAvailable;
+                    root.adapters = state.adapters;
+                    root.networks = state.networks;
+                    root.connections = state.connections;
+                    root.connectivity = state.connectivity;
+                    root._hasMenuSnapshot = true;
+                }
                 root.available = true;
                 root.statusError = "";
             } else {
                 root.available = false;
                 root.statusError = result.error || "NetworkManager status is unavailable.";
             }
-            const shouldScan = root.scanOnRefresh;
-            root.scanOnRefresh = false;
-            if (shouldScan && root.available && root.wifiAvailable && root.wifiEnabled && !root.working)
-                root.rescan();
+            if (root._detailQuery && root.scanOnRefresh) {
+                root.scanOnRefresh = false;
+                if (root.detailsAvailable && root.wifiAvailable && root.wifiEnabled && !root.working)
+                    root.rescan();
+            }
         }
 
         stdout: StdioCollector {

@@ -287,15 +287,11 @@ def build_networks(aps, adapters, profiles, active_by_device):
     return sorted(networks, key=lambda entry: (not entry["active"], not entry["available"], -entry["signal"], entry["name"].casefold(), entry["device"]))
 
 
-def status():
+def status(*, detailed=True):
     general = query(["-f", "STATE,CONNECTIVITY,WIFI,WIFI-HW", "general", "status"], 4)
     if len(general) != 1:
         raise NetworkError("NetworkManager status is unavailable.")
     devices = query(["-f", "DEVICE,TYPE,STATE,CONNECTION,CON-UUID", "device", "status"], 5)
-    adapters = [
-        {"name": device, "managed": state != "unmanaged", "state": state}
-        for device, kind, state, _, _ in devices if kind == "wifi"
-    ]
     connections = [
         {"name": name, "type": kind, "device": device, "uuid": uuid}
         for device, kind, state, name, uuid in devices
@@ -304,14 +300,24 @@ def status():
         )
     ]
     connections.sort(key=lambda connection: {"ethernet": 0, "wifi": 1}.get(connection["type"], 2))
-    wifi_enabled = general[0][2] == "enabled"
-    profiles = wifi_profiles() if adapters else []
-    aps = query(["-f", "IN-USE,SSID,BSSID,SIGNAL,SECURITY,DEVICE", "device", "wifi", "list", "--rescan", "no"], 6) if adapters and wifi_enabled else []
     primary = connections[0] if connections else {}
-    return {
+    summary = {
         "connected": general[0][0].startswith("connected"),
         "connectionName": primary.get("name", ""),
         "connectionType": primary.get("type", ""),
+    }
+    if not detailed:
+        return summary
+
+    adapters = [
+        {"name": device, "managed": state != "unmanaged", "state": state}
+        for device, kind, state, _, _ in devices if kind == "wifi"
+    ]
+    wifi_enabled = general[0][2] == "enabled"
+    profiles = wifi_profiles() if adapters else []
+    aps = query(["-f", "IN-USE,SSID,BSSID,SIGNAL,SECURITY,DEVICE", "device", "wifi", "list", "--rescan", "no"], 6) if adapters and wifi_enabled else []
+    return {
+        **summary,
         "deviceName": primary.get("device", ""),
         "connections": connections,
         "connectivity": general[0][1],
@@ -444,8 +450,8 @@ def action(request):
 
 def main():
     try:
-        if sys.argv[1:] == ["status"]:
-            result = {"ok": True, "state": status()}
+        if sys.argv[1:] in (["summary"], ["status"]):
+            result = {"ok": True, "state": status(detailed=sys.argv[1] == "status")}
         elif sys.argv[1:] == ["action"]:
             result = action(json.loads(sys.stdin.readline(65536)))
         else:

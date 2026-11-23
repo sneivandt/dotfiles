@@ -61,11 +61,7 @@ ShellPopup {
         network.connectNetwork(accessPoint, password, ssid);
     }
 
-    onVisibleChanged: {
-        clearCredentials();
-        if (visible)
-            network.refreshOnOpen();
-    }
+    onVisibleChanged: clearCredentials()
     onClosingChanged: {
         if (closing)
             clearCredentials();
@@ -89,7 +85,7 @@ ShellPopup {
 
             Layout.fillWidth: true
             title: "Network"
-            subtitle: !root.network.available ? (root.network.loading ? "Checking connection…" : "Status unavailable") : root.network.connected ? (root.network.connectivity === "portal" ? "Sign in to this network" : root.network.connectivity === "limited" ? "Limited internet" : "Connected") : "No active connection"
+            subtitle: !root.network.detailsAvailable ? (root.network.loading ? "Checking connection…" : "Status unavailable") : root.network.connected ? (root.network.connectivity === "portal" ? "Sign in to this network" : root.network.connectivity === "limited" ? "Limited internet" : "Connected") : "No active connection"
             icon: root.network.icon
             accentColor: Theme.blue
             accentBackground: Theme.blueSoft
@@ -133,7 +129,7 @@ ShellPopup {
                         Layout.fillWidth: true
                         glyph: modelData.type === "wifi" ? "\uf1eb" : "\uf6ff"
                         label: modelData.name
-                        trailing: root.network.available ? "Connected" : "Last known"
+                        trailing: root.network.detailsAvailable ? "Connected" : "Last known"
                         clickable: false
                         showChevron: false
                     }
@@ -149,7 +145,7 @@ ShellPopup {
                     }).length === 0 ? "Adapters are unmanaged · use Advanced" : ""
                     trailing: root.network.wifiEnabled ? "On" : "Off"
                     selected: root.network.wifiEnabled
-                    enabled: root.network.available && root.network.wifiAvailable && !root.network.working
+                    enabled: root.network.detailsAvailable && root.network.wifiAvailable && !root.network.working
                     showChevron: false
                     Accessible.role: Accessible.CheckBox
                     Accessible.checked: root.network.wifiEnabled
@@ -161,7 +157,7 @@ ShellPopup {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    visible: root.network.working || (root.network.loading && !root.network.available)
+                    visible: root.network.working || (root.network.loading && !root.network.detailsAvailable)
                     spacing: Theme.spacing
 
                     Text {
@@ -206,7 +202,7 @@ ShellPopup {
 
                 Text {
                     Layout.fillWidth: true
-                    visible: !root.enteringCredentials && root.network.wifiAvailable && root.network.wifiEnabled && root.network.networks.length === 0
+                    visible: !root.enteringCredentials && root.network.detailsAvailable && root.network.wifiAvailable && root.network.wifiEnabled && root.network.networks.length === 0
                     text: root.network.scanning ? "Looking for networks..." : "No networks found. Use Rescan to search."
                     font.family: Theme.font
                     font.pixelSize: Theme.textSmall
@@ -237,11 +233,11 @@ ShellPopup {
                                 parts.push(modelData.device);
                             return parts.join(" · ");
                         }
-                        trailing: modelData.active ? (root.network.available ? "Connected" : "Last known") : modelData.available ? modelData.signal + "%" : "Saved"
+                        trailing: modelData.active ? (root.network.detailsAvailable ? "Connected" : "Last known") : modelData.available ? modelData.signal + "%" : "Saved"
                         trailingDetail: !modelData.available && !modelData.active ? (modelData.hidden ? "Hidden" : "Not in range") : ""
                         glyph: modelData.protected || modelData.advanced ? "\uf023" : "\uf1eb"
                         selected: modelData.active
-                        enabled: root.network.available && !root.network.working
+                        enabled: root.network.detailsAvailable && !root.network.working
                         clickable: !modelData.active
                         hoverEnabled: clickable || !!modelData.profileLabel
                         focusPolicy: hoverEnabled || activeFocus ? Qt.StrongFocus : Qt.NoFocus
@@ -393,7 +389,7 @@ ShellPopup {
                         glyph: "\uf1eb"
                         label: "Connect"
                         selected: true
-                        enabled: root.network.available && root.network.wifiEnabled && !root.network.working && (!ssidField.visible || ssidField.text.length > 0) && (!passwordField.visible || passwordField.text.length > 0)
+                        enabled: root.network.detailsAvailable && root.network.wifiEnabled && !root.network.working && (!ssidField.visible || ssidField.text.length > 0) && (!passwordField.visible || passwordField.text.length > 0)
                         onTriggered: root.submitCredentials()
                     }
 

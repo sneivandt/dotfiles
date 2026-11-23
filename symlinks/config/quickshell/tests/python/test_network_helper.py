@@ -668,6 +668,29 @@ class NetworkTests(unittest.TestCase):
         self.assertTrue(state["wifiAvailable"])
         self.assertEqual(query.call_args.args[0][-2:], ["--rescan", "no"])
 
+    @patch("network_helper.subprocess.run")
+    def test_bar_summary_uses_only_general_and_device_status(self, run):
+        def response(stdout):
+            return subprocess.CompletedProcess([], 0, stdout, "")
+        run.side_effect = [
+            response("connected (site only):limited:enabled:enabled\n"),
+            response("wlan0:wifi:connected:Radio:wifi-id\neth0:ethernet:connected:Caf\\:é:wired-id\n"),
+        ]
+        self.assertEqual(self.run_main("", "summary"), {"ok": True, "state": {
+            "connected": True, "connectionName": "Caf:é", "connectionType": "ethernet",
+        }})
+        self.assertEqual([call.args[0][-2:] for call in run.call_args_list], [
+            ["general", "status"], ["device", "status"],
+        ])
+        self.assertFalse(self.cache_path.exists())
+
+        run.side_effect = [response("connected:full:enabled:enabled\n"),
+                           subprocess.CompletedProcess([], 1, "", "private-value")]
+        result = self.run_main("", "summary")
+        self.assertFalse(result["ok"])
+        self.assertNotIn("state", result)
+        self.assertNotIn("private-value", repr(result))
+
     @patch("network_helper.query")
     def test_manager_connectivity_is_independent_of_device_type(self, query):
         for state, devices, connected, name in [

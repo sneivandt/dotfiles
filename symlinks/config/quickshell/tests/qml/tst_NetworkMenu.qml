@@ -13,7 +13,7 @@ Item {
         Shell.NetworkMenu {
             anchorItem: null
             network: QtObject {
-                property bool available: true
+                property bool detailsAvailable: true
                 property bool loading: false
                 property bool connected: true
                 property string connectivity: "full"
@@ -31,7 +31,6 @@ Item {
                 property string requestedUuid: ""
 
                 signal credentialsRequested(var accessPoint)
-                function refreshOnOpen() {}
                 function connectNetwork(accessPoint, password, ssid) { requestedUuid = accessPoint.uuid; }
             }
         }
@@ -113,6 +112,26 @@ Item {
                     return match;
             }
             return null;
+        }
+
+        function test_reopen_keeps_last_known_choices_disabled_until_detail_arrives() {
+            const menu = createTemporaryObject(menuComponent, parent);
+            menu.network.networks = [{name: "Home", uuid: "old-id", available: true, signal: 54,
+                                      protected: true, saved: true, active: false, advanced: false}];
+            menu.network.detailsAvailable = false;
+            menu.network.loading = true;
+            menu.visible = true;
+            tryCompare(menu, "reveal", 1);
+            const choice = findChild(menu, "networkChoices").itemAt(0);
+            verify(findChild(menu, "networkActionLabel").visible);
+            verify(!choice.enabled);
+            mouseClick(choice);
+            compare(menu.network.requestedUuid, "");
+            menu.network.detailsAvailable = true;
+            menu.network.loading = false;
+            verify(choice.enabled);
+            mouseClick(choice);
+            compare(menu.network.requestedUuid, "old-id");
         }
 
         function test_external_text_is_literal_data() {

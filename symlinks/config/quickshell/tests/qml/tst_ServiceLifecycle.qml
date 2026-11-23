@@ -63,11 +63,71 @@ Item {
 
         function readyNetwork() {
             const network = make(networkComponent);
-            process(network, "networkStatusProcess").finish(0, statusResult());
+            const query = process(network, "networkStatusProcess");
+            query.finish(0, JSON.stringify({ ok: true, state: {connected: false, connectionName: "", connectionType: ""} }));
+            network.lastScan = Date.now();
+            network.menuOpen = true;
+            query.finish(0, statusResult());
             compare(network.available, true);
+            compare(network.detailsAvailable, true);
             compare(network.loading, false);
             compare(network.error, "");
             return network;
+        }
+
+        function test_open_during_summary_waits_for_details_then_scans_data() {
+            return [{ tag: "summary-ok", failed: false }, { tag: "summary-failed-to-start", failed: true }];
+        }
+
+        function test_open_during_summary_waits_for_details_then_scans(data) {
+            const network = make(networkComponent);
+            const query = process(network, "networkStatusProcess");
+            const action = process(network, "networkActionProcess");
+            compare(query.command[2], "summary");
+            network.menuOpen = true;
+            network.refresh();
+            if (data.failed) {
+                query.failStart();
+            } else {
+                query.finish(0, JSON.stringify({ ok: true, state: {connected: true, connectionName: "Wired", connectionType: "ethernet"} }));
+                compare(network.available, true);
+                compare(network.connectionName, "Wired");
+                compare(network.connectionType, "ethernet");
+            }
+            compare(network.detailsAvailable, false);
+            compare(action.attempts, 0);
+            tryCompare(query, "attempts", 2);
+            compare(query.command[2], "status");
+            query.finish(0, statusResult());
+            compare(network.detailsAvailable, true);
+            compare(network.scanning, true);
+            network.refresh();
+            compare(query.attempts, 2);
+            // A close during the scan downgrades the coalesced post-action refresh.
+            network.menuOpen = false;
+            action.started();
+            action.finish(0, JSON.stringify({ ok: true }));
+            tryCompare(query, "attempts", 3);
+            compare(query.command[2], "summary");
+            compare(network.detailsAvailable, false);
+        }
+
+        function test_reopening_ignores_previous_visits_in_flight_details() {
+            const network = readyNetwork();
+            const query = process(network, "networkStatusProcess");
+            network.refresh();
+            compare(query.command[2], "status");
+            network.menuOpen = false;
+            network.menuOpen = true;
+            query.finish(0, statusResult());
+            compare(network.detailsAvailable, false);
+            compare(network.connections[0].name, "Fixture Wi-Fi"); // last known, not actionable
+            network.connectNetwork({ name: "Fixture", advanced: false }, "", "");
+            compare(process(network, "networkActionProcess").attempts, 0);
+            tryCompare(query, "attempts", 4);
+            compare(query.command[2], "status");
+            query.finish(0, statusResult());
+            compare(network.detailsAvailable, true);
         }
 
         function test_initial_queries_report_start_failures() {
@@ -94,6 +154,7 @@ Item {
             compare(network.available, false);
             compare(network.loading, false);
             compare(network.scanOnRefresh, false);
+            compare(network.detailsAvailable, false);
             verify(network.statusError.includes("Cannot start"));
             compare(network.connections[0].name, "Fixture Wi-Fi");
 
@@ -134,7 +195,7 @@ Item {
             compare(action.stdinEnabled, false);
             compare(action.input, "");
             verify(network.actionError.includes("Cannot start"));
-            tryCompare(query, "attempts", 2);
+            tryCompare(query, "attempts", 3);
             query.finish(0, statusResult());
 
             network.runAction({ operation: "wifi", enabled: true }, "Retrying");
@@ -164,10 +225,10 @@ Item {
             compare(network.working, false);
             compare(network.actionLabel, "");
             compare(network.operation, "");
-            tryCompare(query, "attempts", 2);
+            tryCompare(query, "attempts", 3);
             query.finish(0, statusResult());
             wait(0);
-            compare(query.attempts, 2);
+            compare(query.attempts, 3);
             compare(network.error, data.error);
         }
 

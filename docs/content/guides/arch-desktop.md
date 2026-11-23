@@ -119,6 +119,10 @@ in the same state.
 
 Only one bar popup opens at a time across monitors. The bar reserves space for
 tiled windows, sits below floating windows and hides on fullscreen workspaces.
+
+The bar checks the current connection every ten seconds. Open the network menu
+to load nearby Wi-Fi networks and saved profiles. The list refreshes while the
+menu stays open.
 If you have several saved profiles for the same Wi-Fi network on one adapter,
 look below the network name for the profile name. If the names repeat, the menu
 shows the pinned access point address or the profile UUID instead. If the text

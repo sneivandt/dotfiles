@@ -222,7 +222,7 @@ def check_release(workflow: str) -> None:
 
 def check_pages(workflow: str, ci_workflow: str) -> None:
     jobs = job_blocks(workflow)
-    select, deploy = jobs["select-build"], jobs["deploy"]
+    select, package, deploy = jobs["select-build"], jobs["package"], jobs["deploy"]
     for guard in (
         "github.event.workflow_run.conclusion == 'success'",
         "github.event.workflow_run.event == 'push'",
@@ -247,11 +247,22 @@ def check_pages(workflow: str, ci_workflow: str) -> None:
         "if: needs.select-build.outputs.current == 'true'",
         "run-id: ${{ github.event.workflow_run.id }}",
         "name: docs-site",
+        "PAGES_ARTIFACT: github-pages-${{ github.run_attempt }}",
+        "artifact_name: ${{ env.PAGES_ARTIFACT }}",
+        " name: ${{ env.PAGES_ARTIFACT }}",
+    ):
+        if guard not in package:
+            raise ValueError(f"Pages packaging is missing {guard}")
+    for guard in (
+        "needs: package",
+        "artifact_name: ${{ needs.package.outputs.artifact_name }}",
         "url: ${{ steps.deployment.outputs.page_url }}",
     ):
         if guard not in deploy:
             raise ValueError(f"Pages deployment is missing {guard}")
-    if "actions/checkout@" in deploy:
+    if "actions/upload-pages-artifact@" in deploy:
+        raise ValueError("Retrying Pages deployment must not upload another artifact")
+    if "actions/checkout@" in package or "actions/checkout@" in deploy:
         raise ValueError("Pages deployment must use the verified artifact, not execute a checkout")
     docs = job_blocks(ci_workflow)["docs"]
     for required in (

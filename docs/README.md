@@ -335,6 +335,11 @@ CI run's artifact after the aggregate succeeds, rather than rebuilding it.
 A completed build that no longer matches `main` is skipped rather than rolling
 the site backward.
 
+If `package` succeeded but `deploy` failed and the commit is still current
+on `main`, choose **Re-run failed jobs** in the publishing run. This reuses
+the uploaded Pages artifact. If it has expired, choose **Re-run all jobs**
+to package the verified CI site again while the `docs-site` artifact is available.
+
 Before pushing, use the [committed-patch checker](content/development/testing.md#before-pushing).
 After pushing, follow CI and **Publish documentation** for the exact commit.
 

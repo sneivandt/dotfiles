@@ -811,6 +811,9 @@ class GateTests(unittest.TestCase):
             pages.replace("github.event.workflow_run.event == 'push'", "true"),
             pages.replace("github.event.workflow_run.head_repository.full_name == github.repository", "true"),
             pages.replace("run-id: ${{ github.event.workflow_run.id }}", "run-id: 1"),
+            pages.replace("github-pages-${{ github.run_attempt }}", "github-pages"),
+            pages.replace(" name: ${{ env.PAGES_ARTIFACT }}", " name: github-pages"),
+            pages.replace("needs.package.outputs.artifact_name", "github.run_attempt"),
             pages.replace('select(.name == "Docs: Content and site")', 'select(.name == "Other job")'),
             pages.replace("if: needs.select-build.outputs.current == 'true'", "if: always()", 1),
         ):

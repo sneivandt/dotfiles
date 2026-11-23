@@ -222,7 +222,7 @@ mod tests {
                 .is_empty()
         );
 
-        let lock = home.path().join(".apm/apm.lock.yaml");
+        let lock = home.path().join(".apm").join("apm.lock.yaml");
         std::fs::create_dir_all(&lock).unwrap();
         let error = read_source_cron_schedules(home.path(), &ids).unwrap_err();
         assert_eq!(error.to_string(), format!("reading {}", lock.display()));

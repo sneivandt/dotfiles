@@ -92,7 +92,7 @@ fn parse_deployed_workflow_ids_empty_cases() {
 fn workflow_ownership_distinguishes_missing_and_unreadable_lockfiles() {
     let home = tempfile::tempdir_in(".").unwrap();
     let ctx = make_home_context_with_executor(home.path(), MockExecutor::new());
-    let lock = home.path().join(".apm/apm.lock.yaml");
+    let lock = home.path().join(".apm").join("apm.lock.yaml");
 
     assert_eq!(
         super::super::read_deployed_workflow_ids(&ctx).unwrap(),

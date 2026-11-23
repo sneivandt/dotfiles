@@ -12,7 +12,8 @@ pub(crate) struct PlannedDirectory {
 }
 
 /// Only used on empty temporary fixture directories. Never request elevation.
-#[cfg(all(windows, test))]
+#[cfg(test)]
+#[cfg(windows)]
 #[allow(
     unsafe_code,
     reason = "set case sensitivity on the private fixture directory handle"

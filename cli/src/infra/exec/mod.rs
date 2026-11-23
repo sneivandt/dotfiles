@@ -286,7 +286,8 @@ impl CommandSpec {
 
     /// Return the pre-quoted Windows command line, when this is a `cmd.exe`
     /// request.
-    #[cfg(all(test, windows))]
+    #[cfg(test)]
+    #[cfg(windows)]
     #[must_use]
     pub(crate) fn windows_command_line(&self) -> Option<&str> {
         match &self.command {
@@ -930,5 +931,6 @@ pub(crate) fn run_path_smoke_test(
 #[cfg(test)]
 mod tests;
 
-#[cfg(all(test, windows))]
+#[cfg(test)]
+#[cfg(windows)]
 mod tests_windows;

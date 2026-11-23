@@ -182,3 +182,64 @@ impl BatchProgress {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn batch_summary_only_includes_nonzero_interrupted_and_omitted_counts() {
+        let stats = TaskStats::from_counts(1, 2, 0, 0);
+        for (interrupted, not_attempted, expected) in [
+            (0, 0, "1 changed, 2 already ok"),
+            (1, 0, "1 changed, 2 already ok, 1 interrupted"),
+            (0, 2, "1 changed, 2 already ok, 2 not attempted"),
+            (
+                1,
+                2,
+                "1 changed, 2 already ok, 1 interrupted, 2 not attempted",
+            ),
+        ] {
+            assert_eq!(
+                BatchReport::new(
+                    stats.clone(),
+                    BatchCompletion::Interrupted,
+                    interrupted,
+                    not_attempted
+                )
+                .summary(false),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn batch_completion_controls_interruption_classification() {
+        for (completion, interrupted) in [
+            (BatchCompletion::Failed, false),
+            (BatchCompletion::Interrupted, true),
+        ] {
+            let error = anyhow::Error::new(super::super::access::AccessCancelled)
+                .context(BatchReport::new(TaskStats::default(), completion, 1, 0));
+            assert_eq!(is_interrupted(&error), interrupted);
+        }
+    }
+
+    #[test]
+    fn merging_later_waves_keeps_the_first_failure_available_to_the_caller() {
+        let mut first = BatchProgress::default();
+        assert!(first.record(Err(anyhow::anyhow!("original resource failed"))));
+        let mut later = BatchProgress::default();
+        assert!(later.record(Err(anyhow::anyhow!("later resource failed"))));
+        let error = first.merge(later).finish().unwrap_err();
+        assert_eq!(error.root_cause().to_string(), "original resource failed");
+        assert_eq!(
+            error
+                .downcast_ref::<BatchReport>()
+                .unwrap()
+                .stats()
+                .failed_count(),
+            2
+        );
+    }
+}

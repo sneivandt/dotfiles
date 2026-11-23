@@ -126,8 +126,17 @@ impl ConfigureGitFile {
 impl Operation for ConfigureGitFile {
     type Plan = GitConfigPlan;
 
-    fn current_state(&self, _ctx: &Context) -> Result<OperationState<Self::Plan>> {
+    fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         let plan = GitConfigPlan::inspect(&self.path, &self.settings)?;
+        for setting in &self.settings {
+            if !plan
+                .changed()
+                .iter()
+                .any(|changed| changed.key == setting.key)
+            {
+                ctx.debug_fmt(|| format!("ok {}", setting.description()));
+            }
+        }
         if plan.changed().is_empty() {
             Ok(OperationState::Complete)
         } else {

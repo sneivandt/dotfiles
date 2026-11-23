@@ -878,6 +878,63 @@ mod root_tests {
     }
 
     #[test]
+    fn executable_discovery_requires_both_managed_directories() {
+        for incomplete in ["conf", "symlinks"] {
+            let root = tempfile::tempdir().unwrap();
+            let checkout = root.path().join("worktrees/fixture");
+            std::fs::create_dir_all(checkout.join(incomplete)).unwrap();
+            let bin = checkout.join("bin");
+            std::fs::create_dir(&bin).unwrap();
+            assert!(
+                root_from_executable(&bin.join("dotfiles"))
+                    .unwrap()
+                    .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn elevated_child_prefers_forwarded_selections_to_stale_restart_environment() {
+        use super::super::reexec::{
+            REEXEC_GUARD_VAR, REPOSITORY_OVERLAY_VAR, REPOSITORY_PROFILE_VAR,
+            REPOSITORY_REEXEC_GUARD_VAR,
+        };
+
+        let root = tempfile::tempdir().unwrap();
+        let overlay = tempfile::tempdir().unwrap();
+        let old_overlay = tempfile::tempdir().unwrap();
+        let mut global = super::super::tests::global(&["--elevated-child", "--profile", "base"]);
+        global.root = Some(root.path().to_path_buf());
+        global.overlay = Some(overlay.path().to_path_buf());
+        let env = MapEnv::new()
+            .with("HOME", root.path())
+            .with("USERPROFILE", root.path())
+            .with(REEXEC_GUARD_VAR, "inherited-marker")
+            .with(REPOSITORY_REEXEC_GUARD_VAR, "1")
+            .with(REPOSITORY_OVERLAY_VAR, old_overlay.path())
+            .with(REPOSITORY_PROFILE_VAR, "desktop");
+        let runtime = RuntimePolicy::new(&global, false, env.into_handle(), false, true);
+        assert!(runtime.repository_child);
+        let log = Logger::test();
+        let startup = CommandStartup::resolve(&runtime, &log).unwrap();
+        assert_eq!(
+            startup.overlay,
+            Some((overlay.path().to_owned(), OverlaySource::Argument))
+        );
+        let (profile, source) = resolve_profile(
+            &runtime,
+            root.path(),
+            Platform::detect(),
+            Some(overlay.path()),
+            &log,
+            || panic!("forwarded profile should not prompt"),
+        )
+        .unwrap();
+        assert_eq!(profile.name, "base");
+        assert_eq!(source, profiles::ProfileSource::Argument);
+    }
+
+    #[test]
     fn profile_precedence_and_prompt_policy_use_the_same_runtime_environment() {
         use profiles::ProfileSource::{Argument, Environment, Repository};
 

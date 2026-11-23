@@ -14,6 +14,9 @@ fn configuration_check_reports_unsupported_xdg_layouts() {
 
     let fixture = tempfile::tempdir().unwrap();
     let mut config = empty_config(fixture.path().into());
+    let sources = fixture.path().join("symlinks/config/git");
+    std::fs::create_dir_all(&sources).unwrap();
+    std::fs::write(sources.join("config"), "").unwrap();
     config.symlinks = vec![crate::test_helpers::symlink("config/git/config", None)];
     let home = fixture.path().join("home");
     for value in [
@@ -39,10 +42,12 @@ fn configuration_check_reports_unsupported_xdg_layouts() {
     let ctx = make_linux_context(fixture.path().into(), None)
         .with_home(home.clone())
         .with_env(env.into_handle());
-    assert!(
-        ValidateConfigWarnings::new(ConfigHandle::new(config))
-            .run(&ctx)
-            .is_err()
+    let error = ValidateConfigWarnings::new(ConfigHandle::new(config))
+        .run(&ctx)
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "configuration check failed: 1 issue found"
     );
     assert!(
         config_home_diagnostic(
@@ -54,6 +59,29 @@ fn configuration_check_reports_unsupported_xdg_layouts() {
             &MapEnv::new().with("XDG_CONFIG_HOME", "custom"),
         )
         .is_none()
+    );
+}
+
+#[test]
+fn required_configuration_passes_only_when_all_files_are_present() {
+    use crate::engine::TaskResult;
+
+    let fixture = tempfile::tempdir().unwrap();
+    let ctx = make_linux_context(fixture.path().into(), None);
+    let conf = fixture.path().join("conf");
+    std::fs::create_dir(&conf).unwrap();
+    for file in crate::app::config::REQUIRED_CONFIG_FILES {
+        std::fs::write(conf.join(file), "").unwrap();
+    }
+    assert!(matches!(
+        ValidateConfigFiles.run(&ctx).unwrap(),
+        TaskResult::CheckPassed
+    ));
+    let missing = crate::app::config::REQUIRED_CONFIG_FILES[0];
+    std::fs::remove_file(conf.join(missing)).unwrap();
+    assert_eq!(
+        ValidateConfigFiles.run(&ctx).unwrap_err().to_string(),
+        "1 required config file(s) missing"
     );
 }
 
@@ -391,7 +419,14 @@ fn powershell_command_escapes_single_quotes_in_root() {
 fn linter_execution_preserves_command_contract_and_failure_kind() {
     for (name, response) in [
         ("success", Ok(ExecResult::success(""))),
-        ("findings", Ok(ExecResult::failure("finding", "", Some(1)))),
+        (
+            "findings",
+            Ok(ExecResult::failure(
+                "stdout finding",
+                "stderr finding",
+                Some(1),
+            )),
+        ),
         (
             "spawn",
             Err(ExecError::spawn(
@@ -424,6 +459,8 @@ fn linter_execution_preserves_command_contract_and_failure_kind() {
             crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
             std::sync::Arc::new(executor),
         );
+        let log = std::sync::Arc::new(crate::infra::logging::Logger::test());
+        let ctx = ctx.with_log(log.clone());
         let result = run_linter(
             &ctx,
             "PSScriptAnalyzer",
@@ -434,10 +471,15 @@ fn linter_execution_preserves_command_contract_and_failure_kind() {
                 result.unwrap(),
                 crate::engine::TaskResult::CheckPassed
             )),
-            "findings" => assert_eq!(
-                result.unwrap_err().to_string(),
-                "PSScriptAnalyzer found issues"
-            ),
+            "findings" => {
+                assert_eq!(
+                    result.unwrap_err().to_string(),
+                    "PSScriptAnalyzer found issues"
+                );
+                let lines = log.captured_lines();
+                assert!(lines.iter().any(|line| line.ends_with("stdout finding")));
+                assert!(lines.iter().any(|line| line.ends_with("stderr finding")));
+            }
             "spawn" => assert!(matches!(
                 result.unwrap_err().downcast_ref::<ExecError>(),
                 Some(ExecError::Spawn { .. })

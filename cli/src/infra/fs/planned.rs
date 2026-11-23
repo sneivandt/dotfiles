@@ -210,3 +210,56 @@ fn ordinal_alias(a: &std::ffi::OsStr, b: &std::ffi::OsStr) -> Result<bool> {
     }
     Ok(result == CSTR_EQUAL)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn directory_identity_requires_the_same_prefix_and_entire_missing_suffix() {
+        let fixture = tempfile::tempdir().unwrap();
+        let left = fixture.path().join("left");
+        let right = fixture.path().join("right");
+        std::fs::create_dir(&left).unwrap();
+        std::fs::create_dir(&right).unwrap();
+
+        let planned = PlannedDirectory::resolve(&left.join("next")).unwrap();
+        for (candidate, same) in [
+            (left.join("./next"), true),
+            (left.join("next/child"), false),
+            (left.join("another"), false),
+            (right.join("next"), false),
+        ] {
+            let other = PlannedDirectory::resolve(&candidate).unwrap();
+            assert_eq!(
+                planned.same_directory(&other).unwrap(),
+                same,
+                "{candidate:?}"
+            );
+            assert_eq!(
+                other.same_directory(&planned).unwrap(),
+                same,
+                "{candidate:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_descendants_stay_within_their_own_existing_prefix() {
+        let fixture = tempfile::tempdir().unwrap();
+        let left = fixture.path().join("left");
+        let right = fixture.path().join("right");
+        std::fs::create_dir(&left).unwrap();
+        std::fs::create_dir(&right).unwrap();
+
+        let parent = PlannedDirectory::resolve(&left.join("next")).unwrap();
+        let child = PlannedDirectory::resolve(&left.join("next/item")).unwrap();
+        let different_parent = PlannedDirectory::resolve(&right.join("next")).unwrap();
+        assert!(child.is_within(&parent).unwrap());
+        assert!(!parent.is_within(&child).unwrap());
+        assert!(!child.is_within(&different_parent).unwrap());
+        assert!(parent.trees_overlap(&child).unwrap());
+        assert!(child.trees_overlap(&parent).unwrap());
+        assert!(!child.trees_overlap(&different_parent).unwrap());
+    }
+}

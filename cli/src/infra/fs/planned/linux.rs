@@ -52,6 +52,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn directory_lookup_distinguishes_absence_from_unresolvable_paths() {
+        let fixture = tempfile::tempdir().unwrap();
+        let regular = fixture.path().join("regular");
+        std::fs::write(&regular, "").unwrap();
+        assert!(directory_id(fixture.path()).unwrap().is_some());
+        assert_eq!(directory_id(&fixture.path().join("missing")).unwrap(), None);
+        assert_eq!(directory_id(&regular).unwrap(), None);
+        assert_eq!(directory_id(&regular.join("child")).unwrap(), None);
+
+        let recursive_link = fixture.path().join("loop");
+        std::os::unix::fs::symlink("loop", &recursive_link).unwrap();
+        let error = directory_id(&recursive_link).unwrap_err();
+        assert!(error.downcast_ref::<std::io::Error>().is_some());
+        assert!(error.to_string().contains("inspect directory"));
+    }
+
+    #[test]
     fn alias_comparison_checks_the_endpoint_in_both_mount_views() {
         let parent = PlannedDirectory {
             existing: "/source".into(),

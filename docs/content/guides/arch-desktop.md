@@ -113,6 +113,10 @@ tray items, and controls alongside them. Use the bar as follows:
 | Power | Lock immediately, or confirm logout, restart, or shutdown |
 | Clock | Open the calendar |
 
+The media control follows the player that is playing. If nothing is playing,
+it shows a paused player you can resume. Spotify wins ties between players
+in the same state.
+
 Only one bar popup opens at a time across monitors. The bar reserves space for
 tiled windows, sits below floating windows and hides on fullscreen workspaces.
 If you have several saved profiles for the same Wi-Fi network on one adapter,

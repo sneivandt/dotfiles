@@ -9,6 +9,7 @@ import Quickshell.Services.Mpris
 import Quickshell.Services.SystemTray
 import Quickshell.Services.UPower
 import Quickshell.Wayland
+import "MediaPlayer.js" as MediaPlayer
 import "Theme.js" as Theme
 
 PanelWindow {
@@ -21,10 +22,7 @@ PanelWindow {
     required property var menuController
     readonly property var hyprMonitor: Hyprland.monitorFor(screen)
     readonly property var activeWorkspace: hyprMonitor ? hyprMonitor.activeWorkspace : null
-    readonly property var player: {
-        const players = Mpris.players.values;
-        return players.find(player => player.dbusName.toLowerCase().includes("spotify")) || players[0] || null;
-    }
+    readonly property var player: MediaPlayer.select(Mpris.players.values, MprisPlaybackState.Playing, MprisPlaybackState.Paused)
     readonly property string track: player ? (player.trackArtist ? player.trackArtist + " - " : "") + (player.trackTitle || "Unknown track") : ""
     readonly property var battery: UPower.displayDevice
     readonly property bool hasBattery: battery && battery.ready && battery.isLaptopBattery
@@ -79,7 +77,7 @@ PanelWindow {
         BarGroup {
             id: mediaGroup
             readonly property real room: bar.width - workspaceGroup.width - controls.implicitWidth - clockGroup.implicitWidth - trayGroup.implicitWidth - 64
-            visible: bar.player !== null && bar.player.playbackState !== MprisPlaybackState.Stopped && room >= 44
+            visible: bar.player !== null && room >= 44
             Layout.preferredWidth: Math.max(36, Math.min(mediaBlock.implicitWidth, 340, room))
             BarBlock {
                 id: mediaBlock

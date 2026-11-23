@@ -186,6 +186,18 @@ def check_mutation(workflow: str) -> None:
     parallel = re.search(r"(?m)^      max-parallel: ([0-9]+)$", mutation)
     if parallel is None or not 1 <= int(parallel.group(1)) <= 14:
         raise ValueError("Linux mutation concurrency must leave runner capacity for ordinary CI")
+    for required in (
+        "- shard: liveness", "- shard: context",
+        "if: matrix.shard != 'liveness' && matrix.shard != 'context'",
+        "if: matrix.shard == 'liveness' || matrix.shard == 'context'",
+        '--exclude-re "$LIVENESS_MUTATIONS"', '--re "$LIVENESS_MUTATIONS"',
+        '--exclude-re "$CONTEXT_MUTATIONS"', '--re "$CONTEXT_MUTATIONS"',
+        "--file src/engine/access.rs --file src/infra/atomic_flag.rs --file src/infra/cancellation.rs",
+        "--file src/engine/context/mod.rs",
+        "tests=engine::access::tests::", "tests=engine::context::tests::",
+    ):
+        if required not in mutation:
+            raise ValueError(f"Linux liveness mutation coverage missing {required}")
     native = jobs["mutation-windows"]
     for required in ("runs-on: windows-latest", "decode_reg_string|encode_reg_string", "--cargo-arg=--profile=ci"):
         if required not in native:
@@ -194,7 +206,8 @@ def check_mutation(workflow: str) -> None:
                      '--file src/app/commands/execution/elevation.rs', '|prepare_windows_elevation',
                      '--file src/infra/fs/mutation/windows.rs', '|ensure_single_link',
                      '--file src/infra/fs/mod.rs', '|is_dir_like',
-                     '--file src/domains/system/config/registry.rs', '|uppercase_native_registry_name'):
+                     '--file src/domains/system/config/registry.rs', '|uppercase_native_registry_name',
+                     '--file src/infra/exec/process.rs', '|take_stdout_windows'):
         if required not in native:
             raise ValueError(f"native Windows mutation coverage missing {required}")
     if "continue-on-error:" in native:

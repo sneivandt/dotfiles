@@ -1,4 +1,5 @@
-use std::sync::{Arc, Barrier, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use crate::engine::{
     BatchCompletion, BatchReport, Context, IntrinsicState, ProcessOpts, RemovableResource,
@@ -22,12 +23,31 @@ enum Behavior {
     Unknown,
 }
 
+#[derive(Default)]
+struct ConcurrentApply {
+    started: Mutex<usize>,
+    ready: Condvar,
+}
+
+impl ConcurrentApply {
+    fn wait(&self) {
+        let mut started = self.started.lock().unwrap();
+        *started += 1;
+        self.ready.notify_all();
+        let (started, _) = self
+            .ready
+            .wait_timeout_while(started, Duration::from_secs(5), |started| *started < 2)
+            .unwrap();
+        assert_eq!(*started, 2, "both resources must reach apply concurrently");
+    }
+}
+
 struct ProbeResource {
     index: usize,
     behavior: Behavior,
     ctx: Context,
     calls: Arc<Mutex<Vec<usize>>>,
-    barrier: Option<Arc<Barrier>>,
+    concurrent_apply: Option<Arc<ConcurrentApply>>,
 }
 
 impl Resource for ProbeResource {
@@ -37,8 +57,8 @@ impl Resource for ProbeResource {
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
         self.calls.lock().unwrap().push(self.index);
-        if let Some(barrier) = &self.barrier {
-            barrier.wait();
+        if let Some(concurrent_apply) = &self.concurrent_apply {
+            concurrent_apply.wait();
         }
         match self.behavior {
             Behavior::Fail => Err(crate::engine::resource::ResourceError::permission_denied(
@@ -95,7 +115,7 @@ impl RemovableResource for ProbeResource {
 struct BatchTask {
     behaviors: Vec<Behavior>,
     calls: Arc<Mutex<Vec<usize>>>,
-    barrier: Option<Arc<Barrier>>,
+    concurrent_apply: Option<Arc<ConcurrentApply>>,
     remove: bool,
     opts: ProcessOpts,
 }
@@ -105,7 +125,7 @@ impl BatchTask {
         Self {
             behaviors: behaviors.to_vec(),
             calls: Arc::default(),
-            barrier: None,
+            concurrent_apply: None,
             remove: false,
             opts: ProcessOpts::strict("apply"),
         }
@@ -127,7 +147,7 @@ impl Task for BatchTask {
                 behavior,
                 ctx: ctx.clone(),
                 calls: Arc::clone(&self.calls),
-                barrier: self.barrier.clone(),
+                concurrent_apply: self.concurrent_apply.clone(),
             });
         if self.remove {
             process_resources_remove(ctx, resources, "remove")
@@ -362,7 +382,7 @@ fn parallel_failure_joins_and_accounts_for_other_in_flight_work() {
         let (ctx, log) = test_context("/fixture".into(), None);
         let ctx = ctx.with_parallel(true);
         let mut task = BatchTask::new(&[behavior, Behavior::Fail]);
-        task.barrier = Some(Arc::new(Barrier::new(2)));
+        task.concurrent_apply = Some(Arc::default());
         let status = pool.install(|| crate::engine::execute(&task, &ctx));
         assert_eq!(
             status,

@@ -200,6 +200,38 @@ fn failed_command_and_successful_stderr_are_visible_without_verbose() {
 }
 
 #[test]
+fn readable_command_output_reports_omitted_bytes_and_hides_empty_streams() {
+    let command = |stdout: Option<&str>, stdout_bytes| Record::Command {
+        command: "fixture-command".into(),
+        outcome: "failed".into(),
+        exit_code: Some(1),
+        elapsed_us: 10,
+        stdout: stdout.map(str::to_string),
+        stderr: Some(String::new()),
+        stdout_bytes,
+        stderr_bytes: 0,
+    };
+    for (record_value, lines) in [
+        (command(Some("data"), 4), "\nstdout:\ndata"),
+        (command(None, 4), "\nstdout: 4 bytes omitted"),
+        (command(None, 0), ""),
+        (command(Some(""), 0), ""),
+    ] {
+        let content = record("fixture-task", record_value);
+        let mut output = Vec::new();
+        write_selected_contents(&content, false, false, None, &mut output).unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("fixture-command"), "{output}");
+        assert!(!output.contains("stderr"), "{output}");
+        assert_eq!(
+            output.trim_end().split_once('\n').map(|(_, text)| text),
+            lines.strip_prefix('\n'),
+            "{output}"
+        );
+    }
+}
+
+#[test]
 fn task_selector_resolves_diagnostics_before_a_result_is_recorded() {
     let content = record(
         "internal-id",

@@ -848,7 +848,7 @@ class GateTests(unittest.TestCase):
             "infra/elevation": ("run_elevated_child", "wait_if_elevated"),
             "app/commands/execution/elevation": ("prepare_windows_elevation",),
             "domains/dotfiles/resources/path_entry": (
-                "decode_reg_string", "append_user_path", "user_path_contains",
+                "decode_reg_string", "encode_reg_string", "append_user_path", "user_path_contains",
             ),
             "domains/system/resources/registry": (
                 "native::raw_value_to_string", "native::raw_value_type",
@@ -936,6 +936,8 @@ class GateTests(unittest.TestCase):
             re.sub(r"shard: \[0, 1, 2, [^\n]+", "shard: [0, 1]", workflow),
             workflow.replace("      max-parallel: 14\n", ""),
             workflow.replace("      max-parallel: 14\n", "      max-parallel: 48\n"),
+            workflow.replace("tests=engine::access::tests::", ""),
+            workflow.replace("tests=engine::context::tests::", ""),
             workflow.replace("needs.select.outputs.run_linux", "needs.select.outputs.run_windows"),
         ):
             with self.subTest(broken=broken):

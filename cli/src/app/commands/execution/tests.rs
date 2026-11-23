@@ -9,6 +9,22 @@ use crate::test_helpers::{empty_config, make_static_context, numeric_task_id};
 
 use super::*;
 
+#[test]
+fn progress_counts_visible_tasks_across_the_plan() {
+    crate::test_helpers::test_task! {
+        FirstVisible { name: "First visible", }
+        SecondVisible { name: "Second visible", }
+        Internal {
+            name: "Internal step",
+            visibility: crate::engine::TaskVisibility::Internal,
+        }
+    }
+    let internal: [&dyn Task; 1] = [&Internal];
+    let mixed: [&dyn Task; 3] = [&FirstVisible, &Internal, &SecondVisible];
+    assert_eq!(visible_count(internal), 0);
+    assert_eq!(visible_count(mixed), 2);
+}
+
 /// Shared ordered record of which tasks ran.
 type Trace = Arc<Mutex<Vec<String>>>;
 

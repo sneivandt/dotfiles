@@ -398,6 +398,59 @@ mod tests {
     }
 
     #[test]
+    fn empty_unfiltered_catalog_is_allowed_but_skipping_the_only_task_fails() {
+        assert!(selected_task_ids(&[], &[], &[], false).unwrap().is_empty());
+        let error =
+            selected_task_ids(&[&SampleTask], &[], &["symlinks".into()], false).unwrap_err();
+        assert!(error.to_string().contains("selected no tasks"));
+    }
+
+    #[test]
+    fn debug_output_names_the_selected_tasks_when_either_filter_is_used() {
+        let tasks: Vec<Box<dyn Task>> = vec![Box::new(SampleTask), Box::new(OtherTask)];
+        for (only, skip, expected) in [
+            (vec![], vec![], false),
+            (vec!["symlinks".into()], vec![], true),
+            (vec![], vec!["packages".into()], true),
+            (vec!["symlinks".into()], vec!["packages".into()], true),
+        ] {
+            let mut log = Logger::test();
+            log.set_verbose(true);
+            apply_task_filters(&tasks, &[], &only, &skip, false, &log).unwrap();
+            let lines = log.captured_lines();
+            assert_eq!(
+                lines
+                    .iter()
+                    .any(|line| line.contains("selected tasks: Home symlinks")),
+                expected,
+                "--only={only:?}, --skip={skip:?}: {lines:?}"
+            );
+            assert!(lines.iter().all(|line| !line.contains("System packages")));
+        }
+    }
+
+    #[test]
+    fn omitted_dependency_warnings_collapse_duplicate_edges() {
+        crate::test_helpers::test_task! {
+            DuplicateEdge {
+                name: "Duplicate edge",
+                deps: [SampleTask, SampleTask],
+            }
+        }
+        assert_eq!(
+            omitted_blocking_dependencies(&[&SampleTask, &DuplicateEdge], &[&DuplicateEdge]),
+            vec![("Duplicate edge", "Home symlinks")]
+        );
+        assert!(
+            omitted_blocking_dependencies(
+                &[&SampleTask, &DuplicateEdge],
+                &[&SampleTask, &DuplicateEdge]
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
     fn empty_only_includes_every_task_not_skipped() {
         assert!(
             task_passes_filters(&SampleTask, &[], &[]),
@@ -515,6 +568,24 @@ mod tests {
             dependencies.is_empty(),
             "an ordering-only edge should not be treated as an omitted prerequisite"
         );
+    }
+
+    #[test]
+    fn filter_warnings_add_a_separator_only_for_non_verbose_output() {
+        let all: Vec<Box<dyn Task>> = vec![Box::new(SampleTask), Box::new(DependentTask)];
+        for (verbose, omitted) in [(false, false), (false, true), (true, false), (true, true)] {
+            let mut log = Logger::test();
+            log.set_verbose(verbose);
+            log.startup("Update fixture");
+            let selected = if omitted { "dependent" } else { "symlinks" };
+            apply_task_filters(&all, &[], &[selected.into()], &[], false, &log).unwrap();
+            let lines = log.captured_lines();
+            assert_eq!(
+                lines.iter().any(String::is_empty),
+                omitted && !verbose,
+                "{lines:?}"
+            );
+        }
     }
 
     #[test]

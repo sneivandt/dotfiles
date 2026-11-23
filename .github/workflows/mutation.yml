@@ -50,7 +50,7 @@ jobs:
   mutation:
     name: "Rust: Mutation (changed code, shard ${{ matrix.shard }})"
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     needs: [select]
     if: needs.select.outputs.run_linux == 'true'
     strategy:
@@ -61,6 +61,12 @@ jobs:
         # A full-source replay selects about 6,200 mutants. Keep each runner
         # below roughly 130 builds before exclusions.
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+        include:
+          - shard: liveness
+          - shard: context
+    env:
+      LIVENESS_MUTATIONS: '^src/(engine/access\.rs|infra/(atomic_flag|cancellation)\.rs):[0-9]+:[0-9]+: replace (AccessRegistry::try_acquire -> Option<AccessGuard> with None|AtomicFlag::set with \(\)|AtomicFlag::get -> bool with false|CancellationToken::cancel with \(\)|CancellationToken::is_cancelled -> bool with false)$'
+      CONTEXT_MUTATIONS: '^src/engine/context/mod\.rs:[0-9]+:[0-9]+: (delete ! in Context::scoped_access|replace Context::try_access -> Option<AccessGuard> with None|replace Context::cancellation_token -> CancellationToken with Default::default\(\))$'
     defaults:
       run:
         working-directory: cli
@@ -81,6 +87,7 @@ jobs:
         with:
           tool: cargo-mutants@27.1.0
       - name: Test changed-code mutants
+        if: matrix.shard != 'liveness' && matrix.shard != 'context'
         env:
           MUTATION_SHARD: ${{ matrix.shard }}
         # Native Windows functions are absent on Linux, not coverage gaps.
@@ -88,19 +95,45 @@ jobs:
         run: >-
           cargo mutants --in-place --no-shuffle --in-diff mutants.diff
           --shard "$MUTATION_SHARD/48"
+          --exclude-re "$LIVENESS_MUTATIONS"
+          --exclude-re "$CONTEXT_MUTATIONS"
           --exclude 'src/infra/run_lock/windows.rs'
           --exclude 'src/infra/fs/mutation/windows.rs'
           --exclude-re '^src/infra/fs/mod\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]) in is_dir_like$'
+          --exclude-re '^src/infra/exec/process\.rs:.*\btake_stdout_windows\b'
           --exclude-re '^src/domains/system/config/registry\.rs:.*\buppercase_native_registry_name\b'
           --exclude-re '^src/infra/fs/mutation\.rs:[0-9]+:[0-9]+: replace \| with \^ in open_in_place$'
           --exclude-re '^src/infra/fs/place\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported)\b'
           --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b'
           --exclude-re '^src/app/commands/execution/elevation\.rs:.*\bprepare_windows_elevation\b'
-          --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|append_user_path|user_path_contains)\b'
+          --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|encode_reg_string|append_user_path|user_path_contains)\b'
           --exclude-re '^src/domains/ai/apm/cowork\.rs:.*\bis_desired_skill_directory\b'
           --exclude-re '^src/domains/system/resources/registry\.rs:.*\bnative::'
           --exclude-re '^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$'
           --cargo-arg=--profile=ci --cargo-arg=--locked
+      - name: Test access and cancellation mutants
+        if: matrix.shard == 'liveness' || matrix.shard == 'context'
+        shell: bash
+        env:
+          MUTATION_SHARD: ${{ matrix.shard }}
+        # Exercise liveness primitives directly. Their broken variants can
+        # otherwise strand unrelated scheduler tests waiting for a worker.
+        run: |
+          if [[ "$MUTATION_SHARD" == liveness ]]; then
+            selection=(--file src/engine/access.rs --file src/infra/atomic_flag.rs --file src/infra/cancellation.rs --re "$LIVENESS_MUTATIONS")
+            tests=engine::access::tests::
+          else
+            selection=(--file src/engine/context/mod.rs --re "$CONTEXT_MUTATIONS")
+            tests=engine::context::tests::
+          fi
+          selection+=(--in-diff mutants.diff)
+          selected=$(cargo mutants --list "${selection[@]}")
+          if [[ -n "$selected" ]]; then
+            cargo mutants --in-place "${selection[@]}" --cargo-arg=--profile=ci --cargo-arg=--locked --cargo-arg=--lib -- "$tests"
+          else
+            mkdir -p mutants.out
+            printf '%s\n' 'No liveness mutants selected for this range.' > mutants.out/selection.txt
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -147,8 +180,9 @@ jobs:
           --file src/app/commands/execution/elevation.rs
           --file src/infra/fs/mutation/windows.rs
           --file src/infra/fs/mod.rs
+          --file src/infra/exec/process.rs
           --file src/domains/system/config/registry.rs
-          --re '(decode_reg_string|encode_reg_string|native::raw_value_to_string|native::raw_value_type|run_elevated_child|prepare_windows_elevation|ensure_single_link|check_information|is_dir_like|uppercase_native_registry_name)'
+          --re '(decode_reg_string|encode_reg_string|native::raw_value_to_string|native::raw_value_type|run_elevated_child|prepare_windows_elevation|ensure_single_link|check_information|is_dir_like|uppercase_native_registry_name|take_stdout_windows)'
           --cargo-arg=--profile=ci --cargo-arg=--locked --cargo-arg=--lib
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

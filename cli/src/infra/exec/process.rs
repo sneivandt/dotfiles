@@ -36,9 +36,12 @@ pub(super) const fn take_stdout(child: &mut Child) -> Option<ChildStdout> {
 }
 
 #[cfg(windows)]
-pub(super) fn take_stdout(child: &mut Child) -> Option<ChildStdout> {
+pub(super) fn take_stdout_windows(child: &mut Child) -> Option<ChildStdout> {
     child.stdout().take()
 }
+
+#[cfg(windows)]
+pub(super) use take_stdout_windows as take_stdout;
 
 #[cfg(unix)]
 pub(super) const fn take_stderr(child: &mut Child) -> Option<ChildStderr> {

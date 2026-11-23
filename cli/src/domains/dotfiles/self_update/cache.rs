@@ -70,17 +70,30 @@ fn write_cache_at(root: &Path, tag: &str, now: u64, boot_id: Option<&str>) -> Re
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
+#[cfg_attr(
+    not(target_os = "linux"),
+    allow(
+        clippy::missing_const_for_fn,
+        reason = "the shared boot-ID function reads the kernel boot ID on Linux"
+    )
+)]
 fn current_boot_id() -> Option<String> {
-    fs::read_to_string("/proc/sys/kernel/random/boot_id")
+    #[cfg(target_os = "linux")]
+    {
+        read_boot_id(Path::new("/proc/sys/kernel/random/boot_id"))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn read_boot_id(path: &Path) -> Option<String> {
+    fs::read_to_string(path)
         .ok()
         .map(|id| id.trim().to_string())
         .filter(|id| !id.is_empty())
-}
-
-#[cfg(not(target_os = "linux"))]
-const fn current_boot_id() -> Option<String> {
-    None
 }
 
 /// Return the current UTC time as seconds since the Unix epoch.
@@ -99,6 +112,38 @@ fn unix_timestamp() -> Option<u64> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn writing_a_cache_records_the_current_time_and_platform_boot_id() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("bin")).unwrap();
+        write_cache(dir.path(), "v1.0").unwrap();
+        let content = fs::read_to_string(cache_path(dir.path())).unwrap();
+        let mut lines = content.lines();
+        assert_eq!(lines.next(), Some(super::super::REPO));
+        assert_eq!(lines.next(), Some("v1.0"));
+        let timestamp = lines.next().unwrap().parse::<u64>().unwrap();
+        assert!(timestamp > 0, "{content}");
+        #[cfg(target_os = "linux")]
+        {
+            let kernel_id = fs::read_to_string("/proc/sys/kernel/random/boot_id").ok();
+            assert_eq!(lines.next(), kernel_id.as_deref().map(str::trim));
+        }
+        #[cfg(not(target_os = "linux"))]
+        assert_eq!(lines.next(), None);
+        assert_eq!(read_fresh_cache(dir.path()).as_deref(), Some("v1.0"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_boot_id_reader_ignores_missing_and_blank_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let boot_id = dir.path().join("boot_id");
+        assert_eq!(read_boot_id(&boot_id), None);
+        fs::write(&boot_id, " \n").unwrap();
+        assert_eq!(read_boot_id(&boot_id), None);
+        fs::write(&boot_id, "fixture-boot\n").unwrap();
+        assert_eq!(read_boot_id(&boot_id).as_deref(), Some("fixture-boot"));
+    }
     #[test]
     fn read_fresh_cache_returns_none_when_no_cache() {
         let dir = tempfile::tempdir().unwrap();

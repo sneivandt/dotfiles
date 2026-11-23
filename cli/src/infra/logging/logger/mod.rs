@@ -28,9 +28,8 @@ mod isolation_tests {
     }
 }
 
-pub(in crate::infra::logging) use progress::stdout_supports_progress;
-
 use std::borrow::Cow;
+use std::io::IsTerminal as _;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, Mutex};
@@ -72,7 +71,7 @@ pub struct Logger {
     invocation_started: SystemTime,
     elapsed_before_start: Duration,
     startup_transition: Mutex<Option<String>>,
-    progress_terminal: bool,
+    pub(super) progress_terminal: bool,
     /// Whether console task rows use compact status glyphs.
     pub(super) symbols: bool,
     /// Whether the current command is previewing changes without applying them.
@@ -148,7 +147,7 @@ impl Logger {
             invocation_started: SystemTime::now() - start.elapsed(),
             elapsed_before_start: Duration::ZERO,
             startup_transition: Mutex::new(None),
-            progress_terminal: stdout_supports_progress(),
+            progress_terminal: std::io::stdout().is_terminal(),
             symbols: true,
             dry_run: false,
             finished: AtomicBool::new(false),

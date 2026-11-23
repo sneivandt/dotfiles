@@ -3,6 +3,12 @@ use super::*;
 use crate::infra::logging::isolated_logger;
 use crate::infra::logging::{ActionCounts, TaskEntry, TaskVisibility};
 
+#[test]
+fn an_unchanged_task_does_not_record_buffered_details() {
+    assert!(!entry::should_record_task_details(TaskStatus::Ok));
+    assert!(entry::should_record_task_details(TaskStatus::Changed));
+}
+
 /// A [`BufferedLog`] wired to a [`Logger`] that writes to a temporary run
 /// log, plus the temp dir and dispatch guard that must outlive the test.
 fn buffered_fixture() -> (

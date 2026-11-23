@@ -910,7 +910,7 @@ mod tests {
         let zsh = crate::app::catalog::generate_zsh_completions();
         assert_eq!(zsh, "source <(DOTFILES_COMPLETE=zsh dotfiles)\n");
 
-        let powershell = registration(clap_complete::Shell::PowerShell);
+        let powershell = crate::app::catalog::generate_powershell_completions();
         assert!(powershell.contains("DOTFILES_COMPLETE = 'powershell'"));
         assert!(powershell.contains("-Native -CommandName 'dot'"));
         assert!(!powershell.contains("-ParameterName 'Arguments'"));

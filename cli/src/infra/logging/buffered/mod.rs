@@ -2,7 +2,7 @@
 use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
 
-use super::logger::{Logger, stdout_supports_progress};
+use super::logger::Logger;
 use super::runlog::RunLog;
 use super::types::{MsgKind, Output, TaskRecorder};
 pub(in crate::infra::logging) mod entry;
@@ -60,7 +60,7 @@ impl BufferedLog {
         // Parallel resource processing finishes in a nondeterministic order, so
         // sort the action lines before they reach either console path.
         LogEntry::sort_actions(&mut entries);
-        let show_progress = stdout_supports_progress();
+        let show_progress = self.inner.progress_terminal;
         let _guard = self.inner.lock_flush();
         if show_progress {
             self.inner.clear_progress();

@@ -1,5 +1,24 @@
 use super::*;
 
+#[cfg(any(
+    target_os = "android",
+    target_os = "freebsd",
+    target_os = "haiku",
+    target_os = "linux"
+))]
+#[test]
+fn waiting_for_child_exit_leaves_its_exit_status_available() {
+    use nix::sys::wait::{Id, WaitPidFlag, waitid};
+
+    let mut child = Command::new("sh").args(["-c", "exit 17"]).spawn().unwrap();
+    let pid = nix::unistd::Pid::from_raw(i32::try_from(child.id()).unwrap());
+    let _status = waitid(Id::Pid(pid), WaitPidFlag::WEXITED | WaitPidFlag::WNOWAIT).unwrap();
+    let exited = child_exited_without_reaping(&child);
+    let status = child.wait().unwrap();
+    assert_eq!(status.code(), Some(17));
+    assert!(exited.unwrap());
+}
+
 #[test]
 fn managed_executor_times_out_commands() {
     let token = CancellationToken::new();

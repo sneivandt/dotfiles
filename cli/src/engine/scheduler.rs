@@ -120,11 +120,8 @@ impl DependencySignal {
                     outcome: right_outcome,
                 },
             ) => {
-                if (right_outcome, &right_task) > (left_outcome, &left_task) {
-                    Self::blocked(right_task, right_outcome)
-                } else {
-                    Self::blocked(left_task, left_outcome)
-                }
+                let (outcome, task) = (left_outcome, left_task).max((right_outcome, right_task));
+                Self::blocked(task, outcome)
             }
             (blocked @ Self::Blocked { .. }, _) | (_, blocked @ Self::Blocked { .. }) => blocked,
             (Self::Cancelled, _) | (_, Self::Cancelled) => Self::Cancelled,

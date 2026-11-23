@@ -3,7 +3,7 @@
 //! These methods coordinate the in-progress status line as parallel tasks start
 //! and complete, ensuring active-task updates never overlap other console output.
 
-use super::{Logger, progress::stdout_supports_progress};
+use super::Logger;
 
 impl Logger {
     /// Record that a parallel task has started.
@@ -11,7 +11,7 @@ impl Logger {
     /// Acquires the flush lock, erases any previous progress line, adds the
     /// task to the active set, and redraws the status line.
     pub fn notify_task_start(&self, name: &str) {
-        self.notify_task_start_with_progress(name, stdout_supports_progress());
+        self.notify_task_start_with_progress(name, self.progress_terminal);
     }
 
     /// Record a task start, optionally drawing the interactive progress line.
@@ -44,7 +44,7 @@ impl Logger {
 
     /// Emit a completed task result selected by scheduler identity.
     pub(crate) fn emit_task_result_and_redraw(&self, task_id: &str) {
-        let show_progress = stdout_supports_progress();
+        let show_progress = self.progress_terminal;
         let _guard = self.lock_flush();
         if show_progress {
             self.clear_progress();
@@ -106,6 +106,30 @@ mod tests {
             log.task_progress(),
             Some((20, 23)),
             "a second graph must extend the denominator instead of replacing it"
+        );
+    }
+
+    #[test]
+    fn a_completed_task_emits_its_result_and_restores_other_active_work() {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.progress_terminal = true;
+        log.notify_task_start("Still running");
+        log.record_task(task_entry(
+            "Finished fixture",
+            TaskStatus::Changed,
+            TaskVisibility::Visible,
+        ));
+        log.emit_task_result_and_redraw("Finished fixture");
+        let output = log.captured_output();
+        assert!(
+            output
+                .iter()
+                .any(|(_, line)| line.contains("Finished fixture")),
+            "{output:?}"
+        );
+        assert!(
+            output.last().unwrap().1.contains("Still running"),
+            "{output:?}"
         );
     }
 

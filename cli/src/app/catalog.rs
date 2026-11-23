@@ -352,6 +352,42 @@ mod tests {
     }
 
     #[test]
+    fn extension_deferral_requires_both_the_first_login_service_and_its_managed_link() {
+        use crate::domains::files::config::symlinks::Symlink;
+        use crate::infra::provisioning::{FIRST_LOGIN_UNIT, FIRST_LOGIN_UNIT_PATH};
+
+        for (enabled, linked) in [(false, false), (false, true), (true, false), (true, true)] {
+            let mut config = empty_config(PathBuf::from("/tmp"));
+            config.units = vec![SystemdUnit {
+                name: FIRST_LOGIN_UNIT.into(),
+                scope: UnitScope::User,
+                graphical: false,
+                enabled,
+            }];
+            if linked {
+                config.symlinks = vec![Symlink {
+                    source: "fixture.service".into(),
+                    target: Some(FIRST_LOGIN_UNIT_PATH.into()),
+                    allow_external_target: false,
+                    origin: None,
+                }];
+            }
+            let tasks = all_update_tasks(&ConfigStore::from_config(config));
+            let extensions = tasks
+                .iter()
+                .find(|task| task.selector() == "vscode-extensions")
+                .unwrap();
+            assert_eq!(
+                extensions
+                    .ordering_dependencies()
+                    .contains(&id::<ConfigureSystemd>()),
+                enabled && linked,
+                "enabled={enabled}, linked={linked}"
+            );
+        }
+    }
+
+    #[test]
     fn update_mode_builds_one_apm_task() {
         let store = test_params();
         let repo_updated = RepositoryUpdateSignal::new();

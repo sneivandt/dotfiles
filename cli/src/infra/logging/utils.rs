@@ -90,9 +90,8 @@ pub(super) fn terminal_columns() -> usize {
 
 fn fallback_columns(columns_env: Option<&str>) -> usize {
     columns_env
-        .and_then(|v| v.parse().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or(80)
+        .and_then(|v| v.parse::<std::num::NonZeroUsize>().ok())
+        .map_or(80, std::num::NonZeroUsize::get)
 }
 
 /// Return the run-log directory, creating it if needed.
@@ -193,7 +192,7 @@ fn civil_from_epoch_secs(epoch_secs: u64) -> (i32, u32, u32, u32, u32, u32) {
     let sec = day_secs % 60;
 
     let z = (epoch_secs / 86_400) as i64 + 719_468;
-    let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
+    let era = z / 146_097;
     let doe = (z - era * 146_097) as u32;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
@@ -358,6 +357,25 @@ mod tests {
             (None, 80),
         ] {
             assert_eq!(fallback_columns(value), expected, "COLUMNS={value:?}");
+        }
+    }
+
+    #[test]
+    fn unix_seconds_convert_to_utc_across_day_and_calendar_boundaries() {
+        for (epoch, utc) in [
+            (0, (1970, 1, 1, 0, 0, 0)),
+            (86_399, (1970, 1, 1, 23, 59, 59)),
+            (86_400, (1970, 1, 2, 0, 0, 0)),
+            (946_684_799, (1999, 12, 31, 23, 59, 59)),
+            (946_730_096, (2000, 1, 1, 12, 34, 56)),
+            (951_786_123, (2000, 2, 29, 1, 2, 3)),
+            (951_868_800, (2000, 3, 1, 0, 0, 0)),
+            (983_408_523, (2001, 3, 1, 1, 2, 3)),
+            (4_107_542_400, (2100, 3, 1, 0, 0, 0)),
+            (13_574_563_200, (2400, 2, 29, 0, 0, 0)),
+            (13_574_649_600, (2400, 3, 1, 0, 0, 0)),
+        ] {
+            assert_eq!(civil_from_epoch_secs(epoch), utc, "Unix timestamp {epoch}");
         }
     }
 

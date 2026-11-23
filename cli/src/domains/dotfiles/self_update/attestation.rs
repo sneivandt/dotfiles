@@ -118,30 +118,27 @@ fn classify_result(result: &crate::infra::exec::ExecResult) -> Verification {
 /// Retry verification because `gh` depends on several remote GitHub and
 /// Sigstore endpoints that can fail independently.
 fn verify_with_retry(gh: &dyn GhCli, path: &Path, repo: &str) -> Result<Verification> {
-    let mut attempt = 1_u32;
-    loop {
+    for attempt in 1..MAX_VERIFY_ATTEMPTS {
         match gh.verify(path, repo) {
             Ok(Verification::Verified) => return Ok(Verification::Verified),
             Ok(Verification::AuthenticationRequired) => {
                 return Ok(Verification::AuthenticationRequired);
             }
-            Ok(Verification::Unverified(reason)) if attempt < MAX_VERIFY_ATTEMPTS => {
+            Ok(Verification::Unverified(reason)) => {
                 tracing::debug!(
                     "attestation verification attempt {attempt}/{MAX_VERIFY_ATTEMPTS} failed; retrying: {reason}"
                 );
             }
-            Ok(verification) => return Ok(verification),
-            Err(error) if attempt < MAX_VERIFY_ATTEMPTS => {
+            Err(error) => {
                 tracing::debug!(
                     "attestation verification attempt {attempt}/{MAX_VERIFY_ATTEMPTS} could not run; retrying: {error:#}"
                 );
             }
-            Err(error) => return Err(error),
         }
 
         std::thread::sleep(retry_delay(attempt));
-        attempt = attempt.saturating_add(1);
     }
+    gh.verify(path, repo)
 }
 
 #[cfg(not(test))]

@@ -1,6 +1,5 @@
 //! In-progress status line rendering for [`Logger`].
 
-use std::io::IsTerminal as _;
 use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 
 use super::Logger;
@@ -8,12 +7,6 @@ use crate::infra::logging::style::{StyleChoice, TextStyle};
 use crate::infra::logging::utils::{strip_ansi, terminal_columns};
 
 const PROGRESS_ELLIPSIS: &str = " …";
-
-/// Return whether stdout is an interactive terminal that can handle redraws.
-#[must_use]
-pub(in crate::infra::logging) fn stdout_supports_progress() -> bool {
-    std::io::stdout().is_terminal()
-}
 
 /// Fit a transient row to the terminal, then apply its presentation.
 /// Applying styles last keeps ANSI escapes out of terminal-width calculations.
@@ -251,7 +244,7 @@ impl Logger {
     }
 
     pub(crate) fn start_progress(self: &std::sync::Arc<Self>) -> impl Drop {
-        self.start_progress_with_terminal(stdout_supports_progress())
+        self.start_progress_with_terminal(self.progress_terminal)
     }
 
     fn start_progress_with_terminal(self: &std::sync::Arc<Self>, terminal: bool) -> ProgressTicker {

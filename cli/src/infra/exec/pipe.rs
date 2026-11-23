@@ -60,3 +60,59 @@ impl<R: Read + AsFd> Read for OutputPipe<R> {
         Ok(0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write as _;
+    use std::os::unix::net::UnixStream;
+
+    #[test]
+    fn reading_preserves_a_preexisting_nonblocking_flag_and_stops_on_shutdown() {
+        let (mut writer, reader) = UnixStream::pair().unwrap();
+        reader.set_nonblocking(true).unwrap();
+        let shutdown = ReaderShutdown::default();
+        let mut pipe = shutdown.reader(reader);
+        let flags = fcntl(pipe.pipe.as_ref().unwrap(), FcntlArg::F_GETFL).unwrap();
+        assert!(OFlag::from_bits_retain(flags).contains(OFlag::O_NONBLOCK));
+
+        drop(shutdown);
+        writer.write_all(b"x").unwrap();
+        assert_eq!(pipe.read(&mut [0]).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_non_retryable_read_error_reaches_the_caller() {
+        struct ErrorThenRead {
+            stream: UnixStream,
+            first_error: Option<io::Error>,
+        }
+
+        impl AsFd for ErrorThenRead {
+            fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
+                self.stream.as_fd()
+            }
+        }
+
+        impl Read for ErrorThenRead {
+            fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+                if let Some(error) = self.first_error.take() {
+                    return Err(error);
+                }
+                self.stream.read(buffer)
+            }
+        }
+
+        let (mut writer, reader) = UnixStream::pair().unwrap();
+        writer.write_all(b"x").unwrap();
+        let shutdown = ReaderShutdown::default();
+        let mut pipe = shutdown.reader(ErrorThenRead {
+            stream: reader,
+            first_error: Some(io::ErrorKind::InvalidData.into()),
+        });
+        assert_eq!(
+            pipe.read(&mut [0]).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+    }
+}

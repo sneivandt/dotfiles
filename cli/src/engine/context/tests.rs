@@ -48,7 +48,7 @@ fn debug_keeps_context_diagnostics_without_rendering_http_or_environment_content
 
 #[test]
 fn task_log_context_shares_paths_environment_and_cancellation() {
-    let ctx = make_linux_context(PathBuf::from("/dotfiles"), None);
+    let ctx = make_linux_context(PathBuf::from("/dotfiles"), None).with_parallel(true);
     let new_log: Arc<dyn Log> = Arc::new(SilentLog);
     let ctx2 = ctx.with_log(Arc::clone(&new_log));
     assert!(Arc::ptr_eq(&ctx.paths, &ctx2.paths));
@@ -59,9 +59,26 @@ fn task_log_context_shares_paths_environment_and_cancellation() {
     assert!(Arc::ptr_eq(&ctx2.log, &new_log));
     assert!(!Arc::ptr_eq(&ctx.log, &new_log));
     assert_eq!(ctx2.dry_run(), ctx.dry_run());
-    assert_eq!(ctx2.parallel(), ctx.parallel());
+    assert!(ctx2.parallel());
     ctx2.cancellation_token().cancel();
     assert!(ctx.is_cancelled());
+}
+
+#[test]
+fn scoped_resources_use_a_separate_lock_and_inherit_claims() {
+    let ctx = make_linux_context(PathBuf::from("/dotfiles"), None);
+    let claim = AccessClaim::exclusive("fixture", "claimed");
+    let claims = std::slice::from_ref(&claim);
+    let (scoped, _task_guard) = ctx.scoped_access(vec![claim.clone()]).unwrap();
+    let (nested, _empty_guard) = scoped.scoped_access(Vec::new()).unwrap();
+
+    let unclaimed = AccessClaim::exclusive("fixture", "unclaimed");
+    assert!(nested.validate_access(&[unclaimed]).is_err());
+    assert!(ctx.try_access(claims).is_none());
+    let resource_guard = nested.try_access(claims).unwrap();
+    assert!(scoped.try_access(claims).is_none());
+    drop(resource_guard);
+    assert!(scoped.try_access(claims).is_some());
 }
 
 #[test]

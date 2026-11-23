@@ -187,14 +187,16 @@ def check_mutation(workflow: str) -> None:
     if parallel is None or not 1 <= int(parallel.group(1)) <= 14:
         raise ValueError("Linux mutation concurrency must leave runner capacity for ordinary CI")
     for required in (
-        "- shard: liveness", "- shard: context",
-        "if: matrix.shard != 'liveness' && matrix.shard != 'context'",
-        "if: matrix.shard == 'liveness' || matrix.shard == 'context'",
+        "- shard: liveness", "- shard: context", "- shard: process",
+        "if: matrix.shard != 'liveness' && matrix.shard != 'context' && matrix.shard != 'process'",
+        "if: matrix.shard == 'liveness' || matrix.shard == 'context' || matrix.shard == 'process'",
         '--exclude-re "$LIVENESS_MUTATIONS"', '--re "$LIVENESS_MUTATIONS"',
         '--exclude-re "$CONTEXT_MUTATIONS"', '--re "$CONTEXT_MUTATIONS"',
         "--file src/engine/access.rs --file src/infra/atomic_flag.rs --file src/infra/cancellation.rs",
         "--file src/engine/context/mod.rs",
         "tests=engine::access::tests::", "tests=engine::context::tests::",
+        '--exclude-re "$PROCESS_MUTATIONS"', '--re "$PROCESS_MUTATIONS"',
+        "tests=infra::exec::tests::interruption::bounded_command_wait_",
     ):
         if required not in mutation:
             raise ValueError(f"Linux liveness mutation coverage missing {required}")

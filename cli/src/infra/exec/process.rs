@@ -123,7 +123,9 @@ pub(super) fn child_exited_without_reaping(child: &Child) -> nix::Result<bool> {
     let pid = nix::unistd::Pid::from_raw(pid_raw);
     let status = waitid(
         Id::Pid(pid),
-        WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT,
+        WaitPidFlag::WEXITED
+            .union(WaitPidFlag::WNOHANG)
+            .union(WaitPidFlag::WNOWAIT),
     )?;
     Ok(matches!(
         status,

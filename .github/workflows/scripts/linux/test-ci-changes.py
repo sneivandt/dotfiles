@@ -938,6 +938,7 @@ class GateTests(unittest.TestCase):
             workflow.replace("      max-parallel: 14\n", "      max-parallel: 48\n"),
             workflow.replace("tests=engine::access::tests::", ""),
             workflow.replace("tests=engine::context::tests::", ""),
+            workflow.replace("tests=infra::exec::tests::interruption::bounded_command_wait_", ""),
             workflow.replace("needs.select.outputs.run_linux", "needs.select.outputs.run_windows"),
         ):
             with self.subTest(broken=broken):

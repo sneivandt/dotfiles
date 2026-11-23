@@ -64,9 +64,11 @@ jobs:
         include:
           - shard: liveness
           - shard: context
+          - shard: process
     env:
       LIVENESS_MUTATIONS: '^src/(engine/access\.rs|infra/(atomic_flag|cancellation)\.rs):[0-9]+:[0-9]+: replace (AccessRegistry::try_acquire -> Option<AccessGuard> with None|AtomicFlag::set with \(\)|AtomicFlag::get -> bool with false|CancellationToken::cancel with \(\)|CancellationToken::is_cancelled -> bool with false)$'
       CONTEXT_MUTATIONS: '^src/engine/context/mod\.rs:[0-9]+:[0-9]+: (delete ! in Context::scoped_access|replace Context::try_access -> Option<AccessGuard> with None|replace Context::cancellation_token -> CancellationToken with Default::default\(\))$'
+      PROCESS_MUTATIONS: '^src/infra/exec/(mod|process)\.rs:[0-9]+:[0-9]+: replace (\|\| with && in collect_child|wait_for_pipe_close -> bool with false|child_exited_without_reaping -> nix::Result<bool> with Ok\(false\))$'
     defaults:
       run:
         working-directory: cli
@@ -87,7 +89,7 @@ jobs:
         with:
           tool: cargo-mutants@27.1.0
       - name: Test changed-code mutants
-        if: matrix.shard != 'liveness' && matrix.shard != 'context'
+        if: matrix.shard != 'liveness' && matrix.shard != 'context' && matrix.shard != 'process'
         env:
           MUTATION_SHARD: ${{ matrix.shard }}
         # Native Windows functions are absent on Linux, not coverage gaps.
@@ -97,6 +99,7 @@ jobs:
           --shard "$MUTATION_SHARD/48"
           --exclude-re "$LIVENESS_MUTATIONS"
           --exclude-re "$CONTEXT_MUTATIONS"
+          --exclude-re "$PROCESS_MUTATIONS"
           --exclude 'src/infra/run_lock/windows.rs'
           --exclude 'src/infra/fs/mutation/windows.rs'
           --exclude-re '^src/infra/fs/mod\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]) in is_dir_like$'
@@ -111,8 +114,8 @@ jobs:
           --exclude-re '^src/domains/system/resources/registry\.rs:.*\bnative::'
           --exclude-re '^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$'
           --cargo-arg=--profile=ci --cargo-arg=--locked
-      - name: Test access and cancellation mutants
-        if: matrix.shard == 'liveness' || matrix.shard == 'context'
+      - name: Test mutants that can block task and process completion
+        if: matrix.shard == 'liveness' || matrix.shard == 'context' || matrix.shard == 'process'
         shell: bash
         env:
           MUTATION_SHARD: ${{ matrix.shard }}
@@ -122,9 +125,12 @@ jobs:
           if [[ "$MUTATION_SHARD" == liveness ]]; then
             selection=(--file src/engine/access.rs --file src/infra/atomic_flag.rs --file src/infra/cancellation.rs --re "$LIVENESS_MUTATIONS")
             tests=engine::access::tests::
-          else
+          elif [[ "$MUTATION_SHARD" == context ]]; then
             selection=(--file src/engine/context/mod.rs --re "$CONTEXT_MUTATIONS")
             tests=engine::context::tests::
+          else
+            selection=(--file src/infra/exec/mod.rs --file src/infra/exec/process.rs --re "$PROCESS_MUTATIONS")
+            tests=infra::exec::tests::interruption::bounded_command_wait_
           fi
           selection+=(--in-diff mutants.diff)
           selected=$(cargo mutants --list "${selection[@]}")

@@ -460,7 +460,8 @@ fn linter_execution_preserves_command_contract_and_failure_kind() {
             std::sync::Arc::new(executor),
         );
         let log = std::sync::Arc::new(crate::infra::logging::Logger::test());
-        let ctx = ctx.with_log(log.clone());
+        let log_handle = std::sync::Arc::clone(&log);
+        let ctx = ctx.with_log(log_handle);
         let result = run_linter(
             &ctx,
             "PSScriptAnalyzer",

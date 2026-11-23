@@ -7,16 +7,37 @@ use super::*;
     target_os = "linux"
 ))]
 #[test]
-fn waiting_for_child_exit_leaves_its_exit_status_available() {
+fn bounded_command_wait_detects_exit_without_reaping() {
     use nix::sys::wait::{Id, WaitPidFlag, waitid};
 
-    let mut child = Command::new("sh").args(["-c", "exit 17"]).spawn().unwrap();
+    let mut child = Command::new("sh")
+        .args(["-c", "read -r input; exit 17"])
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let running = child_exited_without_reaping(&child);
+    drop(child.stdin.take());
     let pid = nix::unistd::Pid::from_raw(i32::try_from(child.id()).unwrap());
     let _status = waitid(Id::Pid(pid), WaitPidFlag::WEXITED | WaitPidFlag::WNOWAIT).unwrap();
     let exited = child_exited_without_reaping(&child);
     let status = child.wait().unwrap();
     assert_eq!(status.code(), Some(17));
+    assert!(!running.unwrap());
     assert!(exited.unwrap());
+}
+
+#[cfg(unix)]
+#[test]
+fn bounded_command_wait_captures_output_and_times_out_slow_children() {
+    let executor =
+        ProcessExecutor::managed_with_timeout(CancellationToken::new(), Duration::from_millis(500));
+    let complete = executor
+        .execute(CommandSpec::new("sh").args(&["-c", "printf marker"]))
+        .unwrap();
+    assert_eq!(complete.stdout, "marker");
+
+    let slow = executor.execute(CommandSpec::new("sh").args(&["-c", "sleep 2"]));
+    assert!(matches!(slow, Err(ExecError::TimedOut { .. })), "{slow:?}");
 }
 
 #[test]

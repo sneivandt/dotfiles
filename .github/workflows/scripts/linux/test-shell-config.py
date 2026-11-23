@@ -836,10 +836,12 @@ class ShellConfigTests(unittest.TestCase):
                 result = self.run_shell(
                     '. "$ROOT/symlinks/config/bash/prompt.bash"\n'
                     'git() { printf "%s\\n" "$*" >> "$PROMPT_GIT_CALLS"; '
+                    'printf "git diagnostic\\n" >&2; '
                     f'printf %s {output}; return {status}; }}\n'
                     '__bash_git_prompt\n', shell="bash", expected=status,
                 )
                 self.assertEqual(result.stdout, expected)
+                self.assertEqual(result.stderr, "")
                 self.assertEqual(calls.read_text().splitlines(), ["rev-parse --abbrev-ref HEAD"])
 
     def test_zsh_prompt_renders_current_branch_in_one_lookup(self):

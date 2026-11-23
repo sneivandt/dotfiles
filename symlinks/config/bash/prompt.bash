@@ -18,7 +18,8 @@ fi
 __bash_git_prompt()
 {
   local branch
-  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || return
+  # Redirect the group so Bash can exec Git directly in the substitution.
+  { branch=$(git rev-parse --abbrev-ref HEAD); } 2>/dev/null || return
   if [ -n "$branch" ]; then
     printf " %s" "$branch"
   fi

@@ -1,14 +1,15 @@
 //! Git configuration resource.
 use anyhow::{Context as _, Result};
-use std::path::PathBuf;
+use std::io::Write as _;
+use std::path::{Path, PathBuf};
+
+use crate::domains::git::config::git_config::target_key;
 
 /// Stage the complete user configuration privately before editing it with libgit2.
 fn stage_config(
-    parent: &std::path::Path,
+    parent: &Path,
     contents: impl AsRef<[u8]>,
 ) -> Result<(crate::infra::fs::PrivateTempDir, PathBuf)> {
-    use std::io::Write as _;
-
     // libgit2 also creates its own lock file during edits. Keep every such
     // intermediate copy inside a directory private from its first instant.
     let directory = crate::infra::fs::PrivateTempDir::create(parent, ".dotfiles-git")
@@ -22,7 +23,7 @@ fn stage_config(
     Ok((directory, path))
 }
 
-fn open_file(path: &std::path::Path) -> Result<git2::Config> {
+fn open_file(path: &Path) -> Result<git2::Config> {
     require_regular_config(path)?;
     // libgit2's relative-include resolver recognizes '/' separators, including
     // on Windows. Native backslashes can otherwise make an include appear absent.
@@ -32,13 +33,13 @@ fn open_file(path: &std::path::Path) -> Result<git2::Config> {
             .to_str()
             .context("Git config path is not valid UTF-8")?
             .replace('\\', "/");
-        Ok(git2::Config::open(std::path::Path::new(&normalized))?)
+        Ok(git2::Config::open(Path::new(&normalized))?)
     }
     #[cfg(not(windows))]
     Ok(git2::Config::open(path)?)
 }
 
-fn require_regular_config(path: &std::path::Path) -> Result<()> {
+fn require_regular_config(path: &Path) -> Result<()> {
     match std::fs::metadata(path) {
         Ok(metadata) => anyhow::ensure!(
             metadata.is_file(),
@@ -67,7 +68,7 @@ use crate::engine::{
 ///
 /// Uses the `git2` crate to read and write global git configuration natively,
 /// without shelling out to `git config`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GitConfigResource {
     /// Config key (e.g., "core.autocrlf").
     pub key: String,
@@ -112,7 +113,8 @@ impl GitConfigResource {
 
     /// Scope either setting or removal to an explicit file.
     #[must_use]
-    pub(crate) fn using_config_path(mut self, path: PathBuf) -> Self {
+    #[cfg(test)]
+    fn using_config_path(mut self, path: PathBuf) -> Self {
         self.config_path = Some(path);
         self
     }
@@ -222,7 +224,7 @@ impl GitConfigResource {
     // file by itself leaves it inactive. Treat the directive as an ordering
     // boundary regardless of which included values libgit2 can see here.
     fn include_order(&self, config: &git2::Config) -> Result<(bool, bool)> {
-        let managed = crate::domains::git::config::git_config::target_key(&self.key);
+        let managed = target_key(&self.key);
         let mut entries = config.entries(None)?;
         let mut includes = false;
         let mut after_includes = true;
@@ -247,17 +249,91 @@ impl GitConfigResource {
             .config_path
             .clone()
             .map_or_else(git2::Config::find_global, Ok)?;
-        let resolve = || -> Result<PathBuf> {
-            if crate::infra::fs::symlink_metadata_optional(&configured, "inspect Git config")?
-                .is_some()
-            {
-                crate::infra::fs::canonicalize(&configured)
-            } else {
-                crate::infra::fs::resolve_target_entry(&configured)
+        let settings = std::slice::from_ref(self);
+        let plan = GitConfigPlan::inspect(&configured, settings)?;
+        plan.apply(&configured)
+    }
+}
+
+pub(crate) fn config_access_claim() -> AccessClaim {
+    AccessClaim::exclusive("git-config", "configuration")
+}
+
+fn resolve_config(path: &Path) -> Result<PathBuf> {
+    if crate::infra::fs::symlink_metadata_optional(path, "inspect Git config")?.is_some() {
+        crate::infra::fs::canonicalize(path)
+    } else {
+        crate::infra::fs::resolve_target_entry(path)
+    }
+}
+
+pub(crate) struct GitConfigPlan {
+    path: PathBuf,
+    before: Option<Vec<u8>>,
+    changed: Vec<GitConfigResource>,
+}
+
+impl GitConfigPlan {
+    pub(crate) fn inspect(configured: &Path, settings: &[GitConfigResource]) -> Result<Self> {
+        let path = resolve_config(configured)?;
+        let before = read_config_bytes(&path)?;
+        let config = open_file(&path)?;
+        let mut changed = Vec::new();
+        let mut include_changes = Vec::new();
+        let mut unchanged_values = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for setting in settings {
+            let key = target_key(&setting.key);
+            let include = is_include(&key);
+            if !seen.insert(key) {
+                continue;
             }
+            if setting.state_from_config(&config)? != ResourceState::Correct {
+                if include {
+                    include_changes.push(setting);
+                } else {
+                    changed.push(setting);
+                }
+            } else if !include && setting.desired.is_some() {
+                unchanged_values.push(setting);
+            }
+        }
+        if !include_changes.is_empty() {
+            // A managed include can change precedence for the other keys.
+            // Stage include edits first and ensure managed values follow them.
+            include_changes.extend(changed);
+            include_changes.extend(unchanged_values);
+            changed = include_changes;
+        }
+        let plan = Self {
+            path,
+            before,
+            changed: changed.into_iter().cloned().collect(),
         };
-        let path = resolve()?;
-        crate::infra::fs::ensure_parent_dir(&path)?;
+        plan.ensure_current(configured)?;
+        Ok(plan)
+    }
+
+    pub(crate) fn changed(&self) -> &[GitConfigResource] {
+        &self.changed
+    }
+
+    fn ensure_current(&self, configured: &Path) -> Result<()> {
+        anyhow::ensure!(
+            resolve_config(configured)? == self.path
+                && read_config_bytes(&self.path)? == self.before,
+            "global Git config changed during update; retry"
+        );
+        Ok(())
+    }
+
+    pub(crate) fn apply(&self, configured: &Path) -> Result<ResourceChange> {
+        if self.changed.is_empty() {
+            return Ok(ResourceChange::AlreadyCorrect);
+        }
+        let path = &self.path;
+        self.ensure_current(configured)?;
+        crate::infra::fs::ensure_parent_dir(path)?;
         // Git uses exclusive creation of this path, not an advisory file lock.
         // This is only an empty reservation. No config bytes go into this lock.
         let mut lock_path = path.as_os_str().to_os_string();
@@ -274,59 +350,64 @@ impl GitConfigResource {
             .with_context(|| format!("acquiring Git config lock {}; wait for the other Git writer or inspect a stale lock before retrying", lock_path.display()))?;
         let _lock = crate::infra::fs::TempGuard::file(lock_path);
         drop(lock_file);
-        let before = read_config_bytes(&path)?;
-        let config = open_file(&path)?;
+        self.ensure_current(configured)?;
+        let config = open_file(path)?;
         let parent = path.parent().context("global Git config has no parent")?;
-        let (_stage, stage_path) = stage_config(parent, before.as_deref().unwrap_or_default())?;
-        let replacement = if self.include_order(&config)?.0 {
-            {
-                let mut staged = open_file(&stage_path)?;
-                let values = self.values_from_config(&config)?;
-                if values.iter().any(Option::is_none) {
-                    anyhow::bail!(
-                        "cannot safely replace repeated implicit values for git config {}; give each entry an explicit value first",
-                        self.key
-                    );
-                }
-                if !values.is_empty() {
-                    staged.remove_multivar(&self.key, ".*")?;
-                }
-            }
-            let mut replacement = std::fs::read(&stage_path)?;
-            if let Some(desired) = &self.desired {
-                // Let libgit2 validate and quote the key/value, then append its stanza
-                // after every include so scalar Git precedence selects the desired value.
-                std::fs::write(&stage_path, [])?;
-                {
-                    let mut stanza = open_file(&stage_path)?;
-                    stanza.set_str(&self.key, desired)?;
-                }
-                replacement.push(b'\n');
-                replacement.extend(std::fs::read(&stage_path)?);
-            }
-            replacement
-        } else {
-            let mut staged = open_file(&stage_path)?;
-            self.apply_to_config(&mut staged)?;
-            drop(staged);
-            std::fs::read(&stage_path)?
-        };
-        crate::infra::fs::write_atomic_checked(&path, replacement, || {
-            anyhow::ensure!(
-                resolve()? == path && read_config_bytes(&path)? == before,
-                "global Git config changed during update; retry"
-            );
-            Ok(())
+        let (stage, stage_path) = stage_config(parent, self.before.as_deref().unwrap_or_default())?;
+        let stanza_path = stage_path.with_file_name("stanza");
+        for setting in &self.changed {
+            stage_setting(setting, &stage_path, &stanza_path, &config)
+                .with_context(|| format!("staging git config {}", setting.key))?;
+        }
+        let replacement = std::fs::read(&stage_path)?;
+        crate::infra::fs::write_atomic_checked(path, replacement, || {
+            self.ensure_current(configured)
         })?;
+        drop(stage);
         Ok(ResourceChange::Applied)
     }
+}
+
+fn stage_setting(
+    setting: &GitConfigResource,
+    stage_path: &Path,
+    stanza_path: &Path,
+    original: &git2::Config,
+) -> Result<()> {
+    let mut staged = open_file(stage_path)?;
+    if !setting.include_order(&staged)?.0 {
+        setting.apply_to_config(&mut staged)?;
+        return Ok(());
+    }
+
+    let values = setting.values_from_config(original)?;
+    anyhow::ensure!(
+        values.iter().all(Option::is_some),
+        "cannot safely replace repeated implicit values for git config {}; give each entry an explicit value first",
+        setting.key
+    );
+    if !values.is_empty() {
+        staged.remove_multivar(&setting.key, ".*")?;
+    }
+    drop(staged);
+    if let Some(desired) = &setting.desired {
+        // Let libgit2 validate and quote the value before appending its stanza.
+        std::fs::write(stanza_path, [])?;
+        let mut stanza = open_file(stanza_path)?;
+        stanza.set_str(&setting.key, desired)?;
+        drop(stanza);
+        let mut stage = std::fs::OpenOptions::new().append(true).open(stage_path)?;
+        stage.write_all(b"\n")?;
+        stage.write_all(&std::fs::read(stanza_path)?)?;
+    }
+    Ok(())
 }
 
 impl Resource for GitConfigResource {
     fn access_claims(&self) -> Vec<AccessClaim> {
         // Global configuration may include multiple files; keep one conservative
         // domain-wide key, including explicit paths that could alias those files.
-        vec![AccessClaim::exclusive("git-config", "configuration")]
+        vec![config_access_claim()]
     }
 
     fn description(&self) -> String {
@@ -343,7 +424,7 @@ impl Resource for GitConfigResource {
     }
 }
 
-fn read_config_bytes(path: &std::path::Path) -> Result<Option<Vec<u8>>> {
+fn read_config_bytes(path: &Path) -> Result<Option<Vec<u8>>> {
     require_regular_config(path)?;
     match std::fs::read(path) {
         Ok(bytes) => Ok(Some(bytes)),
@@ -366,6 +447,61 @@ mod tests {
     use super::*;
 
     #[test]
+    fn grouped_update_preserves_include_precedence_and_converges() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let include = dir.path().join("included");
+        let included = "[user]\nname = Included\nemail = included@example.invalid\n";
+        std::fs::write(&include, included).unwrap();
+        std::fs::write(&path, "[user]\nname = Managed\n").unwrap();
+        let settings = [
+            GitConfigResource::new("user.name".into(), "Managed".into()),
+            GitConfigResource::new("user.email".into(), "managed@example.invalid".into()),
+            GitConfigResource::new("include.path".into(), "included".into()),
+        ];
+
+        let plan = GitConfigPlan::inspect(&path, &settings).unwrap();
+        assert_eq!(plan.changed().len(), settings.len());
+        plan.apply(&path).unwrap();
+
+        let config = open_file(&path).unwrap();
+        assert_eq!(config.get_string("user.name").unwrap(), "Managed");
+        assert_eq!(
+            config.get_string("user.email").unwrap(),
+            "managed@example.invalid"
+        );
+        assert_eq!(std::fs::read_to_string(&include).unwrap(), included);
+        assert!(
+            GitConfigPlan::inspect(&path, &settings)
+                .unwrap()
+                .changed()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn grouped_update_refuses_a_stale_plan() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        std::fs::write(&path, "[user]\nname = Original\n").unwrap();
+        let settings = [
+            GitConfigResource::new("user.name".into(), "Managed".into()),
+            GitConfigResource::new("core.editor".into(), "nvim".into()),
+        ];
+        let plan = GitConfigPlan::inspect(&path, &settings).unwrap();
+        let concurrent_edit = "[user]\nname = Edited\n";
+        std::fs::write(&path, concurrent_edit).unwrap();
+
+        let error = plan.apply(&path).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("global Git config changed during update")
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), concurrent_edit);
+    }
+
+    #[test]
     fn config_reads_distinguish_absence_from_other_io_failures() {
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("missing");
@@ -381,7 +517,7 @@ mod tests {
 
     #[test]
     fn config_metadata_errors_are_not_treated_as_missing() {
-        let error = require_regular_config(std::path::Path::new("config\0invalid")).unwrap_err();
+        let error = require_regular_config(Path::new("config\0invalid")).unwrap_err();
         assert!(format!("{error:#}").contains("inspecting Git config"));
     }
 
@@ -509,7 +645,7 @@ mod tests {
     #[cfg(any(unix, windows))]
     #[test]
     fn git_config_is_private_before_staging_any_user_content() {
-        fn assert_private(path: &std::path::Path) {
+        fn assert_private(path: &Path) {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt as _;
@@ -519,7 +655,7 @@ mod tests {
             crate::infra::fs::check_private_fixture(path).unwrap();
         }
 
-        struct PrivateContent<'a>(&'a std::path::Path);
+        struct PrivateContent<'a>(&'a Path);
         impl AsRef<[u8]> for PrivateContent<'_> {
             fn as_ref(&self) -> &[u8] {
                 let entries = std::fs::read_dir(self.0).unwrap().collect::<Vec<_>>();

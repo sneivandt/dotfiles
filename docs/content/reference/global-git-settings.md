@@ -28,6 +28,10 @@ checkout. Repeated occurrences of
 managed keys are handled without altering unrelated keys. Profile and overlay
 selections are stored in repository-local configuration.
 
+Each update publishes the selected settings and any Windows autocrlf cleanup
+together. If staging one setting fails, the global file keeps its original
+contents. Correct the error and retry the update.
+
 On Unix, updates stage content privately and preserve the existing file's access
 mode; new configuration files are owner-only. Dotfiles respects Git's `.lock` file;
 if another writer holds it, let that operation finish and retry. Investigate

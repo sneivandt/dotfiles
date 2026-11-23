@@ -763,41 +763,33 @@ fn git_config_transition_updates_selected_keys_and_preserves_other_values() {
 }
 
 #[test]
-fn git_settings_nth_failure_preserves_success_and_retry_converges() {
+fn git_settings_commit_together_and_retry_converges() {
     for os in [Os::Linux, Os::Windows] {
         let fixture = git_fixture(os);
-        fixture.config(
-            "git-config.toml",
-            &GIT_SETTINGS.replace("fixture.second", "invalid"),
-        );
+        let path = fixture.home.join(".gitconfig");
+        let original = std::fs::read_to_string(&path).unwrap();
+        let unsafe_values = format!("{original}\n[fixture]\nsecond\nsecond\n");
+        write(&path, &unsafe_values);
         let run = fixture.run(false, true, |store| {
             Box::new(ConfigureGit::with_config_path(
                 store.git_settings,
-                fixture.home.join(".gitconfig"),
+                path.clone(),
             ))
         });
-        run.assert_partial_failure(1, if os == Os::Windows { 2 } else { 1 });
-        run.assert_actions("configure", &["fixture.first = one"], false);
-        let config = git2::Config::open(&fixture.home.join(".gitconfig")).unwrap();
-        assert_eq!(
-            config.get_string("fixture.first").unwrap(),
-            "one",
-            "earlier successful mutation survives strict failure"
-        );
-        assert_eq!(
-            config.get_string("fixture.third").unwrap_err().code(),
-            git2::ErrorCode::NotFound,
-            "later setting must not run"
-        );
-        assert_eq!(
-            config.get_string("core.autocrlf").unwrap(),
-            "true",
-            "later Windows cleanup must not run"
-        );
-        drop(config);
+        run.assert_failure(&[
+            "staging git config fixture.second",
+            "repeated implicit values",
+        ]);
+        run.assert_actions("configure", &[], false);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), unsafe_values);
+        assert!(!fixture.home.join(".gitconfig.lock").exists());
 
-        fixture.config("git-config.toml", GIT_SETTINGS);
-        let mut subjects = vec!["fixture.second = two", "fixture.third = three"];
+        write(&path, &original);
+        let mut subjects = vec![
+            "fixture.first = one",
+            "fixture.second = two",
+            "fixture.third = three",
+        ];
         if os == Os::Windows {
             subjects.push("core.autocrlf is unset");
         }
@@ -807,12 +799,12 @@ fn git_settings_nth_failure_preserves_success_and_retry_converges() {
             |store| {
                 Box::new(ConfigureGit::with_config_path(
                     store.git_settings,
-                    fixture.home.join(".gitconfig"),
+                    path.clone(),
                 ))
             },
             "configure",
             &subjects,
-            if os == Os::Windows { 4 } else { 3 },
+            u32::try_from(subjects.len()).unwrap(),
             || assert_git_settings(&fixture, os),
         );
     }

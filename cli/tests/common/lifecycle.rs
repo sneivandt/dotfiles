@@ -11,7 +11,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 use dotfiles_cli::testing::config::{Config, ConfigStore, profiles};
-use dotfiles_cli::testing::engine::{BatchCompletion, BatchReport};
 use dotfiles_cli::testing::env::MapEnv;
 use dotfiles_cli::testing::exec::{CommandSpec, ExecError, ExecResult, Executor};
 use dotfiles_cli::testing::logging::{Log, Logger, isolated_logger};
@@ -194,25 +193,6 @@ impl Run {
         for reason in reasons {
             assert!(message.contains(reason), "missing {reason:?} in {message}");
         }
-    }
-
-    pub(crate) fn assert_partial_failure(&self, changed: u32, not_attempted: u32) {
-        let error = self.result.as_ref().expect_err("Nth resource must fail");
-        let report = error
-            .downcast_ref::<BatchReport>()
-            .expect("strict failure must preserve its partial batch");
-        assert_eq!(
-            report.completion(),
-            BatchCompletion::Failed,
-            "a resource failure is not cancellation"
-        );
-        assert_counts(report.stats(), changed, 0, 1);
-        assert_eq!(
-            report.not_attempted_count(),
-            not_attempted,
-            "later resources must not be dispatched"
-        );
-        assert_eq!(report.interrupted_count(), 0, "no cancellation injected");
     }
 }
 

@@ -4,8 +4,13 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::domains::git::config::git_config::GitSetting;
-use crate::domains::git::resources::git_config::GitConfigResource;
-use crate::engine::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_metadata};
+use crate::domains::git::resources::git_config::{
+    GitConfigPlan, GitConfigResource, config_access_claim,
+};
+use crate::engine::{
+    AccessClaim, Context, Operation, OperationState, Resource, Task, TaskResult, TaskStats,
+    process_operation, task_metadata,
+};
 use crate::infra::ConfigHandle;
 
 /// Configure global git settings.
@@ -46,6 +51,10 @@ impl Task for ConfigureGit {
         selector: "git",
     }
 
+    fn access_claims(&self, _ctx: &Context) -> Vec<AccessClaim> {
+        vec![config_access_claim()]
+    }
+
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let settings = self.config.get();
         let manages_autocrlf = settings
@@ -66,13 +75,73 @@ impl Task for ConfigureGit {
             },
             Ok,
         )?;
-        let resources = settings
+        let settings: Vec<_> = settings
             .iter()
             .map(|setting| GitConfigResource::new(setting.key.clone(), setting.value.clone()))
             .chain(autocrlf_cleanup)
-            .map(|resource| resource.using_config_path(config_path.clone()))
             .collect();
-        run_resource_task(ctx, resources, &ProcessOpts::strict("configure"))
+        let operation = ConfigureGitFile {
+            path: config_path,
+            settings,
+        };
+        let result = process_operation(ctx, &operation)?;
+        if matches!(result, TaskResult::Ok) {
+            return operation.report(ctx, &[], ctx.dry_run());
+        }
+        Ok(result)
+    }
+}
+
+struct ConfigureGitFile {
+    path: PathBuf,
+    settings: Vec<GitConfigResource>,
+}
+
+impl ConfigureGitFile {
+    fn report(
+        &self,
+        ctx: &Context,
+        changed: &[GitConfigResource],
+        dry_run: bool,
+    ) -> Result<TaskResult> {
+        for setting in changed {
+            let subject = setting.description();
+            ctx.log().action(
+                "configure",
+                &subject,
+                dry_run,
+                &format!("configure {subject}"),
+            );
+        }
+        Ok(TaskStats::from_counts(
+            u32::try_from(changed.len())?,
+            u32::try_from(self.settings.len() - changed.len())?,
+            0,
+            0,
+        )
+        .finish())
+    }
+}
+
+impl Operation for ConfigureGitFile {
+    type Plan = GitConfigPlan;
+
+    fn current_state(&self, _ctx: &Context) -> Result<OperationState<Self::Plan>> {
+        let plan = GitConfigPlan::inspect(&self.path, &self.settings)?;
+        if plan.changed().is_empty() {
+            Ok(OperationState::Complete)
+        } else {
+            Ok(OperationState::needs_run(plan))
+        }
+    }
+
+    fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        self.report(ctx, plan.changed(), true)
+    }
+
+    fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        plan.apply(&self.path)?;
+        self.report(ctx, plan.changed(), false)
     }
 }
 

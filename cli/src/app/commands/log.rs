@@ -18,7 +18,9 @@ use anyhow::{Context as _, Result};
 use serde::Deserialize;
 
 use crate::app::cli::{DiscoveryFormat, LogOpts};
-use crate::infra::logging::{TaskStatus, parse_run_log_file_name, run_log_sort_stamp};
+use crate::infra::logging::{
+    StyleChoice, TaskStatus, TextStyle, parse_run_log_file_name, run_log_sort_stamp, stdout_style,
+};
 
 const NO_LOG_FOUND: &str = "No dotfiles log found yet.";
 const NO_MATCHING_LOG: &str = "No retained runs match the requested filters.";
@@ -74,13 +76,14 @@ pub fn run(opts: &LogOpts, verbose: bool) -> Result<()> {
     let log_dir = crate::infra::logging::dotfiles_log_dir_readonly();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
-    run_in_dir(&log_dir, opts, verbose, &mut out)
+    run_in_dir(&log_dir, opts, verbose, stdout_style(), &mut out)
 }
 
 fn run_in_dir(
     log_dir: &Path,
     opts: &LogOpts,
     verbose: bool,
+    style: StyleChoice,
     out: &mut dyn std::io::Write,
 ) -> Result<()> {
     let mut runs = discover_runs(log_dir)?;
@@ -98,14 +101,14 @@ fn run_in_dir(
         if opts.list
             && let Some(format @ (DiscoveryFormat::Json | DiscoveryFormat::Plain)) = opts.format
         {
-            return write_run_list(&runs, format, out);
+            return write_run_list(&runs, format, style, out);
         }
         let message = if logs_exist {
             NO_MATCHING_LOG
         } else {
             NO_LOG_FOUND
         };
-        writeln!(out, "{message}").context("writing log output")?;
+        writeln!(out, "{}", style.paint(TextStyle::Dim, message)).context("writing log output")?;
         return Ok(());
     }
 
@@ -113,7 +116,12 @@ fn run_in_dir(
         for run in &mut runs {
             read_run_metadata(run)?;
         }
-        return write_run_list(&runs, opts.format.unwrap_or(DiscoveryFormat::Table), out);
+        return write_run_list(
+            &runs,
+            opts.format.unwrap_or(DiscoveryFormat::Table),
+            style,
+            out,
+        );
     }
 
     let index = opts.run.unwrap_or(0);
@@ -131,6 +139,7 @@ fn run_in_dir(
         verbose,
         opts.raw,
         opts.task.as_deref(),
+        style,
         out,
     )
     .with_context(|| format!("reading dotfiles log {}", entry.path.display()))
@@ -149,6 +158,7 @@ fn write_selected_contents(
         verbose,
         raw,
         task,
+        StyleChoice::plain(),
         out,
     )
 }

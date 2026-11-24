@@ -211,9 +211,9 @@ fn unavailable_check_tools_explain_skips_and_fail_when_required() {
             );
             assert!(
                 stdout.contains(if expected_code == 1 {
-                    "Checks: 1 failed"
+                    "Checks · 1 failed"
                 } else {
-                    "Checks: 1 skipped"
+                    "Checks · 1 skipped"
                 }),
                 "{stdout}"
             );
@@ -609,11 +609,11 @@ fn quantified_symlink_actions_have_badges_without_capping_details() {
                 "{stdout}"
             );
             assert!(
-                stdout.contains("  link  ~/.first → symlinks/first"),
+                stdout.contains("  link ~/.first → symlinks/first"),
                 "{stdout}"
             );
             assert!(
-                stdout.contains("  link  ~/.second → symlinks/second"),
+                stdout.contains("  link ~/.second → symlinks/second"),
                 "{stdout}"
             );
         }

@@ -87,17 +87,17 @@ fn blocked_and_interrupted_counts_do_not_become_skips_or_failures() {
     );
     assert_eq!(
         format_summary_lines(counts, SummaryMode::Check, "1.0s", StyleChoice::plain()),
-        ["Checks: 1 interrupted · 1 blocked · 1 skipped · 1.0s"]
+        ["Checks · 1 interrupted · 1 blocked · 1 skipped · 1.0s"]
     );
 }
 
 #[test]
 fn symbol_rows_name_states_even_without_reasons_or_with_action_details() {
-    for (status, state) in [
-        (TaskStatus::DryRun, "planned"),
-        (TaskStatus::Skipped, "skipped"),
-        (TaskStatus::Blocked, "blocked"),
-        (TaskStatus::Interrupted, "interrupted"),
+    for (status, glyph, state) in [
+        (TaskStatus::DryRun, "~", "planned"),
+        (TaskStatus::Skipped, "⊘", "skipped"),
+        (TaskStatus::Blocked, "⊖", "blocked"),
+        (TaskStatus::Interrupted, "⊗", "interrupted"),
     ] {
         let mut task = task_entry("task", status, None);
         task.duration = Some(Duration::from_secs(1));
@@ -115,11 +115,6 @@ fn symbol_rows_name_states_even_without_reasons_or_with_action_details() {
                     ..plain_opts()
                 },
             );
-            let glyph = if status == TaskStatus::DryRun {
-                "~"
-            } else {
-                "⊘"
-            };
             let timing = if verbose { " · 1.0s" } else { "" };
             assert_eq!(
                 block.status.as_deref(),
@@ -257,7 +252,9 @@ fn final_summary_preserves_disposition_and_emphasis_without_a_symbol_prefix() {
                 );
                 let clean = crate::infra::logging::utils::strip_ansi(&lines[0]);
                 let (prefix, styled_prefix) = match (counts.skipped > 0, mode) {
-                    (true, SummaryMode::Check) => ("Checks: ", "\x1b[2mChecks:\x1b[0m "),
+                    (true, SummaryMode::Check) => {
+                        ("Checks · ", "\x1b[2mChecks\x1b[0m \x1b[2m·\x1b[0m ")
+                    }
                     (true, SummaryMode::Standard) => {
                         ("Tasks · ", "\x1b[2mTasks\x1b[0m \x1b[2m·\x1b[0m ")
                     }
@@ -306,7 +303,9 @@ fn completed_blocks_preserve_typed_action_style_and_verbose_message_presentation
             let color = if planned { "35" } else { "36" };
             assert_eq!(
                 block.details[0].line,
-                format!("  \x1b[{color}mwrite\x1b[0m  item → source\x1b[2m (extra detail)\x1b[0m"),
+                format!(
+                    "  \x1b[{color}mwrite\x1b[0m item\x1b[2m → \x1b[0msource\x1b[2m (extra detail)\x1b[0m"
+                ),
                 "verbose={verbose}, planned={planned}",
             );
         }
@@ -363,7 +362,7 @@ fn completed_actions_align_visible_subjects_without_forcing_wrap() {
             lines,
             [
                 first_line,
-                "  WARN  check permissions",
+                "  warn  check permissions",
                 "  install  fd",
                 "  custom action wording",
                 "  refresh\tcache item",
@@ -391,6 +390,6 @@ fn a_warning_does_not_hide_a_changed_tasks_custom_reason_or_use_stdout_styling()
     );
     assert!(block.status.unwrap().contains("custom outcome"));
     assert!(block.expanded);
-    assert_eq!(block.details[0].line, "  WARN  check permissions");
+    assert_eq!(block.details[0].line, "  warn  check permissions");
     assert!(block.details[0].error_stream);
 }

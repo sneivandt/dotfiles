@@ -146,7 +146,7 @@ fn check_summary_uses_check_vocabulary_and_omits_not_run() {
     let counts = counts!(passed: 7, skipped: 2, failed: 1);
     assert_eq!(
         format_summary_lines(counts, SummaryMode::Check, "3.4s", StyleChoice::plain()),
-        ["Checks: 1 failed · 2 skipped · 7 passed · 3.4s"],
+        ["Checks · 1 failed · 2 skipped · 7 passed · 3.4s"],
     );
 }
 
@@ -171,7 +171,7 @@ fn unstarted_interruptions_do_not_produce_rows_or_totals() {
     assert_hidden_row(&queued);
     assert_eq!(
         task_result_lines(&started, &[], plain_opts()),
-        ["⊘ started · interrupted"]
+        ["⊗ started · interrupted"]
     );
 
     let counts = SummaryCounts::from_tasks(&[queued, started]);
@@ -260,7 +260,7 @@ fn incomplete_summaries_report_each_outcome_without_duplicate_disposition_text()
                     disposition,
                 );
                 let prefix = match mode {
-                    SummaryMode::Check => "Checks: ",
+                    SummaryMode::Check => "Checks · ",
                     SummaryMode::Standard => "Tasks · ",
                 };
                 assert_eq!(

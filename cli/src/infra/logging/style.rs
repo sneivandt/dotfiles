@@ -12,7 +12,7 @@ pub(crate) struct StyleChoice {
 
 /// Text styles used by the logging UI.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::infra::logging) enum TextStyle {
+pub(crate) enum TextStyle {
     Bold,
     Dim,
     Red,
@@ -48,27 +48,27 @@ impl StyleChoice {
     /// Style policy that emits ANSI. Used by tests for deterministic formatting.
     #[cfg(test)]
     #[must_use]
-    pub(in crate::infra::logging) const fn colored() -> Self {
+    pub(crate) const fn colored() -> Self {
         Self { ansi: true }
     }
 
     /// Style policy that strips ANSI. Used by tests for deterministic formatting.
     #[cfg(test)]
     #[must_use]
-    pub(in crate::infra::logging) const fn plain() -> Self {
+    pub(crate) const fn plain() -> Self {
         Self { ansi: false }
     }
 
     /// Return whether this policy emits ANSI styling.
     #[cfg(test)]
     #[must_use]
-    pub(in crate::infra::logging) const fn is_ansi_enabled(self) -> bool {
+    pub(crate) const fn is_ansi_enabled(self) -> bool {
         self.ansi
     }
 
     /// Apply a text style, or return clean plain text when styling is disabled.
     #[must_use]
-    pub(in crate::infra::logging) fn paint(self, style: TextStyle, text: &str) -> String {
+    pub(crate) fn paint(self, style: TextStyle, text: &str) -> String {
         if self.ansi {
             format!("\x1b[{}m{text}\x1b[0m", style.ansi_code())
         } else {
@@ -83,7 +83,7 @@ impl StyleChoice {
 
     /// Combine emphasis and color in one escape so resets do not cancel bold.
     #[must_use]
-    pub(in crate::infra::logging) fn paint_bold(self, style: TextStyle, text: &str) -> String {
+    pub(crate) fn paint_bold(self, style: TextStyle, text: &str) -> String {
         if self.ansi {
             format!("\x1b[1;{}m{text}\x1b[0m", style.ansi_code())
         } else {
@@ -93,7 +93,7 @@ impl StyleChoice {
 
     /// Preserve existing ANSI only when this stream supports styling.
     #[must_use]
-    pub(in crate::infra::logging) fn clean(self, text: &str) -> String {
+    pub(crate) fn clean(self, text: &str) -> String {
         if self.ansi {
             text.to_string()
         } else {
@@ -108,7 +108,7 @@ pub(crate) fn stdout_style() -> StyleChoice {
 }
 
 #[must_use]
-pub(in crate::infra::logging) fn stderr_style() -> StyleChoice {
+pub(crate) fn stderr_style() -> StyleChoice {
     StyleChoice::auto(std::io::stderr().is_terminal(), no_color_enabled())
 }
 

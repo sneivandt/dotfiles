@@ -108,15 +108,17 @@ pub(super) fn format_summary_counts(
             });
         }
     }
-    if let Some(first_count) = parts.get_mut(counts_start) {
-        match mode {
-            SummaryMode::Standard => {
-                parts.insert(counts_start, style.paint(TextStyle::Dim, "Tasks"));
-            }
-            SummaryMode::Check => {
-                *first_count = format!("{} {first_count}", style.paint(TextStyle::Dim, "Checks:"));
-            }
-        }
+    if parts.get(counts_start).is_some() {
+        parts.insert(
+            counts_start,
+            style.paint(
+                TextStyle::Dim,
+                match mode {
+                    SummaryMode::Standard => "Tasks",
+                    SummaryMode::Check => "Checks",
+                },
+            ),
+        );
     }
     if parts.is_empty() {
         parts.push(style.paint(

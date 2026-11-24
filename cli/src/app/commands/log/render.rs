@@ -1,4 +1,4 @@
-use super::{HashMap, HashSet, Record, Result, TaskStatus};
+use super::{HashMap, HashSet, Record, Result, StyleChoice, TaskStatus, TextStyle};
 use anyhow::Context as _;
 
 // Keep both decoded record payloads and legacy text safe for text tools.
@@ -19,12 +19,20 @@ pub(super) fn write_rendered_record(
     event: &str,
     message: &str,
     original_line: Option<&str>,
+    style: StyleChoice,
 ) -> Result<()> {
     if let Some(line) = original_line {
         let prefix = line
             .split_once(" [record] ")
             .map_or("", |(prefix, _)| prefix);
-        return write_human_line(out, &format!("{prefix} [{event}] {message}"));
+        let event_badge = style.paint(verbose_event_style(event), &format!("[{event}]"));
+        return write_human_line(
+            out,
+            &format!(
+                "{} {event_badge} {message}",
+                style.paint(TextStyle::Dim, prefix)
+            ),
+        );
     }
     let label = match event {
         "run_start" => "Run",
@@ -41,19 +49,131 @@ pub(super) fn write_rendered_record(
     };
     let mut labels = Vec::new();
     if context != "main" && event != "task_result" {
-        labels.push(task_names.get(context).map_or_else(
+        let task_name = task_names.get(context).map_or_else(
             || context.rsplit("::").next().unwrap_or(context),
             String::as_str,
-        ));
+        );
+        labels.push(style.bold(task_name));
     }
     if !label.is_empty() {
-        labels.push(label);
+        labels.push(style.paint(label_style(event), label));
     }
+    let body = style_record_message(event, message, style);
     if labels.is_empty() {
-        write_human_line(out, message)
+        write_human_line(out, &body)
     } else {
-        write_human_line(out, &format!("{}: {message}", labels.join(" · ")))
+        let sep = style.paint(TextStyle::Dim, " · ");
+        let colon = style.paint(TextStyle::Dim, ": ");
+        write_human_line(out, &format!("{}{colon}{body}", labels.join(&sep)))
     }
+}
+
+fn label_style(event: &str) -> TextStyle {
+    match event {
+        "warn" | "warn_continuation" | "task_skip" => TextStyle::Yellow,
+        "error" => TextStyle::Red,
+        "plan" | "dry_run" => TextStyle::Magenta,
+        _ => TextStyle::Dim,
+    }
+}
+
+fn verbose_event_style(event: &str) -> TextStyle {
+    match event {
+        "warn" | "warn_continuation" | "task_skip" => TextStyle::Yellow,
+        "error" => TextStyle::Red,
+        "action" | "resource_apply" | "resource_remove" => TextStyle::Cyan,
+        "plan" | "dry_run" => TextStyle::Magenta,
+        _ => TextStyle::Dim,
+    }
+}
+
+fn style_record_message(event: &str, message: &str, style: StyleChoice) -> String {
+    match event {
+        "task_result" => style_task_result(message, style),
+        "run_finish" => style_run_finish(message, style),
+        "startup" | "run_context" => style_dot_separated_header(message, style),
+        "action" | "plan" => style_action_message(message, event == "plan", style),
+        _ => message.to_string(),
+    }
+}
+
+fn style_task_result(message: &str, style: StyleChoice) -> String {
+    let Some((name, rest)) = message.split_once(": ") else {
+        return message.to_string();
+    };
+    let (status, reason) = rest
+        .split_once(": ")
+        .map_or((rest, None), |(s, r)| (s, Some(r)));
+    let status_tone = match status {
+        "Changed" | "Passed" => TextStyle::Green,
+        "Planned" => TextStyle::Magenta,
+        "Skipped" | "Blocked" | "Interrupted" => TextStyle::Yellow,
+        "Failed" => TextStyle::Red,
+        _ => TextStyle::Dim,
+    };
+    let colon = style.paint(TextStyle::Dim, ": ");
+    let mut rendered = format!(
+        "{}{colon}{}",
+        style.bold(name),
+        style.paint(status_tone, status)
+    );
+    if let Some(reason) = reason {
+        rendered.push_str(&colon);
+        rendered.push_str(reason);
+    }
+    rendered
+}
+
+fn style_run_finish(message: &str, style: StyleChoice) -> String {
+    let Some((outcome, rest)) = message.split_once(" · ") else {
+        return message.to_string();
+    };
+    let outcome_tone = match outcome {
+        "succeeded" => TextStyle::Green,
+        "failed" => TextStyle::Red,
+        "interrupted" => TextStyle::Yellow,
+        _ => TextStyle::Dim,
+    };
+    format!(
+        "{}{}",
+        style.paint(outcome_tone, outcome),
+        style.paint(TextStyle::Dim, &format!(" · {rest}"))
+    )
+}
+
+fn style_dot_separated_header(message: &str, style: StyleChoice) -> String {
+    let Some((lead, rest)) = message.split_once(" · ") else {
+        return message.to_string();
+    };
+    let mut out = style.bold(lead);
+    for part in rest.split(" · ") {
+        out.push_str(&style.paint(TextStyle::Dim, " · "));
+        let tone = if part == "dry run" {
+            TextStyle::Magenta
+        } else {
+            TextStyle::Dim
+        };
+        out.push_str(&style.paint(tone, part));
+    }
+    out
+}
+
+fn style_action_message(message: &str, planned: bool, style: StyleChoice) -> String {
+    let Some((verb, rest)) = message.split_once(' ') else {
+        return message.to_string();
+    };
+    let verb_tone = if planned {
+        TextStyle::Magenta
+    } else {
+        TextStyle::Cyan
+    };
+    let formatted_rest = match rest.split_once(" \u{2192} ") {
+        Some((left, right)) => {
+            format!("{left}{}{right}", style.paint(TextStyle::Dim, " \u{2192} "))
+        }
+        None => rest.to_string(),
+    };
+    format!("{} {formatted_rest}", style.paint(verb_tone, verb))
 }
 
 pub(super) fn text_record_parts(line: &str) -> Option<(&str, &str, &str)> {

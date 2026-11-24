@@ -82,7 +82,15 @@ fn streamed_logs_preserve_input_and_output_errors() {
         assert!(format!("{error:#}").contains("fixture output failure"));
     }
     let mut invalid = std::io::Cursor::new(b"valid\n\xff\n");
-    let error = write_selected_log(&mut invalid, false, false, None, &mut Vec::new()).unwrap_err();
+    let error = write_selected_log(
+        &mut invalid,
+        false,
+        false,
+        None,
+        StyleChoice::plain(),
+        &mut Vec::new(),
+    )
+    .unwrap_err();
     assert_eq!(error.to_string(), "reading log index");
     assert_eq!(
         error.downcast_ref::<std::io::Error>().unwrap().kind(),
@@ -166,10 +174,143 @@ fn history_and_stable_selection_survive_newer_runs_and_missing_finish() {
             ..opts()
         },
         false,
+        StyleChoice::plain(),
         &mut Vec::new(),
     )
     .unwrap_err();
     assert!(invalid.to_string().contains("No retained run"));
+}
+
+#[test]
+fn run_list_aligns_profile_size_and_parent_columns_and_styles_outcomes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let long_id = "20260907T100001Z-update-2";
+    let short_id = "20260907T100000Z-check-1";
+    let first = record(
+        "main",
+        Record::RunStart {
+            run_id: long_id.into(),
+            command: "update".into(),
+            parent_run_id: Some("parent-a".into()),
+        },
+    ) + &record(
+        "main",
+        Record::RunContext {
+            profile: "workstation".into(),
+            platform: "Linux".into(),
+            dry_run: false,
+        },
+    ) + &record(
+        "main",
+        Record::RunFinish {
+            outcome: RunOutcome::Succeeded,
+            elapsed_us: 2_500_000,
+            exit_code: 0,
+        },
+    );
+    let second = record(
+        "main",
+        Record::RunStart {
+            run_id: short_id.into(),
+            command: "check".into(),
+            parent_run_id: None,
+        },
+    ) + &record(
+        "main",
+        Record::RunContext {
+            profile: "base".into(),
+            platform: "Linux".into(),
+            dry_run: false,
+        },
+    ) + &record(
+        "main",
+        Record::RunFinish {
+            outcome: RunOutcome::Failed,
+            elapsed_us: 400_000,
+            exit_code: 1,
+        },
+    );
+    write_run(tmp.path(), &format!("{long_id}.log"), &first);
+    write_run(tmp.path(), &format!("{short_id}.log"), &second);
+
+    let list_opts = LogOpts {
+        list: true,
+        ..opts()
+    };
+    let plain = capture_with_style(tmp.path(), &list_opts, false, StyleChoice::plain());
+    let lines: Vec<&str> = plain.lines().collect();
+    assert_eq!(lines.len(), 3, "{plain}");
+    let parent_col = lines[0].find("Parent").unwrap();
+    assert_eq!(lines[1].find("parent-a"), Some(parent_col), "{plain}");
+    assert_eq!(lines[2].rfind('-'), Some(parent_col), "{plain}");
+
+    let colored = capture_with_style(tmp.path(), &list_opts, false, StyleChoice::colored());
+    assert!(colored.contains("\x1b[32msucceeded\x1b[0m"), "{colored}");
+    assert!(colored.contains("\x1b[31mfailed\x1b[0m"), "{colored}");
+    assert!(colored.contains("\x1b[36mupdate\x1b[0m"), "{colored}");
+}
+
+#[test]
+fn colored_log_styles_task_results_warnings_and_actions() {
+    let content = record(
+        "main",
+        Record::RunFinish {
+            outcome: RunOutcome::Failed,
+            elapsed_us: 1_200_000,
+            exit_code: 1,
+        },
+    ) + &record(
+        "symlinks",
+        Record::TaskStart {
+            selector: "symlinks".into(),
+            name: "Home symlinks".into(),
+        },
+    ) + &record(
+        "symlinks",
+        Record::Action {
+            verb: "link".into(),
+            subject: "~/.bashrc → symlinks/bashrc".into(),
+            planned: false,
+            message: "link ~/.bashrc → symlinks/bashrc".into(),
+        },
+    ) + &record(
+        "symlinks",
+        Record::Message {
+            event: "warn".into(),
+            text: "backup retained".into(),
+        },
+    ) + &record(
+        "symlinks",
+        Record::TaskResult {
+            task_id: "symlinks".into(),
+            selector: Some("symlinks".into()),
+            name: "Home symlinks".into(),
+            status: TaskStatus::Changed,
+            reason: None,
+            actions: crate::infra::logging::ActionCounts::default(),
+        },
+    );
+    let mut out = Vec::new();
+    write_selected_log(
+        &mut std::io::Cursor::new(content.as_bytes()),
+        false,
+        false,
+        None,
+        StyleChoice::colored(),
+        &mut out,
+    )
+    .unwrap();
+    let rendered = String::from_utf8(out).unwrap();
+    assert!(rendered.contains("\x1b[31mfailed\x1b[0m"), "{rendered}");
+    assert!(
+        rendered.contains("\x1b[36mlink\x1b[0m ~/.bashrc\x1b[2m → \x1b[0msymlinks/bashrc"),
+        "{rendered}"
+    );
+    assert!(rendered.contains("\x1b[33mWarning\x1b[0m"), "{rendered}");
+    assert!(
+        rendered.contains("\x1b[1mHome symlinks\x1b[0m\x1b[2m: \x1b[0m\x1b[32mChanged\x1b[0m"),
+        "{rendered}"
+    );
 }
 
 #[test]

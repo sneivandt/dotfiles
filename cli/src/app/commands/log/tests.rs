@@ -19,8 +19,12 @@ fn write_run(dir: &Path, name: &str, contents: &str) {
 }
 
 fn capture(dir: &Path, opts: &LogOpts, verbose: bool) -> String {
+    capture_with_style(dir, opts, verbose, StyleChoice::plain())
+}
+
+fn capture_with_style(dir: &Path, opts: &LogOpts, verbose: bool, style: StyleChoice) -> String {
     let mut output = Vec::new();
-    run_in_dir(dir, opts, verbose, &mut output).expect("log command should succeed");
+    run_in_dir(dir, opts, verbose, style, &mut output).expect("log command should succeed");
     String::from_utf8(output).unwrap()
 }
 

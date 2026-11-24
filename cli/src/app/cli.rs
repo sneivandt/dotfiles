@@ -1,6 +1,18 @@
 //! CLI argument definitions and top-level argument parsing.
 
+use clap::builder::styling::{AnsiColor, Effects, Styles};
 use clap::{Args, CommandFactory as _, FromArgMatches as _, Parser, Subcommand, ValueEnum};
+
+fn cli_styles() -> Styles {
+    Styles::styled()
+        .header(Effects::BOLD.into())
+        .usage(Effects::BOLD.into())
+        .literal(AnsiColor::Cyan.on_default())
+        .placeholder(Effects::DIMMED.into())
+        .valid(AnsiColor::Green.on_default())
+        .invalid(AnsiColor::Yellow.on_default())
+        .error(AnsiColor::Red.on_default().effects(Effects::BOLD))
+}
 
 /// Top-level CLI entry point for the dotfiles management engine.
 #[derive(Parser, Debug)]
@@ -10,6 +22,7 @@ use clap::{Args, CommandFactory as _, FromArgMatches as _, Parser, Subcommand, V
     version = option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION"))),
     disable_version_flag = true,
     propagate_version = true,
+    styles = cli_styles(),
     override_usage = "dotfiles [OPTIONS] [COMMAND]",
     after_help = "\
 Default command: update

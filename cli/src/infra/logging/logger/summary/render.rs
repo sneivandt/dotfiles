@@ -56,6 +56,10 @@ pub(super) fn task_block(task: &TaskEntry, entries: &[LogEntry], opts: RowOpts) 
         .filter_map(|(_, columns)| columns.map(|(verb, _)| verb))
         .max()
         .unwrap_or(0);
+    let mixed_verbs = visible_entries
+        .iter()
+        .filter_map(|(_, columns)| columns.map(|(verb, _)| verb))
+        .any(|verb| verb != verb_width);
 
     for (entry, action_columns) in visible_entries {
         let diagnostic = matches!(
@@ -63,6 +67,9 @@ pub(super) fn task_block(task: &TaskEntry, entries: &[LogEntry], opts: RowOpts) 
             MsgKind::Warn | MsgKind::WarnContinuation | MsgKind::Error
         );
         let action_gap = action_columns.map_or(1, |(verb, line)| {
+            if !mixed_verbs {
+                return 1;
+            }
             let gap = verb_width - verb + 2;
             match opts.columns {
                 Some(columns) if line <= columns => gap.min(columns - line + 1),

@@ -73,7 +73,7 @@ fn check_console_compacts_only_non_verbose_single_line_tasks() {
             );
         }
         assert!(
-            blocks.last().unwrap().starts_with("Checks: 2 passed"),
+            blocks.last().unwrap().starts_with("Checks · 2 passed"),
             "{text}"
         );
         let history = |args: &[&str]| {
@@ -90,7 +90,7 @@ fn check_console_compacts_only_non_verbose_single_line_tasks() {
             assert!(log.contains(&format!("{task}: Passed")), "{log}");
         }
         assert_eq!(log.matches("base profile").count(), 1, "{log}");
-        assert!(log.lines().any(|line| line == "Checks: 2 passed"), "{log}");
+        assert!(log.lines().any(|line| line == "Checks · 2 passed"), "{log}");
         assert!(log.contains("Result: succeeded"), "{log}");
         let detailed = history(&["--task", "config-files", "-v"]);
         assert!(
@@ -141,7 +141,7 @@ fn check_command_fails_on_config_warnings() {
         text.contains("invalid_no_dot") && text.contains("vscode-extensions.toml"),
         "{text}"
     );
-    assert!(text.contains("Checks: 1 failed"), "{text}");
+    assert!(text.contains("Checks · 1 failed"), "{text}");
 }
 #[cfg(target_os = "linux")]
 #[test]

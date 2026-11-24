@@ -158,7 +158,7 @@ fn completion_order_and_action_barriers_survive_buffered_flush() {
         assert_eq!(
             actions,
             [
-                "configure  b",
+                "configure b",
                 "link     a",
                 "link     z",
                 "context",
@@ -488,7 +488,7 @@ fn unchanged_task_warnings_keep_context_even_in_quiet_mode() {
         assert_eq!(
             diagnostics,
             [
-                "WARN  Repository: fetch retried\n",
+                "warn  Repository: fetch retried\n",
                 "  second attempt succeeded\n"
             ]
         );
@@ -584,7 +584,7 @@ fn restart_notice_suppresses_the_completed_row_but_retains_verbose_details() {
         buf.flush_and_complete("repository", "repository");
 
         let expected = if verbose {
-            vec!["  update  repository"]
+            vec!["  update repository"]
         } else {
             vec![]
         };
@@ -644,10 +644,10 @@ fn completed_task_transcripts_preserve_spacing_and_warning_placement() {
                 "PASSED second".into(),
                 String::new(),
                 format!("{changed} actions"),
-                "  link  a".into(),
-                "  link  z".into(),
-                "  WARN  check permissions".into(),
-                "  link  b".into(),
+                "  link a".into(),
+                "  link z".into(),
+                "  warn  check permissions".into(),
+                "  link b".into(),
             ]);
             if verbose {
                 expected.extend([String::new(), "UNCHANGED current".into()]);
@@ -666,7 +666,7 @@ fn completed_task_transcripts_preserve_spacing_and_warning_placement() {
                     .lock()
                     .captured
                     .iter()
-                    .any(|(stderr, text)| { *stderr && text == "  WARN  check permissions\n" }),
+                    .any(|(stderr, text)| { *stderr && text == "  warn  check permissions\n" }),
                 "task warnings must retain stderr in both verbosity modes"
             );
         }
@@ -688,7 +688,7 @@ fn failed_task_transcript_keeps_reason_once_and_preserves_diagnostics() {
         buf.record_task(task);
         buf.flush_and_complete("links", "links");
         let diagnostic = if verbose {
-            "  ERROR permission denied"
+            "  error permission denied"
         } else {
             "  permission denied"
         };
@@ -720,7 +720,9 @@ fn typed_action_spans_preserve_opaque_subjects_and_custom_messages() {
             action
                 .console_line(StyleChoice::colored(), true, true, 1)
                 .unwrap(),
-            format!("  \x1b[{color}mrefresh\x1b[0m {subject}\x1b[2m (extra context)\x1b[0m")
+            format!(
+                "  \x1b[{color}mrefresh\x1b[0m ~/target\x1b[2m → \x1b[0msource (current value)\x1b[2m (extra context)\x1b[0m"
+            )
         );
         assert_eq!(
             action
@@ -789,7 +791,7 @@ fn typed_actions_preserve_subjects_and_continuations_when_aligned() {
             buf.flush_and_complete("task", "task");
             let completed = log.captured_lines();
             assert!(
-                completed.ends_with(&["  refresh  opaque → source".into(), "  second line".into()])
+                completed.ends_with(&["  refresh opaque → source".into(), "  second line".into()])
             );
             assert_eq!(direct.is_empty(), !planned && !verbose);
             if planned || verbose {

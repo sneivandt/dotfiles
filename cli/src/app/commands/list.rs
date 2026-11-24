@@ -14,6 +14,7 @@ use crate::domains::repository::update::RepositoryUpdateSignal;
 use crate::domains::system::{system_files::ConfigureSystemFiles, systemd_units::ConfigureSystemd};
 use crate::engine::graph::ResolvedTaskGraph;
 use crate::engine::{Task, TaskId, TaskVisibility};
+use crate::infra::logging::{StyleChoice, TextStyle, stdout_style};
 use crate::infra::platform::Platform;
 
 #[derive(Debug, Default, PartialEq, Eq, Serialize)]
@@ -66,13 +67,14 @@ pub fn run(opts: &ListOpts) -> Result<()> {
     let overlay = config.overlay.clone();
     let store = ConfigStore::from_config(config);
     let stdout = std::io::stdout();
+    let style = stdout_style();
     if let Some(command) = opts.graph {
         if opts.with_deps && !matches!(command, TaskGraphCommand::Update) {
             bail!("--with-deps is only available for update graphs");
         }
         let tasks = command_tasks(&store, overlay.as_deref(), command);
         let listings = collect_graph(&tasks, &opts.only, &opts.skip, opts.with_deps)?;
-        write_graph(&listings, opts.format, &mut stdout.lock())
+        write_graph(&listings, opts.format, style, &mut stdout.lock())
     } else {
         let mut listings = collect_listings(&store, overlay.as_deref())?;
         if !opts.all {
@@ -81,7 +83,7 @@ pub fn run(opts: &ListOpts) -> Result<()> {
                 potentially_applicable(&listing.selector, store.aggregate.get(), platform, is_ci)
             });
         }
-        write_listings(&listings, opts.format, &mut stdout.lock())
+        write_listings(&listings, opts.format, style, &mut stdout.lock())
     }
 }
 
@@ -267,6 +269,7 @@ fn selection_reason(
 fn write_graph(
     listings: &[GraphListing],
     format: DiscoveryFormat,
+    style: StyleChoice,
     out: &mut dyn std::io::Write,
 ) -> Result<()> {
     if format == DiscoveryFormat::Json {
@@ -275,23 +278,77 @@ fn write_graph(
         return Ok(());
     }
     if format == DiscoveryFormat::Table {
-        writeln!(out, "Dependencies (predecessors first)")?;
-        writeln!(out, "  requires <- must succeed; after <- wait only")?;
+        writeln!(
+            out,
+            "{}{}",
+            style.bold("Dependencies"),
+            style.paint(TextStyle::Dim, " · predecessors first")
+        )?;
+        writeln!(
+            out,
+            "{}",
+            style.paint(
+                TextStyle::Dim,
+                "  requires <- must succeed; after <- wait only"
+            )
+        )?;
         for listing in listings {
+            let active = matches!(
+                listing.selection,
+                GraphSelection::Default | GraphSelection::Requested | GraphSelection::Dependency
+            );
+            let selector = style.paint(
+                if active {
+                    TextStyle::Cyan
+                } else {
+                    TextStyle::Dim
+                },
+                &listing.selector,
+            );
+            let selection = style.paint(
+                selection_style(listing.selection),
+                selection_label(listing.selection),
+            );
+            let internal = if listing.internal {
+                style.paint(TextStyle::Dim, ", internal")
+            } else {
+                String::new()
+            };
+            let task = if active {
+                listing.task.clone()
+            } else {
+                style.paint(TextStyle::Dim, &listing.task)
+            };
             writeln!(out)?;
             writeln!(
                 out,
-                "{} [{}{}] — {}",
-                listing.selector,
-                selection_label(listing.selection),
-                if listing.internal { ", internal" } else { "" },
-                listing.task,
+                "{selector} {}{selection}{internal}{} {task}",
+                style.paint(TextStyle::Dim, "["),
+                style.paint(TextStyle::Dim, "] —"),
             )?;
             for predecessor in &listing.blocking {
-                writeln!(out, "  requires <- {predecessor}")?;
+                let target = if active {
+                    predecessor.clone()
+                } else {
+                    style.paint(TextStyle::Dim, predecessor)
+                };
+                writeln!(
+                    out,
+                    "{}{target}",
+                    style.paint(TextStyle::Dim, "  requires <- ")
+                )?;
             }
             for predecessor in &listing.after {
-                writeln!(out, "  after    <- {predecessor}")?;
+                let target = if active {
+                    predecessor.clone()
+                } else {
+                    style.paint(TextStyle::Dim, predecessor)
+                };
+                writeln!(
+                    out,
+                    "{}{target}",
+                    style.paint(TextStyle::Dim, "  after    <- ")
+                )?;
             }
         }
         return Ok(());
@@ -318,6 +375,15 @@ const fn selection_label(selection: GraphSelection) -> &'static str {
         GraphSelection::Dependency => "dependency",
         GraphSelection::Filtered => "filtered",
         GraphSelection::Skipped => "skipped",
+    }
+}
+
+const fn selection_style(selection: GraphSelection) -> TextStyle {
+    match selection {
+        GraphSelection::Requested => TextStyle::Green,
+        GraphSelection::Dependency => TextStyle::Cyan,
+        GraphSelection::Skipped => TextStyle::Yellow,
+        GraphSelection::Default | GraphSelection::Filtered => TextStyle::Dim,
     }
 }
 
@@ -372,10 +438,11 @@ fn add_tasks(
 fn write_listings(
     listings: &[TaskListing],
     format: DiscoveryFormat,
+    style: StyleChoice,
     out: &mut dyn std::io::Write,
 ) -> Result<()> {
     match format {
-        DiscoveryFormat::Table => write_table(listings, out),
+        DiscoveryFormat::Table => write_table(listings, style, out),
         DiscoveryFormat::Plain => {
             for listing in listings {
                 writeln!(
@@ -396,13 +463,17 @@ fn write_listings(
     }
 }
 
-fn write_table(listings: &[TaskListing], out: &mut dyn std::io::Write) -> Result<()> {
+fn write_table(
+    listings: &[TaskListing],
+    style: StyleChoice,
+    out: &mut dyn std::io::Write,
+) -> Result<()> {
     let selector_width = listings
         .iter()
         .map(|listing| listing.selector.len())
         .max()
         .unwrap_or(8)
-        .max("SELECTOR".len());
+        .max("Selector".len());
     let mut first = true;
     for command in [
         TaskGraphCommand::Update,
@@ -420,15 +491,28 @@ fn write_table(listings: &[TaskListing], out: &mut dyn std::io::Write) -> Result
             writeln!(out)?;
         }
         first = false;
-        let heading = format!("{} TASKS", command.label().to_ascii_uppercase());
-        writeln!(out, "{heading}")?;
-        writeln!(out, "{}", "=".repeat(heading.len()))?;
-        writeln!(out, "{:<selector_width$}  TASK", "SELECTOR")?;
+        let heading = match command {
+            TaskGraphCommand::Update => "Update tasks",
+            TaskGraphCommand::Remove => "Remove tasks",
+            TaskGraphCommand::Check => "Check tasks",
+        };
+        writeln!(out, "{}", style.bold(heading))?;
+        writeln!(
+            out,
+            "{}",
+            style.paint(
+                TextStyle::Dim,
+                &format!("{:<selector_width$}  Task", "Selector")
+            )
+        )?;
         for listing in rows {
+            let pad = selector_width - listing.selector.len();
             writeln!(
                 out,
-                "{:<selector_width$}  {}",
-                listing.selector, listing.task
+                "{}{:pad$}  {}",
+                style.paint(TextStyle::Cyan, &listing.selector),
+                "",
+                listing.task
             )?;
         }
     }
@@ -700,21 +784,52 @@ mod tests {
         }];
 
         let mut table = Vec::new();
-        write_listings(&listings, DiscoveryFormat::Table, &mut table).expect("table output");
+        write_listings(
+            &listings,
+            DiscoveryFormat::Table,
+            StyleChoice::plain(),
+            &mut table,
+        )
+        .expect("table output");
         assert_eq!(
             String::from_utf8(table).unwrap(),
-            "UPDATE TASKS\n============\nSELECTOR  TASK\nvisible   Visible task\n"
+            "Update tasks\nSelector  Task\nvisible   Visible task\n"
+        );
+
+        let mut colored_table = Vec::new();
+        write_listings(
+            &listings,
+            DiscoveryFormat::Table,
+            StyleChoice::colored(),
+            &mut colored_table,
+        )
+        .expect("colored table output");
+        assert_eq!(
+            String::from_utf8(colored_table).unwrap(),
+            "\x1b[1mUpdate tasks\x1b[0m\n\x1b[2mSelector  Task\x1b[0m\n\x1b[36mvisible\x1b[0m   Visible task\n"
         );
 
         let mut plain = Vec::new();
-        write_listings(&listings, DiscoveryFormat::Plain, &mut plain).expect("plain output");
+        write_listings(
+            &listings,
+            DiscoveryFormat::Plain,
+            StyleChoice::plain(),
+            &mut plain,
+        )
+        .expect("plain output");
         assert_eq!(
             String::from_utf8(plain).unwrap(),
             "visible\tVisible task\tupdate\n"
         );
 
         let mut json = Vec::new();
-        write_listings(&listings, DiscoveryFormat::Json, &mut json).expect("JSON output");
+        write_listings(
+            &listings,
+            DiscoveryFormat::Json,
+            StyleChoice::plain(),
+            &mut json,
+        )
+        .expect("JSON output");
         let value: serde_json::Value = serde_json::from_slice(&json).expect("valid JSON");
         assert_eq!(
             value,
@@ -731,20 +846,18 @@ mod tests {
         let store = ConfigStore::from_config(empty_config(PathBuf::from("/fixture")));
         let listings = collect_listings(&store, None).unwrap();
         let mut output = Vec::new();
-        write_table(&listings, &mut output).unwrap();
+        write_table(&listings, StyleChoice::plain(), &mut output).unwrap();
         let output = String::from_utf8(output).unwrap();
         let mut sections = output.split("\n\n");
-        for command in [
-            TaskGraphCommand::Update,
-            TaskGraphCommand::Remove,
-            TaskGraphCommand::Check,
+        for (command, heading) in [
+            (TaskGraphCommand::Update, "Update tasks"),
+            (TaskGraphCommand::Remove, "Remove tasks"),
+            (TaskGraphCommand::Check, "Check tasks"),
         ] {
             let section = sections.next().unwrap();
             let mut lines = section.lines();
-            let heading = format!("{} TASKS", command.label().to_ascii_uppercase());
-            assert_eq!(lines.next(), Some(heading.as_str()));
-            assert_eq!(lines.next(), Some("=".repeat(heading.len()).as_str()));
-            assert!(lines.next().unwrap().starts_with("SELECTOR"));
+            assert_eq!(lines.next(), Some(heading));
+            assert!(lines.next().unwrap().starts_with("Selector"));
             let selectors = lines
                 .map(|line| line.split_whitespace().next().unwrap())
                 .collect::<Vec<_>>();
@@ -781,8 +894,15 @@ mod tests {
         let graph =
             collect_graph(&tasks, &["dependent".into()], &["visible".into()], false).unwrap();
         let mut output = Vec::new();
-        write_graph(&graph, DiscoveryFormat::Table, &mut output).unwrap();
+        write_graph(
+            &graph,
+            DiscoveryFormat::Table,
+            StyleChoice::plain(),
+            &mut output,
+        )
+        .unwrap();
         let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("Dependencies · predecessors first"));
         assert!(output.contains("requires <- must succeed; after <- wait only"));
         assert!(output.contains("dependent [requested]"));
         assert!(output.contains("internal [filtered, internal]"));
@@ -793,8 +913,28 @@ mod tests {
             "human output must not depend on tab stops"
         );
 
+        let mut colored = Vec::new();
+        write_graph(
+            &graph,
+            DiscoveryFormat::Table,
+            StyleChoice::colored(),
+            &mut colored,
+        )
+        .unwrap();
+        let colored = String::from_utf8(colored).unwrap();
+        assert!(colored.contains("\x1b[36mdependent\x1b[0m"));
+        assert!(colored.contains("\x1b[32mrequested\x1b[0m"));
+        assert!(colored.contains("\x1b[33mskipped\x1b[0m"));
+        assert!(colored.contains("\x1b[2minternal\x1b[0m"));
+
         let mut plain = Vec::new();
-        write_graph(&graph, DiscoveryFormat::Plain, &mut plain).unwrap();
+        write_graph(
+            &graph,
+            DiscoveryFormat::Plain,
+            StyleChoice::plain(),
+            &mut plain,
+        )
+        .unwrap();
         let plain = String::from_utf8(plain).unwrap();
         assert!(plain.lines().all(|line| line.split('\t').count() == 6));
         assert!(plain.contains("visible\tinternal\tfalse\trequested"));
@@ -901,7 +1041,13 @@ mod tests {
         }));
 
         let mut output = Vec::new();
-        write_graph(&graph, DiscoveryFormat::Json, &mut output).expect("graph JSON");
+        write_graph(
+            &graph,
+            DiscoveryFormat::Json,
+            StyleChoice::plain(),
+            &mut output,
+        )
+        .expect("graph JSON");
         let json: serde_json::Value = serde_json::from_slice(&output).expect("valid JSON");
         assert_eq!(json[2]["blocking"][0], "visible");
     }

@@ -30,6 +30,7 @@ fn unfiltered_raw_logs_are_copied_without_parsing_or_rewinding() {
         false,
         true,
         None,
+        StyleChoice::plain(),
         &mut output,
     )
     .unwrap();
@@ -172,8 +173,8 @@ fn rejects_out_of_range_index() {
         ..opts()
     };
     let mut output = Vec::new();
-    let err =
-        run_in_dir(dir, &selected, false, &mut output).expect_err("out of range index should fail");
+    let err = run_in_dir(dir, &selected, false, StyleChoice::plain(), &mut output)
+        .expect_err("out of range index should fail");
     let message = err.to_string();
     assert!(message.contains("No run at index 7"), "{message}");
     assert!(message.contains("1 retained"), "{message}");
@@ -195,7 +196,7 @@ fn explicit_run_indices_fail_when_no_runs_are_retained_or_match() {
                 ..opts()
             };
             let mut output = Vec::new();
-            let error = run_in_dir(&dir, &selected, false, &mut output)
+            let error = run_in_dir(&dir, &selected, false, StyleChoice::plain(), &mut output)
                 .expect_err("an explicit index must identify a retained matching run");
             assert_eq!(
                 error.to_string(),
@@ -264,7 +265,7 @@ fn lists_runs_newest_first() {
     };
     let output = capture(dir, &listed, false);
     let lines: Vec<&str> = output.lines().collect();
-    assert!(lines[0].contains("WHEN"), "{output}");
+    assert!(lines[0].contains("When"), "{output}");
     assert!(
         lines[1].starts_with("  0  2026-07-31 15:49:02Z  20260731T154902Z-update-2"),
         "{output}"
@@ -390,7 +391,7 @@ fn invalid_log_directory_is_reported_instead_of_empty_history() {
         },
     ] {
         let mut output = Vec::new();
-        let error = run_in_dir(&dir, &options, false, &mut output)
+        let error = run_in_dir(&dir, &options, false, StyleChoice::plain(), &mut output)
             .expect_err("invalid log directory must not masquerade as absent history");
         assert!(error.to_string().contains(&dir.display().to_string()));
         assert!(error.downcast_ref::<std::io::Error>().is_some());

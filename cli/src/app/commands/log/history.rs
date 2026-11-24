@@ -1,7 +1,7 @@
 use super::render::format_duration;
 use super::{
     BufRead, DiscoveryFormat, Path, Record, RecordMetadata, Result, RunEntry, StoredRecord,
-    parse_run_log_file_name, run_log_sort_stamp,
+    StyleChoice, TextStyle, parse_run_log_file_name, run_log_sort_stamp,
 };
 use anyhow::Context as _;
 use serde::Serialize;
@@ -9,50 +9,126 @@ use serde::Serialize;
 pub(super) fn write_run_list(
     runs: &[RunEntry],
     format: DiscoveryFormat,
+    style: StyleChoice,
     out: &mut dyn std::io::Write,
 ) -> Result<()> {
     match format {
-        DiscoveryFormat::Table => write_run_table(runs, out),
+        DiscoveryFormat::Table => write_run_table(runs, style, out),
         DiscoveryFormat::Plain => write_run_plain(runs, out),
         DiscoveryFormat::Json => write_run_json(runs, out),
     }
 }
 
-fn write_run_table(runs: &[RunEntry], out: &mut dyn std::io::Write) -> Result<()> {
-    let command_width = runs
+fn write_run_table(
+    runs: &[RunEntry],
+    style: StyleChoice,
+    out: &mut dyn std::io::Write,
+) -> Result<()> {
+    let rows: Vec<_> = runs
         .iter()
-        .map(|run| run.command.len())
+        .enumerate()
+        .map(|(index, run)| {
+            (
+                index.to_string(),
+                format_stamp(&run.stamp),
+                run.id(),
+                run.command.as_str(),
+                run.outcome_label(),
+                run.elapsed_us.map_or_else(|| "-".into(), format_duration),
+                run.profile.as_deref().unwrap_or("-"),
+                format_size(run.size),
+                run.parent_run_id.as_deref().unwrap_or("-"),
+            )
+        })
+        .collect();
+    let index_width = rows.iter().map(|row| row.0.len()).max().unwrap_or(0).max(3);
+    let when_width = rows
+        .iter()
+        .map(|row| row.1.len())
         .max()
         .unwrap_or(0)
-        .max("COMMAND".len());
-    let id_width = runs
+        .max(20);
+    let id_width = rows
         .iter()
-        .map(|run| run.id().len())
+        .map(|row| row.2.len())
         .max()
         .unwrap_or(0)
         .max("ID".len());
-    writeln!(
-        out,
-        "  #  WHEN                  {:<id_width$}  {:<command_width$}  OUTCOME      DURATION  PROFILE  SIZE  PARENT",
-        "ID", "COMMAND"
-    )
-    .context("writing log output")?;
-    for (index, run) in runs.iter().enumerate() {
+    let command_width = rows
+        .iter()
+        .map(|row| row.3.len())
+        .max()
+        .unwrap_or(0)
+        .max("Command".len());
+    let outcome_width = rows
+        .iter()
+        .map(|row| row.4.len())
+        .max()
+        .unwrap_or(0)
+        .max("Outcome".len());
+    let duration_width = rows
+        .iter()
+        .map(|row| row.5.len())
+        .max()
+        .unwrap_or(0)
+        .max("Duration".len());
+    let profile_width = rows
+        .iter()
+        .map(|row| row.6.len())
+        .max()
+        .unwrap_or(0)
+        .max("Profile".len());
+    let size_width = rows
+        .iter()
+        .map(|row| row.7.len())
+        .max()
+        .unwrap_or(0)
+        .max("Size".len());
+    let header = format!(
+        "{:>index_width$}  {:<when_width$}  {:<id_width$}  {:<command_width$}  {:<outcome_width$}  {:>duration_width$}  {:<profile_width$}  {:>size_width$}  Parent",
+        "#", "When", "ID", "Command", "Outcome", "Duration", "Profile", "Size"
+    );
+    writeln!(out, "{}", style.paint(TextStyle::Dim, &header)).context("writing log output")?;
+    for (index, when, id, command, outcome, duration, profile, size, parent) in rows {
+        let outcome_tone = match outcome {
+            "succeeded" => TextStyle::Green,
+            "failed" => TextStyle::Red,
+            "interrupted" => TextStyle::Yellow,
+            _ => TextStyle::Dim,
+        };
+        let profile_cell = if profile == "-" {
+            pad_left(profile, profile_width, style, Some(TextStyle::Dim))
+        } else {
+            pad_left(profile, profile_width, style, None)
+        };
         writeln!(
             out,
-            "{index:>3}  {:<20}  {:<id_width$}  {:<command_width$}  {:<11}  {:>8}  {}  {}  {}",
-            format_stamp(&run.stamp),
-            run.id(),
-            run.command,
-            run.outcome_label(),
-            run.elapsed_us.map_or_else(|| "-".into(), format_duration),
-            run.profile.as_deref().unwrap_or("-"),
-            format_size(run.size),
-            run.parent_run_id.as_deref().unwrap_or("-"),
+            "{}  {}  {}  {}  {}  {}  {}  {}  {}",
+            pad_right(&index, index_width, style, Some(TextStyle::Dim)),
+            pad_left(&when, when_width, style, Some(TextStyle::Dim)),
+            pad_left(&id, id_width, style, None),
+            pad_left(command, command_width, style, Some(TextStyle::Cyan)),
+            pad_left(outcome, outcome_width, style, Some(outcome_tone)),
+            pad_right(&duration, duration_width, style, Some(TextStyle::Dim)),
+            profile_cell,
+            pad_right(&size, size_width, style, Some(TextStyle::Dim)),
+            style.paint(TextStyle::Dim, parent),
         )
         .context("writing log output")?;
     }
     Ok(())
+}
+
+fn pad_left(text: &str, width: usize, style: StyleChoice, tone: Option<TextStyle>) -> String {
+    let pad = width.saturating_sub(text.len());
+    let rendered = tone.map_or_else(|| text.to_string(), |tone| style.paint(tone, text));
+    format!("{rendered}{:pad$}", "")
+}
+
+fn pad_right(text: &str, width: usize, style: StyleChoice, tone: Option<TextStyle>) -> String {
+    let pad = width.saturating_sub(text.len());
+    let rendered = tone.map_or_else(|| text.to_string(), |tone| style.paint(tone, text));
+    format!("{:pad$}{rendered}", "")
 }
 
 fn write_run_plain(runs: &[RunEntry], out: &mut dyn std::io::Write) -> Result<()> {

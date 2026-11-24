@@ -317,14 +317,8 @@ pub(in crate::infra::logging) fn ui_line_with_style(
         MsgKind::Debug => verbose.then(|| style.paint(TextStyle::Dim, &format!("  {msg}"))),
         MsgKind::Context => verbose.then(|| style.paint(TextStyle::Dim, &msg)),
         MsgKind::Trace | MsgKind::Summary => None,
-        MsgKind::Warn => Some(format!(
-            "{}  {msg}",
-            style.paint_bold(TextStyle::Yellow, "WARN")
-        )),
-        MsgKind::Error => Some(format!(
-            "{} {msg}",
-            style.paint_bold(TextStyle::Red, "ERROR")
-        )),
+        MsgKind::Warn => Some(format!("{}  {msg}", style.paint(TextStyle::Yellow, "warn"))),
+        MsgKind::Error => Some(format!("{} {msg}", style.paint(TextStyle::Red, "error"))),
         MsgKind::DryRun => Some(format!("  {msg}")),
         MsgKind::Always | MsgKind::WarnContinuation => Some(msg),
         MsgKind::Startup => Some(startup_line_with_style(&msg, style)),

@@ -362,14 +362,26 @@ fn explain_uses_the_active_overlay_declaration_without_writing_state() {
     .unwrap();
     assert!(output.status.success(), "{output:?}");
     let text = String::from_utf8(output.stdout).unwrap();
-    assert!(text.contains("Profile: base"), "{text}");
-    assert!(text.contains("Active overlay:"), "{text}");
+    let explain_field = |label: &str| {
+        text.lines()
+            .find_map(|line| line.strip_prefix(label).map(str::trim))
+    };
+    assert_eq!(explain_field("Profile:"), Some("base"), "{text}");
+    assert!(explain_field("Active overlay:").is_some(), "{text}");
     assert!(
         text.contains(&format!("symlinks.toml [base-{platform}]")),
         "{text}"
     );
-    assert!(text.contains("Update: create managed link"), "{text}");
-    assert!(text.contains("Remove: leave target as it is"), "{text}");
+    assert_eq!(
+        explain_field("Update:"),
+        Some("create managed link"),
+        "{text}"
+    );
+    assert_eq!(
+        explain_field("Remove:"),
+        Some("leave target as it is"),
+        "{text}"
+    );
     assert_eq!(std::fs::read_dir(home.path()).unwrap().count(), 2);
     assert!(!actual.join("settings").exists());
     assert!(!repo.root_path().join(".git/dotfiles-run.lock").exists());
@@ -406,7 +418,9 @@ fn explain_rechecks_aliases_and_rejects_collisions_after_a_match() {
     let matched = explain("first/item");
     assert!(matched.status.success(), "{matched:?}");
     let text = String::from_utf8(matched.stdout).unwrap();
-    let target = text.lines().find_map(|line| line.strip_prefix("Target: "));
+    let target = text
+        .lines()
+        .find_map(|line| line.strip_prefix("Target:").map(str::trim));
     assert_eq!(
         target.map(std::path::Path::new),
         Some(alias.join("item").as_path()),
@@ -466,11 +480,16 @@ fn explain_reports_install_config_home_guard_but_still_explains_removal() {
             .unwrap();
         assert!(result.status.success(), "{result:?}");
         let text = String::from_utf8(result.stdout).unwrap();
+        let field = |label: &str| {
+            text.lines()
+                .find_map(|line| line.strip_prefix(label).map(str::trim))
+        };
         assert!(
-            text.contains("Update: blocked (symlink.unsupported-config-home:"),
+            field("Update:")
+                .is_some_and(|value| value.starts_with("blocked (symlink.unsupported-config-home:")),
             "{text}"
         );
-        assert!(text.contains(&format!("Remove: {removal}")), "{text}");
+        assert_eq!(field("Remove:"), Some(removal), "{text}");
     }
     assert_eq!(std::fs::read_link(target).unwrap(), source);
     assert_eq!(std::fs::read_dir(home.path()).unwrap().count(), 1);

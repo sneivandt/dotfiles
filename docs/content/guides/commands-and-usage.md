@@ -198,8 +198,8 @@ actions together: one task can change many files or packages.
 | `~` / `PLANNED` | A dry run found changes to make |
 | `○` / `UNCHANGED` | Already matches configuration; shown with `--verbose` |
 | `⊘` / `SKIPPED` | Work was not performed; read the reason |
-| `⊘` / `BLOCKED` | A required predecessor did not complete successfully |
-| `⊘` / `INTERRUPTED` | Work stopped during cancellation |
+| `⊖` / `BLOCKED` | A required predecessor did not complete successfully |
+| `⊗` / `INTERRUPTED` | Work stopped during cancellation |
 | `✗` / `FAILED` | An operation failed |
 
 `--verbose` adds current tasks, decisions, and timings. `--no-symbols` uses the
@@ -212,7 +212,7 @@ Task warnings appear alongside the actions they concern. Even in quiet mode,
 a warning from an unchanged task still appears on stderr with the task name.
 
 The final summary names its unit once, as in **Tasks · 3 changed · 14 unchanged**
-or **Checks: 5 passed · 1 skipped**. Previews use **planned** instead of **changed**.
+or **Checks · 5 passed · 1 skipped**. Previews use **planned** instead of **changed**.
 These are task counts, not action counts or CLI upgrades. **Unchanged** means
 the selected work needed no changes, not that every installed package is at its
 latest version. Repository syncs that restart the command appear in their notice

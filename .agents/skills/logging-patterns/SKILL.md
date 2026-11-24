@@ -47,8 +47,9 @@ exact plain/ANSI rendering. Preserve these implementation constraints:
   runs and preserve warning/context barriers; never classify or rephrase messages
   by their text.
   Preserve typed verb/subject spans through replay and completed rows. Subjects
-  are opaque, including arrows and current-state text; only an identifiable
-  suffix outside the complete subject may be dimmed.
+  remain opaque for parentheticals and current-state text (dimming only the
+  structural ` → ` arrow separator); only an identifiable suffix outside the
+  complete subject may be dimmed.
 - Emit generated counters with `summary`, and mark generated task-result reasons
   with `with_summary_message`. Custom reasons remain visible even if they resemble
   counter text.

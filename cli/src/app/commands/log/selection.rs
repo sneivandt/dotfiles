@@ -2,7 +2,7 @@ use super::render::{
     diagnostic_event, legacy_duplicate, line_context, line_event, render_record, text_record_parts,
     write_human_line, write_rendered_record,
 };
-use super::{BufRead, HashMap, HashSet, Record, RecordMetadata, Result, StoredRecord};
+use super::{BufRead, HashMap, HashSet, Record, RecordMetadata, Result, StoredRecord, StyleChoice};
 use anyhow::Context as _;
 use std::io::Seek;
 
@@ -97,6 +97,7 @@ pub(super) fn write_selected_log(
     verbose: bool,
     raw: bool,
     task: Option<&str>,
+    style: StyleChoice,
     out: &mut dyn std::io::Write,
 ) -> Result<()> {
     if raw && task.is_none() {
@@ -147,6 +148,7 @@ pub(super) fn write_selected_log(
                     &event,
                     &message,
                     verbose.then_some(line.as_str()),
+                    style,
                 )?;
                 wrote_line = true;
             }
@@ -157,7 +159,15 @@ pub(super) fn write_selected_log(
                 if index.completed_resource_attempt(text_context, event) {
                     continue;
                 }
-                write_rendered_record(out, text_context, &index.task_names, event, message, None)?;
+                write_rendered_record(
+                    out,
+                    text_context,
+                    &index.task_names,
+                    event,
+                    message,
+                    None,
+                    style,
+                )?;
             } else {
                 // Include unrecognized lines and record schemas in human views too.
                 write_human_line(out, &line)?;

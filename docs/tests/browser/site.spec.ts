@@ -382,9 +382,13 @@ test('the terminal illustration matches the CLI progress and action styling', as
     }
     const actions = block.locator('text:not(:first-child)');
     for (const action of await actions.all()) {
-      expect(await action.textContent()).toMatch(/^\S+ {2}\S/);
+      const text = await action.textContent();
+      expect(text).toMatch(/^\S+ \S/);
       await expect(action).toHaveCSS('fill', 'rgb(192, 202, 245)');
-      await expect(action.locator('tspan')).toHaveCSS('fill', 'rgb(125, 207, 255)');
+      await expect(action.locator('tspan').first()).toHaveCSS('fill', 'rgb(125, 207, 255)');
+      if (text?.includes(' → ')) {
+        await expect(action.locator('tspan').nth(1)).toHaveCSS('fill', 'rgb(126, 133, 161)');
+      }
     }
   }
 });
@@ -406,7 +410,7 @@ test('the terminal illustration preserves the completed transcript with reduced 
   await expect(page.locator('.synced text')).toHaveText('Repository synced · restarting to load configuration');
   await expect(page.locator('.synced tspan').last()).toHaveCSS('fill', 'rgb(126, 133, 161)');
   await expect(page.locator('.completions text').last()).toHaveText(/write +\/.*\/completions\/_dotfiles$/);
-  for (const label of await page.locator('.startup tspan:first-child, .links tspan:nth-child(2), .completions tspan:nth-child(2), .packages tspan:nth-child(2)').all()) {
+  for (const label of await page.locator('.startup text:first-child tspan:first-child, .links text:first-child tspan:nth-child(2), .completions text:first-child tspan:nth-child(2), .packages text:first-child tspan:nth-child(2)').all()) {
     await expect(label).toHaveCSS('font-weight', '700');
   }
   const rowY = async (selector: string) => page.locator(selector).first().evaluate((element) =>

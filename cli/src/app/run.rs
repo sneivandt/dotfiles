@@ -120,7 +120,12 @@ fn standalone(result: anyhow::Result<()>) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(error) => {
-            drop(writeln!(std::io::stderr().lock(), "{error:#}"));
+            let style = logging::stderr_style();
+            drop(writeln!(
+                std::io::stderr().lock(),
+                "{} {error:#}",
+                style.paint(logging::TextStyle::Red, "error")
+            ));
             ExitCode::FAILURE
         }
     }

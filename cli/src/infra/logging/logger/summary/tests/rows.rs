@@ -232,8 +232,8 @@ fn task_row_golden_matrix() {
         (TaskStatus::DryRun, "~", "PLANNED", "35"),
         (TaskStatus::Skipped, "⊘", "SKIPPED", "33"),
         (TaskStatus::Failed, "✗", "FAILED", "31"),
-        (TaskStatus::Blocked, "⊘", "BLOCKED", "33"),
-        (TaskStatus::Interrupted, "⊘", "INTERRUPTED", "33"),
+        (TaskStatus::Blocked, "⊖", "BLOCKED", "33"),
+        (TaskStatus::Interrupted, "⊗", "INTERRUPTED", "33"),
         (TaskStatus::Ok, "○", "UNCHANGED", "2"),
         (TaskStatus::NotApplicable, "⁃", "N/A", "2"),
     ] {

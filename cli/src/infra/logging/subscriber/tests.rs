@@ -166,15 +166,15 @@ fn message_presentation_golden_matrix() {
         (
             MsgKind::Warn,
             false,
-            "WARN  detail",
-            "\x1b[1;33mWARN\x1b[0m  detail",
+            "warn  detail",
+            "\x1b[33mwarn\x1b[0m  detail",
         ),
         (MsgKind::WarnContinuation, false, "detail", "detail"),
         (
             MsgKind::Error,
             false,
-            "ERROR detail",
-            "\x1b[1;31mERROR\x1b[0m detail",
+            "error detail",
+            "\x1b[31merror\x1b[0m detail",
         ),
         (MsgKind::DryRun, false, "  detail", "  detail"),
         (MsgKind::Always, false, "detail", "detail"),
@@ -290,13 +290,13 @@ fn raw_tracing_presentation_golden_matrix() {
     for (level, plain, colored) in [
         (
             tracing::Level::ERROR,
-            Some("ERROR detail"),
-            Some("\x1b[1;31mERROR\x1b[0m detail"),
+            Some("error detail"),
+            Some("\x1b[31merror\x1b[0m detail"),
         ),
         (
             tracing::Level::WARN,
-            Some("WARN  detail"),
-            Some("\x1b[1;33mWARN\x1b[0m  detail"),
+            Some("warn  detail"),
+            Some("\x1b[33mwarn\x1b[0m  detail"),
         ),
         (tracing::Level::INFO, Some("  detail"), Some("  detail")),
         (tracing::Level::DEBUG, None, None),
@@ -343,7 +343,7 @@ fn console_line_plain_stderr_warning_has_no_ansi() {
     )
     .unwrap();
 
-    assert_eq!(line, "WARN  careful");
+    assert_eq!(line, "warn  careful");
     assert!(!line.contains("\x1b["));
 }
 
@@ -367,7 +367,7 @@ fn raw_diagnostics_and_task_progress_share_one_console_state() {
         (false, "Install · fixture\n"),
         (false, "\n"),
         (false, "⠋ first"),
-        (true, "\r\x1b[KWARN  raw warning\n"),
+        (true, "\r\x1b[Kwarn  raw warning\n"),
         (false, "\n⠋ first, second"),
         (false, "\r\x1b[K\x1b[1A\r\x1b[Kdurable message\n"),
         (false, "\n⠋ first, second, third"),
@@ -392,13 +392,13 @@ fn another_logger_cannot_change_the_active_subscribers_verbosity() {
     other.set_verbose(true);
     tracing::info!("hidden info");
     tracing::warn!("visible warning");
-    assert_eq!(log.captured_lines(), ["WARN  visible warning"]);
+    assert_eq!(log.captured_lines(), ["warn  visible warning"]);
     assert!(other.captured_lines().is_empty());
     log.set_verbose(true);
     tracing::info!("verbose info");
     assert_eq!(
         log.captured_lines(),
-        ["WARN  visible warning", "  verbose info"]
+        ["warn  visible warning", "  verbose info"]
     );
 }
 

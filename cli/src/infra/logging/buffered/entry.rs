@@ -151,6 +151,13 @@ impl LogEntry {
         let Some(suffix) = action_suffix(verb, subject, message) else {
             return Some(format!("  {}", style.clean(message)).replace('\n', "\n  "));
         };
+        let subject = style.clean(subject);
+        let formatted_subject = match subject.split_once(" \u{2192} ") {
+            Some((left, right)) => {
+                format!("{left}{}{right}", style.paint(TextStyle::Dim, " \u{2192} "))
+            }
+            None => subject,
+        };
         Some(
             format!(
                 "  {}{:action_gap$}{}{}",
@@ -163,7 +170,7 @@ impl LogEntry {
                     verb
                 ),
                 "",
-                style.clean(subject),
+                formatted_subject,
                 if suffix.is_empty() {
                     String::new()
                 } else {

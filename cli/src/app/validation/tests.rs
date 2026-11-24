@@ -159,14 +159,14 @@ fn startup_diagnostic_continuations_keep_stderr_and_raw_jsonl_facts() {
             assert_eq!(
                 writes,
                 [
-                    (true, "WARN  found 1 configuration issue:\n".into()),
+                    (true, "warn  found 1 configuration issue:\n".into()),
                     (true, format!("{item}\n"))
                 ]
             );
         }
         let stored = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
         assert!(stored.contains(item.trim_start()));
-        assert!(!stored.contains("WARN  "));
+        assert!(!stored.contains("warn  "));
     }
 }
 
@@ -202,7 +202,7 @@ fn completed_validation_diagnostics_keep_their_continuations_in_both_modes() {
         assert!(
             writes
                 .iter()
-                .any(|(stderr, text)| *stderr && text == "  WARN  found 1 configuration issue:\n")
+                .any(|(stderr, text)| *stderr && text == "  warn  found 1 configuration issue:\n")
         );
         assert!(writes.iter().any(|(stderr, text)| *stderr
             && text == "    [warn] fixture.toml [item] (fixture.invalid): fix the value\n"));

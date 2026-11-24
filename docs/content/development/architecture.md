@@ -5,25 +5,23 @@ description: Understand the Rust CLI's layers, task scheduling, resources, opera
 
 # Architecture
 
-Dotfiles compares the machine with its declarations and applies the changes
-needed to match them. A dependency graph decides when work can run. Each resource or
-operation defines how to inspect and update the state it manages.
+Dotfiles compares your machine's current state against your declarations and
+applies only the changes needed to converge them. A dependency graph controls
+execution order, while each resource or operation defines how to inspect and
+update its slice of state. Running the same command again leaves already-correct
+state untouched.
 
-Here, convergence means bringing observed state into agreement with the
-configuration. Running the same work again should leave already-correct state
-alone.
-
-This guide is for contributors choosing where a change belongs. For commands,
-read [Usage](../guides/commands-and-usage.md); for desired-state declarations, read
-[Configuration](../guides/configuration-basics.md). To implement a feature, follow
-[Adding a task](adding-a-task.md); for isolated regression fixtures, use
-[Writing tests](writing-tests.md).
+This guide explains where code belongs and why the engine enforces its
+boundaries. For everyday commands, see [Commands and usage](../guides/commands-and-usage.md);
+for configuration schemas, see [Configuration basics](../guides/configuration-basics.md).
+When you're ready to implement a feature, move on to
+[Adding a task](adding-a-task.md) and [Writing tests](writing-tests.md).
 
 ## Design decisions
 
 - [One update syncs the checkout and applies the machine's configuration](../guides/commands-and-usage.md#update).
 - [Home symlinks expose edits immediately, without another update](../reference/home-symlinks.md).
-- [These dotfiles are for one person's machines, not every possible setup](../guides/index.md).
+- [These dotfiles are for one person's machines, not every possible setup](../index.md).
 - [Changing profiles selects future work without undoing earlier updates](../guides/profiles-and-categories.md#changing-profiles-or-categories).
 - [Selecting a single task does not automatically add its dependencies](../guides/commands-and-usage.md#select-tasks).
 
@@ -40,357 +38,370 @@ flowchart TB
     Operation --> Result
 ```
 
-Three boundaries explain most of the design:
+Three core boundaries shape the CLI:
 
 | Boundary | Responsibility |
 |---|---|
-| Task | Decide whether work can run and what must precede it, such as the Home symlinks task |
-| Resource | Inspect and update one independent item, such as a home-directory link |
-| Operation | Plan and run a complete workflow, such as repository synchronization |
+| Task | Decides whether work applies and what must finish before it, such as the Home symlinks task |
+| Resource | Inspects and converges one independent item, such as a single home symlink |
+| Operation | Plans and executes a single multi-step workflow, such as repository synchronization |
 
-A Requirement checks an input without creating it. An AccessClaim
-prevents concurrent work from touching the same shared state. Neither is a
-substitute for a dependency.
+Two smaller primitives support them: a `Requirement` checks a runtime input
+without creating it, and an `AccessClaim` keeps concurrent work from colliding
+on shared state. Neither replaces graph dependencies.
 
-For example, a symlink declaration becomes a resource inside the Home symlinks
-task. The task waits for its graph predecessors; the resource checks its source
-and destination; the engine decides whether to leave it alone, preview a link,
-or create it. The result contributes to the task outcome and command status.
-An operation takes the same route through selection and scheduling, but its
-body plans a whole workflow rather than a collection of independent items.
+Take a symlink declaration as an example: it becomes a resource inside the Home
+symlinks task. The task waits for its graph predecessors, the resource inspects
+its source and target, and the engine decides whether to skip, preview, or
+create the link, feeding the outcome into the task summary and run log. An
+operation travels through the same selection and scheduling path, but plans one
+cohesive workflow rather than a batch of independent items.
 
 ## Repository layout
 
-The Rust application has four layers:
+The Rust CLI is organized into four layers:
 
 | Layer | Responsibility |
 |---|---|
-| [app/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/app) | CLI syntax, configuration loading, command composition, cross-domain dependencies, restart and elevation policy |
-| [engine/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/engine) | Task graphs, scheduling, convergence lifecycles, cancellation and result accounting |
-| [domains/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains) | Packages, files, Git, editors, services and other concrete desired state |
-| [infra/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra) | Filesystem, processes, environment, platform capabilities and logging |
+| [app/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/app) | CLI parsing, config loading, command composition, cross-domain dependencies, and restart/elevation policy |
+| [engine/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/engine) | Task graphs, scheduling, convergence lifecycles, cancellation, and result accounting |
+| [domains/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains) | Concrete desired-state implementations (packages, files, Git, editors, services, and agents) |
+| [infra/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra) | Filesystem, subprocesses, environment, platform capabilities, and logging |
 
-Configuration lives outside those layers: `conf/` declares desired state,
-`symlinks/` holds managed home content, and `system/` holds administrator-file
-fragments. Most application-setting changes belong there, not in Rust.
+Desired-state data lives outside Rust: `conf/` holds declarations, `symlinks/`
+holds managed home content, and `system/` holds `/etc` fragments. Most
+preference edits stay in those directories rather than in Rust.
 
-Domains do not import sibling domains to coordinate work. The application
-catalog wires those relationships. The
-[domain-boundary tests](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/domain_boundaries.rs) enforce this rule
-and guard direct environment/platform access.
+Sibling domains never import each other directly to coordinate work; cross-domain
+edges live in the application catalog. The
+[domain-boundary tests](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/domain_boundaries.rs)
+enforce this isolation alongside checks on direct environment and platform
+access.
 
 ## Wrappers
 
-[dotfiles.sh](https://github.com/sneivandt/dotfiles/blob/main/dotfiles.sh) and [dotfiles.ps1](https://github.com/sneivandt/dotfiles/blob/main/dotfiles.ps1) locate the
-checkout and binary, handle `--build`, bootstrap when needed, and forward the
-remaining arguments. Rust owns profile selection and command behavior.
+[dotfiles.sh](https://github.com/sneivandt/dotfiles/blob/main/dotfiles.sh) and
+[dotfiles.ps1](https://github.com/sneivandt/dotfiles/blob/main/dotfiles.ps1)
+locate the checkout and binary, handle `--build`, download and verify a release
+when needed, and forward all remaining arguments. The Rust binary owns profile
+selection and command semantics.
 
-See [Source builds](contributing.md#source-builds) for wrapper build behavior and
-[Release downloads](../guides/security-and-trust.md#release-downloads) for download
-verification.
+See [Source builds](contributing.md#source-builds) for wrapper builds and
+[Release downloads](../guides/security-and-trust.md#release-downloads) for
+checksum and provenance verification.
 
 ## Application layer
 
-For engine commands, startup resolves one
-[RuntimePolicy](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runtime.rs) before logging begins.
-It combines CLI flags, the injected environment and terminal capabilities.
-The context receives its resolved `ExecutionPolicy`; profile prompting,
-restart logic and elevation do not independently reinterpret the environment.
+Before logging starts, engine commands resolve a single
+[RuntimePolicy](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runtime.rs)
+from CLI flags, the injected environment, and terminal capabilities. The
+execution context receives the derived `ExecutionPolicy` so prompting, restart
+handling, and elevation all follow one consistent decision:
 
-Important distinctions:
+- `CI` activates whenever the variable is present (even if empty or `"false"`),
+  disabling prompts and requiring applicable tasks to complete.
+- Running non-interactively does **not** by itself turn skips into failures:
+  locally, unmet prerequisites show as skipped unless you pass `--fail-on-skip`,
+  whereas genuine task failures always fail the command.
+- Restart guards check environment-variable presence; the elevated-child marker
+  requires a nonempty value.
+- Structured JSON Lines output disables interactive prompts, while terminal
+  exit pauses on Windows and signal handling remain separate.
 
-- `CI` is active when present, even if empty or set to `"false"`. It disables
-  prompts and requires applicable work to complete.
-- Non-interactive execution does **not** by itself require complete work.
-  Locally, an unmet prerequisite may be a skip; `--fail-on-skip` makes that
-  command unsuccessful. Actual task failures already fail the command.
-- Restart guards also use presence. The elevated-child environment marker
-  instead needs a nonempty value.
-- Structured JSONL output disables prompts. Terminal-dependent Windows exit
-  pauses and interrupt handling remain separate from task prompt policy.
+[CommandRunner](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runner.rs)
+holds the locks (main checkout, active Git overlay, and home), the
+configuration store, and the execution context. The home lock coordinates even
+independent clones targeting the same home directory regardless of
+state-directory environment overrides. Static `update` and `remove` tasks come
+from [catalog.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs),
+while `check` uses its own
+[task list](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/check.rs).
+The [execution coordinator](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/execution/mod.rs)
+manages elevation, restart phases, progress output, and final exit status.
 
-The [CommandRunner](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runner.rs) holds the main checkout, Git overlay and home locks,
-configuration store and execution context. The home lock also coordinates independent
-checkouts targeting the same home, regardless of state-directory environment overrides.
-Static update/remove tasks come from [catalog.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs); `check` has a
-[separate task set](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/check.rs). The
-[execution coordinator](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/execution/mod.rs) handles
-elevation, restart phases, progress and final command status.
-
-Read-only listing uses configuration and task metadata without executing tasks,
-probing runtime prerequisites, creating a run log, acquiring the run lock or
-persisting selections. Its graph explains selection, not predicted changes.
+Read-only `list` commands inspect configuration and task metadata without
+running tasks, probing runtime requirements, writing logs, taking locks, or
+saving selections. Their graph output reflects selection rather than predicted
+machine changes.
 
 ## Configuration flow
 
-The loader resolves the selected profile and overlay, decodes every required
-main TOML file, selects active records, and gives matching overlay records
-precedence. Source origins travel with entries so an overlay source stays an
-overlay source. Scripts come only from the overlay.
+The loader resolves the active profile and overlay, parses every required main
+TOML file, filters entries by active categories, and applies overlay overrides.
+Each entry retains its source origin so relative paths inside an overlay stay
+anchored to that overlay. Script tasks can only come from an overlay.
 
-Structural decoding covers inactive categories too. Active records receive
-resource-specific conflict checks before merging; an overlay cannot conceal
-contradictory declarations within the main source. Symlinks also need glob
-expansion and merged target-overlap checks. Some domains retain unfiltered
-views for source validation.
+Structural parsing covers inactive categories too, and active declarations are
+checked for conflicts within each repository before merging so an overlay can't
+mask an invalid base file. Symlinks additionally expand globs and check for
+merged target collisions; some domains also retain unfiltered views for source
+validation.
 
-Loading errors stop task construction. Additional semantic diagnostics come
-from `Config::validate`: startup displays them, while `config-diagnostics` fails
-if any remain. Do not conflate these two validation stages or silently replace
-invalid input with a default.
+Loading errors abort before tasks are built. Semantic diagnostics come from
+`Config::validate`: normal startup prints them as warnings, whereas
+`config-diagnostics` fails if any remain. Keep those two stages distinct and
+never silently substitute defaults for invalid input.
 
-[ConfigStore](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/config/store.rs) exposes typed, `Arc`-backed
-handles into one immutable configuration snapshot. Cloning a handle shares
-ownership; `get()` borrows the data. Tasks, including dynamic script tasks, are
-built once from that snapshot. They do not reload configuration as they run.
+[ConfigStore](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/config/store.rs)
+provides typed, `Arc`-backed handles to a single immutable snapshot. Cloning a
+handle shares ownership and `get()` borrows the slice. All tasks (including
+dynamic overlay script tasks) are constructed once from that snapshot and never
+reload config mid-run.
 
 ### Repository updates are a restart boundary
 
-Repository synchronization can change the very files that define later work.
-Continuing with the old task catalog would apply stale configuration.
+Syncing the checkout can update the very TOML files and scripts that define
+the rest of the run, so continuing with the old snapshot would apply stale
+configuration.
 
-The coordinator therefore runs the selected dependency closure ending at the
-repository task first. If that phase succeeds and changes content, it starts
-the **current binary** again with the original arguments and a restart guard.
-The child reloads configuration and constructs a fresh catalog.
+To avoid that, the coordinator runs the selected dependency closure ending at
+the repository task first. If that phase succeeds and pulls in changes, it
+re-executes the **current binary** with the original arguments and a restart
+guard so the child reloads configuration and builds a fresh task catalog.
 
-The parent keeps its locks while waiting. The child holds continuation locks so
-another invocation cannot start if the parent exits early. When both processes
-support shared lock handoff, the child also retains the original lock paths
-used by older binaries. A child launched by an older self-updater can protect
-its work from invocations that recognize continuation locks if that parent
-exits early. The child selects
-tasks before removing repeated repository synchronization and skips the initial
-self-update preflight. Failure or cancellation prevents
-restart; no change means the existing snapshot remains usable. Filtering out
-repository work uses a single graph.
+The parent keeps its locks while waiting, and the child acquires continuation
+locks so another invocation can't sneak in if the parent exits early. When both
+processes support shared lock handoff, the child also preserves the original
+lock paths used by older binaries (and a child spawned by an older self-updater
+can likewise guard its work against newer invocations). The child filters tasks
+before stripping repeated repository sync and skips the initial self-update
+preflight. Failures or cancellations abort before restarting, and a no-op sync
+keeps the existing snapshot. Filtering out repository work skips the split and
+runs a single graph.
 
-This is a reload boundary, not an independently selectable “reload” task.
-See [update.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/update.rs) and
-[reexec.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/reexec.rs).
+This restart boundary is built into the coordinator rather than exposed as a
+selectable task. See
+[update.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/update.rs)
+and [reexec.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/reexec.rs).
 
 ## Task engine
 
-Keep a task's identities separate:
+Each task separates its internal, public, and logging identities:
 
 | Field | Purpose |
 |---|---|
-| `task_id()` | Dependency identity: a static type, or type plus stable dynamic key |
-| `selector()` | Stable public `--only` / `--skip` value |
-| `name()` | Human-readable label |
-| `log_key()` | Persistent identity, including a dynamic instance key |
-| Visibility | Whether ordinary discovery, output rows and totals include it |
-| `update_only()` | Command membership, not an ordering priority |
+| `task_id()` | Dependency identity: a static type, or a type plus a stable dynamic key |
+| `selector()` | Stable public `--only` / `--skip` name |
+| `name()` | Human-readable display label |
+| `log_key()` | Persistent log identity, including any dynamic instance key |
+| Visibility | Whether normal discovery, console rows, and totals include the task |
+| `update_only()` | Command membership (not an ordering priority) |
 
-Use `task_metadata!` for metadata and `config_task!` for tasks containing only
-one configuration handle. Dynamic tasks use stable instance keys and are
-discovered from startup configuration, not opportunistically during execution.
+Use `task_metadata!` for standard metadata and `config_task!` for tasks that
+hold a single configuration handle. Dynamic tasks must have stable instance keys
+and are discovered from startup configuration rather than created dynamically
+during execution.
 
 ### Dependencies and assessment
 
-Dependencies, never catalog order, determine execution order:
+Execution order comes strictly from dependency edges, never from catalog order:
 
-- **Blocking:** predecessor failure or unmet work blocks the dependent.
-- **Ordering-only:** wait for the predecessor, then inspect this task even if
-  that predecessor failed.
+- **Blocking:** predecessor failure or unmet work blocks the dependent task.
+- **Ordering-only:** waits for the predecessor to finish, then runs and
+  inspects its own state even if the predecessor failed.
 
-The graph rejects duplicate identities and cycles. Same-domain edges belong
-in the task; cross-domain edges belong in the application catalog.
-If unavailable work is removed before scheduling, its transitive blocking
-dependents must also be skipped: an absent graph node cannot propagate failure.
+The graph rejects duplicate task IDs and cycles. Same-domain edges live on the
+task itself, while cross-domain edges live in `app/catalog.rs`. When an
+unavailable task is pruned before scheduling, its transitive blocking
+dependents are marked skipped as well so an absent node doesn't silently drop
+failure propagation.
 
-Applicability and elevation are assessed once per phase. Keep these probes
-read-only and stable for that phase. Inputs that a predecessor may create
-must be checked inside `run()`, after the wait. A task with no configured work
-returns `NotApplicable`, not a changed result.
+Applicability and elevation are evaluated once per phase and must stay
+read-only and deterministic for that phase. Inputs that a predecessor might
+create belong inside `run()` after dependencies finish. A task with no active
+entries returns `NotApplicable` rather than a changed status.
 
-See [Task reference](../reference/task-reference.md#scheduling-model) for filtering and the difference
-between a declared graph and its runtime assessment.
+See [Scheduling model](../reference/task-reference.md#scheduling-model) for
+task filtering and how the declared graph relates to runtime assessment.
 
 ### Parallelism and shared state
 
-The scheduler queues a task once all its dependencies have finished. A bounded
-pool of scoped threads runs ready tasks. Finishing a task frees a worker and can
-make more tasks ready while independent work continues.
+The scheduler dispatches each task as soon as its dependencies finish, running
+ready tasks on a bounded scoped-thread pool. Resource batches run on a separate
+Rayon pool. Passing `--no-parallel` limits task scheduling to one worker and
+runs resource batches serially; `.sequential()` serializes a single batch,
+though another task could still touch the same underlying file concurrently.
 
-Resource batches use a separate Rayon pool. `--no-parallel` uses one task worker
-and processes resource batches serially. `.sequential()` serializes a single
-batch. Another task can still touch the same document.
+To prevent cross-task collisions on shared state, declare an
+[AccessClaim](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/access.rs).
+Matching namespace/key pairs never overlap inside the run's claim registry:
 
-Use [AccessClaim](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/access.rs) for that exclusion. Equal
-namespace/key pairs cannot overlap within the run's claim registry:
+- A task acquires its full claim set after dependency waits and before running
+  its body.
+- A resource acquires its claims before discovery and holds them through
+  preview, apply, or removal.
+- A task that holds claims must declare every claim its nested resources need;
+  undeclared nested claims fail fast instead of risking deadlock.
+- Resource dispatch waits on the caller thread rather than tying up Rayon
+  workers; cancellation interrupts waits, and dropping a guard releases it.
 
-- A task reserves its full claim set after dependency waits, before its body.
-- A resource reserves claims before discovery and holds them through preview,
-  mutation or removal.
-- A claimed task must declare all claims its nested resources will need.
-  Undeclared nested claims fail rather than risking a deadlock.
-- Resource dispatch waits on the caller thread, not on Rayon workers.
-  Cancellation interrupts waits; dropping a reservation releases it.
-
-Claims express neither completion order nor failure propagation. They are
-explicit state identities, not automatic filesystem-alias detection, and
-cannot coordinate external applications or other CLI processes. For example,
-agent settings claim each target document, not each individual setting.
+Claims govern mutual exclusion only: they do not define ordering or propagate
+failures, they do not detect filesystem aliases automatically, and they cannot
+coordinate external apps or separate CLI processes. Agent settings, for
+instance, claim each target JSON file rather than individual keys.
 
 ## Requirements
 
-A [requirement](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/requirement.rs) is a named read-only
-probe that returns either:
+A [requirement](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/requirement.rs)
+is a named, read-only probe returning one of three outcomes:
 
 | Result | Meaning |
 |---|---|
-| `Satisfied(evidence)` | The consumer receives the checked input |
-| `Unsatisfied { reason }` | Required input is absent; report unmet work |
-| `Unknown { error }` | Inspection failed; preserve the original typed error |
+| `Satisfied(evidence)` | Input is ready; passes typed evidence to the consumer |
+| `Unsatisfied { reason }` | Required input is missing; records unmet work |
+| `Unknown { error }` | Probe failed; preserves the original typed error |
 
-Call `process_requirement()` inside `run()`. It checks the `Preview` or
-`Apply` contract once and passes the evidence into the continuation, which
-still uses the ordinary resource/operation dry-run gate. Do not query the
-same input again or install a hidden prerequisite.
+Call `process_requirement()` inside `run()`. It checks the `Preview` or `Apply`
+contract once and passes the evidence to the continuation, which still obeys
+the normal dry-run gate. Never re-query the same input or silently install a
+missing prerequisite.
 
-Preview may need fewer inputs than apply. For example, an AUR package preview
-queries pacman's installed-package database without needing the Paru executable
-that a preceding task only planned to install. It does not prove installation
-will succeed.
+Preview contracts can be lighter than apply contracts: an AUR package preview,
+for example, checks pacman's installed database without needing the `paru`
+binary that an earlier task only planned to install (while still noting that a
+passing preview doesn't guarantee apply will succeed).
 
-Requirements also support conservative early dispatch. A task declares its
-ordering requirements, and the application adds a provider-stability
-requirement through `TaskWithExtraDeps`. All must be satisfied at the
-`Ordering` stage to waive the selected ordering-only waits. Empty declarations,
-missing inputs and unknown results retain the waits. Blocking edges are never
-waived. If none of the conditional providers were selected, there is no wait
-to waive and neither readiness probe runs. A provider with a recorded outcome
-from an earlier execution phase still counts as selected.
+Requirements also enable conservative early dispatch. A task declares its
+ordering requirements, and the application attaches a provider-stability check
+via `TaskWithExtraDeps`. Only when **all** checks pass at the `Ordering` stage
+are the selected ordering-only waits waived; empty declarations, missing
+inputs, or unknown results keep the waits, and blocking edges are never waived.
+If none of the conditional providers were selected in the run, there is no wait
+to waive and neither probe executes (providers with recorded outcomes from an
+earlier restart phase still count as selected).
 
-Only the edge assessment survives into dispatch. Execution checks requirements
-again after dependencies finish; it does not reuse startup evidence.
-Requirements do not change selection or discover additional tasks.
+Only the waived-edge decision carries into dispatch; execution still re-checks
+its requirements once dependencies complete, and requirements never alter task
+selection or discover new tasks.
 
-VS Code, agent packages, and systemd use this mechanism for package waits.
-On pacman platforms, provider stability requires all configured packages to be
-installed and Paru to be healthy. Other package managers and failed/unknown
-probes retain the waits. Systemd also requires already-converged units and
-still waits for symlinks (and for the dotfiles launcher when enabling the
-first-login user service); agent packages retains its blocking
-symlink prerequisite. The declared graph and `--with-deps` expansion do not change.
+VS Code extensions, agent packages, and systemd units use early dispatch for
+package waits. On pacman systems, provider stability requires all configured
+packages to be installed and Paru to be healthy (other package managers and
+failed or unknown probes keep the waits). Systemd also requires already-converged
+units and keeps its waits on symlinks (plus the launcher when enabling the
+first-login service), while agent packages retains its blocking symlink edge.
+The declared graph and `--with-deps` expansion stay unchanged.
 
 ## Resources
 
-A [Resource](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/resource/contract.rs) manages one
-independent item, such as a symlink or package. Its lifecycle is **discover → plan → preview or
-apply**. Discovery is intrinsic to the resource, or uses an injected batch
-lookup when one query can inspect many items.
+A [Resource](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/resource/contract.rs)
+manages one independent item (a symlink, package, registry value, etc.) through
+a **discover -> plan -> preview or apply** lifecycle. Discovery can be
+per-item or use a batch lookup when one query inspects many items at once.
 
-`Correct` needs no change. `Missing` and `Incorrect` are handled according to
-the processing mode:
+`Correct` items require no action. `Missing` and `Incorrect` items follow the
+selected processing mode:
 
 | Mode | Behavior |
 |---|---|
-| `Strict` | Create missing items and repair incorrect ones. Stop on an apply error. |
-| `Lenient` | Create and repair. Count apply failures and continue. |
-| `InstallMissing` | Create missing items; leave existing items alone. Count apply failures and continue. |
-| `FixExisting` | Repair existing items; leave missing items absent. Stop on an apply error. |
+| `Strict` | Create missing items and repair incorrect ones; stop on the first apply error |
+| `Lenient` | Create and repair; record apply errors and continue with remaining items |
+| `InstallMissing` | Create missing items and leave existing items alone; record apply errors and continue |
+| `FixExisting` | Repair existing items and leave missing items absent; stop on the first apply error |
 
-Unknown state is **not** missing state. Failed discovery must never trigger
-blind creation; invalid or unknown state leaves unmet work. Discovery and
-pre-apply warning errors remain fatal even in lenient mode; the continuation
-policy above applies to apply errors.
+Unknown state is **never** treated as missing state: failed discovery must
+never trigger speculative creation, and discovery or pre-apply warning errors
+stay fatal even in `Lenient` mode (continuation applies only to apply errors).
 
-`ResourceChange` separates applied, already-correct and skipped results.
-An unusable result must not become a successful no-op. Removal is a separate
-`RemovableResource` capability; the default removal plan acts on matching
-managed state, not arbitrary mismatched user data. Unknown ownership prevents
-removal and records failure.
+`ResourceChange` distinguishes applied, already-correct, and skipped outcomes
+so an unusable result can't masquerade as a clean no-op. Removal is a separate
+`RemovableResource` trait whose default plan acts only on matching managed
+state; unknown ownership blocks removal and reports a failure rather than
+touching user data.
 
-Stopped batches retain a typed [BatchReport](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/batch.rs):
-completed statistics, interrupted work and unattempted items. Parallel batches
-join already-started work before reporting. A failed shared inventory query
-leaves all prepared items unattempted and is a task-level error, not an invented
-resource failure. Later cancellation must not erase an earlier genuine failure.
+Interrupted or stopped batches return a typed
+[BatchReport](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/batch.rs)
+tracking completed counts, interrupted items, and unattempted items. Parallel
+batches join already-started work before returning. A failed shared inventory
+query marks every prepared item unattempted and bubbles up as a task-level
+error rather than synthetic per-item failures, and later cancellation never
+masks an earlier genuine failure.
 
 ## Operations
 
-An [Operation](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/operation.rs) handles one idempotent workflow,
-such as repository synchronization or an overlay script. `current_state()`
-returns complete, not applicable, blocked, or needs-run with an immutable plan.
+An [Operation](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/operation.rs)
+models a single idempotent workflow such as repository synchronization or an
+overlay script. `current_state()` reports complete, not applicable, blocked, or
+needs-run along with an immutable plan.
 
-`process_operation()` passes that **exact plan** to `preview()` or `apply()`.
-Planning is read-only; preview must not recompute or partly execute the plan.
-Use this lifecycle rather than duplicating check/dry-run/apply branches.
+`process_operation()` feeds that **exact plan** into `preview()` or `apply()`.
+Planning stays strictly read-only, and preview must neither recompute nor
+partially execute the plan. Always reuse this lifecycle instead of hand-rolling
+parallel check/dry-run/apply branches.
 
-An operation is not a transaction or a sandbox. The engine cannot roll back a
-partially completed external workflow, and script inspection/preview is safe
-only if the script honors its protocol.
+Keep in mind that an operation is neither a transaction nor a sandbox: the
+engine cannot roll back a partially executed external command, and script
+checks and previews stay read-only only when the script honors its protocol.
 
 ## Platform abstraction
 
-Use context capabilities and injected environment, executor and filesystem
-adapters for runtime decisions. Compile-time `cfg` gates remain appropriate
-where native APIs require them. Paths retain native OS encoding; a non-Unicode
-home path is not a missing environment variable.
+Use context capabilities plus injected environment, executor, and filesystem
+adapters for runtime platform logic, reserving compile-time `cfg` gates for
+OS-specific APIs. Keep paths in native OS encoding so a non-UTF-8 home path is
+never misread as a missing environment variable.
 
-The [elevation broker](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/execution/elevation.rs) keeps
-normal work unelevated. Linux primes sudo credentials for privileged commands;
-Windows delegates only selected machine-scoped Developer Mode work to an elevated
-child; home links and HKCU settings stay in the original process. Unavailable elevation
-leaves unmet work and blocks blocking dependents, not independent work.
-See [Elevation](../guides/security-and-trust.md#elevation).
+The [elevation broker](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/execution/elevation.rs)
+keeps the main run unelevated: Linux primes `sudo` for privileged commands,
+while Windows delegates only machine-scoped Developer Mode work to a
+short-lived elevated child so home links and HKCU registry values remain under
+the original user account. Unavailable elevation leaves unmet work and blocks
+blocking dependents without halting independent tasks; see
+[Elevation](../guides/security-and-trust.md#elevation).
 
 ## Error handling and observability
 
-Use checked [CommandSpec](https://github.com/sneivandt/dotfiles/blob/main/cli/src/infra/exec/mod.rs) requests unless a
-nonzero exit has a domain meaning the caller explicitly handles. Preserve
-typed spawn, I/O, nonzero-exit, capture-limit, timeout and cancellation causes
-through helper context and task boundaries.
+Prefer checked [CommandSpec](https://github.com/sneivandt/dotfiles/blob/main/cli/src/infra/exec/mod.rs)
+calls unless a nonzero exit code carries explicit domain meaning that you
+handle directly. Preserve typed spawn, I/O, nonzero-exit, capture-limit,
+timeout, and cancellation errors across helper and task boundaries.
 
-Subprocess capture is bounded: each stream retains at most an 8 MiB source-byte
-prefix plus a truncation marker, but continues draining to avoid deadlock.
-Exceeding the limit fails even an unchecked command, so truncated output cannot
-be mistaken for a complete inventory. Timeout/cancellation also cover pipe
-draining; process groups or Windows job objects allow descendant cleanup.
+Subprocess output capture is bounded: each stream keeps up to an 8 MiB prefix
+plus a truncation marker while continuing to drain so child pipes never
+deadlock. Exceeding the limit fails even unchecked commands so truncated output
+can't look like a complete inventory. Timeouts and cancellations also bound
+pipe draining, using Unix process groups or Windows job objects to clean up
+descendant processes.
 
-Atomic file publication stages content with owner-only Unix access. Replacing
-a regular file preserves its mode; new files and symlink replacements remain
-owner-only unless the caller explicitly applies another policy.
+Atomic file writes stage content with owner-only Unix permissions. Replacing a
+regular file preserves its mode, while new files and symlink replacements stay
+owner-only unless the caller applies a different mode explicitly.
 
-The scheduler's `ExecutionSummary`, **not logger counters**, decides command
-success. A genuine failure exits 1 and takes precedence over interruption;
-interruption alone exits 130. Neither implies rollback.
+The scheduler's `ExecutionSummary` (**not** logger counters) determines command
+success. Genuine failures exit `1` and take precedence over interruption;
+interruption alone exits `130`, and neither rolls back completed changes.
 
-Logging records task identity, actions, commands, results and duration.
-Normal output highlights changes and attention-worthy outcomes; verbose output
-adds current tasks and decisions. Internal and non-applicable tasks stay out
-of normal rows/totals, and finished rows retain completion order.
+Logging records task identity, actions, commands, results, and timings. Normal
+output surfaces changes and attention-worthy rows; `--verbose` adds unchanged
+tasks and decision details. Internal and inapplicable tasks stay hidden from
+normal rows and totals, and completed rows appear in completion order.
 
-Run logs are schema-versioned, with one physical line per event. Restarted and
-elevated processes have separate run IDs linked to their parent. Keep log-reader
-compatibility with legacy text logs. See the
-[Logs reference](../reference/cli-reference.md#logs) for viewing, retention, and
-interpretation of unfinished runs.
+Run logs are schema-versioned with one physical line per event, and restarted
+or elevated children write separate run IDs linked back to their parent. Keep
+the log reader backward-compatible with legacy text logs; see
+[Logs](../reference/cli-reference.md#logs) for viewing and retention details.
 
-Argument redaction and captured-output policy are separate.
-`CommandSpec::redact_arguments()` hides command arguments. By default failed
-streams and successful stderr are retained, while successful stdout is
-summarized by size. `OutputLog::Omit` excludes streams from logs and checked
-errors. Neither protects values logged separately by a caller; these controls
-are opt-in, not automatic secret scrubbing.
-See [Secrets](../guides/security-and-trust.md#secrets).
+Argument redaction and output capture are opt-in and independent:
+`CommandSpec::redact_arguments()` hides command arguments, while by default
+failed streams and successful stderr are kept and successful stdout logs only
+its byte count. `OutputLog::Omit` suppresses streams from both logs and checked
+errors. Neither scrubs values logged separately by callers; see
+[Secrets](../guides/security-and-trust.md#secrets).
 
 ## Extending the system
 
-Start with the smallest boundary that expresses the change:
+Pick the smallest abstraction that fits your change:
 
 | Need | Owning layer |
 |---|---|
-| Different packages, settings or application content | `conf/`, `symlinks/`, or `system/` |
-| Another independently managed item | A resource and thin task adapter |
-| One multi-step convergence workflow | An operation |
-| A checked input with reusable evidence | A requirement |
-| Eligibility, dependencies, visibility or elevation | Task metadata/application wiring |
-| Reusable OS/tool mechanics | An infrastructure adapter |
+| Different packages, settings, or application content | `conf/`, `symlinks/`, or `system/` |
+| Another independently managed item | A `Resource` and thin task adapter |
+| One multi-step convergence workflow | An `Operation` |
+| A checked input with reusable evidence | A `Requirement` |
+| Eligibility, dependencies, visibility, or elevation | Task metadata and application wiring |
+| Reusable OS or tool mechanics | An infrastructure adapter |
 | Parsing or transformation only | A plain function or module |
 
-Do not introduce a task just to split a function. Follow
-[Change checklists](contributing.md#change-checklists) and choose focused
-coverage from [Testing](testing.md).
+Avoid creating a task solely to split up a function. Next, walk through a
+concrete implementation in [Adding a task](adding-a-task.md), review the
+[Change checklists](contributing.md#change-checklists), and pick verification
+steps from [Testing](testing.md).

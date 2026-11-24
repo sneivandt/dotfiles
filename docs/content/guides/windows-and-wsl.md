@@ -5,63 +5,69 @@ description: Prepare Windows, handle elevation and symlink requirements, and und
 
 # Windows and WSL
 
-Run dotfiles from your **normal Windows account**, not an Administrator shell.
-It asks for elevation only where needed. Windows and WSL have separate home
-directories and must be configured separately.
+Always run dotfiles from your **normal Windows account** rather than an
+Administrator shell; dotfiles requests elevation only for the narrow machine
+tasks that require it. Windows and WSL keep separate home directories, so you
+configure each side independently.
 
-If you're configuring WSL, first [check which side owns the setting](#wsl).
-For commands shared by both environments, see [Commands and usage](commands-and-usage.md).
+If you're configuring WSL, start by checking [which side owns the setting](#wsl).
+For cross-platform commands and flags, see
+[Commands and usage](commands-and-usage.md).
 
 ## Requirements
 
 | Requirement | Why |
 |---|---|
-| x86-64 Windows | The published Windows release asset supports this architecture |
-| PowerShell | Runs `dotfiles.ps1`; Windows PowerShell and `pwsh` are supported by the wrapper |
-| Git | Checkout, repository synchronization, hooks, and saved selections |
-| winget | Installs configured Windows packages |
-| GitHub CLI (`gh`) | Required for release build provenance verification during bootstrap and self-update |
+| x86-64 Windows | The published Windows release asset targets x86-64 |
+| PowerShell | Runs `dotfiles.ps1` (both Windows PowerShell and `pwsh` are supported) |
+| Git | Checkout, repository sync, hooks, and saved selections |
+| WinGet | Installs declared Windows packages |
+| GitHub CLI (`gh`) | Verifies release build provenance during bootstrap and self-update |
 | Rust/Cargo and native build prerequisites | Only needed for a [source build](../development/contributing.md) |
 
-Keep the checkout at a stable path: home links and the installed launcher refer
-back to it. Review `conf/` and **back up existing home configuration** before
-applying. Move aside any existing files, directories, or unrelated links that
-block installation.
+Clone the checkout to a permanent path, since home symlinks and the installed
+launcher point straight back to it. Review `conf/` and **back up existing home
+configuration** before applying, moving aside any existing files, directories,
+or unrelated links that would conflict.
 
 ## Bootstrap
 
-Clone and review the configuration using [Getting started](getting-started.md)
-(or configure a fork/source build under [Using a fork](getting-started.md#using-a-fork)).
-The examples below use downloaded release binaries; add `--build` after
-`.\dotfiles.ps1` if you build from source.
+Clone and review the repository following [Getting started](getting-started.md)
+(or configure a fork or source build under
+[Using a fork](getting-started.md#using-a-fork)). The examples below use
+published release binaries; pass `--build` right after `.\dotfiles.ps1` to
+compile locally instead.
 
-Open PowerShell in the checkout and preview an update:
+Open PowerShell in the checkout and run a preview:
 
 ```powershell
 .\dotfiles.ps1 update --no-repo-update --dry-run
 ```
 
-The wrapper downloads and verifies the CLI if needed. Review the
-Windows-specific symlink and elevation behavior below, then follow the
+The wrapper downloads and verifies the CLI automatically if needed. Review the
+Windows symlink and elevation behavior below, then work through the
 [preview](getting-started.md#3-preview-the-selected-work) and
-[apply](getting-started.md#4-apply-what-you-reviewed) steps. The remaining
-examples use the wrapper so they also work before the launcher is installed.
+[apply](getting-started.md#4-apply-what-you-reviewed) steps. The rest of this
+guide uses `.\dotfiles.ps1` so commands work even before `dotfiles` is on
+`PATH`.
 
 ### Download and update failures
 
-Do not disable checksum or provenance verification to make a download work.
-Check the [bootstrap troubleshooting guide](troubleshooting.md#wrapper-download-fails).
+Never disable checksum or provenance verification to push past a failed
+download; start with [Wrapper download fails](troubleshooting.md#wrapper-download-fails).
 
-Windows can prevent replacement of an executable that is still in use. If
-self-update fails, read the error before retrying or moving files. The
-[self-update reference](../reference/cli-reference.md#cli-self-update) explains
-verification, the post-update version check, and recovery if that check fails.
+Windows locks executables while they are running, which can prevent replacing
+an in-use binary during self-update. If self-update fails, read the error
+carefully before retrying or moving files. See the
+[CLI self-update reference](../reference/cli-reference.md#cli-self-update) for
+verification, post-update version checks, and recovery.
 
 ## Developer Mode and symlinks
 
-Developer Mode lets a normal user create file symlinks. Dotfiles can enable
-it through a narrowly scoped elevated task. Directory links can instead fall
-back to junctions, and already-correct links do not need elevation.
+Enabling Windows Developer Mode lets your normal user account create file
+symlinks without Administrator privileges. Dotfiles can turn it on for you via
+a short-lived elevated task. Directory links can fall back to junctions when
+Developer Mode is off, and already-correct links need no elevation at all.
 
 Include the Developer Mode task when previewing link setup:
 
@@ -70,176 +76,181 @@ Include the Developer Mode task when previewing link setup:
 .\dotfiles.ps1 update --only symlinks --with-deps --dry-run
 ```
 
-`--only symlinks` without `--with-deps` omits Developer Mode, but does not bypass
-the link task's own capability checks. Unavailable Developer Mode does not
-automatically block directory links or links that are already correct.
+Running `--only symlinks` without `--with-deps` skips the Developer Mode task
+while still running the symlink task's own capability checks, so directory
+links and already-correct links can still proceed even if Developer Mode isn't
+enabled yet.
 
-If linking fails, distinguish these causes:
+When a link fails, distinguish the three common causes:
 
 | Problem | What to do |
 |---|---|
 | File-link creation is not permitted | Enable Developer Mode, then retry from your normal user's terminal |
 | A home target conflicts | Back it up and move it aside before retrying |
-| Git checked out a source symlink as plain text | Repair the source checkout, not the home target |
+| Git checked out a source symlink as plain text | Repair the source checkout rather than the home target |
 
-For the last case, inspect the checkout without changing it:
+To check for plain-text symlink placeholders without changing anything:
 
 ```powershell
 git config --show-origin --get core.symlinks
 git ls-files --stage -- symlinks | Select-String '^120000 '
 ```
 
-Git mode `120000` denotes a symlink. Compare the reported source's actual type
-with its Git mode; an unset `core.symlinks` alone is not a diagnosis. Enabling
-Developer Mode later does not turn an existing text placeholder into a link.
-Preserve local edits, enable Git symlink support, then restore only affected
-sources or use a fresh symlink-capable checkout. Dotfiles rejects detected
-placeholders rather than installing their text as configuration.
+Git mode `120000` marks a symlink. Compare each reported source's actual
+filesystem type against that mode (an unset `core.symlinks` alone doesn't prove
+a checkout is broken). Turning on Developer Mode later won't automatically
+convert existing text placeholders into real links: preserve any local edits,
+enable Git symlink support, and either restore just the affected sources or use
+a fresh symlink-capable clone. Dotfiles rejects detected placeholders rather
+than linking plain-text stubs as live configuration.
 
 ## Elevation
 
-Dotfiles keeps the main run unelevated. When necessary it names the affected
-tasks and starts a short-lived Administrator child for that scope:
+Dotfiles runs your main session unelevated and launches a short-lived
+Administrator child only for machine-scoped work that requires it:
 
 | Task | When it needs Administrator rights |
 |---|---|
-| `developer-mode` | The machine setting is not enabled |
+| `developer-mode` | The machine Developer Mode setting is not yet enabled |
 
-The child has its own console and log, linked from the parent run.
-Already-current work does not need a prompt. Dry-run does not request elevation
-to apply changes.
+The elevated child opens its own console and writes its own log linked from the
+parent run. Work that is already current never prompts, and `--dry-run` never
+requests elevation to apply changes.
 
-Only machine-scoped Developer Mode work is delegated. UAC can authenticate a
-different Administrator account, so home symlinks and user registry settings
-always stay in the original process. After the Developer Mode step, home
-symlinks recheck file-link capability; if it remains unavailable, pending file
-links are skipped while directory links and already-correct links still run.
+Only `developer-mode` is delegated to the elevated child. Because UAC can
+authenticate as a different Administrator account, home symlinks and user
+registry settings always stay in your original unelevated process. Right after
+`developer-mode` runs, `symlinks` rechecks file-link capability; if it is still
+unavailable, pending file links are skipped while directory links and
+already-correct links continue.
 
-- Declined consent or unavailable prompting leaves affected work skipped.
-  Blocking dependents cannot run, but independent tasks continue.
-- With `--fail-on-skip` or in CI, those skips make the command fail.
-- A child that fails, or cannot start, is a failure, not declined consent.
+- Declined UAC prompts or unavailable prompting leave affected tasks skipped.
+  Blocking dependents stop, while independent tasks continue.
+- Under `--fail-on-skip` or in CI, those skips cause the command to fail.
+- A child process that fails or cannot start is reported as a failure, not
+  declined consent.
 
-**Winget installers are separate:** they can show their own UAC prompts even
-though dotfiles did not elevate the package task.
+**WinGet installers are separate:** individual installers can still raise their
+own UAC prompts even though dotfiles runs the package task unelevated.
 
-If you deliberately enable Developer Mode from an Administrator terminal,
-limit the change:
+If you prefer to enable Developer Mode yourself from an Administrator terminal,
+scope the command to that single task:
 
 ```powershell
 .\dotfiles.ps1 update --only developer-mode
 ```
 
-Return to the ordinary terminal for the remaining work. Running everything as
-another Administrator account can target that account's home and settings.
+Then switch back to your normal terminal for everything else, since running a
+full update under a different Administrator account would target that
+account's home directory and registry hive.
 
 ## Packages
 
-Windows installs selected packages through winget. See
-[Package management](package-management.md#windows) for exact IDs, scope
-fallback, upgrades, and how installation failures are handled.
+Windows installs missing packages through WinGet. See
+[Package management](package-management.md#windows) for exact IDs, user-to-machine
+scope fallback, upgrades, and failure handling.
 
 ```powershell
 .\dotfiles.ps1 update --only packages --dry-run
 ```
 
-If an installer requires Administrator rights and you authorize it,
-use a package-only elevated rerun. Remember that `--only packages` selects
-**all active packages**, not an individual ID.
+If an installer genuinely requires Administrator rights and you approve it, run
+a package-only elevated retry, keeping in mind that `--only packages` covers
+**all active packages**, not one specific ID.
 
 ## Registry settings
 
 The `registry` task applies current-user (`HKCU`) values from
-`conf/registry.toml`, preserving undeclared values. Its tables are named
-settings groups, not profile categories: review them even for `base`.
-[User registry settings](../reference/user-registry-settings.md) explains the value types and
-declaration format.
+`conf/registry.toml` while leaving undeclared values alone. Notice that the
+tables in `conf/registry.toml` are logical settings groups rather than profile
+categories, so review them even when using `base`. See
+[User registry settings](../reference/user-registry-settings.md) for value
+types and schema details.
 
 ```powershell
 .\dotfiles.ps1 update --only registry --dry-run
 ```
 
-Settings include console, regional formatting, Explorer, search, and window
-behavior. Dotfiles does not back up original values or restore them on remove.
-Some settings take effect only when the application or user session restarts;
-save work before restarting either.
+Managed settings cover console behavior, regional formatting, Explorer, search,
+and window defaults. Dotfiles does not back up prior registry values or restore
+them on `remove`, and some settings only take effect after restarting the
+affected application or signing out and back in.
 
 <details>
 <summary>Legacy ForegroundLockTimeout note</summary>
 
 Older checkouts set `ForegroundLockTimeout` to `0` under
-`HKCU\Control Panel\Desktop` to allow applications to take focus. Current
-updates preserve the stored value; review or restore it in Registry Editor if
-you applied an older checkout.
+`HKCU\Control Panel\Desktop` to let apps take focus. Current updates leave that
+value alone; inspect or reset it in Registry Editor if you applied an older
+checkout.
 
 </details>
 
 ## PATH and wrapper
 
-The launcher task writes `%USERPROFILE%\.local\bin\dotfiles.cmd`, and the PATH
-task adds that directory to persistent user PATH. The launcher calls this
-checkout's `dotfiles.ps1`, preferring `pwsh` over Windows PowerShell.
+The launcher task creates `%USERPROFILE%\.local\bin\dotfiles.cmd`, and the PATH
+task adds `%USERPROFILE%\.local\bin` to your persistent user `PATH`. The
+launcher invokes this checkout's `dotfiles.ps1`, preferring `pwsh` over Windows
+PowerShell when installed.
 
-Open a new terminal before testing it:
+Open a new terminal to verify it:
 
 ```powershell
 Get-Command dotfiles -All
 Test-Path "$env:USERPROFILE\.local\bin\dotfiles.cmd"
 ```
 
-If PATH is not ready, keep using the explicit wrapper or binary. Multiple
-launchers may point to different checkouts. `--root` selects configuration,
-not the executable; use the desired checkout's wrapper when both matter.
+If `PATH` hasn't refreshed yet, keep calling `.\dotfiles.ps1` directly. If you
+have multiple checkouts, remember that `--root` selects configuration rather
+than the binary, so invoke the desired checkout's wrapper when both matter.
 
 ## PowerShell configuration
 
-The Windows symlinks select these profile destinations relative to your home:
+The Windows symlink declarations map your PowerShell profile to these
+home-relative paths:
 
 | Shell | Managed destination |
 |---|---|
 | PowerShell 7 | `Documents/PowerShell/Microsoft.PowerShell_profile.ps1` |
 | Windows PowerShell | `Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1` |
 
-These are fixed declaration paths, not a lookup of Windows' Documents folder.
-In each shell you use, inspect its actual profile path:
+Because these are fixed home-relative paths rather than dynamic Windows Known
+Folder lookups, check what each shell actually uses on your machine:
 
 ```powershell
 $PROFILE.CurrentUserCurrentHost
 Test-Path -LiteralPath $PROFILE.CurrentUserCurrentHost
 ```
 
-Redirected Documents folders, including OneDrive locations, and other hosts
-such as VS Code can use a different path. If it differs, adjust the matching
-home-relative destination in your
-[symlink declarations](../reference/home-symlinks.md#configuration) before applying.
-Absolute target paths are not supported. An existing parent link that redirects
-outside home needs the explicit external-target permission described there.
-Do not create a second independently maintained copy of the shared preferences.
+OneDrive-redirected Documents folders or embedded hosts like VS Code can look
+in a different path. If yours differs, update the home-relative destination in
+your [symlink declarations](../reference/home-symlinks.md#configuration) before
+applying (absolute target paths aren't supported, and parent links pointing
+outside your home require explicit external-target permission). Always keep one
+shared tracked profile instead of maintaining a second copy.
 
 Edit the tracked
 [Microsoft.PowerShell_profile.ps1](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/powershell/Microsoft.PowerShell_profile.ps1),
-not an installed copy.
-The profile provides a path and Git-aware prompt, command history, and
-history-based suggestions when the installed PSReadLine supports them.
-If a startup fragment fails, the profile warns and continues loading the
-remaining fragments. Fix the named fragment or its missing command, then
-reload the profile to retry it.
-`dot` is shorthand for `dotfiles`, and `code` selects VS Code Insiders when
-available. The profile leaves read-only and constant `code` and `ai` aliases
-in place.
+not the installed copy. It configures a path- and Git-aware prompt, command
+history, and predictive suggestions when PSReadLine supports them. If any
+startup fragment errors, the profile warns and keeps loading the rest so you
+can fix the named fragment and reload. `dot` aliases `dotfiles`, and `code`
+points to VS Code Insiders when available (leaving read-only or constant `code`
+and `ai` aliases intact).
 
-Open a new session after editing the profile. Dotfiles command completion is
-installed separately by the [completions task](commands-and-usage.md#shell-completions).
+Open a new PowerShell window to pick up edits. Tab completion for `dotfiles`
+itself is installed separately by the
+[Shell completions task](commands-and-usage.md#shell-completions).
 
 ## Windows Terminal
 
-The `windows-desktop` category links the tracked
+The `windows-desktop` category links
 [settings.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json)
-into Windows Terminal's packaged-app `LocalState` directory. It selects a
-PowerShell 7 (`pwsh.exe`) profile by default and includes an Arch WSL profile.
-If either is unavailable on your machine, edit the tracked settings before
-installing the link. Windows Terminal may write changes back through the link;
-review the repository diff after editing settings in the app.
+into Windows Terminal's packaged-app `LocalState` directory. It defaults to
+PowerShell 7 (`pwsh.exe`) and includes an Arch WSL profile; if either isn't
+installed on your machine, edit the tracked JSON before applying. Changes made
+in Windows Terminal's settings UI may write back through the symlink, so check
+`git diff` afterward.
 
 ## WSL
 
@@ -248,35 +259,42 @@ review the repository diff after editing settings in the app.
 | WSL 2 networking for all distributions | Windows PowerShell, using `.\dotfiles.ps1` | Links [.wslconfig](https://github.com/sneivandt/dotfiles/blob/main/symlinks/wslconfig) into your Windows home to select NAT networking |
 | Startup and PATH for one distribution | A Linux shell inside that distribution, using `./dotfiles.sh` | Merges the [wsl.conf fragment](https://github.com/sneivandt/dotfiles/blob/main/system/wsl.conf) into `/etc/wsl.conf` to enable systemd and turn off automatic Windows PATH imports |
 
-The Windows executable does not manage `/etc/wsl.conf`. The Linux
-`system-files` task preserves unrelated INI settings and may need sudo.
-Without the Windows PATH entries, use full paths for Windows commands or
-add only the directories you need.
+The Windows CLI does not touch `/etc/wsl.conf`. Inside Linux, the
+`system-files` task preserves unrelated INI keys and may prompt for `sudo`.
+With automatic Windows PATH injection disabled, call Windows executables by
+full path or add only the specific directories you want.
 
-`ssh-wsl` resolves the Windows profile when you run it. It can find
-`cmd.exe` under `C:\Windows` with Windows PATH injection disabled. If Windows
-is installed elsewhere, set `WSL_CMD_EXE` to the Linux path to `cmd.exe` or
-set `WINHOME` to the Linux path to your Windows profile.
+`ssh-wsl` locates your Windows profile at runtime and can find `cmd.exe` under
+`C:\Windows` even with Windows PATH injection off. If Windows is installed
+elsewhere, set `WSL_CMD_EXE` to the Linux path of `cmd.exe` or `WINHOME` to the
+Linux path of your Windows user profile.
 
-**Save work in every running distribution before restarting WSL.** Run
-this from Windows; it terminates all WSL distributions and their processes:
+**Save work in every running distribution before restarting WSL.** From Windows
+PowerShell, shut down all WSL distributions so `/etc/wsl.conf` and `.wslconfig`
+changes take effect:
 
 ```powershell
 wsl --shutdown
 ```
 
-Reopen the intended distribution afterward. Until systemd starts, configuring its
-startup setting alone does not make service tasks applicable.
+Reopen your distribution afterward. Until systemd is actually running inside
+WSL, systemd service tasks remain inapplicable.
 
 ## Remove
 
-Preview with the original profile/overlay while the sources still exist:
+Preview removal using the original profile and overlay while the checkout's
+source files are still intact:
 
 ```powershell
 .\dotfiles.ps1 remove --dry-run
 ```
 
-If the saved selection changed, pass the original `--profile` and `--overlay`
-explicitly. **Remove is not rollback:** Windows packages, Developer Mode,
-registry values, and PATH changes remain. Review the
-[removal behavior and limits](commands-and-usage.md#remove-integrations) before applying.
+Pass the original `--profile` and `--overlay` explicitly if your saved
+selection has changed. **Remove is not rollback:** installed Windows packages,
+Developer Mode, registry values, and `PATH` entries stay in place. Review
+[Remove integrations](commands-and-usage.md#remove-integrations) before
+applying.
+
+Next, read [Security and trust](security-and-trust.md) to review the tool's
+trust boundaries, or jump to [Troubleshooting](troubleshooting.md) if you ran
+into a Windows or WSL error.

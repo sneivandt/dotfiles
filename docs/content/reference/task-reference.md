@@ -5,13 +5,12 @@ description: Find a task by selector, then review its behavior, configuration, p
 
 # Task reference
 
-A selector names a task, not an individual item. For example, `--only symlinks`
-selects the Home symlinks task; your configuration determines which links it
-manages. Use the [lookup table](#find-the-right-task) if you know the change
-you want but not its selector.
+A selector identifies a whole task rather than an individual item: `--only symlinks`
+selects the Home symlinks task, and your active configuration determines which
+links it manages. If you know the change you want but not its selector, start
+with [Find the right task](#find-the-right-task).
 
-To see the tasks for your checkout, use the installed launcher and a selected
-profile:
+To inspect the tasks available for your checkout and saved profile:
 
 ```sh
 dotfiles list
@@ -19,10 +18,10 @@ dotfiles list --all
 dotfiles list --graph update
 ```
 
-The default list hides tasks that cannot apply to your platform or
-configuration. `--all` shows the full public catalog. Listing does not check
-runtime prerequisites or apply changes. See [Getting started](../guides/getting-started.md)
-if the launcher or profile is not configured yet.
+`dotfiles list` hides tasks ruled out by your platform or config, while `--all`
+shows the full public catalog (neither checks runtime prerequisites or changes
+your machine). If you haven't set up the launcher or profile yet, see
+[Getting started](../guides/getting-started.md).
 
 ## Find the right task
 
@@ -39,13 +38,14 @@ if the launcher or profile is not configured yet.
 | Sync the dotfiles checkout or run private setup scripts | [Dotfiles repository](dotfiles-repository.md), [Overlay scripts](overlay-scripts.md) |
 | Diagnose configuration or source problems | [Validation tasks](#validation-tasks) |
 
-Use the selector index below for exact names, or search for a task page by title.
+Use the selector catalog below for exact names, or search by task title.
 
 ## Catalog overview
 
-These built-in selectors belong to `update`. Availability tells you whether
-the task is relevant, not whether the required tools or privileges are present.
-Only `git-hooks`, `launcher`, and `symlinks` also support [removal](#remove-tasks).
+These built-in selectors belong to `update`. Availability indicates whether a
+task applies to your platform and config, not whether required tools or
+privileges are present. Only `git-hooks`, `launcher`, and `symlinks` also
+support [removal](#remove-tasks).
 
 | Selector | Task and availability |
 |---|---|
@@ -73,117 +73,108 @@ Only `git-hooks`, `launcher`, and `symlinks` also support [removal](#remove-task
 
 ## Overlay scripts
 
-Each active private script becomes a separate `script-<normalized-name>` task
-for update and remove. [Overlay scripts](overlay-scripts.md) explains discovery,
-preview behavior, and the configuration protocol.
+Each active private overlay script registers its own `script-<normalized-name>`
+task for both `update` and `remove`; see [Overlay scripts](overlay-scripts.md)
+for discovery, preview behavior, and the script protocol.
 
 ## Remove tasks
 
-Remove uses **current configuration, not a historical inventory**. Keep the
-original profile, overlay and sources available until it completes.
+`remove` reads **current configuration rather than a historical inventory**, so
+keep the original profile, overlay, and source files available until it finishes.
 
 | Selector | What removal does |
 |---|---|
-| `symlinks` | Replace managed links with source copies. Preserve ordinary files and missing targets; `--restore-missing` also fills absent targets. |
-| `git-hooks` | Delete matching managed hooks; preserve modified hooks and unrelated names. |
-| `launcher` | Delete a matching managed launcher; preserve modified launchers and leave PATH unchanged. |
-| `script-…` | Run the active script's removal protocol. Its safety and completeness depend on the script. |
+| `symlinks` | Replaces managed links with source copies, preserving ordinary files and missing targets (`--restore-missing` also populates absent targets) |
+| `git-hooks` | Deletes matching managed hooks while preserving modified hooks and unrelated names |
+| `launcher` | Deletes a matching managed launcher while preserving modified copies and leaving `PATH` intact |
+| `script-…` | Runs the active script's removal protocol (safety and completeness depend on the script) |
 
-This is not restoration from backups. Packages, services, registry/Git/harness
-values, shell selection, permissions, completions, WSL settings, editor
-extensions and agent deployments are not reversed by static remove.
-
-For file-copy details and links that removal must leave in place, see
-[Home symlinks](home-symlinks.md#removal).
+`remove` is not a full backup restore: packages, services, registry/Git/agent
+settings, login shell, permissions, completions, WSL config, editor extensions,
+and agent deployments are not automatically undone. See
+[Home symlinks](home-symlinks.md#removal) for copy rules and links left in
+place.
 
 ## Validation tasks
 
-`check` has its own task set; it does not execute the update graph.
+`check` runs its own independent validation graph rather than the update graph:
 
 | Selector | What it checks |
 |---|---|
-| `config-diagnostics` | [Configuration diagnostics](configuration-diagnostics.md): Aggregated diagnostics; warning-severity findings also fail |
-| `symlink-sources` | [Symlink sources](symlink-sources.md): Symlink/glob and chmod sources, including inactive categories |
-| `config-files` | [Required configuration files](required-configuration-files.md): Required main TOML files; warns if `hooks/` is absent |
-| `apm-plugins` | [APM plugin checks](apm-plugin-checks.md): Local plugins through `apm pack --dry-run --verbose` |
-| `shellcheck` | [ShellCheck](shellcheck.md): Shell scripts in the main repository |
+| `config-diagnostics` | [Configuration diagnostics](configuration-diagnostics.md): aggregated diagnostics (warning-severity findings also fail) |
+| `symlink-sources` | [Symlink sources](symlink-sources.md): symlink/glob and chmod sources, including inactive categories |
+| `config-files` | [Required configuration files](required-configuration-files.md): required main TOML files (warns if `hooks/` is absent) |
+| `apm-plugins` | [APM plugin checks](apm-plugin-checks.md): local plugins via `apm pack --dry-run --verbose` |
+| `shellcheck` | [ShellCheck](shellcheck.md): shell scripts in the main repository |
 | `psscriptanalyzer` | [PSScriptAnalyzer](psscriptanalyzer.md): PowerShell scripts in the main repository |
 
-The check command loads configuration before filtering. `--only` cannot bypass a
-malformed [required file](../guides/configuration-basics.md#files).
-
-Missing optional tools cause visible unmet skips; `--fail-on-skip` or CI makes
-these unsuccessful. Local plugin checks do not validate every remote package
-or private overlay script.
-
-Use [CLI validation](../development/testing.md#cli-validation) for commands, then select
-additional integration/configuration-drift coverage as appropriate.
+Configuration loads before task filters apply, so `--only` cannot bypass a
+malformed [required file](../guides/configuration-basics.md#files). Missing
+optional tools surface as unmet skips (turning into failures under
+`--fail-on-skip` or `CI`). Local plugin checks don't validate every remote
+package or private overlay script. See
+[CLI validation](../development/testing.md#cli-validation) for local commands.
 
 ## Read a task page
 
-Each task page starts with its purpose and a selection summary, followed by
-its behavior and relevant declaration format. Read availability separately
-from prerequisites: a task can be selected for your platform but remain unmet
-because a required tool, privilege, or input is absent.
+Each task detail page opens with its purpose and a metadata table, then covers
+behavior, configuration, preview/apply, and removal. Keep **availability**
+distinct from **prerequisites**: a task can apply to your platform yet still
+report unmet when a required tool, privilege, or input is missing.
 
 | Detail | How to use it |
 |---|---|
-| Selector and commands | Choose the task in the right update, remove, or check command |
-| Availability or scope | Understand which platforms, declarations, and sources it covers |
-| Requires success / Runs after | Decide whether to include predecessor tasks; see the scheduling model below |
-| Implementation | Find the owning code and its tests when changing behavior |
-| Configuration | Edit the declaration or source, not a generated output or installed copy |
-| Preview and removal | Review side effects and retained state before applying or retiring the feature |
+| Selector and commands | Pick the task in the right `update`, `remove`, or `check` command |
+| Availability or scope | Check which platforms, declarations, and sources it covers |
+| Requires success / Runs after | Decide whether predecessor tasks are needed (see [Scheduling model](#scheduling-model)) |
+| Implementation | Jump straight to the owning Rust code and tests |
+| Configuration | Edit tracked declarations or sources rather than generated or installed copies |
+| Preview and removal | Review side effects and retained state before applying or retiring a feature |
 
-Tool references describe the underlying tool, not a promise that dotfiles
-supports every upstream option. For example, systemd supports more enablement
-relationships than dotfiles' offline user-unit preparation does. Prefer the
-task's documented scope when planning an update, and the linked upstream
-documentation when learning the tool itself.
+Upstream tool links document the underlying tool, not a guarantee that
+`dotfiles` exposes every upstream option (for instance, `systemd` supports more
+enablement patterns than dotfiles' offline user-unit preparation). Rely on each
+task page for dotfiles' supported scope.
 
 ## Preview and apply
 
-Task-page commands assume an installed launcher and saved profile for the
-intended checkout. Before installation, use that checkout's wrapper as described
-in [Getting started](../guides/getting-started.md).
+Commands on task pages assume an installed launcher and saved profile (before
+installation, use the checkout wrapper shown in
+[Getting started](../guides/getting-started.md)).
 
-Run the task's preview and inspect the proposed items and destinations. Add
-`--verbose` to include unchanged items. Resolve failures and unmet
-prerequisites, then repeat the command without `--dry-run` to apply. Applying
-inspects the current state again; the preview is not a saved execution plan.
+Start with `--dry-run` (add `--verbose` to see unchanged items too), resolve
+any failures or unmet prerequisites, and then rerun without `--dry-run`. Apply
+always re-inspects live state rather than replaying a saved plan.
 
-Selecting one task does not include its predecessors. Use [Task
-selection](../guides/commands-and-usage.md#select-tasks) to decide whether to add
-`--with-deps` for update. Review the expanded graph before applying, because it
-can include package installation or repository synchronization.
+Selecting a single task doesn't automatically pull in its predecessors; use
+`--with-deps` on `update` when needed (see
+[Select tasks](../guides/commands-and-usage.md#select-tasks)) and check the
+expanded graph first so you don't unexpectedly trigger package installs or a
+repo sync.
 
-A preview can query the network, write logs, and save selections. Overlay
-script previews execute code. Task filters do not disable startup behavior,
-including the CLI release check. Read [Dry-run
-scope](../guides/commands-and-usage.md#dry-run-scope) for the shared limits as well as the
-task's local warnings.
+Remember that `--dry-run` can still access the network, write logs, save
+selections, run CLI release checks, and execute overlay preview scripts; see
+[Dry-run scope](../guides/commands-and-usage.md#dry-run-scope).
 
 ## Scheduling model
 
-Tasks run when their dependencies allow, not in catalog order. Each update task's
-summary table distinguishes **Requires success** from **Runs after**, using the
-terms below. These rows describe task dependencies, not required tools or privileges;
-read the task's behavior and availability too. Removal uses its own graph and does
-not inherit update dependencies.
+Tasks run as soon as their dependencies clear, not in catalog order. Each
+update task's summary table lists **Requires success** and **Runs after**
+dependencies (which describe task ordering, not required tools or privileges;
+`remove` uses its own independent graph):
 
 | Dependency | Meaning when both tasks are selected |
 |---|---|
 | `requires <-` (`blocking` in JSON) | Predecessor failure or unmet work blocks the dependent |
 | `after <-` (`after` in JSON) | Wait, then inspect this task even if the predecessor failed |
 
-For example, AUR installation requires a working Paru bootstrap. Systemd only
-waits for package and symlink work: an unrelated failure there must not prevent
-it inspecting units that are available.
+For example, `aur-packages` requires `paru` to succeed, whereas `systemd`
+merely waits after `packages` and `symlinks` so an unrelated package failure
+doesn't stop it from managing already-installed units.
 
-Package waits for systemd, VS Code extensions, and agent packages are conditional:
-a readiness probe can release the wait before package installation finishes. The
-task still checks its own prerequisites. To see the selected graph for your current
-platform, profile, and overlay:
+Package waits for `systemd`, `vscode-extensions`, and `agent-packages` are also
+conditional: a readiness probe can release the wait early if the required tool
+is already available. Inspect your live graph with:
 
 ```sh
 dotfiles list --graph update
@@ -191,24 +182,21 @@ dotfiles list --graph remove
 dotfiles list --graph check
 ```
 
-A dependency row describes ordering when both tasks are selected. Selecting a task
-alone does not automatically select its predecessors; `--with-deps` expands the
-selection for update and update graphs only. Remove and check do not accept it.
+Dependency edges only govern tasks that are selected together; pass
+`--with-deps` on `update` (or `list --graph update`) to expand predecessors
+automatically (`remove` and `check` don't accept `--with-deps`). See
+[Task discovery output](cli-reference.md#task-discovery-output) for graph
+notation.
 
-Use [Task selection](../guides/commands-and-usage.md#select-tasks) for filtering and
-dependency expansion. The [discovery reference](cli-reference.md#task-discovery-output)
-defines graph markers and plain/JSON output. A graph describes selection,
-not the changes a run will make.
+Listings and completions display canonical selectors, while `--only` and
+`--skip` still accept legacy aliases (`apm` for `agent-packages`, `paru-config`
+for `custom-package-repository`, `shell` for `login-shell`, `config-warnings`
+for `config-diagnostics`, `local-package-versions` for
+`custom-package-versions`, `local-package-repository` for
+`custom-package-repository`, and historical full console labels).
 
-Listings and completions use canonical selectors. For compatibility, `apm`,
-`paru-config`, `shell` and `config-warnings` still select `agent-packages`,
-`custom-package-repository`, `login-shell` and `config-diagnostics`, respectively.
-Previous full console labels remain accepted by `--only` and `--skip` too.
-The former `local-package-versions` and `local-package-repository` selectors
-also remain aliases for `custom-package-versions` and `custom-package-repository`.
-
-Independent ready tasks may run concurrently, with console rows in completion
-order. `--no-parallel` disables parallel execution. Tasks may finish unchanged,
-not applicable or unmet rather than changed; failure is not a rollback.
-See [Architecture](../development/architecture.md#requirements) for runtime readiness
-assessment and conditional scheduling.
+Independent ready tasks run in parallel by default (logging rows as they
+finish; pass `--no-parallel` for sequential runs). Tasks can finish unchanged,
+not applicable, or unmet rather than changed, and a failure never rolls back
+completed work. See [Architecture](../development/architecture.md#requirements)
+for how readiness probes and conditional scheduling work under the hood.

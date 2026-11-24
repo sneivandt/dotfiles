@@ -21,25 +21,26 @@ and argument forwarding remain the wrapper's responsibility.
 
 ## What it does
 
-Writes a small launcher script that calls this checkout's wrapper:
+Writes a small launcher script that invokes this checkout's wrapper:
 
 - Linux: `~/.local/bin/dotfiles`.
 - Windows: `%USERPROFILE%\.local\bin\dotfiles.cmd`, preferring `pwsh` and
   falling back to Windows PowerShell.
 
-It repairs stale content; it does not copy the Rust binary. Moving the checkout can
-invalidate the recorded path.
+The task repairs stale launcher content without copying the Rust binary. Because the
+launcher records the checkout path, moving the checkout later can leave it pointing
+to a missing directory.
 
-Launcher installation and command discovery are separate: [Shell PATH](shell-path.md)
-adds the destination directory to the user's search path. If the launcher
-exists but the shell cannot find it, inspect PATH before reinstalling or
-moving the checkout. [Getting started](../guides/getting-started.md#5-verify-the-installation)
-shows how to check the resulting installation.
+Launcher installation and command discovery are separate tasks: [Shell PATH](shell-path.md)
+adds the destination directory to your user search path. If the launcher
+exists on disk but your shell cannot find `dotfiles`, check `PATH` before reinstalling
+or moving the checkout. [Getting started](../guides/getting-started.md#5-verify-the-installation)
+shows how to verify the installed command.
 
 ## Configuration
 
-The destination and launcher format are built in. There is no TOML setting. The launcher
-records the selected checkout path, so keep that checkout in a permanent location.
+The destination and launcher format are built in, with no TOML setting. Keep the
+checkout in a permanent location so the recorded path stays valid.
 
 ## Preview and apply
 
@@ -49,14 +50,15 @@ Preview the launcher destination using your configured checkout:
 dotfiles update --only launcher --dry-run
 ```
 
-Check that the destination is this user's `.local/bin`. If an existing launcher
+Confirm that the destination is this user's `.local/bin`. If an existing launcher
 is reported as foreign or modified, back it up and move it aside rather than
 overwriting it. After [applying the reviewed
-change](task-reference.md#preview-and-apply), confirm the launcher points to the
-intended checkout. If the shell cannot find it, check [Shell PATH](shell-path.md).
+change](task-reference.md#preview-and-apply), verify that the launcher points to the
+intended checkout, and check [Shell PATH](shell-path.md) if the shell still cannot
+find `dotfiles`.
 
 ## Removal
 
-Removal deletes the launcher only while its contents still match the managed version. A
-modified launcher is preserved, and the PATH entry is left in place. Preview with
+Removal deletes the launcher only while its contents still match the managed version. Any
+modified launcher is preserved, and the `PATH` entry is left in place. Preview with
 `dotfiles remove --only launcher --dry-run` before applying.

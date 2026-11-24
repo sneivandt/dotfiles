@@ -21,28 +21,29 @@ packaging tools. This task ensures the helper itself is usable; the
 
 ## What it does
 
-On pacman platforms, checks both a registered `paru` package and a working
-`/usr/bin/paru --version`. It can rebuild an installed helper broken by a library
-upgrade. Failed package queries or interrupted health probes fail rather than trigger a
-speculative rebuild.
+On pacman platforms, checks both that a `paru` package is registered and that
+`/usr/bin/paru --version` succeeds, rebuilding an installed helper if a library
+upgrade broke it. Failed package queries or interrupted health probes fail the task
+instead of triggering a speculative rebuild.
 
-It waits for system packages without propagating unrelated failures. Rebuilding needs
-`git`, `makepkg`, `sudo` and a working `cargo --version`; an unconfigured rustup proxy
-is not enough. The rebuilt helper is checked again before dependent AUR installation.
+The task waits for system packages without letting unrelated package failures block it.
+Rebuilding requires `git`, `makepkg`, `sudo`, and a working `cargo --version` (an
+unconfigured rustup proxy is not enough), and the rebuilt helper is re-verified before
+dependent AUR installations proceed.
 
-Arch provisioning probes the target chroot, not the live ISO. AUR work uses the
-validated `/usr/bin/paru`, not an arbitrary PATH copy.
+During Arch provisioning, this task probes the target chroot rather than the live ISO.
+AUR installations always invoke the validated `/usr/bin/paru` rather than an arbitrary
+copy on `PATH`.
 
-An executable appearing on PATH is not enough: Paru can remain installed but
-fail to start after the system libraries it links against change. That is why
-the task checks both package registration and execution. If bootstrap is
-unmet, resolve the reported build prerequisite before retrying instead of
-substituting an unverified helper binary.
+Finding `paru` on `PATH` is not enough on its own, because Paru can stay installed yet
+fail to start after a shared library upgrade. Checking both package registration and
+execution catches that drift. If bootstrap is unmet, fix the reported build prerequisite
+before retrying instead of substituting an unverified binary.
 
 ## Configuration
 
-There is no dedicated TOML declaration. The task manages the Paru helper itself; [AUR
-packages](aur-packages.md) selects the packages installed through it.
+There is no TOML declaration for this task. It manages the Paru helper itself, while
+[AUR packages](aur-packages.md) controls which packages Paru installs.
 
 ## Preview and apply
 
@@ -52,14 +53,14 @@ Preview whether Paru is healthy, missing, or needs rebuilding:
 dotfiles update --only paru --dry-run
 ```
 
-If installation or rebuilding is proposed, check the build prerequisites above
-before [applying the change](task-reference.md#preview-and-apply). The preview
-does not build the helper or prove the build toolchain works. After apply,
-confirm the task reports a validated helper before retrying AUR installation.
-A failed health query needs diagnosis, not an assumed reinstall.
+If installation or a rebuild is proposed, verify the build prerequisites above before
+[applying the change](task-reference.md#preview-and-apply); preview does not build
+the helper or test the toolchain. After applying, confirm the task reports a validated
+helper before retrying AUR installs, and diagnose any failed health query rather than
+assuming a reinstall will fix it.
 
 ## Removal
 
-This task is not part of `dotfiles remove`. Removing a declaration or changing profiles
-does not undo changes already applied. See [removal
-scope](task-reference.md#remove-tasks) before planning a cleanup.
+This task is not part of `dotfiles remove`. Changing profiles or declarations does not
+uninstall Paru; see [removal scope](task-reference.md#remove-tasks) before planning a
+cleanup.

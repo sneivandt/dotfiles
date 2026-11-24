@@ -6,17 +6,17 @@ description: Customize Git, shell prompts and completion, Vim, Neovim, and VS Co
 # Application settings
 
 Application preferences live in tracked files under
-[symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/).
-Edit those sources, not installed copies or generated files. A home-directory
-link may make this checkout live configuration, so some changes take effect
-immediately.
+[symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/). Always
+edit those tracked sources rather than installed copies or generated files.
+Because home symlinks point straight back into the checkout, many edits take
+effect as soon as you save.
 
-Installing an application and configuring it are separate changes.
-[Package management](package-management.md) chooses applications;
-[symlink declarations](../reference/home-symlinks.md#configuration) choose which
-settings files reach your home. The files themselves control application
-behavior. This guide helps you find the right source, then covers Git, shells,
-and editors.
+Installing software and configuring it are separate concerns:
+[Package management](package-management.md) chooses which applications are
+installed, [symlink declarations](../reference/home-symlinks.md#configuration)
+map tracked files into your home directory, and the files themselves govern how
+each tool behaves. Use the quick table below to jump to the right source, then
+read the sections on Git, shells, VS Code, and Vim/Neovim.
 
 ## Find a common change
 
@@ -34,37 +34,39 @@ and editors.
 | Agent preferences, skills, or integrations | [Agent configuration](agent-configuration.md) |
 | SSH client defaults | [ssh/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/ssh/config) |
 
-Source paths in this table are beneath `symlinks/`. Linked source files open
-the public repository on GitHub; edit the corresponding file in your own
-checkout. Paths such as `~/.config/git/config` describe installed locations,
-not a second source to maintain.
+Every source path in this table lives beneath `symlinks/`. Clicking a link
+opens the public file on GitHub, so make your actual edits in your local
+checkout. Home paths like `~/.config/git/config` are the installed links rather
+than separate copies to edit.
 
 ## Make the change
 
-For a preference in an already-linked file, edit the source and use the
-application's normal reload or restart behavior. You do not need to recreate
-the link. Some settings UIs, including VS Code's, can write back through the
-link; review `git diff` afterward.
+When changing a preference in a file that is already linked, edit the tracked
+source and let the application reload or restart normally; you do not need to
+re-run `dotfiles update`. Keep in mind that interactive settings UIs (including
+VS Code's) can write directly back through a symlink into your checkout, so
+check `git diff` afterward.
 
-For a new file or destination, update
-[conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml),
-then preview the link task:
+To link a new file or add a destination, declare it in
+[conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml)
+and preview the link task:
 
 ```sh
 dotfiles update --only symlinks --dry-run
 ```
 
-Existing files, directories, and unrelated links are reported as conflicts; back
-them up and move them aside before applying. Use a
-[private overlay](private-overlays.md) for machine-specific alternatives (an
-overlay replaces a linked source; it does not merge arbitrary file contents).
-Keep credentials and private identity details out of public sources.
+Existing files, directories, and unrelated links are reported as conflicts so
+nothing is silently overwritten; back them up and move them aside before
+applying. For machine-specific or private alternatives, use a
+[private overlay](private-overlays.md) (which replaces the linked source whole
+rather than merging file contents), and keep credentials and private identity
+details out of the public checkout.
 
 ### Back up and restore a file
 
-Before the first apply, preserve any existing file at a destination you plan
-to manage. For the Git configuration on Linux, run this only if that file
-exists and is readable:
+Before applying dotfiles for the first time, back up any existing file at a
+path you plan to manage. On Linux, for example, back up `~/.config/git/config`
+if it exists and is readable:
 
 ```sh
 backup_dir=$(mktemp -d "$HOME/dotfiles-backup.XXXXXX")
@@ -72,37 +74,39 @@ cp -pL "$HOME/.config/git/config" "$backup_dir/config"
 printf 'Backup: %s\n' "$backup_dir/config"
 ```
 
-Open the backup and confirm its contents before applying. `cp -L` saves the
-file's contents even if the existing destination is a symlink. For a symlink,
-also record its target with `readlink`; the backup above preserves content,
-not the original link. Back up other selected files separately, including any
-Git configuration included by this file. On Windows, copy the resolved file's
-contents to a separate backup directory and record any original link target.
+Check the backup before applying. Passing `-L` copies the actual file contents
+even if the existing path is a symlink; if it is a symlink and you might want
+that exact link back later, record its target with `readlink` as well. Back up
+any other targeted files separately, including files included by your Git
+config. On Windows, copy the resolved file contents to a separate backup folder
+and record any original symlink target.
 
-To restore, first stop selecting the managed link in your declarations. Move
-the current destination itself aside, then copy the backup into its place as
-a real file. Copying directly over a managed symlink could overwrite the
-checkout's source. If you want the original symlink back instead, recreate its
-recorded target only after confirming that target still exists. Check
-`git config --show-origin --get user.name` to see which file Git now reads.
+To restore a backup later, first stop selecting that link in
+`conf/symlinks.toml`. Move the current symlink itself aside, then copy your
+backup into place as an ordinary file (copying straight onto an active symlink
+would overwrite the tracked file in the checkout). If you want the original
+symlink back instead, recreate it only after confirming its recorded target
+still exists, then verify what Git reads with
+`git config --show-origin --get user.name`.
 
 ## Git
 
-Git identity and defaults live in
-[config/git/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config);
-command shortcuts live in
+Shared Git identity and defaults live in
+[config/git/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config),
+and aliases live in
 [config/git/aliases](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/aliases).
-Review the supplied identity before using it. The shared configuration also
-rewrites GitHub HTTPS push URLs to SSH, so pushes need your own SSH
-authentication. These settings affect Git beyond this repository; use the
-[overlay file example](private-overlays.md#replace-an-application-file) for a
-private identity or different defaults.
+Review the configured identity before applying. Note that the shared config
+rewrites GitHub HTTPS push URLs to SSH, so pushing requires your own SSH
+authentication. Because these settings apply across all repositories on the
+machine, follow the
+[overlay file example](private-overlays.md#replace-an-application-file) if you
+need a separate work identity or custom defaults.
 
-To have dotfiles apply individual global Git settings, declare them in
-[conf/git-config.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml).
-The [Git settings format](../reference/global-git-settings.md#configuration) explains
-platform selection and Windows autocrlf cleanup. Avoid contradicting the linked
-files with a second declaration.
+If you want dotfiles to set individual global Git keys directly, declare them
+in [conf/git-config.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml)
+(see [Global Git settings](../reference/global-git-settings.md#configuration)
+for platform rules and Windows `core.autocrlf` cleanup). Avoid setting
+conflicting values in both the linked config and `git-config.toml`.
 
 | Shortcut | Purpose |
 |---|---|
@@ -111,51 +115,49 @@ files with a second declaration.
 | `git lo` | Show a compact commit graph |
 | `git gr <pattern>` | Search tracked content |
 
-Run `git alias` to list all aliases. If a setting does not take effect, use
-`git config --show-origin --get <key>` in the affected repository, replacing
-`<key>` with the setting name. Included files and repository settings can
-override the shared configuration.
+Run `git alias` to see the complete list. If a setting behaves unexpectedly,
+run `git config --show-origin --get <key>` inside the affected repository to
+see whether an included file or repository-local value is overriding the shared
+default.
 
-`git delete-merged` deletes local branches merged into your current `HEAD`.
-It leaves tags, the current branch, `main`, `master`, `dev`, and `develop`
-alone. Git's normal `branch -d` checks still apply. Unlike the automatic
-template hook below, this shortcut does not use `origin/HEAD` as its baseline.
+`git delete-merged` removes local branches already merged into `HEAD`, leaving
+tags, the current branch, `main`, `master`, `dev`, and `develop` intact while
+enforcing Git's standard `branch -d` safety check. Unlike the template hook
+below, it compares against `HEAD` rather than `origin/HEAD`.
 
-On Windows, the base profile leaves editor selection to Git and the environment.
-The desktop profile adds `config/git/windows-desktop`, which selects the installed
-VS Code Insiders command. Switching back to base does not remove an already-installed
-desktop override; stop selecting and remove that link deliberately if you no longer
-want it.
+On Windows, the `base` profile leaves Git's editor choice to your environment,
+while `desktop` adds `config/git/windows-desktop` to select VS Code Insiders.
+Switching back to `base` leaves an already-installed desktop link in place, so
+remove that link deliberately if you no longer want it.
 
 ### Git templates
 
-The shared configuration selects
-[Git templates](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git/templates/)
-through `init.templateDir`. Git copies their hook entrypoints when initializing
-or cloning a repository; the helpers resolve from the managed directory at
-runtime. These are separate from this repository's [contributor hooks](../development/contributing.md#git-hooks).
-Existing repositories need new entrypoints installed explicitly without
+The shared Git config points `init.templateDir` at
+[symlinks/config/git/templates/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git/templates/).
+Whenever you initialize or clone a repository, Git copies those hook
+entrypoints while their helper scripts resolve from the managed directory at
+runtime. These personal templates are separate from this repository's
+[contributor hooks](../development/contributing.md#git-hooks). Existing clones
+only pick up new template entrypoints if you install them explicitly without
 overwriting repository-specific hooks.
 
 **The templates can automatically delete local branches.** After a merge or
 rebase, [branch cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/templates/hooks.local/clean-merged-branches)
-deletes eligible branches merged into `origin/HEAD` using `git branch -d`.
-It preserves the current and default branches, `main`, `master`, `dev`,
-`develop`, and branches used by any worktree. It never deletes remote branches,
-does nothing without `origin/HEAD`, and does not run after an amend.
-If Git cannot finish listing branches or worktrees, cleanup leaves every
-branch in place.
+prunes local branches merged into `origin/HEAD` using `git branch -d`. It
+preserves the current branch, the default branch, `main`, `master`, `dev`,
+`develop`, and any branch checked out in a worktree. It never touches remote
+branches, skips silently if `origin/HEAD` is absent or after an amend, and
+leaves every branch alone if Git cannot finish listing branches or worktrees.
 
 The [push-protection hook](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/templates/hooks.local/pre-push)
-blocks updates to `main`, `master`, `develop`, and the destination remote's
-default branch. Add exact names through repository-local
-`dotfiles.protectedBranch` values. GitHub remotes whose URL owner matches
-`github.user` or its fallback `github.username` are exempt; that is a local
-configured-name check, not a GitHub permission check.
-If the fetch and push URLs differ, the hook checks the push destination
-instead of trusting the fetch repository's cached default branch. If Git
-cannot read the destination or protection settings needed for a branch push,
-the hook stops the push. Restore access and retry.
+guards `main`, `master`, `develop`, and the push remote's default branch. You
+can protect extra branch names with repository-local `dotfiles.protectedBranch`
+entries. GitHub remotes whose URL owner matches `github.user` (or fallback
+`github.username`) are exempt based on that local name check rather than a live
+GitHub permission lookup. When fetch and push URLs differ, the hook inspects
+the push remote directly instead of trusting the fetch remote's cached default
+branch, and it blocks the push if Git cannot read the destination or protection
+settings.
 
 ## Shell configuration
 
@@ -170,94 +172,98 @@ the hook stops the push. Restore access and retry.
 
 ### Environment and paging
 
-Login shells load the shared environment settings; interactive shells load
-the shared aliases. Put behavior common to Bash and Zsh in `config/shell/`,
-and shell-specific behavior in that shell's startup file. The
-[Windows guide](windows-and-wsl.md#powershell-configuration) covers PowerShell's
-separate profile.
+Login shells load the shared environment setup, and interactive shells load the
+shared aliases. Keep cross-shell behavior in `config/shell/` and shell-specific
+tweaks in the corresponding Bash or Zsh startup file. PowerShell has its own
+profile under [PowerShell configuration](windows-and-wsl.md#powershell-configuration).
 
-The managed Bash login profile first reads `~/.bash_login`, or `~/.profile` if
-there is no readable `~/.bash_login`. This keeps the login file Bash used
-before the managed `~/.bash_profile` was installed.
+To preserve any login setup you had before installing dotfiles, the managed
+`~/.bash_profile` sources `~/.bash_login` first (falling back to `~/.profile`
+if `~/.bash_login` is absent or unreadable).
 
-The shared profile supplies defaults for XDG directories, the editor, locale,
-terminal information, and the `less` pager. It preserves existing values for
-settings such as `EDITOR`, `VISUAL`, `LANG`, and the XDG directories.
-Managed application links still use `~/.config`: a different `XDG_CONFIG_HOME`
-produces a shell warning and fails the configuration check and link installation.
-Unset it or use `~/.config` before applying managed application settings; the
-installer does not relocate existing configuration.
+`config/shell/profile.sh` provides defaults for XDG directories, editor,
+locale, terminal settings, and `less`, while keeping any existing `EDITOR`,
+`VISUAL`, `LANG`, and XDG values intact. Managed `.config` symlinks always
+target `~/.config`, so setting `XDG_CONFIG_HOME` elsewhere triggers a shell
+warning and fails `dotfiles check` and symlink installation; unset it or point
+it at `~/.config` before applying.
 
-Explicit `WGETRC` and `INPUTRC` values are preserved. When unset, the profile
-selects a readable file in the XDG directory, then the managed `~/.config` location.
-If neither exists, it leaves the variable unset rather than breaking the application
-with a missing file. Other preferences, including pager colors, are assigned on startup.
+Explicit `WGETRC` and `INPUTRC` values are kept as-is. When unset, the profile
+checks the XDG directory first and then the managed `~/.config` path, leaving
+the variable unset if neither file exists so tools don't break on missing
+paths. Other defaults, including pager colors, are applied on startup.
 
-`config/shell/path.sh` puts user command directories ahead of inherited PATH
-entries and removes duplicates of those entries. It honors `CARGO_HOME`,
-`GOBIN`, and `GOPATH`. This shell startup behavior is separate from the CLI's
-[PATH task](../reference/shell-path.md), which makes the dotfiles launcher
-available persistently.
+`config/shell/path.sh` prepends user command directories to `PATH` without
+duplicating entries, honoring `CARGO_HOME`, `GOBIN`, and `GOPATH`. This shell
+startup ordering is separate from the CLI's
+[Shell PATH task](../reference/shell-path.md), which persists `~/.local/bin`
+for the dotfiles launcher.
 
 ### Completion
 
-Zsh uses normal completion on the first Tab. Repeat Tab to try approximate
-matches.
+In Zsh, pressing Tab once uses normal completion; pressing Tab again tries
+approximate matching.
 
-Dotfiles command completion comes from the CLI's
-[Shell completions task](../reference/shell-completions.md), not a separate
-hand-edited selector list.
+Tab completion for `dotfiles` itself is generated by the
+[Shell completions task](../reference/shell-completions.md) directly from the
+running CLI rather than maintained by hand.
 
 ## Visual Studio Code
 
-The desktop profile installs VS Code Insiders on Arch and Windows. It links
-shared settings into both stable and Insiders locations, even if only one
-edition is installed. Edit
+The `desktop` profile installs VS Code Insiders on Arch and Windows and links
+shared settings into both stable and Insiders user directories (even if only
+one edition is installed). Edit
 [settings.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Code/User/settings.json)
-and [keybindings.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Code/User/keybindings.json).
-The settings choose Tokyo Night, Source Code Pro, word wrapping, save on focus
-change, and Zsh on Linux or PowerShell on Windows. Application updates are manual;
-extension updates are separate. Review the checkout diff after using the settings
-UI, which can write through managed links.
+and
+[keybindings.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Code/User/keybindings.json)
+to adjust the Tokyo Night theme, Source Code Pro font, word wrapping, save on
+focus change, and default terminal (Zsh on Linux, PowerShell on Windows).
+Editor and extension updates stay manual, and changing settings inside the VS
+Code UI writes back through the symlink, so review `git diff` afterward.
 
-The desktop profile links these locations beneath the home directory:
+Under the `desktop` profile, dotfiles links these paths beneath your home
+directory (`base` omits them):
 
 - Linux: `.config/Code/User/` and `.config/Code - Insiders/User/`
 - Windows: `AppData/Roaming/Code/User/` and `AppData/Roaming/Code - Insiders/User/`
 - Remote servers: `.vscode-server/data/Machine/settings.json` and
   `.vscode-server-insiders/data/Machine/settings.json`
 
-Remote server locations receive settings only. Run dotfiles in the home that
-owns them; configuring Windows does not configure WSL or another host. Workspace
-settings can override user settings. The `base` profile does not select these links.
+Remote server paths receive `settings.json` only. Run dotfiles inside each host
+home that owns those directories: configuring Windows does not configure WSL or
+a remote Linux box, and workspace settings can still override user settings.
 
 ### Extensions
 
-Use the [VS Code extensions task](../reference/vs-code-extensions.md) to declare Marketplace
-IDs and install missing extensions. Its page includes the configuration format,
-CLI selection, previews, and first-login behavior. Use a normal update for a
-first installation so package prerequisites are included.
+Declare Marketplace extension IDs in `conf/vscode-extensions.toml` using the
+[VS Code extensions task](../reference/vs-code-extensions.md), which covers the
+declaration format, editor CLI preference, previews, and first-login behavior.
+For a fresh setup, run a normal update so package prerequisites are already in
+place.
 
-The list does not pin extension versions or remove extensions. Use the editor's
-Extensions view for updates and deliberate removal. An overlay can add personal
-extensions without changing the shared declaration.
+The list installs missing extensions without pinning versions or uninstalling
+removed IDs; use VS Code's Extensions view for upgrades and removals, or add
+personal IDs in a private overlay.
 
-On Arch, the managed Insiders launcher and URL handler use GNOME libsecret.
-See [GNOME Keyring troubleshooting](troubleshooting.md#gnome-keyring-stays-locked)
-for credential failures. When the selected profile enables the first-login
-service, chroot setup defers extension installation until a graphical login.
+On Arch, the managed Insiders launcher and URL handler store credentials in
+GNOME libsecret (see
+[GNOME Keyring stays locked](troubleshooting.md#gnome-keyring-stays-locked) if
+sign-in fails). During chroot provisioning, extension installation is deferred
+to the first graphical login when the first-login user service is enabled.
 
-For failures, run `dotfiles log --id <run-id> --task vscode-extensions --verbose`
-and check the selected CLI, profile, home, link destinations, and workspace
-overrides before reinstalling anything. Agent integrations have separate
-[configuration](agent-configuration.md).
+If extension installation fails, inspect
+`dotfiles log --id <run-id> --task vscode-extensions --verbose` and check the
+selected CLI, profile, home path, symlink targets, and workspace overrides
+before reinstalling anything. Coding-agent preferences and skills are managed
+separately in [Agent configuration](agent-configuration.md).
 
 ## Vim and Neovim
 
-On Linux, `symlinks/vim/` links to both `~/.vim` and `~/.config/nvim`, including
-for the base profile. Vim uses the shared configuration without third-party
-plugins; Neovim adds lazy.nvim plugins. Edits and plugin lockfile updates can
-therefore modify tracked files in this checkout.
+On Linux, `symlinks/vim/` is linked to both `~/.vim` and `~/.config/nvim`
+across both `base` and `desktop` profiles. Plain Vim uses the shared settings
+with no third-party plugins, while Neovim loads lazy.nvim plugins. Because
+those directories link directly into the checkout, edits and plugin lockfile
+updates appear in `git diff`.
 
 | Source | Change here |
 |---|---|
@@ -267,56 +273,61 @@ therefore modify tracked files in this checkout.
 | [lazy-bootstrap.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/lua/lazy-bootstrap.lua) | Plugin declarations, configuration, and bootstrap pin |
 | [lazy-lock.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/lazy-lock.json) | Recorded plugin revisions |
 
-The leader key is comma. Shared shortcuts include `,w` for wrapping, `,k` for
-spell checking, and `,v` for configuration. Neovim adds Ctrl-P for file search,
-`,/` for content search with ripgrep, Ctrl-E for the tree, `,b` for buffers,
-and `,t` for a terminal. See the source mappings for the full set, including
-remapped navigation and search keys. In a terminal, Escape leaves input mode;
-Alt+Escape also returns to the previous window.
+The leader key is comma. Shared mappings include `,w` (toggle wrapping), `,k`
+(spell checking), and `,v` (open configuration). Neovim adds Ctrl-P (file
+search), `,/` (ripgrep search), Ctrl-E (file tree), `,b` (buffers), and `,t`
+(terminal). Inside a Neovim terminal, Escape leaves input mode and Alt+Escape
+jumps back to the previous window. Check the source files for the complete list
+of remapped navigation and search keys.
 
 ### First launch and plugins
 
-Starting Neovim can clone the pinned lazy.nvim manager and install missing
-plugins. It needs Git and network access and is **not a read-only check**.
-Existing installations are not reset on startup; use `:echo stdpath('data')` to
-locate the data directory (`lazy/lazy.nvim`).
+Launching Neovim for the first time clones the pinned lazy.nvim plugin manager
+and installs missing plugins. That requires Git and network access, so starting
+Neovim is **not a read-only check**. Existing installs are never reset on
+startup; run `:echo stdpath('data')` to see where `lazy/lazy.nvim` lives.
 
 <details>
 <summary>Bootstrap staging and lock recovery</summary>
 
-New installs are cloned and checked out in a private sibling directory before
-publication. If an older bootstrap left a manager without its runtime files,
-startup preserves that directory as `lazy.nvim.bootstrap-*.interrupted` and
-installs a fresh copy; inspect the reported backup before removing it.
+Fresh installs clone and check out into a private sibling directory before
+moving into place. If an earlier bootstrap left a manager missing its runtime
+files, startup moves it aside as `lazy.nvim.bootstrap-*.interrupted` and
+installs cleanly; inspect any backup before deleting it.
 
-Concurrent bootstraps may clone separately, but only one publishes the manager.
-An interrupted clone can leave an unused `lazy.nvim.bootstrap-*` staging
-directory. A publication lock records its owner atomically and recovers
-automatically once that process exits; if startup cannot acquire the lock,
-retry after the active Neovim process exits. Abandoned staging directories can
-be removed once no Neovim processes are using that data path.
+Concurrent startups may clone in parallel, with only one publishing the final
+directory. An interrupted clone can leave an unused `lazy.nvim.bootstrap-*`
+staging directory. Publication locks record their owning PID atomically and
+recover once that process exits; if startup cannot acquire the lock, wait for
+the other Neovim process to exit and retry. Abandoned staging directories can
+be removed once no Neovim process is using that data path.
 
 </details>
 
-Run `:TSInstallConfigured` separately for missing configured Tree-sitter parsers.
-Wait for the asynchronous installation, then reopen the file. Normal startup
-does not download parsers; the plugin's `:TSUpdate` build hook updates installed
-parsers during plugin updates.
+Run `:TSInstallConfigured` to install missing Tree-sitter parsers, wait for the
+background install to finish, and reopen the file. Regular startup does not
+download parsers, though `:TSUpdate` refreshes installed parsers during plugin
+updates.
 
-Use `:Lazy` to inspect plugin state and errors. `:Lazy update` updates revisions;
-`:Lazy sync` also installs missing plugins and cleans unused ones. These commands
-change installed content and may change the tracked lockfile, so review the diff.
-Keep plugin-only behavior on the Neovim path so plain Vim still loads on its own.
-Neovim 0.11+ uses fuzzy insert completion; 0.12+ adds proximity ranking and `,u`
-for the built-in undo tree.
+Use `:Lazy` to inspect plugin status and errors, `:Lazy update` to bump
+revisions, and `:Lazy sync` to install missing plugins and prune unused ones.
+Review `git diff` afterward since updates can modify `lazy-lock.json`. Keep
+plugin-only configuration on the Neovim path so plain Vim continues to start
+cleanly on its own. Neovim 0.11+ enables fuzzy insert completion, and 0.12+
+adds proximity ranking plus `,u` for the built-in undo tree.
 
-For errors, inspect `:messages`, `:Lazy`, the failing Git command, and the affected
-plugin's locked revision. Do not delete the entire plugin tree as a general
-repair. If necessary, close the editor and move aside only the affected directory
-under the actual data path before retrying.
+When a plugin errors out, check `:messages`, `:Lazy`, the failing Git command,
+and the plugin's locked revision rather than wiping the entire plugin tree. If
+a single plugin directory is corrupted, close Neovim and move only that
+directory aside under your data path before retrying.
 
-For bootstrap or plugin-loading changes, preserve the separate Vim and Neovim
-entry points and update the manager pin or lockfile only when that is the
-intended change. Use the isolated
-[application configuration tests](../development/testing.md#application-configuration), not
-the live installed profile, to verify startup behavior.
+If you change bootstrap or plugin-loading behavior, keep the separate Vim and
+Neovim entrypoints intact, touch the bootstrap pin or lockfile only when
+intended, and verify startup with the isolated
+[application configuration tests](../development/testing.md#application-configuration)
+instead of your live home directory.
+
+To configure AI coding agents next, continue to
+[Agent configuration](agent-configuration.md), or jump to
+[Private overlays](private-overlays.md) to keep personal overrides outside the
+public repository.

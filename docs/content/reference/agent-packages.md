@@ -7,9 +7,9 @@ description: Install and update APM agent packages, merge dependency fragments, 
 
 [Agent Package Manager](https://github.com/microsoft/apm) (APM) resolves and
 deploys reusable agent content such as skills, instructions, and plugins.
-Dotfiles selects and combines configuration fragments; APM owns dependency
-resolution and deployment. This is separate from application preferences in
-[Agent settings](agent-settings.md).
+`dotfiles` selects and merges your YAML fragments, while APM handles dependency
+resolution and deployment. (For application preferences like Copilot or Codex
+settings, see [Agent settings](agent-settings.md).)
 
 | Task detail | Value |
 |---|---|
@@ -22,22 +22,21 @@ resolution and deployment. This is separate from application preferences in
 
 ## What it does
 
-Updates agent dependencies within their declared version rules and deploys content for
-the current user from selected main/overlay APM fragments. It requires successful
-symlink work and normally waits for package/AUR tasks. Readiness checks can allow it to
-proceed before those package tasks finish.
+Merges active main and overlay APM fragments, updates dependencies within their
+declared version bounds, and deploys agent content for the current user. It
+requires `symlinks` to succeed and waits for package/AUR tasks unless a
+readiness probe confirms `apm` is already available.
 
-See [Agent configuration](../guides/agent-configuration.md) for sources, targets, authentication,
-and cleanup, including [what a preview can
-show](../guides/agent-configuration.md#what-a-preview-can-show).
+See [Agent configuration](../guides/agent-configuration.md) for targets,
+authentication, cleanup, and
+[what a preview can show](../guides/agent-configuration.md#what-a-preview-can-show).
 
 ## Configuration
 
-Agent packages use YAML fragments under
+Agent packages are declared in YAML fragments under
 [symlinks/apm/config/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/config/),
-selected by `conf/symlinks.toml`. They are separate from `agent-settings.toml`
-preferences. For example, the base fragment names the allowed destinations and the local
-plugins to install:
+enabled through `conf/symlinks.toml` (separately from `agent-settings.toml`).
+For example, the base fragment lists allowed targets and local plugins:
 
 ```yaml title="symlinks/apm/config/base.yml (excerpt)"
 targets:
@@ -49,40 +48,34 @@ dependencies:
     - ~/.apm/plugins/dot-workflow
 ```
 
-Select a fragment by linking it through `conf/symlinks.toml`; use matching categories
-for the fragment and any local plugins it requires. These paths point to
-plugin links installed in your home directory. See [Agent
-configuration](../guides/agent-configuration.md) for adding packages, choosing targets, generated
-files, and cleanup.
+Enable a fragment by linking it in `conf/symlinks.toml`, keeping the fragment
+and any local plugins it references in matching categories. Always edit the
+tracked fragments rather than the generated merged manifest, which the next run
+can overwrite.
 
-Treat fragments as the editable input and the merged manifest as generated
-output. Editing the generated manifest loses the connection to profile and
-overlay selection and can be overwritten by the next run. The
-[APM reference](https://microsoft.github.io/apm/reference/) explains native
-commands; [Agent configuration](../guides/agent-configuration.md) explains this
-repository's user-scope targets, compatibility behavior, and trust boundary.
-Adding a dependency can introduce executable hooks or tools, not just text.
+See the [APM reference](https://microsoft.github.io/apm/reference/) for native
+APM commands, and [Agent configuration](../guides/agent-configuration.md) for
+user-scope targets and trust rules (remember that a package can introduce
+executable hooks or tools, not just Markdown).
 
 ## Preview and apply
 
-Preview deployment from the selected APM fragments:
+Preview deployment from the active APM fragments:
 
 ```sh
 dotfiles update --only agent-packages --dry-run
 ```
 
-Check the intended targets and any reported dependency additions, updates, or
-removals. A manifest-merge plan is not a complete remote dependency plan;
-read [what a preview can show](../guides/agent-configuration.md#what-a-preview-can-show).
-Resolve missing fragment links, APM, or authentication before [applying the
-reviewed change](task-reference.md#preview-and-apply). After deployment, inspect
-the expected content in the selected harnesses rather than only the generated
-manifest.
+Check the target harnesses and reported dependency additions, updates, or
+removals (keeping in mind
+[what a preview can show](../guides/agent-configuration.md#what-a-preview-can-show)).
+Ensure fragment links, `apm`, and any needed auth are ready before
+[applying](task-reference.md#preview-and-apply), then verify the deployed files
+in your target harnesses.
 
 ## Removal
 
-This task is not part of `dotfiles remove`. APM has its own stale-deployment cleanup,
-and removing the last configuration fragment can prevent that cleanup from running.
-Follow [Removing packages and
-targets](../guides/agent-configuration.md#removing-packages-and-targets) while the deployment
-configuration is still available.
+`dotfiles remove` does not touch APM deployments, and removing the last config
+fragment can stop APM's own stale-file cleanup from running. Follow
+[Removing packages and targets](../guides/agent-configuration.md#removing-packages-and-targets)
+while your deployment config is still in place.

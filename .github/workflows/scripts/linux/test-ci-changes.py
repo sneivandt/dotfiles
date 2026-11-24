@@ -1776,7 +1776,7 @@ class GitRangeTests(unittest.TestCase):
         fixture = {
             "docs/public/CNAME": "docs.example.invalid\n",
             "docs/content/404.md": "---\ntitle: Page not found\ndescription: Missing page.\n---\n",
-            "docs/content/guides/index.md": "---\ntitle: About this project\ndescription: Project introduction.\n---\n# About this project\n\n## Start here\n",
+            "docs/content/index.md": "---\ntitle: About these dotfiles\ndescription: Project introduction.\n---\n# About these dotfiles\n\n## Start here\n",
             "docs/content/guides/getting-started.md": "---\ntitle: Getting started\ndescription: Set up a machine.\n---\n# Getting started\n\n## Setup\n",
             "docs/content/guides/commands-and-usage.md": "---\ntitle: Commands and usage\ndescription: Everyday commands.\n---\n# Commands and usage\n\n## Commands\n",
             "docs/dist/index.html": (
@@ -1785,7 +1785,7 @@ class GitRangeTests(unittest.TestCase):
                 '<meta property="og:site_name" content="Dotfiles">'
                 '<meta property="og:url" content="https://docs.example.invalid/">'
                 '<header><a class="title" href="/">Dotfiles</a></header>'
-                '<h1 id="about-this-project">About this project</h1><h2 id="start-here">Start here</h2>'
+                '<h1 id="about-these-dotfiles">About these dotfiles</h1><h2 id="start-here">Start here</h2>'
                 '<nav id="VPSidebarNav">'
                 '<a href="/getting-started">Getting started</a>'
                 '<a href="/commands-and-usage">Commands and usage</a>'
@@ -1834,9 +1834,9 @@ class GitRangeTests(unittest.TestCase):
         self.assertEqual(check_site(self.repo), [])
         cases = [
             ("docs/dist/index.html", None, "Missing built homepage"),
-            ("docs/content/guides/index.md", None, "Missing Markdown homepage"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('id="about-this-project"', 'id="wrong"'), "missing heading anchors"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<h1 id="about-this-project">About this project</h1>', '<h1 id="about-this-project">Welcome</h1>'), "Markdown title does not match page title"),
+            ("docs/content/index.md", None, "Missing Markdown homepage"),
+            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('id="about-these-dotfiles"', 'id="wrong"'), "missing heading anchors"),
+            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<h1 id="about-these-dotfiles">About these dotfiles</h1>', '<h1 id="about-these-dotfiles">Welcome</h1>'), "Markdown title does not match page title"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('class="title"', 'class="other"'), "Homepage header must link"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('href="https://docs.example.invalid/"', 'href="https://docs.example.invalid/index.html"'), "expected canonical URL"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<nav id="VPSidebarNav">', '<nav id="VPSidebarNav"><a href="/index.html">Dotfiles</a>'), "Homepage must not appear in sidebar navigation"),

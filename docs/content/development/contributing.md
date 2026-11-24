@@ -5,10 +5,10 @@ description: Find the right place for a change, set up the pinned toolchain, and
 
 # Contributing
 
-For a new package or a different editor preference, start with the
-[owning files](#2-find-the-owning-files); you usually don't need to change or
-build the Rust CLI. If you're changing what the CLI does, choose the guide
-that matches your next step:
+If you just want to add a package or tweak an editor preference, jump straight
+to the [owning files](#2-find-the-owning-files); you usually don't need to
+touch or compile the Rust CLI at all. When you are changing what the CLI
+itself does, pick the guide that matches your next step:
 
 | What do you need to do? | Guide |
 |---|---|
@@ -31,13 +31,15 @@ git diff --stat
 git diff --cached --stat
 ```
 
-Preserve unrelated work. This checkout may be the live source of home-directory
-symlinks: editing `symlinks/` can affect an application immediately. Edit tracked
-sources, not installed copies.
+Leave unrelated local edits untouched. Keep in mind that your checkout may be
+the live source of home-directory symlinks, so editing files under `symlinks/`
+can affect running applications right away. Always edit tracked sources rather
+than installed copies.
 
-Use isolated fixtures, not a real `update` or `remove`, to test changes. Those
-commands can alter home files, packages, Git settings, the registry, and system
-configuration. A clean working tree does not make a live installation safe.
+Verify changes with isolated test fixtures rather than running a real
+`dotfiles update` or `dotfiles remove` against your development machine, since
+those commands modify real home files, packages, Git config, registry values,
+and system files.
 
 ### 2. Find the owning files
 
@@ -54,68 +56,69 @@ configuration. A clean working tree does not make a live installation safe.
 | Documentation content or site | [Documentation](#documentation), with website sources in the [site maintenance README](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md) |
 | Hooks or automation | [Git hooks](#git-hooks) and [CI and releases](ci-and-releases.md) |
 
-Read the closest existing implementation before adding a new abstraction.
-For application preferences, start with [Application settings](../guides/application-settings.md);
-for session and desktop behavior, use [Arch desktop](../guides/arch-desktop.md).
-Those guides identify the editable sources and explain effects that can occur
-before the CLI runs. [Architecture](architecture.md#repository-layout) maps
-unfamiliar Rust work to its owning layer.
+Read the closest existing implementation before inventing a new abstraction.
+For application preferences, start with
+[Application settings](../guides/application-settings.md); for desktop and
+session files, start with [Arch desktop](../guides/arch-desktop.md). For Rust
+work in unfamiliar areas, [Architecture](architecture.md#repository-layout)
+maps each responsibility to its owning layer.
 
 ### 3. Make and test the change
 
-Keep desired-state edits declarative. For a behavior change, include the
-configuration, implementation, wiring, regression test, and relevant docs.
-Avoid unrelated cleanup that obscures the fix.
+Keep desired-state changes declarative. For CLI behavior changes, keep the
+configuration, implementation, task wiring, regression tests, and docs
+together in the same patch, and avoid unrelated cleanup that clutters the diff.
 
-Test the observable failure, not just the happy path. State-changing code should
-cover repeat execution, preview, unavailable prerequisites, and partial failure
-where relevant. Test removal only where the feature promises it: `remove` is
-not a universal undo operation.
+Test observable failure modes, not only the happy path. State-changing code
+should cover repeat runs (idempotency), previews, missing prerequisites, and
+partial failures where relevant. Test removal only for tasks that actually
+support it, since `remove` is not a universal undo command.
 
 ### 4. Review, commit, and verify the push
 
-Start with [Choosing coverage](testing.md#choosing-coverage). Before committing,
-review the diff for unintended behavior, private data, generated files, and
-stale examples. Stage explicit paths or hunks and inspect `git diff --cached`.
-The [commit hooks](#git-hooks) inspect the index, which may differ from your
-working files.
+Choose targeted checks using [Choosing coverage](testing.md#choosing-coverage).
+Before committing, review your diff for unintended side effects, private data,
+generated artifacts, and stale examples. Stage explicit paths or hunks and
+check `git diff --cached`, since the [commit hooks](#git-hooks) inspect the
+staged index rather than your working tree.
 
-Confirm the selected checks cover the [committed inputs](testing.md#before-pushing),
-not unstaged fixes. Reuse passing results when their inputs are unchanged; the
-pre-push coordinator is available for conservative coverage, not a required
-second gate. Resolve local failures and record deferred or unavailable checks.
-Keep ordinary hooks lightweight. After pushing, follow the exact commit's
-[CI result](ci-and-releases.md#reading-a-run), including informational failures.
-Wait for the selected checks and any required publication before treating the
-change as delivered. A successful upload is not evidence that CI passed.
+Make sure your local checks cover the
+[committed inputs](testing.md#before-pushing) rather than unstaged edits. You
+can reuse passing results when none of their inputs changed; the pre-push
+coordinator is an optional conservative helper rather than a mandatory second
+gate. Fix any local failures and note anything deferred to CI. Keep commit
+hooks lightweight. After pushing, monitor the exact commit's
+[CI run](ci-and-releases.md#reading-a-run) (including informational failures)
+and any required publication step before considering the change shipped.
 
 ## Development setup
 
-This setup is for Rust CLI changes or source builds. Application preferences
-and guide prose do not require compiling the CLI just to edit them; select
-their checks from [Testing](testing.md#choosing-coverage).
+You only need this setup for Rust CLI changes or local source builds. Editing
+application preferences or guide prose doesn't require compiling the CLI; see
+[Choosing coverage](testing.md#choosing-coverage) for what to run instead.
 
-You need Git, rustup-managed Cargo/Rust, and native build tools for the CLI's
-C dependencies. On Arch, provide `base-devel`, `pkgconf`, and `openssl`.
-For Windows's default MSVC toolchain, install the C++ build tools and Windows
-SDK requested by the Rust installer.
+Install Git, rustup-managed Rust/Cargo, and native build libraries for the
+CLI's C dependencies: `base-devel`, `pkgconf`, and `openssl` on Arch, or the
+C++ build tools and Windows SDK requested by the Rust installer for Windows
+MSVC builds.
 
-Rustup selects the repository's pinned toolchain when you enter `cli/`.
-From the checkout:
+Entering `cli/` automatically activates the repository's pinned toolchain
+through rustup:
 
 ```sh
 cd cli
 cargo run --locked --profile ci -- --help
 ```
 
-This runs current source. Do not use a bootstrap wrapper to test Rust changes:
-it may download a release or reuse a different binary.
+This runs your local checkout directly. Avoid testing Rust edits through the
+bootstrap wrappers, which can download a release or run a cached binary
+instead.
 
 ### Selecting the pinned toolchain
 
-Use rustup-managed `cargo` and `rustc`, and run them from `cli/`. Rustup reads
-[rust-toolchain.toml](https://github.com/sneivandt/dotfiles/blob/main/cli/rust-toolchain.toml) there and can install missing
-components or targets.
+Use rustup-managed `cargo` and `rustc` from inside `cli/`, where rustup reads
+[rust-toolchain.toml](https://github.com/sneivandt/dotfiles/blob/main/cli/rust-toolchain.toml)
+and installs any missing components or targets:
 
 ```sh
 cd cli
@@ -123,40 +126,41 @@ rustup show active-toolchain
 rustc --version
 ```
 
-Check the reported toolchain against the file before validation. System-installed
-Rust tools can ignore it. Configure your editor to use the same toolchain and
-restart its Rust language server after switching.
+Verify the reported toolchain matches `rust-toolchain.toml` before running
+checks (system-packaged Rust toolchains can ignore it). Configure your editor
+to use the same toolchain and restart rust-analyzer after switching.
 
-The minimum supported Rust version in [Cargo.toml](https://github.com/sneivandt/dotfiles/blob/main/cli/Cargo.toml) is a
-separate compatibility check, not the compiler to use for ordinary development.
-If a required compiler or component is unavailable, report the missing coverage
-rather than substituting another version and calling it a pass.
+The MSRV declared in
+[Cargo.toml](https://github.com/sneivandt/dotfiles/blob/main/cli/Cargo.toml)
+is a separate compatibility target rather than the compiler for day-to-day
+development. If a required compiler or component is unavailable locally, note
+the missing coverage instead of substituting a different version.
 
 ### Builds and debugging
 
-Use `cargo build` and `cargo test` for a normal edit/build loop, or the `ci`
-profile to reproduce verification. Local builds keep incremental compilation,
-debug assertions, and overflow checks, but omit debug information to reduce
-build time and disk use.
+Use `cargo build` and `cargo test` for fast edit-compile loops, or `--profile ci`
+to match CI verification. Local profiles keep incremental compilation, debug
+assertions, and overflow checks while omitting debug symbols to save time and
+disk space.
 
-To restore debugger information for a Linux build:
+To re-enable debug symbols for a Linux build:
 
 ```sh
 CARGO_PROFILE_DEV_DEBUG=2 cargo build --locked
 ```
 
-The override must match Cargo's selected profile. Use
-`CARGO_PROFILE_TEST_DEBUG` for ordinary `cargo test`, but
-`CARGO_PROFILE_CI_DEBUG` for the `--profile ci` commands in
-[Debugging](debugging.md#panics-and-debugger-builds). From `cli/`, enable
-debugger information for one targeted CI-profile test run in a POSIX shell:
+Match the environment variable to Cargo's active profile:
+`CARGO_PROFILE_TEST_DEBUG` for plain `cargo test`, or
+`CARGO_PROFILE_CI_DEBUG` for the `--profile ci` commands shown in
+[Panics and debugger builds](debugging.md#panics-and-debugger-builds). From
+`cli/`, enable debug info for a single CI-profile test run in a POSIX shell:
 
 ```sh
 CARGO_PROFILE_CI_DEBUG=2 cargo test --locked --profile ci --test update_command repository
 ```
 
-In PowerShell, restore the previous environment value afterward so later
-commands do not inherit the override:
+In PowerShell, restore the previous value afterward so later commands don't
+inherit it:
 
 ```powershell
 $previousDebug = $env:CARGO_PROFILE_CI_DEBUG
@@ -168,17 +172,17 @@ try {
 }
 ```
 
-Use `line-tables-only` instead of `2` when only file/line backtraces are
-needed. Changing these settings rebuilds affected artifacts.
+Use `line-tables-only` instead of `2` if you only need file and line numbers
+in backtraces. Changing debug settings rebuilds affected crates.
 
-Install optional analyzers only for the checks you need. The
-[local stages](testing.md#fast-local-sequence) explain their requirements.
+Install optional analyzers only for the checks you plan to run; see the
+[fast local sequence](testing.md#fast-local-sequence) for their prerequisites.
 
 ### Source builds
 
-To use the checkout through a wrapper instead of downloading a release, pass
-`--build`. These commands build and print the version without applying
-configuration:
+To build and run the local checkout through a wrapper instead of downloading a
+release, pass `--build`. These commands compile and print the version without
+applying any configuration:
 
 ```sh
 ./dotfiles.sh --build --version
@@ -188,60 +192,64 @@ configuration:
 .\dotfiles.ps1 --build --version
 ```
 
-Run them from the repository root with the prerequisites above installed.
-Builds may download dependencies and write build artifacts. The wrapper uses
-the dev-opt build profile and executes Cargo's reported artifact, honoring custom
-target/output directories; it need not create `bin/dotfiles` or
-`bin\dotfiles.exe`.
+Run them from the repository root with the build prerequisites installed. The
+wrapper compiles with the `dev-opt` profile and executes Cargo's output
+artifact directly (respecting custom target directories rather than writing
+`bin/dotfiles` or `bin\dotfiles.exe`).
 
-`--build` applies to one invocation. Keep it in later wrapper commands, or use
-`dotfiles --build` after installing the launcher. Without it, the wrapper
-returns to its download/cached-binary route. For normal Rust development,
-prefer the direct Cargo commands above.
+`--build` applies only to that invocation, so keep passing it (or use
+`dotfiles --build` via the installed launcher) whenever you want a source
+build; omitting it returns to the downloaded or cached binary path. For
+day-to-day Rust development, prefer direct `cargo` commands from `cli/`.
 
 ## Change checklists
 
 ### Config-backed state
 
-For an existing field or category, change the data and its focused regression.
-Keep conditional symlinks aligned with categories. For a new section, follow
-[Adding configuration](adding-a-task.md#add-configuration-only-where-needed),
-including typed decoding, inventory registration, validation, and fixtures.
-Document the format on its [task page](../reference/task-reference.md); shared loading rules
-belong in [Configuration basics](../guides/configuration-basics.md).
+When changing an existing field or category, update the TOML data and add a
+focused regression test, keeping conditional symlinks aligned with categories.
+For a brand-new configuration section, follow
+[Add configuration only where needed](adding-a-task.md#add-configuration-only-where-needed)
+for typed decoding, inventory registration, validation, and fixtures. Document
+schema details on the owning [task reference page](../reference/task-reference.md)
+and shared loading rules in
+[Configuration basics](../guides/configuration-basics.md).
 
 ### Tasks and workflows
 
-Follow [Adding a task](adding-a-task.md) for the full implementation workflow:
-choose resource or operation ownership, define applicability and readiness,
-wire command membership and dependencies, and document the reader-facing
-contract. [Architecture](architecture.md) explains why those boundaries exist.
-Use [Writing tests](writing-tests.md) for lifecycle and scheduling regressions.
+Follow [Adding a task](adding-a-task.md) end to end: pick resource vs.
+operation ownership, define applicability and requirements, wire command
+membership and dependencies, and write the reader-facing contract. See
+[Architecture](architecture.md) for why those boundaries exist and
+[Writing tests](writing-tests.md) for isolated lifecycle and scheduler
+regressions.
 
 ### Platform-specific changes
 
-Use runtime capabilities and injected adapters for decisions. Keep compile-time
-gates around platform-only APIs so the other build still compiles. Tests should
-not change process-global state or invoke real package managers or elevation.
+Use runtime capabilities and injected adapters for platform branching, keeping
+compile-time `cfg` gates only around platform-specific APIs so other targets
+still compile. Keep tests free of process-global mutations, real package
+managers, and live elevation.
 
-Cross-target compilation is not a Windows runtime test. See
-[Platform coverage parity](testing.md#platform-coverage-parity).
+Remember that cross-compiling for Windows doesn't exercise Windows runtime
+behavior; see [Platform coverage parity](testing.md#platform-coverage-parity).
 
 ## Git hooks
 
 The scripts in [hooks/](https://github.com/sneivandt/dotfiles/tree/main/hooks/)
-check staged changes before committing. These contributor checks are separate
-from the shared [personal Git templates](../guides/application-settings.md#git-templates)
-and do not replace pre-push validation or CI.
+validate staged changes before committing. They are separate from the shared
+[personal Git templates](../guides/application-settings.md#git-templates) and
+complement rather than replace pre-push validation and CI.
 
-Review `git diff --cached`, then commit normally. To check the index without
-creating a commit, run from this checkout:
+Review `git diff --cached`, then commit as usual. To run the staged checks
+without committing:
 
 ```sh
 sh hooks/pre-commit
 ```
 
-The hook scans added staged text for sensitive patterns, then selects checks:
+The hook runs the sensitive-pattern scanner on added staged lines, then runs
+checks matching what you staged:
 
 | Staged change | Default check |
 |---|---|
@@ -249,38 +257,46 @@ The hook scans added staged text for sensitive patterns, then selects checks:
 | Present PowerShell files | PSScriptAnalyzer on staged files |
 | Only TOML data, shell, or workflow files | Sensitive scan; additional guards require full mode |
 
-Checks do not stage fixes or stash your work. A fixed working copy still fails
-if the index contains the error. Review and stage only the intended fix before
-retrying. Missing tools are skips, not coverage. For optional full guards and
-scanner maintenance, see [Staged hook checks](testing.md#staged-hook-checks).
+Hooks never stage fixes or stash edits for you, so fixing a working-tree file
+without restaging it will still fail on the index. Missing tools are skipped
+rather than treated as passes. See
+[Staged hook checks](testing.md#staged-hook-checks) for optional full guards
+and scanner maintenance.
 
 ### Installation and removal
 
-The [Git hooks task](../reference/git-hooks.md) explains destination selection, ownership
-records, previewing installation, and removal. Preserve custom hooks before
-installing and keep the ownership record beside each managed hook.
+See the [Git hooks task](../reference/git-hooks.md) for hook destinations,
+ownership records, previewing installation, and removal. Back up any existing
+custom hooks before installing, and keep each managed hook's ownership record
+next to it.
 
 ### Diagnosing a rejected commit
 
-Compare `git diff` and `git diff --cached` first. For formatting, run `cargo fmt`
-in `cli/`, review, and restage the intended changes. A hook-only build failure can
-mean the staged snapshot lacks a source or dependency present in your working copy.
-If no hook runs, check its actual destination, filename, and Unix executable bit.
+Start by comparing `git diff` against `git diff --cached`. For formatting
+failures, run `cargo fmt` in `cli/`, inspect the diff, and restage the
+intended lines. A build error that happens only in the hook usually means the
+staged index is missing a file or dependency you edited in the working tree.
+If the hook doesn't fire at all, check the configured hooks path, filename,
+and Unix executable bit.
 
-Inspect sensitive findings locally. Remove and rotate real credentials; never
-share raw findings or unsanitized logs. Narrow scanner exceptions need synthetic
-regression coverage. `git commit --no-verify` skips the whole hook and is reserved
-for reviewed recovery from a broken check, never known sensitive content.
+Inspect sensitive-pattern matches locally: remove and rotate real secrets
+immediately, and never paste raw findings into logs or issues. Narrow scanner
+allowlist exceptions require synthetic regression tests. Reserve
+`git commit --no-verify` for reviewed recovery from a broken check, never to
+bypass a real secret finding.
 
 ## Documentation
 
-Update the guide that owns the reader's workflow rather than adding a second
-explanation elsewhere. Everyday commands belong in
-[Commands and usage](../guides/commands-and-usage.md), shared declaration rules in
-[Configuration basics](../guides/configuration-basics.md), and each task's behavior and
-format on its [task page](../reference/task-reference.md).
+Update the guide that owns the reader's question rather than duplicating an
+explanation in a second place: everyday commands in
+[Commands and usage](../guides/commands-and-usage.md), shared config rules in
+[Configuration basics](../guides/configuration-basics.md), and task-specific
+behavior on each [task reference page](../reference/task-reference.md).
 
-[Writing documentation](writing-documentation.md) covers page structure,
-reusable examples, source verification, and task reference conventions.
-Site preview, checks, and publication mechanics live in the
-[site maintenance README](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md).
+Read [Writing documentation](writing-documentation.md) for style, examples,
+verification, and task-page structure, and the
+[site maintenance README](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md)
+for local preview, build checks, and publishing.
+
+Next, read [Architecture](architecture.md) to see how the CLI layers, task
+graph, resources, and operations fit together.

@@ -5,12 +5,15 @@ description: Find configuration files and understand categories, paths, loading,
 
 # Configuration basics
 
-Edit `conf/` to change **what dotfiles manages**. For example, a declaration
-can select a Git configuration file to link into your home. To change the
-default branch name **inside that file**, edit its source under
-[symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/).
-Once the link exists, Git reads the source directly; you don't need to run
-another update for Git to see the new default.
+Dotfiles splits configuration into two places: files under `conf/` declare
+**what dotfiles manages**, while files under
+[symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/) and
+[system/](https://github.com/sneivandt/dotfiles/tree/main/system/) hold the
+actual settings. For example, an entry in `conf/symlinks.toml` tells `update`
+to link `~/.config/git/config` into your home directory, whereas changing your
+default Git branch happens inside `symlinks/config/git/config`. Once that link
+exists, Git reads the tracked file directly, so you don't need to re-run
+`dotfiles update` after editing it.
 
 ```mermaid
 flowchart TB
@@ -20,15 +23,15 @@ flowchart TB
     home -->|points to| source["symlinks/config/git/config"]
 ```
 
-[Application settings](application-settings.md) lists common files to edit.
-For administrator-owned files, look under
-[system/](https://github.com/sneivandt/dotfiles/tree/main/system/) for the
-fragments dotfiles merges rather than links.
+For administrator-owned files under `/etc`, dotfiles merges structured
+fragments from `system/` instead of creating symlinks. To jump straight to the
+tracked files for common tools, see
+[Application settings](application-settings.md).
 
 ## Files
 
-Every main file listed here is required, even on platforms where its task does not
-apply. A required file may be empty.
+Every main configuration file below must exist in the checkout, even on
+platforms where its task does not run (unused files can be empty):
 
 | File | Purpose |
 |---|---|
@@ -42,43 +45,47 @@ apply. A required file may be empty.
 | [system-files.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml) | [System configuration files](../reference/system-configuration-files.md) |
 | [vscode-extensions.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml) | [VS Code extensions](../reference/vs-code-extensions.md) |
 
-Private overlays may also provide
-[conf/scripts.toml](private-overlays.md#overlay-scripts). The main repository's
-`conf/scripts.toml` is not loaded.
+Private overlays can also supply
+[conf/scripts.toml](private-overlays.md#overlay-scripts) for custom setup
+scripts. A `conf/scripts.toml` in the main repository is ignored.
 
 ## Making a configuration change
 
-1. Find the owning file in the table above, then open its task page for the declaration format.
-2. Choose the category that should receive the change. A package, its linked
-   configuration and its service should have compatible categories.
-3. Check the [path conventions](#path-conventions). Some entries add a leading
-   dot to the home destination; explicit symlink targets do not.
-4. Validate the selected configuration and preview the relevant
-   [task](../reference/task-reference.md), as in the example below.
-5. Back up existing targets before applying. Removing a declaration usually
-   stops management; it does not undo an earlier change.
+1. Find the owning TOML file in the table above and check its task page for the
+   exact schema.
+2. Pick the right category section so related packages, symlinks, and services
+   stay aligned.
+3. Verify the [path conventions](#path-conventions): shorthand symlink entries
+   add a leading dot to the home path, whereas explicit `target` values do not.
+4. Validate your edits and preview the affected
+   [task](../reference/task-reference.md) before applying.
+5. Back up any existing target files you want to keep before applying, since
+   removing a declaration later stops management without undoing earlier
+   changes.
 
-Examples are valid TOML excerpts, not replacements for the complete configuration.
-Extend the existing section rather than adding a second table with the same name.
+All TOML examples in these docs are excerpts rather than full files. Extend
+the existing section instead of adding a duplicate table with the same name.
 
-For a symlink declaration, validate and preview the change:
+For instance, after editing `conf/symlinks.toml`, validate and preview with:
 
 ```sh
 dotfiles check --only config-diagnostics,symlink-sources,config-files
 dotfiles update --only symlinks --dry-run
 ```
 
-Resolve failed or skipped checks before applying. The preview should show the
-intended destinations under Home symlinks (add `--verbose` to see unchanged
-links too). For another kind of change, select its task instead.
+Fix any failed or skipped checks before applying. The preview lists planned
+destinations under Home symlinks (pass `--verbose` to include unchanged links).
+Swap in the appropriate task selector for other configuration domains.
 
-Not installed yet? Start with [Getting started](getting-started.md).
-Contributors changing the loader or configuration model should also run
+If dotfiles is not installed yet, start with
+[Getting started](getting-started.md). Contributors changing the Rust loader or
+configuration schemas should also run
 [CLI validation](../development/testing.md#cli-validation).
 
 ## Category sections
 
-Except for registry records, configuration is grouped by category:
+Aside from `conf/registry.toml`, configuration files group entries under
+category headings:
 
 ```toml title="conf/symlinks.toml (excerpt)"
 [base]
@@ -91,92 +98,93 @@ symlinks = ["wslconfig"]
 symlinks = ["config/hypr/hyprland.lua"]
 ```
 
-The available tags are `base`, `desktop`, `linux`, `windows`, `arch` and `wsl`. A hyphen
-means **AND**: `[arch-desktop]` needs both categories. Unknown or misspelled tags are
-errors, not new custom categories.
+Valid tags are `base`, `desktop`, `linux`, `windows`, `arch`, and `wsl`. A
+hyphen acts as **AND**, so `[arch-desktop]` applies only when both `arch` and
+`desktop` are active. Unknown or misspelled tags fail validation.
 
-`base` is always active. Selecting the desktop profile adds `desktop`; the CLI supplies
-platform categories. Profiles describe a machine's role, not its operating system. See
-[Profiles](profiles-and-categories.md) for selection precedence, persistence and
-platform combinations.
+`base` is always active, the `desktop` profile adds `desktop`, and the CLI
+detects the platform tags automatically. See
+[Profiles and categories](profiles-and-categories.md) for how profiles resolve
+and combine with platform categories.
 
 ## Path conventions
 
-Symlink sources are relative to the declaring repository's `symlinks/` directory;
-system-file sources are relative to its `system/` directory. An overlay entry uses the
-overlay's directories, not the main checkout's. Script paths are relative to the overlay
-root.
+Source paths are resolved relative to the declaring repository: `symlinks/` for
+home symlinks, `system/` for system-file fragments, and the overlay root for
+overlay scripts. An overlay declaration always reads from the overlay's own
+tree, not the main checkout.
 
-- A symlink source `"config/git/config"` becomes `~/.config/git/config`,
-  with a leading dot added.
-- An explicit symlink `target = "Documents/file"` becomes `~/Documents/file`,
-  without adding a dot.
+- A shorthand symlink `"config/git/config"` maps to `~/.config/git/config`
+  (with a leading dot added).
+- An explicit `target = "Documents/file"` maps to `~/Documents/file` (no
+  leading dot added).
 - A permission `path = "ssh/config"` refers to `~/.ssh/config`.
-- A system-file `source = "pacman.conf"` defaults to `/etc/pacman.conf`;
-  `target` can override it.
+- A system-file `source = "pacman.conf"` defaults to `/etc/pacman.conf` unless
+  you set `target`.
 
-Use `/` in portable paths. Home-relative paths are not shell expressions: write the
-relative path, not a `~/` prefix.
+Always use `/` as the path separator for portability, and write home-relative
+paths without a leading `~/`.
 
 ## Private overlays
 
-Keep personal or machine-specific additions in a separate [Private
-overlay](private-overlays.md). That guide covers layout, setup, selection,
-resource-by-resource merging, scripts, and cleanup. An overlay extends valid base
-configuration; it cannot hide conflicting declarations.
+Keep personal, work, or machine-specific configuration in a separate
+[private overlay](private-overlays.md). Overlays layer cleanly on top of a
+valid main configuration without hiding conflicts or invalid entries in the
+base files.
 
 ## Removing configuration
 
-Deleting a record generally means **stop managing it**, not **undo it**. Packages,
-Git/registry/harness values, services and merged system files remain.
+Deleting a declaration tells dotfiles to **stop managing it**, not to **undo
+it**. Already-installed packages, Git and agent settings, registry values,
+systemd units, and merged system files remain untouched.
 
-For links or overlay scripts, keep the declaration active while running the
-intended [remove task](../reference/task-reference.md#remove-tasks), then delete
-it. Symlink removal detaches managed links into copies of their current sources
-rather than restoring a backup; see
+For managed symlinks or overlay scripts, keep the declaration in place while
+you run the matching [remove task](../reference/task-reference.md#remove-tasks),
+then delete the declaration afterward. Remember that symlink removal replaces
+live links with standalone copies of their current sources rather than
+restoring pre-install backups; see
 [Home symlinks removal](../reference/home-symlinks.md#removal) and
 [Removing agent packages](agent-configuration.md#removing-packages-and-targets).
 
 ## Loading and reload behavior
 
-Normal update, remove, and check runs load all required files before selecting
-tasks. `--only` cannot bypass a malformed file or incompatible declarations in
-another section during those runs.
+Standard `update`, `remove`, and `check` runs load every required TOML file
+before selecting tasks, so `--only` cannot skip past syntax errors or
+declaration conflicts elsewhere in `conf/`.
 
-There is one recovery exception: `dotfiles update --only repository`, without
-other selectors or skips, can synchronize the checkout without loading its TOML
-configuration. Use it when an upstream configuration fix is available, as
-described in [Dotfiles repository](../reference/dotfiles-repository.md#what-it-does).
-It does not bypass Git's readiness and safety checks.
+The one recovery exception is `dotfiles update --only repository` (with no
+other selectors or skips), which can sync the checkout without loading TOML
+configuration first. Use it to pull down an upstream fix for broken
+configuration while still preserving Git's readiness and safety checks (see
+[Dotfiles repository](../reference/dotfiles-repository.md#what-it-does)).
 
-When repository synchronization changes content in a normal update, the CLI
-restarts with fresh configuration before later tasks run; this is not a separate
-selectable reload task. See the [restart
-boundary](../development/architecture.md#repository-updates-are-a-restart-boundary).
+When a normal update pulls new commits during repository sync, the CLI restarts
+automatically to reload the updated configuration before running later tasks;
+see the [restart boundary](../development/architecture.md#repository-updates-are-a-restart-boundary).
 
 ### Unknown keys are errors
 
-Unknown fields fail loading rather than being ignored: `symlink` instead of `symlinks`,
-or `targett` instead of `target`, is an error. Fields and value types are checked in
-inactive categories too, so `[windows]` does not hide a typo on Linux. Fields accepting
-strings or tables reject other entry types.
+Strict schema parsing rejects unrecognized keys rather than silently ignoring
+them (`symlink` instead of `symlinks`, or `targett` instead of `target`, fails
+loading). Keys and value types are validated across inactive categories too, so
+a typo under `[windows]` is still caught on Linux.
 
 ## Validation
 
-`dotfiles check` covers configuration diagnostics, required files, declared sources and
-available analyzers. Its `config-diagnostics` task fails on all aggregated diagnostics,
-including warning-severity findings.
+`dotfiles check` runs configuration diagnostics, required-file checks,
+symlink-source checks, and available static analyzers. Its `config-diagnostics`
+task treats warnings as failures so configuration problems are caught early.
 
-The Rust `config_drift` suite checks relationships between real declarations and tracked
-sources. Parsing one file or checking one platform does not prove all category
-combinations work. See [Choosing coverage](../development/testing.md#choosing-coverage).
+For contributors, the Rust `config_drift` test suite verifies relationships
+between real declarations and tracked files across category combinations. See
+[Choosing coverage](../development/testing.md#choosing-coverage) for what to
+run after editing configuration or schemas.
 
 ## Application preferences
 
-The formats above select and install application sources; they do not describe every
-application's own settings syntax. Start with [Application
-settings](application-settings.md) to find common settings sources, [Arch
-desktop](arch-desktop.md) for the graphical session, and the [VS
-Code](application-settings.md#visual-studio-code) or [Vim and
-Neovim](application-settings.md#vim-and-neovim) sections for editor behavior and
-plugins.
+The files above control what dotfiles installs and links; they do not define
+each application's own settings syntax. Next, explore
+[Package management](package-management.md) to manage installed software, or
+jump to [Application settings](application-settings.md) and
+[Arch desktop](arch-desktop.md) to customize shell, Git, editor, and desktop
+behavior.

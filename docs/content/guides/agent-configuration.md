@@ -479,3 +479,6 @@ errors fail the task. Keep tokens out of fragments and diagnostic excerpts.
 A failed run can already have changed the manifest or some targets without
 rolling back. Fix the reported cause and rerun rather than deleting lockfiles,
 whole deployment trees, or App data.
+
+To keep work-specific skills, MCP servers, or machine overrides out of the
+public repository, continue to [Private overlays](private-overlays.md).

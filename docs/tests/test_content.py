@@ -90,7 +90,7 @@ class FrontmatterTests(unittest.TestCase):
                 self.assertTrue(any(f"frontmatter {key}" in error for error in failures), failures)
 
     def test_homepage_and_404_keep_metadata_without_requiring_matching_routes(self):
-        for name, title in (("index.md", "About this project"), ("404.md", "Page not found")):
+        for name, title in (("index.md", "About these dotfiles"), ("404.md", "Page not found")):
             errors = []
             fields = SITE["frontmatter_fields"](
                 f"---\ntitle: {title}\ndescription: A useful description.\n---\n",

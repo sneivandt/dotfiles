@@ -20,14 +20,14 @@ package, file, service, or settings declaration when it already owns the work.
 
 ## What it does
 
-Each active entry in the private overlay's `conf/scripts.toml` becomes a task for
-`update` and `remove`. Its configured name is the console label, and the selector is
-`script-<normalized-name>`. Each script has its own result and captured output. The main
-repository's `conf/scripts.toml` is not loaded.
+Each active entry in a private overlay's `conf/scripts.toml` becomes a task for
+`update` and `remove`. Its configured name is the console label, its selector is
+`script-<normalized-name>`, and each script records its own result and output. The main
+repository's `conf/scripts.toml` is never loaded.
 
-Tasks are discovered at startup and again after a repository restart. They are not added
-while other tasks are running. An internal reporting task records the script count
-without executing them.
+Script tasks are discovered at startup and again after a repository restart, never
+added dynamically while other tasks are running. An internal reporting task records the
+script count without executing any scripts.
 
 ## Configuration
 
@@ -38,16 +38,16 @@ path = "scripts/configure-workstation.sh"
 description = "Apply workstation settings that are not already in place"
 ```
 
-`name` and `path` are required; `description` is optional. Names must be nonempty and
-produce distinct selectors. This example becomes `script-configure-private-workstation`:
-ASCII alphanumeric words are lowercased and joined with hyphens. The `linux` category
-keeps this POSIX shell script off Windows; use `[[windows.scripts]]` and a `.ps1` file
-for a Windows-only task.
+`name` and `path` are required; `description` is optional. Names must be non-empty and
+produce distinct selectors. This example normalizes to `script-configure-private-workstation`
+by lowercasing ASCII alphanumeric words and joining them with hyphens. Putting it under
+`[[linux.scripts]]` keeps this POSIX shell script off Windows; use `[[windows.scripts]]`
+with a `.ps1` file for Windows-only work.
 
-Paths must stay inside the overlay, including after symlink resolution. Scripts run with
+Paths must stay inside the overlay even after resolving symlinks, and scripts run with
 the overlay root as their working directory. `.ps1` matching is case-insensitive and
-selects PowerShell (`pwsh`, or Windows PowerShell when available on Windows); other
-extensions need POSIX `sh` on the selected platform.
+runs under PowerShell (`pwsh`, or Windows PowerShell when available on Windows); other
+extensions require POSIX `sh` on the target platform.
 
 ## Script protocol
 
@@ -55,47 +55,47 @@ Implement every mode before enabling a script:
 
 | Invocation | Required behavior |
 |---|---|
-| `--check` | Inspect only. Exit 0 when configured, 1 when work is needed, or another nonzero value on failure. |
-| No flag | Apply needed changes; repeated runs must leave already-correct state alone. Fail with a nonzero exit on errors. |
+| `--check` | Inspect only. Exit 0 when configured, 1 when work is needed, or another non-zero value on failure. |
+| No flag | Apply needed changes; repeated runs must leave already-correct state alone. Fail with a non-zero exit on errors. |
 | `--dryrun` | Describe needed changes without applying them. Note the spelling. |
 | `--remove` | Conservatively remove the script's managed state. |
 
-Update checks first and applies or previews only when the check returns 1. Remove uses
-the same check: 0 means something to remove, 1 means nothing. A remove dry run checks
-and reports removal but invokes neither `--remove` nor `--dryrun`. Missing or unreadable
-scripts fail, including disappearance between inspection and execution.
+Update runs `--check` first and calls apply or `--dryrun` only when the check returns 1.
+Remove uses the opposite convention: 0 means there is state to remove and 1 means nothing
+to remove. A remove dry-run checks and reports removal without invoking `--remove` or
+`--dryrun`. Missing or unreadable scripts fail, including files that disappear between
+inspection and execution.
 
-For a script that can leave partial state, set `check_remove = true` on its
-entry and implement `--check-remove`. Return 0 whenever there is managed
-state to clean up, including after a failed apply; return 1 only when it is
-absent. Other failures stop removal. The probe must not modify state.
+For a script that can leave partial state behind, set `check_remove = true` on its
+entry and implement `--check-remove`. Return 0 whenever managed state needs cleanup
+(including after a failed apply) and 1 only when it is absent; any other exit code
+stops removal. The probe must never modify state.
 
 ## Preview and remove
 
-With an [active overlay](../guides/private-overlays.md#select-and-preview), use the selector
-produced by the declaration above:
+With an [active overlay](../guides/private-overlays.md#select-and-preview), target the
+selector produced by the declaration above:
 
 ```sh
 dotfiles update --only script-configure-private-workstation --dry-run
 dotfiles remove --only script-configure-private-workstation --dry-run
 ```
 
-These commands execute the script's checks. An update preview can also execute its
-`--dryrun` mode; a removal preview does not. Review the script before either command.
-Its safety and completeness depend on its implementation.
+Both commands run the script's check mode, and an update preview can also run
+`--dryrun` (a removal preview does not). Review the script before running either
+command, since its safety and completeness depend entirely on its own code.
 
-Compare the reported work with the script's intended ownership boundary.
-Fix protocol errors in an isolated fixture before retrying against the
-machine. Only [apply the reviewed change](task-reference.md#preview-and-apply)
-once every mode is implemented; inspect the script's actual managed state
-afterward rather than treating a zero exit status as an independent audit.
+Check that the reported work matches the script's intended scope, and fix protocol
+issues in an isolated fixture before retrying on a real machine. Only [apply the
+reviewed change](task-reference.md#preview-and-apply) once every mode is implemented,
+and inspect the resulting state afterward rather than treating exit code 0 as proof.
 
-The Rust CLI cannot make a script's check read-only or undo a partially applied
-script. Test every protocol mode in an isolated fixture before selecting it
-for a real machine. A normal preview is not that fixture: it actually invokes
-the script. [Private overlays](../guides/private-overlays.md) explains the selection and
-trust boundary; [Writing tests](../development/writing-tests.md#confine-every-writable-path)
-explains the isolation expected for contributor tests.
+The Rust CLI cannot force a script's check to be read-only or roll back a partially
+applied script. Test every mode in an isolated fixture before enabling it on a real
+machine; a regular preview invokes the script directly and is not a sandbox.
+[Private overlays](../guides/private-overlays.md) covers the selection and trust
+boundary, and [Writing tests](../development/writing-tests.md#confine-every-writable-path)
+describes the isolation expected for contributor tests.
 
-Keep the original overlay, script, and profile available until removal finishes. Keep
-private values out of output, which can enter the console and run log.
+Keep the original overlay, script, and profile available until removal finishes, and
+keep private values out of script output since it can appear in the console and run log.

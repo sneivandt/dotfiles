@@ -5,20 +5,22 @@ description: Understand change-aware CI, required checks, platform coverage, doc
 
 # CI and releases
 
-After CI passes for a push to `main`, the site and CLI have separate
-publication decisions. Pages deploys only if that run built the site and
-its commit is still current. A docs-only change can update the website
-without triggering a binary release of its own.
+When CI passes on a push to `main`, documentation publishing and CLI binary
+releases are decided independently. GitHub Pages deploys only if that run built
+the site and its commit is still the tip of `main`, so a docs-only push updates
+the website without cutting a new binary release.
 
-For local commands, use [Testing](testing.md). Workflow files and the
+For local validation commands, see [Testing](testing.md). When modifying
+automation, treat the workflow files and
 [path classifier](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/classify-ci-changes.py)
-are authoritative when changing automation.
+as the source of truth.
 
 ## Reading a run
 
-[ci.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/ci.yml) runs for pushes and pull requests to
-`main`, and manual dispatch. It does not use workflow-level path filters that
-could leave required checks pending.
+[ci.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/ci.yml)
+triggers on pushes to `main`, pull requests targeting `main`, and manual
+dispatch, with no workflow-level path filters that could leave required checks
+stuck pending.
 
 ```mermaid
 flowchart TB
@@ -34,31 +36,27 @@ flowchart TB
     Select -- No --> Done
 ```
 
-The last step applies only to successful, same-repository **push** CI on `main`.
-Pull request CI cannot publish a release.
+Only successful, same-repository **push** runs on `main` can publish a site
+update or binary release; pull request runs never publish.
 
-Always-on work includes repository links, skill metadata, actionlint, workflow
-contracts, and classification regressions. Site builds, browser regressions,
-and Rust documentation contracts are selected by their inputs. The `ci-success`
-job runs even after an earlier failure and verifies that every selected gating
-job succeeded and every unselected job was skipped. Missing outputs, cancellation, unexpected
-skips, and classification failure fail the gate.
+Every run executes always-on checks (Markdown links, skill metadata,
+actionlint, workflow contracts, and classifier tests), while site builds,
+browser suites, Rust builds, and integration jobs run only when their inputs
+change. The `ci-success` gate always runs at the end and verifies that every
+selected gating job succeeded and every unselected job was skipped, failing on
+missing outputs, cancellations, unexpected skips, or classifier errors.
 
-After a push, inspect the run for the **exact pushed SHA**. Mutation testing
-runs separately and does not participate in the aggregate gate. Coverage
-reports remain informational.
-
-Wait for the pushed commit's run and inspect failures before relying on its
-result. When sharing a result, include the commit and run link so another
-contributor can distinguish that patch from a later successful push.
+Always inspect the run for the **exact pushed SHA** before treating a push as
+complete (coverage uploads are informational, and mutation testing runs in a
+separate workflow). Include both the commit SHA and run URL when sharing a
+result so it can't be confused with a later push.
 
 ## Change-aware scheduling
 
-Checks are selected by input, platform, linter, and application. The table is a
-guide, not a replacement for the classifier's exact rules. A push uses the
-previous tip as its comparison base only when that tip's push CI succeeded.
-If the preceding run failed, was cancelled, or cannot be verified, the new push
-runs full CI so earlier changes still receive coverage.
+The classifier chooses jobs by changed input, platform, linter, and
+application. A push diffs against the previous tip only when that tip's push CI
+succeeded; if the prior run failed, was cancelled, or can't be verified, CI
+falls back to full coverage so earlier changes don't slip through untested.
 
 | Changed input | Typical additional coverage |
 |---|---|
@@ -79,160 +77,140 @@ runs full CI so earlier changes still receive coverage.
 | CI workflow/shared orchestration, manual dispatch, or unknown inputs | Conservative full CI |
 | Release workflow/selection | Publication eligibility without unrelated CI compilation |
 
-Deletions and both sides of renames count. Invalid Git ranges fail; a valid
-empty diff runs the always-on checks. Unavailable comparison ranges use
-conservative full CI instead. Full CI alone does not request publication.
-Mutation testing is not part of push, pull request, or manual CI runs.
+Deletions and both sides of renames count. Invalid Git ranges fail loudly, a
+valid empty diff runs always-on checks, and unavailable ranges fall back to
+full CI (though full CI alone doesn't trigger a release).
 
-Cargo verification uses the CI build profile and `--locked`. Downstream integration
-jobs reuse uploaded binaries rather than downloading an unrelated release.
-Configuration-only Linux checks use `config_drift` instead of the full Rust suite
-when full Rust coverage was not selected.
+Cargo jobs run with `--locked --profile ci`, and downstream integration jobs
+reuse the uploaded binaries from that run rather than downloading an older
+release. Config-only Linux runs execute `config_drift` instead of the entire
+Rust test suite unless full Rust coverage was also selected.
 
 ## Platform coverage
 
-Coverage below is conditional on the relevant job being selected.
+Each row runs only when the classifier selects that job:
 
 | Check | Linux | Windows |
 |---|---|---|
 | Rust build, Clippy, tests | Native | Native |
 | Profile previews and config checks | Both roles | Both roles |
-| Public APM packages | Pack checks, local skill redeployment, frozen install and audit in a disposable home | No native APM run |
+| Public APM packages | Pack checks, local skill redeployment, frozen install, and audit in a disposable home | No native APM run |
 | Update/remove round-trip | Yes | Yes |
 | Wrappers | POSIX | PowerShell |
 | Application integration | Git, Zsh, Vim, Neovim | Git |
 | Managed script fixtures | Yes | Yes |
 | Quickshell | Offscreen QML tests and startup under headless Sway | No |
-| Arch package, system-file and offline systemd acceptance | Disposable Arch container | No |
+| Arch package, system-file, and offline systemd acceptance | Disposable Arch container | No |
 | Full commit-hook suite | Yes | No |
 | Coverage reports | Yes | Yes |
 
-These jobs do not cover every architecture, existing user configuration, or
-network/authentication setup. The Arch acceptance fixture covers package
-installation, a system-file merge, denied elevation, offline user-unit drop-ins,
-redirected-directory rejection, and repeat runs. The
-Quickshell startup check uses Sway. Hyprland session behavior, focus, networking,
-and locking need separate runtime checks. There is no native Git-for-Windows
-full hook suite. Coverage reports are informational; a
-coverage percentage does not establish correctness.
-
-Profile previews skip VS Code, and profile `check` runs omit external APM and
-script analyzers. Windows application integration skips APM, packages, and VS
-Code. Separate jobs or local checks cover some of those concerns; do not call
-the profile matrix a full clean-machine installation test.
+Keep the limits in mind: the Arch container tests package installs, a
+system-file merge, denied elevation, offline user-unit drop-ins, redirected
+directory rejection, and repeat runs, while Quickshell startup runs under
+headless Sway rather than native Hyprland. There is no Git-for-Windows full
+hook suite, profile previews skip VS Code, profile `check` omits external APM
+and script analyzers, and Windows app integration skips APM, packages, and VS
+Code. Coverage uploads are informational only.
 
 ## Scheduled mutation testing
 
 [mutation.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/mutation.yml)
-runs nightly at 08:37 UTC and on manual dispatch. It does not block `ci-success`,
-releases, or documentation publishing. Ordinary Windows builds, Clippy, tests,
-and integration checks remain in normal CI.
+runs nightly at 08:37 UTC and on manual dispatch, independently of `ci-success`,
+releases, and Pages deployment.
 
-The workflow compares its selected commit with the last successful scheduled
-mutation run on `main`, not the preceding push. Failed or cancelled runs leave
-pending changes in scope. For migration, it can inherit a successful legacy CI
-run only if every Linux and Windows mutation shard passed; without a verified
-baseline it selects all source. API or invalid-history errors fail selection
-rather than silently skipping coverage.
+It diffs against the last successful scheduled mutation run on `main` (so
+failed or cancelled runs keep pending changes in scope; without a verified
+baseline it scans all source, and API or history errors fail loudly).
 
-Linux mutates whole changed Rust source files, including production functions
-beside edited inline tests. Module-local unit tests under `cli/src/` and
-tracked repository inputs read by Rust tests (such as `conf/*.toml`, Arch
-recipe descriptors, `system/` fragments, managed systemd units, Git templates,
-and checked documentation pages) recheck their owning modules. Integration
-tests under `cli/tests/`, shared test helpers, embedded non-Rust assets inside
-`cli/src/`, Cargo/build/toolchain inputs, and changes to the mutation workflow
-or scripts recheck all source. Selected changes also run the fixed two-shard
-Windows suite for registry values, PATH encoding, elevation dispatch, file
-placement, and locks, except that strictly Linux-only modules skip the Windows
-suite. Unrelated docs and configuration changes skip both suites. Exact filters
-live in the workflow and scripts.
+On Linux, changed Rust files are mutated in full (including production code
+beside inline tests), and module-local tests or tracked inputs read by Rust
+tests (`conf/*.toml`, Arch recipe descriptors, `system/` fragments, managed
+systemd units, Git templates, and contract-tested docs) recheck their owning
+modules. Changes to `cli/tests/`, shared test helpers, embedded assets,
+Cargo/build/toolchain files, or mutation scripts recheck all source. Unless
+changes are strictly Linux-only, the fixed two-shard Windows suite also runs
+for registry, PATH encoding, elevation, file placement, and locks; unrelated
+docs and config changes skip both suites.
 
-For manual replay, dispatch **Mutation Testing** and optionally supply the
-original full ancestor SHA as `mutation_base`. Manual runs never advance the
-nightly baseline, so a narrow replay cannot discard pending coverage. Reports
-and selected Linux inputs are retained as artifacts for seven days. Linux
-mutants are split into unit-tested library shards (`linux-lib`, `--lib`) and
-integration-tested application shards (`linux-app`), distributed round-robin
-with focused suites consolidated into one `focused` shard. Both Linux and Windows
-run with the incremental `[profile.mutants]` profile and `cargo-nextest`
-fail-fast execution. The results summary gives
-the tested range, counts per platform, missing reports, and focused replay
-commands for survivors and timeouts. The mutation-summary artifact contains
-the complete report. Survivors, timeouts, tool errors, and incomplete coverage
-fail this separate workflow.
+To replay a range manually, dispatch **Mutation Testing** and optionally pass
+an ancestor SHA as `mutation_base` (manual runs never advance the nightly
+baseline). Reports stay available as artifacts for seven days. Linux splits
+mutants across library (`linux-lib`, `--lib`) and CLI/integration (`linux-app`)
+shards plus a consolidated `focused` shard, running with `[profile.mutants]`
+and `cargo-nextest` fail-fast execution. The job summary lists tested ranges,
+counts, missing reports, and copy-paste replay commands; survivors, timeouts,
+tool errors, and incomplete coverage fail the workflow.
 
-Enable Actions failure notifications for this workflow and investigate red
-runs; successful push CI does not mean nightly mutations passed. Check that the
-schedule remains enabled in repository settings. For focused checks before
-pushing or a survivor fix, use [local mutation testing](testing.md#focused-mutation-testing).
+Enable GitHub Actions failure notifications for this workflow and confirm the
+schedule stays enabled, since passing push CI doesn't cover nightly mutations.
+For local runs before pushing, see
+[Focused mutation testing](testing.md#focused-mutation-testing).
 
 ## Scheduled dependency checks
 
 [dependency-security.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/dependency-security.yml)
-runs `cargo audit`, `cargo deny check all`, and a separate npm audit of the docs
-lockfile weekly and on manual dispatch, independently of changed paths. The
-Rust policy check still runs after an advisory failure unless the workflow is
-cancelled. The docs CI job also runs `npm audit` before building the site;
-advisories at any severity fail these audits.
+runs `cargo audit`, `cargo deny check all`, and a docs `npm audit` weekly and
+on manual dispatch (with `cargo deny` still running if `cargo audit` finds an
+advisory). The docs CI job also runs `npm audit` before building the site;
+advisories at any severity fail the run.
 
-This separate workflow neither satisfies `ci-success` nor triggers a release.
-Enable Actions failure notifications and configure Dependabot alerts/security
-updates in repository settings separately. Check that the schedule remains
-enabled; GitHub can disable schedules in inactive repositories.
+This workflow doesn't gate `ci-success` or trigger releases. Enable Actions
+failure notifications and Dependabot alerts separately, and watch that GitHub
+hasn't disabled the schedule on an inactive repo.
 
 ## Documentation publishing
 
-Selected documentation jobs participate in `ci-success`, including on docs-only
-changes. After successful push CI on `main`, the Pages workflow deploys that
-run's verified artifact when a site build was selected. A code-only push can
-skip the site build and deployment once the site inputs have been published;
-failed or superseded publications remain eligible on subsequent pushes.
-Site-specific checks, publication rules, and troubleshooting live in
-[docs/README.md](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#configure-publishing).
+Selected docs jobs gate `ci-success`, including on docs-only commits. After a
+passing push CI run on `main`, **Publish documentation** deploys that exact
+run's artifact whenever a site build ran and its commit is still current.
+Code-only pushes skip site builds and deploys once the latest docs are live,
+while failed or superseded deploys remain eligible on later pushes. See
+[Configure publishing](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#configure-publishing)
+for site setup and troubleshooting.
 
 ## Release selection
 
-[release.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/release.yml) starts after successful
-same-repository push CI on `main`. A read-only selection job compares that exact
-tested SHA with the latest published, non-draft, non-prerelease release.
+[release.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/release.yml)
+triggers after passing same-repository push CI on `main`. Its read-only
+selection job compares that exact tested SHA against the latest published,
+non-draft, non-prerelease GitHub release.
 
-Publication is selected for binary or publishing-pipeline changes, or when no
-release exists. Docs, ordinary configuration, wrappers, standalone test fixtures,
-and lint-policy files do not by themselves require a new binary. Changes inside
-`cli/src/`, including inline tests and embedded assets, are conservatively
-treated as binary inputs. Unknown inputs also select publication.
+A release is cut whenever binary or publishing-pipeline inputs changed (or no
+release exists yet). Docs, ordinary config, wrappers, standalone tests, and
+lint configs do not trigger a release on their own, whereas any edit under
+`cli/src/` (including inline tests and embedded assets) or an unknown path
+conservatively selects publication.
 
-**The baseline is the last published release, not the previous push.** If a
-binary change passed CI but publication failed, a later docs-only push can
-finish that pending release. If there is nothing unpublished, it skips instead.
-Older/already-released commits skip; API errors, missing release tags, and
-divergent release history fail explicitly.
+**Because the baseline is the last published release rather than the previous
+push**, a docs-only push can still finish an earlier binary release whose
+publish step failed. Older or already-released commits skip; API errors,
+missing tags, or diverged release history fail loudly.
 
-Once selected, the workflow:
+When selected, the workflow:
 
-1. Resolves the version and source commit once for all builds.
-2. Builds Linux x86_64/aarch64 and Windows x86_64 assets without dependency caches.
-3. Generates checksums and build attestations with publishing permissions scoped
-   to the publishing job.
-4. Verifies attestations are retrievable, then publishes.
+1. Resolves the version and commit SHA once for every build job.
+2. Builds Linux x86-64/AArch64 and Windows x86-64 binaries without dependency
+   caches.
+3. Generates SHA-256 checksums and build provenance attestations with scoped
+   publishing permissions.
+4. Verifies every attestation is retrievable before publishing the release.
 
-Release runs are serialized without cancelling an active publisher. Tags use
-`vYYYY.MM.DD-N`, where `N` counts releases on that UTC day; the package version
-in `Cargo.toml` is not the release version.
+Release runs serialize without cancelling an active publisher. Tags follow
+`vYYYY.MM.DD-N` (UTC date plus daily sequence number), independent of the crate
+version in `Cargo.toml`.
 
-When reporting a release, verify the published tag, commit, and expected assets.
-A successful CI gate or a running release workflow is not publication. See
-[download verification](../guides/security-and-trust.md#release-downloads) for the client side.
+Always verify the published tag, commit, and assets before reporting a release
+as live. For client-side verification, see
+[Release downloads](../guides/security-and-trust.md#release-downloads).
 
 ## Changing automation
 
-Keep job conditions, classifier outputs, and aggregate dependencies aligned.
-Make a new job's gating or informational status explicit. Use least-privilege
-permissions, pin Actions to full commit SHAs, and reuse shared helpers under
+Keep job conditions, classifier outputs, and `ci-success` dependencies in sync,
+and mark every new job clearly as gating or informational. Keep workflow
+permissions narrow, pin external Actions to full commit SHAs, and reuse shared
+helpers in
 [workflow scripts](https://github.com/sneivandt/dotfiles/tree/main/.github/workflows/scripts/).
 
-Run the local `ci` stage and the affected job's focused command. The
-[selection fixtures](testing.md#ci-selection-fixtures) use temporary Git
-repositories and mocked release APIs; they do not publish. Preserve tests for
-both affected and unaffected paths, deletions/renames, and unintended skips.
+Validate changes with the local `ci` stage, the affected job's command, and
+[CI selection fixtures](testing.md#ci-selection-fixtures) (covering affected
+and unaffected paths, renames, deletions, and unexpected skips).

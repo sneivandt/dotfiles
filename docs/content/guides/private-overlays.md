@@ -5,18 +5,19 @@ description: Keep private or machine-specific configuration outside the public r
 
 # Private overlays
 
-An overlay adds private or machine-specific configuration without putting it
-in the main dotfiles repository. Use a separate private repository or directory
-with the same configuration layout. The main checkout remains the shared base.
+A private overlay lets you layer personal, work, or machine-specific
+configuration on top of the public dotfiles repository without mixing private
+settings into the shared checkout. Store it in a separate private repository or
+directory using the same `conf/`, `symlinks/`, and `system/` layout.
 
-An overlay adds declarations and replaces matching entries in the base
-configuration. It does not patch the contents of application files. Keep
-private content and credentials out of public examples, fixtures, logs, and
-agent messages.
+An overlay adds declarations and replaces matching entries from the main
+configuration; it does not patch inside individual application files. Keep
+private content and credentials out of public examples, test fixtures, shared
+logs, and agent messages.
 
 ## Create an overlay
 
-Only include the files you need:
+Include only the configuration files you need:
 
 ```text
 dotfiles-private/
@@ -24,26 +25,28 @@ dotfiles-private/
     git-config.toml
 ```
 
-Overlay configuration files are optional. They use the same
-[formats](configuration-basics.md) and
-[category rules](profiles-and-categories.md) as the main repository. For example,
-an overlay's `conf/git-config.toml` could contain:
+All overlay files are optional and follow the exact same
+[configuration formats](configuration-basics.md) and
+[category rules](profiles-and-categories.md) as the main repository. For
+example, an overlay's `conf/git-config.toml` might set a preferred editor:
 
 ```toml title="dotfiles-private/conf/git-config.toml"
 [base]
 settings = [{ key = "core.editor", value = "nvim" }]
 ```
 
-This adds `core.editor`, or replaces a main declaration for that key, without
-discarding other settings. Symlink sources belong under the overlay's
-`symlinks/`; system-file fragments belong under its `system/`. Their paths stay
-relative to the repository that declared them, not the main checkout.
+This adds `core.editor`, or replaces any main declaration for that same key,
+while keeping unrelated settings untouched. Put overlay symlink sources under
+the overlay's `symlinks/` directory and system fragments under its `system/`
+directory; relative paths always resolve against the repository that declared
+them.
 
 ### Replace an application file
 
-For a private Git identity, replace the linked Git configuration rather than
-editing the public source. From the main checkout, these POSIX shell commands
-create a new sibling overlay; use a different directory if it already exists:
+To use a private Git identity without modifying the public checkout, replace
+the linked Git config through an overlay. From the main checkout, these POSIX
+shell commands create a new sibling overlay (pick another path if it already
+exists):
 
 ```sh
 mkdir ../dotfiles-private &&
@@ -51,32 +54,33 @@ mkdir -p ../dotfiles-private/conf ../dotfiles-private/symlinks/config/git &&
 cp symlinks/config/git/config ../dotfiles-private/symlinks/config/git/config
 ```
 
-Edit the copied file's `[user]` name and email, and review `[github]` and the
-other defaults. Create `../dotfiles-private/conf/symlinks.toml` containing:
+Update `[user]` name and email in the copied file and review `[github]` and the
+other defaults. Then create `../dotfiles-private/conf/symlinks.toml`:
 
 ```toml title="dotfiles-private/conf/symlinks.toml"
 [base]
 symlinks = ["config/git/config"]
 ```
 
-The same home destination makes this entry replace the base link. The source
-now comes from the overlay; its contents are not merged with the original.
-On Windows, create the same directory layout and copy the source with PowerShell
-or Explorer.
+Because both declarations target `~/.config/git/config`, the overlay entry
+replaces the main one whole rather than merging the two files. On Windows,
+create the same folder structure and copy the file using PowerShell or File
+Explorer.
 
-With a saved profile and installed launcher, preview from the main checkout:
+With a saved profile and installed launcher, preview the change from the main
+checkout:
 
 ```sh
 dotfiles update --overlay ../dotfiles-private --only symlinks --dry-run
 ```
 
-This preview saves the overlay selection. Check the overlay path in the
-header and review all selected links. If `~/.config/git/config` is absent,
-the preview should propose linking it to the overlay. If it still points to
-the main checkout, expect a conflict: changing the declaration does not
-retarget an installed link.
+This preview saves the overlay path once configuration loads cleanly. Confirm
+the overlay path in the header and review every planned link. If
+`~/.config/git/config` does not exist yet, the preview plans the new link; if
+it still points to the main checkout, expect a conflict, since dotfiles never
+silently retargets an existing link.
 
-Inspect the destination before changing it:
+Inspect the existing destination before touching it:
 
 ```sh
 readlink "$HOME/.config/git/config"
@@ -89,164 +93,165 @@ Get-Item -LiteralPath "$HOME/.config/git/config" |
     Select-Object FullName, LinkType, Target
 ```
 
-Confirm it is the old link you intend to replace. Preserve its resolved contents
-and recorded target using the [backup procedure](application-settings.md#back-up-and-restore-a-file),
-then move the destination link itself aside, not the source it points to.
-Preserve an ordinary file or unrelated link instead of assuming it is managed.
-Repeat the preview until the new overlay link is planned without conflicts,
-then remove `--dry-run` to apply. Verify two things afterward:
+Confirm it is the old link you intend to replace. Back up its resolved contents
+and recorded target using the
+[backup procedure](application-settings.md#back-up-and-restore-a-file), then
+move the symlink itself aside rather than the file it points to (and preserve
+ordinary files or unrelated links instead of assuming they are managed). Re-run
+the preview until it plans the overlay link cleanly, then drop `--dry-run` to
+apply. Verify both parts afterward:
 
-1. Run `dotfiles explain .config/git/config`. The `Source` should be in the
-   overlay, and `Update: already linked` confirms the home link matches it.
-2. In a repository where you use this identity, run
-   `git config --show-origin --get user.name`. Check the **value** as well as
-   the file Git read. Git may show the home path rather than the resolved
-   symlink source, and a repository-local value can override the shared one.
+1. Run `dotfiles explain .config/git/config` to confirm `Source` points into
+   the overlay and `Update: already linked` reports a match.
+2. In a repository that uses this identity, run
+   `git config --show-origin --get user.name` and check both the **value** and
+   origin (Git may display the home symlink path rather than its resolved
+   source, and a repository-local value can still override global settings).
 
-Keep the overlay in place while the link is in use, and keep the backup
-until you have verified both results.
+Keep the overlay directory in place while its links are active, and keep your
+backup until both checks pass.
 
 ## Select and preview
 
-From your main checkout, inspect an overlay in the sibling directory
-`../dotfiles-private`. These commands use your saved profile; if you have not
-selected one, follow [Getting started](getting-started.md) first.
+From the main checkout, inspect an overlay in `../dotfiles-private` (assuming a
+profile is already saved; see [Getting started](getting-started.md) otherwise):
 
 ```sh
 dotfiles list --overlay ../dotfiles-private
 dotfiles update --overlay ../dotfiles-private --dry-run
 ```
 
-`list` does not run tasks or save the selection. The update preview saves an
-explicit overlay path for future runs once configuration loads successfully.
-Check the resolved path and profile in the header.
-After reviewing the result, normal `dotfiles update` runs use the saved overlay.
+`dotfiles list` is read-only and never saves the selection, whereas `update`,
+`remove`, and `check` remember an explicit `--overlay` path once configuration
+loads cleanly. Check the resolved overlay path and profile in the header;
+subsequent `dotfiles update` runs will reuse the saved overlay automatically.
 
-Check that the directory exists and contains the intended files. An absent
-optional configuration file contributes nothing. If the file or its `conf/`
-directory is a broken symlink, configuration loading stops instead of falling
-back to the main declarations. Restore the link's destination, or remove the
-link if you no longer want that configuration.
+Missing optional config files in an overlay simply contribute nothing. If an
+overlay file or its `conf/` directory is a broken symlink, however, loading
+stops with an error rather than silently falling back to the main checkout. Fix
+the broken target or remove the stale link before retrying.
 
 ::: warning Review overlay scripts before previewing
-`--check` and `--dryrun` execute overlay code with your access. They can use the
-network, expose private data, or mutate files if implemented incorrectly.
-A private repository and a dry-run flag do not sandbox that code.
+`--check` and `--dryrun` run overlay script code with your user permissions. A
+buggy or untrusted script can access the network, expose private data, or modify
+files; neither a private repository nor `--dry-run` sandboxes script execution.
 :::
 
 ### Selection and persistence
 
-Selection priority is:
+Dotfiles resolves the overlay path in this order:
 
-1. `--overlay <PATH>`
-2. Nonempty `DOTFILES_OVERLAY`
-3. Repository-local Git setting `dotfiles.overlay`
+1. `--overlay <PATH>` on the command line
+2. A nonempty `DOTFILES_OVERLAY` environment variable
+3. The repository-local Git setting `dotfiles.overlay`
 
-Relative paths resolve from the **directory where you run the command**, and a
-selected overlay must be an existing directory. Passing `--overlay` to `update`,
-`remove`, or `check` saves it as an absolute path once configuration loads
-successfully (`update --only repository` saves it during startup without loading
-TOML). `DOTFILES_OVERLAY`, `list`, and `explain` apply only to the current
-invocation.
+Relative paths resolve from your **current working directory**, and the target
+must be an existing directory. Passing `--overlay` to `update`, `remove`, or
+`check` persists its absolute path once configuration loads (`update --only
+repository` saves it at startup without loading TOML). `DOTFILES_OVERLAY`,
+`list`, and `explain` affect only the current invocation.
 
 <details>
 <summary>Linked worktrees and read-only overlays</summary>
 
 - **Linked Git worktrees:** Passing a linked worktree (where `.git` is a file)
-  with `--overlay` requires interactive confirmation (defaulting to no) and is
-  declined in unattended or CI runs. Prefer a primary checkout for an
-  unattended overlay.
+  to `--overlay` asks for interactive confirmation (defaulting to no) and is
+  rejected in unattended or CI runs. Prefer a primary checkout for unattended
+  overlays.
 - **Locking and read-only overlays:** `update`, `remove`, and `check`
-  coordinate Git overlays with account-local locks. A read-only overlay can be
-  inspected or applied with `update --no-repo-update`; synchronizing an overlay
+  coordinate Git overlays with account-local locks. You can inspect or apply a
+  read-only overlay with `update --no-repo-update`, though syncing it with Git
   requires write access to its Git metadata.
 
 </details>
 
 ## Merge rules
 
-An active overlay entry replaces a main entry when both manage the same
-package, destination, or setting. The table lists what must match for each kind
-of entry; matching section names or array positions do not cause replacement:
+When an active overlay entry targets the same package, destination, or setting
+as a main entry, the overlay entry replaces the main one. Matching is by the
+effective resource key below, not by section header or array index:
 
 | Configuration | Entries match by |
 |---|---|
-| Packages | Package name; case-insensitive on Windows |
+| Packages | Package name (case-insensitive on Windows) |
 | Symlinks | Normalized home target after glob expansion |
-| Global Git settings | Key; section/variable ignore case, subsection does not |
+| Global Git settings | Key (case-insensitive section and variable, case-sensitive subsection) |
 | Agent settings | Harness and exact, case-sensitive key |
-| Registry | Case-insensitive path and value name |
+| Registry | Case-insensitive key path and value name |
 | Permissions | Normalized home-relative path |
 | Systemd units | Scope and exact unit name |
 | System configuration files | Normalized destination path |
 | VS Code extensions | Case-insensitive extension ID |
 
-Unmatched main entries remain, followed by overlay entries. System configuration
-files are the exception: replacements keep their main declaration's position so
-a prerequisite still runs before a file that activates it. New destinations come
-last. Missing or empty overlay files do not erase the base, and inactive overlay
-categories cannot override active main entries.
+Unmatched main entries stay in order, followed by new overlay entries. System
+configuration files are the one ordering exception: a replaced destination
+keeps its original position from the main config so prerequisite files still
+apply before files that activate them, while brand-new destinations append at
+the end. Missing or empty overlay files never erase base entries, and inactive
+overlay categories cannot override active main entries.
 
-Replacement uses the **entire overlay entry**, with source paths still relative
-to the overlay. It does not merge the contents of two symlink source files.
-Each repository's declarations are checked for conflicts before replacements
-are applied.
+Every replacement takes the **entire overlay entry** (with sources still
+relative to the overlay) rather than merging two symlink files line by line.
+Each repository is validated on its own before replacements are merged.
 
-APM YAML fragments have their own
-[configuration-fragment rules](agent-configuration.md#configuration-fragments).
-Their filename ordering is separate from TOML overlay precedence.
+APM YAML fragments follow their own filename-based
+[fragment merge rules](agent-configuration.md#configuration-fragments) rather
+than TOML overlay precedence.
 
 ### Conflicting desired state
 
 Within either repository, active declarations cannot assign conflicting values
-to the same target (identical assignments are allowed). Active conflicts stop
-loading before tasks run, even with `--only` or `--dry-run`, and an overlay
-cannot hide an invalid base:
+to the same target (identical duplicates are allowed). Conflicts stop loading
+before any task runs, even with `--only` or `--dry-run`, and an overlay cannot
+mask an invalid base configuration:
 
-- **Git settings (`git.conflicting-values`):** Matching normalized keys must
-  agree literally.
-- **Windows registry entries (`registry.conflicting-values`):** Matching
-  case-insensitive key paths and value names must agree in type and data. This
-  stops loading on Windows and reports a `dotfiles check` diagnostic off
-  Windows.
-- **Systemd units (`systemd.conflicting-values`):** Matching scope and unit
-  name must agree on `enabled` and `graphical`.
-- **Agent settings (`agent-settings.conflicting-values`):** Matching harness
-  and exact key must have identical values, and
+- **Git settings (`git.conflicting-values`):** matching normalized keys must
+  have identical literal values.
+- **Windows registry entries (`registry.conflicting-values`):** matching
+  case-insensitive key paths and value names must agree in both type and data
+  (stops loading on Windows; reported by `dotfiles check` off Windows).
+- **Systemd units (`systemd.conflicting-values`):** matching scope and unit
+  names must agree on both `enabled` and `graphical`.
+- **Agent settings (`agent-settings.conflicting-values`):** matching harness
+  and exact keys must have identical values, and
   [overlapping parent/child keys](../reference/agent-settings.md#configuration)
   must agree both within a repository and after merging.
 
-Inactive categories for Git settings, systemd units, and agent settings do not
-participate in these active-value checks.
+Inactive categories for Git settings, systemd units, and agent settings are
+excluded from these active-value conflict checks.
 
 ## Overlay scripts
 
-Use a script only for work that the existing declarations cannot express.
-Declare it in the overlay's `conf/scripts.toml`; the main repository cannot
-define script tasks. Each active entry becomes a separate task for update
-and remove.
+Reach for an overlay script only when none of the built-in declaration types
+can express the work. Declare scripts in the overlay's `conf/scripts.toml` (the
+main repository cannot define script tasks); each active entry becomes its own
+task in `update` and `remove`.
 
-[Overlay scripts](../reference/overlay-scripts.md) contains the declaration format, selector
-rules, required check/apply/preview/remove modes, and failure behavior. Review
-the script before previewing: its check and preview flags are a cooperative
-contract, not a sandbox. Keep private values out of its output and logs.
+See [Overlay scripts](../reference/overlay-scripts.md) for the schema, selector
+naming, required `--check`, apply, `--dryrun`, and `--remove` modes, and
+failure handling. Review every script before previewing, since its check and
+preview flags are a cooperative contract rather than a sandbox, and keep
+secrets out of script output and logs.
 
 ## Change or stop using an overlay
 
-Pass a different `--overlay` to select and save another path. To forget the
-saved selection, run this from the main checkout:
+Pass a new `--overlay` path to switch and save a different overlay. To clear
+the saved overlay from your main checkout:
 
 ```sh
 git config --local --unset dotfiles.overlay
 ```
 
-Also clear `DOTFILES_OVERLAY` if it is set, because it takes precedence over
-the saved value.
+Unset `DOTFILES_OVERLAY` as well if it is set, since the environment variable
+overrides the saved Git value.
 
-**Forgetting an overlay does not undo its changes.** Keep its declarations
-and sources available while running any intended
-[removal tasks](../reference/task-reference.md#remove-tasks). Packages, settings, services, and
-merged system files generally remain; remove is not a universal rollback.
+**Forgetting an overlay does not undo what it installed.** Keep the overlay's
+declarations and source files intact while running any
+[remove tasks](../reference/task-reference.md#remove-tasks) you want, then
+handle persistent state (packages, settings, services, and merged system files)
+manually.
 
-For selection problems, see
-[Overlay is ignored](troubleshooting.md#overlay-is-ignored).
+If an overlay isn't being picked up as expected, see
+[Overlay is ignored](troubleshooting.md#overlay-is-ignored). Next, explore the
+platform guides for [Arch desktop](arch-desktop.md) or
+[Windows and WSL](windows-and-wsl.md).

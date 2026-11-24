@@ -22,32 +22,31 @@ rules, not a universal package namespace.
 
 ## What it does
 
-Installs missing non-AUR declarations using pacman on Arch Linux or winget on
-Windows. Other Linux distributions are unsupported, even if a `pacman`
-executable is on `PATH`. If selected packages have no supported or available
-manager, the task reports unmet work. If the inventory query fails, it stops
-rather than assuming every package is missing. After a failed Arch batch
-transaction, it checks again to report packages that did install; the
-transaction still counts as a failure.
+Installs missing non-AUR packages using `pacman` on Arch Linux or `winget` on
+Windows. Other Linux distributions are unsupported, even if a `pacman` binary happens
+to be on `PATH`, and missing or unsupported package managers report unmet work.
+If the inventory query fails, the task stops rather than assuming every package is
+missing. After a failed Arch batch transaction, it re-queries installed packages so it
+can report any that succeeded while still marking the transaction failed.
 
-**Installing missing Arch packages can upgrade the whole system.** The command is
-`pacman -Syu --needed --noconfirm`. If all declared packages are already present, this
-task does not run an upgrade solely because the command is named update.
+**Installing missing Arch packages can upgrade the whole system.** Dotfiles runs
+`pacman -Syu --needed --noconfirm`. If every declared package is already installed,
+this task does nothing and does not trigger a system upgrade.
 
-Windows uses winget's `--no-upgrade` option so an application installed since the
-inventory check is left at its current version. Installer failures fail the task, even if
-other packages succeed; installers can request their own UAC consent. See [Windows
-package behavior](../guides/package-management.md#windows) for user-scope fallback and failure
-handling, and [Windows elevation](../guides/windows-and-wsl.md#elevation) before an elevated
-retry.
+Windows installs pass `--no-upgrade` to `winget` so an application installed since the
+inventory check stays on its current version. Any installer failure fails the task even
+when other packages succeed, and installers may show their own UAC prompts. See
+[Package management](../guides/package-management.md#windows) for user-scope fallback
+and failure handling, and [Windows elevation](../guides/windows-and-wsl.md#elevation)
+before retrying elevated.
 
 ## Configuration
 
 Edit
 [conf/packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml).
 
-For example, declare common command-line tools using each provider's IDs.
-Extend the existing arrays; this is not a replacement for the complete file:
+For example, declare common command-line tools using each provider's native IDs
+(extend the existing arrays rather than replacing the whole file):
 
 ```toml title="conf/packages.toml (example)"
 [arch]
@@ -57,44 +56,42 @@ packages = ["git", "ripgrep"]
 packages = ["Git.Git", "Microsoft.PowerShell"]
 ```
 
-A string is shorthand for `{ name = "...", aur = false }`. Package names are
-provider-specific, not portable aliases. Use Arch names in Arch categories and winget
-IDs in Windows categories.
+A plain string is shorthand for `{ name = "...", aur = false }`. Because package names
+are provider-specific rather than portable aliases, put Arch names in Arch categories
+and winget IDs in Windows categories.
 
-Keep platform-specific entries in the corresponding categories. A tool with
-the same command name on both systems may need two different package IDs.
-On Arch, use [AUR packages](aur-packages.md) for community or custom recipes;
-on other Linux distributions, install prerequisites with the distribution's
-own package manager rather than adding an Arch entry that cannot run there.
+A tool with the same command name on both platforms often needs two different package
+IDs. On Arch, use [AUR packages](aur-packages.md) for community or custom recipes; on
+other Linux distributions, install prerequisites through the distro's own package
+manager instead of adding an Arch entry that will not run there.
 
-Regular Arch entries use pacman. `aur = true` sends an entry through Paru; that includes
-configured [dotfiles-managed recipes](../guides/package-management.md#custom-arch-packages), not
-just remote AUR recipes. The host's package-manager repositories and policies, including
-`IgnorePkg`, remain in effect.
+Regular Arch entries install with `pacman`, while `aur = true` routes an entry through
+Paru (including [custom Arch recipes](../guides/package-management.md#custom-arch-packages),
+not just remote AUR packages). The host's repositories and package-manager policies,
+including `IgnorePkg`, remain in effect.
 
-Presence is the main contract here, not keeping every installed version at the
-latest release. For deliberate upgrades, provider-specific discovery, and
-uninstalling packages no longer wanted, follow
-[Package management](../guides/package-management.md). Removing a category is not an
-instruction to uninstall the packages it once selected.
+This task ensures packages are installed rather than keeping every package at its
+latest release. For deliberate upgrades, package search, and uninstalls, see
+[Package management](../guides/package-management.md). Removing a category never
+uninstalls packages that it previously selected.
 
 ## Preview and apply
 
-Preview the missing packages for the selected platform and profile:
+Preview the missing packages for your platform and profile:
 
 ```sh
 dotfiles update --only packages --dry-run
 ```
 
-Check provider-specific names and the proposed missing-package list. Resolve
-package-manager or inventory-query errors before [applying the
-change](task-reference.md#preview-and-apply). On Arch, be ready for the full
-system upgrade that accompanies installation; on Windows, installers may
-request UAC consent. An already-present package is not a promise that its
-version is current.
+Verify the provider-specific names and missing-package list, and resolve any
+package-manager or inventory errors before [applying the
+change](task-reference.md#preview-and-apply). On Arch, keep in mind that installing
+missing packages also performs a full system upgrade; on Windows, installers may
+prompt for UAC consent. Already-installed packages are skipped without checking for
+newer versions.
 
 ## Removal
 
-This task does not uninstall packages or reverse an Arch system upgrade. Remove unwanted
-declarations, then review and uninstall packages through the native package manager. See
-[Package removal](../guides/package-management.md#remove-a-package).
+This task never uninstalls packages or rolls back an Arch system upgrade. Remove
+unwanted declarations first, then uninstall the packages with the native package
+manager as described in [Package removal](../guides/package-management.md#remove-a-package).

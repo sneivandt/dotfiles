@@ -5,49 +5,47 @@ description: Reproduce a CLI problem safely, find its owning layer, and turn the
 
 # Debugging
 
-Start by identifying the binary, configuration, and failure you are actually
-observing. Then reproduce the smallest part of the problem in a fixture.
-Repeatedly applying configuration to the development machine can destroy the
-state that explains the failure, as well as make unrelated changes.
+Start by pinning down the exact binary, configuration, and failure you're
+seeing, then reproduce the smallest failing case in an isolated fixture.
+Re-running `dotfiles update` against your own machine risks wiping out the
+state that explains the bug while making unrelated changes.
 
-This guide is for investigating the Rust CLI. For a failed installation,
-start with [Troubleshooting](../guides/troubleshooting.md). Use
-[Contributing](contributing.md#development-setup) for the build environment and
-[Architecture](architecture.md) for execution contracts.
+This guide covers investigating the Rust CLI itself. If an installation run
+failed on your machine, start with
+[Troubleshooting](../guides/troubleshooting.md). Keep
+[Development setup](contributing.md#development-setup) and
+[Architecture](architecture.md) handy for build commands and layer boundaries.
 
 ## Confirm the inputs
 
-Record the command and exit status, CLI version, operating system, selected
-profile, and whether an overlay was active. Distinguish the checkout's
-uncommitted source from the release binary behind an installed launcher.
-A wrapper can download or reuse a binary; it does not automatically execute
-the Rust code you just edited.
+Note the exact command, exit code, CLI version, OS, profile, and active
+overlay. Make sure you know whether you're running uncommitted local source or
+the cached release binary behind your installed launcher (wrappers can download
+or reuse a release binary instead of compiling your latest edits).
 
-From `cli/`, inspect the current source without applying configuration:
+From `cli/`, inspect your current source directly without applying anything:
 
 ```sh
 cargo run --locked --profile ci -- --version
 cargo run --locked --profile ci -- --help
 ```
 
-For a task-selection problem, inspect a graph. This example explicitly selects
-the base profile from the parent checkout:
+For a task-selection bug, inspect the graph (this example selects `base` from
+the parent checkout):
 
 ```sh
 cargo run --locked --profile ci -- list --root .. --profile base --graph update --only symlinks --with-deps
 ```
 
-The graph shows selected tasks and declared dependencies, not runtime
-prerequisite results or planned file changes. Listing does not run task probes
-or save profile selections. Use the affected profile and overlay when those
-inputs explain the failure, but keep private configuration out of shared
-reproducers.
+Graph output shows selected tasks and declared edges without probing runtime
+prerequisites, touching files, or saving profile choices. Include the relevant
+profile and overlay when reproducing locally, while keeping private overlay
+data out of shared bug reports.
 
 ## Locate the failing boundary
 
-Follow the first relevant error rather than the last blocked task. Later work
-can be blocked because an earlier prerequisite failed; fixing its consumer
-would hide the real cause.
+Trace the first real failure rather than the last blocked task; fixing a
+downstream consumer only hides an unmet upstream prerequisite.
 
 | What failed? | Start with |
 |---|---|
@@ -60,85 +58,83 @@ would hide the real cause.
 | Correct work with misleading output or exit status | Task result accounting, [infra/logging/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra/logging/), and command outcome tests |
 | Different behavior on another OS | Runtime platform/environment adapters, compile-time API gates, and native-platform tests |
 
-A failed state query is not evidence that the resource is missing. If the
-program installs or overwrites after such a failure, inspect that branch
-before adding a retry. A shared lifecycle bug belongs in the engine; a single
-tool's exit-status protocol usually belongs with that tool's resource.
+Never confuse a failed discovery query with a missing resource: if code
+overwrites or installs after an inspection error, fix that branch instead of
+retrying. Shared lifecycle bugs belong in `engine/`, while an external tool's
+exit-code conventions belong in that tool's domain resource.
 
 ## Read an existing run without repeating it
 
-Use the stable log command printed by the failed run. With an existing CLI
-binary, these commands read recorded results without applying configuration:
+Inspect the failed run using its printed log command rather than re-running
+`update`:
 
 ```sh
 dotfiles log --list
 dotfiles log --task symlinks --verbose
 ```
 
-The second command filters the newest run. To inspect an older failure, use
-its `--id` from the first command rather than assuming it is still newest.
-Follow linked child logs after repository reloads or elevation.
-[Logs](../guides/commands-and-usage.md#logs) describes the output and storage contract.
+The second command inspects the latest run; pass `--id <run-id>` from
+`dotfiles log --list` if another run has happened since, and follow any linked
+child logs from repository restarts or Windows elevation. See
+[Logs](../guides/commands-and-usage.md#logs) for log layout and retention.
 
-Separate a reported failure from skipped, blocked, and inapplicable work.
-Include the underlying subprocess diagnostic where available, not only the
-summary label. Sanitize private paths, configuration, and external tool
-output before sharing logs.
+Distinguish genuine failures from skipped, blocked, and inapplicable tasks, and
+capture the underlying subprocess diagnostic rather than just the summary row.
+Sanitize private paths, config values, and tool output before sharing excerpts.
 
 ## Reproduce the behavior in a test
 
-Choose the lowest layer that can express the failure and replace external
-state with a temporary home, repository, environment, and executor.
-[Writing tests](writing-tests.md) describes the helpers and suite boundaries.
+Write the reproducer at the lowest layer that exhibits the bug, substituting a
+temporary home, repo, environment, and mock executor for host state (see
+[Writing tests](writing-tests.md) for fixture helpers and suite conventions).
 
-If a subprocess result triggers the bug, reproduce that exact command,
-checked mode, exit result, and relevant output. An always-successful mock
-cannot reproduce a failed discovery query. For a filesystem problem, preserve
-the relevant distinction: absent versus unreadable, ordinary file versus
-symlink, or managed versus foreign content.
+When a subprocess response causes the bug, mock that exact command, checked
+mode, exit code, and output (an always-succeeding mock can't expose a broken
+error path). For filesystem bugs, reproduce the exact condition: missing vs.
+unreadable, regular file vs. symlink, or managed vs. foreign target.
 
-Run the owning target from `cli/`. For example:
+Run the targeted test binary from `cli/`:
 
 ```sh
 cargo test --locked --profile ci --test update_command -- --list
 cargo test --locked --profile ci --test update_command repository -- --nocapture
 ```
 
-The second command runs names containing `repository`; substitute the filter
-you found in the listing and check that it selects tests. Prefer assertions
-about files, commands, results, and visible errors over temporary print
-statements.
+Replace `repository` with a test name from the listing and verify the filter
+actually matches tests. Assert on filesystem state, executed commands, task
+results, and visible diagnostics rather than leaving temporary print debugging
+behind.
 
 ### Panics and debugger builds
 
-For a panic, enable a backtrace in the same shell invocation as the test.
-On a POSIX shell:
+For panics, enable backtraces for that single command:
 
 ```sh
 RUST_BACKTRACE=1 cargo test --locked --profile ci --test update_command
 ```
 
-On PowerShell:
+In PowerShell:
 
 ```powershell
 $env:RUST_BACKTRACE = '1'
 cargo test --locked --profile ci --test update_command
 ```
 
-Backtraces do not replace the error context of an ordinary returned failure.
-If frames lack useful symbols, enable debug information for the selected
-profile. These examples use `ci`, so they need `CARGO_PROFILE_CI_DEBUG`, not
-the dev or test profile override. See the POSIX and PowerShell commands in
-[Builds and debugging](contributing.md#builds-and-debugging).
-Revert temporary logging and inspect snapshot diffs before finishing.
+Backtraces supplement panics rather than replacing clear error context on
+returned `Err` values. If stack frames lack symbols, turn on debug info for the
+matching Cargo profile (`CARGO_PROFILE_CI_DEBUG` for `--profile ci`, not the
+`dev` or `test` variables; see
+[Builds and debugging](contributing.md#builds-and-debugging)). Remove temporary
+debug logs and check snapshot diffs before committing.
 
 ## Verify the fix, not just the symptom
 
-First prove the reproducer fails before the fix and passes after it. Add the
-nearby preservation or failure case that would catch a tempting but unsafe
-shortcut, such as treating every query error as absence.
+Confirm the reproducer fails before your fix and passes afterward, and add a
+companion preservation or error-path test that guards against unsafe shortcuts
+(such as treating query failures as absence).
 
-Then choose broader coverage from [Testing](testing.md#choosing-coverage).
-Native process, registry, symlink, and permission behavior still needs the
-affected platform. A mocked platform decision or successful cross-compilation
-does not establish native runtime behavior.
+Then run the broader local checks from
+[Choosing coverage](testing.md#choosing-coverage), keeping in mind that native
+process, registry, symlink, and permission paths still require validation on
+their target OS. When your fix changes user-facing behavior or flags, check
+[Writing documentation](writing-documentation.md) to keep the guides in sync.

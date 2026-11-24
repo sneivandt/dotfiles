@@ -145,7 +145,7 @@
 
 @media (min-width: 960px) {
   .VPHome .home-showcase {
-    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
     gap: 40px;
     align-items: center;
     padding: 36px;
@@ -165,7 +165,7 @@
 }
 
 .VPHome .home-preview figcaption {
-  margin-top: 10px;
+  margin-bottom: 10px;
   color: var(--vp-c-text-2);
   font-size: 13px;
   line-height: 1.5;

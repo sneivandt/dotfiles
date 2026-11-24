@@ -164,8 +164,8 @@ def check_site(root):
     errors = []
     if "/index.html" not in pages:
         return ["Missing built homepage; run npm --prefix docs run build first"]
-    if not (root / "docs/content/guides/index.md").is_file():
-        errors.append("Missing Markdown homepage docs/content/guides/index.md")
+    if not (root / "docs/content/index.md").is_file():
+        errors.append("Missing Markdown homepage docs/content/index.md")
     sidebar_routes = {
         urlsplit(urljoin(origin + public_url_path(route), href)).path
         for route, page in pages.items()

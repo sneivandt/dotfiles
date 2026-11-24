@@ -5,45 +5,48 @@ description: Understand the Hyprland session, Quickshell bar, desktop services, 
 
 # Arch desktop
 
-The Arch desktop profile builds a Wayland desktop around Hyprland for
+The Arch `desktop` profile builds a Wayland environment around Hyprland for
 windows and workspaces and Quickshell for the bar and menus. UWSM (Universal
-Wayland Session Manager) starts the graphical session; systemd manages its
-background services.
+Wayland Session Manager) launches the graphical session, and systemd manages
+its background services.
 
-This guide covers the running desktop, not installing Arch itself. Begin with
-[Getting started](getting-started.md) and choose `desktop`; Arch detection adds
-the `arch` category automatically. [Package management](package-management.md)
-explains installation and upgrades.
+This guide covers the running desktop rather than installing Arch Linux itself.
+Start with [Getting started](getting-started.md) and select `desktop` (Arch
+detection adds the `arch` category automatically), and see
+[Package management](package-management.md) for package installs and upgrades.
 
 ## Start the desktop
 
-After applying the desktop configuration, save your work and log in as your
+Once you have applied the desktop profile, save your work and log in as your
 normal user through Zsh on `tty1`. The managed login profile starts Hyprland
-through UWSM when no graphical session is active. A terminal opened inside an
-existing desktop does not start another session. Installing the configuration
-does not replace your current session immediately.
+via UWSM whenever no graphical session is active, so opening a terminal inside
+an existing desktop won't launch a second session, and applying the config
+won't cut over your current session mid-work.
 
-Updates before a graphical session starts enable its services without starting
-them; UWSM owns activation of `graphical-session.target`. If login leaves you
-at a shell, check that Zsh is your login shell, `~/.zprofile` is linked, and
-`uwsm` is available. Follow [Session and services](#session-and-services) for
-startup sources and [desktop diagnosis](#diagnose-a-desktop-problem) for
-service logs rather than adding duplicate autostart commands.
+Running updates before a graphical session starts enables the desktop's user
+services without starting them immediately; UWSM activates
+`graphical-session.target` when the session launches. If logging in on `tty1`
+leaves you at a shell prompt, check that Zsh is your login shell, `~/.zprofile`
+is linked, and `uwsm` is installed. Check
+[Session and services](#session-and-services) and
+[Diagnose a desktop problem](#diagnose-a-desktop-problem) instead of adding
+duplicate autostart commands.
 
 <details>
 <summary>Upgrading from an older checkout that activated graphical-session.target early</summary>
 
 If an older update already activated `graphical-session.target` without a
-compositor, installing the fix does not stop it automatically. Save your work
-and start a fresh login after reboot rather than stopping session targets under
-running applications.
+compositor, applying the fix will not stop it automatically. Save your work
+and start a fresh login after rebooting rather than stopping session targets
+under running applications.
 
 </details>
 
 ## Everyday shortcuts
 
-`Super` is the Windows/logo key. The full mapping is in
-[binds.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/binds.lua).
+`Super` is the Windows/logo key. See
+[binds.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/binds.lua)
+for the complete mapping.
 
 | Shortcut | Action |
 |---|---|
@@ -62,29 +65,30 @@ running applications.
 | Super + End | Lock the session |
 | Super + Shift + S | Select an area for a screenshot |
 
-Screenshots are saved under `~/screenshots` and copied to the clipboard when
-available. Cancelling area selection saves nothing. Move images you want to
-keep elsewhere: the desktop's
+Screenshots save to `~/screenshots` and copy to the clipboard when available;
+cancelling the selection saves nothing. Move anything you want to keep long
+term, because the daily
 [cleanup timer](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service)
-runs daily and deletes files and links after 31 complete days since their last
-modification (`find -mtime +30`), along with old empty directories.
+deletes files and symlinks after 31 full days since their last modification
+(`find -mtime +30`), along with old empty directories.
 
-Thunar is the default file manager and uses the shared Tokyo Night GTK colours.
-At login, the desktop session sets Thunar to use Compact View, show hidden
-files, and hide the shortcuts side pane by default.
-Use **Ctrl + H** to toggle hidden files and **Ctrl + B** to toggle the
-shortcuts side pane while browsing. GVFS provides trash and removable-drive
-support.
+Thunar is the default file manager, styled with the shared Tokyo Night GTK
+colors. At login, the session configures Thunar for Compact View, hidden files
+shown, and the shortcuts side pane hidden. Press **Ctrl + H** to toggle hidden
+files and **Ctrl + B** to toggle the shortcuts pane while browsing. GVFS
+handles trash and removable drives.
 
-From Thunar, PNG, JPEG, and WebP images open in imv; MP4, WebM, and Matroska
-videos open in mpv; ZIP and common tar archives open in File Roller. PDFs still
-open in Chromium. Edit [the default file handlers](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/mimeapps.list)
-to change these choices.
+Opening files from Thunar launches `imv` for PNG, JPEG, and WebP images, `mpv`
+for MP4, WebM, and Matroska videos, File Roller for ZIP and common tar
+archives, and Chromium for PDFs. Edit
+[the default file handlers](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/mimeapps.list)
+if you want different defaults.
 
 ### Media keys
 
-Bindings use standard `XF86` symbols, not physical F-key positions. Keyboard
-Fn mode determines which symbols are sent. Fallback shortcuts are:
+Media bindings use standard `XF86` symbols rather than physical F-key
+positions, so your keyboard's Fn mode controls which keys send them. Fallback
+shortcuts are always available:
 
 | Shortcut | Action |
 |---|---|
@@ -93,19 +97,19 @@ Fn mode determines which symbols are sent. Fallback shortcuts are:
 | Super + F4 | Toggle microphone mute |
 | Super + F5 / F6 | Lower / raise display brightness by 5% |
 
-Volume follows the default output through `pactl` and can exceed 100%.
-Playback uses `playerctl`. Dedicated media keys also work while locked;
-fallback shortcuts do not.
+Volume follows the default output via `pactl` (and can go above 100%), while
+media playback uses `playerctl`. Dedicated hardware media keys also work on the
+lock screen; the `Super + F*` fallbacks do not.
 
 [brightness.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/scripts/brightness.sh)
-targets display backlights, never keyboard LEDs, and keeps brightness above
-zero. With no backlight it does nothing. External monitors usually need
-separate DDC/CI configuration unless their driver exposes a backlight.
+adjusts display backlights (never keyboard LEDs), keeps brightness above zero,
+and exits cleanly if no backlight is exposed. External monitors usually require
+separate DDC/CI setup unless their driver exposes a standard backlight device.
 
 ## Bar and menus
 
-Quickshell puts workspaces and the focused window on the left, with media,
-tray items, and controls alongside them. Use the bar as follows:
+Quickshell places workspaces and the active window title on the left, with
+media, tray items, and system controls on the right:
 
 | Control | What you can do |
 |---|---|
@@ -118,64 +122,62 @@ tray items, and controls alongside them. Use the bar as follows:
 | Power | Lock immediately, or confirm logout, restart, or shutdown |
 | Clock | Open the calendar |
 
-The media control follows the player that is playing. If nothing is playing,
-it shows a paused player you can resume. Spotify wins ties between players
-in the same state.
+The media widget tracks whichever player is actively playing (or a paused
+player you can resume if everything is paused), with Spotify winning ties in
+the same state.
 
-Only one bar popup opens at a time across monitors. The bar reserves space for
-tiled windows, sits below floating windows and hides on fullscreen workspaces.
+Only one bar popup can be open at a time across monitors. The bar reserves
+space for tiled windows, sits behind floating windows, and hides on fullscreen
+workspaces.
 
-The bar follows connection changes from `nmcli monitor`, falling back to
-ten-second polling while the monitor or NetworkManager status is unavailable.
-Open the network menu to load nearby Wi-Fi networks and saved profiles (when a
-network has multiple saved profiles on one adapter, the menu disambiguates them
-by profile name, pinned AP address, or UUID; hover or tab to read truncated
-labels). Configure enterprise Wi-Fi in the NetworkManager connection editor
-rather than the bar menu.
+Network status follows live events from `nmcli monitor`, falling back to
+ten-second polling if the monitor or NetworkManager is temporarily unavailable.
+Opening the network menu scans nearby Wi-Fi networks and lists saved profiles
+(disambiguating multiple profiles on one adapter by profile name, pinned AP
+address, or UUID; hover or tab to read truncated labels). Use the
+NetworkManager connection editor for enterprise Wi-Fi networks.
 
 ### Tray applications
 
-GitHub Copilot, ChatGPT, and Spotify use monochrome brand icons in
-the regular tray, visible only while the applications expose tray items.
-Other applications retain their own icons. Context menus, middle-click, and
-scrolling remain available.
+GitHub Copilot, ChatGPT, and Spotify display monochrome brand icons in the
+regular tray whenever those apps expose tray items; all other apps keep their
+own icons. Context menus, middle-click, and scrolling work normally.
 
-Left-click a tray icon to activate its application or open its menu.
-Copilot uses its dedicated launcher script, and launcher failures appear in
-its tooltip and log.
+Left-click any tray icon to activate its app or open its menu. Copilot uses a
+dedicated launcher script whose failures appear in both its tooltip and log.
 
 ### Markets
 
-The Markets menu refreshes on startup and every five minutes, with a manual
-refresh control in the menu. Each symbol keeps its last successful quote and
-timestamp when a request fails. The menu marks stale data rather than hiding
-every cached quote because one request failed. Configure the symbols in
+The Markets menu fetches quotes at startup and every five minutes, plus on
+demand via its refresh button. If a fetch fails for a symbol, the menu keeps
+the last good quote and timestamp and marks it stale instead of blanking out
+everything. Configure tracked symbols in
 [stocks.py](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/scripts/stocks.py).
 
 ## Screen locking and suspend
 
 [hypridle.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hypridle.conf)
-requests locking after **10 idle minutes** and turns displays off after **15**.
-Idle inhibitors can postpone these actions. Turning off displays is not
-suspending the machine.
+locks the screen after **10 minutes** of inactivity and turns displays off
+after **15 minutes** (idle inhibitors can postpone both). Turning off displays
+leaves the machine awake rather than suspending it.
 
-Before sleep, Hypridle requests a lock and waits for the compositor to confirm
-it. That wait has a system-imposed time limit: **if locking fails, the machine
-may still suspend**. Resume turns displays on but does not unlock the session.
-The linked configuration records the settings needed for this behavior.
+Before suspend, Hypridle requests a lock and waits for Hyprland to confirm it.
+Because systemd enforces a finite sleep-inhibit timeout, **if locking fails,
+the machine may still suspend**. Waking from sleep turns the displays back on
+at the lock screen without unlocking the session.
 
-Hyprlock uses a solid background without animations to avoid a known crash
-when displays reconnect. Before enabling either feature, check the issue and
-affected version recorded in
+Hyprlock uses a solid background with animations disabled to work around a
+known crash when displays reconnect. Before turning either feature back on,
+check the tracked issue and affected version noted in
 [hyprlock.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprlock.conf).
 
 ## Where to customize
 
-Edit tracked sources under
-[symlinks/config/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/),
-not installed copies. These may already be live links. For a different
-machine's settings, use a [private overlay](private-overlays.md); an overlay
-replaces a matching linked source rather than patching the base file's contents.
+Edit the tracked files under
+[symlinks/config/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/)
+rather than installed copies. Because they are live symlinks, edits apply right
+away. To vary settings across machines, use a
+[private overlay](private-overlays.md) to replace the linked file whole.
 
 | Change | Start here |
 |---|---|
@@ -189,34 +191,34 @@ replaces a matching linked source rather than patching the base file's contents.
 | Notification spacing | [mako/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/mako/config) |
 | Qt 5 and Qt 6 widget theme | [Kvantum settings](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Kvantum/kvantum.kvconfig) |
 
-Qt Widgets apps use Kvantum's KvArcDark theme unless you already select a
-different `QT_STYLE_OVERRIDE`. After updating an existing installation, log out
-and back in so UWSM loads the style for newly launched apps. Quickshell keeps
-its own theme.
+Qt Widgets applications use Kvantum's KvArcDark theme unless you already set a
+different `QT_STYLE_OVERRIDE`. After updating an existing machine, log out and
+back in so UWSM exports the style to newly launched apps. Quickshell manages
+its own styling independently.
 
 [hyprland.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprland.lua)
-loads the Lua modules in `hypr/conf/`. Use the existing Lua format, not a
-configuration snippet for a different Hyprland syntax.
+loads the Lua modules in `hypr/conf/`. Stick to that Lua format rather than
+pasting plain `hyprland.conf` snippets.
 
 ## Reloading changes
 
-Quickshell watches linked sources and keeps the last valid shell when a reload
-fails. Editing this checkout can therefore reload the live UI without running
-dotfiles again.
+Quickshell watches its linked sources and reloads automatically when you save,
+keeping the last valid shell running if a reload hits an error.
 
-For deliberate manual reloads, Hyprland uses `hyprctl reload config-only`
-and `hyprctl configerrors`; mako uses `makoctl reload`. Fuzzel reads its
-configuration on launch. Existing GTK applications may need reopening.
+For manual reloads, use `hyprctl reload config-only` (and `hyprctl
+configerrors` to check for issues) for Hyprland, and `makoctl reload` for
+notifications. Fuzzel reads its config each time it launches, while already
+open GTK applications may need a restart to pick up theme changes.
 
 ## Session and services
 
 The managed
 [zprofile](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zprofile)
-starts `hyprland-uwsm.desktop` through UWSM on `tty1` when a session may start.
-Other terminals remain ordinary shells. UWSM manages the session and exports
-shared Wayland and toolkit environment settings from
+launches `hyprland-uwsm.desktop` through UWSM on `tty1` when no graphical
+session is running, leaving other TTYs and terminals as normal shells. UWSM
+exports shared Wayland and toolkit environment variables from
 [uwsm/env-hyprland.d/session.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/uwsm/env-hyprland.d/session.sh),
-with matching fallbacks in
+backed by matching fallbacks in
 [conf/env.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/env.lua)
 for direct Hyprland launches.
 
@@ -231,38 +233,38 @@ flowchart TB
     Services --> Daemons["Idle, wallpaper, notifications"]
 ```
 
-Long-running daemons are user services, not duplicated Hyprland autostart
-commands. They include Quickshell, Hypridle, Hyprpaper, Mako, Gammastep, the
-keyring, and the authentication agent. Dotfiles enables NetworkManager as a
-system service and disables the standalone network tray applet.
-PipeWire and WirePlumber provide audio.
+Long-running desktop daemons run as systemd user services rather than Hyprland
+`exec-once` lines: Quickshell, Hypridle, Hyprpaper, Mako, Gammastep, the
+keyring, and the polkit authentication agent. On the system side, dotfiles
+enables NetworkManager and disables the standalone network tray applet. Audio
+is handled by PipeWire and WirePlumber.
 
 <details>
 <summary>Migrating an existing installation off dhcpcd.service</summary>
 
-The default service configuration leaves `dhcpcd.service` alone so a failed
-NetworkManager startup cannot cut off an existing connection. Handle the
-handoff from a local session: after updating, confirm `nmcli device status`
-shows `connected` for your interface and verify network reachability, then run
+The default service config leaves `dhcpcd.service` untouched so a failed
+NetworkManager startup can't cut off your network. Perform the cutover from a
+local session: after updating, verify `nmcli device status` shows `connected`
+for your interface and confirm connectivity, then run
 `sudo systemctl disable --now dhcpcd.service` and recheck connectivity.
 
 </details>
 
-Service selection lives in
-[conf/systemd-units.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml);
-custom units live under
+Unit declarations live in
+[conf/systemd-units.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml),
+and custom user units live under
 [config/systemd/user/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/systemd/user/).
-The [Systemd units task](../reference/systemd-units.md) explains how declarations select
-services and how to disable one before removing its entry. Keep the units'
-graphical-session lifetime and safety settings when customizing.
+See the [Systemd units task](../reference/systemd-units.md) for how units are
+selected and how to disable one before removing its entry. Preserve the
+graphical-session lifetime and safety directives when editing custom units.
 
-The desktop portal uses Hyprland for screen sharing and GTK for file choosers.
-That selection belongs in
+For XDG desktop portals, Hyprland handles screen sharing and GTK handles file
+choosers, configured in
 [hyprland-portals.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/xdg-desktop-portal/hyprland-portals.conf).
 
 ## Diagnose a desktop problem
 
-Check the owning component before restarting the whole session:
+Inspect the affected component before restarting the whole session:
 
 ```sh
 hyprctl configerrors
@@ -270,11 +272,12 @@ systemctl --user status quickshell.service
 journalctl --user -u quickshell.service -b
 ```
 
-Substitute the affected service for Quickshell. These inspect the running
-session; reloading, locking, suspending, and changing connectivity are separate
-actions. Review journal output before sharing it.
+Swap `quickshell.service` for whichever unit is misbehaving, and review
+journal logs for private paths or details before sharing them.
 
-Use [Troubleshooting](troubleshooting.md#service-changes-are-not-visible) for
-inactive units and keyring issues. Contributors can check helpers and UI logic
-with the isolated [desktop shell tests](../development/testing.md#desktop-shell)
-without restarting the desktop.
+See [Service changes are not visible](troubleshooting.md#service-changes-are-not-visible)
+for inactive units and keyring issues, or read
+[Windows and WSL](windows-and-wsl.md) if you also run dotfiles on Windows.
+Contributors can exercise desktop helpers and UI logic in isolation with the
+[desktop shell tests](../development/testing.md#desktop-shell) without
+restarting their session.

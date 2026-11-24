@@ -21,20 +21,21 @@ it does not manage file ownership or Windows access-control lists.
 
 ## What it does
 
-Applies Unix modes to existing configured home targets after the symlink task succeeds.
-Directories recurse and gain traversal bits wherever the mode grants read access;
-ordinary files have execute bits cleared unless explicitly configured otherwise.
-Missing content is not created. Changes through links can affect the checkout.
+Applies Unix modes to existing configured home targets once the symlink task succeeds.
+Directory entries recurse, granting traversal bits wherever the mode grants read access,
+while clearing execute bits on ordinary files unless a separate entry configures them.
+Missing files are never created, and changes applied through symlinks can affect files
+in the checkout.
 
 ## Configuration
 
 Edit [conf/chmod.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml).
 
 The Linux default sets `~/.ssh/config` to `600`. If an earlier update changed
-permissions under `~/.config/zsh`, restore the affected files' intended modes.
+permissions under `~/.config/zsh`, restore those files' intended modes manually.
 
-For example, restrict an existing SSH directory and its configuration. Extend
-the existing category's array:
+To restrict an existing SSH directory and its configuration, extend the category's
+`permissions` array:
 
 ```toml title="conf/chmod.toml (example)"
 [linux]
@@ -44,53 +45,54 @@ permissions = [
 ]
 ```
 
-Both fields are required. `mode` is a three- or four-digit octal string. `path` uses the
-dot-prefixed home convention: `ssh/config` means `~/.ssh/config`. `./` components
-normalize; absolute paths, parent traversal and home itself are invalid.
+Both fields are required. `mode` is a three- or four-digit octal string, and `path` uses
+the dot-prefixed home convention (`ssh/config` means `~/.ssh/config`). `./` components
+normalize, while absolute paths, parent traversal, and home itself are rejected.
 
-Missing targets are not created. Permission convergence follows these rules:
+Missing targets are skipped rather than created. Permission convergence follows these rules:
 
 - **Recursive directories:** A directory entry applies recursively. Directories
-  gain execute bits for each permission class with read access, and ordinary
-  files have execute bits cleared. Recursion leaves sockets, named pipes, and
-  other special files alone; give executable files their own entries.
+  gain execute bits for each permission class that has read access, and ordinary
+  files have execute bits cleared. Recursion skips sockets, named pipes, and
+  other special files; give executable files their own entries.
 - **Explicit descendants:** Separate descendant entries are excluded from
-  recursive ancestors regardless of ordering or parallel execution, including
-  when a parent is reached through a symlink. Parent modes must still allow
-  owner traversal for descendant entries to be checked.
-- **Conflicting modes:** Declarations requesting different modes for the same
+  recursive ancestors regardless of ordering or parallel execution, even when
+  a parent is reached through a symlink. Parent modes still need owner traversal
+  so descendant entries can be checked.
+- **Conflicting modes:** Declarations that request different modes for the same
   readable resolved destination fail before any permissions change. Destinations
-  hidden by inaccessible directories are checked again after access is restored,
-  before applying modes within that tree. Keep one mode for each destination.
+  hidden inside inaccessible directories are checked again once access is restored,
+  before any modes change inside that tree. Keep one mode per destination.
 - **Multiple hard links:** Files with multiple hard links are refused,
-  including within recursive trees, because changing their mode would also
-  change every other name for the same file. Give the managed file an
+  including inside recursive trees, because changing their mode would also
+  affect every other name for the same file. Give the managed file an
   independent copy before retrying; the external-target opt-in does not bypass
   this check.
 
 When a directory lacks owner read or traversal access, apply temporarily grants
-owner read and traversal to inspect its contents. Directory modes are applied
-after their descendants, so restrictive modes such as `000` do not interrupt
-recursive changes. If inspection fails, finds a hard-linked file or reveals
-conflicting declarations, it restores the original directory modes without changing
-file permissions. An apply error also restores temporary access, but does not undo
-permission changes completed before that error.
+both to inspect its contents. Directory modes are applied after their descendants
+so restrictive modes like `000` do not block recursive updates. If inspection fails,
+hits a hard-linked file, or uncovers conflicting declarations, Dotfiles restores the
+original directory modes without changing file permissions. An apply error also
+restores temporary access, though it does not roll back permission changes completed
+before that error.
 
 Parent access is repaired before separately declared descendants are validated,
-including descendants reached through aliases. Preview never changes modes;
-an inaccessible descendant is reported as unknown rather than assumed safe.
-An inaccessible subtree can still reveal a blocker during apply.
+including descendants reached through aliases. Preview never modifies modes:
+an inaccessible descendant is reported as unknown rather than assumed safe,
+so an inaccessible subtree can still surface a blocker during apply.
 
-For example, `600` permits only the owner to read and write a file; `700`
-also permits the owner to traverse a directory but excludes other users.
-Dotfiles accepts octal strings, not symbolic expressions such as `u+rw`. The
+For example, `600` lets only the owner read and write a file, while `700`
+also lets the owner traverse a directory while excluding other users.
+Dotfiles accepts octal strings rather than symbolic expressions like `u+rw`. The
 [chmod manual](https://man.archlinux.org/man/chmod.1.en) explains mode bits,
 including the special bits represented by a fourth octal digit.
 
-Permission changes through managed links can affect the source checkout. Other
-destinations outside home and the public or overlay `symlinks/` trees are blocked. Set
-`allow_external_target = true` on a permission entry only when you intend to change that
-external file or directory tree. Previews show the resolved destination.
+Permission changes through managed links can update files in the source checkout.
+Other destinations outside home and the public or overlay `symlinks/` trees are blocked.
+Set `allow_external_target = true` on a permission entry only when you intentionally
+want to change that external file or directory tree; previews show the resolved
+destination.
 
 ## Preview and apply
 
@@ -103,11 +105,11 @@ dotfiles update --only file-permissions --dry-run
 Check recursive directory entries and any explicit executable descendants.
 If a destination resolves outside the allowed roots, inspect the link chain
 before considering the external-target opt-in. After [applying the reviewed
-change](task-reference.md#preview-and-apply), inspect the affected files' modes;
-a missing target still needs its content supplied separately.
+change](task-reference.md#preview-and-apply), verify the affected files' modes;
+any missing target still needs its content created separately.
 
 ## Removal
 
-Permission changes remain after `dotfiles remove`. Dotfiles does not save the previous
-modes. Restore permissions deliberately from your own records rather than assuming a
-declaration can undo an earlier change.
+Permission changes remain after `dotfiles remove` because Dotfiles does not record
+previous modes. Restore permissions deliberately from your own records rather than
+expecting a declaration removal to undo an earlier change.

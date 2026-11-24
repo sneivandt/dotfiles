@@ -5,10 +5,9 @@ description: Validate local Agent Package Manager plugins with apm pack in dry-r
 
 # APM plugin checks
 
-An APM plugin is a package of agent content with its own manifest and
-packaging rules. This task asks APM to validate local plugin packages before
-deployment. It checks package shape, not whether an instruction is useful,
-a tool is trustworthy, or every deployment target works.
+Validates local APM plugin packages in the main repository before deployment.
+It checks package structure and manifests via APM itself, not whether an
+instruction is effective, a tool is safe, or every deployment target works.
 
 | Task detail | Value |
 |---|---|
@@ -20,22 +19,17 @@ a tool is trustworthy, or every deployment target works.
 
 ## What it checks
 
-Runs `apm pack --dry-run --verbose` for local plugins in the main repository. It needs
-the APM CLI. It does not deploy plugin content or validate every remote package and
-private overlay script.
-
-Use [Agent packages](agent-packages.md) for deployment behavior and [Agent
-configuration](../guides/agent-configuration.md#validate-preview-and-apply) for the
-package-maintenance workflow.
-
-The local sources are beneath
+Runs `apm pack --dry-run --verbose` against each local plugin under
 [symlinks/apm/plugins/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/).
-Fix a reported manifest or packaging error in that source plugin, not in an
-installed or generated copy. The
-[APM command reference](https://microsoft.github.io/apm/reference/) explains
-packaging commands. A successful local pack check does not resolve remote
-dependencies, establish authentication, or replace a reviewed deployment
-preview.
+It never deploys plugin files and does not validate remote packages or private
+overlay scripts. Fix any reported error in the tracked plugin source rather
+than an installed or generated copy.
+
+See the [APM command reference](https://microsoft.github.io/apm/reference/) for
+packaging details, [Agent packages](agent-packages.md) for deployment behavior,
+and [Validate, preview, and apply](../guides/agent-configuration.md#validate-preview-and-apply)
+for the maintenance workflow (a clean pack check does not replace reviewing a
+deployment preview).
 
 ## Run the check
 
@@ -45,6 +39,6 @@ With an [installed launcher and saved profile](../guides/getting-started.md):
 dotfiles check --only apm-plugins --fail-on-skip
 ```
 
-Install APM before running this check. With `--fail-on-skip`, a missing APM
-executable fails the command. Correct packaging errors in the named plugin,
-then repeat the check before [previewing deployment](../guides/agent-configuration.md#validate-preview-and-apply).
+Install `apm` first so `--fail-on-skip` passes instead of failing on a missing
+binary, fix any errors in the named plugin, and rerun before
+[previewing deployment](../guides/agent-configuration.md#validate-preview-and-apply).

@@ -22,48 +22,45 @@ plugins, and startup files are managed separately through
 
 ## What it does
 
-On Linux outside CI, sets the account login shell to zsh. This choice is set by the
-task, not configurable in TOML. It waits for packages and reports missing zsh as unmet
-work.
+On Linux outside CI, sets the account login shell to zsh. The shell choice is built
+into the task rather than configured in TOML. It waits for system packages and reports
+a missing zsh executable as unmet work.
 
-State comes from the account database, not `$SHELL`. Apply uses `usermod` as root, `sudo
--n usermod` when available without prompting, or `chsh` in an interactive run.
-Non-interactive runs report unmet work when authentication would require a prompt.
-The sudo permission check targets the exact `usermod` command, so a scoped
-passwordless rule does not need to authorize unrelated commands.
-A matching shell name with a missing executable or a path not registered in
-`/etc/shells` still needs repair. Both `/usr/bin/zsh` and `/bin/zsh` can be
-registered. Your currently running terminal shell is not replaced.
+State is read from the account database rather than `$SHELL`. Apply runs `usermod`
+directly as root, `sudo -n usermod` when passwordless sudo is available, or `chsh`
+during an interactive run. Non-interactive runs report unmet work if authentication
+would require a prompt. The sudo check tests the exact `usermod` command, so a narrow
+passwordless rule does not need to allow unrelated commands. If the account already
+names zsh but the executable is missing or not listed in `/etc/shells`, the task still
+repairs it (both `/usr/bin/zsh` and `/bin/zsh` are accepted). Your currently running
+terminal shell is left alone.
 
-After applying, a new login session is the meaningful check, not the current
-value of `$SHELL`. If zsh cannot be found, resolve its package installation
-before retrying rather than pointing the account at an unavailable executable.
-The [chsh manual](https://man.archlinux.org/man/chsh.1.en) explains the
-underlying account operation and its permission restrictions; dotfiles may
-use `usermod` instead as described above.
+Verify the result in a new login session rather than checking `$SHELL` in the current
+terminal. If zsh cannot be found, install its package first instead of pointing your
+account at a missing executable. The
+[chsh manual](https://man.archlinux.org/man/chsh.1.en) documents the underlying account
+change and its permission rules; Dotfiles may use `usermod` instead as noted above.
 
 ## Configuration
 
-The desired shell is zsh and is defined by the task. There is no TOML key for choosing a
-different shell. Make zsh available through [System packages](system-packages.md) before
-running this task.
+The target shell is fixed to zsh with no TOML key to choose another shell. Make sure
+zsh is installed through [System packages](system-packages.md) before running this task.
 
 ## Preview and apply
 
-Preview whether the account needs to switch to zsh:
+Preview whether the account needs switching to zsh:
 
 ```sh
 dotfiles update --only login-shell --dry-run
 ```
 
-Resolve missing zsh or account-query errors before [applying the
-change](task-reference.md#preview-and-apply). Apply may need account-management
-permissions or authentication. Verify the selected shell in a new login
-session; the current terminal and its `$SHELL` value are not the result of
-this update.
+Resolve any missing zsh executable or account-query error before [applying the
+change](task-reference.md#preview-and-apply). Apply may require account-management
+permissions or authentication. Confirm the new shell in a fresh login session rather
+than inspecting `$SHELL` in your current terminal.
 
 ## Removal
 
-The account keeps its selected login shell after `dotfiles remove`. Choose another
-installed shell through the operating system's account tools if you want to change it;
-removing shell configuration files does not change the account setting.
+Your account keeps its login shell after `dotfiles remove`. Switch back through your
+operating system's account tools if needed; removing shell config files does not change
+the account setting.

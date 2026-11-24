@@ -5,17 +5,19 @@ description: Choose base or desktop profiles, resolve platform categories and sa
 
 # Profiles and categories
 
-A profile chooses the machine's role: base or desktop. Categories are labels
-such as `linux` and `arch` that select matching sections in configuration files.
-Dotfiles combines the profile's categories with those it detects for the
-operating system. Task filters let you run only part of the selected work.
+A profile sets a machine's role (`base` or `desktop`), while categories are
+tags such as `linux`, `arch`, or `windows` that select matching sections in
+`conf/*.toml`. Dotfiles combines your chosen profile with the categories it
+detects for the operating system to decide which declarations apply. When you
+want to run only a subset of those declarations, use task filters alongside the
+profile.
 
 ## Built-in role profiles
 
 | Profile | Use it for |
 |---|---|
-| `base` | Core shell tools and configuration, without the desktop additions |
-| `desktop` | A workstation: everything in base, plus desktop applications and configuration |
+| `base` | Core shell tools and terminal configuration, without desktop additions |
+| `desktop` | A workstation: everything in `base`, plus desktop applications and graphical configuration |
 
 For example:
 
@@ -24,19 +26,21 @@ dotfiles list --profile base
 dotfiles list --profile desktop
 ```
 
-Names are exactly `base` and `desktop`, in lowercase. `linux`, `arch`, `windows`,
-and `wsl` describe the environment; they are not valid profile names.
+Profile names must be lowercase (`base` or `desktop`). Operating-system names
+like `linux`, `arch`, `windows`, and `wsl` are detected categories rather than
+profiles you select.
 
 ::: warning Profiles are roles, not safety levels
-Base does not mean harmless or unprivileged. Platform settings can still
-install packages, change the login shell, or manage system files. Review the
-[preview](commands-and-usage.md#dry-run-scope) before applying either role.
+`base` does not mean unprivileged or home-directory-only. Platform tasks can
+still install packages, change your login shell, or merge system files under
+`/etc`. Always review a [preview](commands-and-usage.md#dry-run-scope) before
+applying either profile.
 :::
 
 ## Automatic categories
 
-Every profile activates `base`. The desktop profile also activates `desktop`.
-Dotfiles then adds the detected platform categories:
+Every profile activates `base`, and `desktop` adds `desktop` on top of it.
+Dotfiles then adds the categories detected for the current host:
 
 | Where the CLI runs | Automatic categories |
 |---|---|
@@ -46,9 +50,10 @@ Dotfiles then adds the detected platform categories:
 | Non-Arch WSL | `linux`, `wsl` |
 | Arch WSL | `linux`, `arch`, `wsl` |
 
-Arch detection uses `/etc/arch-release`; WSL detection uses the Linux kernel
-release. Windows and Linux inside WSL select different environments, even
-when they run on the same computer.
+Arch detection checks for `/etc/arch-release`, and WSL detection checks the
+Linux kernel release string. Because Windows and Linux inside WSL detect
+different environments, each side manages its own configuration even on the
+same machine.
 
 ```mermaid
 flowchart TB
@@ -61,10 +66,10 @@ flowchart TB
 
 ## Section matching
 
-The active categories select TOML sections. A hyphen in a section name means
-**AND**: every category in the name must be active. This excerpt from
-[conf/packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml)
-shows two matching sections:
+Active categories decide which TOML sections are loaded. A hyphen in a section
+name acts as **AND**, meaning every listed tag must be active. This excerpt
+from [conf/packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml)
+illustrates how sections stack:
 
 ```toml title="conf/packages.toml (excerpt)"
 [arch]
@@ -74,121 +79,133 @@ packages = ["git"]
 packages = ["quickshell"]
 ```
 
-Choose the desktop role on Arch Linux and the active categories are `base`,
-`desktop`, `linux`, and `arch`. Both sections match, so both package lists
-contribute. Choose `base` on the same machine and only `[arch]` matches this
-example.
+On an Arch Linux workstation using the `desktop` profile, the active categories
+are `base`, `desktop`, `linux`, and `arch`. Both `[arch]` and `[arch-desktop]`
+match, so both package lists are included. On the same machine with `base`,
+only `[arch]` matches.
 
-`[arch-desktop]` and `[desktop-arch]` mean the same thing. All matching sections
-contribute; the most specific one is not a replacement for the rest. When
-editing the file, extend its existing sections rather than duplicating them.
+Tag order does not matter (`[arch-desktop]` and `[desktop-arch]` are
+equivalent), and all matching sections combine rather than the more specific
+one replacing the rest. When editing a config file, add to the existing section
+instead of declaring a duplicate table header.
 
-Not every table is a category. For example, registry tables are named settings
-groups and are not filtered by role. See
-[Category sections](configuration-basics.md#category-sections) for the
+Not every TOML file uses category sections: `conf/registry.toml`, for instance,
+uses named settings groups that apply on every Windows run regardless of role.
+See [Category sections](configuration-basics.md#category-sections) for
 file-specific rules and overlay merging.
 
-Selecting desktop on Ubuntu can select shared application settings, but it
-does not enable package installation through apt. Linux package installation
-requires pacman; categories do not install missing package managers.
+Keep in mind that categories only select declarations; they do not supply
+unsupported tools. Choosing `desktop` on Ubuntu can select shared Linux
+application settings, but it will not install packages through `apt` because
+Linux package installation in dotfiles requires `pacman`.
 
 ## Resolution priority
 
-Dotfiles looks for a profile in this order:
+Dotfiles resolves the active profile in this order:
 
-1. `--profile <name>`.
-2. Nonempty `DOTFILES_PROFILE`.
-3. Repository-local Git setting `dotfiles.profile`.
-4. An interactive profile prompt, when the command allows one.
+1. `--profile <name>` on the command line.
+2. A nonempty `DOTFILES_PROFILE` environment variable.
+3. The repository-local Git setting `dotfiles.profile`.
+4. An interactive prompt, when the command supports one.
 
-An explicit flag is a **one-run override**; it does not save a new default.
-An interactive profile choice is saved once configuration loads successfully.
-This also applies during `check` and `--dry-run`.
+Passing `--profile` overrides the role for that single run without updating the
+saved default. Answering an interactive prompt saves the chosen profile once
+configuration loads cleanly, even during `check` or `--dry-run`.
 
-To inspect or deliberately change the saved default, run these from the
-intended checkout:
+To inspect or change the saved default directly from your checkout:
 
 ```bash
 git config --local --get dotfiles.profile
 git config --local dotfiles.profile base
 ```
 
-The first command returns no value and a nonzero status if the setting is
-absent. The second writes local Git configuration, not a tracked file.
-Linked worktrees can share that setting; use `--profile` when you need a
-specific role for one invocation.
+The first command exits nonzero with no output if no default is saved yet. The
+second writes to local Git config rather than a tracked file. Because linked
+worktrees share repository-local Git config, use `--profile` whenever a
+specific worktree needs a different role for one run.
 
 ### When there is no prompt
 
-`list` and unattended commands need a profile supplied by a flag, environment
-variable, or saved setting. Help, version, and log viewing need none.
-For automation, see
-[Unattended runs](commands-and-usage.md#unattended-runs); for an unexpected
-selection error, see [Profile troubleshooting](troubleshooting.md#no-profile-selected).
+`list`, `explain`, and unattended commands require a profile from a flag,
+environment variable, or saved setting, whereas help, version, and log commands
+need none. See [Unattended runs](commands-and-usage.md#unattended-runs) for
+automation flags, or
+[No profile selected](troubleshooting.md#no-profile-selected) if you run into a
+selection error.
 
 ## Changing profiles or categories
 
-A profile tells dotfiles what to manage on this run, not what it may delete.
-**Switching from desktop to base does not uninstall desktop configuration.**
-Desktop-only packages, services, links, and settings stay in place, so you can
-choose which ones to keep. Removing a declaration likewise stops future
-management; it doesn't undo an earlier update.
+A profile controls what dotfiles manages going forward, not what it deletes.
+**Switching from `desktop` to `base` does not uninstall desktop
+configuration.** Existing desktop packages, services, links, and settings stay
+in place so you can decide what to keep. Removing a declaration from TOML
+behaves the same way: it stops future management without undoing past runs.
 
 ### Preview a different role
+
+You can test another role without changing your saved default:
 
 ```bash
 dotfiles list --profile desktop
 dotfiles update --profile desktop --dry-run
 ```
 
-Neither command changes the saved profile.
+If you want to retire desktop configuration and move a machine back to `base`,
+handle cleanup before switching the saved role:
 
-For a desktop-to-base transition, plan cleanup before changing the saved role:
-
-1. With the desktop selection still active, set unwanted services to
-   `enabled = false` and preview the systemd task. Apply the reviewed changes
-   before deleting their declarations. Save work before stopping services
-   that support your current session.
-2. Decide which desktop links to keep. If detaching them, preview
-   `dotfiles remove --profile desktop --only symlinks --dry-run`. This covers
-   **all desktop-selected links, including base links**, replacing them with
-   current source copies. Review before applying and keep sources available
-   until it succeeds.
+1. While `desktop` is still active, set unwanted services to `enabled = false`,
+   preview the `systemd` task, and apply the change before removing their
+   declarations. Save open work before stopping services tied to your live
+   session.
+2. Decide which desktop links to detach. Preview
+   `dotfiles remove --profile desktop --only symlinks --dry-run`, keeping in
+   mind that this detaches **all desktop-selected links, including `base`
+   links**, turning them into standalone copies of their current sources.
+   Review the plan before applying and keep the source checkout intact until
+   it finishes.
 
    Next, preview `dotfiles update --profile base --only symlinks --dry-run`.
-   The copied base files now block link installation because update preserves
-   ordinary files instead of overwriting them. Inspect each reported target,
-   preserve any edits, and move only the intended file or directory aside to
-   a backup location. Repeat the base preview until it proposes the intended
-   links without conflicts, then apply it.
+   The copied `base` files now conflict with link installation because `update`
+   refuses to overwrite ordinary files. Inspect each reported target, keep any
+   edits you care about, and move only the files you want re-linked aside into
+   a backup folder. Re-run the `base` preview until it is clean, then apply it.
 
-   Keep desktop-only copies you still need; do not delete a whole configuration
-   directory to clear conflicts. To stop starting Hyprland from tty1, move the
-   retained `~/.config/shell/profile-arch-desktop.sh` aside.
-3. Remove unwanted package declarations and deliberately uninstall packages
-   with the native package manager. Review dependency removals. Registry,
-   system-file, and other persistent settings need separate manual decisions.
-4. Save the new default from the intended checkout with
-   `git config --local dotfiles.profile base`. Check for a higher-priority
-   `DOTFILES_PROFILE`, then preview `dotfiles update --profile base --dry-run`.
+   Keep any desktop-only copies you still want, and avoid deleting an entire
+   config directory just to clear conflicts. On Arch Linux, move
+   `~/.config/shell/profile-arch-desktop.sh` aside if you no longer want tty1
+   to start Hyprland automatically.
+3. Remove unwanted package declarations and uninstall those packages directly
+   with your native package manager after reviewing their dependencies. Handle
+   registry keys, system files, and other persistent settings manually.
+4. Save the new default in your checkout with
+   `git config --local dotfiles.profile base`, make sure `DOTFILES_PROFILE` is
+   not overriding it, and preview `dotfiles update --profile base --dry-run`.
 
-Keep the original overlay selected during cleanup. Dotfiles has no automatic
-profile migration or desktop-only uninstall; [remove tasks](../reference/task-reference.md#remove-tasks)
-cover only specific integrations.
+Keep your original overlay active throughout cleanup. Dotfiles has no automatic
+profile migration or desktop-only uninstall; see
+[Remove tasks](../reference/task-reference.md#remove-tasks) for what `remove`
+does cover.
 
 ### Distinguish profiles from task filters
 
-With `--profile base --only symlinks`, the profile chooses which link
-declarations apply and the filter runs only the symlinks task. Other base
-tasks do not run. The filter does not change which configuration sections match.
+Profiles and task filters answer different questions. In
+`dotfiles update --profile base --only symlinks`, `--profile base` decides
+which symlink declarations are active, while `--only symlinks` tells the CLI to
+run only the symlink task and skip everything else. Filtering never changes
+which configuration sections match.
 
-If expected work is missing, check the categories, task filters, and required
-tools. Tasks with nothing to change are hidden unless you
-use `--verbose`. See [Task is missing or skipped](troubleshooting.md#task-is-missing-or-skipped).
+If expected work does not show up, double-check your active categories, task
+filters, and tool prerequisites, and remember that unchanged tasks are hidden
+unless you pass `--verbose` (see
+[Task is missing or skipped](troubleshooting.md#task-is-missing-or-skipped)).
 
 ### Extend the built-in model
 
-Custom profiles and category tags are not supported in configuration alone.
-An invented heading is an error, not a new machine role. Use the existing
-categories and a [private overlay](private-overlays.md) for personal
-configuration; adding a new built-in role requires a CLI change.
+Custom profiles and category tags cannot be invented in TOML: an unrecognized
+section header fails validation. Use the built-in categories together with a
+[private overlay](private-overlays.md) for machine-specific additions; adding a
+new built-in role requires changing the CLI itself.
+
+Now that you know how profiles select sections, head to
+[Configuration basics](configuration-basics.md) to see where each configuration
+file lives and how declarations map to files on disk.

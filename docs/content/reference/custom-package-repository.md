@@ -5,10 +5,10 @@ description: Prepare disposable PKGBUILD snapshots for managed Arch packages, in
 
 # Custom package repository
 
-Paru can build from local Git recipe repositories as well as the public AUR.
-This task prepares that local input from reviewed dotfiles recipes and their
-version pins. Here, "repository" means a disposable recipe snapshot, not a
-published pacman binary repository and not the source checkout itself.
+Paru can build from local Git recipe repositories alongside the public AUR.
+This task prepares disposable recipe snapshots from dotfiles-managed Arch
+recipes and updates Paru's config to point to them. ("Repository" here means a
+disposable recipe snapshot, not a binary pacman repo or your source checkout.)
 
 | Task detail | Value |
 |---|---|
@@ -21,24 +21,21 @@ published pacman binary repository and not the source checkout itself.
 
 ## What it does
 
-Prepares disposable Git snapshots of dotfiles-managed Arch recipes and configures Paru
-to use them. It runs on platforms with Arch/AUR support and waits for version discovery
-before preparing snapshots. Discovery and preparation cover every managed
-recipe under the main checkout's `packages/`, even if the current profile does
-not request its installation.
+Prepares disposable Git snapshots for every managed Arch recipe under the main
+checkout's `packages/` directory (even recipes not selected by your current
+profile) after `custom-package-versions` finishes, then writes Paru's local
+repository configuration.
 
-A recipe failure does not block unrelated AUR packages. A missing selected custom
-package is counted as a failure and excluded from installation when its snapshot is
-unavailable. Descriptor names establish dotfiles ownership, so a failed local recipe
-must not silently fall back to the remote AUR.
+A broken custom recipe does not block unrelated AUR packages; if a selected
+custom package's snapshot fails, that package is recorded as failed and never
+silently falls back to the public AUR. Paru's `CleanAfter` cleans Paru's cache,
+not your checkout. See
+[Custom Arch packages](../guides/package-management.md#custom-arch-packages)
+for the tracked recipes.
 
-Paru's `CleanAfter` cleans its cache, not this checkout. See [Custom Arch
-packages](../guides/package-management.md#custom-arch-packages) for the available recipes.
-
-Preparation and installation have different effects. Applying preparation
-can execute PKGBUILD code to obtain metadata and writes snapshots and Paru
-configuration; it does not install the application. Preview does not execute
-recipes or write those outputs.
+Preparation and installation are separate: applying this task executes PKGBUILD
+metadata generation and writes snapshots plus `paru.conf`, without installing
+the packages themselves. `--dry-run` neither executes recipes nor writes files.
 
 ::: warning Review recipes before preparing packages
 PKGBUILDs execute shell code during metadata generation, even without building
@@ -49,26 +46,26 @@ applying preparation; Paru skips normal recipe review for these local repositori
 ## Configuration
 
 Recipes live under
-[packages/](https://github.com/sneivandt/dotfiles/tree/main/packages/). Version
-descriptors identify which recipes dotfiles owns. Package installation is requested
-separately through `aur = true` entries in [AUR
-packages](aur-packages.md#configuration). See [Custom package
-versions](custom-package-versions.md#configuration) for release descriptors.
+[packages/](https://github.com/sneivandt/dotfiles/tree/main/packages/), with
+release descriptors marking ownership (see
+[Custom package versions](custom-package-versions.md#configuration)) and
+`aur = true` entries in [AUR packages](aur-packages.md#configuration) selecting
+what to install.
 
-Supported snapshot inputs are `PKGBUILD`, generated `version.sh`, optional
-`package.install`, `LICENSE`, `NOTICE`, and generated `.SRCINFO`. Other local
-inputs require extending the
-[snapshot implementation](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes/snapshots.rs)
-first. Edit tracked sources, not cached inputs or generated Paru sections.
+Snapshots include `PKGBUILD`, generated `version.sh`, optional
+`package.install`, `LICENSE`, `NOTICE`, and generated `.SRCINFO` (additional
+local files require updating
+[snapshots.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes/snapshots.rs)
+first). Always edit tracked sources rather than cached snapshots or generated
+Paru sections.
 
-The editable Paru defaults are
+Editable Paru defaults live in
 [symlinks/config/paru/paru.conf.base](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/paru/paru.conf.base).
-The task resolves the selected source for the `.config/paru/paru.conf.base`
-symlink, including an overlay replacement or explicitly renamed source. It
-generates a complete configuration from that source, the build-cache location,
-and the prepared repository sections. The link need not exist yet, so a fresh
-installation can be previewed. A missing declaration or selected source is an
-error; the task does not silently fall back to the public base.
+The task resolves whichever source `.config/paru/paru.conf.base` points to in
+your active symlink config (including overlay overrides or renamed sources) and
+combines it with the build-cache path and generated repository sections. A
+missing declaration or source fails loudly instead of falling back to the
+public base.
 
 ::: warning Existing Paru configuration is replaced
 Applying this task replaces the whole destination document, not just its
@@ -81,38 +78,32 @@ the base before retrying. A retry plans against the new contents; it does
 not merge them.
 :::
 
-The destination is `PARU_CONF` when set, otherwise
-`$XDG_CONFIG_HOME/paru/paru.conf` when that variable is set, otherwise
-`~/.config/paru/paru.conf`. Set overrides to absolute paths; empty or relative
-values are rejected. Use the same environment when running dotfiles and Paru.
-
-For the underlying tools, use the
-[PKGBUILD format reference](https://man.archlinux.org/man/PKGBUILD.5.en) and
-[Paru documentation](https://github.com/Morganamilo/paru). Their formats do
-not replace dotfiles' ownership checks. When preparation rejects a cache
-directory, investigate its ownership instead of deleting unrelated content
-or pointing Paru directly at the source checkout.
+The output file is `PARU_CONF` if set, otherwise
+`$XDG_CONFIG_HOME/paru/paru.conf`, otherwise `~/.config/paru/paru.conf` (empty
+or relative overrides are rejected; use the same environment for `dotfiles` and
+Paru). See the [PKGBUILD manual](https://man.archlinux.org/man/PKGBUILD.5.en)
+and [Paru documentation](https://github.com/Morganamilo/paru) for upstream
+format details, and always investigate cache ownership conflicts rather than
+deleting unfamiliar directories or pointing Paru at your source checkout.
 
 ## Preview and apply
 
-Preview snapshot and configuration changes with your configured launcher:
+Preview snapshot and Paru config updates:
 
 ```sh
 dotfiles update --only custom-package-repository --dry-run
 ```
 
-Each `refresh <recipe>` line identifies a changed snapshot by recipe directory
-name, for example `refresh openai-codex`. A configuration change appears as
-`update paru configuration`. Preview and apply use the same action wording;
-`--verbose` adds snapshot paths and the Paru configuration destination. Resolve
-ownership conflicts before retrying; do not delete an unfamiliar cache.
-Back up existing Paru preferences and review every recipe before [applying
-the change](task-reference.md#preview-and-apply), which can execute PKGBUILD
-code even for recipes whose applications are not selected for installation.
+Changed snapshots appear as `refresh <recipe>` (for example `refresh
+openai-codex`), and Paru config updates appear as `update paru configuration`
+(add `--verbose` to see snapshot and output paths). Resolve any ownership
+conflicts, back up existing Paru preferences, and review every recipe before
+[applying](task-reference.md#preview-and-apply), since metadata generation runs
+PKGBUILD code for all tracked recipes.
 
 ## Removal
 
-This task is not selected by `dotfiles remove`. Retiring a recipe and uninstalling a
-package built from it are separate decisions. Investigate snapshot ownership
-conflicts before changing caches; do not delete unfamiliar directories or
-force a remote AUR fallback.
+`dotfiles remove` does not touch this task. Retiring a recipe and uninstalling
+packages built from it are separate steps; investigate cache ownership conflicts
+before touching cache directories rather than deleting unfamiliar folders or
+falling back to the remote AUR.

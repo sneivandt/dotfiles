@@ -25,9 +25,10 @@ const group = (text: string, pages: string[]): DefaultTheme.SidebarItem => ({
 });
 
 const guide = [
-  group('Using dotfiles', ['getting-started', 'commands-and-usage', 'profiles-and-categories', 'configuration-basics', 'security-and-trust', 'package-management', 'troubleshooting']),
+  group('Using dotfiles', ['getting-started', 'commands-and-usage', 'profiles-and-categories', 'configuration-basics']),
+  group('Customization', ['package-management', 'application-settings', 'agent-configuration', 'private-overlays']),
   group('Platforms', ['arch-desktop', 'windows-and-wsl']),
-  group('Customization', ['application-settings', 'agent-configuration', 'private-overlays']),
+  group('Safety and troubleshooting', ['security-and-trust', 'troubleshooting']),
 ];
 const reference = [
   page('cli-reference'),
@@ -48,9 +49,9 @@ const reference = [
   },
 ];
 const contribute = [
-  group('Workflows', ['contributing', 'writing-documentation']),
-  group('Implementation', ['architecture', 'adding-a-task', 'debugging']),
-  group('Verification', ['testing', 'writing-tests', 'mutation-testing', 'ci-and-releases']),
+  group('Overview', ['contributing', 'architecture']),
+  group('Implementation', ['adding-a-task', 'debugging', 'writing-documentation']),
+  group('Testing and releases', ['testing', 'writing-tests', 'mutation-testing', 'ci-and-releases']),
 ];
 const sectionPages = (items: DefaultTheme.SidebarItem[]): string[] =>
   items.flatMap((item) => [
@@ -117,10 +118,9 @@ export default defineConfig({
         const href = token.attrGet('href');
         // Source links cross section folders; published routes remain flat.
         if (href) {
-          token.attrSet('href', href.replace(
-            /^(?:\.\.\/|\/)?(?:guides|reference|development)\/([^/?#]+\.md)([?#].*)?$/,
-            '/$1$2',
-          ));
+          token.attrSet('href', href
+            .replace(/^(?:\.\.\/|\/)?(?:guides|reference|development)\/([^/?#]+\.md)([?#].*)?$/, '/$1$2')
+            .replace(/^\.\.\/(index\.md)([?#].*)?$/, '/$1$2'));
         }
         return linkOpen(tokens, index, options, env, self);
       };

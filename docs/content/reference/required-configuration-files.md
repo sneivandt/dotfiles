@@ -20,20 +20,20 @@ overlay files follow different loading rules.
 
 ## What it checks
 
-Checks the required main TOML files and warns when the repository's `hooks/` directory
-is absent. A required file may be empty, but it must exist even on a platform that does
-not use its task.
+Verifies that every required main TOML file exists and warns when the repository's
+`hooks/` directory is missing. A required file can be empty, as long as it is present
+even on a platform that does not use its task.
 
-The [configuration file index](../guides/configuration-basics.md#files) lists the required files.
-Parsing and field validation happen while loading configuration, before this task can
-run.
+The [configuration file index](../guides/configuration-basics.md#files) lists the
+required files. TOML parsing and field validation run while configuration loads,
+before this task starts.
 
-If startup reports a required file missing, restore the tracked file before
-retrying; `--only config-files` cannot get past the loader. Do not copy a
-private overlay file into the public checkout as a workaround. A missing
-`hooks/` directory produces a warning in this task, unlike a missing required
-TOML file. File presence alone does not establish semantic correctness:
-use [Configuration diagnostics](configuration-diagnostics.md) for that.
+If startup fails because a required file is missing, restore the tracked file first;
+`--only config-files` cannot get past the loader, and you should not copy a private
+overlay file into the public checkout as a workaround. Unlike a missing TOML file, a
+missing `hooks/` directory produces only a warning here. Presence checks do not
+validate semantics; run [Configuration diagnostics](configuration-diagnostics.md) for
+that.
 
 ## Run the check
 
@@ -43,5 +43,5 @@ With an [installed launcher and saved profile](../guides/getting-started.md):
 dotfiles check --only config-files
 ```
 
-Restore missing tracked files before retrying. To check their declarations
-and source paths too, use [CLI validation](../development/testing.md#cli-validation).
+Restore any missing tracked files before retrying. To validate their declarations
+and source paths as well, run [CLI validation](../development/testing.md#cli-validation).

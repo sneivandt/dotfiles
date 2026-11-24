@@ -21,30 +21,27 @@ are present; it does not pin extension versions or configure their preferences.
 
 ## What it does
 
-Dotfiles reads the selected editor's extension list and installs only missing IDs.
-It reads the list again even if an install command failed. It reports an install
-as applied only when the command succeeded and the editor lists the ID. The task
-names missing IDs and reports command failures, even if the editor now lists
-the extension. If no CLI is available, the task is skipped.
+Reads the selected editor's installed extension list and installs only missing IDs.
+Afterward, it re-reads the list even if an install command failed, reporting an
+extension as applied only when its install command succeeded and the editor lists its
+ID. Missing IDs and command failures are still reported even if the extension appears
+in the list. If no editor CLI is found, the task skips.
 
-If the final list cannot be read, verification fails: no new installs are
-reported as applied, but that does not mean they are absent. Cancelling stops
-further installs and leaves unverified work unconfirmed. After a failure or
-interruption, retry the same task. It reads a fresh list and requests only the
-IDs still missing.
+If the final verification query fails, no new installs are reported as applied (which
+does not necessarily mean they failed to install). Cancelling stops remaining installs
+and leaves unverified work unconfirmed. After any failure or cancellation, rerun the
+same task so it queries a fresh list and installs only what is still missing.
 
-The search prefers `code-insiders` over `code` on Linux, and
-`code-insiders.cmd` over `code.cmd` on Windows. On Linux, a Dotfiles
-Insiders shim whose editor has been removed is skipped. The selected CLI receives all
-configured extensions; having stable Code open does not make it the selected
-edition. There is no editor-selection key in this declaration.
+CLI discovery prefers `code-insiders` over `code` on Linux, and `code-insiders.cmd`
+over `code.cmd` on Windows. On Linux, a Dotfiles Insiders shim whose underlying editor
+was removed is skipped. All configured extensions install into the chosen CLI even if
+stable VS Code is currently open; there is no editor-selection setting in this file.
 
-An Arch chroot has no graphical user session. To defer installation, the
-selected configuration must link the `dotfiles-first-login.service` unit file
-and declare the user service enabled. During apply, dotfiles checks that the
-unit is installed and enabled before queuing the extensions. At first
-graphical login the service uses the recorded profile, overlay, and
-extension list. If deferral fails, run the extension task after login.
+Because an Arch chroot has no graphical user session, deferring installs requires the
+selected configuration to both symlink `dotfiles-first-login.service` and declare that
+user service enabled. During apply, Dotfiles verifies the unit is installed and enabled
+before queuing the extension list, profile, and overlay for first graphical login. If
+deferral fails, rerun this task after logging in.
 
 ## Configuration
 
@@ -56,18 +53,16 @@ Edit
 extensions = ["rust-lang.rust-analyzer", "tamasfe.even-better-toml"]
 ```
 
-Use full `<publisher>.<extension>` strings. Repeated IDs, including case-only variants,
-are installed once using the first spelling. The task needs an available VS Code CLI and
-installs missing extensions; Arch chroot provisioning defers this to first login. See
-[VS Code extensions](#what-it-does).
+Use full `<publisher>.<extension>` Marketplace IDs rather than display names shown in
+the editor. Duplicate IDs (including case-only differences) install once using the
+first spelling. See [What it does](#what-it-does) for CLI selection and Arch chroot
+deferral.
 
-An extension ID is the publisher-qualified Marketplace identifier, not the
-display name shown in the editor. The
-[VS Code command-line reference](https://code.visualstudio.com/docs/configure/command-line)
-documents listing, installing, and uninstalling extensions. When installation
-appears to succeed in the wrong editor, check which editor CLI was selected
-and inspect that editor's Extensions view. Preferences belong in
-[Application settings](../guides/application-settings.md#visual-studio-code), not this list.
+The [VS Code command-line reference](https://code.visualstudio.com/docs/configure/command-line)
+documents listing, installing, and uninstalling extensions. If extensions appear to
+install into the wrong edition, check which editor CLI was picked and inspect that
+edition's Extensions view. Editor settings themselves belong in
+[Application settings](../guides/application-settings.md#visual-studio-code).
 
 ## Preview and apply
 
@@ -77,15 +72,14 @@ Preview missing extensions with your configured launcher:
 dotfiles update --only vscode-extensions --dry-run
 ```
 
-Check the missing IDs and use `--verbose` to see the selected CLI. If it is
-unavailable, install the intended editor and make its launcher discoverable
-before retrying. After [applying the reviewed
-change](task-reference.md#preview-and-apply), inspect that edition's Extensions
-view or run its CLI with `--list-extensions`. In a chroot, verify the deferred
-installation after the first real user login instead.
+Review the missing IDs and pass `--verbose` to confirm which editor CLI was selected.
+If no CLI is available, install the editor and make its launcher discoverable before
+retrying. After [applying the reviewed change](task-reference.md#preview-and-apply),
+check that edition's Extensions view or run its CLI with `--list-extensions` (or check
+after first graphical login when provisioning inside a chroot).
 
 ## Removal
 
-Installed extensions remain after removing their declarations or running `dotfiles
-remove`. Use the selected editor's Extensions view for deliberate removal and updates;
-this list is not an uninstall list.
+Installed extensions stay put when you remove declarations or run `dotfiles remove`.
+Use the editor's Extensions view to uninstall or update extensions; this file declares
+extensions to ensure are installed, not an uninstall list.

@@ -5,16 +5,15 @@ description: Build isolated Rust regression tests with the existing context, fil
 
 # Writing tests
 
-Write a regression that fails for the behavior you want to prevent, then assert
-the outcome and the state left behind. A task returning success is not enough:
-it might have overwritten unrelated content, hidden a failed query, or changed
-files during preview.
+Write a regression that fails on the broken behavior you want to prevent, then
+verify both the returned result and the state left behind. Checking `is_ok()`
+alone isn't enough: a passing task might still have clobbered unrelated files,
+swallowed a query error, or mutated disk state during a preview.
 
-This guide covers designing regressions: choosing a boundary, constructing
-fixtures, and proving an observable outcome. [Testing](testing.md) owns commands,
-coverage selection, script/application checks, and pre-push verification.
-Use [Adding a task](adding-a-task.md) when a change also needs configuration or
-catalog wiring.
+This guide covers test placement, isolated fixtures, subprocess mocks, and
+state-transition assertions. See [Testing](testing.md) for running existing
+suites and choosing pre-push coverage, and [Adding a task](adding-a-task.md)
+when wiring new config or catalog entries.
 
 ## Choose the smallest useful layer
 
@@ -27,22 +26,21 @@ catalog wiring.
 | Real declarations agreeing with supported behavior | `config_drift` |
 | A materially different apply/remove journey | Isolated lifecycle or end-to-end integration cases |
 
-Keep small cohesive unit suites inline. Large sibling suites can live in
-`tests.rs`; domain-root task suites can use `domains/<domain>/tests/<feature>.rs`
-through a test-only `#[path]`. Do not create a feature directory solely to hold
-tests.
+Keep small unit suites inline. Larger sibling suites fit cleanly in `tests.rs`
+(or `domains/<domain>/tests/<feature>.rs` via a test-only `#[path]` for
+domain-root task suites) without creating single-file feature directories just
+for tests.
 
-Integration tests import the intentionally exposed
-[testing API](https://github.com/sneivandt/dotfiles/blob/main/cli/src/testing/mod.rs).
-Avoid exposing unrelated production internals merely to assert an implementation
-detail. Prefer the public behavior or a focused unit test.
+Integration tests import the curated
+[testing API](https://github.com/sneivandt/dotfiles/blob/main/cli/src/testing/mod.rs);
+prefer testing observable behavior or adding a unit test rather than widening
+public visibility solely for an assertion.
 
 ### Integration test suites
 
-Rust integration targets under
-[cli/tests/](https://github.com/sneivandt/dotfiles/tree/main/cli/tests/) use
-controlled fixtures. They are different from CI's host-mutating installation
-jobs.
+Integration binaries under
+[cli/tests/](https://github.com/sneivandt/dotfiles/tree/main/cli/tests/) run
+against isolated fixtures rather than modifying your host:
 
 | Target | Main responsibility |
 |---|---|
@@ -58,40 +56,38 @@ jobs.
 | `e2e_apply` | CLI convergence against controlled state |
 | `behavioral_ci` | Cross-cutting regressions for CI assumptions |
 
-Use the command suite to prove that a task is selected and its failure affects
-the exit status. Keep the task's individual resource branches in its unit suite.
-Repeating every branch at the command boundary makes failures harder to locate
-without proving a different contract.
+Use command suites to verify task selection and exit status, and keep per-branch
+resource logic in unit tests so failures point straight to the owning module.
 
 ## Confine every writable path
 
-Use temporary repositories, homes, and state directories. A temporary repository
-alone is insufficient if the command still discovers the real home, Git
-configuration, overlay, or log directory.
+Isolate temporary repositories, homes, and state directories together. A
+temporary repo alone isn't safe if a command still reads your real home, Git
+config, overlay, or log folder.
 
 The shared
 [integration helpers](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/common/mod.rs)
-provide minimal declarations and isolated CLI commands. `cli_command` sets
-fixture home/config/cache/log paths, disables binary self-update, and normally
-skips repository synchronization. It also initializes a fixture Git repository
-so discovery cannot fall through to the developer's checkout. Use the explicit
-repository-sync variant only for tests that need it.
+build minimal declarations and isolated commands: `cli_command` redirects
+home, config, cache, and log paths into temp dirs, disables self-update, skips
+repo sync by default, and initializes a fixture Git repo so Git never walks up
+into your real checkout. Opt into the repository-sync variant only when testing
+sync behavior.
 
-For unit tests, set both the repository root and home. Inject a `MapEnv` rather
-than changing the process environment. The
+In unit tests, set both repo root and home, and pass a `MapEnv` instead of
+mutating process environment variables. The
 [unit helpers](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/test_helpers/mod.rs)
-offer `empty_config`, platform contexts, a context builder, and result assertions.
-Check their defaults before reusing one: an injected Linux platform does not
-turn the host filesystem into Linux.
+provide `empty_config`, platform contexts, a context builder, and result
+assertions; check their defaults carefully, since simulating a Linux platform
+doesn't change the host filesystem's semantics.
 
-Never use a real package manager, registry, service manager, elevation prompt,
-private overlay, or installed agent deployment to make a unit test pass.
-Use synthetic public values in fixtures and captured output.
+Never call real package managers, Windows registry hives, systemd, UAC/sudo,
+private overlays, or live agent deployments inside tests; use synthetic public
+values everywhere.
 
 ## Model subprocesses precisely
 
-Use the injected executor so tests control executable discovery and process
-results independently.
+Inject a test executor so you control both command discovery and process
+outcomes independently:
 
 | Test double | Best use |
 |---|---|
@@ -100,48 +96,43 @@ results independently.
 | `FailingExecutor` / `FailingResource` | Failure injection at a chosen lifecycle point |
 | `CapturingOutput` | Inspecting emitted events and visible diagnostics |
 
-These helpers live in
+All four live in
 [app/test_helpers](https://github.com/sneivandt/dotfiles/tree/main/cli/src/app/test_helpers/).
-`ScriptedExecutor::command` checks program, arguments, working directory, and
-checked mode. Its `git` helper expects a checked Git command.
-The `ok` and `err` helpers supply results without matching the command, so they
-cannot prove that the correct command was issued.
+`ScriptedExecutor::command` asserts program, arguments, working directory, and
+checked mode (and `.git(...)` asserts a checked Git invocation), whereas `ok`
+and `err` return canned results without checking what command ran.
 
-For a command whose failure should propagate, model the executor's typed
-`ExecError`. Use `ExecResult::failure` for an explicitly unchecked exit protocol,
-where production code interprets the exit status. Test spawn, timeout, or
-cancellation errors separately when the feature handles them differently.
-An always-successful mock can conceal both unwanted commands and missing checks.
+Use typed `ExecError` values when testing failure propagation, and
+`ExecResult::failure` only for unchecked commands whose exit code production
+code explicitly interprets. Cover spawn, timeout, and cancellation errors
+separately whenever production code branches on them.
 
 ## Exercise a complete state transition
 
-For a state-changing feature, choose the relevant cases below. Not every
-resource repairs incorrect state: some deliberately preserve it as a conflict.
+Cover every transition relevant to your resource (remembering that some
+resources report conflicts instead of overwriting mismatched files):
 
 | Starting state | Assertion |
 |---|---|
-| Missing | The intended content is created, or missing state is visibly unmet if creation is unsupported |
-| Already correct | No mutation occurs and the result records current state |
+| Missing | Intended content is created, or missing state stays visibly unmet if creation is unsupported |
+| Already correct | No mutation occurs and the result reports current state |
 | Different but repairable | Only the owned setting changes |
-| Foreign or unsafe | User state is preserved and the conflict is reported |
-| Inspection failed | Failure is visible; no speculative installation or replacement follows |
-| Preview | The planned outcome is reported without creating or changing managed state |
-| Repeated apply | A second application performs no unnecessary mutation |
-| Partial failure | Completed work remains accounted for and the command still fails |
+| Foreign or unsafe | User state stays untouched and the conflict is reported |
+| Inspection failed | Failure surfaces cleanly with no speculative install or overwrite |
+| Preview | Planned outcome is reported without changing managed state |
+| Repeated apply | A second run makes no unnecessary writes |
+| Partial failure | Completed work is accounted for while the command still fails |
 
-The
+Look at the
 [Shell PATH tests](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/dotfiles/path.rs)
-show a compact preview/apply/repeat sequence across missing, existing, and
-already-managed profile content. They compare the file bytes after preview,
-check the managed addition after apply, and assert zero changes on repeat.
-Use that pattern rather than checking only `is_ok()`.
+for a crisp preview/apply/repeat pattern: compare file bytes after preview,
+verify the managed line after apply, and confirm zero changes on repeat.
 
 ### A complete isolated task regression
 
-This example can be saved as `cli/tests/hook_regression.rs`. It uses the
-existing `common` integration helpers and the public testing API, not an
-installed CLI or a real home. The hook is inert fixture content; installing it
-does not execute it or create commits.
+Save this self-contained example as `cli/tests/hook_regression.rs` to see the
+`common` helpers and testing API in action (the hook content is inert and is
+never executed):
 
 ```rust
 //! Isolated preview, apply, and repeat coverage for managed hooks.
@@ -187,92 +178,68 @@ fn hook_preview_apply_and_repeat_stay_in_the_fixture() {
 }
 ```
 
-The builder creates minimal declarations and a repository-local hooks path.
-`make_context` supplies an isolated home, `MapEnv`, fixture log directory,
-and an executor that rejects subprocesses. The helpers own the temporary
-directories and remove them when dropped.
+`TestContextBuilder` creates minimal declarations and a local hooks directory,
+while `make_context` sets up an isolated home, `MapEnv`, fixture log dir, and a
+forbidding executor; temporary directories clean up automatically on drop.
 
-Run only this example from `cli/`:
+Run it from `cli/`:
 
 ```sh
 cargo test --locked --profile ci --test hook_regression
 ```
 
-Expect one passing test on either native platform. The assertions check the
-planned count, absence of preview writes, installed bytes, ownership record,
-unchanged user content, and an already-current repeat. They do not prove hook
-execution or command-level selection. Keep the case in the owning existing
-suite when incorporating it into a real change, rather than adding a target
-for every regression.
+On either OS, this runs one test asserting planned counts, zero preview writes,
+installed bytes, ownership metadata, untouched user files, and an idempotent
+repeat. In real patches, add new cases to the existing owning suite rather than
+creating a separate test binary for every regression.
 
-Use named cases for closely related inputs, but separate tests when platform
-contracts differ. The shared
-[lifecycle fixtures](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/common/lifecycle.rs)
-exercise symlinks, Git hooks, and Git settings across fresh contexts.
-
-For removal, add cases for a matching managed target, a user-modified target,
-and a missing target. Assert what is preserved as carefully as what is removed.
-For paths and permissions, include resolved destinations and parent links where
-those affect ownership or containment.
+For removal, test a matching managed target, a user-modified target, and a
+missing target, asserting what survives just as carefully as what gets removed.
+For path and permission logic, also cover resolved destinations and parent
+symlinks wherever ownership or containment depends on them. See
+[common/lifecycle.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/common/lifecycle.rs)
+for shared symlink, Git hook, and Git settings fixtures.
 
 ### Dry-run testing
 
-A preview needs both a positive assertion about the reported plan and a
-negative assertion about side effects. Capture the fixture's starting files
-and subprocess calls, run with dry-run enabled, then compare them. A "dry run"
-message alone does not prove that no mutation occurred.
+Assert both what the preview reports and what it did **not** touch: snapshot
+fixture files and expected subprocesses before running with dry-run, then
+compare afterward (seeing "dry run" in logs never proves files stayed intact).
 
-Use `common::cli_command` for subprocess cases so the fixture, not your real
-home, receives logs or selection metadata. Cover removal previews separately
-where supported. Missing targets should remain absent; existing bytes,
-links, permissions, and unrelated keys should remain unchanged as appropriate.
-
-Overlay scripts execute their own check/preview code. Use fake scripts that
-record protocol modes and assert that apply/remove modes were not invoked.
-Never use a live overlay as a test fixture; see
-[Private overlays](../guides/security-and-trust.md#private-overlays).
+Use `common::cli_command` for subprocess tests so logs and saved selections
+land inside the fixture, and test removal previews separately where supported.
+For overlay scripts, write fake scripts that record every invoked flag and
+assert that apply/remove modes never ran; never point tests at a real overlay
+(see [Private overlays](../guides/security-and-trust.md#private-overlays)).
 
 ## Test scheduling without timing guesses
 
-Assert required ordering and failure propagation, not incidental completion
-order. Use synchronization primitives rather than sleeps to coordinate
-concurrent tests. For graph-only fixtures, `test_task!` creates distinct no-op
-task types with selectors and dependency edges; use handwritten tasks when
-execution or dynamic identity is the behavior under test.
+Assert required dependency ordering and failure propagation rather than
+incidental completion order, using barriers or channels instead of `sleep` to
+coordinate concurrent threads. For graph-only tests, `test_task!` defines quick
+no-op tasks with selectors and edges; write custom test tasks when execution or
+dynamic keys are under test.
 
-Cover ordering-only predecessors failing without blocking independent work,
-success dependencies blocking when needed, and unavailable tasks removed during
-selection. Access claims need evidence that conflicting state is excluded while
-independent work can proceed. Serial execution alone cannot prove that contract.
-
-Command-level cases should verify the selected task set and exit policy, not
-repeat every resource branch. The
-[task execution suite](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/task_execution.rs)
-and [command suites](https://github.com/sneivandt/dotfiles/tree/main/cli/tests/)
-provide examples.
-
-Shared sequential/parallel contracts live in
-[scheduler/conformance.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/scheduler/conformance.rs).
-Use the adjacent
-[batch reports](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/batch_reports.rs)
-and [parallel scheduling](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/parallel.rs)
-suites for partial failure, cancellation, and in-flight accounting.
+Verify that ordering-only failures don't block independent work, blocking
+dependencies do block dependents, unavailable tasks prune cleanly, and
+`AccessClaim` blocks conflicting work while allowing independent work to run
+concurrently. See
+[task_execution.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/task_execution.rs),
+[scheduler/conformance.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/scheduler/conformance.rs),
+[batch_reports.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/batch_reports.rs),
+and [parallel.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/parallel.rs).
 
 ## Review failures and coverage honestly
 
-When a snapshot changes, read the diff before accepting it. Keep snapshots
-focused on a meaningful output contract; do not regenerate unrelated output
-to hide a failure.
+Read snapshot diffs line by line before accepting updates, keeping snapshots
+focused on meaningful output contracts.
 
-For a mutation survivor, identify what the caller would observe if that
-mutation were real, then assert that outcome or preserved state. A timeout is
-not a caught mutant. Rerun the original source range even when the fix changes
-only tests; [Focused mutation testing](testing.md#focused-mutation-testing)
-explains selection and disposable runs.
+When fixing a mutation survivor, ask what a user would actually observe if that
+fault shipped and assert that outcome directly (a timeout is not a caught
+mutant). Replay the original source range even for a test-only fix; see
+[Mutation testing](mutation-testing.md) for the disposable-worktree workflow.
 
-Finally, distinguish simulated platform decisions from native runtime coverage.
-Windows compilation cannot prove registry, process-launch, or symlink behavior.
-Unix permission and filename cases need a filesystem with those semantics.
-Select the required native checks from
-[Platform coverage parity](testing.md#platform-coverage-parity) and record
-unavailable coverage instead of treating a skip as a pass.
+Finally, keep simulated platform checks distinct from native runtime coverage:
+cross-compilation never tests Windows registry, elevation, or symlinks, and
+Unix permission or non-UTF-8 filename tests need a native Unix filesystem (see
+[Platform coverage parity](testing.md#platform-coverage-parity)).

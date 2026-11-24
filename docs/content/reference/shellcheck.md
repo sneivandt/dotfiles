@@ -20,20 +20,19 @@ general validator for every shell language or application configuration file.
 
 ## What it checks
 
-Runs ShellCheck against shell scripts in the main repository. Install ShellCheck before
-using this task. It checks script source, not the behavior of a running shell or a
-private overlay script.
+Runs ShellCheck against supported shell scripts in the main repository. Install
+ShellCheck first; the task inspects script source only and does not test a running
+shell or private overlay scripts.
 
-For changes to managed shell startup and helpers, also use the isolated [shell
-tests](../development/testing.md#choosing-coverage). Passing static analysis alone does not verify
-startup, completion, or history behavior.
+When changing managed shell startup or helper scripts, also run the isolated
+[shell tests](../development/testing.md#choosing-coverage), since passing static
+analysis alone does not cover startup, completion, or history behavior.
 
-Findings include an `SC` rule number. Follow that rule in the upstream wiki
-to understand the warning, then correct the script or make a narrowly
-justified suppression. The repository's shared discovery rules select
-supported shell inputs, not every file beneath the checkout; zsh-specific
-startup behavior needs its own tests. Keep the script's intended shell and
-shebang consistent rather than changing dialect just to silence an analyzer.
+Findings report an `SC` rule number you can look up in the upstream wiki before fixing
+the script or adding a narrow suppression. Shared discovery rules select supported
+shell files rather than every file in the checkout, and zsh-specific startup behavior
+needs its own tests. Keep each script's intended shell and shebang aligned instead of
+changing the dialect just to quiet a warning.
 
 ## Run the check
 
@@ -43,7 +42,7 @@ With an [installed launcher and saved profile](../guides/getting-started.md):
 dotfiles check --only shellcheck --fail-on-skip
 ```
 
-Install ShellCheck and POSIX `sh` before running this check. With
-`--fail-on-skip`, a missing analyzer fails the command. Fix the named script
-and rerun; use the [shell fixtures](../development/testing.md#application-configuration)
-when the change also affects startup behavior.
+Install ShellCheck and POSIX `sh` before running this check; `--fail-on-skip` turns a
+missing analyzer into a failure. Fix the reported script and rerun, and run the
+[shell fixtures](../development/testing.md#application-configuration) whenever a change
+affects startup behavior.

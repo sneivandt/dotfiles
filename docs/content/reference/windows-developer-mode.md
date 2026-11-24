@@ -21,28 +21,28 @@ It is not a switch for Windows Terminal, WSL, or the user's editor settings.
 
 ## What it does
 
-Enables the machine-level Developer Mode policy when unset, requiring Administrator
-rights. The Home symlinks task waits for this task, then checks its own needs.
-Unavailable Developer Mode does not block links that are already correct or directory
-junctions that can be created without it.
+Enables the machine-level Developer Mode policy when unset, which requires
+Administrator rights. [Home symlinks](home-symlinks.md) waits for this task and then
+checks its own link capability, so unavailable Developer Mode never blocks links that
+are already correct or directory junctions that work without it.
 
-Home symlinks remain in the original user's process and recheck capability after
-this task. If file links are still unavailable, they are skipped rather than
-delegated to a potentially different Administrator account. See [Windows
-elevation](../guides/windows-and-wsl.md#elevation).
+Home symlinks stay in your original user process and recheck file-link capability once
+this task finishes. If file links remain unavailable, they are skipped instead of being
+delegated to a potentially different Administrator account. See
+[Windows elevation](../guides/windows-and-wsl.md#elevation).
 
 ## Configuration
 
-This task has no TOML settings. It manages the Windows Developer Mode policy as part of
-Windows setup. See [Windows and WSL](../guides/windows-and-wsl.md#developer-mode-and-symlinks) for
-symlink requirements.
+This task has no TOML settings; it manages the Windows Developer Mode policy as part of
+Windows setup. See [Windows and WSL](../guides/windows-and-wsl.md#developer-mode-and-symlinks)
+for symlink requirements.
 
-The managed value is `AllowDevelopmentWithoutDevLicense` under
-`HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock`, set to DWORD
-`1`. This is machine-wide policy, unlike the HKCU declarations in
-[User registry settings](user-registry-settings.md). Review organizational
-device restrictions before applying it; changing a user registry declaration
-cannot substitute for this machine-level setting.
+Specifically, it sets `AllowDevelopmentWithoutDevLicense` under
+`HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock` to DWORD `1`.
+Because this is a machine-wide policy (unlike the `HKCU` entries in
+[User registry settings](user-registry-settings.md)), check organizational device
+policies before applying it; adding a user registry setting cannot replace this
+machine-level flag.
 
 ## Preview and apply
 
@@ -52,13 +52,13 @@ Preview whether the machine's Developer Mode policy needs enabling:
 dotfiles update --only developer-mode --dry-run
 ```
 
-Check that the proposed change is the machine-wide value described above.
-If organizational policy or elevation prevents it, resolve that restriction
-before [applying the change](task-reference.md#preview-and-apply), rather than
-adding an HKCU setting. Afterward, preview [Home symlinks](home-symlinks.md)
-to assess the links' own remaining requirements.
+Confirm that the proposed change is the machine-wide value described above. If
+organizational policy or elevation blocks it, resolve that restriction before
+[applying the change](task-reference.md#preview-and-apply) rather than adding an
+`HKCU` entry. Afterward, preview [Home symlinks](home-symlinks.md) to see what link
+work remains.
 
 ## Removal
 
-Developer Mode remains enabled after `dotfiles remove`. If you want to disable it, use
-Windows settings and first consider applications and file symlinks that depend on it.
+Developer Mode stays enabled after `dotfiles remove`. To turn it off, use Windows
+Settings and check first whether any applications or file symlinks depend on it.

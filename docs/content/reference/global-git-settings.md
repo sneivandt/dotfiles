@@ -21,25 +21,24 @@ installing this repository's contributor hooks.
 
 ## What it does
 
-Applies `conf/git-config.toml` values to **global** Git configuration. Set
-`GIT_CONFIG_GLOBAL` to select a different file. By default the task writes to
-the user's `.gitconfig`, not the shared `~/.config/git/config` linked from the
-checkout. Repeated occurrences of
-managed keys are handled without altering unrelated keys. Profile and overlay
-selections are stored in repository-local configuration.
+Applies values from `conf/git-config.toml` to **global** Git configuration (set
+`GIT_CONFIG_GLOBAL` to target a different file). By default it writes to the user's
+`.gitconfig` rather than the shared `~/.config/git/config` linked from the checkout,
+updating repeated occurrences of managed keys without touching unrelated entries.
+Profile and overlay selections stay in repository-local configuration.
 
-Each update publishes the selected settings and any Windows autocrlf cleanup
-together. If staging one setting fails, the global file keeps its original
-contents. Correct the error and retry the update.
+Each update publishes the selected settings and any Windows `core.autocrlf` cleanup
+together, so if staging one setting fails, the global file keeps its original contents
+until you fix the error and retry.
 
-On Unix, updates stage content privately and preserve the existing file's access
-mode; new configuration files are owner-only. Dotfiles respects Git's `.lock` file;
-if another writer holds it, let that operation finish and retry. Investigate
-a stale lock before removing it.
+On Unix, updates stage content privately and preserve the existing file's permissions,
+creating new config files as owner-only. Dotfiles honors Git's `.lock` file: if another
+process holds it, wait for it to finish and retry, and investigate any stale lock before
+removing it.
 
-On Windows, an undeclared global `core.autocrlf` is removed, even with no other
-configured Git settings. An explicit active declaration overrides that cleanup. On other
-platforms, empty settings mean no work.
+On Windows, an undeclared global `core.autocrlf` is removed even when no other Git
+settings are configured, unless an active declaration sets it explicitly. On other
+platforms, an empty setting list means no work.
 
 ## Configuration
 
@@ -53,33 +52,32 @@ settings = [
 ]
 ```
 
-Both fields are strings, including booleans written as `"true"` or `"false"`. These
-settings affect **global** Git configuration. Avoid contradicting the shared files under
-[symlinks/config/git/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git).
-Included files remain unchanged. Managed values are written to the global file after its
-includes so scalar settings take precedence. This does not remove inherited entries for
+Both fields are strings, including booleans written as `"true"` or `"false"`. Because
+these entries write to **global** Git configuration, avoid contradicting the shared files
+under [symlinks/config/git/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git).
+Included files stay untouched. Managed values are written to the global file after its
+includes so scalar settings win, though this does not clear inherited entries for
 multivalue settings such as `credential.helper`.
 
-On Windows, the task also removes global `core.autocrlf` when no active declaration
+On Windows, the task also removes global `core.autocrlf` whenever no active declaration
 manages it, even if `settings` is empty. Declare that key explicitly if you want the
-task to manage a value instead. This cleanup is separate from the repository-local Git
-values used to remember profiles and overlays.
+task to set a value instead. This cleanup is independent of the repository-local Git
+keys that store profile and overlay choices.
 
 For Git aliases such as `git gr` and `git contributors`, see [Application
 settings](../guides/application-settings.md#git).
 
-To investigate a value that does not take effect, run this inside the affected
-repository:
+To see why a setting is not taking effect, run this inside the affected repository:
 
 ```sh
 git config --show-origin --show-scope --get-all core.autocrlf
 ```
 
-Replace the key with the setting you are diagnosing. The output identifies
-included files and repository overrides as well as the managed global value;
-no output with exit status 1 means the key is absent. Git's
-[configuration reference](https://git-scm.com/docs/git-config) defines precedence,
-multivalue settings, and each supported key.
+Replace the key with the setting you are diagnosing. The output shows included files and
+repository overrides alongside the managed global value; no output with exit status 1
+means the key is unset. Git's
+[configuration reference](https://git-scm.com/docs/git-config) explains precedence,
+multivalue settings, and supported keys.
 
 ## Preview and apply
 
@@ -89,14 +87,14 @@ Preview the global keys that need changing:
 dotfiles update --only git --dry-run
 ```
 
-Check the proposed values, including any Windows `core.autocrlf` removal.
-Resolve configuration read errors rather than treating them as absent keys.
-After [applying the reviewed change](task-reference.md#preview-and-apply), use
-the origin-and-scope query above in an affected repository to distinguish the
+Review the proposed values, including any Windows `core.autocrlf` removal, and
+resolve configuration read errors rather than treating them as absent keys.
+After [applying the reviewed change](task-reference.md#preview-and-apply), run
+the origin-and-scope command above inside an affected repository to distinguish the
 stored global value from repository or included overrides.
 
 ## Removal
 
-Global Git values remain after their declarations are removed. This task has no remove
-action. Change or unset the keys deliberately with Git, taking included files and
-repository-local overrides into account.
+Global Git values stay in place after their declarations are removed because this task
+has no remove action. Change or unset keys deliberately with Git, keeping included files
+and repository-local overrides in mind.

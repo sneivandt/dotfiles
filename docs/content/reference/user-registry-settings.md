@@ -21,20 +21,21 @@ user preferences, not arbitrary registry imports or machine policy.
 
 ## What it does
 
-Applies current-user values, preserving undeclared ones. This is separate from
-machine-level Developer Mode and does not request brokered elevation. Some applications
-read these settings only at startup. Remove does not restore former values.
+Applies declared current-user registry values while leaving undeclared values untouched.
+This task is separate from machine-level Developer Mode and never requests brokered
+elevation. Some applications only read these settings when they start, and `dotfiles
+remove` does not restore previous values.
 
 ## Configuration
 
 Edit
 [conf/registry.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/registry.toml).
-Registry sections are labels, **not categories**. Every record applies on Windows
-regardless of profile.
+Top-level section names here are labels, **not categories**, so every record applies
+on Windows regardless of profile.
 
-The following illustrative key demonstrates a string and a DWORD value.
-Replace the path and value names with settings documented by the application;
-creating this example key alone does not configure a real application:
+The illustrative entry below shows a string value alongside a DWORD value. Replace the
+path and names with settings documented by your target application; adding this example
+key does not configure a real app:
 
 ```toml title="conf/registry.toml (example)"
 [example-app]
@@ -45,8 +46,8 @@ Theme = "dark"
 ShowStatusBar = 1
 ```
 
-Each record needs `path` and `values`; only `HKCU:\` is supported. Use TOML literal
-strings, as above, to avoid escaping backslashes.
+Each record requires `path` and `values`, and only `HKCU:\` paths are supported. Use
+TOML literal single-quoted strings as shown so you do not have to escape backslashes.
 
 | TOML value | Registry representation |
 |---|---|
@@ -54,23 +55,23 @@ strings, as above, to avoid escaping backslashes.
 | Parseable hexadecimal string, such as `"0x0E"` | `REG_DWORD` |
 | Ordinary string, including `"14"` | `REG_SZ` |
 
-DWORD values accept unsigned 32-bit integers and signed 32-bit integers. Negative
-integers retain their two's-complement bit pattern, so `-1` stores `0xFFFFFFFF`.
-Hexadecimal DWORD strings must fit the unsigned 32-bit range. Other TOML types
-are serialized as strings. DWORD `14` and `"0x0E"` represent the same desired value; DWORD `14` and string `"14"` do not.
+DWORD entries accept both unsigned and signed 32-bit integers: negative values keep
+their two's-complement bit pattern, so `-1` writes `0xFFFFFFFF`, while hexadecimal
+strings must fit in unsigned 32-bit range. Other TOML types serialize as strings.
+Note that DWORD `14` and `"0x0E"` represent the same value, whereas DWORD `14` and
+string `"14"` do not.
 
-Configuration diagnostics check registry paths and DWORD ranges on every platform.
-On Windows, registry previews and updates reject invalid paths or DWORD values
-before processing entries. Updates preserve existing undeclared values.
-If a value cannot be read, Dotfiles leaves it alone and reports the failure.
-Other readable settings can still be applied. After restoring access, retry
-the update; it checks the current values again.
+Configuration diagnostics check registry paths and DWORD ranges on every platform, and
+Windows previews and updates reject invalid paths or values before processing any
+entries. If an existing value cannot be read, Dotfiles leaves it untouched and reports
+a failure while still applying other readable settings; once access is restored, retry
+the update to recheck current values.
 
-Check the application's expected value type as well as its name: a numeric
-string is not interchangeable with a DWORD. Dotfiles writes the declaration
-you provide; it cannot establish that an undocumented application setting
-still has the same meaning on a newer Windows version. Keep a record of the
-original value before deliberately changing a preference you may want to undo.
+Verify both the value name and its expected type before editing, because a numeric
+string is not interchangeable with a DWORD. Dotfiles writes whatever you declare and
+cannot verify whether an undocumented setting still means the same thing on a newer
+Windows build. Note the original value before changing any preference you might later
+want to revert.
 
 ## Preview and apply
 
@@ -80,15 +81,14 @@ Preview the current-user value changes:
 dotfiles update --only registry --dry-run
 ```
 
-Check each key, value name, and desired data against the application's
-documentation, including the TOML type that selects DWORD or string storage.
-Record values you may need to restore before [applying the
-change](task-reference.md#preview-and-apply). If an application ignores a
-stored value, check its expected type and restart requirements rather than
-broadening the registry scope.
+Check each key, value name, and data type against the application's documentation, and
+record any original values you may want to restore before [applying the
+change](task-reference.md#preview-and-apply). If an application ignores a written
+value, check its expected type and restart behavior instead of expanding the registry
+scope.
 
 ## Removal
 
-Registry values remain after their declarations are removed or `dotfiles remove` runs.
-Dotfiles does not retain their previous values. Restore the settings deliberately using
-your backups or Windows configuration tools.
+Registry values stay in place after their declarations are removed or `dotfiles remove`
+runs, because Dotfiles does not record prior values. Restore settings manually from
+your notes or Windows configuration tools.

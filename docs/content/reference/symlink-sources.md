@@ -20,20 +20,20 @@ another platform uses the affected configuration.
 
 ## What it checks
 
-Checks symlink declarations, glob expansion, and file-permission sources, including
-entries in inactive categories. This catches missing tracked content before a different
-profile or platform selects it.
+Validates symlink declarations, glob expansion, and file-permission sources across
+both active and inactive categories, catching missing tracked files before another
+profile or platform depends on them.
 
-Review the declarations in [Home symlinks](home-symlinks.md#configuration) and [File
-permissions](file-permissions.md#configuration). A source check does not prove that
-existing home destinations can be replaced or that the selected applications work.
+Review the declaration rules in [Home symlinks](home-symlinks.md#configuration) and
+[File permissions](file-permissions.md#configuration). Passing a source check confirms
+the repository inputs exist; it does not prove that existing home targets can be
+replaced or that the selected applications work.
 
-When a path is reported missing, check both the declaration and its declaring
-repository's source tree. Fix the source spelling or include the missing
-tracked content; creating an installed home file is not a substitute for a
-missing symlink source. Permission entries can map through a declared link
-to its source, so moving a parent directory can affect more than one finding.
-Glob syntax is deliberately limited to complete `*` segments, as described in
+When a path is reported missing, inspect both the declaration and its declaring
+repository's source tree, then fix the spelling or add the missing tracked file rather
+than creating an installed copy in home. Because permission entries can resolve through
+a declared symlink to its source, moving a parent directory can trigger more than one
+finding. Remember that glob syntax only allows standalone `*` segments, as covered in
 [Glob patterns](home-symlinks.md#glob-patterns).
 
 ## Run the check
@@ -44,6 +44,6 @@ With an [installed launcher and saved profile](../guides/getting-started.md):
 dotfiles check --only symlink-sources
 ```
 
-Correct missing paths in the declaration or source tree and rerun. Use
-[CLI validation](../development/testing.md#cli-validation) to include declaration diagnostics
-and required-file checks.
+Fix any missing paths in the declaration or source tree and rerun, or run
+[CLI validation](../development/testing.md#cli-validation) to include declaration
+diagnostics and required-file checks.

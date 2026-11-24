@@ -1,6 +1,6 @@
 ---
 layout: home
-title: About this project
+title: About these dotfiles
 titleTemplate: false
 description: How Stuart Neivandt manages shell, editor, package, and Hyprland desktop settings across Arch Linux and Windows with a Rust CLI.
 head:
@@ -26,14 +26,9 @@ hero:
 ---
 
 <section class="home-showcase">
-<figure class="home-preview">
-  <img src="/assets/terminal-screenshot.svg" width="760" height="548" alt="Animated terminal session: one dotfiles update groups CLI upgrade and repository sync notices beneath its header, then links configuration, refreshes shell completions, and installs missing packages">
-  <figcaption>A single <code>dotfiles update</code> upgrades the CLI, syncs the checkout, links configs, and installs packages.</figcaption>
-</figure>
-
 <div class="home-about">
 
-## About this project
+## About these dotfiles
 
 Hi, I'm [Stuart Neivandt](https://stuartneivandt.com/). I've kept my dotfiles
 here since 2014. Over the years they grew into a Rust CLI that keeps my shell,
@@ -48,9 +43,14 @@ every machine.
 
 If you're here to borrow ideas, explore the guides above or browse the
 [repository](https://github.com/sneivandt/dotfiles). If you want to try it on
-your own machine, start with [Getting started](getting-started.md) to review
-the defaults, back up existing files, and preview what would change before
-applying anything.
+your own machine, start with [Getting started](guides/getting-started.md) to
+review the defaults, back up existing files, and preview what would change
+before applying anything.
 
 </div>
+
+<figure class="home-preview">
+  <figcaption>A single <code>dotfiles update</code> upgrades the CLI, syncs the checkout, links configs, and installs packages.</figcaption>
+  <img src="/assets/terminal-screenshot.svg" width="760" height="548" alt="Animated terminal session: one dotfiles update groups CLI upgrade and repository sync notices beneath its header, then links configuration, refreshes shell completions, and installs missing packages">
+</figure>
 </section>

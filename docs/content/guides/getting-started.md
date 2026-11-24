@@ -5,28 +5,29 @@ description: Install dotfiles on Arch Linux, Windows, or WSL, choose a release o
 
 # Getting started
 
-Start with a working operating system. Dotfiles configures an existing
-installation; it does not install Arch Linux or Windows. This walkthrough
-uses a Git checkout so you can read the author's settings, back up your own,
-and preview the changes before applying them.
+Dotfiles configures an existing Arch Linux, Linux, Windows, or WSL
+installation rather than installing the operating system itself. This
+walkthrough works from a Git checkout so you can inspect the defaults, back up
+your existing files, and preview every change before applying anything.
 
-Already installed? See [Commands and usage](commands-and-usage.md) or
+If dotfiles is already installed on this machine, skip ahead to
+[Commands and usage](commands-and-usage.md) or
 [Troubleshooting](troubleshooting.md).
 
 ## Choose your setup route
 
-If you're using this repository and its released CLI, go straight to
-[Choose a permanent checkout](#1-choose-a-permanent-checkout). The wrapper
-downloads the executable; you don't need Rust.
+If you want to use this repository and its published CLI binary, jump straight
+to [Set up your machine](#set-up-your-machine). The wrapper downloads the
+executable automatically, so you do not need a Rust toolchain.
 
 | Goal | Before you start |
 |---|---|
-| Keep your configuration in a fork | [Choose a release publisher](#using-a-fork). A new fork doesn't inherit upstream binaries. |
+| Keep your configuration in a fork | [Choose a release publisher](#using-a-fork), because a new fork does not inherit upstream release binaries. |
 | Run the CLI from source | Install the [build prerequisites](../development/contributing.md#source-builds) and pass `--build` on every wrapper or launcher invocation. |
 
-The checkout supplies the settings; the release publisher or source build
-supplies the program that applies them. On WSL, follow the Linux instructions
-inside each distribution and the Windows instructions for the host.
+The checkout provides your configuration, while the release publisher or source
+build provides the CLI binary that applies it. On WSL, follow the Linux steps
+inside each distribution and the Windows steps on the host.
 
 ## Supported environments
 
@@ -95,74 +96,78 @@ If its location must change later, use
 
 ### 2. Review the configuration
 
-Choose `base` for a shell-focused machine or `desktop` for a workstation.
-These are roles, **not safety levels**: both can change system settings.
-The CLI adds categories for your operating system and selects matching
-declarations. [Profiles and categories](profiles-and-categories.md) walks through
-that selection.
+Start by picking a role: `base` for a shell-focused setup, or `desktop` for a
+full workstation. These are roles, **not safety levels**, since either profile
+can change system settings. Dotfiles combines your chosen profile with the
+detected operating system to decide which declarations apply;
+[Profiles and categories](profiles-and-categories.md) explains how that
+matching works.
 
-For example, both profiles select `"config/git/config"` in
-[conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml).
-This links `~/.config/git/config` to the tracked
+As an example, both profiles select `"config/git/config"` in
+[conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml),
+which links `~/.config/git/config` to the tracked
 [symlinks/config/git/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config).
-Review its Git identity, defaults, and included files. Edit the source to change
-a preference, or the declaration to stop selecting the link. See
-[Home symlinks](../reference/home-symlinks.md#configuration) for the full example.
-Other files under
+Read through its Git identity, defaults, and included files. Edit the tracked
+source to change a preference, or edit the declaration to stop managing that
+link (see [Home symlinks](../reference/home-symlinks.md#configuration) for the
+full example). The other files under
 [conf/](https://github.com/sneivandt/dotfiles/tree/main/conf/) declare packages,
-services, and settings rather than links. [Configuration
-basics](configuration-basics.md) explains how to edit those declarations and
-interpret their paths.
+services, and settings rather than links;
+[Configuration basics](configuration-basics.md) covers how to edit them and how
+their paths resolve.
 
-**Installed links are live, not copied snapshots.** Once this link is installed,
-editing its source changes what Git reads without another dotfiles update.
-Some applications reload changed files immediately.
+**Installed links are live, not copied snapshots.** Once a link is in place,
+editing the tracked source changes what the application reads right away,
+without running another dotfiles update. Some applications even reload those
+changes immediately.
 
-Use [Application settings](application-settings.md) to find other sources,
-[task pages](../reference/task-reference.md) for declaration formats,
-or a [private overlay](private-overlays.md) for changes you do not want in the
-public repository.
+When you want to tailor things further, use
+[Application settings](application-settings.md) to locate the tracked config
+files, the [task pages](../reference/task-reference.md) for declaration syntax,
+or a [private overlay](private-overlays.md) for settings that should stay out
+of the public repository.
 
 ::: warning Back up existing configuration first
-Preview the update, then back up and move aside any files, directories, or
-unrelated links that block a managed link. Dotfiles leaves these entries in
-place and reports the conflicts. Review any overlay scripts before running
-the preview. They execute code.
+Preview the update first, then back up and move aside any existing files,
+directories, or unrelated links that conflict with a managed link. Dotfiles
+leaves conflicting entries in place rather than overwriting them. If you use a
+private overlay with scripts, review those scripts before running a preview,
+because previews execute their check and dry-run modes.
 :::
 
-Before the first apply, check these defaults in particular:
+Before applying for the first time, review these defaults carefully:
 
-- **Git identity:** review the supplied name, email, and
+- **Git identity:** check the configured name, email, and
   [HTTPS-to-SSH push rewriting](application-settings.md#git).
-  SSH pushes need your own authentication.
-- **Automatic cleanup:** both Linux profiles select daily
+  Pushing over SSH requires your own SSH authentication.
+- **Automatic cleanup:** both Linux profiles enable daily
   [~/tmp cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service)
-  after 8 complete days since modification, metadata change, and access.
-  Freshly extracted files are retained even when their archived modification
-  times are old. Arch desktops also select
+  for items untouched for 8 full days across modification, metadata change, and
+  access times (freshly extracted files are kept even when their archived
+  timestamps are old). Arch desktops also enable
   [~/screenshots cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service)
-  after 31 days. These services delete old files, links, and empty directories.
-- **System settings:** both roles can select privileged changes. Inspect
+  after 31 days. Both services delete old files, links, and empty directories.
+- **System settings:** both roles can touch privileged configuration. Inspect
   [system files](../reference/system-configuration-files.md#configuration),
   [services](../reference/systemd-units.md#configuration), and Windows
   [registry settings](windows-and-wsl.md#registry-settings).
 - **Agent content:** packages can install executable integrations, and managed
-  Copilot App workflows are enabled in autopilot mode. Review
+  Copilot App workflows run in autopilot mode. Review
   [deployment targets](agent-configuration.md#deployment-targets).
-- **Git hooks:** preserve custom hooks at managed names before
+- **Git hooks:** back up any custom hooks that share managed filenames before
   [installing replacements](../development/contributing.md#installation-and-removal).
 
-Use the [Git backup example](application-settings.md#back-up-and-restore-a-file)
-for an existing configuration file. Keep backups outside managed destinations
+Follow the [Git backup example](application-settings.md#back-up-and-restore-a-file)
+when moving existing files aside, and keep backups outside managed destinations
 and cleanup directories.
 
 ### 3. Preview the selected work
 
-Run the preview from your checkout in an interactive terminal. With no existing
-profile selection, the CLI asks you to choose `base` or `desktop` and remembers
-your answer. For unattended use, supply `--profile base` or `--profile desktop`.
-For this first setup, `--no-repo-update` uses the checkout you just reviewed
-without fetching repository changes.
+Run a preview from your checkout in an interactive terminal. When no profile is
+saved yet, the CLI prompts you to pick `base` or `desktop` and remembers your
+choice (for unattended runs, pass `--profile base` or `--profile desktop`
+explicitly). Passing `--no-repo-update` during initial setup ensures the run
+uses the exact checkout you just reviewed instead of fetching new commits.
 
 On Linux:
 
@@ -170,33 +175,36 @@ On Linux:
 ./dotfiles.sh update --no-repo-update --dry-run
 ```
 
-On Windows, start PowerShell as your normal user, not as Administrator:
+On Windows, run PowerShell as your normal user rather than as Administrator:
 
 ```powershell
 .\dotfiles.ps1 update --no-repo-update --dry-run
 ```
 
 ::: warning A preview is not a sandbox
-The wrapper can download the CLI before the preview starts. Dry-run writes
-logs, may save your selections, and can execute overlay check/preview scripts.
-It does not apply the planned configuration changes. See
-[Dry-run scope](commands-and-usage.md#dry-run-scope) for the full limits.
+The wrapper may download the CLI binary before the preview begins. Dry-run
+still writes a run log, can save your profile or overlay selection, and runs
+overlay check and preview scripts. It does not apply the planned configuration
+changes. See [Dry-run scope](commands-and-usage.md#dry-run-scope) for the exact
+boundaries.
 :::
 
-Check the reported profile, platform, and overlay first. For the Git example,
-look under Home symlinks for a planned link to `~/.config/git/config`
-from this checkout. If it already points to the right source, it needs no
-change; `--verbose` shows already-current work too.
+Start by checking the header line to confirm the profile, platform, and
+overlay. For the Git example above, look under Home symlinks for a planned link
+from `~/.config/git/config` to this checkout. If a link already matches, it is
+omitted unless you pass `--verbose`.
 
-Then review the **whole plan**, not just that link: packages, services, system
-files, failures, and skips. A *task* is a group of work such as Home symlinks
-or System packages. After selecting a profile, use `./dotfiles.sh list` (or
-`.\dotfiles.ps1 list`) to discover task selectors. Use
-[task selection](commands-and-usage.md#select-tasks) if you want a narrower
-preview; `--only symlinks` selects all active links, not just the Git example.
+Review the **entire plan**, not just one link: check planned packages,
+services, system files, failures, and skips. Each *task* groups related work,
+such as Home symlinks or System packages. Once a profile is saved, run
+`./dotfiles.sh list` (or `.\dotfiles.ps1 list`) to see the available task
+selectors. Use [task selection](commands-and-usage.md#select-tasks) to preview
+a narrower slice, keeping in mind that `--only symlinks` still covers every
+active symlink rather than a single file.
 
-With `--no-symbols`, the status labels appear as text. This excerpt was captured
-from an isolated Windows fixture with a missing Git link and no VS Code CLI:
+With `--no-symbols`, status markers print as plain text. Here is an excerpt
+captured from an isolated Windows fixture with a missing Git link and no VS
+Code CLI:
 
 ```text
 Update · dry run · base profile · Windows
@@ -207,17 +215,17 @@ PLANNED Home symlinks
   link ~/.config/git/config → symlinks/config/git/config
 ```
 
-The header identifies the selected role and platform. `PLANNED` names the task;
-the indented line shows the home destination and checkout source. `SKIPPED`
-means the editor extensions would not be installed. Resolve that prerequisite
-if you need the extensions. Your full preview can contain more tasks and show
-them in a different order.
+The header confirms the active role and platform. `PLANNED` names each task
+with work to do, with indented lines showing individual destinations and
+sources. `SKIPPED` tells you why a task could not run (here, install the VS
+Code CLI if you want extensions managed). Your own preview will typically list
+more tasks, printed in completion order.
 
 ### 4. Apply what you reviewed
 
-These commands **change your machine** using the current checkout. They keep
-repository synchronization disabled, but inspect the machine again rather
-than execute a saved plan.
+These commands **modify your machine** using the current checkout. Repository
+sync stays disabled, and the CLI re-inspects the machine rather than replaying
+a cached plan from the preview.
 
 On Linux:
 
@@ -231,13 +239,14 @@ On Windows:
 .\dotfiles.ps1 update --no-repo-update
 ```
 
-Read the [Windows guide](windows-and-wsl.md) before accepting elevation prompts.
-Applications may reload changed files immediately. Read the final summary:
-a successful exit with skipped work is not necessarily a complete installation.
+On Windows, read the [Windows and WSL guide](windows-and-wsl.md) before
+approving any elevation prompts. Because symlinks are live, applications may
+pick up changed files immediately. Check the final summary carefully: an exit
+code of 0 with skipped tasks can still mean part of your setup was not applied.
 
 ### 5. Verify the installation
 
-Open a new shell after the launcher and PATH tasks complete. On Linux:
+Open a new shell so the updated PATH and launcher take effect. On Linux:
 
 ```sh
 command -v dotfiles
@@ -253,30 +262,32 @@ Get-Item "$HOME/.config/git/config" | Select-Object FullName, LinkType, Target
 dotfiles list
 ```
 
-The launcher should resolve under your home's `.local/bin`, the Git link should
-point into the intended checkout or overlay, and `dotfiles list` should show
-tasks matching your saved role and platform. If you excluded a task or link,
-verify the integrations you selected instead.
+You should see `dotfiles` resolving inside your home directory's `.local/bin`,
+your Git config pointing into the checkout (or overlay), and `dotfiles list`
+showing tasks for your saved profile and platform. If you skipped a task or
+edited the link list, verify the integrations you enabled instead.
 
-Account for every failure or skipped task in the apply summary (use
-[partial-failure recovery](troubleshooting.md#recover-from-a-partial-update) for
-unfinished work). `dotfiles check` validates configuration and source files; it
-does not verify installed packages, links, or running services.
+Follow up on every failed or skipped task in the apply summary (see
+[Recover from a partial update](troubleshooting.md#recover-from-a-partial-update)
+if anything stopped partway through). Keep in mind that `dotfiles check`
+validates configuration files and tracked sources, not installed packages, live
+links, or running services.
 
-For later maintenance, `dotfiles update` (the default command) also syncs the
-repository and updates declared agent dependencies. Commit local edits first or
-keep `--no-repo-update` while working locally; see
-[Update lifecycle](commands-and-usage.md#update-lifecycle).
-`remove` is partial cleanup, **not rollback or a full uninstall**.
+Once initial setup is working, routine maintenance is just `dotfiles update`,
+which also syncs the repository and updates declared agent dependencies. Commit
+local edits first, or keep passing `--no-repo-update` while making local
+changes (see [Update lifecycle](commands-and-usage.md#update-lifecycle)). Also
+note that `dotfiles remove` performs scoped cleanup rather than a rollback or
+full uninstall.
 
-## Find the right guide
+## Where to go next
 
-For day-to-day work, start with [Commands and usage](commands-and-usage.md).
-To make this setup your own, find the application in
-[Application settings](application-settings.md), then use
-[task pages](../reference/task-reference.md) for declaration syntax.
-If something goes wrong,
-[Troubleshooting](troubleshooting.md) starts with the symptom.
+Continue to [Commands and usage](commands-and-usage.md) for everyday workflows,
+task selection, and reading logs. When you are ready to customize software and
+configuration, explore [Package management](package-management.md),
+[Application settings](application-settings.md), and the
+[task pages](../reference/task-reference.md). If anything goes wrong,
+[Troubleshooting](troubleshooting.md) lets you start directly from the symptom.
 
-Changing the CLI itself? [Contributing](../development/contributing.md) explains where to
-start and how to verify your changes.
+If you plan to change the CLI itself, start with
+[Contributing](../development/contributing.md).

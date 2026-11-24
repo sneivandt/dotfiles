@@ -10,10 +10,12 @@ const md = await createMarkdownRenderer(fileURLToPath(new URL('../content/', imp
 const render = config.themeConfig.search.options._render;
 
 test('section sources retain unique flat routes without the removed recipe guide', () => {
-  const sources = readdirSync(new URL('../content/', import.meta.url), { recursive: true })
+  const allSources = readdirSync(new URL('../content/', import.meta.url), { recursive: true })
     .filter((path) => path.endsWith('.md') && path !== '404.md')
     .map((path) => path.replaceAll('\\', '/'));
-  assert.equal(new Set(sources.map((path) => basename(path))).size, sources.length);
+  assert.ok(allSources.includes('index.md'));
+  const sources = allSources.filter((path) => path !== 'index.md');
+  assert.equal(new Set(allSources.map((path) => basename(path))).size, allSources.length);
   assert.ok(sources.every((path) => /^(guides|reference|development)\/[^/]+\.md$/.test(path)));
   assert.deepEqual(config.rewrites, Object.fromEntries(sources.map((path) => [path, basename(path)])));
   assert.ok(!sources.some((path) => path.endsWith('/arch-package-recipes.md')));
@@ -24,10 +26,11 @@ test('cross-section Markdown links retain flat clean routes, anchors, and extern
   for (const [source, destination] of [
     ['../reference/cli-reference.md#command-options', '/cli-reference#command-options'],
     ['../development/contributing.md', '/contributing'],
-    ['../guides/index.md', '/'],
+    ['../index.md', '/'],
+    ['guides/getting-started.md', '/getting-started'],
     ['getting-started.md#using-a-fork', './getting-started#using-a-fork'],
     ['#details', '#details'],
-    ['https://github.com/sneivandt/dotfiles/blob/main/docs/content/guides/index.md', 'https://github.com/sneivandt/dotfiles/blob/main/docs/content/guides/index.md'],
+    ['https://github.com/sneivandt/dotfiles/blob/main/docs/content/index.md', 'https://github.com/sneivandt/dotfiles/blob/main/docs/content/index.md'],
   ]) {
     assert.ok(md.render(`[Link](${source})`, { cleanUrls: config.cleanUrls }).includes(`href="${destination}"`), source);
   }
@@ -43,9 +46,9 @@ test('local search indexes escaped descriptions in the page introduction only', 
 });
 
 test('local search indexes home-layout pages without a Markdown H1', () => {
-  const source = '---\nlayout: home\ntitle: About this project\ndescription: Personal Arch Linux & Windows dotfiles.\n---\n\n## About this project\n\nIntro copy.\n';
+  const source = '---\nlayout: home\ntitle: About these dotfiles\ndescription: Personal Arch Linux & Windows dotfiles.\n---\n\n## About these dotfiles\n\nIntro copy.\n';
   const html = render(source, { relativePath: 'index.md' }, md);
-  assert.match(html, /^<h1>About this project<\/h1>\n<p>Personal Arch Linux &amp; Windows dotfiles\.<\/p>\n/);
+  assert.match(html, /^<h1>About these dotfiles<\/h1>\n<p>Personal Arch Linux &amp; Windows dotfiles\.<\/p>\n/);
   assert.match(html, /Intro copy\./);
 });
 

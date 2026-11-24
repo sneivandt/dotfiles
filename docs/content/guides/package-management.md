@@ -5,33 +5,35 @@ description: Choose packages, preview installation, and manage upgrades and remo
 
 # Package management
 
-Dotfiles installs packages selected by your profile using pacman and Paru on
-Arch Linux, or winget on Windows. It checks what is installed and requests
-missing packages. Full application upgrades are a separate maintenance action,
-although installing a missing Arch package can also upgrade the system.
+Dotfiles ensures the software declared for your profile is installed, using
+pacman and Paru on Arch Linux or WinGet on Windows. It checks what is already
+present and installs only what is missing. Keeping existing applications up to
+date is a separate maintenance step, though installing a missing package on
+Arch can also upgrade the system.
 
-Installing an application does not configure it. Use
-[Application settings](application-settings.md) for preferences and linked files,
-and [Agent configuration](agent-configuration.md) for agent content. Updating
-the dotfiles CLI is also separate from updating these applications.
+Installing a package and configuring it are managed separately: use
+[Application settings](application-settings.md) for linked dotfiles and
+preferences, and [Agent configuration](agent-configuration.md) for AI agent
+content. Updating the dotfiles CLI itself is also independent of system
+packages.
 
 ## Choose packages
 
-Edit [conf/packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml).
-Use the appropriate existing category: `[arch]` and `[windows]` apply across
-roles, while `[arch-desktop]` and `[windows-desktop]` add desktop applications.
-Category names select environments, not package managers on other distributions.
-See [Profiles and categories](profiles-and-categories.md) for selection rules.
+Add or review declarations in
+[conf/packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml).
+Put packages in the matching category section: `[arch]` and `[windows]` apply
+to both profiles, while `[arch-desktop]` and `[windows-desktop]` add desktop
+applications (see [Profiles and categories](profiles-and-categories.md)).
 
 | Package source | Declaration |
 |---|---|
-| Arch repositories, through pacman | Package name |
+| Arch official repositories, through pacman | Package name |
 | AUR (Arch User Repository), through Paru | Package name with `aur = true` |
 | Dotfiles-managed Arch recipe, through Paru | Custom package name with `aur = true` |
-| Windows, through winget | Exact winget ID |
+| Windows, through WinGet | Exact WinGet ID |
 
-For example, these entries select a native Arch tool, an AUR application, and
-the Windows Git package:
+For example, these excerpts select a native Arch tool, an AUR application, and
+Git for Windows:
 
 ```toml title="conf/packages.toml"
 [arch]
@@ -44,161 +46,169 @@ packages = [{ name = "visual-studio-code-bin", aur = true }]
 packages = ["Git.Git"]
 ```
 
-Add entries to existing arrays rather than creating duplicate TOML sections.
-Use package identifiers rather than display names. A
-[private overlay](private-overlays.md) can add personal packages or replace a
-matching declaration; the [System packages reference](../reference/system-packages.md#configuration)
-explains the shared declaration format. [Private overlays](private-overlays.md#merge-rules)
-explains how matching entries are combined.
+Always extend the existing arrays rather than duplicating TOML section headers,
+and use exact package identifiers rather than display names. A
+[private overlay](private-overlays.md) can add personal packages or override a
+matching declaration (see [Merge rules](private-overlays.md#merge-rules) and
+the [System packages reference](../reference/system-packages.md#configuration)).
 
-Other Linux distributions can use shared configuration, but dotfiles does not
-install their system packages. Install the tools with that distribution's own
-package manager.
+Other Linux distributions can still use shared configuration from dotfiles, but
+dotfiles does not install packages through `apt`, `dnf`, or other managers;
+install those prerequisites directly with your distribution's package manager.
 
 ## Install and upgrade
 
-For first setup or after adding prerequisites, use a normal preview:
+For an initial setup or after adding new prerequisites, preview a full update:
 
 ```sh
 dotfiles update --dry-run
 ```
 
-Check the selected profile, package names, and planned actions before removing
-`--dry-run`. The `packages` task handles native Arch or Windows packages;
-`aur-packages` handles Arch entries marked `aur = true`. If querying the
-installed package list fails, the task fails rather than assuming everything is
-missing.
+Review the active profile, package names, and planned actions before removing
+`--dry-run`. The `packages` task installs native Arch or Windows packages,
+while `aur-packages` handles Arch entries marked `aur = true`. If querying the
+installed inventory fails, the task stops with an error rather than assuming
+everything is missing.
 
-On an already configured machine, preview just the native package task:
+On an already configured machine, you can preview just the native package task:
 
 ```sh
 dotfiles update --only packages --dry-run
 ```
 
-`--only packages` selects all native packages for the active categories, not a
-single package and not the AUR list. Use `aur-packages` for that list on Arch.
-Scoped runs assume prerequisites are installed. If you need to include them,
-inspect the dependency graph before adding `--with-deps`; it can bring in
-helper setup and recipe preparation. See
-[Task selection](commands-and-usage.md#select-tasks).
+Remember that `--only packages` covers **all active native packages**, not a
+single package and not the AUR list (use `aur-packages` on Arch for AUR and
+custom recipes). Scoped runs assume prerequisites are already installed; if you
+want dependencies pulled in, check the dependency graph before adding
+`--with-deps`, since it can also include Paru bootstrap and custom recipe
+preparation (see [Select tasks](commands-and-usage.md#select-tasks)).
 
 ### Arch Linux
 
-The weekly Reflector timer and the `update-mirrors` Zsh helper both read
-`/etc/xdg/reflector/reflector.conf` for mirror filters and sorting. Set
-`--protocol https` there if you use the helper. A generated list that is
-empty or contains a non-HTTPS mirror leaves the current mirrorlist in place,
-even if the same filters work for the scheduled refresh.
+Both the weekly Reflector timer and the `update-mirrors` Zsh helper read
+`/etc/xdg/reflector/reflector.conf` for mirror filters and sorting. Include
+`--protocol https` there if you use the helper: if a generated mirrorlist is
+empty or contains a non-HTTPS mirror, `update-mirrors` leaves your current
+mirrorlist untouched even if those same filters work for the timer.
 
 ::: warning Installing a missing package can upgrade the system
-Pacman installation uses `pacman -Syu --needed --noconfirm`. It can synchronize
-databases and upgrade other installed packages as well as install missing ones.
-Dry-run warns about this once per batch; its package list names only the missing
-packages, not every package pacman might upgrade.
+Pacman runs `pacman -Syu --needed --noconfirm`, which refreshes package
+databases and can upgrade already-installed packages while installing missing
+ones. Dry-run warns about this once per batch; its list names only the missing
+packages, not every package pacman may upgrade.
 :::
 
-When every selected native package is already installed, dotfiles does not run
-a system upgrade solely because the command is named `update`.
+When every declared native package is already installed, dotfiles skips pacman
+entirely rather than running a full system upgrade just because the command is
+called `update`.
 
-After a pacman or Paru install, dotfiles rechecks which requested packages are
-present, even after a failure or timeout: missing packages and timeouts still
-count as failures, and a retry requests only packages still absent. Investigate
-any failed install hook separately.
+After a pacman or Paru install finishes (or fails or times out), dotfiles
+rechecks which requested packages are now present. Missing packages and
+timeouts still fail the task, while a retry requests only what is still absent.
+Investigate any failed install hook separately.
 
-Paru builds and installs AUR packages. The `paru` task prepares the helper and
-can repair a detected broken helper after library changes. Dotfiles runs Paru
-without an extra sudo wrapper; keep the main invocation under your normal user.
-Review AUR recipes and upstream sources before trusting them.
+Paru builds and installs AUR packages, and the `paru` task bootstraps the
+helper or rebuilds it if a library upgrade breaks it. Keep the main dotfiles
+run under your normal user account so Paru runs without an extra `sudo`
+wrapper, and always review AUR recipes and upstream sources before trusting
+them.
 
-Already-installed AUR packages are not requested merely to upgrade them.
-For normal dotfiles maintenance followed by a full Arch package upgrade:
+Because dotfiles checks presence rather than upgrading installed software, run
+a normal dotfiles update followed by a full Paru upgrade when you want to
+refresh everything on Arch:
 
 ```sh
 dotfiles update
 paru -Syu
 ```
 
-The second command upgrades repository, AUR, and custom packages across the
-machine, including packages absent from this checkout's declarations. Review
-its transaction. For [custom packages](#custom-arch-packages), run dotfiles
-first so Paru sees the refreshed recipe snapshots.
+Review Paru's transaction before confirming, since `paru -Syu` upgrades
+official, AUR, and custom packages across the whole machine. Running
+`dotfiles update` first ensures Paru sees refreshed snapshots for any
+[custom Arch packages](#custom-arch-packages).
 
-The weekly `paccache.timer` keeps two cached versions of each package.
-On an existing installation, run `dotfiles update --only system-files` to
-install the retention setting, then `sudo systemctl daemon-reload` to load it.
-Run `paccache -d -k2` to preview the files eligible for removal.
+The weekly `paccache.timer` keeps two cached versions of each package. On an
+existing machine, apply the retention drop-in with
+`dotfiles update --only system-files`, reload systemd with
+`sudo systemctl daemon-reload`, and preview what would be pruned with
+`paccache -d -k2`.
 
 ### Windows
 
-Winget uses exact IDs and installs missing packages. If an installer needs a
-reboot to finish, dotfiles names the package in the update output. Reboot before
-retrying tasks that use it. Dotfiles does not run
-`winget upgrade --all`; use winget separately to review and upgrade installed
-applications. A declaration is an installation requirement, not a version pin.
+WinGet installs missing packages using exact IDs. If an installer requires a
+reboot to finish, dotfiles calls out that package in the summary so you can
+reboot before retrying tasks that depend on it. Dotfiles never runs
+`winget upgrade --all`; use WinGet directly when you want to review and apply
+application upgrades.
 
-Installation first requests user scope. It retries without that scope only
-when no suitable user-scope installer exists. Prompts are disabled and agreements
-accepted, but an application's installer can still request UAC consent.
+Installations try user scope first and fall back to machine scope only when no
+user-scope installer exists. Interactive prompts are suppressed and agreements
+accepted, though an individual installer can still trigger a UAC prompt.
 
-Administrator-required, cancelled, and policy-blocked installs fail the task,
-even if other packages succeed. An already-installed or no-applicable-upgrade
-response counts as current, while a failed or unparseable winget inventory
-query fails even during preview.
+If an install requires Administrator rights, is cancelled, or is blocked by
+policy, the task fails even if other packages installed cleanly. Responses
+indicating a package is already installed or has no applicable upgrade count as
+current, whereas a failed or unparseable WinGet inventory query fails even
+during a preview.
 
-Keep the main run unelevated. Consult [Windows elevation](windows-and-wsl.md#elevation)
-before retrying an application that requires Administrator rights. Installing
-Windows applications does not install their Linux equivalents inside WSL;
-configure each environment separately.
+Keep your main dotfiles run unelevated, and read
+[Windows elevation](windows-and-wsl.md#elevation) before retrying a package
+that needs Administrator rights. Installing Windows applications does not
+install Linux equivalents inside WSL; manage each environment separately.
 
 ## Remove a package
 
-Deleting a declaration stops selecting the application; it does **not** uninstall
-it. `dotfiles remove` also leaves packages installed.
+Removing a line from `conf/packages.toml` tells dotfiles to stop ensuring that
+package is installed; neither deleting the entry nor running `dotfiles remove`
+uninstalls software.
 
-1. Remove the entry from every contributing source, including an overlay.
-2. Use the native package manager for a deliberate uninstall and review any
-   dependent packages it proposes removing.
-3. Review linked settings, extensions, and services separately. They have their
-   own declarations and may remain after the application is gone.
+1. Remove the declaration from every contributing source, including any private
+   overlay.
+2. Uninstall the package directly with pacman, Paru, or WinGet after reviewing
+   any dependent packages it would remove.
+3. Check for related symlinks, extensions, or services, since they are declared
+   separately and may remain after uninstalling the application.
 
-If a package keeps returning, inspect active categories and overlays for a
-remaining declaration. Changing profiles alone does not uninstall packages
-selected by the previous profile.
+If an uninstalled package gets pulled back in on the next update, check your
+active categories and overlays for another declaration. Switching profiles
+likewise leaves previously installed packages in place.
 
 ## Logs and troubleshooting
 
-Start with the failing task's log using the stable `<run-id>` from the failure
-message (or `dotfiles log --list`):
+Start by inspecting the failing task's log using the `<run-id>` printed after
+the failure (or listed by `dotfiles log --list`):
 
 ```sh
 dotfiles log --id <run-id> --task packages --verbose
 dotfiles log --id <run-id> --task aur-packages --verbose
 ```
 
-The second command is for Arch AUR and custom-package installation. Follow the
-reported package-manager error before rerunning; earlier successful installs
-stay installed when a later package fails.
+Use `aur-packages` for Arch AUR and custom-recipe installs. Fix the reported
+package-manager error before retrying; packages that already installed earlier
+in the batch stay installed.
 
 | Symptom | Check next |
 |---|---|
-| An expected package is absent from the plan | Active profile/categories, spelling, overlay declarations, and task filters |
-| Installed-package discovery fails | The pacman or winget error; do not treat it as an empty installed list |
-| Pacman work is skipped for privileges | The reported elevation prerequisite; see [skipped elevation](troubleshooting.md#elevation-is-unavailable) |
+| An expected package is absent from the plan | Active profile and categories, spelling, overlay declarations, and task filters |
+| Installed-package discovery fails | The pacman or WinGet error (never treated as an empty installed list) |
+| Pacman work is skipped for privileges | The reported elevation prerequisite; see [Elevation is unavailable](troubleshooting.md#elevation-is-unavailable) |
 | Paru cannot start or build | Helper health and [Rust/Cargo prerequisites](troubleshooting.md#paru-cannot-build-or-start) |
-| Winget installation fails | Exact ID, installer scope, cancellation, or policy restrictions |
+| WinGet installation fails | Exact ID, installer scope, cancellation, or policy restrictions |
 | A custom package has no newer version | Refresh recipes first, then inspect `version.sh`, `.SRCINFO`, and `paru -Sl --pkgbuilds` |
-| Recipe preparation fails | The `custom-package-versions` or `custom-package-repository` log; old pins survive a failed refresh |
-| A custom package is excluded from installation | Release metadata, snapshot ownership, and the generated repository section; do not force an AUR fallback |
+| Recipe preparation fails | The `custom-package-versions` or `custom-package-repository` log; existing pins survive a failed refresh |
+| A custom package is excluded from installation | Release metadata, snapshot ownership, and the generated repository section (never silently falls back to remote AUR) |
 
-See [Package troubleshooting](troubleshooting.md#packages-do-not-install) for
-broader recovery guidance. Preserve unrelated cache directories when an ownership
-check rejects them, rather than deleting them to force preparation.
+See [Packages do not install](troubleshooting.md#packages-do-not-install) for
+broader recovery steps. If an ownership check rejects a snapshot cache
+directory, investigate what owns it instead of deleting unfamiliar directories.
 
 ## Custom Arch packages
 
-These recipes package upstream binary releases using reviewed sources under
-[packages/](https://github.com/sneivandt/dotfiles/tree/main/packages/).
-Selecting one needs only its package declaration; you do not need to edit a recipe.
+Dotfiles maintains several custom Arch recipes under
+[packages/](https://github.com/sneivandt/dotfiles/tree/main/packages/) to
+package upstream binary releases cleanly. Using one only requires adding its
+`aur = true` declaration in `conf/packages.toml`; you don't need to edit the
+recipe itself.
 
 | Package | Recipe |
 |---|---|
@@ -208,13 +218,13 @@ Selecting one needs only its package declaration; you do not need to edit a reci
 | `github-copilot-cli-dotfiles` | [Copilot CLI](https://github.com/sneivandt/dotfiles/tree/main/packages/github-copilot-cli/) |
 | `openai-codex-dotfiles` | [Codex CLI](https://github.com/sneivandt/dotfiles/tree/main/packages/openai-codex/) |
 
-A normal Arch update discovers release versions and prepares snapshots for all
-managed recipes in the checkout, independently of the selected package list.
-The package list selects which missing applications to install; removing an
-entry does not exclude its recipe from discovery or preparation.
-**Preparing a recipe does not upgrade an installed application.**
-Follow the [Arch upgrade workflow](#arch-linux) afterward.
-Paru alone uses the last prepared snapshot, not your latest source edits.
+During a normal Arch update, dotfiles checks upstream releases and prepares
+local Git snapshots for every managed recipe in the checkout, regardless of
+whether your current profile installs all of them. **Preparing a recipe does
+not upgrade an already-installed application**: follow up with
+[Arch Linux upgrades](#arch-linux) (`paru -Syu`) afterward. Running Paru on its
+own builds from the last prepared snapshot, not directly from edits in this
+checkout.
 
 ```mermaid
 flowchart TB
@@ -225,19 +235,24 @@ flowchart TB
     Snapshot --> Paru["Paru install or upgrade"]
 ```
 
-These packages use distinct `*-dotfiles` names and can replace/conflict with
-their former packages. Review Paru's replacement prompt. PowerShell's lifecycle
-script adds `/usr/bin/pwsh` to `/etc/shells` if missing. Uninstall removes only
-the entry the script marked as its own. Existing and older unmarked entries
-remain for administrator review.
+These packages use distinct `*-dotfiles` names and may replace or conflict with
+older upstream packages; review Paru's replacement prompt carefully. The
+PowerShell recipe's install script adds `/usr/bin/pwsh` to `/etc/shells` when
+absent, and uninstalling removes only the marked entry it added while leaving
+existing or unmarked entries for you to review.
 
 ::: warning Preparation executes recipes and replaces Paru preferences
 A normal Arch update prepares every managed recipe, not just selected packages.
-Metadata generation executes PKGBUILD code, and preparation replaces the whole
-Paru configuration without merging or backing up existing preferences.
-Review the recipes and preserve the Paru preferences you need before applying.
+Metadata generation executes PKGBUILD code, and preparation replaces the entire
+Paru configuration without merging or backing up existing preferences. Review
+the recipes and preserve any Paru settings you want to keep before applying.
 :::
 
-For release descriptors, see [Custom package versions](../reference/custom-package-versions.md#configuration).
-To prepare snapshots separately or maintain the Paru defaults, use
-[Custom package repository](../reference/custom-package-repository.md).
+For release-descriptor details, see
+[Custom package versions](../reference/custom-package-versions.md#configuration).
+To prepare snapshots on their own or customize the tracked Paru base config,
+see [Custom package repository](../reference/custom-package-repository.md).
+
+Once your tools are installed, head to
+[Application settings](application-settings.md) to configure Git, your shell,
+and your editors.

@@ -74,36 +74,27 @@ or deployed harness copies as a substitute for changing their sources.
 
 ## Agent preferences
 
-The `agent-settings` task edits only declared keys in these documents:
+The `agent-settings` task edits only declared keys in these documents, leaving
+unmanaged keys and TOML comments intact:
 
 | Application | User settings |
 |---|---|
 | `copilot` | `~/.copilot/settings.json` |
 | `codex` | `$CODEX_HOME/config.toml`, defaulting to `~/.codex/config.toml` |
 
-Use the same `CODEX_HOME` when running dotfiles and Codex. A nonempty override
-must be an absolute path; it does not move or modify the old default document.
+Use the same `CODEX_HOME` when running dotfiles and Codex; a nonempty override
+must be an absolute path and does not move the old default file. Removing a
+declaration stops managing the key without deleting the stored value.
 
-Unmanaged keys and TOML comments survive. If a requested key is invalid or its
-parent has an incompatible value, that document is left unchanged. Detected
-concurrent edits stop the write; resolve the conflict before retrying.
-Applications that do not coordinate with dotfiles can still write at the same time.
-Invalid existing documents are reported, not replaced.
-Removing a declaration stops managing the key; it does **not** delete the stored
-value. Conflicting declarations for the same harness/key fail before writes.
-The [Agent settings task](../reference/agent-settings.md) owns the declaration format and
-update behavior. With dotfiles installed and a profile selected, edit
-`conf/agent-settings.toml` and preview preference changes separately:
+Edit `conf/agent-settings.toml` and preview preference changes separately:
 
 ```sh
 dotfiles update --only agent-settings --dry-run
 ```
 
-Review the changed keys, then remove `--dry-run` to apply.
-
-See [Agent settings](../reference/agent-settings.md#configuration) for the
-schema. Use the source file for current preferences, including declared
-Codex desktop settings; do not assume all settings apply to every agent surface.
+Review the changed documents, then remove `--dry-run` to apply. See
+[Agent settings](../reference/agent-settings.md) for the schema, conflict and
+malformed-file safeguards, and overlay override rules.
 
 ## Add a skill or package
 
@@ -242,7 +233,6 @@ generated manifest matches your source fragments:
 
 Neither path deploys content, writes the generated manifest, or changes the
 Copilot App or Cowork integrations. APM's preview may contact upstream services.
-The general [dry-run limits](commands-and-usage.md#dry-run-scope) still apply.
 
 ### Apply the reviewed changes
 
@@ -279,12 +269,9 @@ flowchart TB
 
 Dotfiles reads the selected source fragments directly, so previews use your
 edits even if a fragment's home link is missing or broken. Other YAML files
-already in `~/.apm/config/` also contribute unless a selected source has the
-same filename in that directory. For example, `Team.yml` and `team.yml` both
-contribute if the directory contains two distinct entries; if those names open
-the same entry, the selected source takes precedence. Links still pointing to
-a declared but inactive source do not contribute; dotfiles leaves those links
-in place.
+already in `~/.apm/config/` also contribute unless a selected source maps to
+the same entry. Links still pointing to a declared but inactive source are
+ignored and left in place.
 
 If you already maintain `~/.apm/apm.yml`, dotfiles will not replace it.
 Back it up outside `~/.apm/config/`, move the settings you want to keep into
@@ -365,42 +352,39 @@ while preserving the destination directories and their Windows permissions.
 If a package restricts its targets, include `copilot-cowork` to send its skills
 here.
 
-Choose a destination separate from `~/.agents/skills`: neither path can be
-inside the other, including through a directory link or a Linux bind mount.
-On Linux, this protection includes unselected skills. Before copying or
-pruning, dotfiles checks directory identities throughout the shared skill tree
-without following symlinks inside it or reading unselected file contents. If
-the tree is unreadable, cyclic, or exceeds the scan limit, the check stops
-rather than assuming the destination is safe.
+Keep the destination separate from `~/.agents/skills`, keep each skill's assets
+self-contained inside its directory, and leave `.dotfiles-apm-skills.json` and
+`.dotfiles-apm-files.json` intact. Dotfiles removes unchanged owned files when
+they leave the selected set and stops with a conflict if a destination file has
+local edits or changes from a regular file to a symlink.
 
-Keep `SKILL.md` and its assets inside the skill directory. Cowork copies
-symbolic links as links: a relative link such as `docs/entry.md` works if its
-target is included with the same spelling. An absolute link or a link to a
-sibling skill is not portable, even if it opens in the shared APM directory.
-If a link is missing its target, forms a cycle, or leaves the skill directory
-at any step, Cowork reconciliation stops before copying or pruning skills.
-Include the referenced content in the source skill and retry.
+<details>
+<summary>Cowork safety checks and ownership records</summary>
 
-If an update changes a regular file into a symbolic link, Cowork stops before
-copying or pruning any skills. A link would use its referent's access rules
-instead of the installed file's permissions. To accept the change, move the
-reported destination file to a safe location and retry. Existing managed links
-can still be updated without moving them aside.
+- **Path separation:** Neither `~/.agents/skills` nor the Cowork destination
+  can be inside the other, including through a directory link or a Linux bind
+  mount. On Linux, dotfiles verifies directory identities across the shared
+  skill tree (including unselected skills) without following symlinks or
+  reading unselected files; unreadable, cyclic, or oversized trees stop the
+  sync.
+- **Portable links inside skills:** Cowork copies symlinks as links, so a
+  relative link like `docs/entry.md` works when its target is included with the
+  same spelling, while absolute or cross-skill links are not portable. Missing
+  targets, cycles, or links that escape the skill directory stop reconciliation
+  before copying or pruning; bundle the referenced content in the skill and
+  retry.
+- **Regular file replaced by symlink:** Cowork stops before copying or pruning
+  when an update turns a regular file into a symlink, because the link would
+  inherit its referent's permissions. Move the reported destination file aside
+  and retry. Existing managed links can be updated in place.
+- **Ownership and conflict tracking:** Dotfiles records deployed file hashes in
+  `.dotfiles-apm-skills.json` and `.dotfiles-apm-files.json`. It adopts
+  matching destination files, leaves unowned files alone, and stops if a
+  destination file differs from both the source and its recorded hash (or if a
+  stale file has local edits or lacks a verified hash from an older
+  deployment). Move conflicting or unverified files aside before retrying.
 
-Dotfiles records deployed file hashes and removes unchanged owned files that
-disappear from the source or leave the selected skill set. It can take
-ownership of an existing destination file if it matches the source, and leaves
-unrelated skills and unowned files untouched. When a destination file differs
-from both the source and its last deployed version, or when a stale file has
-local edits, dotfiles reports a conflict; move the conflicting file aside
-before retrying.
-
-Keep the destination's `.dotfiles-apm-skills.json` and
-`.dotfiles-apm-files.json` ownership records. For older deployments, Dotfiles
-removes a stale `SKILL.md` only when its recorded hash matches; move unverified
-files aside to continue cleanup. For path-resolution failures or copy
-conflicts, check the selected destination above and the reported ownership
-conflict before retrying.
+</details>
 
 ## Removing packages and targets
 
@@ -451,14 +435,11 @@ the retained fragment. See [preview behavior](#what-a-preview-can-show).
 | Cowork path/copy failure | Check destination precedence, directory/link conflicts, and the ownership inventory |
 | Package edits did not deploy | Confirm source links and inspect verbose native install output |
 
-Use `dotfiles log --id <run-id> --task agent-packages --verbose`, replacing
-`<run-id>` with the stable ID from the failed run. Omitting the ID deliberately
-selects the newest run, which may no longer be the failure you are investigating.
+Inspect failures with `dotfiles log --id <run-id> --task agent-packages --verbose`.
+APM subprocesses cannot open interactive Git credential prompts: recognized
+authentication errors are reported as unmet prerequisites, while other native
+errors fail the task. Keep tokens out of fragments and diagnostic excerpts.
 
-APM subprocesses cannot open interactive Git credential prompts. Recognized
-authentication failures are reported as unmet prerequisites; other native
-failures fail the task. Keep tokens out of fragments and diagnostic excerpts.
-
-A failed run can already have changed the manifest or some targets. There is
-no automatic rollback. Correct the reported cause and rerun; deleting lockfiles,
-whole deployment trees, or App data is not a safe first response.
+A failed run can already have changed the manifest or some targets without
+rolling back. Fix the reported cause and rerun rather than deleting lockfiles,
+whole deployment trees, or App data.

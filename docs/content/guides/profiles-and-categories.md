@@ -10,10 +10,6 @@ such as `linux` and `arch` that select matching sections in configuration files.
 Dotfiles combines the profile's categories with those it detects for the
 operating system. Task filters let you run only part of the selected work.
 
-The examples assume an installed dotfiles launcher. Before installation, use
-your checkout's `./dotfiles.sh` on Linux or `.\dotfiles.ps1` on Windows;
-[Getting started](getting-started.md) explains bootstrap and the first run.
-
 ## Built-in role profiles
 
 | Profile | Use it for |
@@ -145,8 +141,7 @@ dotfiles list --profile desktop
 dotfiles update --profile desktop --dry-run
 ```
 
-Neither command changes the saved profile. The preview still has the
-[bookkeeping and external-tool effects](commands-and-usage.md#dry-run-scope) of any dry run.
+Neither command changes the saved profile.
 
 For a desktop-to-base transition, plan cleanup before changing the saved role:
 

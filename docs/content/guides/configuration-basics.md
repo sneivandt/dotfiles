@@ -61,23 +61,20 @@ Private overlays may also provide
 Examples are valid TOML excerpts, not replacements for the complete configuration.
 Extend the existing section rather than adding a second table with the same name.
 
-For a symlink declaration, use this sequence with the installed launcher for your
-intended checkout and a saved profile:
+For a symlink declaration, validate and preview the change:
 
 ```sh
 dotfiles check --only config-diagnostics,symlink-sources,config-files
 dotfiles update --only symlinks --dry-run
 ```
 
-Resolve failed or skipped checks before applying. The preview should show the intended
-destinations under Home symlinks; add `--verbose` to see unchanged links too.
-For another kind of change, select its task instead. The preview uses current checkout
-content, but still has the [documented side
-effects](commands-and-usage.md#dry-run-scope).
+Resolve failed or skipped checks before applying. The preview should show the
+intended destinations under Home symlinks (add `--verbose` to see unchanged
+links too). For another kind of change, select its task instead.
 
-Not installed yet? [Getting started](getting-started.md) covers the wrapper, profile
-selection, backups, and the first apply. Contributors changing the loader or
-configuration model should also use [Testing](../development/testing.md#cli-validation).
+Not installed yet? Start with [Getting started](getting-started.md).
+Contributors changing the loader or configuration model should also run
+[CLI validation](../development/testing.md#cli-validation).
 
 ## Category sections
 
@@ -133,14 +130,12 @@ configuration; it cannot hide conflicting declarations.
 Deleting a record generally means **stop managing it**, not **undo it**. Packages,
 Git/registry/harness values, services and merged system files remain.
 
-For links or overlay scripts, keep the declaration active while running the intended
-[remove task](../reference/task-reference.md#remove-tasks), then delete it. Symlink removal replaces
-matching managed links with local copies of their current source contents rather than
-restoring a backup. Existing ordinary files and directories are preserved. Missing
-targets stay missing unless removal uses `--restore-missing`.
-
-APM has its own stale-deployment cleanup and [last-fragment
-caveat](agent-configuration.md#removing-packages-and-targets).
+For links or overlay scripts, keep the declaration active while running the
+intended [remove task](../reference/task-reference.md#remove-tasks), then delete
+it. Symlink removal detaches managed links into copies of their current sources
+rather than restoring a backup; see
+[Home symlinks removal](../reference/home-symlinks.md#removal) and
+[Removing agent packages](agent-configuration.md#removing-packages-and-targets).
 
 ## Loading and reload behavior
 

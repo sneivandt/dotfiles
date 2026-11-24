@@ -24,17 +24,21 @@ existing desktop does not start another session. Installing the configuration
 does not replace your current session immediately.
 
 Updates before a graphical session starts enable its services without starting
-them. UWSM owns activation of `graphical-session.target`; the services do not
-pull it in themselves. If an older update already activated that target without
-a compositor, installing the fix does not stop it automatically. Save your work
+them; UWSM owns activation of `graphical-session.target`. If login leaves you
+at a shell, check that Zsh is your login shell, `~/.zprofile` is linked, and
+`uwsm` is available. Follow [Session and services](#session-and-services) for
+startup sources and [desktop diagnosis](#diagnose-a-desktop-problem) for
+service logs rather than adding duplicate autostart commands.
+
+<details>
+<summary>Upgrading from an older checkout that activated graphical-session.target early</summary>
+
+If an older update already activated `graphical-session.target` without a
+compositor, installing the fix does not stop it automatically. Save your work
 and start a fresh login after reboot rather than stopping session targets under
 running applications.
 
-If login leaves you at a shell, check that Zsh is your login shell, the managed
-`~/.zprofile` link is present, and `uwsm` is available. Follow
-[Session and services](#session-and-services) for startup sources and
-[desktop diagnosis](#diagnose-a-desktop-problem) for service logs. Do not add a
-second set of autostart commands to work around a failed service.
+</details>
 
 ## Everyday shortcuts
 
@@ -122,13 +126,11 @@ tiled windows, sits below floating windows and hides on fullscreen workspaces.
 
 The bar follows connection changes from `nmcli monitor`, falling back to
 ten-second polling while the monitor or NetworkManager status is unavailable.
-Open the network menu to load nearby Wi-Fi networks and saved profiles. The
-list refreshes while the menu stays open.
-If you have several saved profiles for the same Wi-Fi network on one adapter,
-look below the network name for the profile name. If the names repeat, the menu
-shows the pinned access point address or the profile UUID instead. If the text
-is cut off, hover over the row or tab to it to read the full label. Configure
-enterprise Wi-Fi in the NetworkManager connection editor rather than the bar menu.
+Open the network menu to load nearby Wi-Fi networks and saved profiles (when a
+network has multiple saved profiles on one adapter, the menu disambiguates them
+by profile name, pinned AP address, or UUID; hover or tab to read truncated
+labels). Configure enterprise Wi-Fi in the NetworkManager connection editor
+rather than the bar menu.
 
 ### Tray applications
 
@@ -234,13 +236,16 @@ keyring, and the authentication agent. Dotfiles enables NetworkManager as a
 system service and disables the standalone network tray applet.
 PipeWire and WirePlumber provide audio.
 
-On an existing installation that uses `dhcpcd.service`, handle the network
-handoff from a local session. After updating, run `nmcli device status` and
-check that NetworkManager shows `connected` for the interface you rely on,
-then verify that you can reach the network you need. Once the handoff is
-confirmed, run `sudo systemctl disable --now dhcpcd.service` and check the
-connection again. The default service configuration leaves `dhcpcd.service`
-alone so a failed NetworkManager startup cannot stop the existing service.
+<details>
+<summary>Migrating an existing installation off dhcpcd.service</summary>
+
+The default service configuration leaves `dhcpcd.service` alone so a failed
+NetworkManager startup cannot cut off an existing connection. Handle the
+handoff from a local session: after updating, confirm `nmcli device status`
+shows `connected` for your interface and verify network reachability, then run
+`sudo systemctl disable --now dhcpcd.service` and recheck connectivity.
+
+</details>
 
 Service selection lives in
 [conf/systemd-units.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml);

@@ -44,16 +44,14 @@ and Linux integration.
 
 ## Choose a checkout
 
-Use this repository directly if you want to follow its shared configuration.
-To maintain your own public changes, fork it and clone your fork instead.
-Either way, review the personal defaults before applying them. Private
-additions can stay in a [separate overlay](private-overlays.md).
+Use this repository directly to follow its shared configuration, or fork and
+clone your own copy to maintain public changes. Private additions can stay in a
+[separate overlay](private-overlays.md).
 
 ### Using a fork
 
 **A new fork has no release binaries.** If you trust this project's released
-CLI and want to use it with your fork's configuration, select its publisher
-in the terminal you will use for setup:
+CLI with your fork's configuration, select its publisher in the setup terminal:
 
 ```sh
 export DOTFILES_RELEASE_REPO=sneivandt/dotfiles
@@ -65,32 +63,26 @@ In PowerShell:
 $env:DOTFILES_RELEASE_REPO = 'sneivandt/dotfiles'
 ```
 
-This selects the binary, not the configuration repository. The downloaded
-binary also uses that publisher for self-updates. The setting lasts for this
-terminal; keep it in your shell configuration if future bootstrap downloads
-should use the same publisher. A fork with compatible releases can use its
-own default publisher.
+The downloaded binary also uses that publisher for self-updates; keep the
+variable in your shell configuration if future bootstrap downloads should do
+the same. A fork with compatible releases uses its own default publisher.
 
-To build instead, try `./dotfiles.sh --build --version` or
-`.\dotfiles.ps1 --build --version` from the checkout. This prints the version
-without applying configuration. Keep `--build` even for the final verification
-through the installed launcher; build mode is not remembered.
+To build from source instead, test with `./dotfiles.sh --build --version` or
+`.\dotfiles.ps1 --build --version`. Build mode is not remembered, so keep
+`--build` on every wrapper or launcher invocation.
 
 ## Set up your machine
-
-Keep the checkout at a permanent path, review its configuration, and preview
-the changes before applying them.
 
 ### 1. Choose a permanent checkout
 
 You need Git and a POSIX shell on Linux, or Git and PowerShell on Windows.
-For a released CLI, install GitHub CLI (`gh`) before the first download:
-the wrapper uses it to verify where the binary was built. On Linux, the
-download also needs `curl` or `wget`, `sha256sum`, and `flock`. See
+For a released CLI, install GitHub CLI (`gh`) before the first download so the
+wrapper can verify where the binary was built. On Linux, download bootstrap
+also needs `curl` or `wget`, `sha256sum`, and `flock`. See
 [download verification](security-and-trust.md#build-provenance-verification)
 or the [Windows requirements](windows-and-wsl.md#requirements) for details.
 
-To use this repository directly, clone it into a directory you intend to keep:
+Clone the repository (or your fork) into a directory you intend to keep:
 
 ```sh
 git clone https://github.com/sneivandt/dotfiles.git
@@ -98,11 +90,8 @@ cd dotfiles
 ```
 
 Keep this directory: installed links and the launcher point back into it.
-Moving or deleting the checkout can break applications. If its location must
-change later, use [Move a checkout](commands-and-usage.md#move-a-checkout).
-
-If you chose a fork, substitute its clone URL and keep the publisher selection
-or source-build option described above.
+If its location must change later, use
+[Move a checkout](commands-and-usage.md#move-a-checkout).
 
 ### 2. Review the configuration
 
@@ -264,23 +253,20 @@ Get-Item "$HOME/.config/git/config" | Select-Object FullName, LinkType, Target
 dotfiles list
 ```
 
-The launcher should resolve under your home's `.local/bin`, and the Git link
-should point into the intended checkout or overlay. The listing should contain tasks
-appropriate for your saved role and platform; confirm the selected profile and
-platform in the apply run's header. If you intentionally excluded a task or link,
-verify the integrations you did select instead.
+The launcher should resolve under your home's `.local/bin`, the Git link should
+point into the intended checkout or overlay, and `dotfiles list` should show
+tasks matching your saved role and platform. If you excluded a task or link,
+verify the integrations you selected instead.
 
-Read the apply summary and account for every failure or skipped task. Use
-[partial-failure recovery](troubleshooting.md#recover-from-a-partial-update)
-for unfinished work. `dotfiles check` validates configuration and source files;
-it does not prove that packages, links, or running services were installed.
+Account for every failure or skipped task in the apply summary (use
+[partial-failure recovery](troubleshooting.md#recover-from-a-partial-update) for
+unfinished work). `dotfiles check` validates configuration and source files; it
+does not verify installed packages, links, or running services.
 
-For later maintenance, ordinary `dotfiles update` also synchronizes the
-repository and can install newer agent dependencies. Review and commit your
-configuration edits before using repository sync, or keep `--no-repo-update`
-while working locally.
-[Update lifecycle](commands-and-usage.md#update-lifecycle) explains these separate steps and
-their controls. With no command, `dotfiles` defaults to `update`.
+For later maintenance, `dotfiles update` (the default command) also syncs the
+repository and updates declared agent dependencies. Commit local edits first or
+keep `--no-repo-update` while working locally; see
+[Update lifecycle](commands-and-usage.md#update-lifecycle).
 `remove` is partial cleanup, **not rollback or a full uninstall**.
 
 ## Find the right guide

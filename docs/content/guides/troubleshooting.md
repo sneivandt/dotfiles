@@ -141,11 +141,6 @@ It checks the installed binary and, if that fails, restores the previous
 binary after checking that it starts. Recovery does not require network access.
 If an update is still running, wait for it to finish before retrying.
 
-Older updaters did not record an update in progress. If the installed binary
-is missing but the backup starts, the wrapper runs the backup without moving
-it. Once no update is running, rename `bin/.dotfiles-old.exe` back to
-`bin/dotfiles.exe` on Windows, or `bin/.dotfiles.old` to `bin/dotfiles` on Linux.
-
 For authentication, release discovery prefers nonempty `GH_TOKEN`, then
 `GITHUB_TOKEN`, then an unattended saved GitHub CLI login. An expired explicit
 token can override a working login; correct or unset it. Denied credentials
@@ -160,21 +155,22 @@ For Linux keyring-only credentials, follow the
 <details>
 <summary>Legacy updater recovery</summary>
 
-These recovery steps apply to an installed binary that rejects the current
-`vYYYY.MM.DD-N` release names or blocks on a desktop-keyring dialog during
-automatic verification. They are not normal setup steps: the current updater
-supports those release names and disables interactive keyring access.
+These recovery steps apply only to older installed binaries:
 
-For an unrecognized release name, preserve the affected executable and bootstrap
-again with the checkout's wrapper. Confirm that no run is using it before
-moving it. Never bypass verification to force an upgrade.
-
-For a hidden credential dialog, including under WSL, provide authentication
-through the [supported credential sources](security-and-trust.md#build-provenance-verification).
-A [source build](../development/contributing.md#source-builds) avoids the installed updater.
-To temporarily disable a release check instead, use the
-[lifecycle control](commands-and-usage.md#control-what-advances);
-it does **not** disable the rest of update.
+- **Interrupted update with leftover backup:** Older updaters did not record an
+  update in progress. If the installed binary is missing but the backup starts,
+  the wrapper runs the backup without moving it. Once no update is running,
+  rename `bin/.dotfiles-old.exe` back to `bin/dotfiles.exe` on Windows, or
+  `bin/.dotfiles.old` to `bin/dotfiles` on Linux.
+- **Unrecognized `vYYYY.MM.DD-N` release names:** Preserve the affected
+  executable and bootstrap again with the checkout's wrapper after confirming
+  no run is using it. Never bypass verification to force an upgrade.
+- **Hidden desktop-keyring dialog (including under WSL):** Provide
+  authentication through the
+  [supported credential sources](security-and-trust.md#build-provenance-verification),
+  use a [source build](../development/contributing.md#source-builds), or
+  temporarily skip release checks with
+  [lifecycle controls](commands-and-usage.md#control-what-advances).
 
 </details>
 
@@ -194,18 +190,11 @@ dotfiles list --profile base
 git config --local --get dotfiles.profile
 ```
 
-Use exactly `base` or `desktop`. A nonempty `DOTFILES_PROFILE` overrides the
-saved Git setting, so check it if the saved value looks correct. Invalid values,
-including names with surrounding spaces, cause an error instead of falling
-back to the saved profile. Pass `--profile base` or `--profile desktop` to
-override the environment for one run. See
-[selection priority](profiles-and-categories.md#resolution-priority) for the
-full order.
-
-`list` never prompts for a profile. Update/remove/check also need an existing
-selection in unattended or JSON Lines mode, with non-terminal stdin, or with
-any present `CI` variable. An explicit profile overrides the saved choice
-without updating it. See [Profile selection](profiles-and-categories.md#resolution-priority).
+Use exactly `base` or `desktop` (invalid values, including surrounding spaces,
+fail rather than falling back). `DOTFILES_PROFILE` overrides the saved Git
+setting, and `--profile` overrides both for one run without saving it. `list`
+and unattended runs (non-terminal stdin, JSON Lines, or `CI`) never prompt. See
+[selection priority](profiles-and-categories.md#resolution-priority).
 
 ### Configuration does not parse
 
@@ -283,17 +272,14 @@ launcher where applicable. It is not a narrower retry.
 ### Repository is locked
 
 Update, remove, and check lock the main checkout, selected Git overlay, and
-home, including during previews. Linked worktrees and aliases of the same Git
-metadata share an account-local lock. Separate checkouts report contention
-when a run from the same OS account is using their shared overlay.
-Independent clones targeting the same home also share a home lock at
-`~/.local/state/dotfiles/home-run.lock` on Linux or
-`~/AppData/Local/dotfiles/home-run.lock` on Windows. State-directory environment
-overrides do not change the home lock. The error identifies the lock and, when
-available, the owner PID, command, and start time. A continuation lock may
-belong to a restarted child whose parent already exited.
+home (including during previews). Linked worktrees share an account-local lock,
+and independent clones targeting the same home share
+`~/.local/state/dotfiles/home-run.lock` (Linux) or
+`~/AppData/Local/dotfiles/home-run.lock` (Windows). The error names the lock
+and, when available, the owner PID, command, and start time (which may belong
+to a restarted child after a repository sync).
 
-Wait for the owner or inspect it. `list` and `log` remain usable.
+Wait for the owner or inspect it; `list` and `log` remain usable.
 **Do not delete the lock file to force concurrent runs.** The process holds
 the lock; leftover owner text alone does not keep it locked.
 
@@ -416,18 +402,11 @@ dotfiles update --only agent-packages --dry-run --verbose
 ```
 
 Confirm that the selected source fragments exist, APM is on PATH, and any
-reported authentication problem is resolved. Dotfiles reads selected sources
-even if their home links are not yet installed. Review dependency expansion
-before adding `--with-deps`.
-
-If the generated manifest needs changing, preview reports that write and the
-delegated update instead of planning against stale input. With a current
-manifest it delegates to `apm update -g --dry-run`.
-
-Apply updates dependencies when their declared version rules allow it, then
-installs local content and repairs deployments even when no version changed.
-Edit tracked fragments/plugins, not generated manifests or installed plugin
-copies. See [Agent configuration](agent-configuration.md).
+reported authentication problem is resolved. Review dependency expansion before
+adding `--with-deps`. Edit tracked fragments and plugins rather than generated
+manifests or deployed copies; see
+[Agent configuration](agent-configuration.md#troubleshoot-deployment) for
+preview, merge, and integration checks.
 
 ### Analyzers are skipped
 

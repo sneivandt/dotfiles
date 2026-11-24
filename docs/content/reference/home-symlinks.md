@@ -35,8 +35,7 @@ link that points outside the directory being copied.
 On Windows, home links stay in the original user's process.
 The task checks file-link capability after Developer Mode; unavailable file links
 are skipped without preventing directory links or already-correct links from running.
-It also rejects Git symlink placeholders checked out as ordinary files. See
-[Symlinks](#configuration) for path and glob rules.
+It also rejects Git symlink placeholders checked out as ordinary files.
 
 ## Configuration
 
@@ -113,9 +112,6 @@ The opt-in never allows a home entry to be placed inside the public or overlay
 move that link aside and create a real home directory before retrying. Do not
 delete the directory the link points to.
 
-See [Home symlinks](#what-it-does) and [Remove tasks](task-reference.md#remove-tasks)
-before taking over an existing application's configuration.
-
 ### Glob patterns
 
 Use a complete `*` segment to link entries individually. For example, suppose
@@ -169,20 +165,33 @@ Application behavior can change as soon as the link is created.
 ## Removal
 
 Removal replaces matching managed links with local copies of their current source
-contents. Existing ordinary files and directories are preserved. Missing targets stay
-missing unless you add `--restore-missing`. Keep the original profile, overlay, sources,
-and declarations available until removal finishes.
+contents (`copy <home path> from <source>`). Existing ordinary files and
+directories are preserved. Missing targets stay missing unless you add
+`--restore-missing`. Keep the original profile, overlay, sources, and declarations
+available until removal finishes.
 
-Nested symlinks are preserved. A directory link is left in place if copying it would
-relocate a relative link that points outside the copied tree. Ownership is checked again
-before replacement, so a link retargeted after inspection is preserved. File copies are
-staged privately on Unix and receive source permissions before publication.
-On Windows, removal leaves the managed link in place if it cannot verify that
-the copy has the same access policy as the source, or if the source is encrypted.
-For example, the checkout and home directory can inherit different permissions
-even for ordinary files. This applies to entries inside a linked directory too.
-With `--restore-missing`, the target stays absent on refusal. Do not loosen
-source permissions to force removal.
+Copy and safety behavior:
+
+- Links pointing directly to their configured checkout entries become independent
+  copies; links reached through another home path are preserved.
+- Hard links within a copied directory still share a file inside that copy.
+- Nested symlinks are preserved. A directory link is left in place if copying it
+  would relocate a relative link pointing outside the copied tree.
+- Ownership is checked again before replacement, so a link retargeted after
+  inspection is preserved. If another process replaces a target during removal,
+  keep the new entry and review the recovery path printed by dotfiles.
+- On Linux, copies are staged privately, preserve sparse-file holes when the
+  source filesystem reports those extents, and copy source permissions, `user.*`
+  extended attributes, and ACLs (`system.posix_acl_*` and `system.nfs4_acl`)
+  while skipping host-managed security labels and capabilities. Removal leaves
+  the managed link in place if a staged entry has a different owner or group from
+  its source, or if a preserved ACL or extended attribute cannot be copied; it
+  does not request elevated privileges to change ownership.
+- On Windows, removal leaves the managed link in place if it cannot verify that
+  the copy has the same access policy as the source, or if the source is
+  encrypted (including entries inside a linked directory). With
+  `--restore-missing`, the target stays absent on refusal. Do not loosen source
+  permissions to force removal.
 
 ```sh
 dotfiles remove --only symlinks --dry-run

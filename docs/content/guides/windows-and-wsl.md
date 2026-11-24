@@ -30,15 +30,10 @@ block installation.
 
 ## Bootstrap
 
-Use [Getting started](getting-started.md) to clone and review the configuration.
-If you use a fork without releases, choose its
-[binary publisher or source-build route](getting-started.md#using-a-fork)
-before running the wrapper.
-
-The examples below assume downloaded release binaries. If you chose source
-builds, keep `--build` after the wrapper name in every command, for example
-`.\dotfiles.ps1 --build update --no-repo-update --dry-run`.
-Build mode is not remembered between invocations.
+Clone and review the configuration using [Getting started](getting-started.md)
+(or configure a fork/source build under [Using a fork](getting-started.md#using-a-fork)).
+The examples below use downloaded release binaries; add `--build` after
+`.\dotfiles.ps1` if you build from source.
 
 Open PowerShell in the checkout and preview an update:
 
@@ -46,14 +41,11 @@ Open PowerShell in the checkout and preview an update:
 .\dotfiles.ps1 update --no-repo-update --dry-run
 ```
 
-The wrapper downloads and verifies the CLI if needed. Follow
-[Preview the selected work](getting-started.md#3-preview-the-selected-work)
-for profile selection and the preview's limits, then
-[Apply what you reviewed](getting-started.md#4-apply-what-you-reviewed)
-for the Windows apply command and first launcher check.
-Review Windows-specific symlink and elevation behavior below before applying.
-The remaining examples use the wrapper so they also work before the launcher
-is installed.
+The wrapper downloads and verifies the CLI if needed. Review the
+Windows-specific symlink and elevation behavior below, then follow the
+[preview](getting-started.md#3-preview-the-selected-work) and
+[apply](getting-started.md#4-apply-what-you-reviewed) steps. The remaining
+examples use the wrapper so they also work before the launcher is installed.
 
 ### Download and update failures
 
@@ -120,13 +112,8 @@ to apply changes.
 Only machine-scoped Developer Mode work is delegated. UAC can authenticate a
 different Administrator account, so home symlinks and user registry settings
 always stay in the original process. After the Developer Mode step, home
-symlinks recheck file-link capability. If it remains unavailable, pending file
-links are skipped; directory links and already-correct links still run.
-
-The child receives the parent's working directory and resolved absolute
-repository paths. The internal `--elevated-child` flag is not a way to run
-user-scoped tasks as Administrator: broader selectors and dependency expansion
-are rejected before command setup.
+symlinks recheck file-link capability; if it remains unavailable, pending file
+links are skipped while directory links and already-correct links still run.
 
 - Declined consent or unavailable prompting leaves affected work skipped.
   Blocking dependents cannot run, but independent tasks continue.
@@ -173,15 +160,19 @@ declaration format.
 ```
 
 Settings include console, regional formatting, Explorer, search, and window
-behavior. Dotfiles does not back up the original values, and `remove` does not
-restore them. Some settings take effect only when the application or user
-session restarts; save work before restarting either.
+behavior. Dotfiles does not back up original values or restore them on remove.
+Some settings take effect only when the application or user session restarts;
+save work before restarting either.
+
+<details>
+<summary>Legacy ForegroundLockTimeout note</summary>
 
 Older checkouts set `ForegroundLockTimeout` to `0` under
-`HKCU\Control Panel\Desktop` to allow applications to take focus. If you
-applied that setting, review it in Registry Editor. Use a registry backup
-from before the change to recover the original value, if available. Updates
-preserve the currently stored value.
+`HKCU\Control Panel\Desktop` to allow applications to take focus. Current
+updates preserve the stored value; review or restore it in Registry Editor if
+you applied an older checkout.
+
+</details>
 
 ## PATH and wrapper
 

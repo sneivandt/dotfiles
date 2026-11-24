@@ -54,17 +54,11 @@ then preview the link task:
 dotfiles update --only symlinks --dry-run
 ```
 
-This previews all active links, including your new entry. Existing files,
-directories, and unrelated links are reported as conflicts. Back them up and
-move them aside before applying; dotfiles does not make those backups for you.
-Remove `--dry-run` only after reviewing the result. The
-[first-run example](getting-started.md#2-review-the-configuration) shows how a
-declaration connects a source file to its installed location.
-
-Use a [private overlay](private-overlays.md) for machine-specific alternatives.
-An overlay can replace a linked source, but does not merge arbitrary application
-file contents. Keep credentials and private identity details out of public
-sources.
+Existing files, directories, and unrelated links are reported as conflicts; back
+them up and move them aside before applying. Use a
+[private overlay](private-overlays.md) for machine-specific alternatives (an
+overlay replaces a linked source; it does not merge arbitrary file contents).
+Keep credentials and private identity details out of public sources.
 
 ### Back up and restore a file
 
@@ -253,10 +247,9 @@ See [GNOME Keyring troubleshooting](troubleshooting.md#gnome-keyring-stays-locke
 for credential failures. When the selected profile enables the first-login
 service, chroot setup defers extension installation until a graphical login.
 
-For failures, use `dotfiles log --id <run-id> --task vscode-extensions --verbose`,
-replacing `<run-id>` with the failure's stable ID.
-Check the selected CLI, profile, home, link destinations, and workspace overrides
-before reinstalling anything. Agent integrations have separate
+For failures, run `dotfiles log --id <run-id> --task vscode-extensions --verbose`
+and check the selected CLI, profile, home, link destinations, and workspace
+overrides before reinstalling anything. Agent integrations have separate
 [configuration](agent-configuration.md).
 
 ## Vim and Neovim
@@ -285,21 +278,25 @@ Alt+Escape also returns to the previous window.
 
 Starting Neovim can clone the pinned lazy.nvim manager and install missing
 plugins. It needs Git and network access and is **not a read-only check**.
-Use `:echo stdpath('data')` to locate its data directory; the manager lives
-under `lazy/lazy.nvim` there. Existing installations are not reset on startup.
+Existing installations are not reset on startup; use `:echo stdpath('data')` to
+locate the data directory (`lazy/lazy.nvim`).
+
+<details>
+<summary>Bootstrap staging and lock recovery</summary>
+
 New installs are cloned and checked out in a private sibling directory before
 publication. If an older bootstrap left a manager without its runtime files,
 startup preserves that directory as `lazy.nvim.bootstrap-*.interrupted` and
-installs a fresh copy. Inspect the reported backup before removing it.
+installs a fresh copy; inspect the reported backup before removing it.
 
 Concurrent bootstraps may clone separately, but only one publishes the manager.
 An interrupted clone can leave an unused `lazy.nvim.bootstrap-*` staging
-directory. A publication lock records its owner atomically; the next startup
-recovers it automatically if that process has exited. Startup waits briefly
-for an active owner and reports an error if it cannot acquire the lock; retry
-after that process exits. Abandoned staging directories can be removed after
-all Neovim processes using this data path have stopped. Keep the manager and
-any backups you still need.
+directory. A publication lock records its owner atomically and recovers
+automatically once that process exits; if startup cannot acquire the lock,
+retry after the active Neovim process exits. Abandoned staging directories can
+be removed once no Neovim processes are using that data path.
+
+</details>
 
 Run `:TSInstallConfigured` separately for missing configured Tree-sitter parsers.
 Wait for the asynchronous installation, then reopen the file. Normal startup

@@ -100,24 +100,22 @@ Development builds and read-only commands do not self-update. A release-lookup
 failure leaves the existing binary usable; download verification is covered in
 [Release downloads](security-and-trust.md#release-downloads).
 
-Repository changes trigger a restart with fresh configuration. They can also
-affect live linked application settings immediately. The
-[repository task](../reference/dotfiles-repository.md) reports local changes, missing upstreams,
-divergence, and remote failures rather than stashing, resetting, or rebasing.
-Earlier successful changes remain after a later failure; follow linked child
-logs after a restart or elevation.
+Repository changes trigger a restart with fresh configuration and can affect
+live linked application settings immediately. The
+[repository task](../reference/dotfiles-repository.md) reports local changes,
+missing upstreams, divergence, and remote failures rather than stashing,
+resetting, or rebasing. Earlier successful changes remain after a later failure;
+follow linked child logs after a restart or elevation.
 
-A preview can query remote refs but cannot inspect commits it has not
-downloaded. Applying inspects the machine again, not a saved execution plan.
-Use `--no-repo-update` for both preview and apply when reviewing a fixed checkout.
-That does not freeze the CLI or external dependencies.
+A preview cannot inspect commits it has not downloaded, and applying inspects
+the machine again rather than replaying a saved plan. Use `--no-repo-update`
+for both preview and apply when reviewing a fixed checkout.
 
-Package installation does not keep every installed application current. Use
-[Package management](package-management.md#install-and-upgrade) for deliberate
-upgrades. Agent dependencies follow their declared version rules; VS Code
-installs missing extension IDs, while Neovim plugins are managed in the editor.
-See [Agent configuration](agent-configuration.md) and
-[Application settings](application-settings.md#visual-studio-code).
+Package installation does not keep every installed application current; see
+[Package management](package-management.md#install-and-upgrade) for upgrades,
+[Agent configuration](agent-configuration.md) for agent dependencies, and
+[Application settings](application-settings.md#visual-studio-code) for editor
+extensions and plugins.
 
 ### Control what advances
 
@@ -131,8 +129,7 @@ Ordinary updates need no extra switches. Use these to narrow a run deliberately:
 | `--skip agent-packages` | Leave agent deployments alone; preferences and the APM executable are separate |
 | `--skip custom-package-versions` | Keep custom package pins; recipe preparation can still use them |
 
-There is no blanket offline switch. The [dry-run limits](#dry-run-scope)
-still apply to a focused preview.
+There is no blanket offline switch.
 
 ### Select tasks
 
@@ -188,18 +185,12 @@ remain available while a run is active.
 
 ## Console output
 
-Read the header first: is this the profile, platform, overlay, and run mode
-you intended? A CLI upgrade or repository sync appears beneath it. A sync
-can restart the process to load the new configuration; task output continues
-without a second header.
-
-In an interactive terminal, the spinner shows what's still running. After a
-CLI upgrade, it uses the next line while the repository is checked. Once that
-check finishes, a blank line separates the notices from further progress,
-even if the checkout was already current.
-
-Tasks print as they finish, not in configuration order. Read the status and the
-indented actions together: one task can change many files or packages.
+Read the header first to confirm the profile, platform, overlay, and run mode.
+A CLI upgrade or repository sync appears beneath it; when a sync restarts the
+process to load new configuration, task output continues without a second header.
+In an interactive terminal, a spinner shows in-flight work, and tasks print as
+they finish rather than in configuration order. Read the status and indented
+actions together: one task can change many files or packages.
 
 | Status | Meaning |
 |---|---|
@@ -272,8 +263,8 @@ Task filtering cannot bypass malformed configuration loaded at startup.
 
 ## Logs
 
-After a failure, use the log-viewing command printed by the CLI. It selects
-the failed run with a stable `--id`, even after later runs.
+After a failure, use the log command printed by the CLI. Its `--id` selects
+that exact run even after later invocations.
 
 ```sh
 dotfiles log                          # newest run
@@ -281,17 +272,11 @@ dotfiles log --list                   # history and stable run IDs
 dotfiles log --id <run-id> --task symlinks --verbose
 ```
 
-Replace `<run-id>` with the failed run's actual ID and `symlinks` with its task.
-Omit the ID only when you deliberately want the newest run.
-
-Read the failed command's diagnostics and the reason for each failed or
-skipped task.
-If the process restarted or delegated elevation, follow the linked child log.
-Earlier changes are not rolled back when a later task fails.
-
-Review logs for private paths, configuration, and tool output before sharing
-them. The [log reference](../reference/cli-reference.md#logs) covers older runs, filters,
-raw output, retention, and storage locations.
+Replace `<run-id>` and the task selector (`symlinks`) with the values from the
+failed run. If the process restarted or delegated elevation, follow the linked
+child log. Review logs for private paths, configuration, and tool output before
+sharing them; see the [log reference](../reference/cli-reference.md#logs) for
+filters, raw records, retention, and storage locations.
 
 ## Inspect a home path
 
@@ -327,25 +312,13 @@ changed, pass the original `--profile` and `--overlay` explicitly.
 | Managed Git hooks and launcher | Removed only if they still match their managed state |
 | Active overlay scripts | Their removal actions run when their checks find managed state |
 
-Home-link actions read `copy <home path> from <source>`. Links that point
-directly to their configured checkout entries become independent copies.
-Hard links within a directory copy still share a file inside that copy.
-Linux preserves holes in sparse files when the source filesystem reports those extents.
-Links through another home path are preserved. On Linux, removal preserves
-user extended attributes (`user.*`) and ACLs (`system.posix_acl_*` and
-`system.nfs4_acl`), while skipping host-managed security labels and
-capabilities. It leaves the managed link in place if a staged file or
-directory has a different owner or group from its source, or if a preserved
-ACL or extended attribute cannot be copied. It does not request elevated
-privileges to change ownership.
-
-**Remove is not rollback.** The copies contain current configured content,
-not your pre-install files. Missing targets stay missing. Use
-`dotfiles remove --only symlinks --restore-missing` if you also want copies at
-missing paths. Existing files and links to other sources are preserved. Keep
-the checkout until copying succeeds. If removal reports a nested link that depends on the checkout, fix the reported link before retrying.
-If another process replaces a target during removal, keep the new entry and
-review the recovery path printed by dotfiles.
+Home-link actions read `copy <home path> from <source>`. **Remove is not
+rollback:** copies contain current configured content, not your pre-install
+files. Existing ordinary files, unrelated links, and missing targets are left
+alone (add `--restore-missing` with `--only symlinks` to also copy at absent
+targets). Keep the checkout until copying succeeds. See
+[Home symlinks removal](../reference/home-symlinks.md#removal) for metadata,
+permission, and nested-link copy rules.
 
 Packages, registry settings, PATH, services, system files, permissions, login
 shell, Git/agent settings, completions, editor extensions, and agent deployments
@@ -392,9 +365,8 @@ tools, profile, and overlay still available.
 
 Do not delete the old sources or backups until the selected links, launcher,
 and affected applications work from the new location. Custom scripts and
-application settings can contain additional absolute paths; this scoped update
-does not search for or rewrite them. The usual [preview limits](#dry-run-scope)
-still apply.
+application settings can contain additional absolute paths that this scoped
+update does not rewrite.
 
 ## Shell completions
 

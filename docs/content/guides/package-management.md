@@ -65,12 +65,9 @@ dotfiles update --dry-run
 
 Check the selected profile, package names, and planned actions before removing
 `--dry-run`. The `packages` task handles native Arch or Windows packages;
-`aur-packages` handles Arch entries marked `aur = true`. If querying the installed
-package list fails, the task fails rather than assuming everything is missing.
-After a pacman or Paru batch finishes successfully, dotfiles checks the installed
-list again. Requested packages still absent count as failures; a successful
-package-manager exit alone does not mark them installed. If that verification
-query fails, the task fails and the next run inspects the installed state again.
+`aur-packages` handles Arch entries marked `aur = true`. If querying the
+installed package list fails, the task fails rather than assuming everything is
+missing.
 
 On an already configured machine, preview just the native package task:
 
@@ -103,12 +100,10 @@ packages, not every package pacman might upgrade.
 When every selected native package is already installed, dotfiles does not run
 a system upgrade solely because the command is named `update`.
 
-After a pacman or Paru install, dotfiles checks which requested packages are
-present, even if the command failed or timed out. If that check fails, the
-task fails without counting unverified packages as installed or failed. A
-timeout remains a task failure even when every package is present. A retry
-checks again and requests only packages still missing. Investigate any failed
-install hook separately.
+After a pacman or Paru install, dotfiles rechecks which requested packages are
+present, even after a failure or timeout: missing packages and timeouts still
+count as failures, and a retry requests only packages still absent. Investigate
+any failed install hook separately.
 
 Paru builds and installs AUR packages. The `paru` task prepares the helper and
 can repair a detected broken helper after library changes. Dotfiles runs Paru
@@ -145,12 +140,10 @@ Installation first requests user scope. It retries without that scope only
 when no suitable user-scope installer exists. Prompts are disabled and agreements
 accepted, but an application's installer can still request UAC consent.
 
-Administrator-required, cancelled, and policy-blocked installs count as failures.
-Other packages may still install, but the task fails overall. An already-installed
-or no-applicable-upgrade response counts as current. A failed or unparseable
-inventory export fails even during preview. Discovery reads `winget export` JSON
-from a temporary file, so translated console headers and truncated table IDs do
-not affect package matching. The temporary export is removed after the query.
+Administrator-required, cancelled, and policy-blocked installs fail the task,
+even if other packages succeed. An already-installed or no-applicable-upgrade
+response counts as current, while a failed or unparseable winget inventory
+query fails even during preview.
 
 Keep the main run unelevated. Consult [Windows elevation](windows-and-wsl.md#elevation)
 before retrying an application that requires Administrator rights. Installing
@@ -174,8 +167,8 @@ selected by the previous profile.
 
 ## Logs and troubleshooting
 
-Start with the failing task's log. Replace `<run-id>` with the stable ID in the
-failure message or `dotfiles log --list`, and choose the relevant task:
+Start with the failing task's log using the stable `<run-id>` from the failure
+message (or `dotfiles log --list`):
 
 ```sh
 dotfiles log --id <run-id> --task packages --verbose
@@ -184,7 +177,7 @@ dotfiles log --id <run-id> --task aur-packages --verbose
 
 The second command is for Arch AUR and custom-package installation. Follow the
 reported package-manager error before rerunning; earlier successful installs
-are not rolled back when a later package fails.
+stay installed when a later package fails.
 
 | Symptom | Check next |
 |---|---|

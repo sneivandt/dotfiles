@@ -208,3 +208,30 @@ pub fn process_resources_remove<R: IntrinsicState + RemovableResource + Send>(
         },
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::make_linux_context;
+
+    #[test]
+    fn single_ready_item_runs_inline_without_spawning_worker_thread() {
+        let ctx =
+            make_linux_context(std::path::PathBuf::from("/fixture"), None).with_parallel(true);
+        let caller = std::thread::current().id();
+        let ran_on = std::sync::Mutex::new(None);
+        let result = process_items(
+            &ctx,
+            vec![1_u8],
+            false,
+            |_| Vec::new(),
+            |_| {
+                *ran_on.lock().unwrap() = Some(std::thread::current().id());
+                Ok(TaskStats::new())
+            },
+        )
+        .unwrap();
+        assert!(matches!(result, TaskResult::Batch(_)));
+        assert_eq!(*ran_on.lock().unwrap(), Some(caller));
+    }
+}

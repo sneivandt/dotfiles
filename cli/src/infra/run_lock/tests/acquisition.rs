@@ -161,6 +161,80 @@ fn read_only_overlay_coordinates_with_a_writable_checkout_alias() {
 }
 
 #[test]
+fn run_lock_rejects_active_continuation_and_propagates_non_optional_overlay_errors() {
+    let fixture = tempfile::tempdir().unwrap();
+    let lock_path = fixture.path().join("standalone.lock");
+    let base = RunLock::acquire_path(&lock_path, "first").unwrap();
+    let continuation = hold_continuation(&lock_path).unwrap();
+    drop(base);
+    assert!(
+        RunLock::acquire_path(&lock_path, "contender").is_err(),
+        "an active continuation lock must block fresh acquisition"
+    );
+    drop(continuation);
+    drop(RunLock::acquire_path(&lock_path, "retry").unwrap());
+
+    let root = fixture.path().join("root");
+    let overlay = fixture.path().join("overlay");
+    let home = fixture.path().join("home");
+    for repository in [&root, &overlay] {
+        git2::Repository::init(repository).unwrap();
+    }
+    let env = MapEnv::new();
+    let platform = Platform::detect();
+
+    // Non-optional error (busy legacy lock) on overlay must propagate on fresh acquire.
+    let overlay_git_lock = overlay.join(".git").join(LOCK_NAME);
+    let busy = RunLock::acquire_path(&overlay_git_lock, "contender").unwrap();
+    let mut locks = CommandLocks::acquire(&root, &home, &env, platform, "update").unwrap();
+    let err = locks
+        .protect_overlay(&overlay, &env, platform, "update", None)
+        .unwrap_err();
+    assert!(err.to_string().contains("another dotfiles run"), "{err:#}");
+    drop((busy, locks));
+
+    // Restart with a missing overlay legacy lock succeeds (NotFound is optional),
+    // keeps the overlay checkout locked after parent exits, and fails when the
+    // legacy lock path has a non-optional error (directory at lock path).
+    std::fs::remove_file(&overlay_git_lock).unwrap();
+    let mut parent = CommandLocks::acquire(&root, &home, &env, platform, "update").unwrap();
+    parent
+        .protect_overlay(&overlay, &env, platform, "update", None)
+        .unwrap();
+    let overlay_checkout =
+        coordination_path_for_git(&overlay_git_lock).expect("overlay checkout path");
+    let (parent_continuations, mode) = parent.prepare_restart().unwrap();
+    let lease = RestartLease::new(&root, &env, platform, mode).unwrap();
+    let marker = lease.marker().unwrap();
+    let mut child = CommandLocks::restart(&root, &home, &env, platform, marker, "update").unwrap();
+    child
+        .protect_overlay(&overlay, &env, platform, "update", Some((&root, marker)))
+        .unwrap();
+    drop((parent, lease, parent_continuations));
+    assert!(
+        RunLock::acquire_path(&overlay_checkout, "contender").is_err(),
+        "continue_checkout_lock must keep the overlay checkout lock held after parent exits"
+    );
+    drop(child);
+
+    // Directory at overlay legacy lock path produces a non-optional error on restart.
+    drop(std::fs::remove_file(&overlay_git_lock));
+    std::fs::create_dir(&overlay_git_lock).unwrap();
+    let parent2 = CommandLocks::acquire(&root, &home, &env, platform, "update").unwrap();
+    let (_parent_cont2, mode2) = parent2.prepare_restart().unwrap();
+    let lease2 = RestartLease::new(&root, &env, platform, mode2).unwrap();
+    let marker2 = lease2.marker().unwrap();
+    let mut child2 =
+        CommandLocks::restart(&root, &home, &env, platform, marker2, "update").unwrap();
+    assert!(
+        child2
+            .protect_overlay(&overlay, &env, platform, "update", Some((&root, marker2)))
+            .is_err(),
+        "non-optional error opening overlay lock on restart must not be ignored"
+    );
+}
+
+#[test]
 fn first_login_waits_for_the_repository_or_home_lock() {
     use std::sync::mpsc::{RecvTimeoutError, channel};
     use std::time::Duration;

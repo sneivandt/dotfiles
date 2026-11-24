@@ -412,6 +412,21 @@ mod tests {
     }
 
     #[test]
+    fn expected_checksum_rejects_wrong_length_or_non_hex_digests() {
+        let short_hex = "a".repeat(32);
+        let non_hex_64 = "g".repeat(64);
+        for bad in [&short_hex, &non_hex_64] {
+            let body = format!("{bad}  asset\n").into_bytes();
+            let client = MockHttpClient::new(vec![Ok(body)]);
+            let err = expected_checksum(&client, "v1", "asset").unwrap_err();
+            assert!(
+                format!("{err:#}").contains("invalid checksum format"),
+                "bad={bad}: {err:#}"
+            );
+        }
+    }
+
+    #[test]
     fn oversized_metadata_fails_without_retrying_or_parsing_a_prefix() {
         let checksum_client = MockHttpClient::new(vec![Ok(vec![b' '; MAX_CHECKSUM_BYTES + 1])]);
         let checksum_error =

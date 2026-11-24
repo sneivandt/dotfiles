@@ -33,6 +33,12 @@ use windows_sys::{
 // Protected from the outer parent, effective here AND inherited by files and
 // directories. A directory-only ACE would not protect a child on Windows.
 const PRIVATE_TREE: &std::ffi::CStr = c"D:P(A;OICI;FA;;;OW)";
+const PARENT_DIR_ACCESS: u32 = FILE_ADD_SUBDIRECTORY | FILE_TRAVERSE;
+// Metadata-only handles do not participate in Windows sharing checks.
+const PINNED_DIR_ACCESS: u32 =
+    FILE_LIST_DIRECTORY | READ_CONTROL | FILE_READ_ATTRIBUTES | SYNCHRONIZE;
+const PINNED_DIR_SHARE: u32 = FILE_SHARE_READ | FILE_SHARE_WRITE;
+const PINNED_DIR_OPTIONS: u32 = FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT;
 
 pub(in crate::infra::fs) fn create_private_dir(
     parent: &Path,
@@ -40,7 +46,7 @@ pub(in crate::infra::fs) fn create_private_dir(
 ) -> Result<(TempGuard, File)> {
     let sd = LocalDescriptor::parse(PRIVATE_TREE)?;
     let parent_handle = File::options()
-        .access_mode(FILE_ADD_SUBDIRECTORY | FILE_TRAVERSE)
+        .access_mode(PARENT_DIR_ACCESS)
         .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
         .open(parent)?;
     let (guard, handle) = TempGuard::reserve_dir_with(parent, prefix, "tmp", |path| {
@@ -85,15 +91,14 @@ fn create_pinned_directory(
     let status = unsafe {
         NtCreateFile(
             &raw mut handle,
-            // Metadata-only handles do not participate in Windows sharing checks.
-            FILE_LIST_DIRECTORY | READ_CONTROL | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            PINNED_DIR_ACCESS,
             &raw const attrs,
             &raw mut iosb,
             ptr::null(),
             0,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            PINNED_DIR_SHARE,
             FILE_CREATE,
-            FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
+            PINNED_DIR_OPTIONS,
             ptr::null(),
             0,
         )
@@ -147,5 +152,43 @@ pub(crate) fn check_private_fixture(path: &Path) -> Result<()> {
         Ok(())
     } else {
         verify_private_child(&file)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn private_dir_rejects_name_collisions_and_unprotected_entries() {
+        let root = tempfile::tempdir_in(".").unwrap();
+        let sd = LocalDescriptor::parse(PRIVATE_TREE).unwrap();
+        let parent_handle = File::options()
+            .access_mode(PARENT_DIR_ACCESS)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(root.path())
+            .unwrap();
+        let existing_name = std::ffi::OsStr::new("taken");
+        std::fs::create_dir(root.path().join(existing_name)).unwrap();
+        let err = create_pinned_directory(&parent_handle, existing_name, &sd).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+
+        let unprotected_dir = super::super::open_target(&root.path().join(existing_name))
+            .unwrap()
+            .unwrap();
+        assert!(
+            verify_directory(&unprotected_dir, &sd).is_err(),
+            "normal inherited directory must fail verify_directory"
+        );
+
+        let unprotected_file_path = root.path().join("plain.txt");
+        std::fs::write(&unprotected_file_path, b"plain").unwrap();
+        let unprotected_file = super::super::open_target(&unprotected_file_path)
+            .unwrap()
+            .unwrap();
+        assert!(
+            verify_private_child(&unprotected_file).is_err(),
+            "normal inherited file must fail verify_private_child"
+        );
     }
 }

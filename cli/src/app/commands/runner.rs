@@ -111,21 +111,32 @@ impl CommandStartup {
         if let (Some(locks), Some((overlay, _))) = (&mut self.run_lock, &self.overlay) {
             use super::reexec::{REEXEC_GUARD_VAR, REPOSITORY_OVERLAY_LOCK_VAR};
             let marker = runtime.env.var_os(REEXEC_GUARD_VAR);
-            let inherited =
-                runtime.repository_child && runtime.env.is_set(REPOSITORY_OVERLAY_LOCK_VAR);
+            let inherited_marker = inherited_overlay_marker(
+                runtime.repository_child,
+                runtime.env.is_set(REPOSITORY_OVERLAY_LOCK_VAR),
+                marker.as_deref(),
+            );
             locks.protect_overlay(
                 overlay,
                 runtime.env.as_ref(),
                 Platform::detect(),
                 &log.command_title(),
-                marker
-                    .as_deref()
-                    .filter(|marker| inherited && !marker.is_empty())
-                    .map(|marker| (self.root.as_path(), marker)),
+                inherited_marker.map(|value| (self.root.as_path(), value)),
             )?;
         }
         Ok(())
     }
+}
+
+fn inherited_overlay_marker(
+    repository_child: bool,
+    overlay_lock_set: bool,
+    marker: Option<&std::ffi::OsStr>,
+) -> Option<&std::ffi::OsStr> {
+    if !repository_child || !overlay_lock_set {
+        return None;
+    }
+    marker.filter(|marker| !marker.is_empty())
 }
 
 /// Shared orchestration helper that combines setup and task execution.
@@ -605,6 +616,28 @@ pub(super) fn emit_config_summary(log: &dyn crate::infra::logging::Output, confi
 mod root_tests {
     use super::*;
     use crate::infra::env::MapEnv;
+
+    #[test]
+    fn inherited_overlay_marker_requires_child_lock_and_non_empty_marker() {
+        use std::ffi::OsStr;
+        assert_eq!(
+            inherited_overlay_marker(true, true, Some(OsStr::new("tok"))),
+            Some(OsStr::new("tok"))
+        );
+        assert_eq!(
+            inherited_overlay_marker(false, true, Some(OsStr::new("tok"))),
+            None
+        );
+        assert_eq!(
+            inherited_overlay_marker(true, false, Some(OsStr::new("tok"))),
+            None
+        );
+        assert_eq!(
+            inherited_overlay_marker(true, true, Some(OsStr::new(""))),
+            None
+        );
+        assert_eq!(inherited_overlay_marker(true, true, None), None);
+    }
 
     #[test]
     fn explicit_root_is_canonicalized_before_environment_selection() {

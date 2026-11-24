@@ -82,6 +82,24 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn prepare_private_directory_propagates_non_already_exists_create_errors() {
+        use std::os::unix::fs::PermissionsExt as _;
+        if nix::unistd::Uid::effective().is_root() {
+            return;
+        }
+        let fixture = tempfile::tempdir().unwrap();
+        let ro_parent = fixture.path().join("readonly");
+        std::fs::create_dir(&ro_parent).unwrap();
+        std::fs::set_permissions(&ro_parent, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let uid = nix::unistd::Uid::effective().as_raw();
+        let err = prepare_private_directory(&ro_parent.join("locks"), uid).unwrap_err();
+        std::fs::set_permissions(&ro_parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let io_err = err.downcast_ref::<std::io::Error>().unwrap();
+        assert_eq!(io_err.kind(), std::io::ErrorKind::PermissionDenied);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn symlink_to_read_only_git_metadata_keeps_its_identity() {
         use std::os::unix::fs::{PermissionsExt as _, symlink};
 

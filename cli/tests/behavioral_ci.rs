@@ -120,8 +120,13 @@ impl RecordingExecutor {
 
         if recorded.program == "winget" && recorded.args.first().is_some_and(|arg| arg == "export")
         {
-            assert_eq!(recorded.args.len(), 5);
-            assert_eq!(recorded.args[1], "--output");
+            assert_eq!(
+                recorded.args.len(),
+                5,
+                "winget export args: {:?}",
+                recorded.args
+            );
+            assert_eq!(recorded.args[1], "--output", "winget export output flag");
             std::fs::write(&recorded.args[2], &expected.result.stdout).unwrap();
             recorded.args[2] = "<inventory>".into();
         }

@@ -65,6 +65,16 @@ mod tests {
 
     #[test]
     fn asset_name_matches_the_published_platform_artifact() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!is_running_from_bin(dir.path()));
+        #[cfg(unix)]
+        {
+            let bin = binary_path(dir.path());
+            std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+            std::os::unix::fs::symlink(std::env::current_exe().unwrap(), &bin).unwrap();
+            assert!(is_running_from_bin(dir.path()));
+        }
+
         #[cfg(target_os = "windows")]
         let expected = "dotfiles-windows-x86_64.exe";
         #[cfg(all(target_os = "linux", target_arch = "aarch64"))]

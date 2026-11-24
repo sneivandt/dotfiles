@@ -334,14 +334,13 @@ impl SystemdUnitResource {
             }
             let link = directory.path().join(&self.name);
             match std::fs::symlink_metadata(&link) {
-                Ok(metadata) if metadata.file_type().is_symlink() => {
+                Ok(_) => {
                     if sources.iter().any(|source| {
                         symlink_references(&link, source) || symlink_points_to(&link, source)
                     }) {
                         links.push(link);
                     }
                 }
-                Ok(_) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error.into()),
             }
@@ -415,15 +414,17 @@ pub(super) fn symlink_references(link: &Path, expected: &Path) -> bool {
         .is_some_and(|(resolved_path, expected_path)| resolved_path == expected_path)
 }
 
-#[cfg(unix)]
 fn create_symlink(source: &Path, target: &Path) -> std::io::Result<()> {
-    std::os::unix::fs::symlink(source, target)
-}
-
-#[cfg(not(unix))]
-fn create_symlink(_source: &Path, _target: &Path) -> std::io::Result<()> {
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "offline user-unit enablement requires Unix symlinks",
-    ))
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(source, target)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (source, target);
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "offline user-unit enablement requires Unix symlinks",
+        ))
+    }
 }

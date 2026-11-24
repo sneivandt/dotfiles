@@ -216,6 +216,7 @@ mod tests {
             assert_eq!(chosen.as_deref(), stable.to_str());
         }
         std::fs::write(&installed, "custom launcher").unwrap();
+        assert!(!managed_insiders_unavailable(&installed, root, &home).unwrap());
         assert!(
             !insiders_unavailable(&installed, root, &home, || panic!(
                 "custom launchers do not require the packaged binary"

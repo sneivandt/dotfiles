@@ -5,6 +5,21 @@ fn target_for_bashrc() {
     let home = PathBuf::from("/home/user");
     let target = compute_target(&home, "bashrc");
     assert_eq!(target, PathBuf::from("/home/user/.bashrc"));
+
+    let root = PathBuf::from("/repo");
+    for file in ["keybindings.json", "settings.json"] {
+        let win_target = format!("AppData/Roaming/Code - Insiders/User/{file}");
+        let entry = Symlink {
+            source: format!("config/Code/User/{file}"),
+            target: Some(win_target.clone()),
+            allow_external_target: false,
+            origin: Some(root.clone()),
+        };
+        assert_eq!(
+            legacy_editor_source(&entry, &root),
+            Some(win_target.as_str())
+        );
+    }
 }
 
 #[test]

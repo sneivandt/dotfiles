@@ -62,5 +62,96 @@ fn failed_staged_write_preserves_existing_document() {
     }
 }
 
+#[test]
+fn agent_setting_and_document_state_claims_description_and_baseline_errors() {
+    let dir = tempfile::tempdir().unwrap();
+
+    // state_from_json_document & state_from_toml_document detect differing values.
+    let json_path = dir.path().join("settings.json");
+    std::fs::write(&json_path, r#"{"theme":"light"}"#).unwrap();
+    let json_setting = AgentSettingResource::new(
+        "copilot".into(),
+        "theme".into(),
+        toml::Value::String("dark".into()),
+        SettingsFormat::Json,
+        json_path.clone(),
+    );
+    assert_eq!(
+        json_setting.current_state().unwrap(),
+        ResourceState::Incorrect {
+            current: "\"light\"".into(),
+        }
+    );
+    assert_eq!(
+        json_setting.access_claims(),
+        vec![AccessClaim::exclusive(
+            "agent-settings-document",
+            json_path.as_os_str(),
+        )]
+    );
+
+    let toml_path = dir.path().join("config.toml");
+    std::fs::write(&toml_path, "model = \"old\"\n").unwrap();
+    let toml_setting = AgentSettingResource::new(
+        "codex".into(),
+        "model".into(),
+        toml::Value::String("new".into()),
+        SettingsFormat::Toml,
+        toml_path,
+    );
+    assert_eq!(
+        toml_setting.current_state().unwrap(),
+        ResourceState::Incorrect {
+            current: "\"old\"".into(),
+        }
+    );
+
+    // invalid_key rejects whitespace-only keys AND keys with empty segments.
+    for bad_key in ["   ", "a..b", ".leading", "trailing."] {
+        let invalid = json_resource(bad_key, toml::Value::Boolean(true));
+        assert!(
+            matches!(
+                invalid.current_state().unwrap(),
+                ResourceState::Invalid { .. }
+            ),
+            "expected key {bad_key:?} to be invalid"
+        );
+    }
+
+    // read_baseline propagates non-NotFound errors (such as a directory path).
+    let dir_target = dir.path().join("a-dir");
+    std::fs::create_dir(&dir_target).unwrap();
+    assert!(
+        read_baseline(&dir_target).is_err(),
+        "directory read error must not be treated as absent"
+    );
+
+    // AgentSettingsDocument claims and description.
+    let docs = AgentSettingsDocument::group(vec![
+        json_setting,
+        AgentSettingResource::new(
+            "copilot".into(),
+            "telemetry".into(),
+            toml::Value::Boolean(false),
+            SettingsFormat::Json,
+            json_path,
+        ),
+    ])
+    .unwrap();
+    assert_eq!(docs.len(), 1);
+    let doc = &docs[0];
+    assert_eq!(
+        doc.access_claims(),
+        vec![AccessClaim::exclusive(
+            "agent-settings-document",
+            doc.path.as_os_str(),
+        )]
+    );
+    assert_eq!(
+        doc.description(),
+        format!("{} (2 managed keys)", doc.path.display())
+    );
+}
+
 mod documents;
 mod formats;

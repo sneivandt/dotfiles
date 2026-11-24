@@ -211,12 +211,7 @@ fn reconcile_selected(
     // Only migrate the keys after active and stale fingerprints have been
     // checked and the copy succeeded. Unioning both ledgers on read also
     // makes the two atomic writes recoverable independently.
-    let mut renamed = false;
-    let mut retired = false;
-    for alias in aliases.iter().filter(|alias| alias.as_str() != name) {
-        renamed |= owned.remove(alias);
-        retired |= inventory.remove(alias).is_some();
-    }
+    let (renamed, retired) = retire_aliases(name, aliases, owned, inventory);
     if owned.insert(name.to_owned()) || renamed {
         write_owned_skills(target, owned)?;
         changed = true;
@@ -227,6 +222,21 @@ fn reconcile_selected(
         changed = true;
     }
     Ok(changed)
+}
+
+fn retire_aliases(
+    name: &str,
+    aliases: &BTreeSet<String>,
+    owned: &mut BTreeSet<String>,
+    inventory: &mut SkillInventory,
+) -> (bool, bool) {
+    let mut renamed = false;
+    let mut retired = false;
+    for alias in aliases.iter().filter(|alias| alias.as_str() != name) {
+        renamed |= owned.remove(alias);
+        retired |= inventory.remove(alias).is_some();
+    }
+    (renamed, retired)
 }
 
 fn valid_skill_name(name: &str) -> bool {

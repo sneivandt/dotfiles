@@ -398,6 +398,7 @@ mod tests {
     #[test]
     fn winget_unrecognized_exit_preserves_diagnostics_without_retrying() {
         for (code, status) in [
+            (Some(0), "exit 0"),
             (Some(73), "exit 73"),
             (Some(-1), "exit -1, 0xFFFFFFFF"),
             (None, "no exit code"),
@@ -418,6 +419,36 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn winget_exit_code_constants_are_negative_hresults() {
+        assert_eq!(
+            classify_install(Some(-1_978_335_216)),
+            InstallVerdict::RetryWithoutScope
+        );
+        assert_eq!(
+            classify_install(Some(-1_978_335_207)),
+            InstallVerdict::Skipped(
+                "requires administrator; re-run `dotfiles update --only packages` from an elevated shell"
+            )
+        );
+        assert_eq!(
+            classify_install(Some(-1_978_334_964)),
+            InstallVerdict::Skipped("installer elevation was declined")
+        );
+        assert_eq!(
+            classify_install(Some(-1_978_334_961)),
+            InstallVerdict::Skipped("blocked by system policy")
+        );
+        assert_eq!(
+            classify_install(Some(-1_978_334_963)),
+            InstallVerdict::AlreadyInstalled
+        );
+        assert_eq!(
+            classify_install(Some(-1_978_334_967)),
+            InstallVerdict::PendingReboot
+        );
     }
 
     #[test]

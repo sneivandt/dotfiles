@@ -235,14 +235,27 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let resource = DeferredExtensionsResource::new(home.path(), "desktop", None, &[]).unwrap();
 
+        assert!(resource.description().contains("VS Code extensions"));
+        assert!(
+            resource
+                .description()
+                .contains(&resource.marker.display().to_string())
+        );
+        assert_eq!(resource.marker_contents().unwrap(), None);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        let contents = resource.marker_contents().unwrap().unwrap();
+        assert_eq!(contents, resource.expected_content());
         assert!(
-            std::fs::read_to_string(&resource.marker)
-                .unwrap()
-                .contains("dotfiles-first-login service"),
+            contents.contains("dotfiles-first-login service"),
             "the marker should explain who consumes it"
+        );
+        std::fs::remove_file(&resource.marker).unwrap();
+        std::fs::create_dir(&resource.marker).unwrap();
+        assert_eq!(
+            resource.marker_contents().unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
         );
     }
 

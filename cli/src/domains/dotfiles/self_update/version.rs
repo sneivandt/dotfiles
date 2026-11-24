@@ -77,6 +77,8 @@ mod tests {
         assert!(is_release_version("v2026.07.25-1"));
         assert!(is_release_version("v2026.12.31-14"));
         assert!(is_release_version("2026.01.02-1"));
+        assert!(is_release_version("v2026.04.30-1"));
+        assert!(is_release_version("v2026.02.28-1"));
         assert!(is_release_version("v2024.02.29-1"));
         assert!(is_release_version("v2000.02.29-1"));
     }

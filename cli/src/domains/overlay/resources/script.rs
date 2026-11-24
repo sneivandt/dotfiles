@@ -353,6 +353,21 @@ mod tests {
     }
 
     #[test]
+    fn ensure_script_path_within_rejects_escaped_paths_and_accepts_inside_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("overlay");
+        let outside = dir.path().join("outside.sh");
+        let inside = root.join("sub/ok.sh");
+        std::fs::create_dir_all(inside.parent().unwrap()).unwrap();
+        std::fs::write(&outside, "#!/bin/sh\n").unwrap();
+        std::fs::write(&inside, "#!/bin/sh\n").unwrap();
+
+        ensure_script_path_within(&root, &inside).unwrap();
+        let err = ensure_script_path_within(&root, &outside).unwrap_err();
+        assert!(err.to_string().contains("escapes overlay root"), "{err:#}");
+    }
+
+    #[test]
     fn script_inspection_failures_are_not_reported_as_missing() {
         let dir = tempfile::tempdir_in(".").unwrap();
         let resource = make_script_resource(

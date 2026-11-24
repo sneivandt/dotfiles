@@ -4,22 +4,27 @@ use std::path::Path;
 use crate::infra::exec::Executor;
 
 /// Create a symlink at `link` pointing to `target`.
-#[cfg(unix)]
-pub(super) fn create_symlink(target: &Path, link: &Path, _executor: &dyn Executor) -> Result<()> {
-    crate::infra::fs::create_native_symlink(target, link, false).with_context(|| {
-        format!(
-            "creating symlink {} -> {}",
-            link.display(),
-            target.display()
-        )
-    })?;
-
-    Ok(())
+pub(super) fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
+    #[cfg(unix)]
+    {
+        let _ = executor;
+        crate::infra::fs::create_native_symlink(target, link, false).with_context(|| {
+            format!(
+                "creating symlink {} -> {}",
+                link.display(),
+                target.display()
+            )
+        })?;
+        Ok(())
+    }
+    #[cfg(windows)]
+    {
+        create_symlink_windows(target, link, executor)
+    }
 }
 
-/// Create a symlink at `link` pointing to `target`.
 #[cfg(windows)]
-pub(super) fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
+fn create_symlink_windows(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
     let is_dir = target.is_dir();
     if is_dir {
         match crate::infra::fs::create_native_symlink(target, link, true) {

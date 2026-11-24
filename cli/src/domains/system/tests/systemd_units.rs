@@ -66,6 +66,80 @@ fn manager_context(
     make_context("/fixture".into(), None, platform, Arc::new(mock))
 }
 
+#[test]
+fn probe_system_reload_state_distinguishes_cancellation_and_wsl_rejects_unknown_exit_zero() {
+    let cancel_exec = Arc::new({
+        let mut mock = MockExecutor::new();
+        mock.expect_execute().returning(|spec| {
+            Err(ExecError::Cancelled {
+                command: spec.program().to_string_lossy().into_owned(),
+                result: ExecResult::failure("", "", None),
+            })
+        });
+        mock
+    });
+    let unit = SystemdUnit {
+        name: "sshd.service".into(),
+        scope: UnitScope::System,
+        graphical: false,
+        enabled: true,
+    };
+    let cancel_clone = Arc::clone(&cancel_exec);
+    let cancel_exec_handle: Arc<dyn Executor> = cancel_clone;
+    let resources = vec![SystemdUnitResource::from_entry(
+        &unit,
+        cancel_exec_handle,
+        std::path::Path::new("/home/test"),
+        true,
+        false,
+    )];
+    let cancel_err = probe_system_reload_state(cancel_exec.as_ref(), &resources, true).unwrap_err();
+    assert!(cancel_err.is_cancelled());
+
+    let fail_exec = Arc::new({
+        let mut mock = MockExecutor::new();
+        mock.expect_execute().returning(|spec| {
+            Err(ExecError::Spawn {
+                command: spec.program().to_string_lossy().into_owned(),
+                source: std::io::Error::other("boom"),
+            })
+        });
+        mock
+    });
+    let fail_clone = Arc::clone(&fail_exec);
+    let fail_exec_handle: Arc<dyn Executor> = fail_clone;
+    let fail_resources = vec![SystemdUnitResource::from_entry(
+        &unit,
+        fail_exec_handle,
+        std::path::Path::new("/home/test"),
+        true,
+        false,
+    )];
+    assert_eq!(
+        probe_system_reload_state(fail_exec.as_ref(), &fail_resources, true).unwrap(),
+        (false, false)
+    );
+
+    let mut wsl_mock = MockExecutor::new();
+    wsl_mock
+        .expect_execute()
+        .once()
+        .returning(|_| Ok(ExecResult::success("weird-state\n")));
+    let wsl_ctx = make_context(
+        "/fixture".into(),
+        None,
+        Platform::new_wsl(),
+        Arc::new(wsl_mock),
+    );
+    let wsl_err = systemd_available(&wsl_ctx).unwrap_err();
+    assert!(
+        wsl_err
+            .to_string()
+            .contains("unexpected systemctl is-system-running state"),
+        "{wsl_err:#}"
+    );
+}
+
 #[path = "systemd_units_managers.rs"]
 mod managers;
 #[path = "systemd_units_runtime.rs"]

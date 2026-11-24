@@ -2,6 +2,94 @@ use super::*;
 use std::io::Seek;
 
 #[test]
+fn selection_and_render_cover_non_startup_context_verbose_text_and_action_event() {
+    use crate::infra::logging::records::{Record, StoredRecord};
+
+    // render_record: planned=false with verbose=false must produce "action", not "plan".
+    assert_eq!(
+        render_record(
+            Record::Action {
+                verb: "install".into(),
+                subject: "git".into(),
+                message: "install git".into(),
+                planned: false,
+            },
+            false,
+        ),
+        Some(("action".into(), "install git".into()))
+    );
+
+    // index_log: a non-"startup" Record::Message must NOT set has_startup (RunContext stays visible).
+    let info_msg = serde_json::to_string(&StoredRecord::new(
+        "run",
+        Record::Message {
+            event: "info".into(),
+            text: "hello".into(),
+        },
+    ))
+    .unwrap();
+    let run_ctx = serde_json::to_string(&StoredRecord::new(
+        "run",
+        Record::RunContext {
+            profile: "base".into(),
+            platform: "linux".into(),
+            dry_run: false,
+        },
+    ))
+    .unwrap();
+    let log_text =
+        format!("00:00:00.000 [run] [record] {info_msg}\n00:00:00.001 [run] [record] {run_ctx}\n");
+    let mut out = Vec::new();
+    write_selected_log(
+        &mut std::io::Cursor::new(log_text.as_bytes()),
+        false,
+        false,
+        None,
+        StyleChoice::plain(),
+        &mut out,
+    )
+    .unwrap();
+    let rendered = String::from_utf8(out).unwrap();
+    assert!(
+        rendered.contains("base profile"),
+        "RunContext must remain visible when no startup message was logged: {rendered}"
+    );
+
+    // write_selected_log: verbose=true preserves the raw timestamped legacy line while default mode formats it.
+    let legacy_line = "00:00:00.000 [task-a] [info] legacy message\n";
+    let mut verbose_out = Vec::new();
+    write_selected_log(
+        &mut std::io::Cursor::new(legacy_line.as_bytes()),
+        true,
+        false,
+        None,
+        StyleChoice::plain(),
+        &mut verbose_out,
+    )
+    .unwrap();
+    let verbose_text = String::from_utf8(verbose_out).unwrap();
+    assert!(
+        verbose_text.contains("00:00:00.000"),
+        "verbose view must keep timestamped legacy line: {verbose_text}"
+    );
+    let mut normal_out = Vec::new();
+    write_selected_log(
+        &mut std::io::Cursor::new(legacy_line.as_bytes()),
+        false,
+        false,
+        None,
+        StyleChoice::plain(),
+        &mut normal_out,
+    )
+    .unwrap();
+    let normal_text = String::from_utf8(normal_out).unwrap();
+    assert!(
+        !normal_text.contains("00:00:00.000") && normal_text.contains("legacy message"),
+        "default view must render legacy line without raw timestamp: {normal_text}"
+    );
+}
+
+#[test]
 fn unfiltered_raw_logs_are_copied_without_parsing_or_rewinding() {
     #[derive(Debug)]
     struct NoRewind(std::io::Cursor<Vec<u8>>);

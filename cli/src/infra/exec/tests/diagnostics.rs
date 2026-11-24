@@ -10,6 +10,10 @@ fn command_diagnostic_label_includes_safe_arguments_and_working_directory() {
         spec.label(),
         "systemctl --user daemon-reload (in /tmp/work tree)"
     );
+    assert_eq!(
+        CommandSpec::new("echo").args(&["", "a b"]).label(),
+        r#"echo "" "a b""#
+    );
 }
 
 #[test]

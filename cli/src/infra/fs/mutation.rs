@@ -117,5 +117,9 @@ mod tests {
         options.read(true).write(true).create_new(true);
         let file = open_in_place(&target, &mut options).unwrap();
         assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(shared_file_identity(&file).unwrap(), None);
+        let alias = fixture.path().join("alias-lock");
+        std::fs::hard_link(&target, &alias).unwrap();
+        assert!(shared_file_identity(&file).unwrap().is_some());
     }
 }

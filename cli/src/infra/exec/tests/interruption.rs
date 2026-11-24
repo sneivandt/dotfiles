@@ -247,3 +247,96 @@ fn interrupting_a_started_child_preserves_output_and_never_reports_an_exit_code(
         );
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn terminate_child_sends_sigterm_and_wait_escalates_to_sigkill_for_process_group() {
+    use nix::sys::signal::kill;
+    use nix::unistd::Pid;
+
+    let fixture = tempfile::tempdir().unwrap();
+
+    // 1. A cooperative child trapping SIGTERM exits promptly before the grace window.
+    let term_marker = fixture.path().join("sigterm");
+    let term_ready = fixture.path().join("sigterm-ready");
+    let mut graceful_cmd = new_command("sh");
+    graceful_cmd
+        .args([
+            "-c",
+            "trap 'printf got > \"$1\"; exit 0' TERM; printf ready > \"$2\"; while :; do sleep 0.05; done",
+            "sh",
+            term_marker.to_str().unwrap(),
+            term_ready.to_str().unwrap(),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let mut graceful = process::spawn(graceful_cmd).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !term_ready.exists() && Instant::now() < deadline {
+        std::thread::sleep(POLL_INTERVAL);
+    }
+    assert!(term_ready.exists(), "graceful fixture did not start");
+    let started = Instant::now();
+    terminate_child(&graceful);
+    wait_after_terminate(&mut graceful);
+    assert_eq!(
+        std::fs::read_to_string(&term_marker).unwrap_or_default(),
+        "got",
+        "terminate_child must deliver SIGTERM to the child process group"
+    );
+    assert!(
+        started.elapsed() < process::TERMINATION_GRACE,
+        "cooperative child should exit before the termination grace expires"
+    );
+
+    // 2. A stubborn child ignoring SIGTERM with a background descendant must
+    // wait out the grace window and then have its entire process group SIGKILLed.
+    let child_pid_file = fixture.path().join("descendant.pid");
+    let mut stubborn_cmd = new_command("sh");
+    stubborn_cmd
+        .args([
+            "-c",
+            "trap '' TERM; sleep 30 & echo $! > \"$1\"; wait",
+            "sh",
+            child_pid_file.to_str().unwrap(),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let mut stubborn = process::spawn(stubborn_cmd).unwrap();
+    let pid_deadline = Instant::now() + Duration::from_secs(5);
+    while std::fs::read_to_string(&child_pid_file).is_ok_and(|s| s.trim().is_empty())
+        || !child_pid_file.exists()
+    {
+        if Instant::now() >= pid_deadline {
+            break;
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
+    let descendant_pid: i32 = std::fs::read_to_string(&child_pid_file)
+        .expect("descendant pid file")
+        .trim()
+        .parse()
+        .expect("numeric descendant pid");
+    let kill_started = Instant::now();
+    terminate_child(&stubborn);
+    wait_after_terminate(&mut stubborn);
+    assert!(
+        kill_started.elapsed() >= process::TERMINATION_GRACE,
+        "wait_after_terminate must wait through TERMINATION_GRACE before force-killing"
+    );
+    assert!(
+        stubborn.try_wait().unwrap().is_some(),
+        "wait_after_terminate must reap the leader after force-killing"
+    );
+    // Allow brief kernel cleanup of the SIGKILLed descendant.
+    let kill_deadline = Instant::now() + Duration::from_secs(2);
+    while kill(Pid::from_raw(descendant_pid), None).is_ok() && Instant::now() < kill_deadline {
+        std::thread::sleep(POLL_INTERVAL);
+    }
+    assert!(
+        kill(Pid::from_raw(descendant_pid), None).is_err(),
+        "force_kill_child must SIGKILL the child process group including descendants"
+    );
+}

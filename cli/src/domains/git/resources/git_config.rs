@@ -849,6 +849,40 @@ mod tests {
     }
 
     #[test]
+    fn plan_omits_already_absent_settings_on_include_change_and_reports_claims_and_read_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("gitconfig");
+        let included = dir.path().join("extra.gitconfig");
+        std::fs::write(&included, "[user]\n name = Alice\n").unwrap();
+        std::fs::write(&config_path, "[core]\n autocrlf = false\n").unwrap();
+
+        let include = GitConfigResource::with_config_path(
+            "include.path".into(),
+            git_config_path(&included),
+            config_path.clone(),
+        );
+        let already_absent =
+            GitConfigResource::absent("user.email".into()).using_config_path(config_path.clone());
+        assert_eq!(include.access_claims(), vec![config_access_claim()]);
+
+        let plan = GitConfigPlan::inspect(&config_path, &[include, already_absent]).unwrap();
+        assert_eq!(plan.changed().len(), 1);
+        assert_eq!(plan.changed()[0].key, "include.path");
+
+        #[cfg(unix)]
+        if !nix::unistd::Uid::effective().is_root() {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o000)).unwrap();
+            let result = read_config_bytes(&config_path);
+            std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+            assert!(
+                result.is_err(),
+                "permission error reading git config must not be treated as absent"
+            );
+        }
+    }
+
+    #[test]
     fn nested_include_defining_include_path_updates_and_removes_depth_zero_in_order() {
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("config");

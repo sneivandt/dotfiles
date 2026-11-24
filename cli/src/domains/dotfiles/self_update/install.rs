@@ -191,44 +191,57 @@ pub(super) fn replace_binary(
 ///
 /// Returns an error if the process cannot be spawned or exits with a
 /// non-zero status code.
-fn smoke_test_binary(path: &Path) -> Result<String> {
-    const MAX_RETRIES: u32 = 5;
-    const BASE_DELAY_MS: u64 = 50;
+const SMOKE_TEST_MAX_RETRIES: u32 = 5;
+const SMOKE_TEST_BASE_DELAY_MS: u64 = 50;
 
-    fn is_transient_busy(e: &std::io::Error) -> bool {
-        if matches!(
-            e.kind(),
-            std::io::ErrorKind::ResourceBusy | std::io::ErrorKind::ExecutableFileBusy
-        ) {
-            return true;
-        }
-        // `ETXTBSY` is not always exposed via [`std::io::ErrorKind`] depending
-        // on libc version, so match the raw OS error code as well.
-        #[cfg(unix)]
-        {
-            /// `ETXTBSY` ("Text file busy").
-            const ETXTBSY: i32 = 26;
-            e.raw_os_error() == Some(ETXTBSY)
-        }
-        // A scanner still holding the new file surfaces as a sharing
-        // violation, which maps to `PermissionDenied`.
-        #[cfg(windows)]
-        {
-            e.kind() == std::io::ErrorKind::PermissionDenied
-        }
-        #[cfg(all(not(unix), not(windows)))]
-        {
-            false
-        }
+fn is_transient_busy(e: &std::io::Error) -> bool {
+    if matches!(
+        e.kind(),
+        std::io::ErrorKind::ResourceBusy | std::io::ErrorKind::ExecutableFileBusy
+    ) {
+        return true;
     }
+    // `ETXTBSY` is not always exposed via [`std::io::ErrorKind`] depending
+    // on libc version, so match the raw OS error code as well.
+    #[cfg(unix)]
+    {
+        /// `ETXTBSY` ("Text file busy").
+        const ETXTBSY: i32 = 26;
+        e.raw_os_error() == Some(ETXTBSY)
+    }
+    // A scanner still holding the new file surfaces as a sharing
+    // violation, which maps to `PermissionDenied`.
+    #[cfg(windows)]
+    {
+        e.kind() == std::io::ErrorKind::PermissionDenied
+    }
+    #[cfg(all(not(unix), not(windows)))]
+    {
+        false
+    }
+}
+
+fn run_smoke_test_with(
+    path: &Path,
+    mut run: impl FnMut(
+        &Path,
+    ) -> std::result::Result<
+        crate::infra::exec::ExecResult,
+        crate::infra::exec::ExecError,
+    >,
+    mut sleep: impl FnMut(std::time::Duration),
+) -> Result<String> {
     let mut attempts = 0;
     let result = loop {
-        match crate::infra::exec::run_path_smoke_test(path, &["--version"]) {
+        match run(path) {
             Ok(result) => break result,
-            Err(e) if e.io_error().is_some_and(is_transient_busy) && attempts < MAX_RETRIES => {
+            Err(e)
+                if e.io_error().is_some_and(is_transient_busy)
+                    && attempts < SMOKE_TEST_MAX_RETRIES =>
+            {
                 attempts = attempts.saturating_add(1);
-                std::thread::sleep(std::time::Duration::from_millis(
-                    BASE_DELAY_MS * u64::from(attempts),
+                sleep(std::time::Duration::from_millis(
+                    SMOKE_TEST_BASE_DELAY_MS * u64::from(attempts),
                 ));
             }
             Err(e) => {
@@ -247,6 +260,14 @@ fn smoke_test_binary(path: &Path) -> Result<String> {
             result.stderr.trim()
         )
     }
+}
+
+fn smoke_test_binary(path: &Path) -> Result<String> {
+    run_smoke_test_with(
+        path,
+        |binary| crate::infra::exec::run_path_smoke_test(binary, &["--version"]),
+        std::thread::sleep,
+    )
 }
 
 /// Download the release asset for the given tag and install it.

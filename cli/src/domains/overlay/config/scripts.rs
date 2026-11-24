@@ -182,6 +182,22 @@ scripts = [
 
     #[test]
     fn validate_rejects_empty_names_invalid_paths_and_duplicate_selectors() {
+        let valid = [
+            script("Alpha", "scripts/alpha.sh"),
+            script("Beta", "scripts/beta.sh"),
+        ];
+        assert!(
+            validate(&valid).is_empty(),
+            "distinct valid scripts must produce no diagnostics"
+        );
+
+        for absolute in ["/abs/a.sh", "\\abs\\b.sh", "C:\\abs\\c.sh"] {
+            assert!(
+                validate_relative_script_path(&script("Abs", absolute)).is_err(),
+                "path {absolute:?} must be rejected as non-relative"
+            );
+        }
+
         let entries = [
             script(" ", ""),
             script("Duplicate", "../escape.sh"),

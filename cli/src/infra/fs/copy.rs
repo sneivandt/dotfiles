@@ -447,15 +447,20 @@ pub fn reject_destination_link(path: &Path) -> Result<()> {
 fn is_link_like(path: &Path, metadata: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
-        use std::os::windows::fs::MetadataExt as _;
-        metadata.is_symlink()
-            || (metadata.file_attributes() & 0x400 != 0 && std::fs::read_link(path).is_ok())
+        is_windows_reparse_link(path, metadata)
     }
     #[cfg(not(windows))]
     {
         let _ = path;
         metadata.is_symlink()
     }
+}
+
+#[cfg(windows)]
+fn is_windows_reparse_link(path: &Path, metadata: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+    metadata.is_symlink()
+        || (metadata.file_attributes() & 0x400 != 0 && std::fs::read_link(path).is_ok())
 }
 
 /// Open a copy source without waiting on a FIFO that replaced a regular file.
@@ -694,5 +699,49 @@ mod tests {
             error.to_string(),
             format!("resolving copy destination {}", destination.display())
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn copy_sparse_and_xattr_filter_and_identity_edge_cases() {
+        use rustix::fs::{XattrFlags, fgetxattr_query, fsetxattr};
+        use rustix::io::Errno;
+        use std::os::unix::fs::MetadataExt as _;
+
+        let root = tempfile::tempdir_in(".").unwrap();
+
+        // All-holes sparse file exercises `data == length` after SEEK_DATA returns ENXIO.
+        let sparse_src_path = root.path().join("all-holes-src");
+        let sparse_dst_path = root.path().join("all-holes-dst");
+        let mut sparse_src = std::fs::File::options()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&sparse_src_path)
+            .unwrap();
+        sparse_src.set_len(64 * 1024).unwrap();
+        let mut sparse_dst = std::fs::File::create_new(&sparse_dst_path).unwrap();
+        assert!(copy_sparse_contents(&mut sparse_src, &mut sparse_dst, 64 * 1024).unwrap());
+        assert_eq!(sparse_dst.metadata().unwrap().len(), 64 * 1024);
+
+        // access_identity must report the file's real (uid, gid), never a constant pair.
+        let src_meta = sparse_src.metadata().unwrap();
+        assert_eq!(access_identity(&src_meta), (src_meta.uid(), src_meta.gid()));
+
+        // preserve_attributes_and_permissions must skip xattrs rejected by `preserve`.
+        let xattr_src = std::fs::File::create_new(root.path().join("xattr-src")).unwrap();
+        let xattr_dst = std::fs::File::create_new(root.path().join("xattr-dst")).unwrap();
+        fsetxattr(&xattr_src, "user.keep", b"1", XattrFlags::empty()).unwrap();
+        fsetxattr(&xattr_src, "user.skip", b"2", XattrFlags::empty()).unwrap();
+        preserve_attributes_and_permissions(
+            &xattr_src,
+            &xattr_dst,
+            access_identity(&xattr_src.metadata().unwrap()),
+            |name| name == b"user.keep",
+            || Ok(()),
+        )
+        .unwrap();
+        assert_eq!(fgetxattr_query(&xattr_dst, "user.keep"), Ok(1));
+        assert_eq!(fgetxattr_query(&xattr_dst, "user.skip"), Err(Errno::NODATA));
     }
 }

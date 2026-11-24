@@ -338,4 +338,11 @@ mod tests {
         let error = format!("{:#}", result.unwrap_err());
         assert_mentions(&error, &["expanding symlink glob", "reading directory"]);
     }
+
+    #[test]
+    fn validate_supported_pattern_rejects_recursive_and_partial_wildcards() {
+        validate_supported_pattern("source", "apm/config/*").unwrap();
+        assert!(validate_supported_pattern("source", "apm/**/config").is_err());
+        assert!(validate_supported_pattern("source", "apm/con*fig").is_err());
+    }
 }

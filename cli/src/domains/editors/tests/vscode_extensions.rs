@@ -8,6 +8,25 @@ use crate::test_helpers::{CapturingOutput, make_context, make_linux_context, tas
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+#[cfg(unix)]
+#[test]
+fn ensure_first_login_enabled_rejects_symlink_to_different_file() {
+    let home = tempfile::tempdir().unwrap();
+    let unit_dir = home.path().join(".config/systemd/user");
+    let wants_dir = unit_dir.join("graphical-session.target.wants");
+    std::fs::create_dir_all(&wants_dir).unwrap();
+    let unit = unit_dir.join("dotfiles-first-login.service");
+    let other = unit_dir.join("other.service");
+    std::fs::write(&unit, "[Unit]\n").unwrap();
+    std::fs::write(&other, "[Unit]\n").unwrap();
+    let link = wants_dir.join("dotfiles-first-login.service");
+    std::os::unix::fs::symlink(&other, &link).unwrap();
+    assert!(ensure_first_login_enabled(home.path()).is_err());
+    std::fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink(&unit, &link).unwrap();
+    assert!(ensure_first_login_enabled(home.path()).is_ok());
+}
+
 fn ext() -> String {
     "github.copilot".to_string()
 }

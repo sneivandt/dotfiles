@@ -165,6 +165,14 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, APM_PLUGIN_DIR_MISSING);
+        assert!(
+            diagnostics[0].item.contains("symlinks/apm/config/base.yml")
+                || diagnostics[0]
+                    .item
+                    .contains("symlinks\\apm\\config\\base.yml"),
+            "unexpected diagnostic item: {}",
+            diagnostics[0].item
+        );
     }
 
     #[test]

@@ -46,7 +46,6 @@ const SHARED_RESTART_PREFIX: &str = ".dotfiles-restart-home-shared";
 /// Locks held for a command and its continuation after a process restart.
 #[derive(Debug)]
 pub(crate) struct CommandLocks {
-    repository_path: PathBuf,
     checkout_path: Option<PathBuf>,
     owned: Vec<RunLock>,
     legacy_overlay: Option<RunLock>,
@@ -81,7 +80,6 @@ impl CommandLocks {
             )?);
         }
         Ok(Self {
-            repository_path,
             checkout_path,
             owned,
             legacy_overlay: None,
@@ -123,7 +121,6 @@ impl CommandLocks {
         // Legacy parents retain exclusive base locks during their child's run.
         let checkout_path = checkout_coordination_path(root, &repository_path)?;
         let mut locks = Self {
-            repository_path,
             checkout_path: checkout_path.clone(),
             owned: home_lock.into_iter().collect(),
             legacy_overlay: None,
@@ -156,9 +153,7 @@ impl CommandLocks {
         }
         let path = repository_state_path(overlay, env, platform, LOCK_NAME)?;
         let checkout_lock = coordination_path_for_git(&path)?;
-        if self.checkout_path.as_ref() == Some(&checkout_lock)
-            || crate::infra::fs::paths_equal(&self.repository_path, &path)?
-        {
+        if self.checkout_path.as_ref() == Some(&checkout_lock) {
             return Ok(());
         }
         if let Some((root, marker)) = restart {
@@ -558,12 +553,6 @@ fn lock_error(path: &Path, error: TryLockError) -> anyhow::Error {
                 path.display()
             )
         }
-    }
-}
-
-impl Drop for RunLock {
-    fn drop(&mut self) {
-        drop(self.file.unlock());
     }
 }
 

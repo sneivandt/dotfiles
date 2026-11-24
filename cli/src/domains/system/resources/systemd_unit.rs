@@ -239,8 +239,7 @@ impl SystemdUnitResource {
             _ => return Ok(None),
         };
 
-        if !self.enabled
-            && self.scope == UnitScope::User
+        if self.scope == UnitScope::User
             && self.home.is_some()
             && matches!(enablement, ResourceState::Incorrect { .. })
             && let Some(conflict) = self.global_enablement_conflict()?

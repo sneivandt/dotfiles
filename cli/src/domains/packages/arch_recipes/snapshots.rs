@@ -309,3 +309,35 @@ impl Snapshot {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_snapshot(dir: &Path, srcinfo: Option<&str>) -> Snapshot {
+        Snapshot {
+            path: dir.join("demo"),
+            files: vec![("PKGBUILD", "pkgname=demo\n".into())],
+            srcinfo: srcinfo.map(str::to_owned),
+            pending_pins: false,
+        }
+    }
+
+    #[test]
+    fn metadata_changed_and_needs_write_handle_unborn_and_corrupt_head() {
+        let dir = tempfile::tempdir().unwrap();
+        let snap = sample_snapshot(dir.path(), Some("pkgbase = demo\n"));
+        assert!(!snap.metadata_changed("pkgbase = demo\n"));
+        assert!(snap.metadata_changed("pkgbase = other\n"));
+
+        // Unborn HEAD in an owned snapshot repo needs write (Ok(true)).
+        let repo = git2::Repository::init(&snap.path).unwrap();
+        crate::infra::fs::write_atomic(&repo.path().join("dotfiles-local-build"), MARKER).unwrap();
+        crate::infra::fs::write_atomic(&repo.path().join("info/attributes"), ATTRIBUTES).unwrap();
+        assert!(snap.needs_write().unwrap());
+
+        // Corrupt HEAD ref propagates an error instead of treating as unborn.
+        std::fs::write(repo.path().join("HEAD"), "not a valid head ref\n").unwrap();
+        assert!(snap.needs_write().is_err());
+    }
+}

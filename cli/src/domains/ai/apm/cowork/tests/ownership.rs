@@ -89,6 +89,47 @@ fn unsafe_file_ownership_is_rejected_before_deployment() {
     );
 }
 
+#[test]
+fn creating_missing_cowork_target_and_retiring_aliases_report_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let target = home.join("fresh-cowork-skills");
+    std::fs::create_dir_all(home.join(".apm")).unwrap();
+    std::fs::write(home.join(".apm/apm.lock.yaml"), "dependencies: []\n").unwrap();
+    let ctx = Context::from_raw(
+        home.to_path_buf(),
+        None,
+        Platform::new(Os::Linux, false),
+        Arc::new(crate::infra::logging::Logger::test()),
+        Arc::new(MockExecutor::new()),
+        home.to_path_buf(),
+        crate::engine::ContextOpts::default(),
+    )
+    .with_env(Arc::new(
+        MapEnv::new().with("APM_COPILOT_COWORK_SKILLS_DIR", target.as_os_str()),
+    ));
+    assert!(
+        reconcile_cowork_skills(&ctx).unwrap(),
+        "creating a missing Cowork target directory must report changed"
+    );
+    assert!(target.is_dir());
+    assert!(!reconcile_cowork_skills(&ctx).unwrap());
+
+    let aliases = BTreeSet::from([
+        "example".to_string(),
+        "Example".to_string(),
+        "EXAMPLE".to_string(),
+    ]);
+    let mut owned = BTreeSet::from(["Example".to_string()]);
+    let mut inventory = SkillInventory::from([("Example".to_string(), FileInventory::new())]);
+    assert_eq!(
+        retire_aliases("example", &aliases, &mut owned, &mut inventory),
+        (true, true)
+    );
+    assert!(owned.is_empty());
+    assert!(inventory.is_empty());
+}
+
 #[cfg(windows)]
 #[test]
 fn ownership_key_distinguishes_missing_paths_from_inspection_errors() {

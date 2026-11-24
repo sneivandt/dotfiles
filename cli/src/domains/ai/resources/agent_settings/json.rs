@@ -109,3 +109,26 @@ pub(super) fn plan(contents: &str, settings: &[AgentSettingResource]) -> Result<
     }
     Ok(updated)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn edit_nested_object_preserves_two_space_indentation() {
+        let setting = AgentSettingResource::new(
+            "copilot".into(),
+            "a.b.c".into(),
+            toml::Value::Boolean(true),
+            super::super::SettingsFormat::Json,
+            std::path::PathBuf::from("settings.json"),
+        );
+        let rendered = edit("{\n  \"a\": {\n    \"b\": {}\n  }\n}", &setting)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            rendered,
+            "{\n  \"a\": {\n    \"b\": {\n      \"c\": true\n    }\n  }\n}"
+        );
+    }
+}

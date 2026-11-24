@@ -24,6 +24,10 @@ fn derived_paths_use_the_configured_root() {
     assert_eq!(ctx.root(), Path::new("/dotfiles"));
     assert_eq!(ctx.symlinks_dir(), Path::new("/dotfiles/symlinks"));
     assert_eq!(ctx.hooks_dir(), Path::new("/dotfiles/hooks"));
+    assert!(!windows_can_create_symlinks(false, false));
+    assert!(windows_can_create_symlinks(true, false));
+    assert!(windows_can_create_symlinks(false, true));
+    assert!(windows_can_create_symlinks(true, true));
 }
 
 #[test]

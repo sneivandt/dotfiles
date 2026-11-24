@@ -79,6 +79,131 @@ fn is_native_inventory(spec: &CommandSpec) -> bool {
     *spec == inventory()
 }
 
+#[test]
+fn pacman_inventory_cache_invalidate_and_paru_wiring_and_preview_warning() {
+    let cache = PacmanInventoryCache::new();
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .times(2)
+        .withf(is_native_inventory)
+        .returning(|_| Ok(ExecResult::success("git\n")));
+    assert!(
+        cache
+            .query(InventoryPhase::Execution, PackageManager::Pacman, &mock)
+            .unwrap()
+            .contains_package("git")
+    );
+    assert!(
+        cache
+            .query(InventoryPhase::Execution, PackageManager::Pacman, &mock)
+            .unwrap()
+            .contains_package("git")
+    );
+    cache.invalidate();
+    assert!(
+        cache
+            .query(InventoryPhase::Execution, PackageManager::Pacman, &mock)
+            .unwrap()
+            .contains_package("git")
+    );
+
+    let paru = InstallParu::new().with_inventory_cache(cache);
+    assert!(paru.inventory_cache.is_some());
+
+    let log = Arc::new(CapturingOutput::default());
+    let log_clone = Arc::clone(&log);
+    let log_handle: Arc<dyn crate::infra::logging::Log> = log_clone;
+    let ctx = Context::from_raw(
+        PathBuf::from("/tmp"),
+        None,
+        crate::infra::platform::Platform::new(Os::Linux, true),
+        log_handle,
+        Arc::new(MockExecutor::new()),
+        PathBuf::from("/home/test"),
+        crate::engine::ContextOpts {
+            dry_run: true,
+            ..Default::default()
+        },
+    );
+    let op = PackageInstallOperation {
+        manager: PackageManager::Pacman,
+        packages: vec![],
+        inventory_cache: None,
+    };
+    let plan = PackageInstallPlan {
+        already_ok: 1,
+        missing: vec![],
+        unavailable: vec![("missing-pkg".into(), "not built".into())],
+    };
+    let result = op.preview(&ctx, &plan).unwrap();
+    assert!(!matches!(result, TaskResult::Skipped { .. }));
+    let warnings = log.messages_of(crate::infra::logging::MsgKind::Warn);
+    assert!(
+        !warnings.iter().any(|msg| msg.contains("pacman -Syu")),
+        "preview must not warn about pacman -Syu when no packages are missing: {warnings:?}"
+    );
+}
+
+#[test]
+fn predict_sudo_empty_packages_and_custom_package_name_matching() {
+    // predict_sudo returns false without querying when tool exists but packages is empty.
+    let mut mock_empty = MockExecutor::new();
+    mock_empty.expect_which().once().returning(|_| true);
+    let ctx_empty = crate::test_helpers::make_context(
+        PathBuf::from("/tmp"),
+        None,
+        crate::infra::platform::Platform::new(Os::Linux, true),
+        Arc::new(mock_empty),
+    );
+    assert!(!predict_sudo(
+        &ctx_empty,
+        PackageManager::Pacman,
+        "pacman",
+        &[],
+        None,
+    ));
+
+    // build_install_plan matches a single requested custom package by exact name (kills == -> !=).
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("home");
+    let pkg_dir = dir.path().join("packages/apm-dotfiles");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(
+        pkg_dir.join("release.json"),
+        r#"{"package_base":"apm-dotfiles","repository":"microsoft/apm","assets":{"x86_64":"apm.tar.gz","aarch64":"apm.tar.gz"}}"#,
+    )
+    .unwrap();
+    std::fs::write(pkg_dir.join("PKGBUILD"), "pkgname=apm-dotfiles\npkgrel=1\n").unwrap();
+    let mut mock_paru = MockExecutor::new();
+    mock_paru
+        .expect_execute()
+        .once()
+        .returning(|_| Ok(ExecResult::success("")));
+    let ctx_paru = Context::from_raw(
+        dir.path().to_path_buf(),
+        None,
+        crate::infra::platform::Platform::new(Os::Linux, true),
+        Arc::new(crate::infra::logging::Logger::test()),
+        Arc::new(mock_paru),
+        home,
+        crate::engine::ContextOpts::default(),
+    );
+    let custom_plan = build_install_plan(
+        &ctx_paru,
+        &[Package {
+            name: "apm-dotfiles".into(),
+            is_aur: true,
+        }],
+        PackageManager::Paru,
+        None,
+    )
+    .unwrap();
+    assert_eq!(custom_plan.unavailable.len(), 1, "{custom_plan:?}");
+    assert_eq!(custom_plan.unavailable[0].0, "apm-dotfiles");
+    assert!(custom_plan.missing.is_empty(), "{custom_plan:?}");
+}
+
 mod native;
 mod paru;
 mod readiness;

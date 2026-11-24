@@ -102,19 +102,39 @@ impl PartialEq for Access {
 
 impl Eq for Access {}
 
+const ACCESS_INFO_MASK: u32 = OWNER_SECURITY_INFORMATION
+    | GROUP_SECURITY_INFORMATION
+    | DACL_SECURITY_INFORMATION
+    | LABEL_SECURITY_INFORMATION
+    | ATTRIBUTE_SECURITY_INFORMATION
+    | SCOPE_SECURITY_INFORMATION
+    | PROCESS_TRUST_LABEL_SECURITY_INFORMATION.cast_unsigned()
+    | ACCESS_FILTER_SECURITY_INFORMATION.cast_unsigned();
+const STAGED_WRITE_ACCESS: u32 = GENERIC_WRITE | READ_CONTROL | FILE_READ_ATTRIBUTES;
+const INSPECT_ACCESS: u32 = READ_CONTROL | FILE_READ_ATTRIBUTES;
+const INSPECT_FLAGS: u32 = FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS;
+
+fn validate_self_relative_descriptor(len: u32, control: u16) -> io::Result<usize> {
+    if len == 0 || control & SE_SELF_RELATIVE == 0 {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
+    usize::try_from(len).map_err(io::Error::other)
+}
+
+fn check_dacl_present(present: i32, is_null: bool) -> io::Result<()> {
+    if present == 0 || is_null {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
+    Ok(())
+}
+
 impl Access {
     fn read(file: &File) -> io::Result<Self> {
-        let info = ACCESS_FLAGS.into_iter().fold(0, |mask, flag| mask | flag);
-        let descriptor = LocalDescriptor::from_file(file, info)?;
+        let descriptor = LocalDescriptor::from_file(file, ACCESS_INFO_MASK)?;
         // SAFETY: the OS allocated and initialized this descriptor.
         let len = unsafe { GetSecurityDescriptorLength(descriptor.0) };
-        if len == 0 || descriptor.control()? & SE_SELF_RELATIVE == 0 {
-            return Err(io::ErrorKind::InvalidData.into());
-        }
-        Ok(Self {
-            descriptor,
-            len: usize::try_from(len).map_err(io::Error::other)?,
-        })
+        let len = validate_self_relative_descriptor(len, descriptor.control()?)?;
+        Ok(Self { descriptor, len })
     }
 
     const fn bytes(&self) -> &[u8] {
@@ -207,9 +227,7 @@ fn same_dacl(left: PSECURITY_DESCRIPTOR, right: PSECURITY_DESCRIPTOR) -> io::Res
         {
             return Err(io::Error::last_os_error());
         }
-        if present == 0 || acl.is_null() {
-            return Err(io::ErrorKind::InvalidData.into());
-        }
+        check_dacl_present(present, acl.is_null())?;
         // SAFETY: the returned ACL lies in the live, OS-produced descriptor.
         Ok(unsafe { std::slice::from_raw_parts(acl.cast(), usize::from((*acl).AclSize)) }.to_vec())
     }
@@ -227,7 +245,7 @@ fn create_new(path: &Path, descriptor: PSECURITY_DESCRIPTOR) -> io::Result<File>
     let handle = unsafe {
         CreateFileW(
             path.as_ptr(),
-            GENERIC_WRITE | READ_CONTROL | FILE_READ_ATTRIBUTES,
+            STAGED_WRITE_ACCESS,
             FILE_SHARE_DELETE,
             &raw const attributes,
             CREATE_NEW,
@@ -287,8 +305,8 @@ fn regular_access(file: &File, path: &Path) -> Result<Access> {
 
 fn open_target(path: &Path) -> Result<Option<File>> {
     match File::options()
-        .access_mode(READ_CONTROL | FILE_READ_ATTRIBUTES)
-        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
+        .access_mode(INSPECT_ACCESS)
+        .custom_flags(INSPECT_FLAGS)
         .open(path)
     {
         Ok(file) => Ok(Some(file)),
@@ -314,9 +332,7 @@ pub(in crate::infra::fs) fn verify_copy_access(source: &File, staged: &File) -> 
 pub(in crate::infra::fs) fn copy_destination_options() -> std::fs::OpenOptions {
     let mut options = File::options();
     // GetVolumeInformationByHandleW also needs FILE_READ_ATTRIBUTES.
-    options
-        .write(true)
-        .access_mode(GENERIC_WRITE | READ_CONTROL | FILE_READ_ATTRIBUTES);
+    options.write(true).access_mode(STAGED_WRITE_ACCESS);
     options
 }
 
@@ -580,5 +596,54 @@ mod tests {
         assert_eq!(std::fs::read(&target).unwrap(), b"original fixture");
         assert_eq!(target_access(&target).unwrap(), Some(before));
         assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn descriptor_guards_copy_entry_access_and_mid_check_target_acl_change() {
+        assert!(validate_self_relative_descriptor(0, SE_SELF_RELATIVE).is_err());
+        assert!(validate_self_relative_descriptor(16, 0).is_err());
+        assert_eq!(
+            validate_self_relative_descriptor(16, SE_SELF_RELATIVE).unwrap(),
+            16
+        );
+        assert!(check_dacl_present(0, false).is_err());
+        assert!(check_dacl_present(1, true).is_err());
+        check_dacl_present(1, false).unwrap();
+
+        let root = tempfile::tempdir_in(".").unwrap();
+        assert!(
+            open_target(&root.path().join("bad?name")).is_err(),
+            "non-NotFound open error must propagate"
+        );
+
+        let normal = root.path().join("normal");
+        let private = root.path().join("private");
+        std::fs::write(&normal, b"a").unwrap();
+        let private_sd = LocalDescriptor::parse(c"D:P(A;;FA;;;OW)").unwrap();
+        create_new(&private, private_sd.0)
+            .unwrap()
+            .write_all(b"b")
+            .unwrap();
+        verify_copy_entry_access(&normal, &normal).unwrap();
+        assert!(
+            verify_copy_entry_access(&normal, &private).is_err(),
+            "mismatched ACLs must fail verify_copy_entry_access"
+        );
+
+        // Mutating the target's ACL during the check hook must abort publication
+        // even though the staged file itself is unchanged.
+        let racing = root.path().join("racing");
+        std::fs::write(&racing, b"before").unwrap();
+        let err = write_checked(&racing, b"after", || {
+            std::fs::remove_file(&racing)?;
+            create_new(&racing, private_sd.0)?.write_all(b"concurrent")?;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("access changed while preparing"),
+            "{err:#}"
+        );
+        assert_eq!(std::fs::read(&racing).unwrap(), b"concurrent");
     }
 }

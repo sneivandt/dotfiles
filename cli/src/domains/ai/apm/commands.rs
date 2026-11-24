@@ -224,6 +224,28 @@ mod tests {
     use crate::infra::platform::{Os, Platform};
 
     #[test]
+    fn report_apm_output_emits_non_blank_stdout_and_stderr_lines_to_debug() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = std::sync::Arc::new(crate::test_helpers::CapturingOutput::default());
+        let log_clone = std::sync::Arc::clone(&log);
+        let log_handle: std::sync::Arc<dyn crate::infra::logging::Log> = log_clone;
+        let ctx = Context::from_raw(
+            dir.path().to_path_buf(),
+            None,
+            Platform::new(Os::Linux, false),
+            log_handle,
+            std::sync::Arc::new(MockExecutor::new()),
+            dir.path().to_path_buf(),
+            crate::engine::ContextOpts::default(),
+        );
+        report_apm_output(&ctx, "first line  \n  \nsecond", "\nerr line\t");
+        assert_eq!(
+            log.messages_of(crate::infra::logging::MsgKind::Debug),
+            vec!["first line", "second", "err line"]
+        );
+    }
+
+    #[test]
     fn native_execution_failures_are_not_classified_by_auth_text() {
         let dir = tempfile::tempdir_in(".").unwrap();
         let ctx = make_context_with_home(

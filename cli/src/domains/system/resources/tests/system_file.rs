@@ -66,6 +66,25 @@ fn fixture_resource(entry: SystemFile, executor: Arc<dyn Executor>) -> SystemFil
     resource
 }
 
+#[test]
+fn debug_format_and_non_create_only_invalid_installation_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let source_dir = dir.path().join("system");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(source_dir.join("bad.toml"), "[broken\n").unwrap();
+    let target = dir.path().join("etc-bad.toml");
+    let res = fixture_resource(
+        entry(dir.path(), &target, "bad.toml", MergeStrategy::Toml),
+        Arc::new(MockExecutor::new()),
+    );
+    let dbg = format!("{res:?}");
+    assert!(dbg.contains("SystemFileResource"), "{dbg}");
+    assert!(matches!(
+        res.installation_state().unwrap(),
+        ResourceState::Invalid { .. }
+    ));
+}
+
 #[path = "system_file_assessment.rs"]
 mod assessment;
 #[path = "system_file_ini.rs"]

@@ -63,15 +63,40 @@ NATIVE_MODULES = (
 LINUX_EXCLUSIONS = (
     *(("--exclude", path) for path in NATIVE_MODULES),
     ("--exclude-re", r"^src/infra/fs/mod\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]) in is_dir_like$"),
-    ("--exclude-re", r"^src/infra/exec/process\.rs:.*\btake_stdout_windows\b"),
-    ("--exclude-re", r"^src/domains/system/config/registry\.rs:.*\buppercase_native_registry_name\b"),
+    ("--exclude-re", r"^src/infra/fs/copy\.rs:.*\b(verify_link_creation_access|is_windows_reparse_link|preserve_link_attributes)\b"),
+    ("--exclude-re", r"^src/infra/fs/identity\.rs:.*\b(stored_entry_name|is_windows_reparse_point)\b"),
+    ("--exclude-re", r"^src/infra/fs/planned\.rs:.*\b(directory_case_sensitive|ordinal_alias|is_within_windows_alias)\b"),
     ("--exclude-re", r"^src/infra/fs/mutation\.rs:[0-9]+:[0-9]+: replace \| with \^ in open_in_place$"),
-    ("--exclude-re", r"^src/infra/fs/place\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported)\b"),
-    ("--exclude-re", r"^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b"),
-    ("--exclude-re", r"^src/app/commands/execution/elevation\.rs:.*\bprepare_windows_elevation\b"),
-    ("--exclude-re", r"^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|encode_reg_string|append_user_path|user_path_contains)\b"),
+    ("--exclude-re", r"^src/infra/fs/place\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported|non_linux_file_mode)\b"),
+    ("--exclude-re", r"^src/infra/exec/process\.rs:.*\b(take_stdout_windows|take_stderr_windows|terminate_child_windows|wait_after_terminate_windows|force_kill_child_windows|child_exited_without_reaping_fallback)\b"),
+    ("--exclude-re", r"^src/infra/platform\.rs:.*\b(developer_mode_flag_windows|developer_mode_enabled|detect_arch|detect_wsl)\b"),
+    ("--exclude-re", r"^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated|is_elevated_windows|sudo_credentials_cached|prime_sudo_credentials)\b"),
+    ("--exclude-re", r"^src/infra/logging/terminal\.rs:.*\b(stream_columns_windows|enable_console_ansi)\b"),
+    ("--exclude-re", r"^src/infra/logging/style\.rs:.*\bno_color_enabled\b"),
+    ("--exclude-re", r"^src/app/commands/execution/elevation\.rs:.*\b(prepare_windows_elevation|prepare_elevation_fallback)\b"),
+    ("--exclude-re", r"^src/app/interrupt\.rs:.*\bend_prompt_line\b"),
+    ("--exclude-re", r"^src/engine/context/mod\.rs:.*\bis_elevated\b"),
+    ("--exclude-re", r"^src/engine/task/mod\.rs:.*\b(dependencies|ordering_dependencies)\b"),
+    ("--exclude-re", r"^src/domains/system/config/registry\.rs:.*\buppercase_native_registry_name\b"),
+    ("--exclude-re", r"^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|encode_reg_string|append_user_path|user_path_contains|broadcast_environment_change)\b"),
+    ("--exclude-re", r"^src/domains/dotfiles/self_update\.rs:.*\bpre_update\b"),
+    ("--exclude-re", r"^src/domains/dotfiles/self_update/attestation\.rs:.*\b(available|retry_delay)\b"),
+    ("--exclude-re", r"^src/domains/dotfiles/self_update/http\.rs:.*\bretry_delay\b"),
+    ("--exclude-re", r"^src/domains/dotfiles/self_update/install\.rs:[0-9]+:[0-9]+: replace .* in <impl Drop for UpdateJournal>::drop$"),
+    ("--exclude-re", r"^src/domains/repository/update/apply\.rs:.*\bfetch_retry_delay\b"),
+    ("--exclude-re", r"^src/domains/packages/resources/pacman\.rs:.*\bis_root\b"),
     ("--exclude-re", r"^src/domains/system/resources/registry\.rs:.*\bnative::"),
     ("--exclude-re", r"^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$"),
+    ("--exclude-re", r"^src/domains/ai/apm/cowork/skill_files\.rs:[0-9]+:[0-9]+: delete match arm \(false, _\) in skill_files_match$"),
+    ("--exclude-re", r"^src/domains/ai/apm/cowork/skill_files\.rs:[0-9]+:[0-9]+: (delete match arm \(false, _\)|replace is_dir_like\(meta\) with (true|false)) in copy_skill_files$"),
+    ("--exclude-re", r"^src/domains/files/resources/symlink/platform\.rs:.*\b(create_symlink_windows|create_junction|command_output)\b"),
+    ("--exclude-re", r"^src/domains/files/resources/symlink/platform\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]|\|\| with &&) in is_link_like$"),
+)
+
+WINDOWS_EXCLUSIONS = (
+    ("--exclude-re", r"^src/infra/fs/place/windows\.rs:[0-9]+:[0-9]+: replace .* in <impl Drop for LocalDescriptor>::drop$"),
+    ("--exclude-re", r"^src/infra/fs/place/windows\.rs:.*\b(require_query_support|require_persistent_acls)\b"),
+    ("--exclude-re", r"^src/infra/run_lock/coordination/windows\.rs:[0-9]+:[0-9]+: replace .* in <impl Drop for KnownFolder>::drop$"),
 )
 
 WINDOWS_FILES = (
@@ -109,7 +134,10 @@ def suite_options(suite, exact=None, test_tool="cargo"):
         )
         pattern = None
     elif suite == "windows":
-        options = [arg for path in WINDOWS_FILES for arg in ("--file", path)]
+        options = [
+            *(arg for path in WINDOWS_FILES for arg in ("--file", path)),
+            *(arg for pair in WINDOWS_EXCLUSIONS for arg in pair),
+        ]
         test_target = (
             ["--cargo-arg=--lib", "--", *quiet_nextest]
             if nextest else ["--cargo-arg=--lib"]

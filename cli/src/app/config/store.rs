@@ -411,6 +411,21 @@ mod tests {
                 "{source:?} -> {target:?}"
             );
         }
+
+        let plain = symlink(&root, "bashrc");
+        assert!(!targets_apm_config(&plain));
+        assert!(!may_target_apm_config(&plain));
+        let apm_entry = symlink(&root, "apm/config/base.yml");
+        assert!(targets_apm_config(&apm_entry));
+        assert!(may_target_apm_config(&apm_entry));
+        let wildcard = Symlink {
+            source: "wild/*".into(),
+            target: Some("*/base.yml".into()),
+            allow_external_target: false,
+            origin: Some(root),
+        };
+        assert!(!targets_apm_config(&wildcard));
+        assert!(may_target_apm_config(&wildcard));
     }
 
     #[cfg(unix)]

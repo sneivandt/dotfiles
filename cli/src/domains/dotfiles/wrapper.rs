@@ -57,3 +57,40 @@ impl Task for UninstallWrapper {
         process_resources_remove(ctx, resources, "remove")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::exec::MockExecutor;
+    use crate::infra::logging::Logger;
+    use crate::infra::platform::{Os, Platform};
+    use crate::test_helpers::assert_task_changed;
+    use std::sync::Arc;
+
+    #[test]
+    fn uninstall_wrapper_on_linux_removes_both_sh_and_pwsh_wrappers() {
+        let root = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let ctx = Context::from_raw(
+            root.path().to_path_buf(),
+            None,
+            Platform::new(Os::Linux, false),
+            Arc::new(Logger::test()),
+            Arc::new(MockExecutor::new()),
+            home.path().to_path_buf(),
+            crate::engine::ContextOpts::default(),
+        );
+        let sh = WrapperResource::new(WrapperType::Sh, ctx.root(), ctx.home());
+        let pwsh = WrapperResource::new(WrapperType::Pwsh, ctx.root(), ctx.home());
+        crate::engine::Resource::apply(&sh).unwrap();
+        crate::engine::Resource::apply(&pwsh).unwrap();
+        let sh_path = home.path().join(".local/bin/dotfiles");
+        let pwsh_path = home.path().join(".local/bin/dotfiles.cmd");
+        assert!(sh_path.exists() && pwsh_path.exists());
+
+        let result = UninstallWrapper.run(&ctx).unwrap();
+        assert_task_changed(&result);
+        assert!(!sh_path.exists());
+        assert!(!pwsh_path.exists());
+    }
+}

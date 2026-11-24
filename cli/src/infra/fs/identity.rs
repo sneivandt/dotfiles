@@ -112,12 +112,8 @@ fn checked_join(base: &Path, path: &Path) -> Result<Option<PathBuf>> {
                 return Ok(None);
             }
             #[cfg(windows)]
-            {
-                use std::os::windows::fs::MetadataExt as _;
-                use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
-                if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-                    return Ok(None);
-                }
+            if is_windows_reparse_point(&metadata) {
+                return Ok(None);
             }
             route.pop();
         } else {
@@ -162,11 +158,15 @@ pub(crate) fn link_points_to_source(target: &Path, existing: &Path, source: &Pat
     if lookup.file_name().is_none() || entry_location(&lookup)? != configured {
         return Ok(false);
     }
-    if referenced == declared || referenced == configured {
-        return Ok(true);
-    }
     let route = spelled_route(&referenced)?;
     Ok(route == spelled_route(&declared)? || route == spelled_route(&configured)?)
+}
+
+#[cfg(windows)]
+fn is_windows_reparse_point(metadata: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+    use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
 }
 
 /// Compare locations without following the final entry.
@@ -185,4 +185,40 @@ pub(crate) fn same_entry(source: &Path, target: &Path) -> Result<bool> {
 /// verbatim. Do not turn discovery failures into an ownership decision.
 pub(crate) fn paths_equal(a: &Path, b: &Path) -> Result<bool> {
     Ok(super::resolve_directory(a)? == super::resolve_directory(b)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checked_join_preserves_relative_path_without_parent_traversal() {
+        assert_eq!(
+            checked_join(Path::new("relative"), Path::new("child")).unwrap(),
+            Some(PathBuf::from("relative").join("child"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn link_points_to_source_accepts_either_declared_or_canonical_route() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let real_dir = dir.path().join("real");
+        std::fs::create_dir(&real_dir).unwrap();
+        let real_file = real_dir.join("file.txt");
+        std::fs::write(&real_file, "ok").unwrap();
+        let alias_dir = dir.path().join("alias");
+        symlink(&real_dir, &alias_dir).unwrap();
+
+        let source_via_alias = alias_dir.join("file.txt");
+        let target_a = dir.path().join("link-to-alias");
+        let target_b = dir.path().join("link-to-real");
+        symlink(&source_via_alias, &target_a).unwrap();
+        symlink(&real_file, &target_b).unwrap();
+
+        assert!(link_points_to_source(&target_a, &source_via_alias, &source_via_alias).unwrap());
+        assert!(link_points_to_source(&target_b, &real_file, &source_via_alias).unwrap());
+    }
 }

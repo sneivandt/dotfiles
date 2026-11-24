@@ -130,6 +130,14 @@ pub fn write_atomic_checked(
 #[cfg(windows)]
 use windows::write_checked;
 
+#[cfg(all(unix, not(target_os = "linux")))]
+fn non_linux_file_mode(metadata: &std::fs::Metadata) -> u32 {
+    metadata.permissions().mode() & 0o777
+}
+
+#[cfg(target_os = "linux")]
+const METADATA_SOURCE_OPEN_FLAGS: i32 = nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK;
+
 #[cfg(not(windows))]
 fn write_checked(
     path: &Path,
@@ -140,14 +148,14 @@ fn write_checked(
     let existing = super::symlink_metadata_optional(path, "read atomic-write target permissions")?
         .filter(std::fs::Metadata::is_file);
     #[cfg(all(unix, not(target_os = "linux")))]
-    let mode = existing.map(|metadata| metadata.permissions().mode() & 0o777);
+    let mode = existing.map(|metadata| non_linux_file_mode(&metadata));
     #[cfg(target_os = "linux")]
     let source = existing
         .map(|_| {
             use std::os::unix::fs::OpenOptionsExt as _;
             std::fs::OpenOptions::new()
                 .read(true)
-                .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK)
+                .custom_flags(METADATA_SOURCE_OPEN_FLAGS)
                 .open(path)
                 .with_context(|| format!("open metadata source {}", path.display()))
         })

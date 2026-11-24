@@ -22,6 +22,42 @@ use super::scripts::{
     build_workflow_script_args, parse_autopilot_result, parse_desired_ids,
 };
 
+#[test]
+fn snapshot_desired_workflows_handles_missing_table_and_query_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    write_copilot_app_db(dir.path());
+    let lock = "dependencies:\n  - name: local\n    deployed_files:\n      - copilot-app-db://workflows/wf-1\n";
+    std::fs::create_dir_all(dir.path().join(".apm")).unwrap();
+    std::fs::write(dir.path().join(".apm/apm.lock.yaml"), lock).unwrap();
+
+    let mut mock_first = MockExecutor::new();
+    expect_python3(&mut mock_first, 1, true);
+    mock_first.expect_execute().once().return_once(|_| {
+        Ok(ExecResult::failure(
+            "wf-1\n",
+            "sqlite3.OperationalError: no such table: workflows",
+            Some(1),
+        ))
+    });
+    let ctx_first = make_home_context_with_executor(dir.path(), mock_first);
+    assert_eq!(
+        super::snapshot_desired_apm_workflow_ids(&ctx_first),
+        DesiredApmWorkflows::FirstInstall
+    );
+
+    let mut mock_err = MockExecutor::new();
+    expect_python3(&mut mock_err, 1, true);
+    mock_err
+        .expect_execute()
+        .once()
+        .return_once(|_| Ok(ExecResult::failure("wf-1\n", "database is locked", Some(1))));
+    let ctx_err = make_home_context_with_executor(dir.path(), mock_err);
+    assert_eq!(
+        super::snapshot_desired_apm_workflow_ids(&ctx_err),
+        DesiredApmWorkflows::Unavailable
+    );
+}
+
 fn id_set(ids: &[&str]) -> HashSet<String> {
     ids.iter().map(|s| (*s).to_string()).collect()
 }

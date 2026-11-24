@@ -113,12 +113,23 @@ pub(crate) fn stderr_style() -> StyleChoice {
 }
 
 fn no_color_enabled() -> bool {
-    std::env::var_os("NO_COLOR").is_some_and(|value| !value.is_empty())
+    env_disables_color(std::env::var_os("NO_COLOR").as_deref())
+}
+
+fn env_disables_color(value: Option<&std::ffi::OsStr>) -> bool {
+    value.is_some_and(|value| !value.is_empty())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn env_disables_color_requires_non_empty_value() {
+        assert!(!env_disables_color(None));
+        assert!(!env_disables_color(Some(std::ffi::OsStr::new(""))));
+        assert!(env_disables_color(Some(std::ffi::OsStr::new("1"))));
+    }
 
     #[test]
     fn auto_enables_ansi_only_for_terminal_without_no_color() {

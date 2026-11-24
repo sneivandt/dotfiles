@@ -93,12 +93,14 @@ impl PlannedDirectory {
 
     /// Check tree separation for copying, not the identity of a declared entry.
     pub(crate) fn trees_overlap(&self, other: &Self) -> Result<bool> {
-        let overlap = self.is_within(other)? || other.is_within(self)?;
         #[cfg(target_os = "linux")]
-        if !overlap {
-            return linux::aliased_trees_overlap(self, other);
+        {
+            linux::aliased_trees_overlap(self, other)
         }
-        Ok(overlap)
+        #[cfg(not(target_os = "linux"))]
+        {
+            Ok(self.is_within(other)? || other.is_within(self)?)
+        }
     }
 
     #[cfg_attr(
@@ -122,22 +124,27 @@ impl PlannedDirectory {
         }
         #[cfg(windows)]
         {
-            if directory_case_sensitive(&self.existing)? {
-                return Ok(false);
-            }
-            let mut candidate = self.missing.components();
-            for part in parent.missing.components() {
-                let Some(next) = candidate.next() else {
-                    return Ok(false);
-                };
-                if !ordinal_alias(part.as_os_str(), next.as_os_str())? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
+            self.is_within_windows_alias(parent)
         }
         #[cfg(not(windows))]
         Ok(false)
+    }
+
+    #[cfg(windows)]
+    fn is_within_windows_alias(&self, parent: &Self) -> Result<bool> {
+        if directory_case_sensitive(&self.existing)? {
+            return Ok(false);
+        }
+        let mut candidate = self.missing.components();
+        for part in parent.missing.components() {
+            let Some(next) = candidate.next() else {
+                return Ok(false);
+            };
+            if !ordinal_alias(part.as_os_str(), next.as_os_str())? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 }
 

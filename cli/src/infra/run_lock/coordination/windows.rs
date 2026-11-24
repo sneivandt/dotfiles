@@ -129,3 +129,33 @@ impl Drop for ComApartment {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows_sys::Win32::System::Com::COINIT_APARTMENTTHREADED;
+
+    #[test]
+    fn com_apartment_tracks_ownership_across_fresh_and_sta_threads() {
+        std::thread::spawn(|| {
+            let com = ComApartment::initialize().expect("fresh MTA thread");
+            assert!(com.0, "fresh thread must own its COM initialization");
+        })
+        .join()
+        .unwrap();
+
+        std::thread::spawn(|| {
+            let sta = u32::try_from(COINIT_APARTMENTTHREADED).unwrap();
+            // SAFETY: Balanced with CoUninitialize at the end of this thread.
+            let status = unsafe { CoInitializeEx(core::ptr::null(), sta) };
+            assert!(status >= 0, "expected STA init to succeed: {status:#x}");
+            let com = ComApartment::initialize().expect("existing STA thread");
+            assert!(!com.0, "RPC_E_CHANGED_MODE must not claim COM ownership");
+            drop(com);
+            // SAFETY: Balances the STA CoInitializeEx call above.
+            unsafe { CoUninitialize() };
+        })
+        .join()
+        .unwrap();
+    }
+}

@@ -328,7 +328,7 @@ fn checkout_head(ctx: &Context, repository: &CheckedRepository) -> Result<Option
 /// repository they run concurrently: the overlay fetch no longer waits on the
 /// main repository's round trip. This task gates the post-update process
 /// restart, so the saving is on the run's critical path.
-fn fetch_all(
+pub(super) fn fetch_all(
     ctx: &Context,
     repositories: &[(&CheckedRepository, String, String)],
 ) -> std::result::Result<Result<Vec<String>, String>, ExecError> {
@@ -385,7 +385,7 @@ fn fetch_all(
 
 // Git can report the same object for FETCH_HEAD and its tracking refs. Pruned
 // refs have a deletion flag and do not participate in the merge.
-fn fetched_commit(output: &str) -> Option<&str> {
+pub(super) fn fetched_commit(output: &str) -> Option<&str> {
     let mut commit = None;
     for line in output.lines() {
         // A fast-forward uses a literal space as the status field.

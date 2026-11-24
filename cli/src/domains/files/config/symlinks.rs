@@ -269,10 +269,7 @@ pub(crate) fn inspect_source(source: &Path, directory: Option<&Path>) -> Result<
 }
 
 fn is_absolute_like(path: &str) -> bool {
-    Path::new(path).is_absolute()
-        || path.starts_with('/')
-        || path.starts_with('\\')
-        || path.as_bytes().get(1).is_some_and(|b| *b == b':')
+    path.starts_with(['/', '\\']) || path.as_bytes().get(1) == Some(&b':')
 }
 
 fn has_parent_component(path: &str) -> bool {
@@ -401,6 +398,12 @@ symlink = ["bashrc"]
 
     #[test]
     fn load_base_symlinks() {
+        for abs in ["/abs/path", "\\win\\path", "C:\\drive\\path", "D:rel"] {
+            assert!(is_absolute_like(abs), "expected absolute-like: {abs}");
+        }
+        assert!(!is_absolute_like("relative/path"));
+        assert!(!is_absolute_like("a"));
+
         let (_dir, path) = write_temp_toml(
             r#"[base]
 symlinks = ["bashrc", "config/git/config"]

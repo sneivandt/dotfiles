@@ -104,5 +104,19 @@ mod tests {
             .unwrap()
         );
         assert!(!within(&missing("/view", "news"), &missing("/source", "new"), alias).unwrap());
+
+        let fixture = tempfile::tempdir().unwrap();
+        let nested = fixture.path().join("child");
+        std::fs::create_dir(&nested).unwrap();
+        let parent_dir = PlannedDirectory {
+            existing: fixture.path().to_path_buf(),
+            missing: "".into(),
+        };
+        let child_dir = PlannedDirectory {
+            existing: nested,
+            missing: "".into(),
+        };
+        assert!(aliased_trees_overlap(&child_dir, &parent_dir).unwrap());
+        assert!(aliased_trees_overlap(&parent_dir, &child_dir).unwrap());
     }
 }

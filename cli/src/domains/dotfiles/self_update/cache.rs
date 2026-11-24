@@ -101,8 +101,11 @@ fn read_boot_id(path: &Path) -> Option<String> {
 /// Returns `None` if the system clock is before the epoch, ensuring callers
 /// treat this as a stale/missing timestamp rather than a "fresh" zero value.
 fn unix_timestamp() -> Option<u64> {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    unix_timestamp_from(std::time::SystemTime::now())
+}
+
+fn unix_timestamp_from(now: std::time::SystemTime) -> Option<u64> {
+    now.duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .ok()
         .filter(|&t| t > 0)
@@ -114,6 +117,11 @@ mod tests {
 
     #[test]
     fn writing_a_cache_records_the_current_time_and_platform_boot_id() {
+        assert_eq!(unix_timestamp_from(std::time::UNIX_EPOCH), None);
+        assert_eq!(
+            unix_timestamp_from(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1)),
+            Some(1)
+        );
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("bin")).unwrap();
         write_cache(dir.path(), "v1.0").unwrap();
@@ -122,7 +130,7 @@ mod tests {
         assert_eq!(lines.next(), Some(super::super::REPO));
         assert_eq!(lines.next(), Some("v1.0"));
         let timestamp = lines.next().unwrap().parse::<u64>().unwrap();
-        assert!(timestamp > 0, "{content}");
+        assert!(timestamp >= 1_700_000_000, "{content}");
         #[cfg(target_os = "linux")]
         {
             let kernel_id = fs::read_to_string("/proc/sys/kernel/random/boot_id").ok();

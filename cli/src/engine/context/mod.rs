@@ -409,7 +409,10 @@ impl Context {
     #[must_use]
     pub(crate) fn can_create_symlinks(&self) -> bool {
         if self.platform.is_windows() {
-            crate::infra::platform::developer_mode_enabled() || self.is_elevated()
+            windows_can_create_symlinks(
+                crate::infra::platform::developer_mode_enabled(),
+                self.is_elevated(),
+            )
         } else {
             true
         }
@@ -551,6 +554,10 @@ impl Context {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+pub(crate) const fn windows_can_create_symlinks(dev_mode: bool, elevated: bool) -> bool {
+    dev_mode || elevated
+}
 
 pub(crate) fn home_directory(env: &dyn Env, platform: Platform) -> Result<std::path::PathBuf> {
     let home = if platform.is_windows() {

@@ -167,3 +167,22 @@ pub(super) fn build_paru(ctx: &Context, tmp: &Path) -> Result<()> {
         .context("building paru with makepkg")?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::exec::ExecResult;
+
+    #[test]
+    fn first_output_line_trims_and_skips_blank_lines_across_stdout_and_stderr() {
+        assert_eq!(first_output_line(&ExecResult::success(" \n\t\n")), None);
+        assert_eq!(
+            first_output_line(&ExecResult::success("\n  cargo 1.80.0  \nextra")),
+            Some("cargo 1.80.0")
+        );
+        assert_eq!(
+            first_output_line(&ExecResult::failure("  \n", "\n  stderr line \n", Some(1))),
+            Some("stderr line")
+        );
+    }
+}

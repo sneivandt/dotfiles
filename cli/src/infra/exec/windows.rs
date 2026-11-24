@@ -281,6 +281,8 @@ mod tests {
     #[test]
     fn encode_command_produces_utf16le_base64() {
         assert_eq!(powershell_encode_command("abc"), "YQBiAGMA");
+        let cmd = PowerShellCommand::new("abc");
+        assert_eq!(cmd.args(), ["-NoProfile", "-EncodedCommand", "YQBiAGMA"]);
     }
 
     #[test]

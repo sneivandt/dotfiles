@@ -19,7 +19,7 @@ fn stream_columns(stream: &impl std::os::fd::AsFd) -> Option<usize> {
     unsafe_code,
     reason = "Win32 exposes the visible console window through an out-pointer"
 )]
-fn stream_columns(stream: &impl std::os::windows::io::AsRawHandle) -> Option<usize> {
+fn stream_columns_windows(stream: &impl std::os::windows::io::AsRawHandle) -> Option<usize> {
     use windows_sys::Win32::System::Console::{
         CONSOLE_SCREEN_BUFFER_INFO, GetConsoleScreenBufferInfo,
     };
@@ -31,6 +31,9 @@ fn stream_columns(stream: &impl std::os::windows::io::AsRawHandle) -> Option<usi
     let width = i32::from(info.srWindow.Right) - i32::from(info.srWindow.Left) + 1;
     usize::try_from(width).ok().filter(|&cols| cols > 0)
 }
+
+#[cfg(windows)]
+use stream_columns_windows as stream_columns;
 
 /// Enable ANSI output on the attached Windows console, even if stdout is redirected.
 #[cfg(windows)]
@@ -71,5 +74,34 @@ mod tests {
         let (reader, writer) = std::io::pipe().expect("test pipe");
         assert_eq!(stream_columns(&writer), None);
         assert_eq!(stream_columns(&reader), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn pty_reports_positive_dimensions_and_rejects_zero_axes() {
+        let ptmx = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/ptmx")
+            .expect("open /dev/ptmx");
+        for (rows, cols, expected) in [
+            (24, 120, Some(120)),
+            (0, 120, None),
+            (24, 0, None),
+            (0, 0, None),
+        ] {
+            let size = rustix::termios::Winsize {
+                ws_row: rows,
+                ws_col: cols,
+                ws_xpixel: 0,
+                ws_ypixel: 0,
+            };
+            rustix::termios::tcsetwinsize(&ptmx, size).expect("set pty winsize");
+            assert_eq!(
+                stream_columns(&ptmx),
+                expected,
+                "unexpected columns for rows={rows}, cols={cols}"
+            );
+        }
     }
 }

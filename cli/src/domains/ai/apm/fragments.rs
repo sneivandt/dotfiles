@@ -82,8 +82,7 @@ pub(super) fn discover_effective_fragment_files(
             .target
             .parent()
             .context("fragment target has no parent")?;
-        Ok(parent == Path::new(".apm/config")
-            || directory.same_directory(&PlannedDirectory::resolve(&home.join(parent))?)?)
+        directory.same_directory(&PlannedDirectory::resolve(&home.join(parent))?)
     };
     let mut fragments = BTreeMap::new();
     let mut active = HashSet::new();
@@ -267,7 +266,6 @@ fn merge_layered_value(existing: &mut Value, incoming: &Value) {
         (Value::Array(existing_items), Value::Array(incoming_items)) => {
             append_unique_values(existing_items, incoming_items);
         }
-        (existing_value, incoming_value) if existing_value == incoming_value => {}
         (existing_value, incoming_value) => {
             *existing_value = incoming_value.clone();
         }
@@ -693,6 +691,26 @@ devDependencies:
                 "{section} must retain its own deduplicated dependency"
             );
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discover_yaml_files_propagates_unreadable_config_directory_error() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        std::fs::create_dir(&config_dir).unwrap();
+        std::fs::set_permissions(&config_dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let result = discover_yaml_files(&config_dir);
+        std::fs::set_permissions(&config_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if nix::unistd::Uid::effective().is_root() {
+            return;
+        }
+        assert!(
+            result.is_err(),
+            "permission error reading APM config dir must not be treated as absent"
+        );
     }
 
     #[test]

@@ -184,3 +184,20 @@ impl<'a> Operation for ExtensionInstall<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stopped_non_interrupted_excludes_not_attempted_items_from_failed_count() {
+        let plan = InstallPlan {
+            current: vec!["cur.one"],
+            missing: vec!["a", "b", "c"],
+        };
+        let err = plan.stopped(anyhow::anyhow!("boom"), Failures::new(), false, 1);
+        let report = err.downcast_ref::<BatchReport>().unwrap();
+        assert_eq!(report.stats().failed_count(), 2);
+        assert_eq!(report.not_attempted_count(), 1);
+    }
+}

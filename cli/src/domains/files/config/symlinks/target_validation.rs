@@ -138,5 +138,7 @@ mod tests {
             symlink("three", Some(".config/./example-extra")),
         ])
         .unwrap();
+        let seg = [OsString::from("same")];
+        assert!(!is_ancestor(&seg, &seg));
     }
 }

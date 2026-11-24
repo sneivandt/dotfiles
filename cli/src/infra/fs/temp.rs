@@ -342,6 +342,35 @@ mod tests {
     }
 
     #[test]
+    fn reservation_retries_after_already_exists_collisions() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut file_attempts = 0;
+        let (file_guard, _file) =
+            TempGuard::reserve_file_with(dir.path(), ".retry", "tmp", |path| {
+                file_attempts += 1;
+                if file_attempts == 1 {
+                    return Err(io::Error::from(io::ErrorKind::AlreadyExists));
+                }
+                File::options().write(true).create_new(true).open(path)
+            })
+            .unwrap();
+        assert_eq!(file_attempts, 2);
+        drop(file_guard);
+
+        let mut dir_attempts = 0;
+        let (dir_guard, ()) = TempGuard::reserve_dir_with(dir.path(), ".retry", "tmp", |path| {
+            dir_attempts += 1;
+            if dir_attempts == 1 {
+                return Err(io::Error::from(io::ErrorKind::AlreadyExists));
+            }
+            std::fs::create_dir(path)
+        })
+        .unwrap();
+        assert_eq!(dir_attempts, 2);
+        drop(dir_guard);
+    }
+
+    #[test]
     fn concurrent_reservations_keep_distinct_contents_until_their_own_guard_is_dropped() {
         use std::io::Write as _;
         let dir = tempfile::tempdir().unwrap();

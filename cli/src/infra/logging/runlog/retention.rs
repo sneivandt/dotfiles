@@ -102,9 +102,7 @@ pub(super) fn create_run_log_file_with(
                 // Holding both the directory lock and this exclusive lease proves
                 // the existing log is closed, so cleaning up the lease leaves no orphan.
                 drop(lease);
-                if let Err(cleanup_error) = fs::remove_file(lease_path(&path))
-                    && cleanup_error.kind() != std::io::ErrorKind::NotFound
-                {
+                if let Err(cleanup_error) = fs::remove_file(lease_path(&path)) {
                     tracing::debug!(
                         "could not remove unused log lease {}: {cleanup_error}",
                         path.display()
@@ -200,22 +198,57 @@ pub(super) fn prune_run_logs_with(
                 continue;
             }
         }
-        match fs::remove_file(&path) {
-            Ok(()) => excess -= 1,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => excess -= 1,
-            Err(error) => {
-                tracing::debug!("could not prune run log {}: {error}", path.display());
-                continue;
-            }
+        if !apply_prune_removal(fs::remove_file(&path), &path, &mut excess) {
+            continue;
         }
         drop(lease);
-        if let Err(error) = fs::remove_file(&lease_path)
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
+        if let Err(error) = fs::remove_file(&lease_path) {
             tracing::debug!(
                 "could not remove log lease {}: {error}",
                 lease_path.display()
             );
         }
+    }
+}
+
+fn apply_prune_removal(result: std::io::Result<()>, path: &Path, excess: &mut usize) -> bool {
+    match result {
+        Ok(()) => {
+            *excess -= 1;
+            true
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            *excess -= 1;
+            true
+        }
+        Err(error) => {
+            tracing::debug!("could not prune run log {}: {error}", path.display());
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apply_prune_removal_decrements_for_ok_and_not_found_only() {
+        let path = Path::new("sample.log");
+        let mut excess = 3;
+        assert!(apply_prune_removal(Ok(()), path, &mut excess));
+        assert_eq!(excess, 2);
+        assert!(apply_prune_removal(
+            Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+            path,
+            &mut excess
+        ));
+        assert_eq!(excess, 1);
+        assert!(!apply_prune_removal(
+            Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            path,
+            &mut excess
+        ));
+        assert_eq!(excess, 1);
     }
 }

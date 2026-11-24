@@ -480,7 +480,7 @@ pub(super) fn windows_elevation_result(
 
 /// Neither `sudo` nor UAC applies; run everything in-process.
 #[cfg(not(any(unix, windows)))]
-const fn prepare_elevation(
+const fn prepare_elevation_fallback(
     _ctx: &Context,
     _log: &Arc<Logger>,
     _names: &[&str],
@@ -489,6 +489,9 @@ const fn prepare_elevation(
 ) -> ElevationPlan {
     ElevationPlan::Ready
 }
+
+#[cfg(not(any(unix, windows)))]
+use prepare_elevation_fallback as prepare_elevation;
 
 /// Rewrite this run's arguments so the elevated child runs only `selectors`.
 ///

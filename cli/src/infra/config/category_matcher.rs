@@ -209,6 +209,10 @@ mod tests {
         let active = vec![Category::Base, Category::Arch];
 
         assert!(!matches(&section, &active));
+        assert_eq!(
+            Category::Base.partial_cmp(&Category::Desktop),
+            Some(std::cmp::Ordering::Less)
+        );
     }
 
     #[test]

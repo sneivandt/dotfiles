@@ -179,14 +179,17 @@ impl Platform {
 
     fn detect_wsl() -> bool {
         if cfg!(target_os = "linux") {
-            std::fs::read_to_string("/proc/version").is_ok_and(|v| {
-                let lower = v.to_lowercase();
-                lower.contains("microsoft") || lower.contains("wsl")
-            })
+            std::fs::read_to_string("/proc/version")
+                .is_ok_and(|version| is_wsl_proc_version(&version))
         } else {
             false
         }
     }
+}
+
+fn is_wsl_proc_version(version: &str) -> bool {
+    let lower = version.to_lowercase();
+    lower.contains("microsoft") || lower.contains("wsl")
 }
 
 /// Registry subkey holding the Windows Developer Mode flag.
@@ -237,7 +240,7 @@ impl DeveloperModeFlag {
 /// Returns an error when the registry can be reached but the read fails for a
 /// reason other than the value being missing.
 #[cfg(windows)]
-pub(crate) fn developer_mode_flag() -> std::io::Result<DeveloperModeFlag> {
+pub(crate) fn developer_mode_flag_windows() -> std::io::Result<DeveloperModeFlag> {
     use winreg::RegKey;
     use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, REG_DWORD};
 
@@ -254,6 +257,9 @@ pub(crate) fn developer_mode_flag() -> std::io::Result<DeveloperModeFlag> {
         Err(e) => Err(e),
     }
 }
+
+#[cfg(windows)]
+pub(crate) use developer_mode_flag_windows as developer_mode_flag;
 
 #[cfg(not(windows))]
 #[allow(
@@ -371,5 +377,18 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn wsl_proc_version_detection_and_developer_mode_bytes() {
+        assert!(is_wsl_proc_version(
+            "Linux version 6.6.87-microsoft-standard"
+        ));
+        assert!(is_wsl_proc_version("Linux version 6.6.87-WSL2"));
+        assert!(!is_wsl_proc_version("Linux version 6.12.1-arch1-1"));
+        assert_eq!(
+            DeveloperModeFlag::from_bytes(false, &[1, 0, 0, 0]),
+            DeveloperModeFlag::Invalid
+        );
     }
 }

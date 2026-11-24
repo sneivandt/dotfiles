@@ -5,12 +5,12 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, PartialEq, Eq)]
-struct CheckoutRevision {
+pub(super) struct CheckoutRevision {
     head: Vec<u8>,
     commit: Option<git2::Oid>,
 }
 
-fn checkout_revision(root: &Path) -> Result<Option<CheckoutRevision>> {
+pub(super) fn checkout_revision(root: &Path) -> Result<Option<CheckoutRevision>> {
     if crate::infra::fs::symlink_metadata_optional(&root.join(".git"), "checking checkout .git")?
         .is_none()
     {

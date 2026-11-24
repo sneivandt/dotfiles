@@ -16,8 +16,12 @@ pub(super) fn ensure_single_link(file: &File) -> anyhow::Result<()> {
 
 pub(super) fn shared_file_identity(file: &File) -> anyhow::Result<Option<(u64, u64)>> {
     let info = file_information(file)?;
-    let index = (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow);
+    let index = combine_file_index(info.nFileIndexHigh, info.nFileIndexLow);
     Ok((info.nNumberOfLinks > 1).then(|| (u64::from(info.dwVolumeSerialNumber), index)))
+}
+
+const fn combine_file_index(high: u32, low: u32) -> u64 {
+    (u64::from(high) << 32) + u64::from(low)
 }
 
 fn file_information(file: &File) -> anyhow::Result<BY_HANDLE_FILE_INFORMATION> {
@@ -54,5 +58,37 @@ mod tests {
                 .raw_os_error(),
             Some(5)
         );
+    }
+
+    #[test]
+    fn shared_file_identity_reports_hard_linked_files_and_packs_high_low_bits() {
+        assert_eq!(
+            combine_file_index(0x1234_5678, 0x9abc_def0),
+            0x1234_5678_9abc_def0
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first");
+        let second = dir.path().join("second");
+        let third = dir.path().join("third");
+        std::fs::write(&first, b"content").unwrap();
+        assert_eq!(
+            shared_file_identity(&File::open(&first).unwrap()).unwrap(),
+            None
+        );
+
+        std::fs::hard_link(&first, &second).unwrap();
+        let id_first = shared_file_identity(&File::open(&first).unwrap())
+            .unwrap()
+            .expect("2-link identity");
+        let id_second = shared_file_identity(&File::open(&second).unwrap())
+            .unwrap()
+            .expect("2-link identity");
+        assert_eq!(id_first, id_second);
+
+        std::fs::hard_link(&first, &third).unwrap();
+        let id_third = shared_file_identity(&File::open(&third).unwrap())
+            .unwrap()
+            .expect("3-link identity");
+        assert_eq!(id_first, id_third);
     }
 }

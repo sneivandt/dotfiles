@@ -194,4 +194,46 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn configure_git_declares_access_claim_and_logs_only_unchanged_settings_as_ok() {
+        use std::sync::Arc;
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("gitconfig");
+        std::fs::write(&config_path, "[core]\n autocrlf = false\n").unwrap();
+
+        let log = Arc::new(crate::test_helpers::CapturingOutput::default());
+        let log_clone = Arc::clone(&log);
+        let log_handle: Arc<dyn crate::infra::logging::Log> = log_clone;
+        let ctx = Context::from_raw(
+            dir.path().to_path_buf(),
+            None,
+            crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
+            log_handle,
+            Arc::new(crate::infra::exec::MockExecutor::new()),
+            dir.path().to_path_buf(),
+            crate::engine::ContextOpts::default(),
+        );
+        let task = ConfigureGit::new(ConfigHandle::new(vec![]));
+        assert_eq!(task.access_claims(&ctx), vec![config_access_claim()]);
+
+        let op = ConfigureGitFile {
+            path: config_path,
+            settings: vec![
+                GitConfigResource::new("core.autocrlf".into(), "false".into()),
+                GitConfigResource::new("user.name".into(), "Alice".into()),
+            ],
+        };
+        let state = op.current_state(&ctx).unwrap();
+        assert!(matches!(state, OperationState::NeedsRun { .. }));
+        let debug = log.messages_of(crate::infra::logging::MsgKind::Debug);
+        assert!(
+            debug.iter().any(|m| m.contains("ok core.autocrlf = false")),
+            "already-correct setting should log ok: {debug:?}"
+        );
+        assert!(
+            !debug.iter().any(|m| m.contains("ok user.name = Alice")),
+            "changed setting must not log ok: {debug:?}"
+        );
+    }
 }

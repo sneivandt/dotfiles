@@ -506,6 +506,31 @@ fn precomputed_assessment_is_reused_during_execution() {
 }
 
 #[test]
+fn task_id_record_key_assessment_debug_and_update_only_defaults() {
+    let type_key = TaskId::Type(std::any::TypeId::of::<()>()).record_key();
+    assert!(type_key.starts_with("type:"), "{type_key}");
+    let dyn_key = TaskId::dynamic::<()>("slot-a").record_key();
+    assert!(
+        dyn_key.starts_with("named:") && dyn_key.ends_with(":slot-a"),
+        "{dyn_key}"
+    );
+    assert_ne!(type_key, dyn_key);
+
+    let inputs = AssessmentInputs::new(&|_| false);
+    assert_eq!(
+        format!("{inputs:?}"),
+        "AssessmentInputs { provider_stability: [], .. }"
+    );
+
+    let task = GatedTask {
+        ran: Arc::new(AtomicBool::new(false)),
+        should_run: true,
+        needs_elevation: false,
+    };
+    assert!(!task.update_only());
+}
+
+#[test]
 fn empty_resource_task_bodies_skip_discovery() {
     let (ctx, _) = make_static_context("/fixture".into(), None);
     let loads = AtomicUsize::new(0);

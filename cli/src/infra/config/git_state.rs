@@ -83,6 +83,10 @@ mod tests {
     fn read_returns_none_when_unset() {
         let (dir, root) = init_test_repo();
         assert_eq!(read_local(&root, "dotfiles.missing").unwrap(), None);
+        assert!(
+            read_local(&root, "invalid-key-without-section").is_err(),
+            "non-NotFound git config errors must propagate"
+        );
         drop(dir);
     }
 

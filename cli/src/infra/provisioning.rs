@@ -65,4 +65,14 @@ mod tests {
         assert!(!is_arch_chroot(&MapEnv::new()));
         assert!(!is_arch_chroot(&MapEnv::new().with(ENV_VAR, "container")));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn deferred_extensions_state_propagates_non_not_found_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("not-a-directory");
+        std::fs::write(&file, b"").unwrap();
+        let err = deferred_extensions_state(&file.join("marker")).unwrap_err();
+        assert_ne!(err.kind(), io::ErrorKind::NotFound);
+    }
 }

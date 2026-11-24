@@ -87,3 +87,26 @@ pub(super) fn update(content: &str) -> Result<Option<String>> {
     }
     Ok(Some(updated))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_handles_shebang_boundaries_and_non_comment_leading_guard() {
+        // Shebang with newline keeps newline at end of shebang (kills + -> *).
+        let with_nl = update("#!/bin/sh\necho hi\n").unwrap().unwrap();
+        assert!(
+            with_nl.starts_with(&format!("#!/bin/sh\n{GUARD}echo hi\n")),
+            "{with_nl:?}"
+        );
+
+        // Shebang without trailing newline inserts newline before guard (kills delete !).
+        let bare = update("#!/bin/sh").unwrap().unwrap();
+        assert_eq!(bare, format!("#!/bin/sh\n{GUARD}"));
+
+        // Non-comment line ending in '\n' before guard must fail (kills && -> ||).
+        let bad = format!("export FOO=1\n{GUARD}");
+        assert!(update(&bad).is_err());
+    }
+}

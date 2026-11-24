@@ -72,3 +72,15 @@ fn parent_pid() -> io::Result<u32> {
         Err(io::Error::last_os_error())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parent_pid_returns_current_process_parent() {
+        let ppid = parent_pid().expect("discover parent pid");
+        assert!(ppid > 4, "expected real parent pid, got {ppid}");
+        assert_ne!(ppid, std::process::id());
+    }
+}

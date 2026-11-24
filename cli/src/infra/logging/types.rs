@@ -524,6 +524,37 @@ impl<T: Output + TaskRecorder> Log for T {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct MinimalOutput {
+        emitted: Mutex<Vec<(MsgKind, String)>>,
+    }
+
+    impl Output for MinimalOutput {
+        fn emit(&self, kind: MsgKind, msg: Cow<'_, str>) {
+            self.emitted.lock().unwrap().push((kind, msg.into_owned()));
+        }
+    }
+
+    #[test]
+    fn default_output_action_and_debug_enabled_follow_contract() {
+        let out = MinimalOutput::default();
+        assert_eq!(
+            out.debug_enabled(),
+            tracing::dispatcher::has_been_set(),
+            "default Output::debug_enabled must match tracing::dispatcher::has_been_set()"
+        );
+        out.action("install", "git", false, "install git");
+        out.action("install", "git", true, "install git");
+        assert_eq!(
+            *out.emitted.lock().unwrap(),
+            vec![
+                (MsgKind::Info, "install git".into()),
+                (MsgKind::DryRun, "install git".into()),
+            ]
+        );
+    }
 
     #[test]
     fn action_counts_merge_saturates() {

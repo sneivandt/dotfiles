@@ -358,6 +358,44 @@ mod tests {
         assert_eq!(std::fs::read_to_string(target).unwrap(), "source");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn discard_staged_tree_does_not_chmod_on_non_permission_error_and_stays_in_tree_handles_missing_and_loop()
+     {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path();
+
+        // discard_staged_tree on a read-only regular file fails with non-PermissionDenied
+        // and must NOT chmod it to 0o700.
+        let file = root.join("regular-file");
+        std::fs::write(&file, "keep").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o444)).unwrap();
+        assert!(discard_staged_tree(&file).is_err());
+        assert_eq!(
+            std::fs::symlink_metadata(&file)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o444
+        );
+
+        // stays_in_tree: missing plain child stays in tree (Ok(true)), killing NotFound -> false / !=.
+        assert!(stays_in_tree(root, root, Path::new("missing-leaf")).unwrap());
+
+        // stays_in_tree: symlink loop fails canonicalize with non-NotFound (ELOOP) and must
+        // propagate directly without the "cannot resolve link component" NotFound context.
+        let loop_link = root.join("loop-a");
+        std::os::unix::fs::symlink("loop-a", &loop_link).unwrap();
+        let err = stays_in_tree(root, root, Path::new("loop-a")).unwrap_err();
+        assert!(
+            !format!("{err:#}").contains("cannot resolve link component"),
+            "non-NotFound error must not take NotFound link branch: {err:#}"
+        );
+    }
+
     #[test]
     #[ignore = "subprocess fixture for interrupted publication"]
     fn interrupt_publication() {

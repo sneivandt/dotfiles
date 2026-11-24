@@ -80,7 +80,7 @@ impl HookFileResource {
         let Some(metadata) = crate::infra::fs::symlink_metadata_optional(path, "stat hook")? else {
             return Ok(None);
         };
-        if !metadata.is_file() || metadata.is_symlink() {
+        if !metadata.is_file() {
             return Err(anyhow::anyhow!(
                 "preserving foreign hook {}; move it aside before installing dotfiles hooks",
                 path.display()
@@ -735,10 +735,17 @@ mod tests {
             if published {
                 std::fs::write(&resource.target, b"new").unwrap();
             }
-            assert!(matches!(
+            let expected_current = if published {
+                "ownership update incomplete"
+            } else {
+                "content differs"
+            };
+            assert_eq!(
                 resource.current_state().unwrap(),
-                ResourceState::Incorrect { .. }
-            ));
+                ResourceState::Incorrect {
+                    current: expected_current.to_string(),
+                }
+            );
             assert_eq!(
                 std::fs::read_to_string(resource.ownership_path()).unwrap(),
                 pending
@@ -750,6 +757,22 @@ mod tests {
             assert_eq!(resource.remove().unwrap(), ResourceChange::AlreadyCorrect);
             assert_eq!(std::fs::read(&resource.target).unwrap(), b"old");
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_targeting_executable_source_reports_correct_state() {
+        use std::os::unix::fs::{PermissionsExt as _, symlink};
+
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let source = dir.path().join("source");
+        let target = dir.path().join("pre-commit");
+        std::fs::write(&source, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+        symlink(&source, &target).unwrap();
+
+        let resource = HookFileResource::new(source, target);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
     #[cfg(unix)]

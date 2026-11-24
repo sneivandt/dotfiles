@@ -182,7 +182,10 @@ fn assert_partial_checkout_not_applied(repo: &std::path::Path, home: &std::path:
             String::from_utf8_lossy(&retry.stderr).contains("recovery marker"),
             "{retry:?}"
         );
-        assert!(!home.join(".second-settings").exists());
+        assert!(
+            !home.join(".second-settings").exists(),
+            "blocked retry must not apply overlay symlinks"
+        );
     }
 }
 
@@ -473,9 +476,9 @@ fn check_partial_repository_refresh(ignored: bool) {
         .map(|(_, json)| serde_json::from_str::<serde_json::Value>(json).unwrap())
         .find(|r| r["type"] == "task_result")
         .expect("recorded repository result");
-    assert_eq!(outcome["status"], "failed");
+    assert_eq!(outcome["status"], "failed", "{outcome}");
     assert_eq!(outcome["actions"]["applied"], 1, "{outcome}");
-    assert_eq!(outcome["actions"]["failed"], 1);
+    assert_eq!(outcome["actions"]["failed"], 1, "{outcome}");
     assert_ne!(
         git(&root, &["rev-parse", "HEAD"]),
         initial_main,
@@ -505,14 +508,18 @@ fn check_partial_repository_refresh(ignored: bool) {
         !blocked.success() && note.contains("recovery marker"),
         "{note}"
     );
-    assert!(!home.join(".fresh").exists());
+    assert!(
+        !home.join(".fresh").exists(),
+        "blocked overlay recovery must prevent convergence"
+    );
     git(&root, &["restore", "README"]);
     std::fs::remove_file(overlay.join(".git/dotfiles-merge-in-progress")).unwrap();
     let (retry_status, retry_text) = update();
     assert!(retry_status.success(), "{retry_text}");
     assert_eq!(
         std::fs::read_to_string(saved).unwrap(),
-        "local untracked data"
+        "local untracked data",
+        "saved collision file must retain original contents"
     );
     assert_ne!(
         git(&overlay, &["rev-parse", "HEAD"]),
@@ -545,7 +552,11 @@ fn check_partial_repository_refresh(ignored: bool) {
         }
         assert!(!status_text.contains("would change"), "{status_text}");
         assert!(status_text.contains(expected), "{status_text}");
-        assert_eq!(git(&root, &["rev-parse", "HEAD"]), local_head);
+        assert_eq!(
+            git(&root, &["rev-parse", "HEAD"]),
+            local_head,
+            "ahead checkout HEAD must stay unchanged"
+        );
     };
     check_status("local branch is ahead of upstream", true);
     check_status("local branch is ahead of upstream", false);

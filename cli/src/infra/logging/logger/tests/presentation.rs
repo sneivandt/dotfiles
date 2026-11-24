@@ -1,6 +1,25 @@
 use super::*;
 
 #[test]
+fn separate_after_transition_inserts_blank_line_before_following_output() {
+    let log = Logger::build("update", None, Instant::now(), false);
+    log.startup("Update · fixture");
+    log.transition("CLI upgraded · old → new");
+    log.separate_after_transition();
+    log.always("task result");
+    assert_eq!(
+        log.captured_lines(),
+        vec![
+            "Update · fixture",
+            "",
+            "CLI upgraded · old → new",
+            "",
+            "task result",
+        ]
+    );
+}
+
+#[test]
 fn foreground_blocks_have_one_separator_and_respect_output_mode() {
     for mode in [
         super::super::super::OutputMode::Human,

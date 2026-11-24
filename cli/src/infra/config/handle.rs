@@ -51,5 +51,6 @@ mod tests {
         assert!(std::ptr::eq(handle.get(), handle.get()));
         let cloned = handle.clone();
         assert!(std::ptr::eq(handle.get(), cloned.get()));
+        assert_eq!(format!("{handle:?}"), "ConfigHandle { .. }");
     }
 }

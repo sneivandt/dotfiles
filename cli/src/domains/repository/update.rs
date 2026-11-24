@@ -163,9 +163,6 @@ impl Operation for UpdateRepositoryOperation<'_> {
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         match checked_repositories(ctx, self.repo_updated)? {
-            RepositorySetReadiness::Ready(repositories) if repositories.is_empty() => {
-                Ok(OperationState::Complete)
-            }
             RepositorySetReadiness::Ready(repositories) => {
                 Ok(OperationState::needs_run(repositories))
             }

@@ -12,7 +12,7 @@ use super::{InventoryPhase, PacmanInventoryCache, query_installed_with_cache};
 #[derive(Debug, Clone)]
 pub(super) struct PackageInstallPlan {
     pub(super) missing: Vec<PackageResource>,
-    already_ok: usize,
+    pub(super) already_ok: usize,
     pub(super) unavailable: Vec<(String, String)>,
 }
 

@@ -41,7 +41,11 @@ pub(crate) const ELEVATION_DECLINED_EXIT_CODE: i32 = 1223;
 )]
 pub fn is_elevated_child() -> bool {
     *ELEVATED_CHILD
-        .get_or_init(|| std::env::var_os(ELEVATED_CHILD_VAR).is_some_and(|value| !value.is_empty()))
+        .get_or_init(|| env_marks_elevated_child(std::env::var_os(ELEVATED_CHILD_VAR).as_deref()))
+}
+
+fn env_marks_elevated_child(value: Option<&std::ffi::OsStr>) -> bool {
+    value.is_some_and(|value| !value.is_empty())
 }
 
 /// Record that this process is the elevated child of a parent run.
@@ -66,7 +70,7 @@ static ELEVATED_CHILD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 /// On non-Windows platforms, always returns `false`.
 #[cfg(windows)]
 #[must_use]
-pub fn is_elevated() -> bool {
+pub fn is_elevated_windows() -> bool {
     use crate::infra::exec::{CommandSpec, Executor as _};
     use std::sync::OnceLock;
 
@@ -78,6 +82,9 @@ pub fn is_elevated() -> bool {
             .is_ok_and(|result| result.success)
     })
 }
+
+#[cfg(windows)]
+pub use is_elevated_windows as is_elevated;
 
 /// Check if the current process is running with administrator privileges.
 ///
@@ -330,10 +337,14 @@ mod tests {
     }
 
     #[test]
-    fn elevated_child_flag_is_absent_by_default() {
+    fn elevated_child_flag_tracks_env_and_explicit_marking() {
+        assert!(!env_marks_elevated_child(None));
+        assert!(!env_marks_elevated_child(Some(std::ffi::OsStr::new(""))));
+        assert!(env_marks_elevated_child(Some(std::ffi::OsStr::new("1"))));
+        mark_elevated_child();
         assert!(
-            !is_elevated_child(),
-            "a normal test process must not look like an elevated child"
+            is_elevated_child(),
+            "mark_elevated_child must enable is_elevated_child"
         );
     }
 

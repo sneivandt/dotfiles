@@ -61,13 +61,16 @@ pub(crate) fn run_log_sort_stamp(path: &Path, filename_stamp: &str) -> String {
     sort_stamp(read_dotfiles_header(path).as_deref(), filename_stamp)
 }
 
+#[cfg(unix)]
+const HEADER_OPEN_FLAGS: i32 = nix::libc::O_NONBLOCK | nix::libc::O_NOFOLLOW;
+
 pub(super) fn read_dotfiles_header(path: &Path) -> Option<String> {
     let mut options = fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt as _;
-        options.custom_flags(nix::libc::O_NONBLOCK | nix::libc::O_NOFOLLOW);
+        options.custom_flags(HEADER_OPEN_FLAGS);
     }
     let file = options.open(path).ok()?;
     if !file.metadata().ok()?.is_file() {
@@ -102,4 +105,18 @@ fn precise_header_stamp(header: &str) -> Option<String> {
         return None;
     }
     Some(stamp.replace(['-', ':'], ""))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_run_log_file_name_rejects_empty_command_and_invalid_chars() {
+        assert!(parse_run_log_file_name("20260101T000000Z--123.log").is_none());
+        assert!(parse_run_log_file_name("20260101T000000Z-bad_cmd-123.log").is_none());
+        let parsed = parse_run_log_file_name("20260101T000000Z-update-123.log").unwrap();
+        assert_eq!(parsed.stamp, "20260101T000000Z");
+        assert_eq!(parsed.command, "update");
+    }
 }

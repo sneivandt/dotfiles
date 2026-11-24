@@ -175,3 +175,15 @@ fn ensure_ini_key(
     setting.push_str(ending);
     lines.insert(insertion_index, setting);
 }
+
+#[cfg(test)]
+mod ini_section_tests {
+    use super::ini_section;
+
+    #[test]
+    fn ini_section_requires_both_brackets() {
+        assert_eq!(ini_section("[Section]"), Some("[Section]"));
+        assert_eq!(ini_section("[unclosed"), None);
+        assert_eq!(ini_section("key=val]"), None);
+    }
+}

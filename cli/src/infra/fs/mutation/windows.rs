@@ -20,7 +20,7 @@ pub(super) fn shared_file_identity(file: &File) -> anyhow::Result<Option<(u64, u
     Ok((info.nNumberOfLinks > 1).then(|| (u64::from(info.dwVolumeSerialNumber), index)))
 }
 
-const fn combine_file_index(high: u32, low: u32) -> u64 {
+fn combine_file_index(high: u32, low: u32) -> u64 {
     (u64::from(high) << 32) + u64::from(low)
 }
 

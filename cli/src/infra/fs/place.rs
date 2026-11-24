@@ -483,6 +483,11 @@ mod tests {
             "other",
             "the symlink target must not be written through"
         );
+        #[cfg(target_os = "linux")]
+        {
+            assert_ne!(METADATA_SOURCE_OPEN_FLAGS & nix::libc::O_NOFOLLOW, 0);
+            assert_ne!(METADATA_SOURCE_OPEN_FLAGS & nix::libc::O_NONBLOCK, 0);
+        }
     }
 
     #[test]

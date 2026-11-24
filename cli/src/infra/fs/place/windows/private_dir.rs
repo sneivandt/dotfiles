@@ -190,5 +190,23 @@ mod tests {
             verify_private_child(&unprotected_file).is_err(),
             "normal inherited file must fail verify_private_child"
         );
+
+        for flag in [FILE_ADD_SUBDIRECTORY, FILE_TRAVERSE] {
+            assert_ne!(PARENT_DIR_ACCESS & flag, 0);
+        }
+        for flag in [
+            FILE_LIST_DIRECTORY,
+            READ_CONTROL,
+            FILE_READ_ATTRIBUTES,
+            SYNCHRONIZE,
+        ] {
+            assert_ne!(PINNED_DIR_ACCESS & flag, 0);
+        }
+        for flag in [FILE_SHARE_READ, FILE_SHARE_WRITE] {
+            assert_ne!(PINNED_DIR_SHARE & flag, 0);
+        }
+        for flag in [FILE_DIRECTORY_FILE, FILE_SYNCHRONOUS_IO_NONALERT] {
+            assert_ne!(PINNED_DIR_OPTIONS & flag, 0);
+        }
     }
 }

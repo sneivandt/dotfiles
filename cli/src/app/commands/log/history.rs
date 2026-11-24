@@ -747,6 +747,46 @@ mod tests {
         assert_eq!(format_size(2_621_440), "2.5 MB");
     }
 
+    #[test]
+    fn write_run_table_styles_interrupted_outcome_and_missing_profile() {
+        let entries = vec![
+            RunEntry {
+                stamp: "20260101T000001Z".into(),
+                sort_stamp: "20260101T000001Z".into(),
+                command: "update".into(),
+                path: std::path::PathBuf::from("a.log"),
+                size: 128,
+                started: true,
+                profile: None,
+                outcome: Some(RunOutcome::Interrupted),
+                elapsed_us: Some(1_000_000),
+                parent_run_id: None,
+            },
+            RunEntry {
+                stamp: "20260101T000002Z".into(),
+                sort_stamp: "20260101T000002Z".into(),
+                command: "update".into(),
+                path: std::path::PathBuf::from("b.log"),
+                size: 256,
+                started: true,
+                profile: Some("desktop".into()),
+                outcome: Some(RunOutcome::Succeeded),
+                elapsed_us: Some(2_000_000),
+                parent_run_id: None,
+            },
+        ];
+        let mut out = Vec::new();
+        write_run_table(&entries, StyleChoice::colored(), &mut out).unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(
+            rendered.contains("\x1b[33minterrupted\x1b[0m"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("\x1b[2m-\x1b[0m"), "{rendered}");
+        assert!(rendered.contains("desktop"), "{rendered}");
+        assert!(!rendered.contains("\x1b[2mdesktop\x1b[0m"), "{rendered}");
+    }
+
     fn format_record_line(record: Record) -> String {
         let stored = StoredRecord::new("run", record);
         let json = serde_json::to_string(&stored).unwrap();

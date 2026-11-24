@@ -74,6 +74,10 @@ fn smoke_test_retries_transient_busy_with_linear_backoff_and_stops_at_limit() {
             Path::new("dotfiles"),
             |_| {
                 exhausted_calls += 1;
+                assert!(
+                    exhausted_calls <= SMOKE_TEST_MAX_RETRIES + 1,
+                    "smoke test must stop retrying once SMOKE_TEST_MAX_RETRIES is reached"
+                );
                 Err(busy())
             },
             |_| exhausted_sleeps += 1,
@@ -91,6 +95,10 @@ fn smoke_test_retries_transient_busy_with_linear_backoff_and_stops_at_limit() {
             Path::new("dotfiles"),
             |_| {
                 non_busy_calls += 1;
+                assert!(
+                    non_busy_calls <= 1,
+                    "non-transient smoke test error must not be retried"
+                );
                 Err(ExecError::spawn(
                     "smoke",
                     io::Error::from(io::ErrorKind::NotFound),

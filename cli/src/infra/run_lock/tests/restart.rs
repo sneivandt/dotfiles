@@ -193,3 +193,70 @@ fn restart_requires_both_a_live_lease_and_its_repository_lock() {
     drop(lease);
     assert!(verify_restart(root.path(), &env, platform, &marker).is_err());
 }
+
+#[cfg(unix)]
+#[test]
+fn restart_protect_overlay_ignores_optional_lock_permission_errors_only() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let root = tempfile::tempdir().unwrap();
+    let overlay = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    git2::Repository::init(root.path()).unwrap();
+    git2::Repository::init(overlay.path()).unwrap();
+    let env = MapEnv::new();
+    let platform = Platform::detect();
+
+    let mut parent =
+        CommandLocks::acquire(root.path(), home.path(), &env, platform, "update").unwrap();
+    parent
+        .protect_overlay(overlay.path(), &env, platform, "update", None)
+        .unwrap();
+    parent.legacy_overlay = None;
+    let overlay_lock = overlay.path().join(".git").join(LOCK_NAME);
+    std::fs::remove_file(&overlay_lock).unwrap();
+    let (continuations, mode) = parent.prepare_restart().unwrap();
+    let lease = RestartLease::new(root.path(), &env, platform, mode).unwrap();
+    let marker = lease.marker().unwrap().to_owned();
+
+    // PermissionDenied on the legacy overlay lock is optional -> Ok(()).
+    std::fs::write(&overlay_lock, b"").unwrap();
+    std::fs::set_permissions(&overlay_lock, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let mut child =
+        CommandLocks::restart(root.path(), home.path(), &env, platform, &marker, "update").unwrap();
+    let res = child.protect_overlay(
+        overlay.path(),
+        &env,
+        platform,
+        "update",
+        Some((root.path(), marker.as_os_str())),
+    );
+    std::fs::set_permissions(&overlay_lock, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::remove_file(&overlay_lock).unwrap();
+    assert!(
+        res.is_ok(),
+        "optional permission error on legacy overlay lock should be ignored: {res:?}"
+    );
+
+    // Non-optional error (directory at legacy lock path -> EISDIR) must propagate.
+    std::fs::create_dir(&overlay_lock).unwrap();
+    let mut child2 =
+        CommandLocks::restart(root.path(), home.path(), &env, platform, &marker, "update").unwrap();
+    let err = child2
+        .protect_overlay(
+            overlay.path(),
+            &env,
+            platform,
+            "update",
+            Some((root.path(), marker.as_os_str())),
+        )
+        .unwrap_err();
+    std::fs::remove_dir(&overlay_lock).unwrap();
+    assert!(
+        err.downcast_ref::<std::io::Error>()
+            .is_some_and(|io_err| !unavailable_optional_lock(&err)
+                && io_err.kind() != std::io::ErrorKind::NotFound),
+        "unexpected error for directory at legacy lock path: {err:#}"
+    );
+    drop((child, child2, lease, continuations, parent));
+}

@@ -3,6 +3,11 @@ use super::*;
 #[test]
 fn verify_cli() {
     Cli::command().debug_assert();
+    let styles = cli_styles();
+    let plain = Styles::plain();
+    assert_ne!(styles.get_header(), plain.get_header());
+    assert_ne!(styles.get_literal(), plain.get_literal());
+    assert_ne!(styles.get_error(), plain.get_error());
 }
 
 #[test]

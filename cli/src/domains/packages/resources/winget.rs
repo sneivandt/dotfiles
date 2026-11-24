@@ -442,6 +442,14 @@ mod tests {
             InstallVerdict::Skipped("blocked by system policy")
         );
         assert_eq!(
+            classify_install(Some(-1_978_335_135)),
+            InstallVerdict::AlreadyInstalled
+        );
+        assert_eq!(
+            classify_install(Some(-1_978_335_189)),
+            InstallVerdict::AlreadyInstalled
+        );
+        assert_eq!(
             classify_install(Some(-1_978_334_963)),
             InstallVerdict::AlreadyInstalled
         );

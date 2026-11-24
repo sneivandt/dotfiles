@@ -140,6 +140,18 @@ mod tests {
         std::thread::spawn(|| {
             let com = ComApartment::initialize().expect("fresh MTA thread");
             assert!(com.0, "fresh thread must own its COM initialization");
+            drop(com);
+            // If Drop did not call CoUninitialize, switching the thread to STA
+            // fails with RPC_E_CHANGED_MODE.
+            let sta = u32::try_from(COINIT_APARTMENTTHREADED).unwrap();
+            // SAFETY: Balanced with CoUninitialize immediately below.
+            let status = unsafe { CoInitializeEx(core::ptr::null(), sta) };
+            assert!(
+                status >= 0,
+                "dropping ComApartment must uninitialize COM so STA init succeeds: {status:#x}"
+            );
+            // SAFETY: Balances the STA CoInitializeEx call above.
+            unsafe { CoUninitialize() };
         })
         .join()
         .unwrap();

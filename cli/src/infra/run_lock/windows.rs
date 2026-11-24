@@ -83,4 +83,28 @@ mod tests {
         assert!(ppid > 4, "expected real parent pid, got {ppid}");
         assert_ne!(ppid, std::process::id());
     }
+
+    #[test]
+    fn legacy_owner_reads_mapped_bytes_within_size_bounds() {
+        let dir = tempfile::tempdir().unwrap();
+        let valid = dir.path().join("valid.lock");
+        let payload = b"pid=42\ncommand=update\n";
+        std::fs::write(&valid, payload).unwrap();
+        let (bytes, ppid) = legacy_owner(&valid).expect("read valid legacy lock");
+        assert_eq!(bytes, payload);
+        assert_eq!(ppid, parent_pid().unwrap());
+
+        let empty = dir.path().join("empty.lock");
+        std::fs::write(&empty, b"").unwrap();
+        assert!(legacy_owner(&empty).is_err());
+
+        let max_valid = dir.path().join("max.lock");
+        std::fs::write(&max_valid, vec![b'x'; 4096]).unwrap();
+        let (max_bytes, _) = legacy_owner(&max_valid).expect("read 4096-byte legacy lock");
+        assert_eq!(max_bytes.len(), 4096);
+
+        let too_large = dir.path().join("too-large.lock");
+        std::fs::write(&too_large, vec![b'x'; 4097]).unwrap();
+        assert!(legacy_owner(&too_large).is_err());
+    }
 }

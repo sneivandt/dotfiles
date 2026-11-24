@@ -213,12 +213,17 @@ fn is_transient_busy(e: &std::io::Error) -> bool {
     // violation, which maps to `PermissionDenied`.
     #[cfg(windows)]
     {
-        e.kind() == std::io::ErrorKind::PermissionDenied
+        is_windows_transient_busy(e)
     }
     #[cfg(all(not(unix), not(windows)))]
     {
         false
     }
+}
+
+#[cfg(windows)]
+fn is_windows_transient_busy(e: &std::io::Error) -> bool {
+    e.kind() == std::io::ErrorKind::PermissionDenied
 }
 
 fn run_smoke_test_with(

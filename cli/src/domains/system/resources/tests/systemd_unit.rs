@@ -331,9 +331,11 @@ fn apply_reconciles_user_links_and_offline_helpers_propagate_errors() {
     sys_unit.home = None;
     assert_eq!(sys_unit.live_user_link_state().unwrap(), None);
 
-    // live_user_link_state: non-file unit path (directory) yields Ok(None); ELOOP yields Err.
+    // live_user_link_state: non-file unit path (directory) yields Ok(None) even when
+    // an enablement link exists; ELOOP yields Err.
     let dir_unit_path = user_dir.join("dir.service");
     std::fs::create_dir(&dir_unit_path).unwrap();
+    std::os::unix::fs::symlink(&dir_unit_path, wants_dir.join("dir.service")).unwrap();
     let dir_unit = SystemdUnitResource::from_entry(
         &entry("dir.service", UnitScope::User, true),
         Arc::new(MockExecutor::new()),
@@ -357,6 +359,8 @@ fn apply_reconciles_user_links_and_offline_helpers_propagate_errors() {
 #[cfg(unix)]
 #[test]
 fn offline_enablement_and_reconcile_propagate_filesystem_errors() {
+    use std::os::unix::fs::PermissionsExt as _;
+
     let dir = tempfile::tempdir().unwrap();
     let not_a_dir = dir.path().join("not-a-dir");
     std::fs::write(&not_a_dir, "file").unwrap();
@@ -380,17 +384,28 @@ fn offline_enablement_and_reconcile_propagate_filesystem_errors() {
         ResourceState::Invalid { .. }
     ));
 
-    let enotdir_home = dir.path().join("enotdir-home");
-    let enotdir_user_dir = enotdir_home.join(".config/systemd/user");
-    std::fs::create_dir_all(&enotdir_user_dir).unwrap();
+    let eacces_home = dir.path().join("eacces-home");
+    let eacces_user_dir = eacces_home.join(".config/systemd/user");
+    let eacces_wants = eacces_user_dir.join("default.target.wants");
+    std::fs::create_dir_all(&eacces_wants).unwrap();
     std::fs::write(
-        enotdir_user_dir.join("demo.service"),
+        eacces_user_dir.join("demo.service"),
         "[Unit]\n[Install]\nWantedBy=default.target\n",
     )
     .unwrap();
-    std::fs::write(enotdir_user_dir.join("default.target.wants"), "file").unwrap();
-    let enotdir_unit = offline_unit(&enotdir_home, "demo.service", true);
-    assert!(enotdir_unit.current_state().is_err());
+    // Unsearchable wants directory passes checked_directory_chain but makes
+    // symlink_metadata on the enablement link fail with PermissionDenied (not NotFound).
+    std::fs::set_permissions(&eacces_wants, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let eacces_unit = offline_unit(&eacces_home, "demo.service", true);
+    let eacces_err = eacces_unit.current_state().unwrap_err();
+    std::fs::set_permissions(&eacces_wants, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(
+        matches!(
+            eacces_err,
+            ResourceError::Io { ref source } if source.kind() == std::io::ErrorKind::PermissionDenied
+        ),
+        "expected PermissionDenied Io error from enablement_link_state, got: {eacces_err:?}"
+    );
 
     // reconcile_user_links: non-NotFound symlink_metadata error (ENAMETOOLONG) propagates as Err.
     let long_name = "x".repeat(300);

@@ -293,13 +293,15 @@ fn terminate_child_sends_sigterm_and_wait_escalates_to_sigkill_for_process_group
     // 2. A stubborn child ignoring SIGTERM with a background descendant must
     // wait out the grace window and then have its entire process group SIGKILLed.
     let child_pid_file = fixture.path().join("descendant.pid");
+    let survived_marker = fixture.path().join("survived");
     let mut stubborn_cmd = new_command("sh");
     stubborn_cmd
         .args([
             "-c",
-            "trap '' TERM; sleep 30 & echo $! > \"$1\"; wait",
+            "trap '' TERM; sleep 6 & echo $! > \"$1\"; wait; printf survived > \"$2\"",
             "sh",
             child_pid_file.to_str().unwrap(),
+            survived_marker.to_str().unwrap(),
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -325,6 +327,10 @@ fn terminate_child_sends_sigterm_and_wait_escalates_to_sigkill_for_process_group
     assert!(
         kill_started.elapsed() >= process::TERMINATION_GRACE,
         "wait_after_terminate must wait through TERMINATION_GRACE before force-killing"
+    );
+    assert!(
+        !survived_marker.exists(),
+        "force_kill_child must SIGKILL the stubborn child before it finishes naturally"
     );
     assert!(
         stubborn.try_wait().unwrap().is_some(),

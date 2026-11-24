@@ -121,6 +121,10 @@ fn validate_self_relative_descriptor(len: u32, control: u16) -> io::Result<usize
     usize::try_from(len).map_err(io::Error::other)
 }
 
+fn matches_private_descriptor(staged: &Access, descriptor: PSECURITY_DESCRIPTOR) -> Result<bool> {
+    Ok(staged.protected()? && same_dacl(descriptor, staged.as_ptr())?)
+}
+
 fn check_dacl_present(present: i32, is_null: bool) -> io::Result<()> {
     if present == 0 || is_null {
         return Err(io::ErrorKind::InvalidData.into());
@@ -385,7 +389,7 @@ pub(super) fn write_checked(
     let staged = regular_access(&file, guard.path())?;
     let retained = match &before {
         Some(access) => access == &staged,
-        None => staged.protected()? && same_dacl(descriptor, staged.as_ptr())?,
+        None => matches_private_descriptor(&staged, descriptor)?,
     };
     anyhow::ensure!(
         retained,
@@ -645,5 +649,45 @@ mod tests {
             "{err:#}"
         );
         assert_eq!(std::fs::read(&racing).unwrap(), b"concurrent");
+
+        // matches_private_descriptor requires BOTH protected status and a matching DACL.
+        let different_private = root.path().join("different-private");
+        let different_sd = LocalDescriptor::parse(c"D:P(A;;FA;;;OW)(A;;FR;;;BA)").unwrap();
+        create_new(&different_private, different_sd.0)
+            .unwrap()
+            .write_all(b"c")
+            .unwrap();
+        let private_access = target_access(&private).unwrap().unwrap();
+        let different_access = target_access(&different_private).unwrap().unwrap();
+        let normal_access = target_access(&normal).unwrap().unwrap();
+        assert!(matches_private_descriptor(&private_access, private_sd.0).unwrap());
+        assert!(different_access.protected().unwrap());
+        assert!(!matches_private_descriptor(&different_access, private_sd.0).unwrap());
+        assert!(!matches_private_descriptor(&normal_access, private_sd.0).unwrap());
+    }
+
+    #[test]
+    fn windows_access_constants_include_required_bits() {
+        for flag in [
+            OWNER_SECURITY_INFORMATION,
+            GROUP_SECURITY_INFORMATION,
+            DACL_SECURITY_INFORMATION,
+            LABEL_SECURITY_INFORMATION,
+            ATTRIBUTE_SECURITY_INFORMATION,
+            SCOPE_SECURITY_INFORMATION,
+            PROCESS_TRUST_LABEL_SECURITY_INFORMATION.cast_unsigned(),
+            ACCESS_FILTER_SECURITY_INFORMATION.cast_unsigned(),
+        ] {
+            assert_ne!(ACCESS_INFO_MASK & flag, 0, "missing mask bit {flag:#x}");
+        }
+        for flag in [GENERIC_WRITE, READ_CONTROL, FILE_READ_ATTRIBUTES] {
+            assert_ne!(STAGED_WRITE_ACCESS & flag, 0);
+        }
+        for flag in [READ_CONTROL, FILE_READ_ATTRIBUTES] {
+            assert_ne!(INSPECT_ACCESS & flag, 0);
+        }
+        for flag in [FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS] {
+            assert_ne!(INSPECT_FLAGS & flag, 0);
+        }
     }
 }

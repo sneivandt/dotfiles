@@ -214,6 +214,8 @@ mod tests {
     const CHILD_TEST: &str = "app::commands::reexec::tests::restart_child";
     const CHILD_ROLE: &str = "DOTFILES_RESTART_TEST_ROLE";
     const CHILD_ROOT: &str = "DOTFILES_RESTART_TEST_ROOT";
+    #[cfg(unix)]
+    const CHILD_PARENT_PID: &str = "DOTFILES_RESTART_TEST_PPID";
 
     #[test]
     #[ignore = "subprocess fixture launched by restart outcome tests"]
@@ -255,6 +257,10 @@ mod tests {
         }
         #[cfg(unix)]
         if role == "interrupt" {
+            let expected_ppid: i32 = std::env::var(CHILD_PARENT_PID)
+                .expect("expected parent PID for interrupt fixture")
+                .parse()
+                .expect("numeric parent PID");
             let log = std::sync::Arc::new(crate::infra::logging::Logger::new_in(
                 "update",
                 &root.join("child"),
@@ -262,8 +268,16 @@ mod tests {
             let token = crate::engine::CancellationToken::new();
             crate::app::interrupt::install(&token, &log, true);
             for index in 0..2 {
-                nix::sys::signal::kill(nix::unistd::getppid(), nix::sys::signal::Signal::SIGINT)
-                    .unwrap();
+                // Verify the test parent is still our parent before signaling
+                // SIGINT; if a mutant caused the parent to exit early, our ppid
+                // would belong to an ancestor subreaper (e.g., nextest/CI runner).
+                let ppid = nix::unistd::getppid();
+                assert_eq!(
+                    ppid.as_raw(),
+                    expected_ppid,
+                    "parent process exited early; refusing to signal reparented ancestor"
+                );
+                nix::sys::signal::kill(ppid, nix::sys::signal::Signal::SIGINT).unwrap();
                 nix::sys::signal::raise(nix::sys::signal::Signal::SIGINT).unwrap();
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
                 if index == 0 {
@@ -300,6 +314,10 @@ mod tests {
             command
                 .args(["--ignored", "--exact", CHILD_TEST, "--nocapture"])
                 .env(CHILD_ROLE, role.strip_prefix("parent-").unwrap());
+            #[cfg(unix)]
+            if role == "parent-interrupt" {
+                command.env(CHILD_PARENT_PID, std::process::id().to_string());
+            }
             command
         };
         command.stdin(std::process::Stdio::null());

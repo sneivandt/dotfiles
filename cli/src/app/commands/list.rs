@@ -777,11 +777,18 @@ mod tests {
 
     #[test]
     fn output_formats_are_stable() {
-        let listings = vec![TaskListing {
-            selector: "visible".to_string(),
-            task: "Visible task".to_string(),
-            commands: vec![TaskGraphCommand::Update],
-        }];
+        let listings = vec![
+            TaskListing {
+                selector: "git".to_string(),
+                task: "Git config".to_string(),
+                commands: vec![TaskGraphCommand::Update],
+            },
+            TaskListing {
+                selector: "visible".to_string(),
+                task: "Visible task".to_string(),
+                commands: vec![TaskGraphCommand::Update],
+            },
+        ];
 
         let mut table = Vec::new();
         write_listings(
@@ -793,7 +800,7 @@ mod tests {
         .expect("table output");
         assert_eq!(
             String::from_utf8(table).unwrap(),
-            "Update tasks\nSelector  Task\nvisible   Visible task\n"
+            "Update tasks\nSelector  Task\ngit       Git config\nvisible   Visible task\n"
         );
 
         let mut colored_table = Vec::new();
@@ -806,7 +813,7 @@ mod tests {
         .expect("colored table output");
         assert_eq!(
             String::from_utf8(colored_table).unwrap(),
-            "\x1b[1mUpdate tasks\x1b[0m\n\x1b[2mSelector  Task\x1b[0m\n\x1b[36mvisible\x1b[0m   Visible task\n"
+            "\x1b[1mUpdate tasks\x1b[0m\n\x1b[2mSelector  Task\x1b[0m\n\x1b[36mgit\x1b[0m       Git config\n\x1b[36mvisible\x1b[0m   Visible task\n"
         );
 
         let mut plain = Vec::new();
@@ -819,7 +826,7 @@ mod tests {
         .expect("plain output");
         assert_eq!(
             String::from_utf8(plain).unwrap(),
-            "visible\tVisible task\tupdate\n"
+            "git\tGit config\tupdate\nvisible\tVisible task\tupdate\n"
         );
 
         let mut json = Vec::new();
@@ -833,11 +840,18 @@ mod tests {
         let value: serde_json::Value = serde_json::from_slice(&json).expect("valid JSON");
         assert_eq!(
             value,
-            serde_json::json!([{
-                "selector": "visible",
-                "task": "Visible task",
-                "commands": ["update"],
-            }])
+            serde_json::json!([
+                {
+                    "selector": "git",
+                    "task": "Git config",
+                    "commands": ["update"],
+                },
+                {
+                    "selector": "visible",
+                    "task": "Visible task",
+                    "commands": ["update"],
+                },
+            ])
         );
     }
 

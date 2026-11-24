@@ -426,3 +426,110 @@ pub(super) fn line_event(line: &str) -> Option<&str> {
         .split_once(']')
         .map(|(event, _)| event)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn colored_log_styles_cover_event_labels_and_message_tones() {
+        let colored = StyleChoice::colored();
+
+        assert_eq!(colored.paint(label_style("warn"), "x"), "\x1b[33mx\x1b[0m");
+        assert_eq!(
+            colored.paint(label_style("warn_continuation"), "x"),
+            "\x1b[33mx\x1b[0m"
+        );
+        assert_eq!(
+            colored.paint(label_style("task_skip"), "x"),
+            "\x1b[33mx\x1b[0m"
+        );
+        assert_eq!(colored.paint(label_style("error"), "x"), "\x1b[31mx\x1b[0m");
+        assert_eq!(colored.paint(label_style("plan"), "x"), "\x1b[35mx\x1b[0m");
+        assert_eq!(
+            colored.paint(label_style("dry_run"), "x"),
+            "\x1b[35mx\x1b[0m"
+        );
+        assert_eq!(colored.paint(label_style("info"), "x"), "\x1b[2mx\x1b[0m");
+
+        assert_eq!(
+            colored.paint(verbose_event_style("warn"), "x"),
+            "\x1b[33mx\x1b[0m"
+        );
+        assert_eq!(
+            colored.paint(verbose_event_style("error"), "x"),
+            "\x1b[31mx\x1b[0m"
+        );
+        assert_eq!(
+            colored.paint(verbose_event_style("action"), "x"),
+            "\x1b[36mx\x1b[0m"
+        );
+        assert_eq!(
+            colored.paint(verbose_event_style("resource_apply"), "x"),
+            "\x1b[36mx\x1b[0m"
+        );
+        assert_eq!(
+            colored.paint(verbose_event_style("resource_remove"), "x"),
+            "\x1b[36mx\x1b[0m"
+        );
+        assert_eq!(
+            colored.paint(verbose_event_style("plan"), "x"),
+            "\x1b[35mx\x1b[0m"
+        );
+        assert_eq!(
+            colored.paint(verbose_event_style("dry_run"), "x"),
+            "\x1b[35mx\x1b[0m"
+        );
+        assert_eq!(
+            colored.paint(verbose_event_style("info"), "x"),
+            "\x1b[2mx\x1b[0m"
+        );
+
+        assert_eq!(
+            style_task_result("Symlinks: Changed", colored),
+            "\x1b[1mSymlinks\x1b[0m\x1b[2m: \x1b[0m\x1b[32mChanged\x1b[0m"
+        );
+        assert_eq!(
+            style_task_result("Symlinks: Passed", colored),
+            "\x1b[1mSymlinks\x1b[0m\x1b[2m: \x1b[0m\x1b[32mPassed\x1b[0m"
+        );
+        assert_eq!(
+            style_task_result("Symlinks: Planned: 2 changes", colored),
+            "\x1b[1mSymlinks\x1b[0m\x1b[2m: \x1b[0m\x1b[35mPlanned\x1b[0m\x1b[2m: \x1b[0m2 changes"
+        );
+        assert_eq!(
+            style_task_result("Symlinks: Skipped: clean", colored),
+            "\x1b[1mSymlinks\x1b[0m\x1b[2m: \x1b[0m\x1b[33mSkipped\x1b[0m\x1b[2m: \x1b[0mclean"
+        );
+        assert_eq!(
+            style_task_result("Symlinks: Blocked: dep", colored),
+            "\x1b[1mSymlinks\x1b[0m\x1b[2m: \x1b[0m\x1b[33mBlocked\x1b[0m\x1b[2m: \x1b[0mdep"
+        );
+        assert_eq!(
+            style_task_result("Symlinks: Interrupted: ctrl-c", colored),
+            "\x1b[1mSymlinks\x1b[0m\x1b[2m: \x1b[0m\x1b[33mInterrupted\x1b[0m\x1b[2m: \x1b[0mctrl-c"
+        );
+        assert_eq!(
+            style_task_result("Symlinks: Failed: boom", colored),
+            "\x1b[1mSymlinks\x1b[0m\x1b[2m: \x1b[0m\x1b[31mFailed\x1b[0m\x1b[2m: \x1b[0mboom"
+        );
+
+        assert_eq!(
+            style_run_finish("succeeded · 1.0s", colored),
+            "\x1b[32msucceeded\x1b[0m\x1b[2m · 1.0s\x1b[0m"
+        );
+        assert_eq!(
+            style_run_finish("failed · 1.0s", colored),
+            "\x1b[31mfailed\x1b[0m\x1b[2m · 1.0s\x1b[0m"
+        );
+        assert_eq!(
+            style_run_finish("interrupted · 1.0s", colored),
+            "\x1b[33minterrupted\x1b[0m\x1b[2m · 1.0s\x1b[0m"
+        );
+
+        assert_eq!(
+            style_dot_separated_header("Update · desktop · dry run", colored),
+            "\x1b[1mUpdate\x1b[0m\x1b[2m · \x1b[0m\x1b[2mdesktop\x1b[0m\x1b[2m · \x1b[0m\x1b[35mdry run\x1b[0m"
+        );
+    }
+}

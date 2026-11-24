@@ -495,38 +495,42 @@ def check_mutation_symbols(cli_root: Path = CLI_ROOT, mutation_run: dict | None 
 
     windows_sources = {rel_path: read_source(rel_path) for rel_path in mutation_run["WINDOWS_FILES"]}
 
-    for option, value in mutation_run["LINUX_EXCLUSIONS"]:
-        if option == "--exclude":
-            read_source(value)
-        elif option == "--exclude-re":
-            match = re.match(r"^\^(src/[^:]+?):(.*)$", value)
-            if match is None:
-                raise ValueError(f"unrecognized LINUX_EXCLUSIONS file prefix: {value}")
-            rel_path = match.group(1).replace(r"\.", ".")
-            remainder = match.group(2)
-            source = read_source(rel_path)
-            if group := re.fullmatch(r"\.\*\\b\(([^)]+)\)\\b", remainder):
-                for symbol in group.group(1).split("|"):
-                    require_fn(rel_path, source, symbol)
-            elif single := re.fullmatch(r"\.\*\\b([A-Za-z_][A-Za-z0-9_]*)\\b", remainder):
-                require_fn(rel_path, source, single.group(1))
-            elif module := re.fullmatch(r"\.\*\\b([A-Za-z_][A-Za-z0-9_]*)::", remainder):
-                if not re.search(rf"\bmod\s+{re.escape(module.group(1))}\b", source):
-                    raise ValueError(f"mutation reference {rel_path} is missing mod {module.group(1)}")
-            elif impl := re.search(
-                r"\bin <impl ([A-Za-z0-9_:]+) for ([A-Za-z0-9_]+)(?:<[^>]*>)?>::([A-Za-z_][A-Za-z0-9_]*)\$$",
-                remainder,
-            ):
-                trait, target_type, method = impl.groups()
-                if not re.search(rf"\bimpl\b[^{{;]*\b{re.escape(trait)}\b\s+for\s+{re.escape(target_type)}\b", source):
-                    raise ValueError(f"mutation reference {rel_path} is missing impl {trait} for {target_type}")
-                require_fn(rel_path, source, method)
-            elif target_fn := re.search(r"\bin ([A-Za-z_][A-Za-z0-9_]*)\$$", remainder):
-                require_fn(rel_path, source, target_fn.group(1))
+    for table_name in ("LINUX_EXCLUSIONS", "WINDOWS_EXCLUSIONS"):
+        for option, value in mutation_run[table_name]:
+            if option == "--exclude":
+                read_source(value)
+            elif option == "--exclude-re":
+                match = re.match(r"^\^(src/[^:]+?):(.*)$", value)
+                if match is None:
+                    raise ValueError(f"unrecognized {table_name} file prefix: {value}")
+                rel_path = match.group(1).replace(r"\.", ".")
+                remainder = match.group(2)
+                source = read_source(rel_path)
+                if group := re.fullmatch(r"\.\*\\b\(([^)]+)\)\\b", remainder):
+                    for symbol in group.group(1).split("|"):
+                        require_fn(rel_path, source, symbol)
+                elif single := re.fullmatch(r"\.\*\\b([A-Za-z_][A-Za-z0-9_]*)\\b", remainder):
+                    require_fn(rel_path, source, single.group(1))
+                elif module := re.fullmatch(r"\.\*\\b([A-Za-z_][A-Za-z0-9_]*)::", remainder):
+                    if not re.search(rf"\bmod\s+{re.escape(module.group(1))}\b", source):
+                        raise ValueError(f"mutation reference {rel_path} is missing mod {module.group(1)}")
+                elif impl := re.search(
+                    r"(?:\bin|replace) <impl ([A-Za-z0-9_:]+) for ([A-Za-z0-9_]+)(?:<[^>]*>)?>::([A-Za-z_][A-Za-z0-9_]*)(?: with \\\(\\\))?\$$",
+                    remainder,
+                ):
+                    trait, target_type, method = impl.groups()
+                    if not re.search(rf"\bimpl\b[^{{;]*\b{re.escape(trait)}\b\s+for\s+{re.escape(target_type)}\b", source):
+                        raise ValueError(f"mutation reference {rel_path} is missing impl {trait} for {target_type}")
+                    require_fn(rel_path, source, method)
+                elif target_fn := re.search(r"\bin ([A-Za-z_][A-Za-z0-9_]*)\$$", remainder):
+                    require_fn(rel_path, source, target_fn.group(1))
+                elif remainder == r"[0-9]+:[0-9]+: replace \| with \^$":
+                    if not re.search(r"\bconst\b[^;]*\|", source):
+                        raise ValueError(f"mutation reference {rel_path} has no bitwise-OR const for | -> ^ exclusion")
+                else:
+                    raise ValueError(f"unrecognized {table_name} symbol pattern: {value}")
             else:
-                raise ValueError(f"unrecognized LINUX_EXCLUSIONS symbol pattern: {value}")
-        else:
-            raise ValueError(f"unexpected LINUX_EXCLUSIONS option: {option}")
+                raise ValueError(f"unexpected {table_name} option: {option}")
 
     native_suffix = "|^(?:" + "|".join(re.escape(path) for path in native_modules) + "):"
     windows_pattern = mutation_run["WINDOWS_PATTERN"]

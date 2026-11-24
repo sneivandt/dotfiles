@@ -111,6 +111,94 @@ fn fetch_all_runs_inline_when_sequential_or_single_and_fetched_commit_and_recove
     );
 }
 
+#[test]
+fn fetch_all_runs_three_repositories_concurrently_when_parallel() {
+    use super::apply::fetch_all;
+    use super::models::{CheckedRepository, UpdateTarget, UpdateTargetKind};
+
+    // Use a lock-free Executor rather than MockExecutor, which serializes calls under a mutex.
+    #[derive(Debug)]
+    struct ConcurrentFetchExecutor {
+        state: Arc<(std::sync::Mutex<(usize, usize)>, std::sync::Condvar)>,
+        stdout: String,
+    }
+
+    impl Executor for ConcurrentFetchExecutor {
+        fn execute(&self, _spec: CommandSpec) -> std::result::Result<ExecResult, ExecError> {
+            let (lock, cvar) = &*self.state;
+            let mut counts = lock.lock().unwrap();
+            counts.0 += 1;
+            counts.1 = counts.1.max(counts.0);
+            cvar.notify_all();
+            let (mut counts, _) = cvar
+                .wait_timeout_while(
+                    counts,
+                    std::time::Duration::from_millis(500),
+                    |(_, max_in_flight)| *max_in_flight < 2,
+                )
+                .unwrap();
+            counts.0 -= 1;
+            Ok(ExecResult::success(&self.stdout))
+        }
+
+        fn which(&self, _program: &str) -> bool {
+            true
+        }
+
+        fn which_path(&self, program: &str) -> Result<PathBuf> {
+            Ok(PathBuf::from(program))
+        }
+    }
+
+    let oid_a = "a".repeat(40);
+    let oid_b = "b".repeat(40);
+    let dir = tempfile::tempdir().unwrap();
+    let repo_a = dir.path().join("a");
+    let repo_b = dir.path().join("b");
+    std::fs::create_dir(&repo_a).unwrap();
+    std::fs::create_dir(&repo_b).unwrap();
+    let checked_a = CheckedRepository {
+        target: UpdateTarget::new(UpdateTargetKind::Main, repo_a.clone()),
+        head_ref: "refs/heads/main".into(),
+    };
+    let checked_b = CheckedRepository {
+        target: UpdateTarget::new(UpdateTargetKind::Overlay, repo_b.clone()),
+        head_ref: "refs/heads/main".into(),
+    };
+
+    // Three repositories with parallel=true must run concurrently (catches `<` -> `>`).
+    let state = Arc::new((
+        std::sync::Mutex::new((0usize, 0usize)),
+        std::sync::Condvar::new(),
+    ));
+    let executor = ConcurrentFetchExecutor {
+        state: Arc::clone(&state),
+        stdout: format!("  {oid_a} {oid_b} refs/heads/main\n"),
+    };
+    let ctx_par = make_context(
+        repo_a,
+        Some(repo_b),
+        Platform::new(Os::Linux, false),
+        Arc::new(executor),
+    )
+    .with_parallel(true);
+    let par_commits = fetch_all(
+        &ctx_par,
+        &[
+            (&checked_a, "origin".into(), "refs/heads/main".into()),
+            (&checked_b, "origin".into(), "refs/heads/main".into()),
+            (&checked_a, "origin".into(), "refs/heads/main".into()),
+        ],
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(par_commits, vec![oid_b.clone(), oid_b.clone(), oid_b]);
+    assert!(
+        state.0.lock().unwrap().1 >= 2,
+        "fetch_all with 3 repos and parallel=true must fetch concurrently"
+    );
+}
+
 fn git_error(message: &str) -> ExecError {
     ExecError::spawn("git", std::io::Error::other(message.to_string()))
 }
@@ -303,7 +391,7 @@ fn apply_repository_updates_handles_first_merge_failure_and_inspect_errors() {
         panic!("expected Failed for first-repo merge conflict");
     };
     assert!(
-        !msg.contains("after updating"),
+        !msg.contains("Already advanced"),
         "single-repo failure must not use partial_merge_reason: {msg}"
     );
 

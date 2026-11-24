@@ -119,4 +119,18 @@ mod tests {
         assert_eq!(parsed.stamp, "20260101T000000Z");
         assert_eq!(parsed.command, "update");
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_dotfiles_header_sets_nonblock_and_rejects_symlinks() {
+        assert_ne!(HEADER_OPEN_FLAGS & nix::libc::O_NOFOLLOW, 0);
+        assert_ne!(HEADER_OPEN_FLAGS & nix::libc::O_NONBLOCK, 0);
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("real.log");
+        fs::write(&target, "# Dotfiles update 2026-01-01T00:00:00.123456Z\n").unwrap();
+        let link = dir.path().join("link.log");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_dotfiles_header(&target).is_some());
+        assert!(read_dotfiles_header(&link).is_none());
+    }
 }

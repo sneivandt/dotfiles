@@ -99,8 +99,13 @@ impl PlannedDirectory {
         }
         #[cfg(not(target_os = "linux"))]
         {
-            Ok(self.is_within(other)? || other.is_within(self)?)
+            self.trees_overlap_non_linux(other)
         }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn trees_overlap_non_linux(&self, other: &Self) -> Result<bool> {
+        Ok(self.is_within(other)? || other.is_within(self)?)
     }
 
     #[cfg_attr(

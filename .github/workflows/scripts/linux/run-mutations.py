@@ -16,10 +16,13 @@ import tempfile
 CLI = Path(__file__).resolve().parents[4] / "cli"
 PLAN = CLI / "mutation-plan.json"
 DIFF = "mutants.diff"
-SHARD_TARGET = 225
-MAX_SHARDS = 27
+LIB_SHARD_TARGET = 550
+MAX_LIB_SHARDS = 9
+APP_SHARD_TARGET = 300
+MAX_APP_SHARDS = 4
 WINDOWS_SHARDS = 2
 COUNTS = ("caught", "missed", "timeout", "unviable")
+APP_PATHS = ("src/main.rs", "src/app/**")
 
 # Mutants that can block unrelated tests get a bounded test target.
 FOCUSED = {
@@ -64,39 +67,48 @@ LINUX_EXCLUSIONS = (
     *(("--exclude", path) for path in NATIVE_MODULES),
     ("--exclude-re", r"^src/infra/fs/mod\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]) in is_dir_like$"),
     ("--exclude-re", r"^src/infra/fs/copy\.rs:.*\b(verify_link_creation_access|is_windows_reparse_link|preserve_link_attributes)\b"),
+    ("--exclude-re", r"^src/infra/fs/copy\.rs:[0-9]+:[0-9]+: replace < with <= in copy_regular_contents$"),
     ("--exclude-re", r"^src/infra/fs/identity\.rs:.*\b(stored_entry_name|is_windows_reparse_point)\b"),
-    ("--exclude-re", r"^src/infra/fs/planned\.rs:.*\b(directory_case_sensitive|ordinal_alias|is_within_windows_alias)\b"),
+    ("--exclude-re", r"^src/infra/fs/planned\.rs:.*\b(directory_case_sensitive|ordinal_alias|is_within_windows_alias|trees_overlap_non_linux)\b"),
     ("--exclude-re", r"^src/infra/fs/mutation\.rs:[0-9]+:[0-9]+: replace \| with \^ in open_in_place$"),
     ("--exclude-re", r"^src/infra/fs/place\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported|non_linux_file_mode)\b"),
+    ("--exclude-re", r"^src/infra/fs/place\.rs:[0-9]+:[0-9]+: replace \| with \^$"),
     ("--exclude-re", r"^src/infra/exec/process\.rs:.*\b(take_stdout_windows|take_stderr_windows|terminate_child_windows|wait_after_terminate_windows|force_kill_child_windows|child_exited_without_reaping_fallback)\b"),
     ("--exclude-re", r"^src/infra/platform\.rs:.*\b(developer_mode_flag_windows|developer_mode_enabled|detect_arch|detect_wsl)\b"),
     ("--exclude-re", r"^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated|is_elevated_windows|sudo_credentials_cached|prime_sudo_credentials)\b"),
+    ("--exclude-re", r"^src/infra/logging/runlog/naming\.rs:[0-9]+:[0-9]+: replace \| with \^$"),
     ("--exclude-re", r"^src/infra/logging/terminal\.rs:.*\b(stream_columns_windows|enable_console_ansi)\b"),
     ("--exclude-re", r"^src/infra/logging/style\.rs:.*\bno_color_enabled\b"),
     ("--exclude-re", r"^src/app/commands/execution/elevation\.rs:.*\b(prepare_windows_elevation|prepare_elevation_fallback)\b"),
     ("--exclude-re", r"^src/app/interrupt\.rs:.*\bend_prompt_line\b"),
     ("--exclude-re", r"^src/engine/context/mod\.rs:.*\bis_elevated\b"),
+    ("--exclude-re", r"^src/engine/orchestrate\.rs:[0-9]+:[0-9]+: replace > with >= in process_items$"),
     ("--exclude-re", r"^src/engine/task/mod\.rs:.*\b(dependencies|ordering_dependencies)\b"),
     ("--exclude-re", r"^src/domains/system/config/registry\.rs:.*\buppercase_native_registry_name\b"),
     ("--exclude-re", r"^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|encode_reg_string|append_user_path|user_path_contains|broadcast_environment_change)\b"),
     ("--exclude-re", r"^src/domains/dotfiles/self_update\.rs:.*\bpre_update\b"),
     ("--exclude-re", r"^src/domains/dotfiles/self_update/attestation\.rs:.*\b(available|retry_delay)\b"),
     ("--exclude-re", r"^src/domains/dotfiles/self_update/http\.rs:.*\bretry_delay\b"),
-    ("--exclude-re", r"^src/domains/dotfiles/self_update/install\.rs:[0-9]+:[0-9]+: replace .* in <impl Drop for UpdateJournal>::drop$"),
+    ("--exclude-re", r"^src/domains/dotfiles/self_update/install\.rs:.*\bis_windows_transient_busy\b"),
+    ("--exclude-re", r"^src/domains/dotfiles/self_update/install\.rs:[0-9]+:[0-9]+: replace <impl Drop for UpdateJournal>::drop with \(\)$"),
+    ("--exclude-re", r"^src/domains/editors/vscode_extensions/launcher\.rs:.*\bmanaged_insiders_unavailable_non_linux\b"),
     ("--exclude-re", r"^src/domains/repository/update/apply\.rs:.*\bfetch_retry_delay\b"),
     ("--exclude-re", r"^src/domains/packages/resources/pacman\.rs:.*\bis_root\b"),
     ("--exclude-re", r"^src/domains/system/resources/registry\.rs:.*\bnative::"),
+    ("--exclude-re", r"^src/domains/system/resources/systemd_unit/offline\.rs:[0-9]+:[0-9]+: replace match guard error\.kind\(\) == std::io::ErrorKind::NotFound with true in reconcile_user_links$"),
     ("--exclude-re", r"^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$"),
     ("--exclude-re", r"^src/domains/ai/apm/cowork/skill_files\.rs:[0-9]+:[0-9]+: delete match arm \(false, _\) in skill_files_match$"),
-    ("--exclude-re", r"^src/domains/ai/apm/cowork/skill_files\.rs:[0-9]+:[0-9]+: (delete match arm \(false, _\)|replace is_dir_like\(meta\) with (true|false)) in copy_skill_files$"),
+    ("--exclude-re", r"^src/domains/ai/apm/cowork/skill_files\.rs:[0-9]+:[0-9]+: (delete match arm \(false, _\)|replace (?:match guard )?is_dir_like\(meta\) with (true|false)) in copy_skill_files$"),
     ("--exclude-re", r"^src/domains/files/resources/symlink/platform\.rs:.*\b(create_symlink_windows|create_junction|command_output)\b"),
-    ("--exclude-re", r"^src/domains/files/resources/symlink/platform\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]|\|\| with &&) in is_link_like$"),
+    ("--exclude-re", r"^src/domains/files/resources/symlink/platform\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]|\|\| with &&|&& with \|\|) in is_link_like$"),
 )
 
 WINDOWS_EXCLUSIONS = (
-    ("--exclude-re", r"^src/infra/fs/place/windows\.rs:[0-9]+:[0-9]+: replace .* in <impl Drop for LocalDescriptor>::drop$"),
+    ("--exclude-re", r"^src/infra/fs/place/windows\.rs:[0-9]+:[0-9]+: replace <impl Drop for LocalDescriptor>::drop with \(\)$"),
+    ("--exclude-re", r"^src/infra/fs/place/windows\.rs:[0-9]+:[0-9]+: replace \| with \^$"),
     ("--exclude-re", r"^src/infra/fs/place/windows\.rs:.*\b(require_query_support|require_persistent_acls)\b"),
-    ("--exclude-re", r"^src/infra/run_lock/coordination/windows\.rs:[0-9]+:[0-9]+: replace .* in <impl Drop for KnownFolder>::drop$"),
+    ("--exclude-re", r"^src/infra/fs/place/windows/private_dir\.rs:[0-9]+:[0-9]+: replace \| with \^$"),
+    ("--exclude-re", r"^src/infra/run_lock/coordination/windows\.rs:[0-9]+:[0-9]+: replace <impl Drop for KnownFolder>::drop with \(\)$"),
 )
 
 WINDOWS_FILES = (
@@ -123,15 +135,26 @@ def resolve_test_tool(requested="auto"):
 def suite_options(suite, exact=None, test_tool="cargo"):
     nextest = test_tool == "nextest"
     quiet_nextest = ("--status-level=none", "--final-status-level=fail")
-    if suite == "linux":
+    if suite in ("linux", "linux-lib", "linux-app"):
         excludes = [*LINUX_EXCLUSIONS, *(
             ("--exclude-re", pattern) for _, pattern, _ in FOCUSED.values()
         )]
-        options = ["--in-diff", DIFF, *(arg for pair in excludes for arg in pair)]
-        test_target = (
-            ["--", "-E", "not binary(domain_boundaries)", *quiet_nextest]
-            if nextest else []
-        )
+        scope = []
+        if suite == "linux-lib":
+            scope = [arg for path in APP_PATHS for arg in ("--exclude", path)]
+        elif suite == "linux-app":
+            scope = [arg for path in APP_PATHS for arg in ("--file", path)]
+        options = ["--in-diff", DIFF, *scope, *(arg for pair in excludes for arg in pair)]
+        if suite == "linux-lib":
+            test_target = (
+                ["--cargo-arg=--lib", "--", *quiet_nextest]
+                if nextest else ["--cargo-arg=--lib"]
+            )
+        else:
+            test_target = (
+                ["--", "-E", "not binary(domain_boundaries)", *quiet_nextest]
+                if nextest else []
+            )
         pattern = None
     elif suite == "windows":
         options = [
@@ -167,7 +190,7 @@ def build_run_command(suite, test_tool="cargo", partition="", exact=None):
     options, test_target = suite_options(suite, exact, test_tool=test_tool)
     command = ["cargo", "mutants", "--no-shuffle", *options]
     if partition:
-        command.extend(("--shard", partition))
+        command.extend(("--shard", partition, "--sharding=round-robin"))
     command.extend(("--in-place", "--profile=mutants", "--cargo-arg=--locked"))
     if test_tool == "nextest":
         command.append("--test-tool=nextest")
@@ -188,19 +211,30 @@ def list_mutants(suite):
     return result.splitlines()
 
 
+def round_robin_shards(prefix, suite, total, target, max_shards):
+    if not total:
+        return []
+    partitions = min(max_shards, (total + target - 1) // target)
+    return [
+        {
+            "id": f"{prefix}-{index}",
+            "suite": suite,
+            "partition": f"{index}/{partitions}",
+            "count": (total - index + partitions - 1) // partitions,
+        }
+        for index in range(partitions)
+    ]
+
+
 def linux_matrix(counts):
-    ordinary = counts["linux"]
-    partitions = min(MAX_SHARDS, (ordinary + SHARD_TARGET - 1) // SHARD_TARGET)
-    shards = []
-    if ordinary:
-        # cargo-mutants defaults to slices with ceil(total / partitions) members.
-        # A high partition count can leave empty trailing slices.
-        size = (ordinary + partitions - 1) // partitions
-        shards.extend(
-            {"id": str(index), "suite": "linux", "partition": f"{index}/{partitions}",
-             "count": min(size, ordinary - start)}
-            for index, start in enumerate(range(0, ordinary, size))
-        )
+    shards = [
+        *round_robin_shards(
+            "lib", "linux-lib", counts.get("linux-lib", 0), LIB_SHARD_TARGET, MAX_LIB_SHARDS,
+        ),
+        *round_robin_shards(
+            "app", "linux-app", counts.get("linux-app", 0), APP_SHARD_TARGET, MAX_APP_SHARDS,
+        ),
+    ]
     focused_total = sum(counts[suite] for suite in FOCUSED)
     if focused_total:
         shards.append({
@@ -214,7 +248,7 @@ def linux_matrix(counts):
 
 def plan():
     manifest = json.loads(PLAN.read_text(encoding="utf-8"))
-    counts = {suite: 0 for suite in ("linux", *FOCUSED)}
+    counts = {suite: 0 for suite in ("linux-lib", "linux-app", *FOCUSED)}
     if (CLI / DIFF).stat().st_size:
         counts = {suite: len(list_mutants(suite)) for suite in counts}
     manifest["linux_shards"] = linux_matrix(counts)
@@ -328,7 +362,10 @@ def main():
     modes = parser.add_subparsers(dest="mode", required=True)
     modes.add_parser("plan")
     execute = modes.add_parser("run")
-    execute.add_argument("suite", choices=("linux", "focused", *FOCUSED, "windows"))
+    execute.add_argument(
+        "suite",
+        choices=("linux", "linux-lib", "linux-app", "focused", *FOCUSED, "windows"),
+    )
     execute.add_argument("--test-tool", choices=("auto", "nextest", "cargo"), default="auto")
     exclusive = execute.add_mutually_exclusive_group()
     exclusive.add_argument("--partition")

@@ -152,10 +152,12 @@ For manual replay, dispatch **Mutation Testing** and optionally supply the
 original full ancestor SHA as `mutation_base`. Manual runs never advance the
 nightly baseline, so a narrow replay cannot discard pending coverage. Reports
 and selected Linux inputs are retained as artifacts for seven days. Linux
-shards are sized from the selected mutant count (capped to fit within two
-parallel waves, with focused suites consolidated into a single `focused`
-shard), and both Linux and Windows run with the incremental `[profile.mutants]`
-profile and `cargo-nextest` fail-fast execution. The results summary gives
+shards are split into unit-tested library shards (`domains/`, `engine/`,
+`infra/` under `--lib`) and full-suite CLI shards (`src/app/`, `src/main.rs`),
+distributed round-robin and capped to fit within a single parallel wave with
+focused suites consolidated into one `focused` shard. Both Linux and Windows
+run with the incremental `[profile.mutants]` profile and `cargo-nextest`
+fail-fast execution. The results summary gives
 the tested range, counts per platform, missing reports, and focused replay
 commands for survivors and timeouts. The mutation-summary artifact contains
 the complete report. Survivors, timeouts, tool errors, and incomplete coverage

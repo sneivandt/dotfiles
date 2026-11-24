@@ -102,13 +102,16 @@ pub(crate) fn managed_insiders_unavailable(
 
 #[cfg(not(target_os = "linux"))]
 #[allow(clippy::unnecessary_wraps, reason = "matches the fallible Linux probe")]
-pub(crate) const fn managed_insiders_unavailable(
+pub(crate) const fn managed_insiders_unavailable_non_linux(
     _path: &std::path::Path,
     _root: &std::path::Path,
     _home: &std::path::Path,
 ) -> Result<bool> {
     Ok(false)
 }
+
+#[cfg(not(target_os = "linux"))]
+pub(crate) use managed_insiders_unavailable_non_linux as managed_insiders_unavailable;
 
 #[cfg(target_os = "linux")]
 fn insiders_unavailable(

@@ -180,3 +180,67 @@ pub(super) fn write_selected_log(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_selected_log_hides_run_context_after_startup_unless_verbose() {
+        let startup = serde_json::to_string(&StoredRecord::new(
+            "run",
+            Record::Message {
+                event: "startup".into(),
+                text: "Update · desktop".into(),
+            },
+        ))
+        .unwrap();
+        let context = serde_json::to_string(&StoredRecord::new(
+            "run",
+            Record::RunContext {
+                profile: "desktop".into(),
+                platform: "linux".into(),
+                dry_run: false,
+            },
+        ))
+        .unwrap();
+        let log_content = format!(
+            "00:00:00.000 [run] [record] {startup}\n\
+             00:00:00.001 [run] [record] {context}\n"
+        );
+
+        let mut concise = Vec::new();
+        write_selected_log(
+            &mut std::io::Cursor::new(log_content.as_bytes()),
+            false,
+            false,
+            None,
+            StyleChoice::plain(),
+            &mut concise,
+        )
+        .unwrap();
+        let concise_text = String::from_utf8(concise).unwrap();
+        assert!(concise_text.contains("Update · desktop"), "{concise_text}");
+        assert!(
+            !concise_text.contains("platform=linux") && !concise_text.contains("desktop · linux"),
+            "non-verbose view must skip duplicate RunContext when startup is present: {concise_text}"
+        );
+
+        let mut verbose = Vec::new();
+        write_selected_log(
+            &mut std::io::Cursor::new(log_content.as_bytes()),
+            true,
+            false,
+            None,
+            StyleChoice::plain(),
+            &mut verbose,
+        )
+        .unwrap();
+        let verbose_text = String::from_utf8(verbose).unwrap();
+        assert!(verbose_text.contains("Update · desktop"), "{verbose_text}");
+        assert!(
+            verbose_text.contains("run_context") || verbose_text.contains("platform=linux"),
+            "verbose view must keep RunContext even when startup is present: {verbose_text}"
+        );
+    }
+}

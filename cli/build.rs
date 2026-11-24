@@ -33,22 +33,26 @@ fn main() -> Result<(), String> {
     // otherwise fall back to git describe for local development builds.
     if let Ok(version) = std::env::var("DOTFILES_VERSION") {
         println!("cargo:rustc-env=DOTFILES_VERSION={version}");
-    } else if let Ok(output) = Command::new("git")
-        .args(["describe", "--tags", "--always", "--dirty"])
-        .output()
-        && output.status.success()
-    {
-        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        println!("cargo:rustc-env=DOTFILES_VERSION={version}");
+    } else {
+        if let Ok(output) = Command::new("git")
+            .args(["describe", "--tags", "--always", "--dirty"])
+            .output()
+            && output.status.success()
+        {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            println!("cargo:rustc-env=DOTFILES_VERSION={version}");
+        }
+
+        // Re-run if git HEAD changes when version is derived from git.
+        //
+        // Use `git rev-parse` to locate the actual git directory rather than
+        // hard-coding `../.git/`, which is wrong for Git worktrees (where `.git`
+        // is a file pointing to a separate directory) and other non-standard
+        // repository layouts.
+        register_git_rerun_triggers();
     }
 
-    // Re-run if git HEAD changes or env var changes.
-    //
-    // Use `git rev-parse` to locate the actual git directory rather than
-    // hard-coding `../.git/`, which is wrong for Git worktrees (where `.git`
-    // is a file pointing to a separate directory) and other non-standard
-    // repository layouts.
-    register_git_rerun_triggers();
+    println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=DOTFILES_VERSION");
     Ok(())
 }
@@ -90,7 +94,7 @@ fn register_git_rerun_triggers() {
 
     // HEAD is per-worktree.
     let head_dir = git_dir.as_deref().unwrap_or("../.git");
-    println!("cargo:rerun-if-changed={head_dir}/HEAD");
+    emit_rerun_if_exists(&format!("{head_dir}/HEAD"));
 
     // Branch refs, refs/tags/, and packed-refs are shared across worktrees.
     let refs_base = git_common_dir
@@ -98,10 +102,22 @@ fn register_git_rerun_triggers() {
         .or(git_dir.as_deref())
         .unwrap_or("../.git");
     if let Some(head_ref) = git_output(&["symbolic-ref", "--quiet", "HEAD"]) {
-        println!("cargo:rerun-if-changed={refs_base}/{head_ref}");
+        emit_rerun_if_exists(&format!("{refs_base}/{head_ref}"));
     }
-    println!("cargo:rerun-if-changed={refs_base}/refs/tags/");
-    println!("cargo:rerun-if-changed={refs_base}/packed-refs");
+    emit_rerun_if_exists(&format!("{refs_base}/refs/tags"));
+    emit_rerun_if_exists(&format!("{refs_base}/packed-refs"));
+}
+
+/// Emit `cargo:rerun-if-changed` only for paths that exist on disk.
+///
+/// Cargo treats any missing `rerun-if-changed` path as permanently dirty,
+/// which would invalidate incremental compilation on every invocation (for
+/// example, `packed-refs` does not exist in `git init` + `git fetch`
+/// checkouts such as GitHub Actions).
+fn emit_rerun_if_exists(path: &str) {
+    if std::path::Path::new(path).exists() {
+        println!("cargo:rerun-if-changed={path}");
+    }
 }
 
 /// Run a git subcommand and return trimmed stdout on success, `None` otherwise.

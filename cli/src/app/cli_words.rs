@@ -24,16 +24,12 @@ pub(super) fn value_options(command: &Command) -> Vec<&Arg> {
 pub(super) fn words<'a>(raw: &'a RawArgs, options: Vec<&'a Arg>) -> impl Iterator<Item = Word<'a>> {
     let mut cursor = raw.cursor();
     let mut input = std::iter::from_fn(move || raw.next(&mut cursor)).enumerate();
-    let mut cluster: Option<ShortFlags<'_>> = None;
+    let mut pending_shorts = Vec::new().into_iter();
     std::iter::from_fn(move || {
         loop {
-            let (arg, attached) = if let Some(option) = cluster
-                .as_mut()
-                .and_then(|shorts| next_short(&options, shorts))
-            {
+            let (arg, attached) = if let Some(option) = pending_shorts.next() {
                 option
             } else {
-                cluster = None;
                 let (index, word) = input.next()?;
                 if word.is_escape() {
                     return None;
@@ -50,7 +46,7 @@ pub(super) fn words<'a>(raw: &'a RawArgs, options: Vec<&'a Arg>) -> impl Iterato
                     };
                     (arg, attached)
                 } else if let Some(shorts) = word.to_short() {
-                    cluster = Some(shorts);
+                    pending_shorts = expand_short_cluster(&options, shorts).into_iter();
                     continue;
                 } else if word.is_stdio() {
                     // A lone dash has never selected a dotfiles subcommand.
@@ -71,24 +67,27 @@ pub(super) fn words<'a>(raw: &'a RawArgs, options: Vec<&'a Arg>) -> impl Iterato
 }
 
 /// In a cluster the first value-taking switch owns the entire remaining suffix.
-fn next_short<'a>(
+fn expand_short_cluster<'a>(
     options: &[&'a Arg],
-    shorts: &mut ShortFlags<'a>,
-) -> Option<(&'a Arg, Option<&'a OsStr>)> {
-    let arg = shorts.by_ref().flatten().find_map(|short| {
+    mut shorts: ShortFlags<'a>,
+) -> Vec<(&'a Arg, Option<&'a OsStr>)> {
+    let mut expanded = Vec::new();
+    while let Some(arg) = shorts.by_ref().flatten().find_map(|short| {
         options.iter().copied().find(|arg| {
             arg.get_short() == Some(short)
                 || arg
                     .get_all_short_aliases()
                     .is_some_and(|aliases| aliases.contains(&short))
         })
-    })?;
-    let attached = if arg.get_action().takes_values() {
-        shorts
-            .next_value_os()
-            .map(|rest| rest.strip_prefix("=").unwrap_or(rest))
-    } else {
-        None
-    };
-    Some((arg, attached))
+    }) {
+        let attached = if arg.get_action().takes_values() {
+            shorts
+                .next_value_os()
+                .map(|rest| rest.strip_prefix("=").unwrap_or(rest))
+        } else {
+            None
+        };
+        expanded.push((arg, attached));
+    }
+    expanded
 }

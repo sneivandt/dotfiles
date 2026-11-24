@@ -64,8 +64,102 @@ fn replace_binary_backs_up_existing_on_unix() {
     );
 }
 
+struct WrapperFixture {
+    _root: tempfile::TempDir,
+    bin: PathBuf,
+    old: PathBuf,
+    wrapper_path: PathBuf,
+    _lock: Option<UpdateJournal>,
+}
+
+fn setup_wrapper_phase(
+    repo: &Path,
+    wrapper: &str,
+    phase: &str,
+    keep_lock: bool,
+    good: &[u8],
+    bad: &[u8],
+) -> WrapperFixture {
+    let root = tempfile::tempdir_in(".").unwrap();
+    let bin = binary_path(root.path());
+    let old = old_binary_path(root.path());
+    fs::create_dir(bin.parent().unwrap()).unwrap();
+    let wrapper_path = root.path().join(wrapper);
+    fs::copy(repo.join(wrapper), &wrapper_path).unwrap();
+    let write_image = |path: &Path, data: &[u8]| {
+        fs::write(path, data).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    };
+    write_image(
+        &old,
+        if matches!(phase, "healthy" | "both-failed") {
+            bad
+        } else {
+            good
+        },
+    );
+    if !matches!(phase, "missing" | "legacy") {
+        write_image(&bin, if phase == "healthy" { good } else { bad });
+    }
+    let lock = if phase == "legacy" {
+        None
+    } else {
+        let active = begin_replacement(&bin).unwrap();
+        if keep_lock {
+            Some(active)
+        } else {
+            drop(active); // process exit without confirming the installation
+            None
+        }
+    };
+    WrapperFixture {
+        _root: root,
+        bin,
+        old,
+        wrapper_path,
+        _lock: lock,
+    }
+}
+
+fn assert_wrapper_phase(
+    phase: &str,
+    bin: &Path,
+    old: &Path,
+    locked: bool,
+    good: &[u8],
+    bad: &[u8],
+) {
+    if locked {
+        assert!(!bin.exists());
+        assert_eq!(fs::read(old).unwrap(), good);
+        return;
+    }
+    match phase {
+        "legacy" => {
+            assert!(!bin.exists());
+            assert_eq!(fs::read(old).unwrap(), good);
+        }
+        "both-failed" => {
+            assert_eq!(fs::read(bin).unwrap(), bad);
+            assert_eq!(fs::read(old).unwrap(), bad);
+            assert!(begin_replacement(bin).is_err());
+        }
+        _ => {
+            assert_eq!(fs::read(bin).unwrap(), good);
+            assert_eq!(old.exists(), phase == "healthy");
+            begin_replacement(bin).unwrap(); // next update no longer requires recovery
+        }
+    }
+}
+
 #[test]
 fn checkout_wrapper_recovers_only_unlocked_unfinished_updates() {
+    use std::fmt::Write as _;
+
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let good = version_capable_binary();
     #[cfg(unix)]
@@ -74,91 +168,89 @@ fn checkout_wrapper_recovers_only_unlocked_unfinished_updates() {
     let bad =
         fs::read(PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32/where.exe"))
             .unwrap();
-    for wrapper in ["dotfiles.sh", "dotfiles.ps1"] {
-        let shell = if wrapper == "dotfiles.sh" {
-            if cfg!(windows) {
-                continue;
-            }
-            which::which("sh").unwrap()
-        } else if let Ok(pwsh) = which::which("pwsh") {
-            pwsh
-        } else if cfg!(windows) {
-            which::which("powershell").unwrap()
-        } else {
-            continue;
-        };
-        for phase in ["missing", "failed", "healthy", "both-failed", "legacy"] {
-            let root = tempfile::tempdir_in(".").unwrap();
-            let bin = binary_path(root.path());
-            let old = old_binary_path(root.path());
-            fs::create_dir(bin.parent().unwrap()).unwrap();
-            let wrapper_path = root.path().join(wrapper);
-            fs::copy(repo.join(wrapper), &wrapper_path).unwrap();
-            let write_image = |path, data| {
-                fs::write(path, data).unwrap();
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt as _;
-                    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
-                }
-            };
-            write_image(
-                &old,
-                if matches!(phase, "healthy" | "both-failed") {
-                    &bad
-                } else {
-                    &good
-                },
-            );
-            if !matches!(phase, "missing" | "legacy") {
-                write_image(&bin, if phase == "healthy" { &good } else { &bad });
-            }
-            let run = || {
-                let mut command = std::process::Command::new(&shell);
-                if wrapper == "dotfiles.ps1" {
-                    command.args(["-NoProfile", "-NonInteractive", "-File"]);
-                }
-                command
-                    .arg(&wrapper_path)
-                    .arg("--version")
-                    .output()
-                    .unwrap()
-            };
-            if phase != "legacy" {
-                let active = begin_replacement(&bin).unwrap();
-                if phase == "missing" {
-                    let output = run();
-                    assert!(
-                        !output.status.success(),
-                        "{wrapper} ignored update lock: {output:?}"
-                    );
-                    assert!(!bin.exists());
-                    assert_eq!(fs::read(&old).unwrap(), good);
-                }
-                drop(active); // process exit without confirming the installation
-            }
-            let output = run();
+    let cases = [
+        ("missing-locked", "missing", true),
+        ("missing", "missing", false),
+        ("failed", "failed", false),
+        ("healthy", "healthy", false),
+        ("both-failed", "both-failed", false),
+        ("legacy", "legacy", false),
+    ];
+
+    #[cfg(not(windows))]
+    {
+        let shell = which::which("sh").unwrap();
+        for (label, phase, keep_lock) in cases {
+            let fixture = setup_wrapper_phase(repo, "dotfiles.sh", phase, keep_lock, &good, &bad);
+            let output = std::process::Command::new(&shell)
+                .arg(&fixture.wrapper_path)
+                .arg("--version")
+                .output()
+                .unwrap();
+            let expect_success = !keep_lock && phase != "both-failed";
             assert_eq!(
                 output.status.success(),
-                phase != "both-failed",
-                "{wrapper} {phase}: {output:?}"
+                expect_success,
+                "dotfiles.sh {label}: {output:?}"
             );
-            match phase {
-                "legacy" => {
-                    assert!(!bin.exists());
-                    assert_eq!(fs::read(old).unwrap(), good);
-                }
-                "both-failed" => {
-                    assert_eq!(fs::read(&bin).unwrap(), bad);
-                    assert_eq!(fs::read(old).unwrap(), bad);
-                    assert!(begin_replacement(&bin).is_err());
-                }
-                _ => {
-                    assert_eq!(fs::read(&bin).unwrap(), good);
-                    assert_eq!(old.exists(), phase == "healthy");
-                    begin_replacement(&bin).unwrap(); // next update no longer requires recovery
-                }
-            }
+            assert_wrapper_phase(phase, &fixture.bin, &fixture.old, keep_lock, &good, &bad);
+        }
+    }
+
+    let ps_shell = which::which("pwsh")
+        .ok()
+        .or_else(|| cfg!(windows).then(|| which::which("powershell").unwrap()));
+    if let Some(shell) = ps_shell {
+        // Run all PowerShell wrapper phases in a single shell process so startup
+        // overhead is paid once per test execution.
+        let fixtures: Vec<_> = cases
+            .iter()
+            .map(|&(label, phase, keep_lock)| {
+                (
+                    label,
+                    phase,
+                    keep_lock,
+                    setup_wrapper_phase(repo, "dotfiles.ps1", phase, keep_lock, &good, &bad),
+                )
+            })
+            .collect();
+        let mut driver = String::new();
+        for (label, _, _, fixture) in &fixtures {
+            let escaped = fixture.wrapper_path.to_string_lossy().replace('\'', "''");
+            writeln!(
+                driver,
+                "$global:LASTEXITCODE = 0; $ok = $true; \
+                 try {{ $null = & '{escaped}' --version; if ($LASTEXITCODE -ne 0) {{ $ok = $false }} }} \
+                 catch {{ $ok = $false }}; \
+                 Write-Output ('{label}=' + $(if ($ok) {{ 'ok' }} else {{ 'fail' }}))"
+            )
+            .unwrap();
+        }
+        let output = std::process::Command::new(&shell)
+            .args(["-NoProfile", "-NonInteractive", "-Command", &driver])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "dotfiles.ps1 driver failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let actual: Vec<&str> = stdout.lines().collect();
+        let expected: Vec<String> = cases
+            .iter()
+            .map(|&(label, phase, keep_lock)| {
+                let expect_success = !keep_lock && phase != "both-failed";
+                format!("{label}={}", if expect_success { "ok" } else { "fail" })
+            })
+            .collect();
+        assert_eq!(
+            actual, expected,
+            "unexpected dotfiles.ps1 outcomes: {stdout}"
+        );
+        for (_, phase, keep_lock, fixture) in fixtures {
+            assert_wrapper_phase(phase, &fixture.bin, &fixture.old, keep_lock, &good, &bad);
         }
     }
 }

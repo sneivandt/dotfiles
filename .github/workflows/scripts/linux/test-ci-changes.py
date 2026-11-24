@@ -1152,32 +1152,36 @@ class GateTests(unittest.TestCase):
                         self.assertIn("run process --exact", MUTATION_REPORT["replay"](suite, name))
 
     def test_linux_shards_cover_inventory_without_empty_jobs(self):
-        for linux_count, expected_shards in (
-            (0, 0),
-            (1, 1),
-            (300, 1),
-            (301, 2),
-            (3900, 13),
-            (20881, 13),
+        for lib_count, app_count, expected_lib, expected_app in (
+            (0, 0, 0, 0),
+            (1, 0, 1, 0),
+            (300, 250, 1, 1),
+            (301, 251, 2, 2),
+            (3300, 750, 11, 3),
+            (20881, 2000, 11, 3),
         ):
-            with self.subTest(linux_count=linux_count):
+            with self.subTest(lib_count=lib_count, app_count=app_count):
                 shards = MUTATION_RUN["linux_matrix"](
                     {
-                        "linux": linux_count,
+                        "linux-lib": lib_count,
+                        "linux-app": app_count,
                         **dict.fromkeys(MUTATION_RUN["FOCUSED"], 0),
                         "liveness": 2,
                         "process": 1,
                     },
                 )
-                linux_shards = [shard for shard in shards if shard["suite"] == "linux"]
-                self.assertEqual(len(linux_shards), expected_shards)
-                self.assertEqual(sum(shard["count"] for shard in linux_shards), linux_count)
-                self.assertTrue(all(shard["count"] > 0 for shard in linux_shards))
-                self.assertLessEqual(len(shards), 14)
                 self.assertEqual(
-                    shards[expected_shards:],
-                    [{"id": "focused", "suite": "focused", "partition": "", "count": 3}],
+                    shards[0],
+                    {"id": "focused", "suite": "focused", "partition": "", "count": 3},
                 )
+                app_shards = [shard for shard in shards if shard["suite"] == "linux-app"]
+                lib_shards = [shard for shard in shards if shard["suite"] == "linux-lib"]
+                self.assertEqual(len(app_shards), expected_app)
+                self.assertEqual(len(lib_shards), expected_lib)
+                self.assertEqual(sum(shard["count"] for shard in app_shards), app_count)
+                self.assertEqual(sum(shard["count"] for shard in lib_shards), lib_count)
+                self.assertTrue(all(shard["count"] > 0 for shard in shards))
+                self.assertLessEqual(len(shards), 15)
 
     def test_focused_merge_preserves_subsuite_replay_and_completeness(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -1221,22 +1225,31 @@ class GateTests(unittest.TestCase):
             self.assertIn("run process --exact", MUTATION_REPORT["replay"](details[0][2], details[0][3]))
 
     def test_nextest_and_incremental_profile_command_flags(self):
+        lib_cmd = MUTATION_RUN["build_run_command"]("linux-lib", test_tool="nextest", partition="0/4")
+        self.assertIn("--profile=mutants", lib_cmd)
+        self.assertIn("--test-tool=nextest", lib_cmd)
+        self.assertIn("--shard", lib_cmd)
+        self.assertIn("--sharding=round-robin", lib_cmd)
+        self.assertIn("--cargo-arg=--lib", lib_cmd)
+        self.assertIn("--exclude", lib_cmd)
+        app_cmd = MUTATION_RUN["build_run_command"]("linux-app", test_tool="nextest", partition="0/2")
+        self.assertIn("not binary(domain_boundaries)", app_cmd)
+        self.assertNotIn("--cargo-arg=--lib", app_cmd)
+        self.assertIn("--file", app_cmd)
         linux_cmd = MUTATION_RUN["build_run_command"]("linux", test_tool="nextest", partition="0/4")
-        self.assertIn("--profile=mutants", linux_cmd)
-        self.assertIn("--test-tool=nextest", linux_cmd)
-        self.assertIn("--shard", linux_cmd)
-        self.assertIn("--sharding=round-robin", linux_cmd)
         self.assertIn("not binary(domain_boundaries)", linux_cmd)
         self.assertNotIn("--cargo-arg=--lib", linux_cmd)
-        exact_cmd = MUTATION_RUN["build_run_command"]("linux", test_tool="nextest", exact="src/lib.rs:1:1: x")
+        exact_cmd = MUTATION_RUN["build_run_command"]("linux-lib", test_tool="nextest", exact="src/lib.rs:1:1: x")
         self.assertNotIn("--sharding=round-robin", exact_cmd)
         win_cmd = MUTATION_RUN["build_run_command"]("windows", test_tool="nextest", partition="0/2")
         self.assertIn("--cargo-arg=--lib", win_cmd)
         self.assertIn("--test-tool=nextest", win_cmd)
         self.assertIn("--sharding=round-robin", win_cmd)
         self.assertNotIn("not binary(domain_boundaries)", win_cmd)
-        with patch.dict(os.environ, {"CARGO_INCREMENTAL": "0"}):
-            self.assertEqual(MUTATION_RUN["mutation_env"]()["CARGO_INCREMENTAL"], "1")
+        with patch.dict(os.environ, {"CARGO_INCREMENTAL": "0"}, clear=False):
+            env = MUTATION_RUN["mutation_env"]()
+            self.assertEqual(env["CARGO_INCREMENTAL"], "1")
+            self.assertTrue(env["DOTFILES_VERSION"])
 
     def test_focused_mutants_are_excluded_from_the_ordinary_suite(self):
         options, _ = MUTATION_RUN["suite_options"]("linux")

@@ -73,7 +73,8 @@ this command replays the process mutants with their bounded test target.
 python3 -B .github/workflows/scripts/linux/run-mutations.py run process
 ```
 
-Use `run linux` to replay the ordinary Linux suite.
+Use `run linux` to replay the ordinary Linux suite, or `run linux-lib` / `run linux-app`
+to replay only the library (`--lib`) or CLI/integration-tested slice.
 
 On Windows, use `python` in the selection command and run the native suite
 on a Windows filesystem.

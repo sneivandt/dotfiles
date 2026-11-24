@@ -152,9 +152,9 @@ For manual replay, dispatch **Mutation Testing** and optionally supply the
 original full ancestor SHA as `mutation_base`. Manual runs never advance the
 nightly baseline, so a narrow replay cannot discard pending coverage. Reports
 and selected Linux inputs are retained as artifacts for seven days. Linux
-mutants are distributed round-robin across full-suite shards capped to fit
-within a single parallel wave, with focused suites consolidated into one
-`focused` shard. Both Linux and Windows
+mutants are split into unit-tested library shards (`linux-lib`, `--lib`) and
+integration-tested application shards (`linux-app`), distributed round-robin
+with focused suites consolidated into one `focused` shard. Both Linux and Windows
 run with the incremental `[profile.mutants]` profile and `cargo-nextest`
 fail-fast execution. The results summary gives
 the tested range, counts per platform, missing reports, and focused replay

@@ -16,10 +16,13 @@ import tempfile
 CLI = Path(__file__).resolve().parents[4] / "cli"
 PLAN = CLI / "mutation-plan.json"
 DIFF = "mutants.diff"
-LINUX_SHARD_TARGET = 300
-MAX_LINUX_SHARDS = 13
+LIB_SHARD_TARGET = 300
+MAX_LIB_SHARDS = 11
+APP_SHARD_TARGET = 250
+MAX_APP_SHARDS = 3
 WINDOWS_SHARDS = 2
 COUNTS = ("caught", "missed", "timeout", "unviable")
+APP_PATHS = ("src/main.rs", "src/lib.rs", "src/app/**", "src/testing/**")
 
 # Mutants that can block unrelated tests get a bounded test target.
 FOCUSED = {
@@ -132,15 +135,26 @@ def resolve_test_tool(requested="auto"):
 def suite_options(suite, exact=None, test_tool="cargo"):
     nextest = test_tool == "nextest"
     quiet_nextest = ("--status-level=none", "--final-status-level=fail")
-    if suite == "linux":
+    if suite in ("linux", "linux-lib", "linux-app"):
         excludes = [*LINUX_EXCLUSIONS, *(
             ("--exclude-re", pattern) for _, pattern, _ in FOCUSED.values()
         )]
-        options = ["--in-diff", DIFF, *(arg for pair in excludes for arg in pair)]
-        test_target = (
-            ["--", "-E", "not binary(domain_boundaries)", *quiet_nextest]
-            if nextest else []
-        )
+        scope = []
+        if suite == "linux-lib":
+            scope = [arg for path in APP_PATHS for arg in ("--exclude", path)]
+        elif suite == "linux-app":
+            scope = [arg for path in APP_PATHS for arg in ("--file", path)]
+        options = ["--in-diff", DIFF, *scope, *(arg for pair in excludes for arg in pair)]
+        if suite == "linux-lib":
+            test_target = (
+                ["--cargo-arg=--lib", "--", *quiet_nextest]
+                if nextest else ["--cargo-arg=--lib"]
+            )
+        else:
+            test_target = (
+                ["--", "-E", "not binary(domain_boundaries)", *quiet_nextest]
+                if nextest else []
+            )
         pattern = None
     elif suite == "windows":
         options = [
@@ -189,6 +203,9 @@ def mutation_env():
     # Swatinem/rust-cache exports CARGO_INCREMENTAL=0; re-enable incremental
     # compilation so [profile.mutants] keeps unchanged codegen units warm.
     env["CARGO_INCREMENTAL"] = "1"
+    # Pin DOTFILES_VERSION so build.rs skips git probes and stays clean across
+    # in-place mutations instead of flipping to -dirty and invalidating builds.
+    env.setdefault("DOTFILES_VERSION", "dev-0.1.0")
     return env
 
 
@@ -213,23 +230,33 @@ def round_robin_shards(prefix, suite, total, target, max_shards):
 
 
 def linux_matrix(counts):
-    shards = round_robin_shards(
-        "linux", "linux", counts.get("linux", 0), LINUX_SHARD_TARGET, MAX_LINUX_SHARDS,
-    )
+    shards = []
     focused_total = sum(counts[suite] for suite in FOCUSED)
     if focused_total:
+        # Schedule focused first so it finishes quickly and frees a concurrency
+        # slot when a full baseline spans all 15 shards under max-parallel: 14.
         shards.append({
             "id": "focused",
             "suite": "focused",
             "partition": "",
             "count": focused_total,
         })
+    shards.extend(
+        round_robin_shards(
+            "app", "linux-app", counts.get("linux-app", 0), APP_SHARD_TARGET, MAX_APP_SHARDS,
+        )
+    )
+    shards.extend(
+        round_robin_shards(
+            "lib", "linux-lib", counts.get("linux-lib", 0), LIB_SHARD_TARGET, MAX_LIB_SHARDS,
+        )
+    )
     return shards
 
 
 def plan():
     manifest = json.loads(PLAN.read_text(encoding="utf-8"))
-    counts = {suite: 0 for suite in ("linux", *FOCUSED)}
+    counts = {suite: 0 for suite in ("linux-lib", "linux-app", *FOCUSED)}
     if (CLI / DIFF).stat().st_size:
         counts = {suite: len(list_mutants(suite)) for suite in counts}
     manifest["linux_shards"] = linux_matrix(counts)
@@ -345,7 +372,7 @@ def main():
     execute = modes.add_parser("run")
     execute.add_argument(
         "suite",
-        choices=("linux", "focused", *FOCUSED, "windows"),
+        choices=("linux", "linux-lib", "linux-app", "focused", *FOCUSED, "windows"),
     )
     execute.add_argument("--test-tool", choices=("auto", "nextest", "cargo"), default="auto")
     exclusive = execute.add_mutually_exclusive_group()

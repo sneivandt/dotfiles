@@ -232,12 +232,11 @@ the repository link checker.
 The header switches between three documentation sections. Each section has its
 own sidebar and previous/next sequence:
 
-- Guides: Introduction (About this project, then Getting started), Using dotfiles,
-  Platforms, and Customization. Platform
+- Guides: Using dotfiles, Platforms, and Customization. Platform
   guides cover environment-specific setup and behavior; Using dotfiles covers
-  everyday commands, profiles, configuration, safety, packages, and troubleshooting.
-  Getting started leads directly to Commands and usage, then Profiles and
-  categories and Configuration basics.
+  setup, everyday commands, profiles, configuration, safety, packages, and
+  troubleshooting. Getting started leads directly to Commands and usage, then
+  Profiles and categories and Configuration basics.
 - Reference: direct CLI reference and Task reference overview links,
   followed by the Task details group. The overview explains task selection,
   scheduling, and removal scope; the individual pages cover each domain's
@@ -267,13 +266,13 @@ and robots metadata continue to identify the public page. Write metadata using
 [Help readers find the topic](content/development/writing-documentation.md#help-readers-find-the-topic),
 and test representative reader queries rather than adding keyword meta tags.
 
-The site title and About this project sidebar link return to the landing page
-at `/`. The landing page uses VitePress's native `home` layout with a hero
-header, feature cards linking into key guides, a framed terminal preview, and
-the personal introduction below. The Guides header link opens Getting started,
-which owns the setup walkthrough. Guides have a heading outline through level
-three, source edit links, and previous/next navigation within the current
-section.
+The site title returns to the landing page at `/`, which is omitted from the
+Guides sidebar. The landing page uses VitePress's native `home` layout with a
+hero header, feature cards linking into key guides, and a showcase section
+pairing the terminal preview with the personal introduction. The Guides header
+link opens Getting started, which owns the setup walkthrough. Guides have a
+heading outline through level three, source edit links, and previous/next
+navigation within the current section.
 
 Use the default theme's typography, surfaces, navigation, callouts, code blocks,
 and local search, with Tokyo Night brand accent colors in

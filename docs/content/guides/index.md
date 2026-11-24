@@ -9,7 +9,6 @@ head:
     - '{"@context":"https://schema.org","@type":"WebSite","name":"Dotfiles","url":"https://dotfiles.stuartneivandt.com/","creator":{"@type":"Person","name":"Stuart Neivandt","url":"https://stuartneivandt.com/"}}'
 hero:
   name: Dotfiles
-  text: Arch Linux and Windows, managed with Rust.
   tagline: My personal shell, editor, package, and Hyprland setup kept in one checkout, with previews before anything changes.
   image:
     src: /favicon.svg
@@ -51,10 +50,13 @@ features:
     linkText: Architecture
 ---
 
+<section class="home-showcase">
 <figure class="home-preview">
   <img src="/assets/terminal-screenshot.svg" width="760" height="548" alt="Animated terminal session: one dotfiles update groups CLI upgrade and repository sync notices beneath its header, then links configuration, refreshes shell completions, and installs missing packages">
   <figcaption>A single <code>dotfiles update</code> upgrades the CLI, syncs the checkout, links configs, and installs packages.</figcaption>
 </figure>
+
+<div class="home-about">
 
 ## About this project
 
@@ -75,9 +77,5 @@ your own machine, start with [Getting started](getting-started.md) to review
 the defaults, back up existing files, and preview what would change before
 applying anything.
 
-## Where to go next
-
-- [Getting started](getting-started.md): Review the defaults, back up existing files, and preview your first setup.
-- [Commands and usage](commands-and-usage.md): Run updates, filter tasks, and inspect what changed.
-- [Task reference](../reference/task-reference.md): Look up what each task manages, how to declare it, and what removal leaves behind.
-- [Contributing](../development/contributing.md): Find where a change belongs in the repository and which checks to run.
+</div>
+</section>

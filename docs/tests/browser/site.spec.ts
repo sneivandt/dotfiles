@@ -38,8 +38,9 @@ async function guideRoutes(page: Page) {
       (links) => links.map((link) => link.getAttribute('href')!),
     )) routes.add(href);
   }
-  expect([...routes].sort()).toEqual([...documentRoutes].sort());
-  return [...routes];
+  expect(routes.has('/')).toBe(false);
+  expect([...routes, '/'].sort()).toEqual([...documentRoutes].sort());
+  return ['/', ...routes];
 }
 
 for (const theme of ['light', 'dark'] as const) {
@@ -95,15 +96,14 @@ for (const theme of ['light', 'dark'] as const) {
 test('the hero landing page and grouped Guides navigation work cleanly', async ({ page, isMobile }) => {
   await page.goto('/');
   await expect(page).toHaveTitle('Dotfiles | Arch Linux & Windows setup with a Rust CLI');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Dotfiles');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Arch Linux and Windows, managed with Rust.');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dotfiles');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/');
   await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute('content', 'Dotfiles');
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/');
   await expect(page.locator('.VPFeatures .VPFeature')).toHaveCount(6);
-  await expect(page.locator('.home-preview img[src="/assets/terminal-screenshot.svg"]')).toBeVisible();
-  await expect(page.locator('.vp-doc h2').first()).toHaveText('About this project');
-  await expect(page.locator('.vp-doc p').first()).not.toBeEmpty();
+  await expect(page.locator('.home-showcase .home-preview img[src="/assets/terminal-screenshot.svg"]')).toBeVisible();
+  await expect(page.locator('.home-showcase .home-about h2')).toHaveText('About this project');
+  await expect(page.locator('.home-showcase .home-about p').first()).not.toBeEmpty();
   const footerLink = page.locator('.site-footer').getByRole('link', { name: 'Stuart Neivandt', exact: true });
   await expect(footerLink).toBeVisible();
   await expect(footerLink).toHaveAttribute('href', 'https://stuartneivandt.com/');
@@ -123,24 +123,29 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
   await expect(footerLink).toBeVisible();
   await expect(footerLink).toHaveAttribute('href', 'https://stuartneivandt.com/');
+  await expect(page.locator('.VPDocFooter .prev')).toHaveCount(0);
   await expect(page.locator('.VPDocFooter .next')).toContainText('Commands and usage');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const sidebar = page.locator('.VPSidebar');
   const groups = sidebar.locator('.group');
-  await expect(groups.locator('h2')).toHaveText(['Introduction', 'Using dotfiles', 'Platforms', 'Customization']);
+  await expect(groups.locator('h2')).toHaveText(['Using dotfiles', 'Platforms', 'Customization']);
   for (const [label, titles] of [
-    ['Introduction', ['About this project', 'Getting started']],
-    ['Using dotfiles', ['Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting']],
+    ['Using dotfiles', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting']],
     ['Platforms', ['Arch desktop', 'Windows and WSL']],
     ['Customization', ['Application settings', 'Agent configuration', 'Private overlays']],
   ] as const) {
     await expect(groups.filter({ has: page.getByRole('heading', { name: label, exact: true }) }).getByRole('link')).toHaveText([...titles]);
   }
-  await expect(sidebar.getByRole('link', { name: 'About this project', exact: true })).toHaveAttribute('href', '/');
-  if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText('Guides');
-  await sidebar.getByRole('link', { name: 'About this project', exact: true }).click();
+  await expect(sidebar.getByRole('link', { name: 'About this project', exact: true })).toHaveCount(0);
+  if (isMobile) {
+    await page.keyboard.press('Escape');
+    await expect(sidebar).not.toHaveClass(/open/);
+  } else {
+    await expect(page.locator('.VPNavBarMenu a.active')).toHaveText('Guides');
+  }
+  await page.locator('.VPNavBarTitle a').click();
   await expect(page).toHaveURL('/');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Dotfiles');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dotfiles');
   await assertNoPageOverflow(page);
 });
 
@@ -154,7 +159,7 @@ test('header sections replace the sidebar, including direct links and search des
   for (const [label, entry, titles] of [
     ['Reference', '/cli-reference', referenceTitles],
     ['Development', '/contributing', ['Contributing', 'Writing documentation', 'Architecture', 'Adding a task', 'Debugging', 'Testing', 'Writing tests', 'Mutation testing', 'CI and releases']],
-    ['Guides', '/getting-started', ['About this project', 'Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Application settings', 'Agent configuration', 'Private overlays']],
+    ['Guides', '/getting-started', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Application settings', 'Agent configuration', 'Private overlays']],
   ] as const) {
     if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
     await page.locator(isMobile ? '.VPNavScreen' : '.VPNavBarMenu').getByRole('link', { name: label, exact: true }).click();
@@ -359,7 +364,7 @@ test('developer guides cover debugging and documentation without assigning skill
 test('sidebar groups start expanded and collapse with their right-hand arrow', async ({ page, isMobile }) => {
   await page.goto('/getting-started');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
-  const group = page.locator('.VPSidebar .group').filter({ has: page.getByRole('heading', { name: 'Introduction', exact: true }) });
+  const group = page.locator('.VPSidebar .group').filter({ has: page.getByRole('heading', { name: 'Using dotfiles', exact: true }) });
   const link = group.getByRole('link', { name: 'Getting started', exact: true });
   await expect(link).toBeVisible();
   const control = group.getByRole('button', { name: 'toggle section', exact: true });

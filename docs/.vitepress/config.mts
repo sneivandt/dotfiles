@@ -25,8 +25,7 @@ const group = (text: string, pages: string[]): DefaultTheme.SidebarItem => ({
 });
 
 const guide = [
-  group('Introduction', ['index', 'getting-started']),
-  group('Using dotfiles', ['commands-and-usage', 'profiles-and-categories', 'configuration-basics', 'security-and-trust', 'package-management', 'troubleshooting']),
+  group('Using dotfiles', ['getting-started', 'commands-and-usage', 'profiles-and-categories', 'configuration-basics', 'security-and-trust', 'package-management', 'troubleshooting']),
   group('Platforms', ['arch-desktop', 'windows-and-wsl']),
   group('Customization', ['application-settings', 'agent-configuration', 'private-overlays']),
 ];

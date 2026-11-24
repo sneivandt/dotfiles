@@ -353,7 +353,7 @@ test('sidebar groups start expanded and collapse with their right-hand arrow', a
 
 test('the terminal illustration matches the CLI progress and action styling', async ({ page }) => {
   await page.goto('/assets/terminal-screenshot.svg');
-  const rows = page.locator('g[class^="live-"], g.updating');
+  const rows = page.locator('g[class^="live-"], g.checking, g.updating');
   expect(await rows.count()).toBeGreaterThan(0);
   for (const row of await rows.all()) {
     const fills = await row.locator('text:first-child, text:first-child tspan').evaluateAll((elements) =>
@@ -361,6 +361,15 @@ test('the terminal illustration matches the CLI progress and action styling', as
     expect(new Set(fills)).toEqual(new Set(['rgb(125, 207, 255)']));
     await expect(row.locator('text').last()).toHaveCSS('fill', 'rgb(126, 133, 161)');
   }
+  await expect(page.locator('g.checking text').last()).toHaveText('Checking for CLI updates');
+  await expect(page.locator('g.updating text').last()).toHaveText('Updating CLI to v2026.01.01-2');
+  await expect(page.locator('g.live-sync text').last()).toHaveText('18 left · Dotfiles repository');
+  const rowY = async (selector: string) => page.locator(selector).first().evaluate((element) =>
+    element.getBoundingClientRect().y);
+  const headerY = await rowY('.startup text');
+  expect(await rowY('.checking text')).toBe(headerY);
+  expect(await rowY('.updating text')).toBe(headerY);
+  expect(await rowY('.live-sync text')).toBe(await rowY('.synced text'));
   const counts = await page.locator('g[class^="live-"] text:last-child').allTextContents();
   for (const count of counts) {
     expect(count).toMatch(/^([1-9]\d| \d) left · \S/);

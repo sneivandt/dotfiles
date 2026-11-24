@@ -111,6 +111,9 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
     '@type': 'WebSite', name: 'Dotfiles', creator: { name: 'Stuart Neivandt', url: 'https://stuartneivandt.com/' },
   });
   await expect(page.locator('link[rel~="icon"]')).toHaveAttribute('href', '/favicon.svg');
+  await expect(page.locator('.VPNavBarTitle a')).toHaveAccessibleName('Dotfiles');
+  await expect(page.locator('.VPNavBarTitle img.logo.dark')).toBeVisible();
+  await expect(page.locator('.VPNavBarTitle img.logo.light')).toBeHidden();
   const setup = page.locator('.VPHero').getByRole('link', { name: 'Getting started', exact: true });
   await expect(setup).toBeInViewport();
   await expect(setup).toHaveAttribute('href', '/getting-started');
@@ -875,12 +878,17 @@ test('native theme switch retains light and dark choices', async ({ page, isMobi
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/');
   await expect(page.locator('html')).toHaveClass(/dark/);
+  await expect(page.locator('.VPNavBarTitle img.logo.dark')).toBeVisible();
+  await expect(page.locator('.VPNavBarTitle img.logo.light')).toBeHidden();
   if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
   const toggle = page.getByRole('switch').filter({ visible: true });
   await toggle.click();
   await expect(page.locator('html')).not.toHaveClass(/dark/);
+  await expect(page.locator('.VPNavBarTitle img.logo.light')).toBeVisible();
+  await expect(page.locator('.VPNavBarTitle img.logo.dark')).toBeHidden();
   await page.reload();
   await expect(page.locator('html')).not.toHaveClass(/dark/);
+  await expect(page.locator('.VPNavBarTitle img.logo.light')).toBeVisible();
   if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
   await page.getByRole('switch').filter({ visible: true }).click();
   await expect(page.locator('html')).toHaveClass(/dark/);

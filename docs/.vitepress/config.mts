@@ -135,7 +135,7 @@ export default defineConfig({
     },
   },
   themeConfig: {
-    logo: '/favicon.svg',
+    logo: { light: '/assets/logo-light.svg', dark: '/assets/logo-dark.svg', alt: '' },
     nav: [
       { text: 'Guides', link: '/getting-started', activeMatch: sectionMatch(guide) },
       { text: 'Reference', link: '/cli-reference', activeMatch: sectionMatch(reference) },

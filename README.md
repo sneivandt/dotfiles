@@ -1,9 +1,5 @@
 <h1 align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/public/assets/logo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/public/assets/logo-light.svg">
-    <img src="docs/public/assets/logo-light.svg" height="48" alt="Dotfiles">
-  </picture>
+  <img src="docs/public/assets/logo-readme.svg" height="64" alt="Dotfiles">
 </h1>
 
 <p align="center">

@@ -269,11 +269,10 @@ and test representative reader queries rather than adding keyword meta tags.
 
 The site title returns to the landing page at `/`, which is omitted from the
 Guides sidebar. The landing page uses VitePress's native `home` layout with a
-hero header, feature cards linking into key guides, and a showcase section
-pairing the terminal preview with the personal introduction. The Guides header
-link opens Getting started, which owns the setup walkthrough. Guides have a
-heading outline through level three, source edit links, and previous/next
-navigation within the current section.
+hero header and a showcase section pairing the terminal preview with the
+personal introduction. The Guides header link opens Getting started, which owns
+the setup walkthrough. Guides have a heading outline through level three, source
+edit links, and previous/next navigation within the current section.
 
 Use the default theme's typography, surfaces, navigation, callouts, code blocks,
 and local search, with Tokyo Night brand accent colors in

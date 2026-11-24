@@ -113,7 +113,7 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/');
   await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute('content', 'Dotfiles');
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/');
-  await expect(page.locator('.VPFeatures .VPFeature')).toHaveCount(6);
+  await expect(page.locator('.VPFeatures .VPFeature')).toHaveCount(0);
   await expect(page.locator('.home-showcase .home-preview img[src="/assets/terminal-screenshot.svg"]')).toBeVisible();
   await expect(page.locator('.home-showcase .home-about h2')).toHaveText('About this project');
   await expect(page.locator('.home-showcase .home-about p').first()).not.toBeEmpty();
@@ -820,7 +820,7 @@ for (const theme of ['light', 'dark'] as const) {
     for (const route of ['/', '/getting-started', '/package-management', '/private-overlays']) {
       await page.goto(route);
       const selector = route === '/'
-        ? '.VPHero .tagline, .VPHero .actions .VPButton, .VPFeature .title, .VPFeature .details, main p, main p a, main li a, .home-preview figcaption, .site-footer, .site-footer a'
+        ? '.VPHero .tagline, .VPHero .actions .VPButton, main p, main p a, main li a, .home-preview figcaption, .site-footer, .site-footer a'
         : 'main p, main p a, main li a, main .custom-block-title, .site-footer, .site-footer a';
       const measurements = await page.locator(selector).evaluateAll((elements) => {
         type Color = [number, number, number, number];

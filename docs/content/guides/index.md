@@ -23,31 +23,6 @@ hero:
     - theme: alt
       text: GitHub
       link: https://github.com/sneivandt/dotfiles
-features:
-  - title: Shells and editors
-    details: Zsh, Bash, PowerShell, tmux, Alacritty, Vim, Neovim, and VS Code settings kept live through symlinks.
-    link: /application-settings
-    linkText: Application settings
-  - title: Arch Linux desktop
-    details: Hyprland window management, a Quickshell bar and menus, mako notifications, and systemd cleanup timers.
-    link: /arch-desktop
-    linkText: Arch desktop
-  - title: Windows and WSL
-    details: Winget packages, Developer Mode, per-user Explorer and taskbar preferences, and WSL integration.
-    link: /windows-and-wsl
-    linkText: Windows and WSL
-  - title: Coding agents
-    details: Copilot and Codex preferences, plus reusable skills and plugins installed through Agent Package Manager.
-    link: /agent-configuration
-    linkText: Agent configuration
-  - title: Profiles and dry-run previews
-    details: Share terminal basics everywhere with base, add workstation tools with desktop, and preview changes first.
-    link: /profiles-and-categories
-    linkText: Profiles and categories
-  - title: Rust CLI engine
-    details: Dependency-ordered tasks, private overlays, configuration validation, and self-updating release binaries.
-    link: /architecture
-    linkText: Architecture
 ---
 
 <section class="home-showcase">

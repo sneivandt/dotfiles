@@ -117,6 +117,11 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
   const setup = page.locator('.VPHero').getByRole('link', { name: 'Getting started', exact: true });
   await expect(setup).toBeInViewport();
   await expect(setup).toHaveAttribute('href', '/getting-started');
+  const actionTops = await page.locator('.VPHero .actions .VPButton').evaluateAll(
+    (buttons) => buttons.map((button) => Math.round(button.getBoundingClientRect().top)),
+  );
+  expect(actionTops).toHaveLength(3);
+  expect(new Set(actionTops).size).toBe(1);
   if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveCount(0);
   await assertNoPageOverflow(page);
 

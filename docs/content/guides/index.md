@@ -18,10 +18,10 @@ hero:
       text: Getting started
       link: /getting-started
     - theme: alt
-      text: Commands and usage
+      text: Commands
       link: /commands-and-usage
     - theme: alt
-      text: View on GitHub
+      text: GitHub
       link: https://github.com/sneivandt/dotfiles
 features:
   - title: Shells and editors

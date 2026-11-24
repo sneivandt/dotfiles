@@ -44,6 +44,23 @@
   max-height: 176px;
 }
 
+@media (max-width: 639px) {
+  .VPHome .VPHero .actions {
+    gap: 8px;
+    margin: 0;
+  }
+
+  .VPHome .VPHero .action {
+    padding: 0;
+  }
+
+  .VPHome .VPHero .action .VPButton.medium {
+    padding: 0 12px;
+    line-height: 36px;
+    font-size: 13px;
+  }
+}
+
 @media (min-width: 640px) {
   .VPHome .VPHero .image-src {
     max-width: 220px;

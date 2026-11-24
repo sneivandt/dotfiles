@@ -204,9 +204,31 @@ mod tests {
             },
         ))
         .unwrap();
+        let attempt = serde_json::to_string(&StoredRecord::new(
+            "symlinks",
+            Record::Message {
+                event: "resource_apply".into(),
+                text: "applying symlink".into(),
+            },
+        ))
+        .unwrap();
+        let result = serde_json::to_string(&StoredRecord::new(
+            "symlinks",
+            Record::TaskResult {
+                task_id: "symlinks".into(),
+                selector: Some("symlinks".into()),
+                name: "Home symlinks".into(),
+                status: crate::infra::logging::TaskStatus::Changed,
+                reason: None,
+                actions: crate::infra::logging::ActionCounts::default(),
+            },
+        ))
+        .unwrap();
         let log_content = format!(
             "00:00:00.000 [run] [record] {startup}\n\
-             00:00:00.001 [run] [record] {context}\n"
+             00:00:00.001 [run] [record] {context}\n\
+             00:00:00.002 [symlinks] [record] {attempt}\n\
+             00:00:00.003 [symlinks] [record] {result}\n"
         );
 
         let mut concise = Vec::new();
@@ -225,6 +247,10 @@ mod tests {
             !concise_text.contains("platform=linux") && !concise_text.contains("desktop · linux"),
             "non-verbose view must skip duplicate RunContext when startup is present: {concise_text}"
         );
+        assert!(
+            !concise_text.contains("applying symlink"),
+            "non-verbose view must suppress completed resource_apply attempts: {concise_text}"
+        );
 
         let mut verbose = Vec::new();
         write_selected_log(
@@ -241,6 +267,10 @@ mod tests {
         assert!(
             verbose_text.contains("run_context") || verbose_text.contains("platform=linux"),
             "verbose view must keep RunContext even when startup is present: {verbose_text}"
+        );
+        assert!(
+            verbose_text.contains("applying symlink"),
+            "verbose view must retain completed resource_apply attempts: {verbose_text}"
         );
     }
 }

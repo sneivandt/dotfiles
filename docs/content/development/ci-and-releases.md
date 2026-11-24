@@ -152,24 +152,15 @@ For manual replay, dispatch **Mutation Testing** and optionally supply the
 original full ancestor SHA as `mutation_base`. Manual runs never advance the
 nightly baseline, so a narrow replay cannot discard pending coverage. Reports
 and selected Linux inputs are retained as artifacts for seven days. Linux
-shards are split into unit-tested library shards (`domains/`, `engine/`,
-`infra/` under `--lib`) and full-suite CLI shards (`src/app/`, `src/main.rs`),
-distributed round-robin and capped to fit within a single parallel wave with
-focused suites consolidated into one `focused` shard. Both Linux and Windows
+mutants are distributed round-robin across full-suite shards capped to fit
+within a single parallel wave, with focused suites consolidated into one
+`focused` shard. Both Linux and Windows
 run with the incremental `[profile.mutants]` profile and `cargo-nextest`
 fail-fast execution. The results summary gives
 the tested range, counts per platform, missing reports, and focused replay
 commands for survivors and timeouts. The mutation-summary artifact contains
 the complete report. Survivors, timeouts, tool errors, and incomplete coverage
 fail this separate workflow.
-
-If one or more runners shut down during shards before publishing results,
-[mutation-recovery.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/mutation-recovery.yml)
-can rerun the failed shards on the original commit and recompute the summary.
-It runs once per failed scheduled or manual run on `main` (first attempt only),
-and only when every failed shard is a confirmed runner shutdown with no
-reported survivors, timeouts, other shard failures, or newer superseding run.
-Other missing reports still fail the run.
 
 Enable Actions failure notifications for this workflow and investigate red
 runs; successful push CI does not mean nightly mutations passed. Check that the

@@ -242,7 +242,6 @@ fn task_memberships(words: &[OsString]) -> &'static [&'static str] {
             Some("check") => &["check"],
             _ => &[],
         },
-        Some(word) if word.starts_with('-') => &["update"],
         Some(_) => &[],
     }
 }
@@ -922,11 +921,34 @@ mod tests {
     fn registration_uses_runtime_completion_and_keeps_the_dot_completer() {
         let zsh = crate::app::catalog::generate_zsh_completions();
         assert_eq!(zsh, "source <(DOTFILES_COMPLETE=zsh dotfiles)\n");
+        assert_eq!(
+            registration(clap_complete::Shell::Bash),
+            "source <(DOTFILES_COMPLETE=bash dotfiles)\n"
+        );
+        assert_eq!(
+            registration(clap_complete::Shell::Elvish),
+            "eval (E:DOTFILES_COMPLETE=elvish dotfiles | slurp)\n"
+        );
+        assert_eq!(
+            registration(clap_complete::Shell::Fish),
+            "DOTFILES_COMPLETE=fish dotfiles | source\n"
+        );
 
         let powershell = crate::app::catalog::generate_powershell_completions();
         assert!(powershell.contains("DOTFILES_COMPLETE = 'powershell'"));
         assert!(powershell.contains("-Native -CommandName 'dot'"));
         assert!(!powershell.contains("-ParameterName 'Arguments'"));
         assert!(powershell.contains("$cursorPosition - $commandAst.Extent.StartOffset"));
+    }
+
+    #[test]
+    fn empty_positional_word_is_not_counted_as_present() {
+        use clap::CommandFactory as _;
+        let log = super::super::cli::Cli::command()
+            .find_subcommand("log")
+            .unwrap()
+            .clone();
+        assert!(present_arguments(&log, &RawArgs::new([""])).is_empty());
+        assert_eq!(present_arguments(&log, &RawArgs::new(["0"])), ["run"]);
     }
 }

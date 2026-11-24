@@ -2,12 +2,20 @@ use super::*;
 
 #[test]
 fn verify_cli() {
+    use clap::builder::styling::Style;
+
     Cli::command().debug_assert();
     let styles = cli_styles();
-    let plain = Styles::plain();
-    assert_ne!(styles.get_header(), plain.get_header());
-    assert_ne!(styles.get_literal(), plain.get_literal());
-    assert_ne!(styles.get_error(), plain.get_error());
+    assert_eq!(styles.get_header(), &Style::from(Effects::BOLD));
+    assert_eq!(styles.get_usage(), &Style::from(Effects::BOLD));
+    assert_eq!(styles.get_literal(), &AnsiColor::Cyan.on_default());
+    assert_eq!(styles.get_placeholder(), &Style::from(Effects::DIMMED));
+    assert_eq!(styles.get_valid(), &AnsiColor::Green.on_default());
+    assert_eq!(styles.get_invalid(), &AnsiColor::Yellow.on_default());
+    assert_eq!(
+        styles.get_error(),
+        &AnsiColor::Red.on_default().effects(Effects::BOLD)
+    );
 }
 
 #[test]

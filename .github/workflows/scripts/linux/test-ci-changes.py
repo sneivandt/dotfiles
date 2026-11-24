@@ -23,7 +23,6 @@ PRE_PUSH = runpy.run_path(str(SCRIPTS / "pre-push.py"))
 MUTATION = runpy.run_path(str(SCRIPTS / "select-mutations.py"))
 MUTATION_RUN = runpy.run_path(str(SCRIPTS / "run-mutations.py"))
 MUTATION_REPORT = runpy.run_path(str(SCRIPTS / "report-mutations.py"))
-MUTATION_RECOVERY = runpy.run_path(str(SCRIPTS / "recover-mutation.py"))
 classify = POLICY["classify"]
 LINUX = POLICY["LINUX"]
 WINDOWS = POLICY["WINDOWS"]
@@ -174,8 +173,6 @@ class ClassificationTests(unittest.TestCase):
             (LINUX + "select-mutations.py", set()),
             (LINUX + "run-mutations.py", set()),
             (LINUX + "report-mutations.py", set()),
-            (LINUX + "recover-mutation.py", set()),
-            (".github/workflows/mutation-recovery.yml", set()),
             (".github/workflows/mutation.yml", set()),
             (".github/workflows/release.yml", {"release"}),
             (LINUX + "classify-release.sh", {"release", "lint"}),
@@ -1155,34 +1152,30 @@ class GateTests(unittest.TestCase):
                         self.assertIn("run process --exact", MUTATION_REPORT["replay"](suite, name))
 
     def test_linux_shards_cover_inventory_without_empty_jobs(self):
-        for lib_count, app_count, exp_lib, exp_app in (
-            (0, 0, 0, 0),
-            (1, 0, 1, 0),
-            (550, 300, 1, 1),
-            (551, 301, 2, 2),
-            (4600, 1150, 9, 4),
-            (20881, 5000, 9, 4),
+        for linux_count, expected_shards in (
+            (0, 0),
+            (1, 1),
+            (300, 1),
+            (301, 2),
+            (3900, 13),
+            (20881, 13),
         ):
-            with self.subTest(lib_count=lib_count, app_count=app_count):
+            with self.subTest(linux_count=linux_count):
                 shards = MUTATION_RUN["linux_matrix"](
                     {
-                        "linux-lib": lib_count,
-                        "linux-app": app_count,
+                        "linux": linux_count,
                         **dict.fromkeys(MUTATION_RUN["FOCUSED"], 0),
                         "liveness": 2,
                         "process": 1,
                     },
                 )
-                lib_shards = [shard for shard in shards if shard["suite"] == "linux-lib"]
-                app_shards = [shard for shard in shards if shard["suite"] == "linux-app"]
-                self.assertEqual(len(lib_shards), exp_lib)
-                self.assertEqual(len(app_shards), exp_app)
-                self.assertEqual(sum(shard["count"] for shard in lib_shards), lib_count)
-                self.assertEqual(sum(shard["count"] for shard in app_shards), app_count)
-                self.assertTrue(all(shard["count"] > 0 for shard in lib_shards + app_shards))
+                linux_shards = [shard for shard in shards if shard["suite"] == "linux"]
+                self.assertEqual(len(linux_shards), expected_shards)
+                self.assertEqual(sum(shard["count"] for shard in linux_shards), linux_count)
+                self.assertTrue(all(shard["count"] > 0 for shard in linux_shards))
                 self.assertLessEqual(len(shards), 14)
                 self.assertEqual(
-                    shards[exp_lib + exp_app :],
+                    shards[expected_shards:],
                     [{"id": "focused", "suite": "focused", "partition": "", "count": 3}],
                 )
 
@@ -1228,18 +1221,14 @@ class GateTests(unittest.TestCase):
             self.assertIn("run process --exact", MUTATION_REPORT["replay"](details[0][2], details[0][3]))
 
     def test_nextest_and_incremental_profile_command_flags(self):
-        lib_cmd = MUTATION_RUN["build_run_command"]("linux-lib", test_tool="nextest", partition="0/4")
-        self.assertIn("--profile=mutants", lib_cmd)
-        self.assertIn("--test-tool=nextest", lib_cmd)
-        self.assertIn("--shard", lib_cmd)
-        self.assertIn("--sharding=round-robin", lib_cmd)
-        self.assertIn("--cargo-arg=--lib", lib_cmd)
-        self.assertNotIn("not binary(domain_boundaries)", lib_cmd)
-        app_cmd = MUTATION_RUN["build_run_command"]("linux-app", test_tool="nextest", partition="0/2")
-        self.assertIn("--sharding=round-robin", app_cmd)
-        self.assertIn("not binary(domain_boundaries)", app_cmd)
-        self.assertNotIn("--cargo-arg=--lib", app_cmd)
-        exact_cmd = MUTATION_RUN["build_run_command"]("linux-lib", test_tool="nextest", exact="src/lib.rs:1:1: x")
+        linux_cmd = MUTATION_RUN["build_run_command"]("linux", test_tool="nextest", partition="0/4")
+        self.assertIn("--profile=mutants", linux_cmd)
+        self.assertIn("--test-tool=nextest", linux_cmd)
+        self.assertIn("--shard", linux_cmd)
+        self.assertIn("--sharding=round-robin", linux_cmd)
+        self.assertIn("not binary(domain_boundaries)", linux_cmd)
+        self.assertNotIn("--cargo-arg=--lib", linux_cmd)
+        exact_cmd = MUTATION_RUN["build_run_command"]("linux", test_tool="nextest", exact="src/lib.rs:1:1: x")
         self.assertNotIn("--sharding=round-robin", exact_cmd)
         win_cmd = MUTATION_RUN["build_run_command"]("windows", test_tool="nextest", partition="0/2")
         self.assertIn("--cargo-arg=--lib", win_cmd)
@@ -1408,72 +1397,6 @@ class MutationSelectionTests(unittest.TestCase):
                 gh_api("endpoint", sleep=sleeps.append)
         self.assertEqual(run_mock.call_count, 1)
         self.assertEqual(sleeps, [])
-
-
-class MutationRecoveryTests(unittest.TestCase):
-    def test_api_retries_transient_server_errors_only(self):
-        api = MUTATION_RECOVERY["api"]
-        sleeps = []
-        transient = subprocess.CompletedProcess(["gh"], 1, stdout=b"", stderr=b"gh: Bad Gateway (HTTP 502)\n")
-        ok = subprocess.CompletedProcess(["gh"], 0, stdout=b"{}", stderr=b"")
-        with patch("subprocess.run", side_effect=[transient, ok]):
-            self.assertEqual(api("endpoint", sleep=sleeps.append), b"{}")
-        self.assertEqual(sleeps, [1])
-
-        sleeps.clear()
-        forbidden = subprocess.CompletedProcess(["gh"], 1, stdout=b"", stderr=b"gh: Forbidden (HTTP 403)\n")
-        with patch("subprocess.run", side_effect=[forbidden]) as run_mock:
-            with self.assertRaises(subprocess.CalledProcessError):
-                api("endpoint", sleep=sleeps.append)
-        self.assertEqual(run_mock.call_count, 1)
-        self.assertEqual(sleeps, [])
-
-    def test_retry_only_confirmed_interruption_on_first_attempt(self):
-        run = {"status": "completed", "conclusion": "failure", "run_attempt": 1,
-               "path": ".github/workflows/mutation.yml", "head_branch": "main",
-               "head_repository": {"full_name": "example/repo"}, "event": "schedule"}
-        job = {"id": 2, "run_attempt": 1, "conclusion": "failure", "name": "Rust: Mutation (changed code, shard 0)",
-               "steps": [{"name": "Test mutation partition", "conclusion": "cancelled"},
-                         {"name": "Run actions/upload-artifact@sha", "conclusion": "skipped"}]}
-        job2 = job | {"id": 3, "name": "Rust: Mutation (changed code, shard 1)"}
-        real_failure = job | {"id": 4, "name": "Rust: Mutation (changed code, shard 2)",
-                              "steps": [{"name": "Test mutation partition", "conclusion": "failure"}]}
-        results_job = {"id": 9, "run_attempt": 1, "conclusion": "failure", "name": "Mutation: Results",
-                       "steps": [{"name": "Report selected mutation results", "conclusion": "failure"}]}
-        shutdown = b"##[error]The runner has received a shutdown signal."
-        no_newer = json.dumps({"workflow_runs": [{"id": 1, "event": "schedule", "conclusion": "failure"}]})
-        newer_schedule = json.dumps({"workflow_runs": [
-            {"id": 5, "event": "schedule", "conclusion": None},
-            {"id": 1, "event": "schedule", "conclusion": "failure"},
-        ]})
-        newer_cancelled = json.dumps({"workflow_runs": [
-            {"id": 5, "event": "schedule", "conclusion": "cancelled"},
-            {"id": 1, "event": "schedule", "conclusion": "failure"},
-        ]})
-        for label, state, runs_payload, jobs, logs, retry in (
-            ("single interruption", run, no_newer, [job, results_job], [shutdown], True),
-            ("multiple interruptions", run, no_newer, [job, job2, results_job], [shutdown, shutdown], True),
-            ("cancelled newer run does not supersede", run, newer_cancelled, [job, results_job], [shutdown], True),
-            ("superseded by newer schedule", run, newer_schedule, [job, results_job], [shutdown], False),
-            ("other shard had real failure", run, no_newer, [job, real_failure, results_job], [shutdown], False),
-            ("missing shutdown marker", run, no_newer, [job], [b"The operation was canceled."], False),
-            ("missed mutant before shutdown", run, no_newer, [job], [b"MISSED src/foo.rs\n" + shutdown], False),
-            ("timeout before shutdown", run, no_newer, [job], [b"TIMEOUT src/foo.rs\n" + shutdown], False),
-            ("step failure", run, no_newer, [real_failure], [shutdown], False),
-            ("second attempt", run | {"run_attempt": 2}, no_newer, [job], [shutdown], False),
-            ("cancelled run", run | {"conclusion": "cancelled"}, no_newer, [job], [shutdown], False),
-            ("fork repo", run | {"head_repository": {"full_name": "another/repo"}}, no_newer, [job], [shutdown], False),
-        ):
-            responses = [json.dumps(state), runs_payload, json.dumps([{"jobs": jobs}]), *logs, b""]
-            request = Mock(side_effect=responses)
-            recover = MUTATION_RECOVERY["recover"]
-            with self.subTest(label=label), patch.dict(recover.__globals__, {"api": request}):
-                recover("example/repo", 1)
-                writes = [call.args for call in request.call_args_list if "POST" in call.args]
-                self.assertEqual(
-                    writes,
-                    [("repos/example/repo/actions/runs/1/rerun-failed-jobs", "--method", "POST")] if retry else [],
-                )
 
 
 class GitRangeTests(unittest.TestCase):

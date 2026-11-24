@@ -563,7 +563,8 @@ mod escaping_tests {
             eprintln!("SKIP: PowerShell is unavailable for elevation-script fixtures");
             return;
         };
-        for (name, behavior, expected) in [
+        let dir = tempfile::tempdir().unwrap();
+        let cases = [
             ("success", "[pscustomobject]@{ ExitCode = 0 }", 0),
             ("child failure", "[pscustomobject]@{ ExitCode = 7 }", 7),
             (
@@ -590,40 +591,64 @@ mod escaping_tests {
             ("missing process handle", "$null", 1),
             // PowerShell returns null when a Process property getter fails.
             ("exit code not available", "Get-Process -Id $PID", 1),
-        ] {
-            // Use an ordinary name containing the quote characters recognized by
-            // PowerShell. The fake validates all three strings without elevating.
-            let cwd = r"C:\O’Brien\‘2026‚‛";
+        ];
+        // Use an ordinary name containing the quote characters recognized by
+        // PowerShell. The fake validates all three strings without elevating.
+        let cwd = r"C:\O’Brien\‘2026‚‛";
+        let inner = build_elevated_child_script(&format!(r"{cwd}\fixture.exe"), &[cwd.into()], cwd);
+        let mut driver = String::new();
+        for (index, (name, behavior, _)) in cases.iter().enumerate() {
+            let script_path = dir.path().join(format!("case-{index}.ps1"));
             let script = format!(
                 "function Start-Process {{ param($FilePath, $WorkingDirectory, $ArgumentList, \
                   $Verb, [switch]$Wait, [switch]$PassThru)\n\
                   if ($WorkingDirectory -cne \"{cwd}\" -or $FilePath -cne \"{cwd}\\fixture.exe\" \
-                      -or $ArgumentList -cne '\"' + \"{cwd}\" + '\"') {{ exit 99 }}\n{behavior} }}\n{}",
-                build_elevated_child_script(&format!(r"{cwd}\fixture.exe"), &[cwd.into()], cwd)
+                      -or $ArgumentList -cne '\"' + \"{cwd}\" + '\"') {{ exit 99 }}\n{behavior} }}\n{inner}"
             );
-            let result = executor
-                .execute(
-                    CommandSpec::new(powershell)
-                        .args(&[
-                            "-NoProfile",
-                            "-NonInteractive",
-                            "-EncodedCommand",
-                            &powershell_encode_command(&script),
-                        ])
-                        .redact_arguments()
-                        .timeout(std::time::Duration::from_mins(1))
-                        .unchecked(),
-                )
-                .unwrap_or_else(|error| panic!("{name}: {error}"));
-            let expected = if cfg!(unix) { expected % 256 } else { expected };
-            assert_eq!(result.code, Some(expected), "{name}: {result:?}");
-            if expected == 1 {
-                assert!(
-                    !result.stderr.is_empty(),
-                    "{name}: the real launch error must remain available"
-                );
-            }
+            std::fs::write(&script_path, script).unwrap();
+            let quoted = powershell_single_quote(&script_path.to_string_lossy());
+            std::fmt::Write::write_fmt(
+                &mut driver,
+                format_args!(
+                    "$global:LASTEXITCODE = 0\n\
+                     $err = ''\n\
+                     try {{ $null = & {quoted}; $code = $LASTEXITCODE }}\n\
+                     catch {{ $code = 1; $err = $_.ToString() }}\n\
+                     Write-Output ('{name}|' + $code + '|' + [bool]$err)\n"
+                ),
+            )
+            .unwrap();
         }
+        let result = executor
+            .execute(
+                CommandSpec::new(powershell)
+                    .args(&[
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-EncodedCommand",
+                        &powershell_encode_command(&driver),
+                    ])
+                    .redact_arguments()
+                    .timeout(std::time::Duration::from_mins(1))
+                    .unchecked(),
+            )
+            .unwrap_or_else(|error| panic!("elevation script driver failed: {error}"));
+        assert_eq!(result.code, Some(0), "{result:?}");
+        let lines: Vec<&str> = result.stdout.lines().collect();
+        let expected: Vec<String> = cases
+            .iter()
+            .map(|(name, _, code)| {
+                format!(
+                    "{name}|{code}|{}",
+                    if *code == 1 { "True" } else { "False" }
+                )
+            })
+            .collect();
+        assert_eq!(
+            lines, expected,
+            "stdout:\n{}\nstderr:\n{}",
+            result.stdout, result.stderr
+        );
     }
 
     #[test]

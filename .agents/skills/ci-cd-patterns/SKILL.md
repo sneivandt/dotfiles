@@ -34,10 +34,8 @@ action-version inventories in guidance.
   [workflow](../../../.github/workflows/mutation.yml), outside `ci-success` and
   release/Pages dependencies. A failed mutation run must stay visibly failed,
   retain its reports, and not advance the nightly comparison baseline. Manual
-  replay ranges must not narrow later scheduled coverage.
-  [Mutation recovery](../../../.github/workflows/mutation-recovery.yml) retries
-  confirmed runner interruptions once without masking real failures, and
-  mutation helper scripts retry transient GitHub API errors.
+  replay ranges must not narrow later scheduled coverage, and mutation helper
+  scripts retry transient GitHub API errors.
 - A confirmed local npm TLS failure need not block a push. Use the pre-push
   checker's [unavailable-coverage receipt](../../../docs/content/development/testing.md#local-npm-tls-failures)
   for the exact commit, run the remaining selected checks, and report docs as

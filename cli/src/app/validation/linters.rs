@@ -171,27 +171,29 @@ exit "$LINT_EXIT"
         );
     }
 
-    fn have_powershell() -> bool {
-        match Command::new("pwsh")
-            .args(["-NoProfile", "-Command", "exit 0"])
-            .output()
-        {
-            Ok(output) => {
-                assert!(output.status.success());
-                true
-            }
-            Err(error) => {
-                assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
-                false
-            }
-        }
+    fn write_fake_psscriptanalyzer_module(dir: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
+        let modules = dir.join("modules");
+        let module = modules.join("PSScriptAnalyzer");
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(
+            module.join("PSScriptAnalyzer.psm1"),
+            r#"
+function Invoke-ScriptAnalyzer {
+    param([string]$Path, [string[]]$Severity)
+    if (($Severity -join ',') -ne 'Warning,Error') { throw 'wrong severity' }
+    [IO.File]::AppendAllText($env:LINT_INPUT_LOG, [IO.Path]::GetFileName($Path) + "`n")
+    if ($env:LINT_EXIT -eq '1') { 'fixture finding' }
+    if ($env:LINT_EXIT -eq '2') { throw 'fixture analyzer failure' }
+}
+Export-ModuleMember -Function Invoke-ScriptAnalyzer
+"#,
+        )
+        .unwrap();
+        (modules, module)
     }
 
     #[test]
     fn shared_powershell_discovery_and_failures() {
-        if !have_powershell() {
-            return;
-        }
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("root o'connor [literal]");
         let expected = inputs(
@@ -210,84 +212,86 @@ exit "$LINT_EXIT"
                 ("not first line", "\n#!/usr/bin/pwsh\n", false),
             ],
         );
-        let modules = dir.path().join("modules");
-        let module = modules.join("PSScriptAnalyzer");
-        std::fs::create_dir_all(&module).unwrap();
-        std::fs::write(
-            module.join("PSScriptAnalyzer.psm1"),
-            r#"
-function Invoke-ScriptAnalyzer {
-    param([string]$Path, [string[]]$Severity)
-    if (($Severity -join ',') -ne 'Warning,Error') { throw 'wrong severity' }
-    [IO.File]::AppendAllText($env:LINT_INPUT_LOG, [IO.Path]::GetFileName($Path) + "`n")
-    if ($env:LINT_EXIT -eq '1') { 'fixture finding' }
-    if ($env:LINT_EXIT -eq '2') { throw 'fixture analyzer failure' }
-}
-Export-ModuleMember -Function Invoke-ScriptAnalyzer
+        let (modules, module) = write_fake_psscriptanalyzer_module(dir.path());
+        let log_all = dir.path().join("inputs-all");
+        let log_selected = dir.path().join("inputs-selected");
+        let log_other = dir.path().join("inputs-other");
+        let cmd_script = dir.path().join("cmd.ps1");
+        std::fs::write(&cmd_script, build_psscriptanalyzer_command(&root)).unwrap();
+        let analyzer_script = dir.path().join("analyzer.ps1");
+        std::fs::write(&analyzer_script, PSSCRIPTANALYZER_SCRIPT).unwrap();
+        let selected = root.join("hooks/nested/space name.ps1");
+        let hooks = root.join("hooks");
+        let ps = |path: &Path| path.to_string_lossy().replace('\'', "''");
+        let driver = format!(
+            r#"$env:PSModulePath = '{modules}' + [IO.Path]::PathSeparator + (Join-Path $PSHOME 'Modules')
+function Invoke-Case([string]$Name, [scriptblock]$Body) {{
+    $global:LASTEXITCODE = 0
+    $failed = $false
+    try {{
+        $null = & $Body
+        if ($LASTEXITCODE -ne 0) {{ $failed = $true }}
+    }} catch {{
+        $failed = $true
+    }}
+    "$Name=$(if ($failed) {{ 'fail' }} else {{ 'ok' }})"
+}}
+Invoke-Case 'ok' {{ $env:LINT_INPUT_LOG = '{log_all}'; $env:LINT_EXIT = '0'; & '{cmd}' }}
+Invoke-Case 'explicit' {{ $env:LINT_INPUT_LOG = '{log_selected}'; $env:LINT_EXIT = '0'; & '{analyzer}' '{selected}' }}
+Invoke-Case 'finding' {{ $env:LINT_INPUT_LOG = '{log_other}'; $env:LINT_EXIT = '1'; & '{cmd}' }}
+Invoke-Case 'throw' {{ $env:LINT_INPUT_LOG = '{log_other}'; $env:LINT_EXIT = '2'; & '{cmd}' }}
+Remove-Module PSScriptAnalyzer -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath '{module}' -Recurse -Force
+Invoke-Case 'missing_module' {{ $env:LINT_EXIT = '0'; & '{cmd}' }}
+Remove-Item -LiteralPath '{hooks}' -Recurse -Force
+Set-Content -LiteralPath '{hooks}' -Value 'not a directory'
+Invoke-Case 'invalid_dir' {{ $env:LINT_EXIT = '0'; & '{cmd}' }}
+Remove-Item -LiteralPath '{hooks}' -Force
+Invoke-Case 'empty' {{ $env:LINT_EXIT = '1'; & '{cmd}' }}
 "#,
-        )
-        .unwrap();
-        let log = dir.path().join("inputs");
-        let run = |input_root: &Path, exit: &str| {
-            Command::new("pwsh")
-                .args([
-                    "-NoProfile",
-                    "-Command",
-                    &format!("$env:PSModulePath = '{}' + [IO.Path]::PathSeparator + (Join-Path $PSHOME 'Modules'); {}", modules.to_string_lossy().replace('\'', "''"), build_psscriptanalyzer_command(input_root)),
-                ])
-                .env("PSModulePath", &modules)
-                .env("LINT_INPUT_LOG", &log)
-                .env("LINT_EXIT", exit)
-                .output()
-                .unwrap()
+            modules = ps(&modules),
+            log_all = ps(&log_all),
+            log_selected = ps(&log_selected),
+            log_other = ps(&log_other),
+            cmd = ps(&cmd_script),
+            analyzer = ps(&analyzer_script),
+            selected = ps(&selected),
+            module = ps(&module),
+            hooks = ps(&hooks),
+        );
+        let output = match Command::new("pwsh")
+            .args(["-NoProfile", "-Command", &driver])
+            .env("PSModulePath", &modules)
+            .output()
+        {
+            Ok(output) => output,
+            Err(error) => {
+                assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+                return;
+            }
         };
-        let output = run(&root, "0");
         assert!(
             output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
+            "driver failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
         );
-        assert_eq!(recorded(&log), expected);
-        std::fs::remove_file(&log).unwrap();
-        let script_path = dir.path().join("analyzer.ps1");
-        std::fs::write(&script_path, PSSCRIPTANALYZER_SCRIPT).unwrap();
-        let selected = root.join("hooks/nested/space name.ps1");
-        let explicit = format!(
-            "$env:PSModulePath = '{}' + [IO.Path]::PathSeparator + (Join-Path $PSHOME 'Modules'); & '{}' '{}'",
-            modules.to_string_lossy().replace('\'', "''"),
-            script_path.to_string_lossy().replace('\'', "''"),
-            selected.to_string_lossy().replace('\'', "''"),
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let results: Vec<&str> = stdout.lines().collect();
+        assert_eq!(
+            results,
+            [
+                "ok=ok",
+                "explicit=ok",
+                "finding=fail",
+                "throw=fail",
+                "missing_module=fail",
+                "invalid_dir=fail",
+                "empty=ok",
+            ],
+            "unexpected case outcomes: {stdout}"
         );
-        let selected_output = Command::new("pwsh")
-            .args(["-NoProfile", "-Command", &explicit])
-            .env("LINT_INPUT_LOG", &log)
-            .env("LINT_EXIT", "0")
-            .output()
-            .unwrap();
-        assert!(
-            selected_output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&selected_output.stderr)
-        );
-        assert_eq!(recorded(&log), ["space name.ps1"]);
-        for exit in ["1", "2"] {
-            assert!(!run(&root, exit).status.success());
-        }
-        std::fs::remove_dir_all(&module).unwrap();
-        assert!(
-            !run(&root, "0").status.success(),
-            "missing analyzer must fail"
-        );
-        std::fs::remove_dir_all(root.join("hooks")).unwrap();
-        std::fs::write(root.join("hooks"), "not a directory").unwrap();
-        assert!(
-            !run(&root, "0").status.success(),
-            "invalid discovery must fail"
-        );
-        std::fs::remove_file(root.join("hooks")).unwrap();
-        assert!(
-            run(&root, "1").status.success(),
-            "empty discovery must not invoke the tool"
-        );
+        assert_eq!(recorded(&log_all), expected);
+        assert_eq!(recorded(&log_selected), ["space name.ps1"]);
     }
 }

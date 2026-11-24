@@ -89,7 +89,7 @@ export default defineConfig({
       `<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>${origin}/sitemap.xml</loc></sitemap></sitemapindex>`);
   },
   transformPageData(page) {
-    if (page.relativePath === 'index.md') page.title = 'Dotfiles — Declarative Arch & Windows Setup';
+    if (page.relativePath === 'index.md') page.title = 'Dotfiles | Arch Linux & Windows setup with a Rust CLI';
   },
   transformHead({ pageData }) {
     const pagePath = pageData.relativePath.replace(/\.md$/, '');

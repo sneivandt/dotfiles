@@ -94,7 +94,7 @@ for (const theme of ['light', 'dark'] as const) {
 
 test('the introduction and grouped navigation fit the default reading layout', async ({ page, isMobile }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle('Dotfiles — Declarative Arch & Windows Setup');
+  await expect(page).toHaveTitle('Dotfiles | Arch Linux & Windows setup with a Rust CLI');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/');
   await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute('content', 'Dotfiles');

@@ -68,61 +68,104 @@ def baseline(repository, head, explicit=""):
     return ""
 
 
-def repository_test_input(path):
-    # Config::load in config_drift and the tracked Arch recipe descriptor tests.
+REPOSITORY_DOC_OWNERS = {
+    "docs/content/guides/agent-configuration.md": ("cli/src/domains/ai/apm/fragments.rs",),
+    "docs/content/guides/private-overlays.md": ("cli/src/app/config",),
+    "docs/content/reference/agent-settings.md": ("cli/src/domains/ai/resources/agent_settings.rs",),
+    "docs/content/reference/cli-reference.md": ("cli/src/app/cli.rs",),
+    "docs/content/reference/home-symlinks.md": ("cli/src/domains/files/symlinks.rs",),
+    "docs/content/reference/system-configuration-files.md": (
+        "cli/src/domains/system/resources/system_file",
+        "cli/src/domains/system/resources/system_file.rs",
+    ),
+    "docs/content/reference/systemd-units.md": (
+        "cli/src/domains/system/resources/systemd_unit",
+        "cli/src/domains/system/resources/systemd_unit.rs",
+    ),
+    "docs/content/reference/task-reference.md": ("cli/src/app/commands/list.rs",),
+}
+
+
+def repository_test_owners(path):
+    """Map tracked non-Rust files read by Rust tests to their owning modules."""
+    if path == "conf/system-files.toml":
+        return (
+            "cli/src/app/config",
+            "cli/src/domains/system/resources/system_file",
+            "cli/src/domains/system/resources/system_file.rs",
+        )
     if path.startswith("conf/") and path.endswith(".toml"):
-        return True
+        return ("cli/src/app/config",)
     if path.startswith("packages/"):
         parts = path.split("/")
         if len(parts) == 3 and (
             parts[2] in {"PKGBUILD", "release.json"} or parts[2].endswith(".install")
         ):
-            return True
-    # Repository assets and embedded Markdown examples read by Rust tests.
-    return path.startswith((
-        "system/",
-        "symlinks/config/git/templates/",
-        "symlinks/config/systemd/user/",
-        "symlinks/config/hypr/scripts/",
-        "symlinks/local/bin/",
-    )) or path in {
-        "symlinks/config/Code/User/settings.json",
-        "symlinks/config/Thunar/managed-view-settings.sh",
-        "symlinks/config/hypr/conf/binds.lua",
-        "symlinks/config/shell/path.sh",
-        "symlinks/local/share/applications/code-insiders.desktop",
-        "symlinks/local/share/applications/code-insiders-url-handler.desktop",
-        "docs/content/guides/agent-configuration.md",
-        "docs/content/guides/private-overlays.md",
-        "docs/content/reference/agent-settings.md",
-        "docs/content/reference/cli-reference.md",
-        "docs/content/reference/home-symlinks.md",
-        "docs/content/reference/system-configuration-files.md",
-        "docs/content/reference/systemd-units.md",
-        "docs/content/reference/task-reference.md",
-    }
+            return (
+                "cli/src/domains/packages/arch_recipes",
+                "cli/src/domains/packages/arch_recipes.rs",
+            )
+    if path.startswith("system/"):
+        return (
+            "cli/src/domains/system/resources/system_file",
+            "cli/src/domains/system/resources/system_file.rs",
+        )
+    if path.startswith("symlinks/config/git/templates/"):
+        return ("cli/src/domains/git",)
+    if path.startswith("symlinks/config/systemd/user/"):
+        return (
+            "cli/src/domains/system/resources/systemd_unit",
+            "cli/src/domains/system/resources/systemd_unit.rs",
+        )
+    return REPOSITORY_DOC_OWNERS.get(path, ())
 
 
-# Explicit owners rather than inferring that every tests/ directory is local:
-# integration tests and shared helpers can exercise unrelated production code.
+# Explicit owners for shared fixtures outside cli/src/.
 TEST_OWNERS = {
-    "cli/src/domains/ai/apm/autopilot/tests/lock.rs": "cli/src/domains/ai/apm/autopilot",
-    "cli/src/domains/ai/apm/autopilot/tests/schedules.rs": "cli/src/domains/ai/apm/autopilot",
-    "cli/src/infra/logging/subscriber/tests.rs": "cli/src/infra/logging",
-    "cli/tests/fixtures/apm-yaml-fragment.yaml": "cli/src/infra/yaml.rs",
+    "cli/tests/fixtures/apm-yaml-fragment.yaml": ("cli/src/infra/yaml.rs",),
+    "cli/tests/fixtures/apm-0.33.0-lock.yaml": (
+        "cli/src/infra/yaml.rs",
+        "cli/src/domains/ai/apm/cowork/legacy_lock.rs",
+    ),
 }
+
+
+def unit_test_owners(path):
+    """Map a module-local unit test file under cli/src/ to its owning module."""
+    if not (path.startswith("cli/src/") and path.endswith(".rs")):
+        return ()
+    if "/test_helpers/" in path or path.endswith(("/test_helpers.rs", "/test_fixture.rs")):
+        return ()
+    rel = path.removeprefix("cli/src/")
+    if rel.endswith("/tests.rs"):
+        module = rel.removesuffix("/tests.rs")
+    elif "/tests/" in rel:
+        module = rel.split("/tests/", 1)[0]
+    elif "/" in rel and (
+        rel.rsplit("/", 1)[1].endswith("_tests.rs")
+        or rel.rsplit("/", 1)[1].startswith("tests_")
+    ):
+        module = rel.rsplit("/", 1)[0]
+    else:
+        return ()
+    if not module:
+        return ()
+    return (f"cli/src/{module}", f"cli/src/{module}.rs")
+
+
+LINUX_ONLY_DIRS = (
+    "cli/src/domains/packages/arch_recipes",
+    "cli/src/domains/system/resources/system_file",
+    "cli/src/domains/system/resources/systemd_unit",
+)
 
 
 def linux_only_source(path):
     # Modules compiled or exercised only for Linux domains so strictly Linux
-    # source edits do not schedule the 8 native Windows mutation shards.
+    # source edits do not schedule native Windows mutation shards.
     return (
         path.endswith("/linux.rs")
-        or path.startswith((
-            "cli/src/domains/packages/arch_recipes/",
-            "cli/src/domains/system/resources/system_file/",
-            "cli/src/domains/system/resources/systemd_unit/",
-        ))
+        or any(path == directory or path.startswith(directory + "/") for directory in LINUX_ONLY_DIRS)
         or path in {
             "cli/src/domains/files/chmod.rs",
             "cli/src/domains/files/config/chmod.rs",
@@ -145,12 +188,22 @@ def linux_only_source(path):
 
 
 def selection(paths):
-    owners = {TEST_OWNERS[path] for path in paths if path in TEST_OWNERS}
-    paths = [path for path in paths if path not in TEST_OWNERS]
-    source = sorted(owners | {path for path in paths if path.startswith("cli/src/") and path.endswith(".rs")})
+    owners = set()
+    remaining = []
+    for path in paths:
+        if path in TEST_OWNERS:
+            owners.update(TEST_OWNERS[path])
+        elif unit_owners := unit_test_owners(path):
+            owners.update(unit_owners)
+        elif repo_owners := repository_test_owners(path):
+            owners.update(repo_owners)
+        else:
+            remaining.append(path)
+    source = sorted(
+        owners | {path for path in remaining if path.startswith("cli/src/") and path.endswith(".rs")}
+    )
     broad = any(
-        repository_test_input(path)
-        or path.startswith(("cli/tests/", "cli/.cargo/", ".cargo/"))
+        path.startswith(("cli/tests/", "cli/.cargo/", ".cargo/"))
         or path in {
             "cli/Cargo.toml", "cli/Cargo.lock", "cli/build.rs",
             "cli/rust-toolchain", "cli/rust-toolchain.toml", "Cargo.toml", "Cargo.lock", "build.rs",
@@ -160,15 +213,17 @@ def selection(paths):
             ".github/workflows/scripts/linux/run-mutations.py",
         }
         or (path.startswith("cli/src/") and (
-            not path.endswith(".rs") or "/tests/" in path or path.endswith("/tests.rs")
+            not path.endswith(".rs")
+            or "/tests/" in path
+            or path.endswith("/tests.rs")
             or "/test_helpers/" in path
             or path.endswith(("_tests.rs", "/test_helpers.rs", "/test_fixture.rs"))
         ))
-        for path in paths
+        for path in remaining
     )
     run_windows = broad or any(not linux_only_source(path) for path in source)
     # Whole changed files include unchanged production code beside edited inline
-    # tests. Harness, external test, and build changes recheck all source.
+    # tests. Harness, integration test, shared helper, and build changes recheck all source.
     return (["cli/src"] if broad else source), run_windows
 
 

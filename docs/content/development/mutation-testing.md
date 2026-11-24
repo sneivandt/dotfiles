@@ -22,9 +22,15 @@ checker's `--all` do not run mutation testing.
 
 ## Prepare an isolated source snapshot
 
-Install cargo-mutants 27.1.0 to match the hosted workflow. Use the pinned
-Rust toolchain and a native filesystem for the platform under test; Windows
-and Linux mutations cover different runtime contracts.
+Install cargo-mutants 27.1.0 to match the hosted workflow. Installing
+cargo-nextest (0.9.152 in CI) is optional locally and enables fail-fast test
+runs automatically when `cargo-nextest` is on `PATH`; pass `--test-tool cargo`
+to force `cargo test`. Use the pinned Rust toolchain and a native filesystem
+for the platform under test; Windows and Linux mutations cover different
+runtime contracts.
+
+The runner uses the incremental `[profile.mutants]` Cargo profile so repeated
+in-place mutations reuse unchanged compilation units.
 
 For a hosted failure, open the **Mutation: Results** summary. Record the base
 and tested commit, and use the listed focused command to replay a survivor or

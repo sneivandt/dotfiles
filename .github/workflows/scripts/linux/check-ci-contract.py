@@ -365,7 +365,9 @@ def check_mutation(workflow: str) -> None:
     mutation = jobs["mutation"]
     for required in (
         "matrix: ${{ fromJSON(needs.select.outputs.linux_matrix) }}",
-        "name: mutation-inputs", "run-mutations.py", 'run "$MUTATION_SUITE" --partition',
+        "name: mutation-inputs", "run-mutations.py",
+        'run "$MUTATION_SUITE" --partition "$MUTATION_PARTITION" --test-tool nextest',
+        "cargo-nextest@",
         "fail-fast: false",
     ):
         if required not in mutation:
@@ -377,8 +379,13 @@ def check_mutation(workflow: str) -> None:
     if parallel is None or not 1 <= int(parallel.group(1)) <= 14:
         raise ValueError("Linux mutation concurrency must leave runner capacity for ordinary CI")
     native = jobs["mutation-windows"]
-    for required in ("runs-on: windows-latest", "shard: [0, 1, 2, 3, 4, 5, 6, 7]",
-                     "run-mutations.py", 'run windows --partition "$env:MUTATION_SHARD/8"'):
+    for required in (
+        "runs-on: windows-latest",
+        "shard: [0, 1]",
+        "cargo-nextest@",
+        "run-mutations.py",
+        'run windows --partition "$env:MUTATION_SHARD/2" --test-tool nextest',
+    ):
         if required not in native:
             raise ValueError(f"native Windows mutation coverage missing {required}")
 

@@ -2,19 +2,24 @@
 """Plan and run the same mutation suites in Actions and in a disposable checkout."""
 
 import argparse
+from datetime import datetime
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 
 CLI = Path(__file__).resolve().parents[4] / "cli"
 PLAN = CLI / "mutation-plan.json"
 DIFF = "mutants.diff"
-SHARD_TARGET = 130
-MAX_SHARDS = 48
+SHARD_TARGET = 225
+MAX_SHARDS = 27
+WINDOWS_SHARDS = 2
+COUNTS = ("caught", "missed", "timeout", "unviable")
 
 # Mutants that can block unrelated tests get a bounded test target.
 FOCUSED = {
@@ -84,22 +89,39 @@ WINDOWS_PATTERN = r"(decode_reg_string|encode_reg_string|native::raw_value_to_st
 WINDOWS_PATTERN += "|^(?:" + "|".join(re.escape(path) for path in NATIVE_MODULES) + "):"
 
 
-def suite_options(suite, exact=None):
+def resolve_test_tool(requested="auto"):
+    if requested == "auto":
+        return "nextest" if shutil.which("cargo-nextest") else "cargo"
+    return requested
+
+
+def suite_options(suite, exact=None, test_tool="cargo"):
+    nextest = test_tool == "nextest"
+    quiet_nextest = ("--status-level=none", "--final-status-level=fail")
     if suite == "linux":
         excludes = [*LINUX_EXCLUSIONS, *(
             ("--exclude-re", pattern) for _, pattern, _ in FOCUSED.values()
         )]
         options = ["--in-diff", DIFF, *(arg for pair in excludes for arg in pair)]
-        test_target = []
+        test_target = (
+            ["--", "-E", "not binary(domain_boundaries)", *quiet_nextest]
+            if nextest else []
+        )
         pattern = None
     elif suite == "windows":
         options = [arg for path in WINDOWS_FILES for arg in ("--file", path)]
-        test_target = ["--cargo-arg=--lib"]
+        test_target = (
+            ["--cargo-arg=--lib", "--", *quiet_nextest]
+            if nextest else ["--cargo-arg=--lib"]
+        )
         pattern = WINDOWS_PATTERN
     else:
         files, pattern, test = FOCUSED[suite]
         options = ["--in-diff", DIFF, *(arg for path in files for arg in ("--file", path))]
-        test_target = ["--cargo-arg=--lib", "--", test]
+        test_target = (
+            ["--cargo-arg=--lib", "--", *quiet_nextest, test]
+            if nextest else ["--cargo-arg=--lib", "--", test]
+        )
     if exact is not None:
         # cargo-mutants combines multiple --re arguments with OR.
         pattern = "^" + re.sub(r"([\\.^$|?*+(){}\[\]])", r"\\\1", exact) + "$"
@@ -111,6 +133,26 @@ def suite_options(suite, exact=None):
 def cargo_command(suite, exact=None):
     options, _ = suite_options(suite, exact)
     return ["cargo", "mutants", "--no-shuffle", *options]
+
+
+def build_run_command(suite, test_tool="cargo", partition="", exact=None):
+    options, test_target = suite_options(suite, exact, test_tool=test_tool)
+    command = ["cargo", "mutants", "--no-shuffle", *options]
+    if partition:
+        command.extend(("--shard", partition))
+    command.extend(("--in-place", "--profile=mutants", "--cargo-arg=--locked"))
+    if test_tool == "nextest":
+        command.append("--test-tool=nextest")
+    command.extend(test_target)
+    return command
+
+
+def mutation_env():
+    env = dict(os.environ)
+    # Swatinem/rust-cache exports CARGO_INCREMENTAL=0; re-enable incremental
+    # compilation so [profile.mutants] keeps unchanged codegen units warm.
+    env["CARGO_INCREMENTAL"] = "1"
+    return env
 
 
 def list_mutants(suite):
@@ -131,10 +173,14 @@ def linux_matrix(counts):
              "count": min(size, ordinary - start)}
             for index, start in enumerate(range(0, ordinary, size))
         )
-    shards.extend(
-        {"id": suite, "suite": suite, "partition": "", "count": counts[suite]}
-        for suite in FOCUSED if counts[suite]
-    )
+    focused_total = sum(counts[suite] for suite in FOCUSED)
+    if focused_total:
+        shards.append({
+            "id": "focused",
+            "suite": "focused",
+            "partition": "",
+            "count": focused_total,
+        })
     return shards
 
 
@@ -144,21 +190,109 @@ def plan():
     if (CLI / DIFF).stat().st_size:
         counts = {suite: len(list_mutants(suite)) for suite in counts}
     manifest["linux_shards"] = linux_matrix(counts)
+    manifest["windows_shards"] = WINDOWS_SHARDS
     PLAN.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
         output.write(f"run_linux={str(bool(manifest['linux_shards'])).lower()}\n")
         output.write("linux_matrix=" + json.dumps({"include": manifest["linux_shards"]}) + "\n")
 
 
+def merge_focused_reports(stage_dir, selected, output_dir):
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True)
+    counts = dict.fromkeys(COUNTS, 0)
+    total_mutants = 0
+    outcomes = []
+    missed_entries = []
+    timeout_entries = []
+    suites = {}
+    starts = []
+    ends = []
+    incomplete = False
+    for sub_suite in selected:
+        src = stage_dir / sub_suite
+        if not src.is_dir():
+            incomplete = True
+            continue
+        dst = output_dir / sub_suite
+        shutil.move(str(src), str(dst))
+        try:
+            report = json.loads((dst / "outcomes.json").read_text(encoding="utf-8"))
+            for key in COUNTS:
+                counts[key] += int(report[key])
+            total_mutants += int(report["total_mutants"])
+            if isinstance(report.get("outcomes"), list):
+                outcomes.extend(report["outcomes"])
+            if report.get("start_time"):
+                starts.append(report["start_time"])
+            if report.get("end_time"):
+                ends.append(report["end_time"])
+            else:
+                incomplete = True
+            for filename, bucket in (("missed.txt", missed_entries), ("timeout.txt", timeout_entries)):
+                entries = (dst / filename).read_text(encoding="utf-8").splitlines()
+                bucket.extend(entries)
+                for entry in entries:
+                    suites[entry] = sub_suite
+        except (OSError, KeyError, TypeError, ValueError):
+            incomplete = True
+    start_time = min(starts, key=datetime.fromisoformat) if starts else None
+    end_time = None if (incomplete or not ends) else max(ends, key=datetime.fromisoformat)
+    merged = {
+        "start_time": start_time,
+        "end_time": end_time,
+        "total_mutants": total_mutants,
+        **counts,
+        "outcomes": outcomes,
+        "suites": suites,
+    }
+    (output_dir / "outcomes.json").write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    (output_dir / "missed.txt").write_text(
+        "".join(f"{entry}\n" for entry in missed_entries), encoding="utf-8",
+    )
+    (output_dir / "timeout.txt").write_text(
+        "".join(f"{entry}\n" for entry in timeout_entries), encoding="utf-8",
+    )
+    return not incomplete
+
+
+def run_focused(test_tool):
+    selected = [suite for suite in FOCUSED if list_mutants(suite)]
+    if not selected:
+        raise ValueError("No focused mutants selected.")
+    env = mutation_env()
+    out_dir = CLI / "mutants.out"
+    exit_code = 0
+    with tempfile.TemporaryDirectory(dir=CLI, prefix=".mutants-focused-") as temp:
+        stage_dir = Path(temp)
+        for sub_suite in selected:
+            if out_dir.exists():
+                shutil.rmtree(out_dir)
+            command = build_run_command(sub_suite, test_tool=test_tool)
+            status = subprocess.call(command, cwd=CLI, env=env)
+            if status and not exit_code:
+                exit_code = status
+            if out_dir.exists():
+                shutil.move(str(out_dir), str(stage_dir / sub_suite))
+        complete = merge_focused_reports(stage_dir, selected, out_dir)
+    if not complete and not exit_code:
+        exit_code = 1
+    return exit_code
+
+
 def run(args):
+    test_tool = resolve_test_tool(args.test_tool)
+    if args.suite == "focused":
+        if args.partition or args.exact is not None:
+            raise ValueError("The consolidated focused suite does not accept --partition or --exact.")
+        return run_focused(test_tool)
     if args.exact is not None and args.exact not in list_mutants(args.suite):
         raise ValueError("Mutation is outside the selected suite or its description has changed.")
-    command = cargo_command(args.suite, args.exact)
-    if args.partition:
-        command.extend(("--shard", args.partition))
-    _, test_target = suite_options(args.suite)
-    command.extend(("--in-place", "--cargo-arg=--profile=ci", "--cargo-arg=--locked", *test_target))
-    return subprocess.call(command, cwd=CLI)
+    command = build_run_command(
+        args.suite, test_tool=test_tool, partition=args.partition or "", exact=args.exact,
+    )
+    return subprocess.call(command, cwd=CLI, env=mutation_env())
 
 
 def main():
@@ -166,7 +300,8 @@ def main():
     modes = parser.add_subparsers(dest="mode", required=True)
     modes.add_parser("plan")
     execute = modes.add_parser("run")
-    execute.add_argument("suite", choices=("linux", *FOCUSED, "windows"))
+    execute.add_argument("suite", choices=("linux", "focused", *FOCUSED, "windows"))
+    execute.add_argument("--test-tool", choices=("auto", "nextest", "cargo"), default="auto")
     exclusive = execute.add_mutually_exclusive_group()
     exclusive.add_argument("--partition")
     exclusive.add_argument("--exact")

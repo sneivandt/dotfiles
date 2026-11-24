@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Retry one lost runner, never a mutation finding or an operator-cancelled run."""
+"""Retry failed mutation runs only when every failed shard is a lost runner."""
 
 import json
 import os
@@ -27,6 +27,19 @@ def lost_runner(log):
             and not re.search(rb"\b(?:MISSED|TIMEOUT)\b", log))
 
 
+def superseded(repository, run_id, event):
+    runs = json.loads(api(
+        f"repos/{repository}/actions/workflows/mutation.yml/runs?branch=main&per_page=20"
+    ))["workflow_runs"]
+    superseding = {"schedule"} if event == "schedule" else {"schedule", "workflow_dispatch"}
+    return any(
+        int(other["id"]) > int(run_id)
+        and other["event"] in superseding
+        and other["conclusion"] != "cancelled"
+        for other in runs
+    )
+
+
 def recover(repository, run_id):
     actions = f"repos/{repository}/actions"
     run = f"{actions}/runs/{int(run_id)}"
@@ -36,18 +49,31 @@ def recover(repository, run_id):
             or state["head_repository"]["full_name"] != repository
             or state["event"] not in ("schedule", "workflow_dispatch")):
         return
+    if superseded(repository, run_id, state["event"]):
+        print(f"Skipping retry for superseded run {run_id}.")
+        return
     pages = json.loads(api(f"{run}/attempts/1/jobs?per_page=100", "--paginate", "--slurp"))
-    for page in pages:
-        for job in page["jobs"]:
-            if not interrupted(job):
-                continue
-            endpoint = f"{actions}/jobs/{int(job['id'])}"
-            if lost_runner(api(f"{endpoint}/logs", "--allow-escape-sequences")):
-                # GitHub reruns this exact job and its dependents on the original SHA.
-                api(f"{endpoint}/rerun", "--method", "POST")
-                print(f"Requested one retry for {job['name']} in run {run_id}.")
-                return
-    print("No confirmed runner interruption to retry.")
+    failed = [
+        job
+        for page in pages
+        for job in page["jobs"]
+        if job["name"] != "Mutation: Results" and job["conclusion"] not in ("success", "skipped")
+    ]
+    if not failed:
+        print("No failed mutation shards to retry.")
+        return
+    if not all(interrupted(job) for job in failed):
+        print("Skipping retry because non-interrupted failures are present.")
+        return
+    for job in failed:
+        endpoint = f"{actions}/jobs/{int(job['id'])}"
+        if not lost_runner(api(f"{endpoint}/logs", "--allow-escape-sequences")):
+            print(f"Skipping retry because {job['name']} was not a confirmed runner shutdown.")
+            return
+    # Rerun every interrupted shard and Mutation: Results together on the original SHA.
+    api(f"{run}/rerun-failed-jobs", "--method", "POST")
+    names = ", ".join(job["name"] for job in failed)
+    print(f"Requested one retry for interrupted shard(s) in run {run_id}: {names}.")
 
 
 if __name__ == "__main__":

@@ -63,7 +63,7 @@ jobs:
   mutation:
     name: "Rust: Mutation (changed code, shard ${{ matrix.id }})"
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 90
     needs: [select]
     if: needs.select.outputs.run_linux == 'true'
     strategy:
@@ -85,18 +85,19 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: "cli -> target"
+          shared-key: mutation
           cache-on-failure: true
-      - name: Install cargo-mutants
+      - name: Install cargo-mutants and cargo-nextest
         uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
-          tool: cargo-mutants@27.1.0
+          tool: cargo-mutants@27.1.0, cargo-nextest@0.9.152
       - name: Test mutation partition
         env:
           MUTATION_SUITE: ${{ matrix.suite }}
           MUTATION_PARTITION: ${{ matrix.partition }}
         run: >-
           python3 -B .github/workflows/scripts/linux/run-mutations.py
-          run "$MUTATION_SUITE" --partition "$MUTATION_PARTITION"
+          run "$MUTATION_SUITE" --partition "$MUTATION_PARTITION" --test-tool nextest
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -118,14 +119,14 @@ jobs:
   mutation-windows:
     name: "Rust: Native Windows mutation (shard ${{ matrix.shard }})"
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     needs: [select]
     if: needs.select.outputs.run_windows == 'true'
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1]
     defaults:
       run:
         working-directory: cli
@@ -138,16 +139,18 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: "cli -> target"
+          shared-key: mutation
           cache-on-failure: true
-      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+      - name: Install cargo-mutants and cargo-nextest
+        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
-          tool: cargo-mutants@27.1.0
+          tool: cargo-mutants@27.1.0, cargo-nextest@0.9.152
       - name: Test mutation partition
         env:
           MUTATION_SHARD: ${{ matrix.shard }}
         run: >-
           python -B ../.github/workflows/scripts/linux/run-mutations.py
-          run windows --partition "$env:MUTATION_SHARD/8"
+          run windows --partition "$env:MUTATION_SHARD/2" --test-tool nextest
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

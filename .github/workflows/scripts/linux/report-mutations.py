@@ -13,6 +13,7 @@ import sys
 COUNTS = ("caught", "missed", "timeout", "unviable")
 SCRIPT = ".github/workflows/scripts/linux/run-mutations.py"
 DISPLAY_LIMIT = 20
+WINDOWS_SHARDS = 2
 
 
 def read_json(path):
@@ -46,12 +47,15 @@ def shard_results(directory, expected):
         problems.append("contains unclassified outcomes")
     if (expected is not None and total != expected) or total == 0:
         problems.append(f"reported {total} mutants, expected {expected or 'a nonempty native shard'}")
+    suites = report.get("suites")
+    if suites is not None and not isinstance(suites, dict):
+        raise ValueError("invalid suite map")
     names = []
     for key, label in (("missed", "Survivor"), ("timeout", "Timeout")):
         entries = (directory / f"{key}.txt").read_text(encoding="utf-8").splitlines()
         if len(entries) != counts[key]:
             problems.append(f"{key} details disagree with the report")
-        names.extend((label, entry) for entry in entries)
+        names.extend((label, suites.get(entry) if suites else None, entry) for entry in entries)
     return counts, duration, problems, names
 
 
@@ -68,7 +72,11 @@ def summarize(plan, results, needs):
     details = []
     timings = []
     linux = plan["linux_shards"]
-    windows = [{"id": f"windows-{index}", "suite": "windows", "count": None} for index in range(8)]
+    windows_count = plan.get("windows_shards", WINDOWS_SHARDS)
+    windows = [
+        {"id": f"windows-{index}", "suite": "windows", "count": None}
+        for index in range(windows_count)
+    ]
     platforms = (
         ("Linux", "mutation", "run_linux", linux),
         ("Windows", "mutation-windows", "run_windows", windows if plan["run_windows"] else []),
@@ -97,7 +105,10 @@ def summarize(plan, results, needs):
                 failures.extend(f"{name}: {error}" for error in errors)
             else:
                 complete += 1
-            details.extend((outcome, name, shard["suite"], mutation) for outcome, mutation in names)
+            details.extend(
+                (outcome, name, replay_suite or shard["suite"], mutation)
+                for outcome, replay_suite, mutation in names
+            )
         if counts["missed"] or counts["timeout"]:
             failures.append(f"{label} reported survivors or timeouts.")
         totals = " | ".join(str(value) for value in counts.values()) if shards else "— | — | — | —"

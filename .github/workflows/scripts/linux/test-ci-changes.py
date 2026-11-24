@@ -1155,7 +1155,7 @@ class GateTests(unittest.TestCase):
                         self.assertIn("run process --exact", MUTATION_REPORT["replay"](suite, name))
 
     def test_linux_shards_cover_inventory_without_empty_jobs(self):
-        for count, expected in ((0, 0), (1, 1), (130, 1), (131, 2), (6200, 48), (20881, 48)):
+        for count, expected in ((0, 0), (1, 1), (225, 1), (226, 2), (6000, 27), (20881, 27)):
             with self.subTest(count=count):
                 shards = MUTATION_RUN["linux_matrix"](
                     {"linux": count, **dict.fromkeys(MUTATION_RUN["FOCUSED"], 0), "liveness": 2, "process": 1},
@@ -1164,7 +1164,64 @@ class GateTests(unittest.TestCase):
                 self.assertEqual(len(ordinary), expected)
                 self.assertEqual(sum(shard["count"] for shard in ordinary), count)
                 self.assertTrue(all(shard["count"] > 0 for shard in ordinary))
-                self.assertEqual([shard["suite"] for shard in shards[expected:]], ["liveness", "process"])
+                self.assertEqual(
+                    shards[expected:],
+                    [{"id": "focused", "suite": "focused", "partition": "", "count": 3}],
+                )
+
+    def test_focused_merge_preserves_subsuite_replay_and_completeness(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            stage = root / "stage"
+            out = root / "mutants.out"
+            mutation = "src/infra/exec/process.rs:30:4: replace || with && in collect_child"
+            for suite, start, end, caught, missed, entries in (
+                ("liveness", "2026-11-22T09:00:00Z", "2026-11-22T09:00:30Z", 2, 0, []),
+                ("process", "2026-11-22T09:00:31Z", "2026-11-22T09:01:00Z", 0, 1, [mutation]),
+            ):
+                d = stage / suite
+                d.mkdir(parents=True)
+                (d / "outcomes.json").write_text(json.dumps({
+                    "start_time": start, "end_time": end,
+                    "caught": caught, "missed": missed, "timeout": 0, "unviable": 0,
+                    "total_mutants": caught + missed, "outcomes": [],
+                }), encoding="utf-8")
+                (d / "missed.txt").write_text("".join(f"{e}\n" for e in entries), encoding="utf-8")
+                (d / "timeout.txt").write_text("", encoding="utf-8")
+            self.assertTrue(MUTATION_RUN["merge_focused_reports"](stage, ["liveness", "process"], out))
+            results = root / "results"
+            (results / "mutation-result-focused").mkdir(parents=True)
+            for name in ("outcomes.json", "missed.txt", "timeout.txt"):
+                (results / "mutation-result-focused" / name).write_text(
+                    (out / name).read_text(encoding="utf-8"), encoding="utf-8",
+                )
+            plan = {
+                "base": "a" * 40, "head": "b" * 40, "linux_sources": ["cli/src"],
+                "linux_shards": [{"id": "focused", "suite": "focused", "count": 3}],
+                "run_windows": False,
+            }
+            needs = {
+                "select": {"result": "success", "outputs": {"run_linux": "true", "run_windows": "false"}},
+                "mutation": {"result": "failure"},
+                "mutation-windows": {"result": "skipped"},
+            }
+            _, details, failures = MUTATION_REPORT["summarize"](plan, results, needs)
+            self.assertTrue(failures)
+            self.assertEqual(details, [("Survivor", "rust-mutation-results-focused", "process", mutation)])
+            self.assertIn("run process --exact", MUTATION_REPORT["replay"](details[0][2], details[0][3]))
+
+    def test_nextest_and_incremental_profile_command_flags(self):
+        linux_cmd = MUTATION_RUN["build_run_command"]("linux", test_tool="nextest", partition="0/4")
+        self.assertIn("--profile=mutants", linux_cmd)
+        self.assertIn("--test-tool=nextest", linux_cmd)
+        self.assertIn("--shard", linux_cmd)
+        self.assertIn("not binary(domain_boundaries)", linux_cmd)
+        win_cmd = MUTATION_RUN["build_run_command"]("windows", test_tool="nextest", partition="0/2")
+        self.assertIn("--cargo-arg=--lib", win_cmd)
+        self.assertIn("--test-tool=nextest", win_cmd)
+        self.assertNotIn("not binary(domain_boundaries)", win_cmd)
+        with patch.dict(os.environ, {"CARGO_INCREMENTAL": "0"}):
+            self.assertEqual(MUTATION_RUN["mutation_env"]()["CARGO_INCREMENTAL"], "1")
 
     def test_focused_mutants_are_excluded_from_the_ordinary_suite(self):
         options, _ = MUTATION_RUN["suite_options"]("linux")
@@ -1185,6 +1242,11 @@ class GateTests(unittest.TestCase):
             self.assertIn(("--exclude-re", pattern), tuple(zip(options, options[1:])))
             self.assertRegex(example, pattern)
             self.assertEqual(target, ["--cargo-arg=--lib", "--", expected_target])
+            _, nextest_target = MUTATION_RUN["suite_options"](suite, test_tool="nextest")
+            self.assertEqual(
+                nextest_target,
+                ["--cargo-arg=--lib", "--", "--status-level=none", "--final-status-level=fail", expected_target],
+            )
             exact, _ = MUTATION_RUN["suite_options"](suite, example)
             self.assertEqual(exact.count("--re"), 1)
             self.assertRegex(example, exact[-1])
@@ -1195,12 +1257,17 @@ class MutationSelectionTests(unittest.TestCase):
     def test_source_tests_build_and_unrelated_paths(self):
         for paths, sources, windows in (
             (["docs/example.md", "conf/README.md", "symlinks/config/quickshell/Bar.qml"], [], False),
+            (["symlinks/config/hypr/conf/binds.lua", "symlinks/config/Code/User/settings.json"], [], False),
             (["cli/src/feature.rs"], ["cli/src/feature.rs"], True),
-            (["cli/src/feature/tests.rs"], ["cli/src"], True),
+            (["cli/src/feature/tests.rs"], ["cli/src/feature", "cli/src/feature.rs"], True),
+            (["cli/src/tests.rs"], ["cli/src"], True),
             (["cli/src/app/test_helpers/fixture.rs"], ["cli/src"], True),
+            (["cli/src/domains/ai/apm/test_fixture.rs"], ["cli/src"], True),
             (["cli/tests/update_command.rs"], ["cli/src"], True),
             (["cli/src/domains/ai/apm/autopilot/tests/schedules.rs", "cli/src/feature.rs"],
-             ["cli/src/domains/ai/apm/autopilot", "cli/src/feature.rs"], True),
+             ["cli/src/domains/ai/apm/autopilot", "cli/src/domains/ai/apm/autopilot.rs", "cli/src/feature.rs"], True),
+            (["cli/src/domains/packages/arch_recipes/tests/releases.rs"],
+             ["cli/src/domains/packages/arch_recipes", "cli/src/domains/packages/arch_recipes.rs"], False),
             (["cli/tests/fixtures/apm-yaml-fragment.yaml"], ["cli/src/infra/yaml.rs"], True),
             (["cli/tests/fixtures/apm-yaml-fragment.yaml", "cli/tests/common/mod.rs"], ["cli/src"], True),
             (["cli/src/example.json"], ["cli/src"], True),
@@ -1209,13 +1276,34 @@ class MutationSelectionTests(unittest.TestCase):
             ([".github/workflows/mutation.yml"], ["cli/src"], True),
             ([LINUX + "select-mutations.py"], ["cli/src"], True),
             ([LINUX + "run-mutations.py"], ["cli/src"], True),
-            (["conf/symlinks.toml"], ["cli/src"], True),
-            (["packages/apm/release.json"], ["cli/src"], True),
-            (["packages/example/example.install"], ["cli/src"], True),
-            (["system/pam.d/login"], ["cli/src"], True),
-            (["symlinks/config/git/templates/hooks/post-rewrite"], ["cli/src"], True),
-            (["symlinks/config/systemd/user/dotfiles-first-login.service"], ["cli/src"], True),
-            (["docs/content/reference/home-symlinks.md"], ["cli/src"], True),
+            (["conf/symlinks.toml"], ["cli/src/app/config"], True),
+            (["conf/system-files.toml"], [
+                "cli/src/app/config",
+                "cli/src/domains/system/resources/system_file",
+                "cli/src/domains/system/resources/system_file.rs",
+            ], True),
+            (["packages/apm/release.json"], [
+                "cli/src/domains/packages/arch_recipes",
+                "cli/src/domains/packages/arch_recipes.rs",
+            ], False),
+            (["packages/example/example.install"], [
+                "cli/src/domains/packages/arch_recipes",
+                "cli/src/domains/packages/arch_recipes.rs",
+            ], False),
+            (["system/pam.d/login"], [
+                "cli/src/domains/system/resources/system_file",
+                "cli/src/domains/system/resources/system_file.rs",
+            ], False),
+            (["symlinks/config/git/templates/hooks/post-rewrite"], ["cli/src/domains/git"], True),
+            (["symlinks/config/systemd/user/dotfiles-first-login.service"], [
+                "cli/src/domains/system/resources/systemd_unit",
+                "cli/src/domains/system/resources/systemd_unit.rs",
+            ], False),
+            (["docs/content/reference/home-symlinks.md"], ["cli/src/domains/files/symlinks.rs"], True),
+            (["docs/content/reference/systemd-units.md"], [
+                "cli/src/domains/system/resources/systemd_unit",
+                "cli/src/domains/system/resources/systemd_unit.rs",
+            ], False),
             (["cli/src/domains/system/resources/system_file/merge_pam.rs"],
              ["cli/src/domains/system/resources/system_file/merge_pam.rs"], False),
             (["cli/src/domains/packages/arch_recipes.rs", "cli/src/domains/files/chmod.rs"],
@@ -1287,23 +1375,45 @@ class MutationRecoveryTests(unittest.TestCase):
         job = {"id": 2, "run_attempt": 1, "conclusion": "failure", "name": "Rust: Mutation (changed code, shard 0)",
                "steps": [{"name": "Test mutation partition", "conclusion": "cancelled"},
                          {"name": "Run actions/upload-artifact@sha", "conclusion": "skipped"}]}
+        job2 = job | {"id": 3, "name": "Rust: Mutation (changed code, shard 1)"}
+        real_failure = job | {"id": 4, "name": "Rust: Mutation (changed code, shard 2)",
+                              "steps": [{"name": "Test mutation partition", "conclusion": "failure"}]}
+        results_job = {"id": 9, "run_attempt": 1, "conclusion": "failure", "name": "Mutation: Results",
+                       "steps": [{"name": "Report selected mutation results", "conclusion": "failure"}]}
         shutdown = b"##[error]The runner has received a shutdown signal."
-        for state, partition, log, retry in (
-            (run, job, shutdown, True),
-            (run, job, b"The operation was canceled.", False),
-            (run, job, b"MISSED src/foo.rs\n" + shutdown, False),
-            (run, job, b"TIMEOUT src/foo.rs\n" + shutdown, False),
-            (run, job | {"steps": [{"name": "Test mutation partition", "conclusion": "failure"}]}, shutdown, False),
-            (run | {"run_attempt": 2}, job, shutdown, False),
-            (run | {"conclusion": "cancelled"}, job, shutdown, False),
-            (run | {"head_repository": {"full_name": "another/repo"}}, job, shutdown, False),
+        no_newer = json.dumps({"workflow_runs": [{"id": 1, "event": "schedule", "conclusion": "failure"}]})
+        newer_schedule = json.dumps({"workflow_runs": [
+            {"id": 5, "event": "schedule", "conclusion": None},
+            {"id": 1, "event": "schedule", "conclusion": "failure"},
+        ]})
+        newer_cancelled = json.dumps({"workflow_runs": [
+            {"id": 5, "event": "schedule", "conclusion": "cancelled"},
+            {"id": 1, "event": "schedule", "conclusion": "failure"},
+        ]})
+        for label, state, runs_payload, jobs, logs, retry in (
+            ("single interruption", run, no_newer, [job, results_job], [shutdown], True),
+            ("multiple interruptions", run, no_newer, [job, job2, results_job], [shutdown, shutdown], True),
+            ("cancelled newer run does not supersede", run, newer_cancelled, [job, results_job], [shutdown], True),
+            ("superseded by newer schedule", run, newer_schedule, [job, results_job], [shutdown], False),
+            ("other shard had real failure", run, no_newer, [job, real_failure, results_job], [shutdown], False),
+            ("missing shutdown marker", run, no_newer, [job], [b"The operation was canceled."], False),
+            ("missed mutant before shutdown", run, no_newer, [job], [b"MISSED src/foo.rs\n" + shutdown], False),
+            ("timeout before shutdown", run, no_newer, [job], [b"TIMEOUT src/foo.rs\n" + shutdown], False),
+            ("step failure", run, no_newer, [real_failure], [shutdown], False),
+            ("second attempt", run | {"run_attempt": 2}, no_newer, [job], [shutdown], False),
+            ("cancelled run", run | {"conclusion": "cancelled"}, no_newer, [job], [shutdown], False),
+            ("fork repo", run | {"head_repository": {"full_name": "another/repo"}}, no_newer, [job], [shutdown], False),
         ):
-            request = Mock(side_effect=[json.dumps(state), json.dumps([{"jobs": [partition]}]), log, b""])
+            responses = [json.dumps(state), runs_payload, json.dumps([{"jobs": jobs}]), *logs, b""]
+            request = Mock(side_effect=responses)
             recover = MUTATION_RECOVERY["recover"]
-            with self.subTest(state=state, job=partition, log=log), patch.dict(recover.__globals__, {"api": request}):
+            with self.subTest(label=label), patch.dict(recover.__globals__, {"api": request}):
                 recover("example/repo", 1)
                 writes = [call.args for call in request.call_args_list if "POST" in call.args]
-                self.assertEqual(writes, [("repos/example/repo/actions/jobs/2/rerun", "--method", "POST")] if retry else [])
+                self.assertEqual(
+                    writes,
+                    [("repos/example/repo/actions/runs/1/rerun-failed-jobs", "--method", "POST")] if retry else [],
+                )
 
 
 class GitRangeTests(unittest.TestCase):

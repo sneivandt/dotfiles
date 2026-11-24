@@ -136,33 +136,38 @@ baseline it selects all source. API or invalid-history errors fail selection
 rather than silently skipping coverage.
 
 Linux mutates whole changed Rust source files, including production functions
-beside edited inline tests. Tests and fixtures with an explicit owner recheck
-that module. Unmapped standalone tests, shared test helpers, embedded assets,
-Cargo/build/toolchain inputs, and changes to the mutation workflow or selector
-recheck all source. The same applies to other tracked inputs to Rust tests,
-including configuration, package recipes, and executable documentation examples.
-Selected changes also run the existing fixed Windows suite for
-registry values, PATH encoding, elevation dispatch, file placement, and locks,
-except that strictly Linux-only Rust source changes skip the Windows suite;
-otherwise there is no fine-grained Windows dependency classifier. Unrelated docs and
-configuration changes skip both suites. Exact filters live in the workflow.
+beside edited inline tests. Module-local unit tests under `cli/src/` and
+tracked repository inputs read by Rust tests (such as `conf/*.toml`, Arch
+recipe descriptors, `system/` fragments, managed systemd units, Git templates,
+and checked documentation pages) recheck their owning modules. Integration
+tests under `cli/tests/`, shared test helpers, embedded non-Rust assets inside
+`cli/src/`, Cargo/build/toolchain inputs, and changes to the mutation workflow
+or scripts recheck all source. Selected changes also run the fixed two-shard
+Windows suite for registry values, PATH encoding, elevation dispatch, file
+placement, and locks, except that strictly Linux-only modules skip the Windows
+suite. Unrelated docs and configuration changes skip both suites. Exact filters
+live in the workflow and scripts.
 
 For manual replay, dispatch **Mutation Testing** and optionally supply the
 original full ancestor SHA as `mutation_base`. Manual runs never advance the
 nightly baseline, so a narrow replay cannot discard pending coverage. Reports
 and selected Linux inputs are retained as artifacts for seven days. Linux
-shards are sized from the selected mutant count. The results summary gives
+shards are sized from the selected mutant count (capped to fit within two
+parallel waves, with focused suites consolidated into a single `focused`
+shard), and both Linux and Windows run with the incremental `[profile.mutants]`
+profile and `cargo-nextest` fail-fast execution. The results summary gives
 the tested range, counts per platform, missing reports, and focused replay
 commands for survivors and timeouts. The mutation-summary artifact contains
 the complete report. Survivors, timeouts, tool errors, and incomplete coverage
 fail this separate workflow.
 
-If a runner shuts down during a shard before publishing results,
+If one or more runners shut down during shards before publishing results,
 [mutation-recovery.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/mutation-recovery.yml)
-can retry one confirmed runner interruption on the original commit and
-recompute the summary. It runs once per failed scheduled or manual run on
-`main` (first attempt only), and does not retry reported survivors, mutant
-timeouts, or a run you cancelled. Other missing reports still fail the run.
+can rerun the failed shards on the original commit and recompute the summary.
+It runs once per failed scheduled or manual run on `main` (first attempt only),
+and only when every failed shard is a confirmed runner shutdown with no
+reported survivors, timeouts, other shard failures, or newer superseding run.
+Other missing reports still fail the run.
 
 Enable Actions failure notifications for this workflow and investigate red
 runs; successful push CI does not mean nightly mutations passed. Check that the

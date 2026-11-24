@@ -57,6 +57,10 @@ impl CapturingOutput {
 }
 
 impl Output for CapturingOutput {
+    fn debug_enabled(&self) -> bool {
+        true
+    }
+
     fn run_log(&self) -> Option<&RunLog> {
         self.logger.as_ref().and_then(Output::run_log)
     }

@@ -70,10 +70,11 @@ runs daily and deletes files and links after 31 complete days since their last
 modification (`find -mtime +30`), along with old empty directories.
 
 Thunar is the default file manager and uses the shared Tokyo Night GTK colours.
-At login, the desktop session sets Thunar to use Compact View and show hidden
-files by default.
-Use **Ctrl + H** to toggle hidden files while browsing. GVFS provides trash and
-removable-drive support.
+At login, the desktop session sets Thunar to use Compact View, show hidden
+files, and hide the shortcuts side pane by default.
+Use **Ctrl + H** to toggle hidden files and **Ctrl + B** to toggle the
+shortcuts side pane while browsing. GVFS provides trash and removable-drive
+support.
 
 From Thunar, PNG, JPEG, and WebP images open in imv; MP4, WebM, and Matroska
 videos open in mpv; ZIP and common tar archives open in File Roller. PDFs still

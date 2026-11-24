@@ -115,7 +115,7 @@ Two managed user services have additional runtime checks:
   busy, the service leaves it untouched and retries after five minutes; if an
   update reports a busy queue, rerun it after the other operation finishes.
 - **Thunar settings service:** When the managed service has already run,
-  Dotfiles checks its two managed preferences and reruns the service if either
+  Dotfiles checks its managed preferences and reruns the service if any
   differs. Both the check and the service use the installed helper, including
   an overlay replacement.
 

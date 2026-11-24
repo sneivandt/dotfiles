@@ -347,6 +347,8 @@ case "$*" in
     printf '/last-show-hidden    true\n' >> "$THUNAR_FIXTURE" ;;
   '--channel thunar --property /default-view --create --type string --set ThunarCompactView')
     printf '/default-view        ThunarCompactView\n' >> "$THUNAR_FIXTURE" ;;
+  '--channel thunar --property /last-side-pane --create --type string --set THUNAR_SIDEPANE_TYPE_HIDDEN_SHORTCUTS')
+    printf '/last-side-pane      THUNAR_SIDEPANE_TYPE_HIDDEN_SHORTCUTS\n' >> "$THUNAR_FIXTURE" ;;
   *) exit 2 ;;
 esac
 "#,
@@ -368,6 +370,13 @@ esac
     std::fs::write(&settings, "").unwrap();
     assert_eq!(run("check"), Some(1), "settings drift");
     assert!(std::fs::read(&settings).unwrap().is_empty());
+    std::fs::write(
+        &settings,
+        "/last-show-hidden    true\n/default-view        ThunarCompactView\n/last-side-pane      THUNAR_SIDEPANE_TYPE_SHORTCUTS\n",
+    )
+    .unwrap();
+    assert_eq!(run("check"), Some(1), "visible shortcuts side pane drifts");
+    std::fs::write(&settings, "").unwrap();
     assert_eq!(run("apply"), Some(0));
     let applied = std::fs::read(&settings).unwrap();
     assert_eq!(run("check"), Some(0), "matching settings");

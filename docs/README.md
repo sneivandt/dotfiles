@@ -267,13 +267,13 @@ and robots metadata continue to identify the public page. Write metadata using
 [Help readers find the topic](content/development/writing-documentation.md#help-readers-find-the-topic),
 and test representative reader queries rather than adding keyword meta tags.
 
-The site title and About this project sidebar link return to the short personal
-introduction at `/`. The introduction belongs to Guides; the Guides header link
-opens Getting started. Getting started owns
-the setup walkthrough. The introduction uses the standard reading layout with
-its outline and previous/next links disabled. Guides have a heading outline
-through level three, source edit links, and previous/next navigation within the
-current section.
+The site title and About this project sidebar link return to the landing page
+at `/`. The landing page uses VitePress's native `home` layout with a hero
+header, feature cards linking into key guides, a framed terminal preview, and
+the personal introduction below. The Guides header link opens Getting started,
+which owns the setup walkthrough. Guides have a heading outline through level
+three, source edit links, and previous/next navigation within the current
+section.
 
 Use the default theme's typography, surfaces, navigation, callouts, code blocks,
 and local search, with Tokyo Night brand accent colors in

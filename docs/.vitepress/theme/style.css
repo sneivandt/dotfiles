@@ -3,6 +3,10 @@
   --vp-c-brand-2: #2f4988;
   --vp-c-brand-3: #3d59a1;
   --vp-c-brand-soft: rgba(61, 89, 161, 0.14);
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #3d59a1 25%, #007197);
+  --vp-home-hero-image-background-image: linear-gradient(-45deg, rgba(61, 89, 161, 0.28) 50%, rgba(0, 113, 151, 0.24) 50%);
+  --vp-home-hero-image-filter: blur(56px);
 }
 
 .dark {
@@ -10,6 +14,55 @@
   --vp-c-brand-2: #9ab8ff;
   --vp-c-brand-3: #3d59a1;
   --vp-c-brand-soft: rgba(122, 162, 247, 0.16);
+  --vp-button-brand-hover-bg: #4a6cc9;
+  --vp-button-brand-active-bg: #2f4988;
+  --vp-home-hero-name-background: linear-gradient(120deg, #7aa2f7 25%, #7dcfff);
+  --vp-home-hero-image-background-image: linear-gradient(-45deg, rgba(122, 162, 247, 0.35) 50%, rgba(125, 207, 255, 0.28) 50%);
+}
+
+.VPHome .VPHero .image-src {
+  max-width: 176px;
+  max-height: 176px;
+}
+
+@media (min-width: 640px) {
+  .VPHome .VPHero .image-src {
+    max-width: 220px;
+    max-height: 220px;
+  }
+}
+
+@media (min-width: 960px) {
+  .VPHome .VPHero .image-src {
+    max-width: 260px;
+    max-height: 260px;
+  }
+}
+
+.VPHome .vp-doc {
+  max-width: 888px;
+  margin-inline: auto;
+  padding-top: 32px;
+}
+
+.VPHome .home-preview {
+  margin: 0 0 48px;
+}
+
+.VPHome .home-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  box-shadow: var(--vp-shadow-3);
+}
+
+.VPHome .home-preview figcaption {
+  margin-top: 12px;
+  color: var(--vp-c-text-2);
+  font-size: 14px;
+  text-align: center;
 }
 
 .vp-doc .mermaid {
@@ -34,6 +87,25 @@
   border-top: 1px solid var(--vp-c-divider);
   font-size: 14px;
   color: var(--vp-c-text-2);
+}
+
+.site-footer--home {
+  width: 100%;
+  max-width: 888px;
+  margin: 0 auto;
+  padding: 20px 24px 40px;
+}
+
+@media (min-width: 640px) {
+  .site-footer--home {
+    padding: 20px 48px 40px;
+  }
+}
+
+@media (min-width: 960px) {
+  .site-footer--home {
+    padding: 20px 64px 40px;
+  }
 }
 
 .site-footer a {

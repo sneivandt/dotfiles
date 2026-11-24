@@ -1,13 +1,20 @@
 import DefaultTheme from 'vitepress/theme';
-import type { Theme } from 'vitepress';
+import { useData, type Theme } from 'vitepress';
 import { defineComponent, h, onMounted, onUnmounted } from 'vue';
 import MermaidDiagram from './MermaidDiagram.vue';
 import './style.css';
+
+const renderSiteFooter = (className: string) => h('div', { class: className }, [
+  'Maintained by ',
+  h('a', { href: 'https://stuartneivandt.com/' }, 'Stuart Neivandt'),
+  '.',
+]);
 
 export default {
   extends: DefaultTheme,
   Layout: defineComponent({
     setup() {
+      const { frontmatter } = useData();
       let lastOutsideFocus: HTMLElement | null = null;
       let pendingRestore: number | undefined;
       function rememberFocus(event: FocusEvent) {
@@ -37,11 +44,8 @@ export default {
         document.removeEventListener('keydown', restoreSearchFocus, true);
       });
       return () => h(DefaultTheme.Layout, null, {
-        'doc-after': () => h('div', { class: 'site-footer' }, [
-          'Maintained by ',
-          h('a', { href: 'https://stuartneivandt.com/' }, 'Stuart Neivandt'),
-          '.',
-        ]),
+        'doc-after': () => renderSiteFooter('site-footer'),
+        'layout-bottom': () => (frontmatter.value.layout === 'home' ? renderSiteFooter('site-footer site-footer--home') : null),
       });
     },
   }),

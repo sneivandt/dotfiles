@@ -138,7 +138,7 @@ export default defineConfig({
   themeConfig: {
     logo: '/favicon.svg',
     nav: [
-      { text: 'Guides', link: '/getting-started', activeMatch: `^/$|${sectionMatch(guide)}` },
+      { text: 'Guides', link: '/getting-started', activeMatch: sectionMatch(guide) },
       { text: 'Reference', link: '/cli-reference', activeMatch: sectionMatch(reference) },
       { text: 'Development', link: '/contributing', activeMatch: sectionMatch(contribute) },
     ],
@@ -159,8 +159,14 @@ export default defineConfig({
             throw new Error(`${env.relativePath}: search requires a nonempty page description`);
           }
           // Index the page summary in its introduction, not in every section.
-          return html.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i,
-            (heading) => `${heading}\n<p>${md.utils.escapeHtml(description)}</p>`);
+          const summary = `<p>${md.utils.escapeHtml(description)}</p>`;
+          if (/<h1\b[^>]*>[\s\S]*?<\/h1>/i.test(html)) {
+            return html.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, (heading) => `${heading}\n${summary}`);
+          }
+          const title = typeof env.frontmatter?.title === 'string' && env.frontmatter.title.trim()
+            ? `<h1>${md.utils.escapeHtml(env.frontmatter.title)}</h1>\n`
+            : '';
+          return `${title}${summary}\n${html}`;
         },
       },
     },

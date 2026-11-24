@@ -92,13 +92,17 @@ for (const theme of ['light', 'dark'] as const) {
   });
 }
 
-test('the introduction and grouped navigation fit the default reading layout', async ({ page, isMobile }) => {
+test('the hero landing page and grouped Guides navigation work cleanly', async ({ page, isMobile }) => {
   await page.goto('/');
   await expect(page).toHaveTitle('Dotfiles | Arch Linux & Windows setup with a Rust CLI');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Dotfiles');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Arch Linux and Windows, managed with Rust.');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/');
   await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute('content', 'Dotfiles');
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/');
+  await expect(page.locator('.VPFeatures .VPFeature')).toHaveCount(6);
+  await expect(page.locator('.home-preview img[src="/assets/terminal-screenshot.svg"]')).toBeVisible();
+  await expect(page.locator('.vp-doc h2').first()).toHaveText('About this project');
   await expect(page.locator('.vp-doc p').first()).not.toBeEmpty();
   const footerLink = page.locator('.site-footer').getByRole('link', { name: 'Stuart Neivandt', exact: true });
   await expect(footerLink).toBeVisible();
@@ -107,9 +111,19 @@ test('the introduction and grouped navigation fit the default reading layout', a
     '@type': 'WebSite', name: 'Dotfiles', creator: { name: 'Stuart Neivandt', url: 'https://stuartneivandt.com/' },
   });
   await expect(page.locator('link[rel~="icon"]')).toHaveAttribute('href', '/favicon.svg');
-  const setup = page.locator('.vp-doc').getByRole('link', { name: 'Getting started', exact: true });
+  const setup = page.locator('.VPHero').getByRole('link', { name: 'Getting started', exact: true });
   await expect(setup).toBeInViewport();
-  await expect(page.locator('.VPDocFooter .prev-next')).toHaveCount(0);
+  await expect(setup).toHaveAttribute('href', '/getting-started');
+  if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveCount(0);
+  await assertNoPageOverflow(page);
+
+  await setup.click();
+  await expect(page).toHaveURL('/getting-started');
+  await expect(page).toHaveTitle('Getting started | Dotfiles');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
+  await expect(footerLink).toBeVisible();
+  await expect(footerLink).toHaveAttribute('href', 'https://stuartneivandt.com/');
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Commands and usage');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const sidebar = page.locator('.VPSidebar');
   const groups = sidebar.locator('.group');
@@ -124,17 +138,9 @@ test('the introduction and grouped navigation fit the default reading layout', a
   }
   await expect(sidebar.getByRole('link', { name: 'About this project', exact: true })).toHaveAttribute('href', '/');
   if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText('Guides');
-  await sidebar.getByRole('link', { name: 'Getting started', exact: true }).click();
-  await expect(page).toHaveURL('/getting-started');
-  await expect(page).toHaveTitle('Getting started | Dotfiles');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
-  await expect(footerLink).toBeVisible();
-  await expect(footerLink).toHaveAttribute('href', 'https://stuartneivandt.com/');
-  await expect(page.locator('.VPDocFooter .next')).toContainText('Commands and usage');
-  if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await sidebar.getByRole('link', { name: 'About this project', exact: true }).click();
   await expect(page).toHaveURL('/');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Dotfiles');
   await assertNoPageOverflow(page);
 });
 
@@ -172,7 +178,7 @@ test('header sections replace the sidebar, including direct links and search des
 
 test('flat routes keep original section source edit links and removed pages are absent', async ({ page }) => {
   for (const [route, source] of [
-    ['/', 'guides/index.md'],
+    ['/getting-started', 'guides/getting-started.md'],
     ['/cli-reference', 'reference/cli-reference.md'],
     ['/contributing', 'development/contributing.md'],
   ]) {
@@ -785,9 +791,12 @@ test('keyboard skip navigation and search dismissal preserve visible focus', asy
 for (const theme of ['light', 'dark'] as const) {
   test(`body, links, and warning text meet contrast requirements in ${theme} mode`, async ({ page }) => {
     await page.addInitScript((choice) => localStorage.setItem('vitepress-theme-appearance', choice), theme);
-    for (const guide of ['getting-started', 'package-management', 'private-overlays']) {
-      await page.goto(`/${guide}`);
-      const measurements = await page.locator('main p, main p a, main li a, main .custom-block-title, .site-footer, .site-footer a').evaluateAll((elements) => {
+    for (const route of ['/', '/getting-started', '/package-management', '/private-overlays']) {
+      await page.goto(route);
+      const selector = route === '/'
+        ? '.VPHero .tagline, .VPHero .actions .VPButton, .VPFeature .title, .VPFeature .details, main p, main p a, main li a, .home-preview figcaption, .site-footer, .site-footer a'
+        : 'main p, main p a, main li a, main .custom-block-title, .site-footer, .site-footer a';
+      const measurements = await page.locator(selector).evaluateAll((elements) => {
         type Color = [number, number, number, number];
         function color(value: string): Color {
           const match = value.match(/^rgba?\((.+)\)$/);
@@ -837,7 +846,7 @@ for (const theme of ['light', 'dark'] as const) {
       });
       expect(measurements.length).toBeGreaterThan(0);
       for (const measurement of measurements) {
-        expect(measurement.ratio, `${guide}: ${measurement.text}`).toBeGreaterThanOrEqual(measurement.minimum);
+        expect(measurement.ratio, `${route}: ${measurement.text}`).toBeGreaterThanOrEqual(measurement.minimum);
       }
     }
   });

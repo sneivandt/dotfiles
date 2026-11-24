@@ -42,6 +42,13 @@ test('local search indexes escaped descriptions in the page introduction only', 
   assert.match(html, /Section\./);
 });
 
+test('local search indexes home-layout pages without a Markdown H1', () => {
+  const source = '---\nlayout: home\ntitle: About this project\ndescription: Personal Arch Linux & Windows dotfiles.\n---\n\n## About this project\n\nIntro copy.\n';
+  const html = render(source, { relativePath: 'index.md' }, md);
+  assert.match(html, /^<h1>About this project<\/h1>\n<p>Personal Arch Linux &amp; Windows dotfiles\.<\/p>\n/);
+  assert.match(html, /Intro copy\./);
+});
+
 test('local search preserves opt-out pages and rejects missing descriptions', () => {
   assert.equal(render('---\nsearch: false\n---\n\n# Not indexed\n', { relativePath: 'hidden.md' }, md), '');
   assert.throws(() => render('# Missing\n', { relativePath: 'missing.md' }, md),

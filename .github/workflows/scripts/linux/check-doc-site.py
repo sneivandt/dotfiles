@@ -135,6 +135,14 @@ def frontmatter_fields(text, filename, errors):
     return fields
 
 
+def frontmatter_layout(text):
+    header = re.match(r"\A---\r?\n(.*?)\r?\n---(?:\r?\n|$)", text, re.S)
+    if not header:
+        return None
+    match = re.search(r"^layout:[ \t]*(.*?)[ \t]*$", header[1], re.M)
+    return match[1].strip("'\"") if match else None
+
+
 def public_url_path(route):
     return "/" if route == "/index.html" else route.removesuffix(".html")
 
@@ -178,6 +186,7 @@ def check_site(root):
     ):
         errors.append("Published robots.txt does not declare the canonical sitemap")
     expected_urls = set()
+    expected_nav_titles = {}
     heading_anchors = runpy.run_path(str(Path(__file__).with_name("check-doc-links.py")))["markdown_anchors"]
     sources = sorted((root / "docs/content").rglob("*.md"))
     if len({source.stem for source in sources}) != len(sources):
@@ -199,6 +208,7 @@ def check_site(root):
         page = pages[route]
         source_text = source.read_text(encoding="utf-8")
         fields = frontmatter_fields(source_text, source.name, errors)
+        home_layout = source.stem == "index" and frontmatter_layout(source_text) == "home"
         if source.stem != "404" and "description" in fields and page.descriptions != [fields["description"]]:
             errors.append(f"{source.name}: rendered description does not match frontmatter")
         missing = (heading_anchors(source_text) - page.ids) if source.stem != "404" else set()
@@ -212,10 +222,19 @@ def check_site(root):
             if source.stem != "index" and source.stem != slug:
                 errors.append(f"{route}: filename and URL do not match title {title!r}")
             source_title = re.search(r"^# (.+)$", source_text, re.MULTILINE)
-            if source_title is None or source_title[1] != title:
-                errors.append(f"{source.name}: Markdown title does not match page title {title!r}")
-            if "title" in fields and fields["title"] != title:
-                errors.append(f"{source.name}: frontmatter title does not match page title {title!r}")
+            if home_layout:
+                if not title:
+                    errors.append(f"{route}: home layout hero title is empty")
+                if source_title is not None:
+                    errors.append(f"{source.name}: home layout should not declare a second Markdown H1")
+                if "title" in fields:
+                    expected_nav_titles[route] = [fields["title"]]
+            else:
+                if source_title is None or source_title[1] != title:
+                    errors.append(f"{source.name}: Markdown title does not match page title {title!r}")
+                if "title" in fields and fields["title"] != title:
+                    errors.append(f"{source.name}: frontmatter title does not match page title {title!r}")
+                expected_nav_titles[route] = [t.strip().rstrip("#").strip() for t in page.titles]
         if "/favicon.svg" not in page.icons:
             errors.append(f"{route}: missing site favicon")
         if page.og_site_names != ["Dotfiles"]:
@@ -246,8 +265,9 @@ def check_site(root):
         if page.duplicates:
             errors.append(f"{route}: duplicate IDs {sorted(page.duplicates)}")
         for href, label in page.nav_links:
-            target = pages.get(resolve_page_route(urlsplit(urljoin(base_url, href)).path))
-            if target is not None and [title.strip().rstrip("#").strip() for title in target.titles] != [label]:
+            target_route = resolve_page_route(urlsplit(urljoin(base_url, href)).path)
+            target_titles = expected_nav_titles.get(target_route)
+            if target_titles is not None and target_titles != [label]:
                 errors.append(f"{route}: navigation label {label!r} does not match {href}")
         for target in page.links + page.assets:
             url = urlsplit(urljoin(base_url, target))

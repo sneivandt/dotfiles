@@ -418,33 +418,6 @@ fn resolve_declared_target(path: &std::path::Path) -> Result<Option<PathBuf>> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn validate_declared_modes_records_resolved_targets_and_rejects_conflicts() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("secret");
-        std::fs::write(&file, b"x").unwrap();
-        let validated = ChmodResource::validate_declared_modes(&[(file.clone(), 0o600)]).unwrap();
-        assert_eq!(validated.resolved.len(), 1);
-        assert!(validated.resolved[0].is_some());
-
-        #[cfg(unix)]
-        {
-            let link = dir.path().join("alias");
-            std::os::unix::fs::symlink(&file, &link).unwrap();
-            let err = ChmodResource::validate_declared_modes(&[(file, 0o600), (link, 0o644)])
-                .unwrap_err();
-            assert!(
-                format!("{err:#}").contains("conflicting permission modes"),
-                "{err:#}"
-            );
-        }
-    }
-}
-
 // An unresolved suffix is only an exclusion/order hint, never permission to
 // mutate a destination. Each resource still validates its fully resolved target.
 fn exclusion_target(path: &std::path::Path) -> Result<PathBuf> {
@@ -971,5 +944,24 @@ mod mutation_tests {
         std::os::unix::fs::symlink(&other, &link).unwrap();
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
         assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o644);
+    }
+
+    #[test]
+    fn validate_declared_modes_records_resolved_targets_and_rejects_conflicts() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("secret");
+        std::fs::write(&file, b"x").unwrap();
+        let validated = ChmodResource::validate_declared_modes(&[(file.clone(), 0o600)]).unwrap();
+        assert_eq!(validated.resolved.len(), 1);
+        assert!(validated.resolved[0].is_some());
+
+        let link = dir.path().join("alias");
+        std::os::unix::fs::symlink(&file, &link).unwrap();
+        let err =
+            ChmodResource::validate_declared_modes(&[(file, 0o600), (link, 0o644)]).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("conflicting permission modes"),
+            "{err:#}"
+        );
     }
 }

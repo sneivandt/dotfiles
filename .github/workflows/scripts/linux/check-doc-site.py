@@ -25,6 +25,8 @@ class Page(HTMLParser):
         self.robots = []
         self.canonicals = []
         self.descriptions = []
+        self.og_site_names = []
+        self.og_urls = []
         self.in_title = False
         self.in_nav = False
         self.nav_link = None
@@ -63,6 +65,10 @@ class Page(HTMLParser):
             self.robots.append(attrs.get("content", ""))
         if tag == "meta" and attrs.get("name", "").lower() == "description":
             self.descriptions.append(attrs.get("content", ""))
+        if tag == "meta" and attrs.get("property", "").lower() == "og:site_name":
+            self.og_site_names.append(attrs.get("content", ""))
+        if tag == "meta" and attrs.get("property", "").lower() == "og:url":
+            self.og_urls.append(attrs.get("content", ""))
 
     def handle_data(self, text):
         if self.in_title:
@@ -129,6 +135,16 @@ def frontmatter_fields(text, filename, errors):
     return fields
 
 
+def public_url_path(route):
+    return "/" if route == "/index.html" else route.removesuffix(".html")
+
+
+def resolve_page_route(path):
+    if path.endswith("/"):
+        return path + "index.html"
+    return path if path.endswith(".html") else path + ".html"
+
+
 def check_site(root):
     output = root / "docs/dist"
     domain = (root / "docs/public/CNAME").read_text(encoding="utf-8").strip()
@@ -143,7 +159,7 @@ def check_site(root):
     if not (root / "docs/content/guides/index.md").is_file():
         errors.append("Missing Markdown homepage docs/content/guides/index.md")
     sidebar_routes = {
-        urlsplit(urljoin(origin + route, href)).path
+        urlsplit(urljoin(origin + public_url_path(route), href)).path
         for route, page in pages.items()
         for href, _ in page.nav_links
     }
@@ -174,7 +190,8 @@ def check_site(root):
         )
     for source in sources:
         route = "/" + source.stem + ".html"
-        if source.stem not in {"404", "index"} and route not in sidebar_routes:
+        public_route = public_url_path(route)
+        if source.stem not in {"404", "index"} and public_route not in sidebar_routes:
             errors.append(f"{source.name}: missing from sidebar navigation")
         if route not in pages:
             errors.append(f"{source.name}: missing published route {route}")
@@ -201,6 +218,8 @@ def check_site(root):
                 errors.append(f"{source.name}: frontmatter title does not match page title {title!r}")
         if "/favicon.svg" not in page.icons:
             errors.append(f"{route}: missing site favicon")
+        if page.og_site_names != ["Dotfiles"]:
+            errors.append(f"{route}: expected og:site_name 'Dotfiles', found {page.og_site_names}")
         noindex = any(
             re.search(r"(?:^|[,\s])(?:noindex|none)(?:$|[,\s])", value, re.I)
             for value in page.robots
@@ -209,9 +228,11 @@ def check_site(root):
             if not noindex:
                 errors.append(f"{route}: missing noindex robots meta tag")
         else:
-            canonical = origin + ("/" if source.stem == "index" else route)
+            canonical = origin + public_route
             if page.canonicals != [canonical]:
                 errors.append(f"{route}: expected canonical URL {canonical}, found {page.canonicals}")
+            if page.og_urls != [canonical]:
+                errors.append(f"{route}: expected og:url {canonical}, found {page.og_urls}")
             expected_urls.add(canonical)
             if noindex:
                 errors.append(f"{route}: indexable guide has a noindex robots meta tag")
@@ -221,23 +242,31 @@ def check_site(root):
             f"missing={sorted(expected_urls - indexed_urls)}, extra={sorted(indexed_urls - expected_urls)}"
         )
     for route, page in pages.items():
+        base_url = origin + public_url_path(route)
         if page.duplicates:
             errors.append(f"{route}: duplicate IDs {sorted(page.duplicates)}")
         for href, label in page.nav_links:
-            target = pages.get(urlsplit(urljoin(origin + route, href)).path)
+            target = pages.get(resolve_page_route(urlsplit(urljoin(base_url, href)).path))
             if target is not None and [title.strip().rstrip("#").strip() for title in target.titles] != [label]:
                 errors.append(f"{route}: navigation label {label!r} does not match {href}")
         for target in page.links + page.assets:
-            url = urlsplit(urljoin(origin + route, target))
+            url = urlsplit(urljoin(base_url, target))
             if url.scheme not in {"http", "https"} or url.netloc != domain:
                 continue
             path = unquote(url.path)
+            if path.endswith(".html"):
+                errors.append(f"{route}: expected clean URL without .html, found {target}")
+                continue
+            page_route = resolve_page_route(path)
             if path.endswith("/"):
-                path += "index.html"
-            destination = output / path.lstrip("/")
+                destination = output / page_route.lstrip("/")
+            else:
+                destination = output / path.lstrip("/")
+                if not destination.is_file():
+                    destination = output / page_route.lstrip("/")
             if not destination.is_file():
                 errors.append(f"{route}: broken destination {target}")
-            elif url.fragment and path in pages and unquote(url.fragment) not in pages[path].ids:
+            elif url.fragment and page_route in pages and unquote(url.fragment) not in pages[page_route].ids:
                 errors.append(f"{route}: broken anchor {target}")
     published_cname = output / "CNAME"
     if not published_cname.is_file() or published_cname.read_text(encoding="utf-8").strip() != domain:

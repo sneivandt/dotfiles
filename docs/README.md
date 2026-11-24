@@ -220,7 +220,7 @@ VitePress reads only `content/` and copies assets from `public/`. Pages live in
 `content/guides/`, `content/reference/`, or `content/development/`, matching
 the three navigation sections; the unlisted `404.md` stays at the content root.
 Keep filenames unique across sections. VitePress rewrites the source paths to
-the existing flat `.html` URLs, with the introduction at `/`.
+flat extensionless URLs (`cleanUrls: true`), with the introduction at `/`.
 Pages keep one Markdown H1 and source-relative `.md` links, including
 `../reference/` or `../guides/` when crossing sections. The Markdown renderer
 maps those cross-section links to the flat public routes. Edit links use the
@@ -318,8 +318,9 @@ their own Pages and Actions setup. Publication accepts only a successful push
 CI run on `main` from the same repository, not a pull-request run or a run
 from another repository.
 
-The sitemap must match page canonicals: `/` for the introduction and `.html`
-URLs for guides. Guides allow indexing; the 404 page does not.
+The sitemap must match page canonicals: `/` for the introduction and
+extensionless `/<slug>` URLs for guides. Guides allow indexing; the 404 page
+does not.
 
 Documentation checks participate in `ci-success`, including on docs-only
 changes. Repository links and skill metadata are checked on every push. Site

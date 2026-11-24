@@ -19,16 +19,17 @@ test('section sources retain unique flat routes without the removed recipe guide
   assert.ok(!sources.some((path) => path.endsWith('/arch-package-recipes.md')));
 });
 
-test('cross-section Markdown links retain flat routes, anchors, and external sources', () => {
+test('cross-section Markdown links retain flat clean routes, anchors, and external sources', () => {
+  assert.equal(config.cleanUrls, true);
   for (const [source, destination] of [
-    ['../reference/cli-reference.md#command-options', '/cli-reference.html#command-options'],
-    ['../development/contributing.md', '/contributing.html'],
+    ['../reference/cli-reference.md#command-options', '/cli-reference#command-options'],
+    ['../development/contributing.md', '/contributing'],
     ['../guides/index.md', '/'],
-    ['getting-started.md#using-a-fork', './getting-started.html#using-a-fork'],
+    ['getting-started.md#using-a-fork', './getting-started#using-a-fork'],
     ['#details', '#details'],
     ['https://github.com/sneivandt/dotfiles/blob/main/docs/content/guides/index.md', 'https://github.com/sneivandt/dotfiles/blob/main/docs/content/guides/index.md'],
   ]) {
-    assert.ok(md.render(`[Link](${source})`, {}).includes(`href="${destination}"`), source);
+    assert.ok(md.render(`[Link](${source})`, { cleanUrls: config.cleanUrls }).includes(`href="${destination}"`), source);
   }
 });
 

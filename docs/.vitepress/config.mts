@@ -6,6 +6,7 @@ import { themeStartup } from './theme-startup.mts';
 
 const domain = readFileSync(new URL('../public/CNAME', import.meta.url), 'utf8').trim();
 const origin = `https://${domain}`;
+const siteTitle = 'Dotfiles';
 const pageSources = Object.fromEntries(
   ['guides', 'reference', 'development'].flatMap((section) =>
     readdirSync(new URL(`../content/${section}/`, import.meta.url))
@@ -15,7 +16,7 @@ const pageSources = Object.fromEntries(
 );
 const page = (name: string): DefaultTheme.SidebarItem => ({
   text: readFileSync(new URL(`../content/${pageSources[name]}`, import.meta.url), 'utf8').match(/^title: (.+)$/m)![1],
-  link: name === 'index' ? '/' : `/${name}.html`,
+  link: name === 'index' ? '/' : `/${name}`,
 });
 const group = (text: string, pages: string[]): DefaultTheme.SidebarItem => ({
   text,
@@ -54,7 +55,7 @@ const contribute = [
 ];
 const sectionPages = (items: DefaultTheme.SidebarItem[]): string[] =>
   items.flatMap((item) => [
-    ...(item.link ? [item.link.slice(1, -5)] : []),
+    ...(item.link ? [item.link.slice(1)] : []),
     ...sectionPages(item.items ?? []),
   ]);
 const sectionMatch = (items: DefaultTheme.SidebarItem[]) =>
@@ -63,10 +64,11 @@ const sectionSidebars = (items: DefaultTheme.SidebarItem[]) =>
   Object.fromEntries(sectionPages(items).map((name) => [`/${name}`, items]));
 
 export default defineConfig({
-  title: 'Dotfiles',
+  title: siteTitle,
   description: 'Set up, customize, and maintain an Arch Linux or Windows machine with declarative configuration and a Rust CLI.',
   lang: 'en-US',
   srcDir: 'content',
+  cleanUrls: true,
   rewrites: Object.fromEntries(Object.entries(pageSources).map(([name, source]) => [source, `${name}.md`])),
   outDir: 'dist',
   vite: {
@@ -80,21 +82,27 @@ export default defineConfig({
   head: [['link', { rel: 'icon', href: '/favicon.svg' }]],
   sitemap: {
     hostname: origin,
-    transformItems: (items) => items.filter((item) => item.url !== '404.html'),
+    transformItems: (items) => items.filter((item) => item.url !== '404' && item.url !== '404.html'),
   },
   async buildEnd(site) {
     writeFileSync(resolve(site.outDir, 'sitemap-index.xml'),
       `<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>${origin}/sitemap.xml</loc></sitemap></sitemapindex>`);
   },
   transformPageData(page) {
-    if (page.relativePath === 'index.md') page.title = 'Dotfiles by Stuart Neivandt';
+    if (page.relativePath === 'index.md') page.title = 'Dotfiles — Declarative Arch & Windows Setup';
   },
   transformHead({ pageData }) {
-    const path = pageData.relativePath.replace(/\.md$/, '.html');
-    const canonical = origin + (path === 'index.html' ? '/' : `/${path}`);
-    if (path === '404.html') return [['meta', { name: 'robots', content: 'noindex, nofollow' }]];
+    const pagePath = pageData.relativePath.replace(/\.md$/, '');
+    if (pagePath === '404') {
+      return [
+        ['meta', { name: 'robots', content: 'noindex, nofollow' }],
+        ['meta', { property: 'og:site_name', content: siteTitle }],
+      ];
+    }
+    const canonical = origin + (pagePath === 'index' ? '/' : `/${pagePath}`);
     return [
       ['link', { rel: 'canonical', href: canonical }],
+      ['meta', { property: 'og:site_name', content: siteTitle }],
       ['meta', { property: 'og:url', content: canonical }],
       ['meta', { property: 'og:title', content: pageData.title }],
       ['meta', { property: 'og:description', content: pageData.description }],
@@ -130,9 +138,9 @@ export default defineConfig({
   themeConfig: {
     logo: '/favicon.svg',
     nav: [
-      { text: 'Guides', link: '/getting-started.html', activeMatch: `^/$|${sectionMatch(guide)}` },
-      { text: 'Reference', link: '/cli-reference.html', activeMatch: sectionMatch(reference) },
-      { text: 'Development', link: '/contributing.html', activeMatch: sectionMatch(contribute) },
+      { text: 'Guides', link: '/getting-started', activeMatch: `^/$|${sectionMatch(guide)}` },
+      { text: 'Reference', link: '/cli-reference', activeMatch: sectionMatch(reference) },
+      { text: 'Development', link: '/contributing', activeMatch: sectionMatch(contribute) },
     ],
     sidebar: {
       ...sectionSidebars(reference),

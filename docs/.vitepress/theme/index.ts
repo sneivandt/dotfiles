@@ -36,7 +36,13 @@ export default {
         document.removeEventListener('focusin', rememberFocus);
         document.removeEventListener('keydown', restoreSearchFocus, true);
       });
-      return () => h(DefaultTheme.Layout);
+      return () => h(DefaultTheme.Layout, null, {
+        'doc-after': () => h('div', { class: 'site-footer' }, [
+          'Maintained by ',
+          h('a', { href: 'https://stuartneivandt.com/' }, 'Stuart Neivandt'),
+          '.',
+        ]),
+      });
     },
   }),
   enhanceApp({ app }) {

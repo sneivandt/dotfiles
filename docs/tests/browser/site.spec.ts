@@ -12,7 +12,7 @@ const referenceTitles = ['CLI reference', 'Task reference', ...taskDocuments
   .map(({ source }) => source.match(/^title: (.+)$/m)![1])
   .sort((left, right) => left.localeCompare(right, 'en'))];
 const documentRoutes = documents.map(({ name }) =>
-  name === 'index.md' ? '/' : `/${name.replace(/\.md$/, '.html')}`);
+  name === 'index.md' ? '/' : `/${name.replace(/\.md$/, '')}`);
 
 async function assertNoPageOverflow(page: Page) {
   const dimensions = await page.evaluate(() => ({
@@ -32,7 +32,7 @@ async function openSearch(page: Page) {
 
 async function guideRoutes(page: Page) {
   const routes = new Set<string>();
-  for (const section of ['/getting-started.html', '/cli-reference.html', '/contributing.html']) {
+  for (const section of ['/getting-started', '/cli-reference', '/contributing']) {
     await page.goto(section);
     for (const href of await page.locator('.VPSidebar a[href]').evaluateAll(
       (links) => links.map((link) => link.getAttribute('href')!),
@@ -66,7 +66,7 @@ for (const theme of ['light', 'dark'] as const) {
       });
     });
     try {
-      await page.goto('/getting-started.html', { waitUntil: 'commit' });
+      await page.goto('/getting-started', { waitUntil: 'commit' });
       await expect(page.locator('.VPNavBar')).toHaveClass(/has-sidebar/);
       await expect(page.locator('#local-search button')).toBeVisible();
       await page.evaluate(async () => { await document.fonts.ready; });
@@ -94,13 +94,17 @@ for (const theme of ['light', 'dark'] as const) {
 
 test('the introduction and grouped navigation fit the default reading layout', async ({ page, isMobile }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle('Dotfiles by Stuart Neivandt');
+  await expect(page).toHaveTitle('Dotfiles — Declarative Arch & Windows Setup');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/');
+  await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute('content', 'Dotfiles');
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/');
   await expect(page.locator('.vp-doc p').first()).not.toBeEmpty();
+  const footerLink = page.locator('.site-footer').getByRole('link', { name: 'Stuart Neivandt', exact: true });
+  await expect(footerLink).toBeVisible();
+  await expect(footerLink).toHaveAttribute('href', 'https://stuartneivandt.com/');
   expect(JSON.parse(await page.locator('head script[type="application/ld+json"]').textContent() ?? '')).toMatchObject({
-    '@type': 'WebSite', creator: { name: 'Stuart Neivandt' },
+    '@type': 'WebSite', name: 'Dotfiles', creator: { name: 'Stuart Neivandt', url: 'https://stuartneivandt.com/' },
   });
   await expect(page.locator('link[rel~="icon"]')).toHaveAttribute('href', '/favicon.svg');
   const setup = page.locator('.vp-doc').getByRole('link', { name: 'Getting started', exact: true });
@@ -121,7 +125,11 @@ test('the introduction and grouped navigation fit the default reading layout', a
   await expect(sidebar.getByRole('link', { name: 'About this project', exact: true })).toHaveAttribute('href', '/');
   if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText('Guides');
   await sidebar.getByRole('link', { name: 'Getting started', exact: true }).click();
+  await expect(page).toHaveURL('/getting-started');
+  await expect(page).toHaveTitle('Getting started | Dotfiles');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
+  await expect(footerLink).toBeVisible();
+  await expect(footerLink).toHaveAttribute('href', 'https://stuartneivandt.com/');
   await expect(page.locator('.VPDocFooter .next')).toContainText('Commands and usage');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await sidebar.getByRole('link', { name: 'About this project', exact: true }).click();
@@ -131,11 +139,16 @@ test('the introduction and grouped navigation fit the default reading layout', a
 });
 
 test('header sections replace the sidebar, including direct links and search destinations', async ({ page, isMobile }) => {
-  await page.goto('/getting-started.html');
+  await page.goto('/getting-started');
+  await expect(page).toHaveTitle('Getting started | Dotfiles');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/getting-started');
+  await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute('content', 'Dotfiles');
+  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/getting-started');
+  await expect(page.locator('.site-footer').getByRole('link', { name: 'Stuart Neivandt', exact: true })).toHaveAttribute('href', 'https://stuartneivandt.com/');
   for (const [label, entry, titles] of [
-    ['Reference', '/cli-reference.html', referenceTitles],
-    ['Development', '/contributing.html', ['Contributing', 'Writing documentation', 'Architecture', 'Adding a task', 'Debugging', 'Testing', 'Writing tests', 'Mutation testing', 'CI and releases']],
-    ['Guides', '/getting-started.html', ['About this project', 'Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Application settings', 'Agent configuration', 'Private overlays']],
+    ['Reference', '/cli-reference', referenceTitles],
+    ['Development', '/contributing', ['Contributing', 'Writing documentation', 'Architecture', 'Adding a task', 'Debugging', 'Testing', 'Writing tests', 'Mutation testing', 'CI and releases']],
+    ['Guides', '/getting-started', ['About this project', 'Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Package management', 'Troubleshooting', 'Arch desktop', 'Windows and WSL', 'Application settings', 'Agent configuration', 'Private overlays']],
   ] as const) {
     if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
     await page.locator(isMobile ? '.VPNavScreen' : '.VPNavBarMenu').getByRole('link', { name: label, exact: true }).click();
@@ -147,33 +160,33 @@ test('header sections replace the sidebar, including direct links and search des
     }
     if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText(label);
   }
-  await page.goto('/home-symlinks.html#configuration');
+  await page.goto('/home-symlinks#configuration');
   await expect(page.locator('.VPSidebar a')).toHaveText(referenceTitles);
   await expect(page.locator('.VPDocFooter .next')).toContainText('Login shell');
   await expect(page.locator('.VPSidebar').getByRole('button', { name: 'toggle section', exact: true })).toHaveCount(1);
-  await page.goto('/private-overlays.html');
+  await page.goto('/private-overlays');
   await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
-  await page.goto('/package-management.html');
+  await page.goto('/package-management');
   await expect(page.locator('.VPDocFooter .next')).toContainText('Troubleshooting');
 });
 
 test('flat routes keep original section source edit links and removed pages are absent', async ({ page }) => {
   for (const [route, source] of [
     ['/', 'guides/index.md'],
-    ['/cli-reference.html', 'reference/cli-reference.md'],
-    ['/contributing.html', 'development/contributing.md'],
+    ['/cli-reference', 'reference/cli-reference.md'],
+    ['/contributing', 'development/contributing.md'],
   ]) {
     await page.goto(route);
     await expect(page.locator('.edit-link a')).toHaveAttribute(
       'href', `https://github.com/sneivandt/dotfiles/edit/main/docs/content/${source}`,
     );
   }
-  await page.goto('/arch-package-recipes.html');
+  await page.goto('/arch-package-recipes');
   await expect(page.getByRole('heading', { name: 'Page not found', exact: true })).toBeVisible();
 });
 
 test('task details collapse separately from the task reference overview', async ({ page, isMobile }) => {
-  await page.goto('/home-symlinks.html');
+  await page.goto('/home-symlinks');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const sidebar = page.locator('.VPSidebar');
   const overviewGroup = sidebar.locator('.group')
@@ -187,13 +200,13 @@ test('task details collapse separately from the task reference overview', async 
   await expect(sidebar.getByRole('link', { name: 'Task details', exact: true })).toHaveCount(0);
   const toggle = tasks.getByRole('button', { name: 'toggle section', exact: true });
   await toggle.click();
-  await expect(page).toHaveURL('/home-symlinks.html');
+  await expect(page).toHaveURL('/home-symlinks');
   await expect(tasks.getByRole('link', { name: 'Home symlinks', exact: true })).not.toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'CLI reference', exact: true })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'Configuration basics', exact: true })).toHaveCount(0);
   await expect(sidebar.getByRole('link', { name: 'Task reference', exact: true })).toBeVisible();
   await sidebar.getByRole('link', { name: 'Task reference', exact: true }).click();
-  await expect(page).toHaveURL('/task-reference.html');
+  await expect(page).toHaveURL('/task-reference');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Task reference');
   await expect(page.locator('.VPDocFooter .next')).toContainText('Agent packages');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
@@ -210,22 +223,22 @@ test('task details collapse separately from the task reference overview', async 
 });
 
 test('configuration basics follows profiles in Guides, including search destinations', async ({ page, isMobile }) => {
-  await page.goto('/profiles-and-categories.html');
+  await page.goto('/profiles-and-categories');
   await expect(page.locator('.VPDocFooter .next')).toContainText('Configuration basics');
   await page.locator('.VPDocFooter .next').click();
-  await expect(page).toHaveURL('/configuration-basics.html');
+  await expect(page).toHaveURL('/configuration-basics');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Configuration basics');
   await expect(page.locator('.VPDocFooter .prev')).toContainText('Profiles and categories');
   await expect(page.locator('.VPDocFooter .next')).toContainText('Security and trust');
   if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText('Guides');
 
-  await page.goto('/cli-reference.html');
+  await page.goto('/cli-reference');
   await openSearch(page);
   await page.locator('#localsearch-input').fill('Configuration basics');
-  const result = page.locator('.VPLocalSearchBox a[href*="configuration-basics.html"]').first();
+  const result = page.locator('.VPLocalSearchBox a[href*="/configuration-basics"]').first();
   await expect(result).toBeVisible({ timeout: 30_000 });
   await result.click();
-  await expect(page).toHaveURL(/configuration-basics\.html(?:#.*)?$/);
+  await expect(page).toHaveURL(/\/configuration-basics(?:#.*)?$/);
   await expect(page.locator('.VPSidebar').getByRole('link', { name: 'Profiles and categories', exact: true })).toHaveCount(1);
   await expect(page.locator('.VPSidebar').getByRole('link', { name: 'CLI reference', exact: true })).toHaveCount(0);
   if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText('Guides');
@@ -238,25 +251,25 @@ test('the first reading path leads from setup through usage to configuration', a
     ['commands-and-usage', 'Profiles and categories'],
     ['profiles-and-categories', 'Configuration basics'],
   ]) {
-    await page.goto(`/${route}.html`);
+    await page.goto(`/${route}`);
     await expect(page.locator('.VPDocFooter .next')).toContainText(next);
   }
-  await page.goto('/getting-started.html');
+  await page.goto('/getting-started');
   await expect(page.locator('main pre').filter({ hasText: 'PLANNED Home symlinks' }))
     .toContainText('SKIPPED VS Code extensions');
 });
 
 test('task lookup starts with reader questions and task details use title order', async ({ page }) => {
   expect(referenceTitles.slice(2)).toEqual(referenceTitles.slice(2).sort((a, b) => a.localeCompare(b, 'en')));
-  await page.goto('/task-reference.html');
+  await page.goto('/task-reference');
   const lookup = page.locator('main table').first();
   await expect(lookup).toContainText('What do you want to do?');
   await lookup.getByRole('link', { name: 'User registry settings', exact: true }).click();
-  await expect(page).toHaveURL('/user-registry-settings.html');
+  await expect(page).toHaveURL('/user-registry-settings');
 });
 
 test('testing lookup exposes prerequisites and keeps general setup outside the TLS exception', async ({ page, isMobile }) => {
-  await page.goto('/testing.html');
+  await page.goto('/testing');
   for (const anchor of [
     'baseline-and-prerequisites', 'local-npm-tls-failures', 'analyzer-prerequisites',
     'sensitive-pattern-scanning', 'full-commit-hook-suite', 'ci-selection-fixtures',
@@ -273,28 +286,28 @@ test('testing lookup exposes prerequisites and keeps general setup outside the T
   });
   expect(general).toContain('Refresh origin/main before planning.');
   expect(general).toContain('Provide the tools required by the printed plan');
-  await page.goto('/psscriptanalyzer.html');
+  await page.goto('/psscriptanalyzer');
   await expect(page.locator('main table')).toContainText('PowerShell 7 (pwsh)');
   await expect(page.locator('main')).toContainText('Windows PowerShell cannot substitute for it');
 });
 
 test('development guides connect implementation and isolated test authoring', async ({ page }) => {
-  await page.goto('/contributing.html');
+  await page.goto('/contributing');
   await page.locator('main').getByRole('link', { name: 'Adding a task', exact: true }).first().click();
-  await expect(page).toHaveURL('/adding-a-task.html');
+  await expect(page).toHaveURL('/adding-a-task');
   for (const anchor of ['choose-the-boundary', 'implement-inspection-and-application', 'wire-command-membership-and-dependencies']) {
     await expect(page.locator(`main h2#${anchor}`)).toHaveCount(1);
   }
   await expect(page.locator('main h3#follow-one-declaration-through-the-task')).toHaveCount(1);
   await page.locator('main').getByRole('link', { name: 'Writing tests', exact: true }).first().click();
-  await expect(page).toHaveURL('/writing-tests.html');
+  await expect(page).toHaveURL('/writing-tests');
   await expect(page.locator('main #confine-every-writable-path')).toHaveCount(1);
   await expect(page.locator('main #exercise-a-complete-state-transition')).toHaveCount(1);
   await expect(page.locator('main #a-complete-isolated-task-regression')).toHaveCount(1);
   await expect(page.locator('main #integration-test-suites')).toHaveCount(1);
   await expect(page.locator('main #dry-run-testing')).toHaveCount(1);
   await expect(page.locator('.VPDocFooter .next')).toContainText('Mutation testing');
-  await page.goto('/testing.html');
+  await page.goto('/testing');
   for (const anchor of ['choosing-coverage', 'fast-local-sequence', 'before-pushing', 'focused-mutation-testing']) {
     await expect(page.locator(`main h2#${anchor}`)).toHaveCount(1);
   }
@@ -303,18 +316,18 @@ test('development guides connect implementation and isolated test authoring', as
 });
 
 test('maintenance procedures link to task references and contributor guides', async ({ page }) => {
-  await page.goto('/architecture.html');
+  await page.goto('/architecture');
   await expect(page.locator('main #agent-deployment-implementation')).toHaveCount(0);
-  await page.goto('/agent-configuration.html');
+  await page.goto('/agent-configuration');
   await expect(page.locator('main #deployment-maintenance')).toHaveCount(0);
-  await page.goto('/package-management.html');
+  await page.goto('/package-management');
   await page.locator('main').getByRole('link', { name: 'Custom package repository', exact: true }).click();
-  await expect(page).toHaveURL('/custom-package-repository.html');
+  await expect(page).toHaveURL('/custom-package-repository');
   await expect(page.locator('main #configuration')).toBeVisible();
-  await page.goto('/testing.html');
+  await page.goto('/testing');
   await expect(page.locator('main #prepare-an-isolated-source-snapshot')).toHaveCount(0);
   await page.locator('main').getByRole('link', { name: 'Mutation testing', exact: true }).click();
-  await expect(page).toHaveURL('/mutation-testing.html');
+  await expect(page).toHaveURL('/mutation-testing');
   await expect(page.locator('main #prepare-an-isolated-source-snapshot')).toBeVisible();
   await assertNoPageOverflow(page);
 });
@@ -324,21 +337,21 @@ test('developer guides cover debugging and documentation without assigning skill
     ['Debugging', 'debugging', 'reproduce-the-behavior-in-a-test'],
     ['Writing documentation', 'writing-documentation', 'task-reference-pages'],
   ]) {
-    await page.goto('/contributing.html');
+    await page.goto('/contributing');
     await page.locator('main').getByRole('link', { name: title, exact: true }).first().click();
-    await expect(page).toHaveURL(`/${route}.html`);
+    await expect(page).toHaveURL(`/${route}`);
     await expect(page.locator(`main h2#${anchor}`)).toHaveCount(1);
     await assertNoPageOverflow(page);
   }
   for (const route of ['contributing', 'adding-a-task', 'application-settings', 'testing', 'writing-documentation']) {
-    await page.goto(`/${route}.html`);
+    await page.goto(`/${route}`);
     await expect(page.locator('main a[href*="/.agents/skills/"][href*="/SKILL.md"]')).toHaveCount(0);
   }
   await assertNoPageOverflow(page);
 });
 
 test('sidebar groups start expanded and collapse with their right-hand arrow', async ({ page, isMobile }) => {
-  await page.goto('/getting-started.html');
+  await page.goto('/getting-started');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const group = page.locator('.VPSidebar .group').filter({ has: page.getByRole('heading', { name: 'Introduction', exact: true }) });
   const link = group.getByRole('link', { name: 'Getting started', exact: true });
@@ -442,36 +455,36 @@ test('consolidated topics link to their sections after everyday guidance', async
     ['application-settings', 'vim-and-neovim', 'Vim and Neovim'],
     ['contributing', 'git-hooks', 'Git hooks'],
   ]) {
-    await page.goto(`/${guide}.html`);
+    await page.goto(`/${guide}`);
     const link = page.locator('.vp-doc').getByRole('link', { name: title, exact: true }).first();
     await expect(link).toHaveAttribute('href', `#${anchor}`);
     await link.click();
-    await expect(page).toHaveURL(`/${guide}.html#${anchor}`);
+    await expect(page).toHaveURL(`/${guide}#${anchor}`);
     await expect(page.locator(`#${anchor}`)).toBeVisible();
     await assertNoPageOverflow(page);
   }
 });
 
 test('guides link to the owning command and application references', async ({ page }) => {
-  await page.goto('/commands-and-usage.html');
+  await page.goto('/commands-and-usage');
   await expect(page.locator('main #command-options')).toHaveCount(0);
   const reference = page.locator('main').getByRole('link', { name: 'CLI reference', exact: true });
   await reference.click();
-  await expect(page).toHaveURL('/cli-reference.html');
+  await expect(page).toHaveURL('/cli-reference');
   await expect(page.locator('#command-options')).toBeAttached();
   await expect(page.locator('#using-a-fork')).toHaveCount(0);
   await page.locator('main').getByRole('link', { name: 'fork setup', exact: true }).click();
-  await expect(page).toHaveURL('/getting-started.html#using-a-fork');
+  await expect(page).toHaveURL('/getting-started#using-a-fork');
   await expect(page.locator('#using-a-fork')).toBeVisible();
 
-  await page.goto('/cli-reference.html');
+  await page.goto('/cli-reference');
   await expect(page.locator('#log-locations')).toBeAttached();
   await expect(page.locator('#execution-output-for-scripts')).toBeAttached();
 
-  await page.goto('/contributing.html#git-hooks');
+  await page.goto('/contributing#git-hooks');
   await expect(page.locator('main #merged-branch-cleanup')).toHaveCount(0);
   await page.locator('main').getByRole('link', { name: 'personal Git templates', exact: true }).click();
-  await expect(page).toHaveURL('/application-settings.html#git-templates');
+  await expect(page).toHaveURL('/application-settings#git-templates');
   await expect(page.locator('#git')).toBeVisible();
   await expect(page.locator('#git-templates')).toBeAttached();
   await expect(page.getByRole('cell', { name: 'git st', exact: true })).toBeAttached();
@@ -494,7 +507,7 @@ test('lookup and prerequisite information precedes advanced details', async ({ p
     ['commands-and-usage', 'control-what-advances', 'move-a-checkout'],
     ['testing', 'baseline-and-prerequisites', 'local-npm-tls-failures'],
   ]) {
-    await page.goto(`/${guide}.html`);
+    await page.goto(`/${guide}`);
     const order = await page.evaluate(({ earlier, later }) => {
       const first = document.getElementById(earlier);
       const second = document.getElementById(later);
@@ -513,20 +526,20 @@ test('guide links use ordinary labels without boxed code', async ({ page }) => {
     await page.goto(route);
     await expect(page.locator('.vp-doc a code')).toHaveCount(0);
   }
-  await page.goto('/cli-reference.html');
+  await page.goto('/cli-reference');
   await expect(page.locator('main :not(pre) > code').first()).toBeVisible();
   await expect(page.locator('main pre').first()).toBeVisible();
 });
 
 test('site maintenance links point to the repository README, not a published guide', async ({ page }) => {
-  await page.goto('/contributing.html');
+  await page.goto('/contributing');
   const links = page.locator('.vp-doc')
     .getByRole('link', { name: 'site maintenance README', exact: true });
   await expect(links.first()).toBeAttached();
   for (const link of await links.all()) {
     await expect(link).toHaveAttribute('href', 'https://github.com/sneivandt/dotfiles/blob/main/docs/README.md');
   }
-  await expect(page.locator('.VPSidebar a[href="/documentation-site.html"]')).toHaveCount(0);
+  await expect(page.locator('.VPSidebar a[href="/documentation-site"]')).toHaveCount(0);
   await assertNoPageOverflow(page);
 });
 
@@ -534,7 +547,7 @@ for (const theme of ['light', 'dark'] as const) {
   test(`navigation scrolls to the last guide in ${theme} mode`, async ({ page, isMobile }) => {
     await page.addInitScript((choice) => localStorage.setItem('vitepress-theme-appearance', choice), theme);
     await page.setViewportSize({ width: isMobile ? 375 : 1440, height: 600 });
-    await page.goto('/getting-started.html');
+    await page.goto('/getting-started');
     if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
     const sidebar = page.locator('.VPSidebar');
     await expect(sidebar).toBeVisible();
@@ -564,7 +577,7 @@ for (const [guide, titles] of [
   for (const theme of ['light', 'dark'] as const) {
     test(`${guide} renders accessible safety callouts in ${theme} mode`, async ({ page }) => {
       await page.addInitScript((choice) => localStorage.setItem('vitepress-theme-appearance', choice), theme);
-      await page.goto(`/${guide}.html`);
+      await page.goto(`/${guide}`);
       await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /dark/ : /^(?!.*dark)/);
       for (const title of titles) {
         const warning = page.locator('.custom-block.warning').filter({ has: page.locator('.custom-block-title', { hasText: title }) });
@@ -594,10 +607,10 @@ for (const [guide, titles] of [
 
 test('task catalog labels open dedicated pages without horizontal overflow', async ({ page, isMobile }) => {
   if (isMobile) await page.setViewportSize({ width: 375, height: 667 });
-  await page.goto('/task-reference.html');
+  await page.goto('/task-reference');
   const catalog = page.locator('main table').filter({ hasText: 'agent-packages' });
   const detail = catalog.getByRole('link', { name: 'Agent packages', exact: true });
-  await expect(detail).toHaveAttribute('href', /^(?:\.\/|\/)agent-packages\.html$/);
+  await expect(detail).toHaveAttribute('href', /^(?:\.\/|\/)agent-packages$/);
   if (isMobile) {
     const dimensions = await catalog.evaluate((element) => ({
       content: element.scrollWidth,
@@ -606,14 +619,14 @@ test('task catalog labels open dedicated pages without horizontal overflow', asy
     expect(dimensions.visible).toBeLessThanOrEqual(375);
   }
   await detail.click();
-  await expect(page).toHaveURL(/agent-packages\.html$/);
+  await expect(page).toHaveURL(/\/agent-packages$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Agent packages');
   await expect(page.locator('main #configuration')).toBeAttached();
 });
 
 test('task pages combine behavior, configuration, and removal guidance', async ({ page }) => {
   test.setTimeout(120_000);
-  await page.goto('/task-reference.html');
+  await page.goto('/task-reference');
   const tasks = await page.locator('main table').filter({ hasText: 'agent-packages' }).locator('tbody tr').evaluateAll(
     (rows) => rows.map((row) => ({
       selector: row.querySelector('code')!.textContent,
@@ -622,7 +635,7 @@ test('task pages combine behavior, configuration, and removal guidance', async (
   );
   expect(tasks.map(({ href }) => href.split('/').pop()).sort()).toEqual(
     taskDocuments.filter(({ name, source }) => name !== 'overlay-scripts.md' && /^\| Commands \|.*`update`/m.test(source))
-      .map(({ name }) => name.replace(/\.md$/, '.html')).sort(),
+      .map(({ name }) => name.replace(/\.md$/, '')).sort(),
   );
   for (const task of tasks) {
     await page.goto(task.href);
@@ -641,7 +654,7 @@ test('task pages combine behavior, configuration, and removal guidance', async (
 });
 
 test('the page contents group troubleshooting symptoms', async ({ page }) => {
-  await page.goto('/troubleshooting.html');
+  await page.goto('/troubleshooting');
   await expect(page.locator('main h2')).toHaveText([
     'Find the symptom', 'Read the failed run', 'Recover from a partial update',
     'Startup and configuration', 'Tasks and repository updates',
@@ -687,10 +700,10 @@ test('search opens the relevant section of the published guide', async ({ page }
   await page.goto('/');
   await openSearch(page);
   await page.locator('#localsearch-input').fill('symlinks');
-  const result = page.locator('.VPLocalSearchBox a[href*="home-symlinks.html"]').first();
+  const result = page.locator('.VPLocalSearchBox a[href*="/home-symlinks"]').first();
   await expect(result).toBeVisible();
   await result.click();
-  await expect(page).toHaveURL(/home-symlinks\.html(?:#.*)?$/);
+  await expect(page).toHaveURL(/\/home-symlinks(?:#.*)?$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home symlinks');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('.VPSidebar a')).toHaveText(referenceTitles);
@@ -703,27 +716,27 @@ test('topic discovery uses reader terminology and page descriptions', async ({ p
     ['HKEY_CURRENT_USER', 'user-registry-settings', 'User registry settings'],
     ['retire desktop', 'profiles-and-categories', 'Profiles and categories'],
   ]) {
-    await page.goto('/getting-started.html');
+    await page.goto('/getting-started');
     await openSearch(page);
     await page.locator('#localsearch-input').fill(query);
-    const result = page.locator(`.VPLocalSearchBox .result[href*="/${route}.html"]`).first();
+    const result = page.locator(`.VPLocalSearchBox .result[href*="/${route}"]`).first();
     await expect(result, query).toBeVisible();
     const topResults = await page.locator('.VPLocalSearchBox .result').evaluateAll(
       (links) => links.slice(0, 5).map((link) => link.getAttribute('href')),
     );
-    expect(topResults.some((href) => href?.includes(`/${route}.html`)), query).toBe(true);
+    expect(topResults.some((href) => href?.includes(`/${route}`)), query).toBe(true);
     await result.click();
-    await expect(page).toHaveURL(new RegExp(`${route}\\.html(?:#.*)?$`));
+    await expect(page).toHaveURL(new RegExp(`/${route}(?:#.*)?$`));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
   }
   await openSearch(page);
   await page.locator('#localsearch-input').fill('Page not found');
   await expect(page.locator('.VPLocalSearchBox')).toBeVisible();
-  await expect(page.locator('.VPLocalSearchBox .result[href*="/404.html"]')).toHaveCount(0);
+  await expect(page.locator('.VPLocalSearchBox .result[href*="/404"]')).toHaveCount(0);
 });
 
 test('keyboard skip navigation and search dismissal preserve visible focus', async ({ page }) => {
-  await page.goto('/getting-started.html');
+  await page.goto('/getting-started');
   await page.keyboard.press('Tab');
   const skip = page.getByRole('link', { name: 'Skip to content', exact: true });
   await expect(skip).toBeFocused();
@@ -737,7 +750,7 @@ test('keyboard skip navigation and search dismissal preserve visible focus', asy
   await page.keyboard.press('Enter');
   await expect(page.locator('#VPContent')).toBeFocused();
 
-  await page.goto('/getting-started.html');
+  await page.goto('/getting-started');
   const search = page.getByRole('button', { name: 'Search', exact: true });
   for (let step = 0; step < 20 && !await search.evaluate((element) => element === document.activeElement); step++) {
     await page.keyboard.press('Tab');
@@ -773,8 +786,8 @@ for (const theme of ['light', 'dark'] as const) {
   test(`body, links, and warning text meet contrast requirements in ${theme} mode`, async ({ page }) => {
     await page.addInitScript((choice) => localStorage.setItem('vitepress-theme-appearance', choice), theme);
     for (const guide of ['getting-started', 'package-management', 'private-overlays']) {
-      await page.goto(`/${guide}.html`);
-      const measurements = await page.locator('main p, main p a, main li a, main .custom-block-title').evaluateAll((elements) => {
+      await page.goto(`/${guide}`);
+      const measurements = await page.locator('main p, main p a, main li a, main .custom-block-title, .site-footer, .site-footer a').evaluateAll((elements) => {
         type Color = [number, number, number, number];
         function color(value: string): Color {
           const match = value.match(/^rgba?\((.+)\)$/);
@@ -832,12 +845,13 @@ for (const theme of ['light', 'dark'] as const) {
 
 test('removed guides and repository-only docs do not publish routes', async ({ request }) => {
   for (const path of [
-    '/USAGE.html', '/LOCAL-PACKAGES.html', '/TESTING-RECIPES.html',
-    '/local-package-recipes.html', '/ai-agent-configuration.html',
-    '/git-configuration.html', '/documentation-site.html', '/README.html', '/README.md',
-    '/update-lifecycle.html', '/visual-studio-code.html', '/vim-and-neovim.html',
-    '/configuration-reference.html', '/agent-deployment-internals.html', '/agent-deployment-maintenance.html',
-    '/configuration-files.html',
+    '/USAGE', '/LOCAL-PACKAGES', '/TESTING-RECIPES',
+    '/local-package-recipes', '/ai-agent-configuration',
+    '/git-configuration', '/documentation-site', '/README', '/README.md',
+    '/update-lifecycle', '/visual-studio-code', '/vim-and-neovim',
+    '/configuration-reference', '/agent-deployment-internals', '/agent-deployment-maintenance',
+    '/configuration-files', '/arch-package-recipes',
+    '/USAGE.html', '/documentation-site.html',
   ]) {
     expect((await request.get(path)).status()).toBe(404);
   }
@@ -873,7 +887,7 @@ test('client navigation and theme changes rerender diagrams', async ({ page, isM
   test.setTimeout(180_000);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/getting-started.html');
+  await page.goto('/getting-started');
   await page.locator('.vp-doc').getByRole('link', { name: 'Profiles and categories', exact: true }).first().click();
   const diagram = page.locator('.mermaid svg');
   await expect(diagram).toBeVisible({ timeout: 30_000 });
@@ -896,7 +910,7 @@ for (const { name } of documents.filter(({ source }) => /^```mermaid\s*$/m.test(
         if (message.type() === 'error') errors.push(message.text());
       });
       await page.addInitScript((choice) => localStorage.setItem('vitepress-theme-appearance', choice), theme);
-      await page.goto(`/${guide}.html`);
+      await page.goto(`/${guide}`);
       await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /dark/ : /^(?!.*dark)/);
       const diagram = page.locator('.mermaid svg');
       // Mermaid loads asynchronously; shared runners can delay a cold render.

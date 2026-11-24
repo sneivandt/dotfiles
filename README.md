@@ -23,7 +23,7 @@ and review the settings before using it on your own machine.
 ## What it manages
 
 Which settings apply depends on the operating system and the
-[profile](https://dotfiles.stuartneivandt.com/profiles-and-categories.html):
+[profile](https://dotfiles.stuartneivandt.com/profiles-and-categories):
 `base` covers command-line tools, while `desktop` adds workstation settings.
 
 | Area | Examples from this setup |
@@ -40,7 +40,7 @@ Which settings apply depends on the operating system and the
 
 ## Guides and reference
 
-- [Getting started](https://dotfiles.stuartneivandt.com/getting-started.html): Back up existing settings and preview your first setup.
-- [Commands and usage](https://dotfiles.stuartneivandt.com/commands-and-usage.html): Select tasks, apply changes, and inspect the results.
-- [Task reference](https://dotfiles.stuartneivandt.com/task-reference.html): Look up what a task changes, how to configure it, and what it leaves behind.
-- [Contributing](https://dotfiles.stuartneivandt.com/contributing.html): Find where to make a change and which checks to run.
+- [Getting started](https://dotfiles.stuartneivandt.com/getting-started): Back up existing settings and preview your first setup.
+- [Commands and usage](https://dotfiles.stuartneivandt.com/commands-and-usage): Select tasks, apply changes, and inspect the results.
+- [Task reference](https://dotfiles.stuartneivandt.com/task-reference): Look up what a task changes, how to configure it, and what it leaves behind.
+- [Contributing](https://dotfiles.stuartneivandt.com/contributing): Find where to make a change and which checks to run.

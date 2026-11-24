@@ -27,3 +27,22 @@
   height: auto;
   margin-inline: auto;
 }
+
+.site-footer {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--vp-c-divider);
+  font-size: 14px;
+  color: var(--vp-c-text-2);
+}
+
+.site-footer a {
+  color: var(--vp-c-brand-1);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.site-footer a:hover {
+  color: var(--vp-c-brand-2);
+}

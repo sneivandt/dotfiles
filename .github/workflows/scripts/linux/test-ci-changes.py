@@ -1829,9 +1829,11 @@ class GitRangeTests(unittest.TestCase):
         check_site = runpy.run_path(str(SCRIPTS / "check-doc-site.py"))["check_site"]
         homepage = (
             '<link rel="shortcut icon" href="/favicon.svg">'
-            '<link rel="canonical" href="https://docs.example.invalid/getting-started.html">'
+            '<link rel="canonical" href="https://docs.example.invalid/getting-started">'
+            '<meta property="og:site_name" content="Dotfiles">'
+            '<meta property="og:url" content="https://docs.example.invalid/getting-started">'
             '<h1 id="getting-started">Getting started</h1><h2 id="setup">Setup</h2>'
-            '<nav id="VPSidebarNav"><a href="/commands-and-usage.html#commands">Commands and usage</a></nav>'
+            '<nav id="VPSidebarNav"><a href="/commands-and-usage#commands">Commands and usage</a></nav>'
             '<a href="https://example.invalid/external">External</a>'
             '<img src="/assets/example.svg">'
         )
@@ -1844,22 +1846,27 @@ class GitRangeTests(unittest.TestCase):
             "docs/dist/index.html": (
                 '<link rel="icon" href="/favicon.svg">'
                 '<link rel="canonical" href="https://docs.example.invalid/">'
+                '<meta property="og:site_name" content="Dotfiles">'
+                '<meta property="og:url" content="https://docs.example.invalid/">'
                 '<header><a class="title" href="/">Dotfiles</a></header>'
                 '<h1 id="about-this-project">About this project</h1><h2 id="start-here">Start here</h2>'
                 '<nav id="VPSidebarNav">'
-                '<a href="/getting-started.html">Getting started</a>'
-                '<a href="/commands-and-usage.html">Commands and usage</a>'
+                '<a href="/getting-started">Getting started</a>'
+                '<a href="/commands-and-usage">Commands and usage</a>'
                 '</nav>'
             ),
             "docs/dist/getting-started.html": homepage,
             "docs/dist/commands-and-usage.html": (
                 '<link rel="icon" href="/favicon.svg">'
-                '<link rel="canonical" href="https://docs.example.invalid/commands-and-usage.html">'
+                '<link rel="canonical" href="https://docs.example.invalid/commands-and-usage">'
+                '<meta property="og:site_name" content="Dotfiles">'
+                '<meta property="og:url" content="https://docs.example.invalid/commands-and-usage">'
                 '<h1 id="commands-and-usage">Commands and usage</h1><h2 id="commands">Commands</h2>'
-                '<a href="/getting-started.html#setup">Setup</a>'
+                '<a href="/getting-started#setup">Setup</a>'
             ),
             "docs/dist/404.html": (
                 '<link rel="icon" href="/favicon.svg">'
+                '<meta property="og:site_name" content="Dotfiles">'
                 '<meta name="robots" content="noindex"><h1>Page not found</h1>'
             ),
             "docs/dist/favicon.svg": "<svg/>",
@@ -1873,8 +1880,8 @@ class GitRangeTests(unittest.TestCase):
             "docs/dist/sitemap-0.xml": (
                 '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
                 '<url><loc>https://docs.example.invalid/</loc></url>'
-                '<url><loc>https://docs.example.invalid/getting-started.html</loc></url>'
-                '<url><loc>https://docs.example.invalid/commands-and-usage.html</loc></url>'
+                '<url><loc>https://docs.example.invalid/getting-started</loc></url>'
+                '<url><loc>https://docs.example.invalid/commands-and-usage</loc></url>'
                 '</urlset>'
             ),
         }
@@ -1897,18 +1904,21 @@ class GitRangeTests(unittest.TestCase):
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('class="title"', 'class="other"'), "Homepage header must link"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('href="https://docs.example.invalid/"', 'href="https://docs.example.invalid/index.html"'), "expected canonical URL"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<nav id="VPSidebarNav">', '<nav id="VPSidebarNav"><a href="/index.html">Dotfiles</a>'), "Homepage must not appear in sidebar navigation"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('href="/getting-started.html"', 'href="/commands-and-usage.html"'), "missing from sidebar navigation"),
+            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('href="/getting-started"', 'href="/commands-and-usage"'), "missing from sidebar navigation"),
             ("docs/dist/commands-and-usage.html", None, "missing published route /commands-and-usage.html"),
             ("docs/dist/getting-started.html", homepage.replace('id="setup"', 'id="renamed"'), "missing heading anchors"),
             ("docs/dist/getting-started.html", homepage + "<h1>Extra title</h1>", "expected one page title"),
             ("docs/dist/getting-started.html", homepage + '<span id="setup"></span>', "duplicate IDs"),
             ("docs/dist/getting-started.html", homepage.replace("shortcut icon", "stylesheet"), "missing site favicon"),
+            ("docs/dist/getting-started.html", homepage.replace('<meta property="og:site_name" content="Dotfiles">', ""), "expected og:site_name"),
+            ("docs/dist/getting-started.html", homepage.replace('content="https://docs.example.invalid/getting-started"', 'content="https://docs.example.invalid/getting-started.html"'), "expected og:url"),
             ("docs/dist/getting-started.html", homepage.replace("<h1", '<meta name="robots" content="index, noindex"><h1'), "noindex robots meta tag"),
             ("docs/dist/getting-started.html", homepage.replace("<h1", '<meta name="googlebot" content="none"><h1'), "noindex robots meta tag"),
             ("docs/dist/404.html", fixture["docs/dist/404.html"].replace('content="noindex"', 'content="index, follow"'), "missing noindex robots meta tag"),
-            ("docs/dist/getting-started.html", homepage.replace("<h1", '<link rel="canonical" href="https://docs.example.invalid/getting-started"><h1'), "expected canonical URL"),
+            ("docs/dist/getting-started.html", homepage.replace("<h1", '<link rel="canonical" href="https://docs.example.invalid/getting-started.html"><h1'), "expected canonical URL"),
             ("docs/dist/getting-started.html", homepage.replace("#commands", "#absent"), "broken anchor"),
-            ("docs/dist/getting-started.html", homepage.replace("commands-and-usage.html", "commands-and-usage.md"), "broken destination"),
+            ("docs/dist/getting-started.html", homepage.replace("commands-and-usage#commands", "commands-and-usage.html#commands"), "expected clean URL without .html"),
+            ("docs/dist/getting-started.html", homepage.replace("commands-and-usage#commands", "commands-and-usage.md#commands"), "broken destination"),
             ("docs/dist/getting-started.html", homepage.replace(">Getting started<", ">Welcome<"), "filename and URL do not match title"),
             ("docs/content/guides/getting-started.md", "# Welcome\n\n## Setup\n", "Markdown title does not match page title"),
             ("docs/content/guides/getting-started.md", fixture["docs/content/guides/getting-started.md"].replace("title: Getting started", "title: Welcome"), "frontmatter title does not match"),
@@ -1923,7 +1933,7 @@ class GitRangeTests(unittest.TestCase):
             ("docs/dist/sitemap-index.xml", None, "Missing published sitemap-index.xml"),
             ("docs/dist/sitemap-0.xml", None, "Missing published sitemap"),
             ("docs/dist/sitemap-0.xml", fixture["docs/dist/sitemap-0.xml"].replace('invalid/</loc>', 'invalid/index.html</loc>'), "Sitemap URLs differ from canonical guide URLs"),
-            ("docs/dist/sitemap-0.xml", fixture["docs/dist/sitemap-0.xml"].replace("getting-started.html", "getting-started"), "Sitemap URLs differ from canonical guide URLs"),
+            ("docs/dist/sitemap-0.xml", fixture["docs/dist/sitemap-0.xml"].replace("getting-started</loc>", "getting-started.html</loc>"), "Sitemap URLs differ from canonical guide URLs"),
         ]
         for path, content, message in cases:
             with self.subTest(path=path, message=message):

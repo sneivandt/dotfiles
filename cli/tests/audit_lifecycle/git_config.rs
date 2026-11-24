@@ -96,10 +96,7 @@ fn global_git_update_honors_the_selected_file_and_later_conditional_includes() {
     assert_eq!(native_value(), "existing-override");
     let before = std::fs::read(&selected).unwrap();
     let preview = output(command.arg("--dry-run"), true);
-    assert!(
-        preview.contains("configure  core.editor = vim"),
-        "{preview}"
-    );
+    assert!(preview.contains("configure core.editor = vim"), "{preview}");
     assert_eq!(std::fs::read(&selected).unwrap(), before);
 
     let mut apply = git_update();

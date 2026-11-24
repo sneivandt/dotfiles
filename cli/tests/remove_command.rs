@@ -325,7 +325,7 @@ fn missing_symlink_targets_are_only_materialized_on_request() {
             let stdout = String::from_utf8(output.stdout).unwrap();
             assert_eq!(target.exists(), restore && !preview);
             assert_eq!(
-                stdout.contains("copy  ~/.fixture from symlinks/fixture"),
+                stdout.contains("copy ~/.fixture from symlinks/fixture"),
                 restore,
                 "{stdout}",
             );
@@ -381,9 +381,9 @@ fn removal_only_plans_and_copies_links_directly_to_the_checkout() {
         let output = command.output().unwrap();
         assert!(output.status.success(), "{output:?}");
         let stdout = String::from_utf8(output.stdout).unwrap();
-        assert_eq!(stdout.contains("copy  ~/.first"), copies, "{stdout}");
-        assert!(!stdout.contains("copy  ~/.second"), "{stdout}");
-        assert!(!stdout.contains("copy  ~/.third"), "{stdout}");
+        assert_eq!(stdout.contains("copy ~/.first"), copies, "{stdout}");
+        assert!(!stdout.contains("copy ~/.second"), "{stdout}");
+        assert!(!stdout.contains("copy ~/.third"), "{stdout}");
         assert_eq!(first.is_symlink(), preview);
         assert_eq!(
             std::fs::read_link(&second).unwrap(),

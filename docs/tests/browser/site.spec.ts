@@ -895,21 +895,26 @@ test('removed guides and repository-only docs do not publish routes', async ({ r
 test('native theme switch retains light and dark choices', async ({ page, isMobile }) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/');
+  const heroWordmark = page.locator('.VPHome .VPHero .heading .name.clip');
   await expect(page.locator('html')).toHaveClass(/dark/);
   await expect(page.locator('.VPNavBarTitle img.logo.dark')).toBeVisible();
   await expect(page.locator('.VPNavBarTitle img.logo.light')).toBeHidden();
+  await expect(heroWordmark).toHaveCSS('background-color', 'rgb(226, 232, 255)');
   if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
   const toggle = page.getByRole('switch').filter({ visible: true });
   await toggle.click();
   await expect(page.locator('html')).not.toHaveClass(/dark/);
   await expect(page.locator('.VPNavBarTitle img.logo.light')).toBeVisible();
   await expect(page.locator('.VPNavBarTitle img.logo.dark')).toBeHidden();
+  await expect(heroWordmark).toHaveCSS('background-color', 'rgb(26, 27, 38)');
   await page.reload();
   await expect(page.locator('html')).not.toHaveClass(/dark/);
   await expect(page.locator('.VPNavBarTitle img.logo.light')).toBeVisible();
+  await expect(heroWordmark).toHaveCSS('background-color', 'rgb(26, 27, 38)');
   if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
   await page.getByRole('switch').filter({ visible: true }).click();
   await expect(page.locator('html')).toHaveClass(/dark/);
+  await expect(heroWordmark).toHaveCSS('background-color', 'rgb(226, 232, 255)');
   await page.reload();
   await expect(page.locator('html')).toHaveClass(/dark/);
 });

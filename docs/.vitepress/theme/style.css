@@ -4,7 +4,7 @@
   --vp-c-brand-3: #3d59a1;
   --vp-c-brand-soft: rgba(61, 89, 161, 0.14);
   --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: linear-gradient(120deg, #3d59a1 25%, #007197);
+  --vp-home-hero-name-background: #1a1b26;
   --vp-home-hero-image-background-image: linear-gradient(-45deg, rgba(61, 89, 161, 0.28) 50%, rgba(0, 113, 151, 0.24) 50%);
   --vp-home-hero-image-filter: blur(56px);
 }
@@ -16,7 +16,7 @@
   --vp-c-brand-soft: rgba(122, 162, 247, 0.16);
   --vp-button-brand-hover-bg: #4a6cc9;
   --vp-button-brand-active-bg: #2f4988;
-  --vp-home-hero-name-background: linear-gradient(120deg, #7aa2f7 25%, #7dcfff);
+  --vp-home-hero-name-background: #e2e8ff;
   --vp-home-hero-image-background-image: linear-gradient(-45deg, rgba(122, 162, 247, 0.35) 50%, rgba(125, 207, 255, 0.28) 50%);
 }
 

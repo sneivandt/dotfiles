@@ -39,6 +39,24 @@
   border: 0;
 }
 
+.VPHome .VPHero .heading .name.clip {
+  --hero-wordmark-height: 30px;
+  display: block;
+  width: min(100%, calc(var(--hero-wordmark-height) * 193.7 / 42.9));
+  height: var(--hero-wordmark-height);
+  min-height: 0;
+  margin-bottom: 6px;
+  overflow: hidden;
+  background: var(--vp-home-hero-name-background);
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-mask: url('./wordmark.svg') no-repeat center / contain;
+  mask: url('./wordmark.svg') no-repeat center / contain;
+  white-space: nowrap;
+}
+
 .VPHome .VPHero .image-src {
   max-width: 176px;
   max-height: 176px;
@@ -62,6 +80,11 @@
 }
 
 @media (min-width: 640px) {
+  .VPHome .VPHero .heading .name.clip {
+    --hero-wordmark-height: 40px;
+    margin-bottom: 8px;
+  }
+
   .VPHome .VPHero .image-src {
     max-width: 220px;
     max-height: 220px;
@@ -69,9 +92,30 @@
 }
 
 @media (min-width: 960px) {
+  .VPHome .VPHero .heading .name.clip {
+    --hero-wordmark-height: 46px;
+    margin-bottom: 8px;
+    -webkit-mask-position: left center;
+    mask-position: left center;
+  }
+
   .VPHome .VPHero .image-src {
     max-width: 260px;
     max-height: 260px;
+  }
+}
+
+@media (forced-colors: active) {
+  .VPHome .VPHero .heading .name.clip {
+    width: fit-content;
+    height: auto;
+    margin-bottom: 0;
+    overflow: visible;
+    background: none;
+    color: CanvasText;
+    -webkit-text-fill-color: CanvasText;
+    -webkit-mask: none;
+    mask: none;
   }
 }
 

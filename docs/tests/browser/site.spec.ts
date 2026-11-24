@@ -97,6 +97,19 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
   await page.goto('/');
   await expect(page).toHaveTitle('Dotfiles | Arch Linux & Windows setup with a Rust CLI');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dotfiles');
+  const heroWordmark = await page.locator('.VPHome .VPHero .heading .name.clip').evaluate((element) => {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return {
+      mask: style.maskImage !== 'none' ? style.maskImage : style.webkitMaskImage,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+  expect(heroWordmark.mask).toMatch(/url\(/);
+  expect(heroWordmark.width).toBeGreaterThan(0);
+  expect(heroWordmark.height).toBeGreaterThan(0);
+  expect(heroWordmark.width / heroWordmark.height).toBeCloseTo(193.7 / 42.9, 1);
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/');
   await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute('content', 'Dotfiles');
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/');

@@ -213,7 +213,8 @@ change.
 | Navigation, search, metadata, and output | [.vitepress/config.mts](.vitepress/config.mts) |
 | Theme registration | [.vitepress/theme/index.ts](.vitepress/theme/index.ts) |
 | Diagram rendering | [.vitepress/theme/MermaidDiagram.vue](.vitepress/theme/MermaidDiagram.vue) |
-| Brand accent, header wordmark, and diagram containment | [.vitepress/theme/style.css](.vitepress/theme/style.css) |
+| Brand accent, header/hero wordmark, and diagram containment | [.vitepress/theme/style.css](.vitepress/theme/style.css) |
+| Hero heading wordmark mask | [.vitepress/theme/wordmark.svg](.vitepress/theme/wordmark.svg) |
 | Domain and static assets | [public/](public/) |
 
 VitePress reads only `content/` and copies assets from `public/`. Pages live in
@@ -276,9 +277,11 @@ navigation within the current section.
 
 Use the default theme's typography, surfaces, navigation, callouts, code blocks,
 and local search, with Tokyo Night brand accent colors in
-[.vitepress/theme/style.css](.vitepress/theme/style.css) and theme-matched header
-wordmark assets in [public/assets/logo-dark.svg](public/assets/logo-dark.svg)
-and [public/assets/logo-light.svg](public/assets/logo-light.svg) (the root
+[.vitepress/theme/style.css](.vitepress/theme/style.css), the hero heading
+wordmark mask in [.vitepress/theme/wordmark.svg](.vitepress/theme/wordmark.svg),
+and theme-matched header wordmark assets in
+[public/assets/logo-dark.svg](public/assets/logo-dark.svg) and
+[public/assets/logo-light.svg](public/assets/logo-light.svg) (the root
 `README.md` uses [public/assets/logo-readme.svg](public/assets/logo-readme.svg)
 so contrast holds regardless of OS/GitHub theme mismatches). New visits default
 to dark mode; the native theme switch retains a reader's light/dark choice.

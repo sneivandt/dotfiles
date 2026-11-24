@@ -3,9 +3,9 @@ name: docs-publishing
 description: >
   Use for documentation organization and site management: adding or moving
   docs/content/ pages, README/site links, VitePress navigation, themes,
-  search, diagrams, domain configuration, site checks, or Pages publishing.
-  Not for prose-only editing (docs-writing), internal agent instructions
-  (skill-maintenance), or CLI binary releases (ci-cd-patterns).
+  search, diagrams/assets, domain configuration, site checks, or Pages
+  publishing. Not for prose-only editing (docs-writing), internal agent
+  instructions (skill-maintenance), or CLI binary releases (ci-cd-patterns).
 ---
 
 # Documentation Management and Publishing
@@ -24,7 +24,7 @@ for topic ownership and [docs-writing](../docs-writing/SKILL.md) for prose.
 | New or moved page | Topic ownership, title/filename/route alignment, useful descriptions, incoming links, representative search queries, outline, and navigation coverage |
 | Search metadata | Native local-search indexing, escaped introduction summaries, section destinations, canonical metadata, and 404 exclusion |
 | Navigation | Direct-link and search destinations, active section, mobile controls, and independent overview visibility |
-| Theme or diagrams | Native VitePress behavior, theme persistence, readable text, contained scrolling, keyboard focus, contrast, and diagram accessibility |
+| Theme, diagrams, or assets | Native VitePress behavior, theme persistence, readable text, contained scrolling, keyboard focus, contrast, diagram accessibility, and `docs/public/assets/` alignment (including `terminal-screenshot.svg` and `docs/tests/browser/site.spec.ts`) |
 | Domain or publication | CNAME, canonical/social/structured metadata, robots, sitemap, README URLs, browser expectations, and the same-run artifact contract |
 | Dependencies or checks | Pinned dependencies, native toolchain, focused regression fixtures, and CI selection/coverage |
 

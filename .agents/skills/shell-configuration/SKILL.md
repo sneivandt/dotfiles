@@ -28,11 +28,13 @@ make an interactive case pass.
 - Establish user command paths before capability checks. Preserve PATH ordering,
   literal entries containing spaces, and idempotency when startup is sourced again.
 - Preserve explicit environment overrides and XDG paths. Keep shared `.sh`
-  fragments compatible with both Bash and Zsh; native Zsh syntax belongs in its
-  own files.
-- Keep optional tools optional and startup usable when they are absent. Avoid
-  adding subprocesses, network requests, or writes to every prompt/login when
-  existing lazy initialization or caching can serve the same purpose.
+  fragments compatible with both Bash and Zsh and safe under `set -u`
+  (`${VAR:-}` / `${VAR+x}`) without altering caller shell options; native Zsh
+  syntax belongs in its own files.
+- Keep optional tools optional and startup usable when they are absent. Keep
+  startup and prompt rendering fast: avoid avoidable subshells, forks, network
+  requests, or writes on every prompt/login when builtins, lazy initialization,
+  or caching can serve the same purpose.
 - Preserve completion trust checks and cache behavior. Keep history selection
   distinct from accepting/executing the selected command.
 - Pass external paths and values as quoted arguments. Preserve helper exit

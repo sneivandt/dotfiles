@@ -2,16 +2,18 @@
 name: agent-tooling
 description: >
   Use when editing this repo's conf/agent-settings.toml, symlinks/apm/ files,
-  or cli/src/domains/ai/apm implementation. Not for general skill-writing
-  advice, audience/placement decisions, or unrelated agent behavior.
+  or cli/src/domains/ai/ implementation (agent-settings and apm). Not for
+  general skill-writing advice, audience/placement decisions, or unrelated
+  agent behavior.
 ---
 
 # Agent Tooling
 
 Start with [Agent configuration](../../../docs/content/guides/agent-configuration.md)
 for sources, fragment merging, targets, and preview limits. For implementation
-changes, read [apm.rs](../../../cli/src/domains/ai/apm.rs) and its
-[modules and tests](../../../cli/src/domains/ai/apm/).
+changes, read [apm.rs](../../../cli/src/domains/ai/apm.rs),
+[agent_settings.rs](../../../cli/src/domains/ai/agent_settings.rs), and their
+[modules and tests](../../../cli/src/domains/ai/).
 
 ## Choose the owner
 
@@ -21,6 +23,7 @@ changes, read [apm.rs](../../../cli/src/domains/ai/apm.rs) and its
 | reusable personal skill, hook, prompt, or instruction | `symlinks/apm/plugins/dot-*` |
 | external plugin or MCP dependency | `symlinks/apm/config/*.yml` |
 | stable Copilot/Codex preference | `conf/agent-settings.toml` |
+| agent-settings parsing and JSON/TOML key merging | `cli/src/domains/ai/agent_settings.rs` and `cli/src/domains/ai/resources/agent_settings/` |
 | install and pin-update behavior | `cli/src/domains/ai/apm.rs` and `cli/src/domains/ai/apm/` |
 
 ## Decisions and pitfalls
@@ -33,7 +36,8 @@ changes, read [apm.rs](../../../cli/src/domains/ai/apm.rs) and its
 - A new fragment needs its `conf/symlinks.toml` entry. Keep self-defined MCP
   dependencies direct unless transitive trust is deliberate. Local plugins use
   `apm.yml`, `includes: auto`, `.apm/<primitive>/`, and forward-slash references.
-- `agent-settings` manages harness keys independently; `agent-packages` owns APM
+- `agent-settings` manages harness keys independently while preserving unmanaged
+  keys and exact JSON/TOML numeric fidelity; `agent-packages` owns APM
   convergence (`apm` is a compatibility selector). Ref advancement belongs to
   the update pipeline, not an ordinary install.
 - Preserve native update followed by install before target adapters, including

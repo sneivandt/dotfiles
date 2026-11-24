@@ -1,9 +1,11 @@
 ---
 name: logging-patterns
 description: >
-  Use for changes under cli/src/infra/logging/, task result recording, status
-  rows, progress lines, detail ordering, or final summaries. Not for generic
-  error policy or task scheduling without output changes.
+  Use for changes under cli/src/infra/logging/, dotfiles log rendering,
+  console colors/spacing, task result recording, status rows, progress lines,
+  detail ordering, final summaries, or updating
+  docs/public/assets/terminal-screenshot.svg. Not for generic error policy or
+  task scheduling without output changes.
 ---
 
 # Logging Patterns
@@ -119,6 +121,12 @@ For command argument redaction and stream-retention policy, use the
 [subprocess boundary](../error-handling-patterns/SKILL.md#subprocess-boundary).
 Avoid exposing sensitive data in resource descriptions, errors, and rendering;
 use synthetic values in log fixtures and snapshots.
+
+When user-visible `dotfiles update` output changes (headers, transition
+notices, status styles, spacing, progress lines, or summary layout), check
+whether [the README terminal SVG](../../../docs/public/assets/terminal-screenshot.svg)
+and its assertions in [site.spec.ts](../../../docs/tests/browser/site.spec.ts)
+need updating to match actual CLI output.
 
 When summary semantics change, test statuses, visibility, details, progress
 denominator, totals, both verbose modes, and `--no-symbols`. Preserve durable run

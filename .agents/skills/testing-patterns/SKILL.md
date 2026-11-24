@@ -11,10 +11,12 @@ description: >
 ## Place tests
 
 - Keep small cohesive tests in inline `#[cfg(test)] mod tests`.
-- Move large sibling suites to `tests.rs`.
+- Move large sibling suites to `tests.rs`, or split very large suites by topic
+  into `tests.rs` plus multiple `tests/<topic>.rs` files.
 - For a domain-root task file, use `domains/<domain>/tests/<feature>.rs` with a
   test-only `#[path]`; never use `#[path]` for production wiring.
-- Do not create a feature directory solely to hold tests.
+- Do not create a feature directory solely to hold tests, and avoid directories
+  containing only a single `.rs` file.
 
 ## Reuse the harness
 
@@ -36,8 +38,9 @@ description: >
 - Engine-command startup: inject `RuntimePolicy::new` with explicit stdin/stdout
   capabilities; keep process exit-pause tests separate from task prompt policy
 
-Prefer named case tables for repeated input/output cases. Assertions should
-state behavior and include enough context to diagnose failure.
+Prefer deterministic named case tables over heavyweight test crates for
+repeated input/output cases. Assertions should state behavior and include enough
+context to diagnose failure.
 
 Choose coverage by contract, not by test count. Unit tests own parsing, resource
 branches, and dry-run safety; scheduler conformance owns shared execution

@@ -14,6 +14,8 @@ Companions are needed only when the request changes their contract.
 | Change Hyprland monitor rules | `hyprland-session` | No Quickshell skill unless its UI changes |
 | Keep Hypridle and its locker working under the user-service sandbox | `hyprland-session` | Inspect service and helper together |
 | Fix calendar popup focus in QML | `desktop-shell` | Add hyprland-session only if session/service integration changes |
+| Stop Quickshell polling Wi-Fi details while the network menu is closed | `desktop-shell` | Cover service lifecycle in `tst_ServiceLifecycle.qml`; no hyprland-session skill |
+| Make the bar media controls follow the actively playing player | `desktop-shell` | Start with `Bar.qml` and `MediaPlayer.js`; no hyprland-session skill |
 | Configure a Neovim plugin without changing plain Vim startup | `editor-configuration` | No Rust resource skill |
 | Change lazy.nvim's bootstrap revision | `editor-configuration` | Review only the matching pin and lock entry; use isolated first launch |
 | Add a VS Code extension resource | `resource-implementation` | No editor-configuration skill |
@@ -22,9 +24,13 @@ Companions are needed only when the request changes their contract.
 | Change Git repository synchronization before task restart | `engine-orchestration` | Inspect repository domain; no binary self-update skill |
 | Change failed-command stream retention | `error-handling-patterns` | Add logging-patterns only when rendering/persistence changes |
 | Change a task row's ANSI style | `logging-patterns` | No generic error-handling skill |
+| Adjust `dotfiles log` verbose rendering and console spacing | `logging-patterns` | No generic error-handling skill |
+| Change `dotfiles update` header spacing and refresh the README terminal SVG | `logging-patterns` | Update `docs/public/assets/terminal-screenshot.svg`; add docs-publishing for site asset and browser assertions |
 | Add a dotfiles-managed PKGBUILD snapshot input | `arch-package-recipes` | Extend documented format and cleanup fixtures |
 | Add an ordinary conf/packages.toml entry | `package-management` | No arch-package-recipes skill unless packaging changes |
 | Change APM fragment target deployment | `agent-tooling` | No arch-package-recipes skill unless the APM executable recipe changes |
+| Preserve JSON numeric precision when merging `agent-settings` keys | `agent-tooling` | Add resource-implementation only if resource lifecycle contracts change |
+| Add a new field to `conf/agent-settings.toml` with semantic diagnostics | `agent-tooling` | Add toml-configuration for schema parsing and config-validation for diagnostics |
 | Change an optional overlay section's generic TOML loader | `toml-configuration` | Add overlay-scripts only for resolution or execution changes |
 | “The mutation test run failed” | `ci-cd-patterns` | Find the failed dedicated GitHub Actions run in `mutation.yml`, inspect its shards, and replay its comparison range for fixes |
 | Monitor checks after pushing a skill wording change | `ci-cd-patterns` | Follow exact-SHA CI and Pages; do not rerun local suites while waiting |
@@ -42,6 +48,7 @@ Companions are needed only when the request changes their contract.
 | Make each guide understandable when shared directly | `docs-writing` | Supply task-local context; add docs-publishing only for page or navigation changes |
 | Reduce boxed text and balance links versus bold in the guides | `docs-writing` | Preserve exact syntax and safety warnings; no CSS workaround |
 | Change the colors of inline code without rewriting prose | `docs-publishing` | Rendering only, not a docs-writing task |
+| Replace a site asset under `docs/public/assets/` without changing CLI output | `docs-publishing` | No logging-patterns or docs-writing skill |
 | Remove em dashes and formulaic wording from the README | `docs-writing` | Preserve exact commands, quoted output, and meaningful technical punctuation |
 | Move desktop documentation into a subsystem guide | `docs-publishing` | Add docs-writing when rewriting prose; preserve one explanation, matching title/file/URL, and incoming references |
 | Explain a changed self-update behavior to users | `docs-writing` | Add self-update only for implementation work or a behavioral question it owns |

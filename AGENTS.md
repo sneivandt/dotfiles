@@ -27,6 +27,11 @@ and what would be lost by changing it.
 
 - Keep desired-state declarations in `conf/` and managed content in `symlinks/`
   or `system/`. Wrappers bootstrap and forward; Rust owns command semantics.
+- Keep Rust modules and dependencies lean: avoid directories containing only a
+  single `.rs` file unless a platform or test split genuinely calls for it,
+  split oversized modules and test suites by responsibility into cohesive
+  sibling files, and avoid niche or lightly used crates in `cli/Cargo.toml`
+  when small focused code suffices.
 - Use `Resource` for independent items and `Operation` for a workflow that
   converges as one unit. Reuse their lifecycle helpers; keep discovery read-only,
   apply idempotent and preview non-mutating. Failed discovery is not absence.
@@ -61,8 +66,9 @@ and what would be lost by changing it.
 
 - An unqualified request to push from a `main` checkout means a direct push to
   `origin/main`. Follow any explicitly requested branch or pull request workflow.
-  Refresh the destination and verify that every outgoing commit belongs to the
-  task before pushing.
+  Preserve unrelated working-tree changes in a shared checkout by staging
+  explicit task paths, refresh the destination, and verify that every outgoing
+  commit belongs to the task before pushing.
 - Inspect the full intended diff, including renames/deletions and pending changes
   from failed pushes. Choose local checks by affected behavior and test inputs
   using [Testing](docs/content/development/testing.md#choosing-coverage). The agent owns this

@@ -21,6 +21,9 @@ action-version inventories in guidance.
 - Use the `ci` Cargo profile for checks and `release` only for publishing.
 - Put recurring logic in `.github/workflows/scripts/{linux,windows}/`.
 - Upload build artifacts for downstream tests instead of rebuilding.
+- Prefer extending an existing CI job over adding a new standalone job when
+  the coverage fits naturally, and keep shard concurrency and runner overhead
+  lean so background runs leave capacity for normal CI.
 - `ci-success` runs under `if: always()` and depends on every gating job.
   Informational jobs stay out unless deliberately promoted.
 - Update path classification alongside job conditions and dependencies. A new
@@ -32,6 +35,9 @@ action-version inventories in guidance.
   release/Pages dependencies. A failed mutation run must stay visibly failed,
   retain its reports, and not advance the nightly comparison baseline. Manual
   replay ranges must not narrow later scheduled coverage.
+  [Mutation recovery](../../../.github/workflows/mutation-recovery.yml) retries
+  confirmed runner interruptions once without masking real failures, and
+  mutation helper scripts retry transient GitHub API errors.
 - A confirmed local npm TLS failure need not block a push. Use the pre-push
   checker's [unavailable-coverage receipt](../../../docs/content/development/testing.md#local-npm-tls-failures)
   for the exact commit, run the remaining selected checks, and report docs as
@@ -58,7 +64,8 @@ failures and validate fixes before pushing.
   sensible intervals; fetch logs for failures and artifacts when needed, rather
   than repeatedly downloading successful logs or rerunning local suites.
 - Follow selected Pages and release workflows after aggregate CI. Verify Pages
-  deployed that commit's tested artifact; for a release verify the tag's target,
+  deployed that commit's tested artifact (retries reuse the packaged artifact
+  rather than rebuilding); for a release verify the tag's target,
   expected assets, and checksums. A deliberate publication skip is valid; a
   pending or failed publisher is not completion. Check deployed content when
   the change affects it; routine wording does not need another browser audit.

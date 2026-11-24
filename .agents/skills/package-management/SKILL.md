@@ -40,6 +40,10 @@ reinstallation of everything.
 
 ## Platform rules
 
+- When selecting or proposing packages in `conf/packages.toml`, check their
+  transitive dependency footprint and prefer lean tools that fit the existing
+  Hyprland/Wayland stack over pulling in heavy unrelated desktop ecosystems for
+  one utility.
 - Pacman handles ordinary Arch packages; AUR bootstrap and AUR packages stay
   separate. Its missing-package install uses `-Syu`, so it can also synchronize
   databases and upgrade installed packages; it is not an add-only operation.

@@ -2,9 +2,10 @@
 name: desktop-shell
 description: >
   Use for the Quickshell QML/JavaScript UI and Python helper under
-  symlinks/config/quickshell/: bars, popups, workspace layout, shared state,
-  and network actions. Not for Rust CLI output, shell bootstrap, or Hyprland/session
-  configuration (use hyprland-session).
+  symlinks/config/quickshell/: bars, menus/popups, media controls, tray,
+  workspace layout, shared state, idle polling, and network actions. Not for
+  Rust CLI output, shell bootstrap, or Hyprland/session configuration (use
+  hyprland-session).
 ---
 
 # Desktop Shell
@@ -19,22 +20,23 @@ Paths below are relative to
 
 | Change | Start with |
 |---|---|
-| screen instances, shared services, open-menu coordination | `shell.qml` |
-| per-monitor bar and service bindings | `Bar.qml` |
-| workspace visibility, title sizing | `WorkspaceGroup.qml` and `tests/qml/tst_WorkspaceGroup.qml` |
-| calendar layout, local/UTC selection | `CalendarContent.qml`, `CalendarMenu.qml`, `tests/qml/tst_CalendarContent.qml` |
-| volume thumb, track, and input behavior | `VolumeSlider.qml`, `VolumeMenu.qml` |
-| palette, typography, spacing, animation | `Theme.js` |
-| popup geometry, focus, dismissal | `ShellPopup.qml` |
-| reusable controls | `BarBlock.qml`, `MenuButton.qml`, `MenuIconButton.qml` |
-| service queries and actions | `AudioState.qml`, `NetworkState.qml`, `MarketState.qml` |
-| queued network refreshes | `RefreshQueue.qml`, `tests/qml/tst_RefreshQueue.qml` |
-| NetworkManager protocol and parsing | `network_helper.py`, `tests/python/test_network_helper.py` |
+| screen instances, shared services, open-menu coordination | `shell.qml`, `tests/qml/tst_ServiceLifecycle.qml` |
+| per-monitor bar and active media player | `Bar.qml`, `MediaPlayer.js`, `tests/qml/tst_MediaPlayer.qml` |
+| workspaces and system tray | `WorkspaceGroup.qml`, `TrayGroup.qml`, `tests/qml/tst_WorkspaceGroup.qml`, `tests/qml/tst_TrayGroup.qml` |
+| calendar, volume, and power menus | `CalendarContent.qml`, `VolumeSlider.qml`, `PowerMenu.qml`, `tests/qml/tst_CalendarContent.qml`, `tests/python/test_power_menu.py` |
+| network menu, state, queued refreshes, and helper | `NetworkMenu.qml`, `NetworkState.qml`, `RefreshQueue.qml`, `network_helper.py`, `tests/qml/tst_NetworkMenu.qml`, `tests/qml/tst_RefreshQueue.qml`, `tests/python/test_network_helper.py` |
+| shared audio and market state | `AudioState.qml`, `MarketState.qml`, `tests/qml/tst_AudioState.qml` |
+| popup lifecycle, reload notice, theme, and shared controls | `ShellPopup.qml`, `ReloadNotice.qml`, `Theme.js`, `BarBlock.qml`, `MenuButton.qml`, `MenuIconButton.qml` |
 
 ## Preserve reactive behavior
 
 - Reuse shared state objects instead of starting a poller for every screen or
   popup. Keep service logic out of presentation delegates.
+- Keep expensive detail queries on-demand (for example, fetch Wi-Fi details
+  only while `NetworkMenu` is open) rather than polling in the background while
+  menus are closed; cover lifecycle guards in `tests/qml/tst_ServiceLifecycle.qml`.
+- Keep media controls tracking the actively playing player (`MediaPlayer.js`)
+  rather than pinning the first registered player.
 - Calendar and bar clocks receive the shared date from `shell.qml`. Keep
   calendar highlighting and month arithmetic in the selected local/UTC zone.
 - Pass dependencies through declared properties; keep extracted visual components

@@ -15,7 +15,7 @@ description: >
 | desired target, source, merge strategy, and selectors | `conf/system-files.toml` |
 | public fragments | `system/` |
 | parsing and path safety | `cli/src/domains/system/config/system_files.rs` |
-| merge, state, metadata, and privileged install | `cli/src/domains/system/resources/system_file.rs` |
+| merge, state, metadata, and privileged install | `cli/src/domains/system/resources/system_file.rs` and `system_file/` |
 | task applicability and elevation planning | `cli/src/domains/system/system_files.rs` |
 | install catalog membership | `cli/src/app/catalog.rs` |
 

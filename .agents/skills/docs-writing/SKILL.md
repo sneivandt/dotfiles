@@ -28,13 +28,19 @@ behavior. For task reference pages, use the supporting
    machine or after partial failure. Check preserved content, prerequisites,
    source availability, saved selections, and how the reader recognizes success.
 4. Draft using the guide's example, language, punctuation, link, and emphasis
-   conventions. Keep consequential warnings beside the action. Do not replace
-   a safety explanation with a link or remove it merely to shorten a page.
+   conventions. Describe the current setup directly and concisely: skip past
+   migration narration and exhaustive default shortcut lists for third-party
+   GUI apps. Link directly to the target page rather than naming a sidebar
+   section, and never link to `.agents/skills/` as human documentation. Keep
+   consequential warnings beside the action. Do not replace a safety explanation
+   with a link or remove it merely to shorten a page.
    Review its [findability guidance](../../../docs/content/development/writing-documentation.md#help-readers-find-the-topic)
    when changing titles, descriptions, headings, or topic terminology.
-5. Read the result as a direct shared link. Its links should supply depth, not
-   a missing essential step. Prefer the common workflow before internals and
-   recovery cases.
+5. Keep the root `README.md` concise and stable; avoid rewriting it unless a
+   fact, managed-area entry, link, or `terminal-screenshot.svg` output has
+   drifted. Read each edited guide as a direct shared link so its links supply
+   depth rather than a missing essential step, and prefer the common workflow
+   before internals and recovery cases.
 
 ## Verify the result safely
 

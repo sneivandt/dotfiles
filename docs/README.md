@@ -213,7 +213,7 @@ change.
 | Navigation, search, metadata, and output | [.vitepress/config.mts](.vitepress/config.mts) |
 | Theme registration | [.vitepress/theme/index.ts](.vitepress/theme/index.ts) |
 | Diagram rendering | [.vitepress/theme/MermaidDiagram.vue](.vitepress/theme/MermaidDiagram.vue) |
-| Diagram containment | [.vitepress/theme/style.css](.vitepress/theme/style.css) |
+| Brand accent and diagram containment | [.vitepress/theme/style.css](.vitepress/theme/style.css) |
 | Domain and static assets | [public/](public/) |
 
 VitePress reads only `content/` and copies assets from `public/`. Pages live in
@@ -275,10 +275,12 @@ its outline and previous/next links disabled. Guides have a heading outline
 through level three, source edit links, and previous/next navigation within the
 current section.
 
-Use the default theme's typography, colors, navigation, callouts, code blocks,
-and local search. New visits default to dark mode; the native theme switch
-retains a reader's light/dark choice. VitePress also supports following the
-system preference through its saved `auto` setting.
+Use the default theme's typography, surfaces, navigation, callouts, code blocks,
+and local search, with Tokyo Night brand accent colors in
+[.vitepress/theme/style.css](.vitepress/theme/style.css). New visits default to
+dark mode; the native theme switch retains a reader's light/dark choice.
+VitePress also supports following the system preference through its saved `auto`
+setting.
 
 Safety callouts use `::: warning Title` blocks. Mermaid is loaded locally on
 pages containing diagrams and rerenders when the theme changes, including

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
-  <title id="title">Dotfiles: a dot between configuration braces</title>
-  <rect width="64" height="64" rx="16" fill="#315eb4"/>
-  <path d="M24 16h-3a5 5 0 0 0-5 5v5c0 3-2 5-4 6 2 1 4 3 4 6v5a5 5 0 0 0 5 5h3M40 16h3a5 5 0 0 1 5 5v5c0 3 2 5 4 6-2 1-4 3-4 6v5a5 5 0 0 1-5 5h-3" fill="none" stroke="#f6f8ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="32" cy="32" r="5" fill="#b7e58f"/>
+  <title id="title">Dotfiles: abstract geometric home tilde, slash, and leading dot</title>
+  <polygon points="7,19 19,19 22,27.5 31,27.5 28,36 16,36 13,27.5 4,27.5" fill="#4a6cc9"/>
+  <polygon points="41.5,10 52.5,10 36.5,54 25.5,54" fill="#7aa2f7"/>
+  <circle cx="52" cy="46" r="8" fill="#9ece6a"/>
 </svg>

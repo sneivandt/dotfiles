@@ -1,4 +1,4 @@
-<h1 align="center"><img src="docs/public/favicon.svg" width="24" height="24" align="bottom" alt=""> Dotfiles</h1>
+<h1 align="center"><img src="docs/public/favicon.svg" width="28" height="28" align="bottom" alt=""> Dotfiles</h1>
 
 <p align="center">
   My Arch Linux and Windows configuration, managed with a Rust CLI.

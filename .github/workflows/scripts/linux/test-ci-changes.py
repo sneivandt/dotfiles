@@ -1366,8 +1366,42 @@ class MutationSelectionTests(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 MUTATION["baseline"]("fixture/repository", "a" * 40)
 
+    def test_gh_api_retries_transient_server_errors_only(self):
+        gh_api = MUTATION["gh_api"]
+        sleeps = []
+        transient = subprocess.CompletedProcess(["gh"], 1, stdout="", stderr="gh: Server Error (HTTP 502)\n")
+        ok = subprocess.CompletedProcess(["gh"], 0, stdout='{"jobs":[]}', stderr="")
+        with patch("subprocess.run", side_effect=[transient, ok]):
+            self.assertEqual(gh_api("endpoint", sleep=sleeps.append), '{"jobs":[]}')
+        self.assertEqual(sleeps, [1])
+
+        sleeps.clear()
+        not_found = subprocess.CompletedProcess(["gh"], 1, stdout="", stderr="gh: Not Found (HTTP 404)\n")
+        with patch("subprocess.run", side_effect=[not_found]) as run_mock:
+            with self.assertRaises(subprocess.CalledProcessError):
+                gh_api("endpoint", sleep=sleeps.append)
+        self.assertEqual(run_mock.call_count, 1)
+        self.assertEqual(sleeps, [])
+
 
 class MutationRecoveryTests(unittest.TestCase):
+    def test_api_retries_transient_server_errors_only(self):
+        api = MUTATION_RECOVERY["api"]
+        sleeps = []
+        transient = subprocess.CompletedProcess(["gh"], 1, stdout=b"", stderr=b"gh: Bad Gateway (HTTP 502)\n")
+        ok = subprocess.CompletedProcess(["gh"], 0, stdout=b"{}", stderr=b"")
+        with patch("subprocess.run", side_effect=[transient, ok]):
+            self.assertEqual(api("endpoint", sleep=sleeps.append), b"{}")
+        self.assertEqual(sleeps, [1])
+
+        sleeps.clear()
+        forbidden = subprocess.CompletedProcess(["gh"], 1, stdout=b"", stderr=b"gh: Forbidden (HTTP 403)\n")
+        with patch("subprocess.run", side_effect=[forbidden]) as run_mock:
+            with self.assertRaises(subprocess.CalledProcessError):
+                api("endpoint", sleep=sleeps.append)
+        self.assertEqual(run_mock.call_count, 1)
+        self.assertEqual(sleeps, [])
+
     def test_retry_only_confirmed_interruption_on_first_attempt(self):
         run = {"status": "completed", "conclusion": "failure", "run_attempt": 1,
                "path": ".github/workflows/mutation.yml", "head_branch": "main",

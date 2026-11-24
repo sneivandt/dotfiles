@@ -5,10 +5,36 @@ import json
 import os
 import re
 import subprocess
+import sys
+import time
 
 
-def api(path, *options):
-    return subprocess.check_output(["gh", "api", *options, path])
+API_ATTEMPTS = 3
+
+
+def api(path, *options, attempts=API_ATTEMPTS, sleep=time.sleep):
+    for attempt in range(1, attempts + 1):
+        result = subprocess.run(
+            ["gh", "api", *options, path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout
+        err = result.stderr.decode("utf-8", errors="replace")
+        retryable = attempt < attempts and (
+            re.search(r"\bHTTP (?:429|5\d\d)\b", err)
+            or "HTTP 4" not in err
+        )
+        if not retryable:
+            if err:
+                sys.stderr.write(err)
+            raise subprocess.CalledProcessError(
+                result.returncode, result.args, output=result.stdout, stderr=result.stderr,
+            )
+        sleep(2 ** (attempt - 1))
+    raise AssertionError("unreachable")
 
 
 def interrupted(job):

@@ -7,18 +7,46 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
+import time
+
+
+API_ATTEMPTS = 3
 
 
 def git(*args, input=None):
     return subprocess.run(["git", *args], input=input, stdout=subprocess.PIPE, check=True).stdout
 
 
+def gh_api(*args, attempts=API_ATTEMPTS, sleep=time.sleep):
+    for attempt in range(1, attempts + 1):
+        result = subprocess.run(
+            ["gh", "api", *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout
+        retryable = attempt < attempts and (
+            re.search(r"\bHTTP (?:429|5\d\d)\b", result.stderr)
+            or "HTTP 4" not in result.stderr
+        )
+        if not retryable:
+            if result.stderr:
+                sys.stderr.write(result.stderr)
+            raise subprocess.CalledProcessError(
+                result.returncode, result.args, output=result.stdout, stderr=result.stderr,
+            )
+        sleep(2 ** (attempt - 1))
+    raise AssertionError("unreachable")
+
+
 def api_pages(endpoint, key):
     page = 1
     while True:
-        result = json.loads(subprocess.check_output(
-            ["gh", "api", f"{endpoint}&page={page}"], text=True,
-        ))
+        result = json.loads(gh_api(f"{endpoint}&page={page}"))
         yield from result[key]
         if len(result[key]) < 100:
             return

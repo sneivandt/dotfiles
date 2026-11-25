@@ -23,6 +23,7 @@ PanelWindow {
     required property var menuController
     readonly property var hyprMonitor: Hyprland.monitorFor(screen)
     readonly property var activeWorkspace: hyprMonitor ? hyprMonitor.activeWorkspace : null
+    readonly property bool hasFullscreen: Boolean(activeWorkspace && activeWorkspace.hasFullscreen)
     readonly property var player: MediaPlayer.select(Mpris.players.values, MprisPlaybackState.Playing, MprisPlaybackState.Paused)
     readonly property string track: player ? (player.trackArtist ? player.trackArtist + " - " : "") + (player.trackTitle || "Unknown track") : ""
     readonly property var battery: UPower.displayDevice
@@ -38,15 +39,14 @@ PanelWindow {
 
     screen: modelData
     implicitHeight: Theme.barHeight
-    exclusiveZone: visible ? Theme.barHeight : 0
+    exclusiveZone: Theme.barHeight
     color: "transparent"
-    visible: !(activeWorkspace && activeWorkspace.hasFullscreen)
-    // Reserve tiled space, but let floating and dragged windows cover the bar.
+    // Reserve tiled space, but let floating, dragged, and fullscreen windows cover the bar.
     WlrLayershell.layer: WlrLayer.Bottom
     WlrLayershell.namespace: "dotfiles-bar"
-    onVisibleChanged: {
-        if (!visible && menuController.openMenu && menuController.openMenu.anchorWindow === bar)
-            menuController.openMenu.visible = false;
+    onHasFullscreenChanged: {
+        if (hasFullscreen && menuController.openMenu && menuController.openMenu.anchorWindow === bar)
+            menuController.dismiss();
     }
     anchors {
         top: true

@@ -51,7 +51,7 @@ for the complete mapping.
 | Super + J / K | Focus the next / previous window in the layout |
 | Super + Shift + J / K | Swap the window with the next / previous layout position |
 | Super + T | Toggle floating mode |
-| Super + F | Toggle maximized mode |
+| Super + F | Toggle fullscreen mode |
 | Super + 1–9 | Change workspace |
 | Super + Shift + 1–9 | Move the window to a workspace without following it |
 | Super + End | Lock the session |
@@ -117,7 +117,7 @@ available, and a calendar under the clock.
 - **Power:** Lock immediately, or confirm logout, restart, or shutdown.
 
 Only one popup opens at a time, even across monitors. The bar reserves space
-for tiled windows, sits behind floating windows, and hides on fullscreen workspaces.
+for tiled windows and sits behind floating and fullscreen windows.
 
 Network status follows live events from `nmcli monitor`, falling back to
 ten-second polling if the monitor or NetworkManager is temporarily unavailable.

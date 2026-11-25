@@ -33,7 +33,7 @@ mediaBind("XF86AudioPrev", nil, "playerctl previous", false)
 
 -- Window management
 hl.bind(mod .. " + q", hl.dsp.window.close())
-hl.bind(mod .. " + f", hl.dsp.window.fullscreen({ mode = "maximized" }))
+hl.bind(mod .. " + f", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
 hl.bind(mod .. " + SHIFT + f", hl.dsp.window.fullscreen_state({ internal = 0, client = 2, action = "toggle" }))
 hl.bind(mod .. " + j", hl.dsp.layout("cyclenext"))
 hl.bind(mod .. " + k", hl.dsp.layout("cycleprev"))

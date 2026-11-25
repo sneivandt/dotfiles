@@ -42,7 +42,7 @@ These are the built-in `update` selectors.
 | `custom-package-versions` | [Custom package versions](custom-package-versions.md): Arch/AUR support and dotfiles-managed recipes |
 | `developer-mode` | [Windows Developer Mode](windows-developer-mode.md): Windows |
 | `file-permissions` | [File permissions](file-permissions.md): supported Unix modes and configured paths |
-| `git` | [Global Git settings](global-git-settings.md): configured values or Windows autocrlf cleanup |
+| `git` | [Global Git settings](global-git-settings.md): configured values |
 | `git-hooks` | [Git hooks](git-hooks.md): repository hook sources |
 | `launcher` | [Dotfiles launcher](dotfiles-launcher.md): Linux or Windows |
 | `login-shell` | [Login shell](login-shell.md): Linux, outside CI |

@@ -94,7 +94,7 @@ need a separate work identity or custom defaults.
 If you want dotfiles to set individual global Git keys directly, declare them
 in [conf/git-config.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml)
 (see [Global Git settings](../reference/global-git-settings.md#configuration)
-for platform rules and Windows `core.autocrlf` cleanup). Avoid setting
+for platform rules). Avoid setting
 conflicting values in both the linked config and `git-config.toml`.
 
 | Shortcut | Purpose |

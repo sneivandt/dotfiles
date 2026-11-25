@@ -3,7 +3,6 @@ mod install_targets;
 mod offline;
 #[cfg(test)]
 use install_targets::{has_install_directives, install_targets};
-use offline::symlink_references;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -49,7 +48,6 @@ pub(crate) struct SystemdUnitResource {
     /// Whether this unit's service manager is available in the target.
     manager_available: bool,
     start: bool,
-    retired_source: Option<PathBuf>,
     thunar_settings_script: Option<PathBuf>,
 }
 
@@ -79,7 +77,6 @@ impl SystemdUnitResource {
             .collect(),
             manager_available: true,
             start: true,
-            retired_source: None,
             thunar_settings_script: None,
         }
     }
@@ -107,8 +104,7 @@ impl SystemdUnitResource {
     /// Whether this resource can participate in a batched live `systemctl show` probe.
     #[must_use]
     pub(crate) fn is_batch_probeable(&self) -> bool {
-        self.retired_source.is_none()
-            && self.manager_available
+        self.manager_available
             && !matches!(self.scope, UnitScope::Invalid(_))
             && safe_unit_name(&self.name)
     }
@@ -294,21 +290,6 @@ impl SystemdUnitResource {
         }
     }
 
-    pub(crate) fn retired_nautilus_settings(
-        root: &Path,
-        home: &Path,
-        executor: Arc<dyn Executor>,
-    ) -> Self {
-        let mut resource = Self::new("nautilus-settings.service", UnitScope::User, executor);
-        resource.enabled = false;
-        resource.home = Some(home.to_path_buf());
-        resource.retired_source = Some(
-            root.join("symlinks/config/systemd/user")
-                .join(&resource.name),
-        );
-        resource
-    }
-
     fn change_invocation<'a>(
         &'a self,
         args: &[&'a str],
@@ -324,27 +305,6 @@ impl SystemdUnitResource {
                 "unsupported systemd scope '{value}'"
             ))),
         }
-    }
-
-    fn retired_links(&self, source: &Path) -> ResourceResult<Vec<PathBuf>> {
-        let user_dir = self.offline_user_dir()?;
-        let installed = user_dir.join(&self.name);
-        let owned_unit = symlink_references(&installed, source);
-        let wants = crate::infra::fs::checked_directory_chain(
-            &user_dir,
-            Path::new("graphical-session.target.wants"),
-        )?;
-        let enabled = wants.join(&self.name);
-        let mut links = Vec::new();
-        if symlink_references(&enabled, source)
-            || (owned_unit && symlink_references(&enabled, &installed))
-        {
-            links.push(enabled);
-        }
-        if owned_unit {
-            links.push(installed);
-        }
-        Ok(links)
     }
 
     fn change_live_unit(&self, args: &[&str]) -> ResourceResult<ResourceChange> {
@@ -569,9 +529,6 @@ const fn output_if_present(output: &str) -> &str {
 
 impl Resource for SystemdUnitResource {
     fn description(&self) -> String {
-        if self.retired_source.is_some() {
-            return format!("obsolete links for {}", self.name);
-        }
         let desired = if self.enabled { "" } else { " disabled" };
         match self.scope {
             UnitScope::User => format!("{}{desired}", self.name),
@@ -587,21 +544,6 @@ impl Resource for SystemdUnitResource {
             return Err(ResourceError::not_supported(
                 "unit name must be a single safe systemd name, not a path or option",
             ));
-        }
-        if let Some(source) = &self.retired_source {
-            let links = self.retired_links(source)?;
-            if links.is_empty() {
-                return Ok(ResourceChange::AlreadyCorrect);
-            }
-            for link in links {
-                if !self.retired_links(source)?.contains(&link) {
-                    return Err(
-                        anyhow::anyhow!("retired unit link changed during removal; retry").into(),
-                    );
-                }
-                std::fs::remove_file(link)?;
-            }
-            return Ok(ResourceChange::Applied);
         }
         if !self.manager_available {
             match self.scope {
@@ -675,15 +617,6 @@ impl Resource for SystemdUnitResource {
 
 impl IntrinsicState for SystemdUnitResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
-        if let Some(source) = &self.retired_source {
-            return Ok(if self.retired_links(source)?.is_empty() {
-                ResourceState::Correct
-            } else {
-                ResourceState::Incorrect {
-                    current: "obsolete managed unit links remain".into(),
-                }
-            });
-        }
         if !safe_unit_name(&self.name) {
             return Ok(ResourceState::Invalid {
                 reason: "unit name must be a single safe systemd name, not a path or option".into(),

@@ -72,7 +72,7 @@ use crate::engine::{
 pub struct GitConfigResource {
     /// Config key (e.g., "core.autocrlf").
     pub key: String,
-    desired: Option<String>,
+    desired: String,
     config_path: Option<PathBuf>,
 }
 
@@ -82,17 +82,7 @@ impl GitConfigResource {
     pub const fn new(key: String, desired_value: String) -> Self {
         Self {
             key,
-            desired: Some(desired_value),
-            config_path: None,
-        }
-    }
-
-    /// Create a resource that removes a global Git setting.
-    #[must_use]
-    pub const fn absent(key: String) -> Self {
-        Self {
-            key,
-            desired: None,
+            desired: desired_value,
             config_path: None,
         }
     }
@@ -106,17 +96,9 @@ impl GitConfigResource {
     ) -> Self {
         Self {
             key,
-            desired: Some(desired_value),
+            desired: desired_value,
             config_path: Some(config_path),
         }
-    }
-
-    /// Scope either setting or removal to an explicit file.
-    #[must_use]
-    #[cfg(test)]
-    fn using_config_path(mut self, path: PathBuf) -> Self {
-        self.config_path = Some(path);
-        self
     }
 
     fn open_config(&self) -> Result<git2::Config> {
@@ -159,20 +141,14 @@ impl GitConfigResource {
     fn state_from_config(&self, config: &git2::Config) -> ResourceResult<ResourceState> {
         let values = self.values_from_config(config)?;
         if values.is_empty() {
-            return Ok(if self.desired.is_some() {
-                ResourceState::Missing
-            } else {
-                ResourceState::Correct
-            });
+            return Ok(ResourceState::Missing);
         }
         let after_includes = is_include(&target_key(&self.key)) || self.include_order(config)?.1;
         Ok(
             if after_includes
-                && self.desired.as_ref().is_some_and(|desired| {
-                    values
-                        .iter()
-                        .all(|value| value.as_deref() == Some(desired.as_str()))
-                })
+                && values
+                    .iter()
+                    .all(|value| value.as_deref() == Some(self.desired.as_str()))
             {
                 ResourceState::Correct
             } else {
@@ -214,25 +190,13 @@ impl GitConfigResource {
                 self.key
             );
         }
-        if let Some(desired) = &self.desired {
-            if needs_multivar {
-                let escaped = escape_multivar_value(desired);
-                config.set_multivar(&self.key, ".*", &escaped)
-            } else {
-                config.set_str(&self.key, desired)
-            }
-            .with_context(|| format!("setting {} = {desired}", self.key))?;
+        if needs_multivar {
+            let escaped = escape_multivar_value(&self.desired);
+            config.set_multivar(&self.key, ".*", &escaped)
         } else {
-            if values.is_empty() {
-                return Ok(ResourceChange::AlreadyCorrect);
-            }
-            if needs_multivar {
-                config.remove_multivar(&self.key, ".*")
-            } else {
-                config.remove(&self.key)
-            }
-            .with_context(|| format!("removing git config {}", self.key))?;
+            config.set_str(&self.key, &self.desired)
         }
+        .with_context(|| format!("setting {} = {}", self.key, self.desired))?;
         Ok(ResourceChange::Applied)
     }
 
@@ -310,7 +274,7 @@ impl GitConfigPlan {
                 } else {
                     changed.push(setting);
                 }
-            } else if !include && setting.desired.is_some() {
+            } else if !include {
                 unchanged_values.push(setting);
             }
         }
@@ -406,16 +370,14 @@ fn stage_setting(
         staged.remove_multivar(&setting.key, ".*")?;
     }
     drop(staged);
-    if let Some(desired) = &setting.desired {
-        // Let libgit2 validate and quote the value before appending its stanza.
-        std::fs::write(stanza_path, [])?;
-        let mut stanza = open_file(stanza_path)?;
-        stanza.set_str(&setting.key, desired)?;
-        drop(stanza);
-        let mut stage = std::fs::OpenOptions::new().append(true).open(stage_path)?;
-        stage.write_all(b"\n")?;
-        stage.write_all(&std::fs::read(stanza_path)?)?;
-    }
+    // Let libgit2 validate and quote the value before appending its stanza.
+    std::fs::write(stanza_path, [])?;
+    let mut stanza = open_file(stanza_path)?;
+    stanza.set_str(&setting.key, &setting.desired)?;
+    drop(stanza);
+    let mut stage = std::fs::OpenOptions::new().append(true).open(stage_path)?;
+    stage.write_all(b"\n")?;
+    stage.write_all(&std::fs::read(stanza_path)?)?;
     Ok(())
 }
 
@@ -427,10 +389,7 @@ impl Resource for GitConfigResource {
     }
 
     fn description(&self) -> String {
-        self.desired.as_ref().map_or_else(
-            || format!("{} is unset", self.key),
-            |desired| format!("{} = {desired}", self.key),
-        )
+        format!("{} = {}", self.key, self.desired)
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {

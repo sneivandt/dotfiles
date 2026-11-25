@@ -26,8 +26,7 @@ Each active entry in a private overlay's `conf/scripts.toml` becomes a task for
 repository's `conf/scripts.toml` is never loaded.
 
 Script tasks are discovered at startup and again after a repository restart, never
-added dynamically while other tasks are running. An internal reporting task records the
-script count without executing any scripts.
+added dynamically while other tasks are running.
 
 ## Configuration
 

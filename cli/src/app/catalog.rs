@@ -19,7 +19,6 @@ use crate::domains::files::chmod::ApplyFilePermissions;
 use crate::domains::files::symlinks::{InstallSymlinks, UninstallSymlinks};
 use crate::domains::git::git_config::ConfigureGit;
 use crate::domains::git::hooks::{InstallGitHooks, UninstallGitHooks};
-use crate::domains::overlay::scripts::ReportOverlayScriptSnapshot;
 use crate::domains::packages::arch_recipes::{ConfigureParu, UpdateCustomPackageVersions};
 use crate::domains::packages::install::{
     InstallAurPackages, InstallPackages, InstallParu, PacmanInventoryCache,
@@ -186,7 +185,6 @@ pub(crate) fn update_tasks_for_run(
             &[id::<InstallSymlinks>()],
             &[id::<InstallPackages>(), id::<InstallAurPackages>()],
         ),
-        Box::new(ReportOverlayScriptSnapshot::new(store.scripts.clone())),
         Box::new(InstallWrapper),
         Box::new(ConfigurePath),
     ]

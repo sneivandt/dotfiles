@@ -1,8 +1,5 @@
 //! Task: load and run custom scripts from the overlay repository.
 //!
-//! [`ReportOverlayScriptSnapshot`] is a lightweight static task that reports
-//! how many script tasks were discovered at startup.
-//!
 //! Each individual script gets its own [`OverlayScriptTask`] when the command
 //! builds its task set. These tasks appear in the output identically to any
 //! other task.
@@ -14,45 +11,10 @@ use anyhow::Result;
 use crate::domains::overlay::config::scripts::{ScriptEntry, overlay_script_selector};
 use crate::domains::overlay::resources::script::ScriptResource;
 use crate::engine::{
-    Context, Operation, OperationState, Task, TaskMeta, TaskResult, TaskStats, TaskVisibility,
-    process_operation,
+    Context, Operation, OperationState, Task, TaskMeta, TaskResult, TaskStats, process_operation,
 };
 use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
 use crate::infra::logging::OutputExt as _;
-
-// ---------------------------------------------------------------------------
-// Static task: report discovered scripts
-// ---------------------------------------------------------------------------
-
-crate::engine::config_task! {
-    /// Report overlay script definitions discovered at startup.
-    ///
-    /// The actual execution of each script is handled by individual
-    /// [`OverlayScriptTask`] instances created from the same configuration snapshot.
-    pub(crate) struct ReportOverlayScriptSnapshot(Vec<ScriptEntry>);
-}
-
-const REPORT_NAME: &str = "Report overlay scripts";
-
-impl Task for ReportOverlayScriptSnapshot {
-    fn meta(&self) -> TaskMeta<'_> {
-        TaskMeta::new(REPORT_NAME).with_visibility(TaskVisibility::Internal)
-    }
-
-    fn should_run(&self, ctx: &Context) -> bool {
-        ctx.overlay().is_some()
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let count = self.config.get().len();
-        if count == 0 {
-            return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
-        }
-        ctx.log()
-            .info(format!("discovered {count} overlay script(s)"));
-        Ok(TaskResult::Ok)
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Dynamic task: one per overlay script entry

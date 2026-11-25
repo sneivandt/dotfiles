@@ -3,7 +3,6 @@
 use super::*;
 use crate::domains::overlay::config::scripts::ScriptEntry;
 use crate::engine::{Context, Task, TaskResult, execute};
-use crate::infra::ConfigHandle;
 use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
 use crate::infra::logging::{BufferedLog, Logger, TaskStatus};
 use crate::infra::platform::{Os, Platform};
@@ -112,43 +111,6 @@ fn probe_result(status: i32) -> ExecResult {
 
 fn configured_context() -> Context {
     make_linux_context(PathBuf::from("/tmp"), Some(PathBuf::from("/overlay")))
-}
-
-#[test]
-fn snapshot_report_should_run_false_without_overlay() {
-    let ctx = make_linux_context(PathBuf::from("/tmp"), None);
-    assert!(!ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![])).should_run(&ctx));
-}
-
-#[test]
-fn snapshot_report_should_run_true_with_overlay() {
-    let ctx = configured_context();
-    assert!(ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![])).should_run(&ctx));
-}
-
-#[test]
-fn snapshot_report_returns_not_applicable_when_empty() {
-    let ctx = configured_context();
-    let task = ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![]));
-
-    assert!(matches!(
-        task.run(&ctx).unwrap(),
-        TaskResult::NotApplicable(reason) if reason == "nothing configured"
-    ));
-}
-
-#[test]
-fn snapshot_report_succeeds_with_configured_scripts() {
-    let ctx = configured_context();
-    let task = ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![script_entry(
-        "Setup test",
-        "scripts/test.sh",
-    )]));
-
-    assert!(
-        matches!(task.run(&ctx).unwrap(), TaskResult::Ok),
-        "a configured snapshot should report success"
-    );
 }
 
 #[test]

@@ -1,6 +1,6 @@
 ---
 title: Global Git settings
-description: Apply declared global Git configuration, resolve private overlay overrides, and clean up undeclared global core.autocrlf on Windows.
+description: Apply declared global Git configuration and resolve private overlay overrides.
 ---
 
 # Global Git settings
@@ -14,7 +14,7 @@ installing this repository's contributor hooks.
 |---|---|
 | Selector | `git` |
 | Commands | `update` |
-| Availability | Configured values; Windows also cleans up undeclared autocrlf |
+| Availability | Configured values |
 | [Requires success](task-reference.md#scheduling-model) | None |
 | [Runs after](task-reference.md#scheduling-model) | None |
 | Implementation | [git/git_config.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/git/git_config.rs) |
@@ -27,18 +27,16 @@ Applies values from `conf/git-config.toml` to **global** Git configuration (set
 updating repeated occurrences of managed keys without touching unrelated entries.
 Profile and overlay selections stay in repository-local configuration.
 
-Each update publishes the selected settings and any Windows `core.autocrlf` cleanup
-together, so if staging one setting fails, the global file keeps its original contents
-until you fix the error and retry.
+Each update publishes the selected settings together, so if staging one setting fails,
+the global file keeps its original contents until you fix the error and retry.
 
 On Unix, updates stage content privately and preserve the existing file's permissions,
 creating new config files as owner-only. Dotfiles honors Git's `.lock` file: if another
 process holds it, wait for it to finish and retry, and investigate any stale lock before
 removing it.
 
-On Windows, an undeclared global `core.autocrlf` is removed even when no other Git
-settings are configured, unless an active declaration sets it explicitly. On other
-platforms, an empty setting list means no work.
+When no active Git settings are declared, the task reports not applicable and leaves
+the global config untouched.
 
 ## Configuration
 
@@ -59,18 +57,13 @@ Included files stay untouched. Managed values are written to the global file aft
 includes so scalar settings win, though this does not clear inherited entries for
 multivalue settings such as `credential.helper`.
 
-On Windows, the task also removes global `core.autocrlf` whenever no active declaration
-manages it, even if no Git settings are declared. Declare that key explicitly if you want the
-task to set a value instead. This cleanup is independent of the repository-local Git
-keys that store profile and overlay choices.
-
 For Git aliases such as `git gr` and `git contributors`, see [Application
 settings](../guides/application-settings.md#git).
 
 To see why a setting is not taking effect, run this inside the affected repository:
 
 ```sh
-git config --show-origin --show-scope --get-all core.autocrlf
+git config --show-origin --show-scope --get-all core.longpaths
 ```
 
 Replace the key with the setting you are diagnosing. The output shows included files and
@@ -87,10 +80,9 @@ Preview the global keys that need changing:
 dotfiles update --only git --dry-run
 ```
 
-Review the proposed values, including any Windows `core.autocrlf` removal, and
-resolve configuration read errors rather than treating them as absent keys.
-After [applying the reviewed change](task-reference.md#preview-and-apply), run
-the origin-and-scope command above inside an affected repository to distinguish the
+Review the proposed values and resolve configuration read errors rather than treating
+them as absent keys. After [applying the reviewed change](task-reference.md#preview-and-apply),
+run the origin-and-scope command above inside an affected repository to distinguish the
 stored global value from repository or included overrides.
 
 ## Removal

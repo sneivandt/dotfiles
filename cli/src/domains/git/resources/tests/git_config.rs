@@ -343,18 +343,6 @@ fn included_values_are_preserved_and_global_overrides_converge() {
             );
             assert_eq!(std::fs::read_to_string(&included).unwrap(), content);
             assert_eq!(std::fs::read(&path).unwrap(), after);
-            let absent =
-                GitConfigResource::absent("core.autocrlf".into()).using_config_path(path.clone());
-            absent.apply().unwrap();
-            assert_eq!(absent.current_state().unwrap(), ResourceState::Correct);
-            assert_eq!(
-                open_file(&path)
-                    .unwrap()
-                    .get_string("core.autocrlf")
-                    .unwrap(),
-                "true"
-            );
-            assert_eq!(std::fs::read_to_string(&included).unwrap(), content);
         }
     }
 }
@@ -364,7 +352,7 @@ fn git_config_path(path: &Path) -> String {
 }
 
 #[test]
-fn plan_omits_already_absent_settings_on_include_change_and_reports_claims_and_read_errors() {
+fn plan_reports_include_changes_access_claims_and_read_errors() {
     let dir = tempfile::tempdir().unwrap();
     let config_path = dir.path().join("gitconfig");
     let included = dir.path().join("extra.gitconfig");
@@ -376,11 +364,9 @@ fn plan_omits_already_absent_settings_on_include_change_and_reports_claims_and_r
         git_config_path(&included),
         config_path.clone(),
     );
-    let already_absent =
-        GitConfigResource::absent("user.email".into()).using_config_path(config_path.clone());
     assert_eq!(include.access_claims(), vec![config_access_claim()]);
 
-    let plan = GitConfigPlan::inspect(&config_path, &[include, already_absent]).unwrap();
+    let plan = GitConfigPlan::inspect(&config_path, &[include]).unwrap();
     assert_eq!(plan.changed().len(), 1);
     assert_eq!(plan.changed()[0].key, "include.path");
 
@@ -398,7 +384,7 @@ fn plan_omits_already_absent_settings_on_include_change_and_reports_claims_and_r
 }
 
 #[test]
-fn nested_include_defining_include_path_updates_and_removes_depth_zero_in_order() {
+fn nested_include_defining_include_path_updates_depth_zero_in_order() {
     let dir = tempfile::tempdir().unwrap();
     let config_path = dir.path().join("config");
     let outer = dir.path().join("outer.gitconfig");
@@ -462,21 +448,6 @@ fn nested_include_defining_include_path_updates_and_removes_depth_zero_in_order(
     }
     assert_eq!(std::fs::read_to_string(&outer).unwrap(), outer_content);
     assert_eq!(std::fs::read_to_string(&inner).unwrap(), inner_content);
-
-    // Removing depth-0 `include.path` must also succeed when the included
-    // file itself defines `include.path`.
-    std::fs::write(&config_path, &initial).unwrap();
-    let remove =
-        GitConfigResource::absent("include.path".into()).using_config_path(config_path.clone());
-    assert_eq!(remove.apply().unwrap(), ResourceChange::Applied);
-    assert_eq!(remove.current_state().unwrap(), ResourceState::Correct);
-    let after_remove = std::fs::read_to_string(&config_path).unwrap();
-    assert!(
-        after_remove.contains("[includeIf \"gitdir:/work/\"]"),
-        "sibling includeIf must remain after removing depth-0 include.path:\n{after_remove}"
-    );
-    assert_eq!(std::fs::read_to_string(&outer).unwrap(), outer_content);
-    assert_eq!(std::fs::read_to_string(&inner).unwrap(), inner_content);
 }
 
 #[test]
@@ -504,9 +475,6 @@ fn open_failure_names_the_key() {
 fn description_format() {
     let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
     assert_eq!(resource.description(), "core.autocrlf = false");
-
-    let absent = GitConfigResource::absent("core.autocrlf".to_string());
-    assert_eq!(absent.description(), "core.autocrlf is unset");
 }
 
 // ------------------------------------------------------------------
@@ -540,63 +508,41 @@ fn configured_value_state_matches_current_config() {
     }
 }
 
-#[test]
-fn absent_state_is_correct_only_when_key_is_missing() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("config");
-    let mut config = git2::Config::open(&path).unwrap();
-    let resource = GitConfigResource::absent("core.autocrlf".to_string());
-
-    assert_eq!(
-        resource.state_from_config(&config).unwrap(),
-        ResourceState::Correct
-    );
-
-    config.set_str("core.autocrlf", "false").unwrap();
-    assert_eq!(
-        resource.state_from_config(&config).unwrap(),
-        ResourceState::Incorrect {
-            current: "false".to_string()
-        }
-    );
-}
-
 // ------------------------------------------------------------------
 // apply_to_config
 // ------------------------------------------------------------------
 
 #[test]
-fn repeated_git_config_values_converge_for_setting_and_removal() {
+fn repeated_git_config_values_converge() {
     for (key, section, variable, values, desired) in [
         (
             "core.autocrlf",
             "core",
             "autocrlf",
             ["false", "true"],
-            Some("false"),
+            "false",
         ),
         (
             "core.autocrlf",
             "core",
             "autocrlf",
             ["true", "false"],
-            Some("false"),
+            "false",
         ),
         (
             "credential.helper",
             "credential",
             "helper",
             ["old-helper", "manager"],
-            Some("manager"),
+            "manager",
         ),
         (
             "credential.helper",
             "credential",
             "helper",
             ["manager", "old-helper"],
-            Some("manager"),
+            "manager",
         ),
-        ("core.autocrlf", "core", "autocrlf", ["false", "true"], None),
     ] {
         let dir = tempfile::tempdir_in(".").unwrap();
         let path = dir.path().join("config");
@@ -605,24 +551,20 @@ fn repeated_git_config_values_converge_for_setting_and_removal() {
             format!("[{section}]\n\t{variable} = {}\n\t{variable} = {}\n[core]\n\teditor = fixture-editor\n", values[0], values[1]),
         )
         .unwrap();
-        let resource = desired
-            .map_or_else(
-                || GitConfigResource::absent(key.into()),
-                |value| GitConfigResource::new(key.into(), value.into()),
-            )
-            .using_config_path(path.clone());
+        let resource =
+            GitConfigResource::with_config_path(key.into(), desired.into(), path.clone());
 
         assert!(
             matches!(
                 resource.current_state().unwrap(),
                 ResourceState::Incorrect { .. }
             ),
-            "duplicate settings are not yet in the desired state {desired:?}"
+            "duplicate settings are not yet in the desired state {desired}"
         );
         assert_eq!(
             resource.apply().unwrap(),
             ResourceChange::Applied,
-            "must converge even when Git has repeated values for {desired:?}"
+            "must converge even when Git has repeated values for {desired}"
         );
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
 
@@ -631,23 +573,16 @@ fn repeated_git_config_values_converge_for_setting_and_removal() {
             observed.get_string("core.editor").unwrap(),
             "fixture-editor"
         );
-        if let Some(value) = desired {
-            let mut entries = observed.multivar(key, None).unwrap();
-            let mut actual_values = Vec::new();
-            while let Some(entry) = entries.next() {
-                actual_values.push(entry.unwrap().value().unwrap().to_string());
-            }
-            assert!(!actual_values.is_empty());
-            assert!(
-                actual_values.iter().all(|current| current == value),
-                "{actual_values:?}"
-            );
-        } else {
-            assert_eq!(
-                observed.get_string(key).unwrap_err().code(),
-                git2::ErrorCode::NotFound
-            );
+        let mut entries = observed.multivar(key, None).unwrap();
+        let mut actual_values = Vec::new();
+        while let Some(entry) = entries.next() {
+            actual_values.push(entry.unwrap().value().unwrap().to_string());
         }
+        assert!(!actual_values.is_empty());
+        assert!(
+            actual_values.iter().all(|current| current == desired),
+            "{actual_values:?}"
+        );
     }
 }
 
@@ -694,44 +629,14 @@ fn repeated_implicit_values_fail_safely_without_entering_native_regex_mutation()
     let path = dir.path().join("config");
     let content = "[core]\n\tautocrlf\n\tautocrlf = false\n";
     std::fs::write(&path, content).unwrap();
-    for resource in [
-        GitConfigResource::new("core.autocrlf".into(), "false".into()),
-        GitConfigResource::absent("core.autocrlf".into()),
-    ] {
-        let resource = resource.using_config_path(path.clone());
-        assert!(matches!(
-            resource.current_state().unwrap(),
-            ResourceState::Incorrect { .. }
-        ));
-        assert!(
-            format!("{:#}", resource.apply().unwrap_err()).contains("repeated implicit values")
-        );
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
-    }
-}
-
-#[test]
-fn apply_removes_obsolete_value() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("config");
-    let mut config = git2::Config::open(&path).unwrap();
-    config.set_str("core.autocrlf", "false").unwrap();
-    config.set_str("core.editor", "fixture-editor").unwrap();
-    let resource = GitConfigResource::absent("core.autocrlf".to_string());
-
-    assert_eq!(
-        resource.apply_to_config(&mut config).unwrap(),
-        ResourceChange::Applied
-    );
-    assert_eq!(
-        config.get_string("core.autocrlf").unwrap_err().code(),
-        git2::ErrorCode::NotFound,
-    );
-    assert_eq!(config.get_string("core.editor").unwrap(), "fixture-editor");
-    assert_eq!(
-        resource.state_from_config(&config).unwrap(),
-        ResourceState::Correct
-    );
+    let resource =
+        GitConfigResource::with_config_path("core.autocrlf".into(), "false".into(), path.clone());
+    assert!(matches!(
+        resource.current_state().unwrap(),
+        ResourceState::Incorrect { .. }
+    ));
+    assert!(format!("{:#}", resource.apply().unwrap_err()).contains("repeated implicit values"));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
 }
 
 #[test]

@@ -160,8 +160,7 @@ fn potentially_applicable(
         "vscode-extensions" => !config.vscode_extensions.is_empty(),
         "agent-settings" => !config.agent_settings.is_empty(),
         "symlinks" => !config.symlinks.is_empty(),
-        // Windows also removes an unmanaged core.autocrlf setting.
-        "git" => platform.is_windows() || !config.git_settings.is_empty(),
+        "git" => !config.git_settings.is_empty(),
         "symlink-sources" => {
             !config.validation_symlinks.is_empty() || !config.validation_chmod.is_empty()
         }

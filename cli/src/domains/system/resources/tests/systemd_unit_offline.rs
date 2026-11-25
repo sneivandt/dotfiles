@@ -315,63 +315,6 @@ fn offline_disable_refuses_to_traverse_replaced_enablement_directories() {
     );
 }
 
-#[cfg(unix)]
-#[test]
-fn retired_nautilus_cleanup_preserves_local_units_and_removes_owned_dangling_links() {
-    for target in ["checkout", "installed", "local"] {
-        let fixture = tempfile::tempdir().unwrap();
-        let root = fixture.path().join("repo");
-        let home = fixture.path().join("home");
-        let source_dir = root.join("symlinks/config/systemd/user");
-        let user_dir = home.join(".config/systemd/user");
-        let wants = user_dir.join("graphical-session.target.wants");
-        std::fs::create_dir_all(&source_dir).unwrap();
-        std::fs::create_dir_all(&wants).unwrap();
-        let resource = SystemdUnitResource::retired_nautilus_settings(
-            &root,
-            &home,
-            Arc::new(MockExecutor::new()),
-        );
-        let installed = user_dir.join(&resource.name);
-        let enabled = wants.join(&resource.name);
-        let source = source_dir.join(&resource.name);
-        if target == "local" {
-            std::fs::write(&installed, "local unit").unwrap();
-        } else {
-            std::os::unix::fs::symlink(&source, &installed).unwrap();
-        }
-        std::os::unix::fs::symlink(
-            if target == "checkout" {
-                &source
-            } else {
-                &installed
-            },
-            &enabled,
-        )
-        .unwrap();
-        if target == "local" {
-            assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
-            assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
-            assert_eq!(std::fs::read_to_string(&installed).unwrap(), "local unit");
-            assert_eq!(std::fs::read_link(&enabled).unwrap(), installed);
-        } else {
-            assert!(matches!(
-                resource.current_state().unwrap(),
-                ResourceState::Incorrect { .. }
-            ));
-            assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
-            for link in [&installed, &enabled] {
-                assert_eq!(
-                    std::fs::symlink_metadata(link).unwrap_err().kind(),
-                    std::io::ErrorKind::NotFound
-                );
-            }
-            assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
-            assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
-        }
-    }
-}
-
 #[test]
 fn unsafe_names_cannot_probe_or_mutate_even_when_resources_are_constructed_directly() {
     for name in [

@@ -641,13 +641,14 @@ fn git_fixture(os: Os) -> Fixture {
     fixture
 }
 
-fn assert_git_settings(fixture: &Fixture, os: Os) {
+fn assert_git_settings(fixture: &Fixture) {
     let config = git2::Config::open(&fixture.home.join(".gitconfig")).unwrap();
     for (key, expected) in [
         ("fixture.first", "one"),
         ("fixture.second", "two"),
         ("fixture.third", "three"),
         ("fixture.unmanaged", "retain"),
+        ("core.autocrlf", "true"),
     ] {
         assert_eq!(
             config.get_string(key).unwrap(),
@@ -655,33 +656,18 @@ fn assert_git_settings(fixture: &Fixture, os: Os) {
             "Git setting {key}"
         );
     }
-    match os {
-        Os::Windows => assert_eq!(
-            config.get_string("core.autocrlf").unwrap_err().code(),
-            git2::ErrorCode::NotFound,
-            "Windows removes unmanaged autocrlf"
-        ),
-        Os::Linux => assert_eq!(
-            config.get_string("core.autocrlf").unwrap(),
-            "true",
-            "Unix does not manage implicit autocrlf"
-        ),
-    }
 }
 
 #[test]
-fn git_settings_preview_apply_and_fresh_repeat_include_windows_cleanup() {
+fn git_settings_preview_apply_and_fresh_repeat_preserve_unmanaged_values() {
     for os in [Os::Linux, Os::Windows] {
         for parallel in [false, true] {
             let fixture = git_fixture(os);
-            let mut subjects = vec![
+            let subjects = [
                 "fixture.first = one",
                 "fixture.second = two",
                 "fixture.third = three",
             ];
-            if os == Os::Windows {
-                subjects.push("core.autocrlf is unset");
-            }
             assert_lifecycle(
                 &fixture,
                 parallel,
@@ -694,7 +680,7 @@ fn git_settings_preview_apply_and_fresh_repeat_include_windows_cleanup() {
                 "configure",
                 &subjects,
                 u32::try_from(subjects.len()).unwrap(),
-                || assert_git_settings(&fixture, os),
+                || assert_git_settings(&fixture),
             );
             assert_eq!(
                 fixture.command_count(),
@@ -716,8 +702,8 @@ fn git_config_transition_updates_selected_keys_and_preserves_other_values() {
             ))
         };
         let initial = fixture.run(false, false, task);
-        initial.assert_batch(if os == Os::Windows { 4 } else { 3 }, 0);
-        assert_git_settings(&fixture, os);
+        initial.assert_batch(3, 0);
+        assert_git_settings(&fixture);
 
         let path = fixture.home.join(".gitconfig");
         git2::Config::open(&path)
@@ -736,7 +722,7 @@ fn git_config_transition_updates_selected_keys_and_preserves_other_values() {
             task,
             "configure",
             &["fixture.first = updated"],
-            if os == Os::Windows { 2 } else { 1 },
+            1,
             || {
                 let config = git2::Config::open(&path).unwrap();
                 for (key, value) in [
@@ -744,6 +730,7 @@ fn git_config_transition_updates_selected_keys_and_preserves_other_values() {
                     ("fixture.second", "user edit"),
                     ("fixture.third", "three"),
                     ("fixture.unmanaged", "retain"),
+                    ("core.autocrlf", "true"),
                 ] {
                     assert_eq!(config.get_string(key).unwrap(), value, "{key}");
                 }
@@ -777,14 +764,11 @@ fn git_settings_commit_together_and_retry_converges() {
         assert!(!fixture.home.join(".gitconfig.lock").exists());
 
         write(&path, &original);
-        let mut subjects = vec![
+        let subjects = [
             "fixture.first = one",
             "fixture.second = two",
             "fixture.third = three",
         ];
-        if os == Os::Windows {
-            subjects.push("core.autocrlf is unset");
-        }
         assert_lifecycle(
             &fixture,
             true,
@@ -797,7 +781,7 @@ fn git_settings_commit_together_and_retry_converges() {
             "configure",
             &subjects,
             u32::try_from(subjects.len()).unwrap(),
-            || assert_git_settings(&fixture, os),
+            || assert_git_settings(&fixture),
         );
     }
 }

@@ -42,6 +42,7 @@ fn discovery_filters_only_proven_inapplicability() {
             "vscode-extensions",
             "agent-settings",
             "symlinks",
+            "git",
             "symlink-sources",
         ] {
             assert!(
@@ -87,11 +88,6 @@ fn discovery_filters_only_proven_inapplicability() {
                 "{selector} requires AUR support on {platform}"
             );
         }
-        assert_eq!(
-            potentially_applicable("git", &config, platform, false),
-            platform.is_windows(),
-            "Windows git cleanup applies with empty configuration"
-        );
     }
 }
 

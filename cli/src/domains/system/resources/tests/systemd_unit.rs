@@ -14,7 +14,7 @@ fn batch_probe_eligibility_state_transitions_and_apply_unit_routing() {
     let home = dir.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
 
-    // is_batch_probeable covers all 4 gates.
+    // is_batch_probeable covers all 3 gates.
     let entry = |name: &str, scope: UnitScope, enabled: bool| SystemdUnit {
         name: name.into(),
         scope,
@@ -29,15 +29,6 @@ fn batch_probe_eligibility_state_transitions_and_apply_unit_routing() {
         true,
     );
     assert!(live.is_batch_probeable());
-    let mut retired = SystemdUnitResource::from_entry(
-        &entry("demo.service", UnitScope::User, true),
-        Arc::new(MockExecutor::new()),
-        &home,
-        true,
-        true,
-    );
-    retired.retired_source = Some(home.join("retired"));
-    assert!(!retired.is_batch_probeable());
     let offline = SystemdUnitResource::from_entry(
         &entry("demo.service", UnitScope::User, true),
         Arc::new(MockExecutor::new()),

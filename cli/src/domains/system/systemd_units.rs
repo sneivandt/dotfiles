@@ -123,13 +123,6 @@ impl Task for ConfigureSystemd {
             let user_manager_available = user_manager_available(ctx, units)?;
             let graphical_session = graphical_session_active(ctx, units, user_manager_available)?;
             let executor = ctx.executor_arc();
-            let retired = should_retire_nautilus_settings(units).then(|| {
-                SystemdUnitResource::retired_nautilus_settings(
-                    ctx.root(),
-                    ctx.home(),
-                    Arc::clone(&executor),
-                )
-            });
             let resources: Vec<_> = units
                 .iter()
                 .map(|entry| {
@@ -156,21 +149,13 @@ impl Task for ConfigureSystemd {
             )?);
             process_resources_with_cache(
                 ctx,
-                retired.into_iter().chain(resources),
+                resources,
                 &batch_cache,
                 |resource, cache| resolve_cached_unit_state(ctx, resource, cache),
                 &ProcessOpts::lenient("configure").sequential(),
             )
         })
     }
-}
-
-fn should_retire_nautilus_settings(units: &[SystemdUnit]) -> bool {
-    units.iter().any(|entry| {
-        entry.scope == UnitScope::User && entry.name == "gtk-settings.service" && entry.enabled
-    }) && !units
-        .iter()
-        .any(|entry| entry.scope == UnitScope::User && entry.name == "nautilus-settings.service")
 }
 
 fn systemctl_requirement() -> Requirement<'static> {

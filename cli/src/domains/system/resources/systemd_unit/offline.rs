@@ -401,7 +401,7 @@ fn symlink_points_to(link: &Path, expected: &Path) -> bool {
 
 // Resolve parent components but preserve the final filename so a link to the
 // installed unit differs from a link directly to its repository source.
-pub(super) fn symlink_references(link: &Path, expected: &Path) -> bool {
+fn symlink_references(link: &Path, expected: &Path) -> bool {
     fn reference_path(path: &Path) -> Option<PathBuf> {
         Some(path.parent()?.canonicalize().ok()?.join(path.file_name()?))
     }

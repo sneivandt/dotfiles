@@ -57,7 +57,7 @@ fn main() -> Result<(), String> {
     Ok(())
 }
 
-/// Register `cargo:rerun-if-changed` directives for the Git HEAD and tags.
+/// Register `cargo::rerun-if-changed` directives for the Git HEAD and tags.
 ///
 /// - **HEAD** lives in the per-worktree git directory (`git rev-parse
 ///   --absolute-git-dir`), which may be a `worktrees/<name>/` subdirectory of
@@ -108,7 +108,7 @@ fn register_git_rerun_triggers() {
     emit_rerun_if_exists(&format!("{refs_base}/packed-refs"));
 }
 
-/// Emit `cargo:rerun-if-changed` only for paths that exist on disk.
+/// Emit `cargo::rerun-if-changed` only for paths that exist on disk.
 ///
 /// Cargo treats any missing `rerun-if-changed` path as permanently dirty,
 /// which would invalidate incremental compilation on every invocation (for

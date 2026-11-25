@@ -1,7 +1,6 @@
 #![expect(
     clippy::expect_used,
     clippy::unwrap_used,
-    clippy::indexing_slicing,
     reason = "panicking allowed at this trust boundary"
 )]
 //! Integration tests for relationships among the repository's real
@@ -325,7 +324,13 @@ fn thunar_view_helper_checks_and_applies_the_same_settings() {
     let root = repo_root();
     let source = "config/Thunar/managed-view-settings.sh";
     let symlinks = load_symlink_sections(&root.join("conf/symlinks.toml"));
-    assert!(symlinks["arch-desktop"].iter().any(|entry| entry == source));
+    assert!(
+        symlinks
+            .get("arch-desktop")
+            .expect("arch-desktop section exists")
+            .iter()
+            .any(|entry| entry == source)
+    );
     let unit = std::fs::read_to_string(
         root.join("symlinks/config/systemd/user/thunar-view-settings.service"),
     )

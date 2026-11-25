@@ -513,12 +513,12 @@ test_build_version_ref_triggers()
   main_git_dir=$(git rev-parse --absolute-git-dir)
   unset DOTFILES_VERSION DOTFILES_RELEASE_REPO
   "$fixture/build-script.exe" > "$fixture/no-publisher"
-  grep -Fqx 'cargo:rustc-env=DOTFILES_RELEASE_REPO=' "$fixture/no-publisher" ||
+  grep -Fqx 'cargo::rustc-env=DOTFILES_RELEASE_REPO=' "$fixture/no-publisher" ||
     log_error "Source build unexpectedly selected a publisher"
   DOTFILES_RELEASE_REPO=fork-owner/releases "$fixture/build-script.exe" > "$fixture/publisher"
-  grep -Fqx 'cargo:rustc-env=DOTFILES_RELEASE_REPO=fork-owner/releases' "$fixture/publisher" ||
+  grep -Fqx 'cargo::rustc-env=DOTFILES_RELEASE_REPO=fork-owner/releases' "$fixture/publisher" ||
     log_error "Build script did not embed the publishing repository"
-  grep -Fqx 'cargo:rerun-if-env-changed=DOTFILES_RELEASE_REPO' "$fixture/publisher" ||
+  grep -Fqx 'cargo::rerun-if-env-changed=DOTFILES_RELEASE_REPO' "$fixture/publisher" ||
     log_error "Publisher changes do not invalidate the build"
   for invalid in 'owner/repo/extra' 'https://github.com/owner/repo' 'owner/repo?query' '../repo'; do
     if DOTFILES_RELEASE_REPO="$invalid" "$fixture/build-script.exe" > "$fixture/invalid" 2>&1; then
@@ -526,11 +526,11 @@ test_build_version_ref_triggers()
     fi
   done
   "$fixture/build-script.exe" > "$fixture/attached"
-  grep -Fqx "cargo:rerun-if-changed=$main_git_dir/refs/heads/main" "$fixture/attached" ||
+  grep -Fqx "cargo::rerun-if-changed=$main_git_dir/refs/heads/main" "$fixture/attached" ||
     log_error "Attached HEAD did not watch its branch ref"
-  grep -Fqx "cargo:rerun-if-changed=$main_git_dir/HEAD" "$fixture/attached" ||
+  grep -Fqx "cargo::rerun-if-changed=$main_git_dir/HEAD" "$fixture/attached" ||
     log_error "Attached HEAD did not watch branch switches"
-  if grep -Fqx "cargo:rerun-if-changed=$main_git_dir/refs/" "$fixture/attached"; then
+  if grep -Fqx "cargo::rerun-if-changed=$main_git_dir/refs/" "$fixture/attached"; then
     log_error "Build version watches unrelated refs"
   fi
 
@@ -540,17 +540,17 @@ test_build_version_ref_triggers()
     cd "$fixture/worktree"
     "$fixture/build-script.exe" > "$fixture/linked"
     worktree_git_dir=$(git rev-parse --absolute-git-dir)
-    grep -Fqx "cargo:rerun-if-changed=$worktree_git_dir/HEAD" "$fixture/linked" ||
+    grep -Fqx "cargo::rerun-if-changed=$worktree_git_dir/HEAD" "$fixture/linked" ||
       log_error "Linked worktree did not watch its own HEAD"
-    grep -Fqx "cargo:rerun-if-changed=$main_git_dir/refs/heads/fixture-branch" "$fixture/linked" ||
+    grep -Fqx "cargo::rerun-if-changed=$main_git_dir/refs/heads/fixture-branch" "$fixture/linked" ||
       log_error "Linked worktree branch was not resolved in the common Git directory"
   )
 
   git checkout --detach -q
   "$fixture/build-script.exe" > "$fixture/detached"
-  grep -Fqx "cargo:rerun-if-changed=$main_git_dir/HEAD" "$fixture/detached" ||
+  grep -Fqx "cargo::rerun-if-changed=$main_git_dir/HEAD" "$fixture/detached" ||
     log_error "Detached HEAD is not watched"
-  if grep -q 'cargo:rerun-if-changed=.*refs/heads/' "$fixture/detached"; then
+  if grep -q 'cargo::rerun-if-changed=.*refs/heads/' "$fixture/detached"; then
     log_error "Detached HEAD retained an unrelated branch dependency"
   fi
 )}

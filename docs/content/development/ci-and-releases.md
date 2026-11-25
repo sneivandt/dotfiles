@@ -28,8 +28,7 @@ flowchart TB
     accDescr: Changed paths select CI jobs. After successful same-repository push CI on main, Pages deploys a built site only while its commit is current. Release selection separately checks for pending binary or publishing changes.
     Changes["Changed paths"] --> Jobs["Selected CI jobs"]
     Jobs --> Gate["Main push passes CI"]
-    Gate --> Docs["Pages"]
-    Gate --> Release["CLI release"]
+    Gate --> Publish["Publish eligible outputs:<br/>site, CLI release, or both"]
 ```
 
 Only successful, same-repository **push** runs on `main` can publish. The

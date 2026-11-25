@@ -985,7 +985,7 @@ test('client navigation and theme changes rerender diagrams', async ({ page, isM
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/getting-started');
-  await page.locator('.vp-doc').getByRole('link', { name: 'Profiles and categories', exact: true }).first().click();
+  await page.locator('.vp-doc a[href$="/profiles-and-categories"]').first().click();
   const diagram = page.locator('.mermaid svg');
   await expect(diagram).toBeVisible({ timeout: 30_000 });
   const previous = await diagram.getAttribute('id');

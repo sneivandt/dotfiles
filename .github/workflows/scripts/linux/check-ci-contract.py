@@ -522,8 +522,18 @@ def check_mutation_symbols(cli_root: Path = CLI_ROOT, mutation_run: dict | None 
                     if not re.search(rf"\bimpl\b[^{{;]*\b{re.escape(trait)}\b\s+for\s+{re.escape(target_type)}\b", source):
                         raise ValueError(f"mutation reference {rel_path} is missing impl {trait} for {target_type}")
                     require_fn(rel_path, source, method)
-                elif target_fn := re.search(r"\bin ([A-Za-z_][A-Za-z0-9_]*)\$$", remainder):
-                    require_fn(rel_path, source, target_fn.group(1))
+                elif target_fn := re.search(
+                    r"\bin (?:([A-Za-z_][A-Za-z0-9_]*)::)?([A-Za-z_][A-Za-z0-9_]*)\$$",
+                    remainder,
+                ):
+                    type_name, fn_name = target_fn.groups()
+                    if type_name is not None and not re.search(
+                        rf"\bimpl\b[^{{;]*\b{re.escape(type_name)}\b", source
+                    ):
+                        raise ValueError(
+                            f"mutation reference {rel_path} is missing impl {type_name}"
+                        )
+                    require_fn(rel_path, source, fn_name)
                 elif remainder == r"[0-9]+:[0-9]+: replace \| with \^$":
                     if not re.search(r"\bconst\b[^;]*\|", source):
                         raise ValueError(f"mutation reference {rel_path} has no bitwise-OR const for | -> ^ exclusion")

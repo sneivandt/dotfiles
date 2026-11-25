@@ -518,6 +518,16 @@ mod tests {
         }
     }
 
+    #[test]
+    fn dotfiles_log_dir_readonly_matches_system_env_resolution() {
+        let dir = dotfiles_log_dir_readonly();
+        assert!(!dir.as_os_str().is_empty());
+        assert_eq!(
+            dir,
+            log_dir_from(&SystemEnv, Platform::detect().is_windows())
+        );
+    }
+
     #[cfg(windows)]
     #[test]
     fn log_dir_preserves_windows_drive_unc_and_extended_paths() {

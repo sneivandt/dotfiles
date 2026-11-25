@@ -357,6 +357,16 @@ permissions = [{ path = "config/hypr/scripts/brightness.sh", mode = "755" }]
             assert!(validate_path(path).is_ok(), "{path:?}");
             assert!(validate_entry("600", path).is_empty(), "{path:?}");
         }
+
+        // Absolute paths must fail validate_path and emit CHMOD_ABSOLUTE_PATH.
+        assert!(validate_path("/etc/passwd").is_err());
+        let abs_diags = validate_entry("600", "/etc/passwd");
+        assert_eq!(abs_diags.len(), 1);
+        assert_eq!(abs_diags[0].code, CHMOD_ABSOLUTE_PATH);
+
+        // Empty chmod list on Windows must not emit CHMOD_PLATFORM_UNSUPPORTED.
+        let windows = Platform::new(Os::Windows, false);
+        assert!(validate(&[], windows).is_empty());
     }
 
     #[cfg(windows)]

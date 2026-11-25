@@ -796,4 +796,69 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
         assert_eq!(expanded.len(), 1);
         assert_eq!(expanded[0].origin.as_deref(), Some(origin.as_path()));
     }
+
+    #[test]
+    fn declaring_section_matches_exact_source_and_target_within_selected_categories() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("conf")).unwrap();
+        std::fs::write(
+            dir.path().join("conf").join(SYMLINKS_TOML),
+            r#"[base]
+symlinks = [
+  "bashrc",
+  { source = "shared", target = ".first" },
+]
+
+[desktop]
+symlinks = [
+  { source = "shared", target = ".second" },
+]
+"#,
+        )
+        .unwrap();
+
+        let base_and_desktop = [Category::Base, Category::Desktop];
+        assert_eq!(
+            declaring_section(&symlink("bashrc", None), dir.path(), &base_and_desktop).unwrap(),
+            Some("base".into())
+        );
+        assert_eq!(
+            declaring_section(
+                &symlink("shared", Some(".second")),
+                dir.path(),
+                &base_and_desktop,
+            )
+            .unwrap(),
+            Some("desktop".into())
+        );
+        // Same source with different target, or different source with same target, must not match.
+        assert_eq!(
+            declaring_section(
+                &symlink("shared", Some(".third")),
+                dir.path(),
+                &base_and_desktop,
+            )
+            .unwrap(),
+            None
+        );
+        assert_eq!(
+            declaring_section(
+                &symlink("other", Some(".first")),
+                dir.path(),
+                &base_and_desktop,
+            )
+            .unwrap(),
+            None
+        );
+        // Unselected category is not matched.
+        assert_eq!(
+            declaring_section(
+                &symlink("shared", Some(".second")),
+                dir.path(),
+                &[Category::Base],
+            )
+            .unwrap(),
+            None
+        );
+    }
 }

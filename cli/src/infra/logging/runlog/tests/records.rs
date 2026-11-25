@@ -10,6 +10,14 @@ fn isolated_run_log() -> (RunLog, tempfile::TempDir) {
 fn run_log_is_created() {
     let (run_log, _tmp) = isolated_run_log();
     assert!(run_log.path().exists(), "run log file should be created");
+    let expected_id = run_log
+        .path()
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    assert!(!expected_id.is_empty());
+    assert_eq!(run_log.id(), expected_id);
 }
 
 #[test]

@@ -158,4 +158,65 @@ mod tests {
         let error = switched.ensure_current().unwrap_err();
         assert!(format!("{error:#}").contains("rechecking Git checkout revision"));
     }
+
+    #[test]
+    fn merge_marker_and_checkout_recovery_checks_detect_and_describe_pending_merges() {
+        let fixture = tempfile::tempdir().unwrap();
+        let non_git = fixture.path().join("plain");
+        let repo_dir = fixture.path().join("repo");
+        fs::create_dir(&non_git).unwrap();
+        fs::create_dir(&repo_dir).unwrap();
+        git2::Repository::init(&repo_dir).unwrap();
+
+        super::super::ensure_recovery_clear(&non_git).unwrap();
+        assert!(
+            super::super::pending_recovery_marker(&non_git)
+                .unwrap()
+                .is_none()
+        );
+        super::super::ensure_recovery_clear(&repo_dir).unwrap();
+        assert!(
+            super::super::pending_recovery_marker(&repo_dir)
+                .unwrap()
+                .is_none()
+        );
+
+        let marker = MergeMarker::for_checkout(&repo_dir)
+            .unwrap()
+            .begin("aaa111", "bbb222")
+            .unwrap();
+        let pending = marker
+            .pending_path()
+            .unwrap()
+            .expect("marker should be pending")
+            .to_path_buf();
+        assert_eq!(
+            super::super::pending_recovery_marker(&repo_dir).unwrap(),
+            Some(pending.clone())
+        );
+
+        let error = super::super::ensure_recovery_clear(&repo_dir).unwrap_err();
+        let message = format!("{error:#}");
+        assert!(message.contains("Unverified repository merge"), "{message}");
+        assert!(
+            message.contains(&repo_dir.display().to_string()),
+            "{message}"
+        );
+        assert!(
+            message.contains(&pending.display().to_string()),
+            "{message}"
+        );
+        assert!(
+            message.contains("git status --short --ignored"),
+            "{message}"
+        );
+
+        marker.finish().unwrap();
+        super::super::ensure_recovery_clear(&repo_dir).unwrap();
+        assert!(
+            super::super::pending_recovery_marker(&repo_dir)
+                .unwrap()
+                .is_none()
+        );
+    }
 }

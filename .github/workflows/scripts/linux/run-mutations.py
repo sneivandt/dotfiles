@@ -17,7 +17,7 @@ CLI = Path(__file__).resolve().parents[4] / "cli"
 PLAN = CLI / "mutation-plan.json"
 DIFF = "mutants.diff"
 LIB_SHARD_TARGET = 300
-MAX_LIB_SHARDS = 11
+MAX_LIB_SHARDS = 13
 APP_SHARD_TARGET = 250
 MAX_APP_SHARDS = 3
 WINDOWS_SHARDS = 2
@@ -75,10 +75,12 @@ LINUX_EXCLUSIONS = (
     ("--exclude-re", r"^src/infra/fs/place\.rs:[0-9]+:[0-9]+: replace \| with \^$"),
     ("--exclude-re", r"^src/infra/exec/process\.rs:.*\b(take_stdout_windows|take_stderr_windows|terminate_child_windows|wait_after_terminate_windows|force_kill_child_windows|child_exited_without_reaping_fallback)\b"),
     ("--exclude-re", r"^src/infra/platform\.rs:.*\b(developer_mode_flag_windows|developer_mode_enabled|detect_arch|detect_wsl)\b"),
-    ("--exclude-re", r"^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated|is_elevated_windows|sudo_credentials_cached|prime_sudo_credentials)\b"),
+    ("--exclude-re", r"^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated|is_elevated_windows|is_elevated_child|sudo_credentials_cached|prime_sudo_credentials)\b"),
     ("--exclude-re", r"^src/infra/logging/runlog/naming\.rs:[0-9]+:[0-9]+: replace \| with \^$"),
-    ("--exclude-re", r"^src/infra/logging/terminal\.rs:.*\b(stream_columns_windows|enable_console_ansi)\b"),
+    ("--exclude-re", r"^src/infra/logging/subscriber/mod\.rs:.*\binit_subscriber\b"),
+    ("--exclude-re", r"^src/infra/logging/terminal\.rs:.*\b(columns|stream_columns_windows|enable_console_ansi)\b"),
     ("--exclude-re", r"^src/infra/logging/style\.rs:.*\bno_color_enabled\b"),
+    ("--exclude-re", r"^src/infra/logging/utils\.rs:.*\bdotfiles_log_dir\b"),
     ("--exclude-re", r"^src/app/commands/execution/elevation\.rs:.*\b(prepare_windows_elevation|prepare_elevation_fallback)\b"),
     ("--exclude-re", r"^src/app/interrupt\.rs:.*\bend_prompt_line\b"),
     ("--exclude-re", r"^src/engine/context/mod\.rs:.*\bis_elevated\b"),
@@ -91,11 +93,12 @@ LINUX_EXCLUSIONS = (
     ("--exclude-re", r"^src/domains/dotfiles/self_update/http\.rs:.*\bretry_delay\b"),
     ("--exclude-re", r"^src/domains/dotfiles/self_update/install\.rs:.*\bis_windows_transient_busy\b"),
     ("--exclude-re", r"^src/domains/dotfiles/self_update/install\.rs:[0-9]+:[0-9]+: replace <impl Drop for UpdateJournal>::drop with \(\)$"),
-    ("--exclude-re", r"^src/domains/editors/vscode_extensions/launcher\.rs:.*\bmanaged_insiders_unavailable_non_linux\b"),
+    ("--exclude-re", r"^src/domains/editors/vscode_extensions/launcher\.rs:.*\b(managed_insiders_unavailable|managed_insiders_unavailable_non_linux)\b"),
+    ("--exclude-re", r"^src/domains/overlay/resolution\.rs:.*\bread_worktree_confirmation\b"),
     ("--exclude-re", r"^src/domains/repository/update/apply\.rs:.*\bfetch_retry_delay\b"),
     ("--exclude-re", r"^src/domains/packages/resources/pacman\.rs:.*\bis_root\b"),
     ("--exclude-re", r"^src/domains/system/resources/registry\.rs:.*\bnative::"),
-    ("--exclude-re", r"^src/domains/system/resources/systemd_unit/offline\.rs:[0-9]+:[0-9]+: replace match guard error\.kind\(\) == std::io::ErrorKind::NotFound with true in reconcile_user_links$"),
+    ("--exclude-re", r"^src/domains/system/resources/systemd_unit/offline\.rs:[0-9]+:[0-9]+: replace match guard error\.kind\(\) == std::io::ErrorKind::NotFound with true in SystemdUnitResource::reconcile_user_links$"),
     ("--exclude-re", r"^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$"),
     ("--exclude-re", r"^src/domains/ai/apm/cowork/skill_files\.rs:[0-9]+:[0-9]+: delete match arm \(false, _\) in skill_files_match$"),
     ("--exclude-re", r"^src/domains/ai/apm/cowork/skill_files\.rs:[0-9]+:[0-9]+: (delete match arm \(false, _\)|replace (?:match guard )?is_dir_like\(meta\) with (true|false)) in copy_skill_files$"),

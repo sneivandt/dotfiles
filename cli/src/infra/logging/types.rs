@@ -589,6 +589,15 @@ mod tests {
     }
 
     #[test]
+    fn output_run_event_writes_to_attached_run_log() {
+        let root = tempfile::tempdir().unwrap();
+        let log = super::super::Logger::new_in("test", root.path());
+        log.run_event(LogEvent::Info, "run-event-marker");
+        let content = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+        assert!(content.contains("run-event-marker"), "{content}");
+    }
+
+    #[test]
     fn legacy_action_counts_default_unfinished_items_to_zero() {
         let counts: ActionCounts =
             serde_json::from_str(r#"{"applied":2,"planned":0,"skipped":1,"failed":0}"#).unwrap();

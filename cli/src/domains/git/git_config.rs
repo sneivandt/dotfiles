@@ -235,5 +235,104 @@ mod tests {
             !debug.iter().any(|m| m.contains("ok user.name = Alice")),
             "changed setting must not log ok: {debug:?}"
         );
+
+        // ConfigureGitFile::report must subtract changed from total (3 - 1 == 2, != 4, != 3).
+        let stats_op = ConfigureGitFile {
+            path: dir.path().join("gitconfig-stats"),
+            settings: vec![
+                GitConfigResource::new("a.b".into(), "1".into()),
+                GitConfigResource::new("c.d".into(), "2".into()),
+                GitConfigResource::new("e.f".into(), "3".into()),
+            ],
+        };
+        let reported = stats_op
+            .report(&ctx, &stats_op.settings[..1], false)
+            .unwrap();
+        let report_stats = crate::test_helpers::task_batch(&reported);
+        assert_eq!(report_stats.changed_count(), 1);
+        assert_eq!(report_stats.already_ok_count(), 2);
+    }
+
+    #[test]
+    fn configure_git_removes_legacy_autocrlf_only_on_windows_when_unset() {
+        use std::sync::Arc;
+        let dir = tempfile::tempdir().unwrap();
+        let make_platform_ctx = |os: crate::infra::platform::Os, home: &std::path::Path| {
+            let log_handle: Arc<dyn crate::infra::logging::Log> =
+                Arc::new(crate::test_helpers::CapturingOutput::default());
+            Context::from_raw(
+                home.to_path_buf(),
+                None,
+                crate::infra::platform::Platform::new(os, false),
+                log_handle,
+                Arc::new(crate::infra::exec::MockExecutor::new()),
+                home.to_path_buf(),
+                crate::engine::ContextOpts::default(),
+            )
+        };
+
+        // Linux with non-empty settings must NOT remove an existing core.autocrlf.
+        let linux_home = dir.path().join("linux-home");
+        std::fs::create_dir(&linux_home).unwrap();
+        let linux_cfg = linux_home.join(".gitconfig");
+        std::fs::write(&linux_cfg, "[core]\n\tautocrlf = true\n").unwrap();
+        let linux_ctx = make_platform_ctx(crate::infra::platform::Os::Linux, &linux_home);
+        let linux_task = ConfigureGit::with_config_path(
+            ConfigHandle::new(vec![GitSetting {
+                key: "user.name".into(),
+                value: "Alice".into(),
+                origin: None,
+            }]),
+            linux_cfg.clone(),
+        );
+        let linux_res = linux_task.run(&linux_ctx).unwrap();
+        crate::test_helpers::assert_task_changed(&linux_res);
+        let linux_after = std::fs::read_to_string(&linux_cfg).unwrap();
+        assert!(
+            linux_after.contains("autocrlf = true"),
+            "Linux must not remove core.autocrlf: {linux_after}"
+        );
+
+        // Windows with empty settings still runs autocrlf cleanup (not NotApplicable).
+        let win_empty_home = dir.path().join("win-empty-home");
+        std::fs::create_dir(&win_empty_home).unwrap();
+        let win_empty_cfg = win_empty_home.join(".gitconfig");
+        std::fs::write(&win_empty_cfg, "[core]\n\tautocrlf = true\n").unwrap();
+        let win_empty_ctx = make_platform_ctx(crate::infra::platform::Os::Windows, &win_empty_home);
+        let win_empty_task =
+            ConfigureGit::with_config_path(ConfigHandle::new(vec![]), win_empty_cfg.clone());
+        let win_empty_res = win_empty_task.run(&win_empty_ctx).unwrap();
+        assert!(
+            !matches!(win_empty_res, TaskResult::NotApplicable(_)),
+            "Windows with empty settings must still clean up core.autocrlf: {win_empty_res:?}"
+        );
+        let win_empty_after = std::fs::read_to_string(&win_empty_cfg).unwrap();
+        assert!(
+            !win_empty_after.contains("autocrlf"),
+            "Windows empty-settings run should unset core.autocrlf: {win_empty_after}"
+        );
+
+        // Windows with explicit core.autocrlf must keep it rather than unsetting it.
+        let win_explicit_home = dir.path().join("win-explicit-home");
+        std::fs::create_dir(&win_explicit_home).unwrap();
+        let win_explicit_cfg = win_explicit_home.join(".gitconfig");
+        std::fs::write(&win_explicit_cfg, "[core]\n\tautocrlf = true\n").unwrap();
+        let win_explicit_ctx =
+            make_platform_ctx(crate::infra::platform::Os::Windows, &win_explicit_home);
+        let win_explicit_task = ConfigureGit::with_config_path(
+            ConfigHandle::new(vec![GitSetting {
+                key: "core.autocrlf".into(),
+                value: "input".into(),
+                origin: None,
+            }]),
+            win_explicit_cfg.clone(),
+        );
+        let win_explicit_res = win_explicit_task.run(&win_explicit_ctx).unwrap();
+        crate::test_helpers::assert_task_changed(&win_explicit_res);
+        let win_explicit_after = std::fs::read_to_string(&win_explicit_cfg).unwrap();
+        assert!(
+            win_explicit_after.contains("autocrlf = input"),
+            "explicit core.autocrlf on Windows must be preserved: {win_explicit_after}"
+        );
     }
 }

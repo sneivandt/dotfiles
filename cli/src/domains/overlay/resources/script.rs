@@ -365,6 +365,23 @@ mod tests {
         ensure_script_path_within(&root, &inside).unwrap();
         let err = ensure_script_path_within(&root, &outside).unwrap_err();
         assert!(err.to_string().contains("escapes overlay root"), "{err:#}");
+
+        let escaped = ScriptResource::new(
+            "escaped".into(),
+            outside,
+            root,
+            Arc::new(MockExecutor::new()),
+        );
+        let state_err = escaped.current_state().unwrap_err();
+        assert!(
+            state_err.to_string().contains("escapes overlay root"),
+            "{state_err:#}"
+        );
+        let exec_err = escaped.execute(ScriptMode::Apply).unwrap_err();
+        assert!(
+            exec_err.to_string().contains("escapes overlay root"),
+            "{exec_err:#}"
+        );
     }
 
     #[test]

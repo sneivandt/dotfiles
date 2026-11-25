@@ -532,3 +532,24 @@ fn offline_unsupported_install_semantics_fail_before_creating_links() {
     let resource = offline_unit(home.path(), &format!("audit{}one.service", '@'), true);
     assert!(resource.apply().is_err());
 }
+
+#[cfg(unix)]
+#[test]
+fn offline_enablement_propagates_non_missing_link_errors() {
+    let home = tempfile::tempdir().unwrap();
+    let user = home.path().join(".config/systemd/user");
+    std::fs::create_dir_all(&user).unwrap();
+    std::fs::write(
+        user.join("audit.service"),
+        "[Install]\nWantedBy=default.target\n",
+    )
+    .unwrap();
+    // A regular file where the wants directory belongs causes symlink_metadata(link)
+    // to return ENOTDIR rather than NotFound.
+    std::fs::write(user.join("default.target.wants"), "not a directory").unwrap();
+    let resource = offline_unit(home.path(), "audit.service", true);
+    assert!(
+        resource.current_state().is_err(),
+        "ENOTDIR on enablement link lookup must fail rather than report Missing"
+    );
+}

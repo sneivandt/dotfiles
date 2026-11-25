@@ -108,5 +108,21 @@ mod tests {
         // Non-comment line ending in '\n' before guard must fail (kills && -> ||).
         let bad = format!("export FOO=1\n{GUARD}");
         assert!(update(&bad).is_err());
+
+        // Legacy trailer at start of file (empty prefix) migrates cleanly (kills || -> &&).
+        let legacy_only = update(LEGACY).unwrap().unwrap();
+        assert_eq!(legacy_only, GUARD);
+
+        // Legacy trailer after a non-empty line without line continuation migrates (kills delete !).
+        let after_line = update(&format!("export FOO=1\n{LEGACY}")).unwrap().unwrap();
+        assert_eq!(after_line, format!("{GUARD}export FOO=1\n\n{GUARD}"));
+
+        // Legacy trailer after a backslash line continuation must NOT be stripped
+        // (so check_unmanaged rejects the preserved legacy marker).
+        let continued = format!("echo hi \\\n{LEGACY}");
+        assert!(
+            update(&continued).is_err(),
+            "line-continued legacy trailer must not be migrated"
+        );
     }
 }

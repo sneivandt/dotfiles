@@ -920,3 +920,66 @@ fn remove_does_not_overwrite_user_files_or_directories() {
         assert_eq!(std::fs::read_to_string(user_file).unwrap(), "user content");
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn missing_managed_source_legacy_source_and_removal_description_contracts() {
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path();
+    let source = root.join("source");
+    let legacy = root.join("legacy");
+    let other = root.join("other");
+    let target = root.join("target");
+
+    let resource = SymlinkResource::new(&source, &target, system_executor())
+        .with_legacy_source(Some(legacy.clone()));
+    assert_eq!(
+        resource.removal_description(),
+        format!("{} from {}", target.display(), source.display())
+    );
+
+    // 1. Target absent -> false.
+    assert!(!resource.has_missing_managed_source().unwrap());
+
+    // 2. Target is a regular file -> false.
+    std::fs::write(&target, "plain").unwrap();
+    assert!(!resource.has_missing_managed_source().unwrap());
+    std::fs::remove_file(&target).unwrap();
+
+    // 3. Target is a symlink pointing to an unrelated missing path -> false.
+    std::os::unix::fs::symlink(&other, &target).unwrap();
+    assert!(!resource.has_missing_managed_source().unwrap());
+    std::fs::remove_file(&target).unwrap();
+
+    // 4. Target points to managed source while source exists -> false.
+    std::fs::write(&source, "present").unwrap();
+    std::os::unix::fs::symlink(&source, &target).unwrap();
+    assert!(!resource.has_missing_managed_source().unwrap());
+
+    // 5. Managed source disappears while target still points to it -> true.
+    std::fs::remove_file(&source).unwrap();
+    assert!(resource.has_missing_managed_source().unwrap());
+    std::fs::remove_file(&target).unwrap();
+
+    // 6. Legacy link is NOT retired while the legacy source still exists on disk.
+    std::fs::write(&source, "new").unwrap();
+    std::fs::write(&legacy, "still-here").unwrap();
+    std::os::unix::fs::symlink(&legacy, &target).unwrap();
+    assert!(
+        matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Invalid { .. }
+        ),
+        "existing legacy source must not be treated as a retired link"
+    );
+
+    // Once the legacy source is gone, the link is recognized as a retired legacy link.
+    std::fs::remove_file(&legacy).unwrap();
+    assert!(
+        matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ),
+        "removed legacy source should be eligible for migration"
+    );
+}

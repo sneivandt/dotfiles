@@ -1157,8 +1157,8 @@ class GateTests(unittest.TestCase):
             (1, 0, 1, 0),
             (300, 250, 1, 1),
             (301, 251, 2, 2),
-            (3300, 750, 11, 3),
-            (20881, 2000, 11, 3),
+            (3900, 750, 13, 3),
+            (20881, 2000, 13, 3),
         ):
             with self.subTest(lib_count=lib_count, app_count=app_count):
                 shards = MUTATION_RUN["linux_matrix"](

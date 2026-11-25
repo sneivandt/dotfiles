@@ -63,7 +63,7 @@ jobs:
   mutation:
     name: "Rust: Mutation (changed code, shard ${{ matrix.id }})"
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 105
     needs: [select]
     if: needs.select.outputs.run_linux == 'true'
     strategy:

@@ -744,4 +744,76 @@ mod tests {
         assert_eq!(fgetxattr_query(&xattr_dst, "user.keep"), Ok(1));
         assert_eq!(fgetxattr_query(&xattr_dst, "user.skip"), Err(Errno::NODATA));
     }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn copy_regular_contents_preserves_sparse_holes_and_data_extents() {
+        use rustix::fs::{XattrFlags, fgetxattr_query, fsetxattr};
+        use rustix::io::Errno;
+        use std::io::{Seek as _, SeekFrom, Write as _};
+        use std::os::unix::fs::MetadataExt as _;
+        let root = tempfile::tempdir_in(".").unwrap();
+        let mixed_src_path = root.path().join("mixed-sparse-src");
+        let mixed_dst_path = root.path().join("mixed-sparse-dst");
+        let mut mixed_src = std::fs::File::options()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&mixed_src_path)
+            .unwrap();
+        let data_a = vec![b'A'; 4096];
+        let data_b = vec![b'B'; 4096];
+        mixed_src.seek(SeekFrom::Start(64 * 1024)).unwrap();
+        mixed_src.write_all(&data_a).unwrap();
+        mixed_src.seek(SeekFrom::Start(192 * 1024)).unwrap();
+        mixed_src.write_all(&data_b).unwrap();
+        mixed_src.set_len(256 * 1024).unwrap();
+        mixed_src.rewind().unwrap();
+
+        let mut mixed_dst = std::fs::File::options()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&mixed_dst_path)
+            .unwrap();
+        copy_regular_contents(&mut mixed_src, &mut mixed_dst).unwrap();
+        let dst_meta = mixed_dst.metadata().unwrap();
+        assert_eq!(dst_meta.len(), 256 * 1024);
+        assert!(
+            dst_meta.blocks().saturating_mul(512) < dst_meta.len(),
+            "destination should remain sparse: blocks={} len={}",
+            dst_meta.blocks(),
+            dst_meta.len()
+        );
+        let expected_bytes = std::fs::read(&mixed_src_path).unwrap();
+        let actual_bytes = std::fs::read(&mixed_dst_path).unwrap();
+        assert_eq!(actual_bytes, expected_bytes);
+
+        // Inherited ACL on destination must be cleared when source has no ACL.
+        let mut acl = 2_u32.to_le_bytes().to_vec();
+        for (tag, rights) in [(1_u16, 7_u16), (4, 5), (32, 0)] {
+            acl.extend(tag.to_le_bytes());
+            acl.extend(rights.to_le_bytes());
+            acl.extend(u32::MAX.to_le_bytes());
+        }
+        let plain_dir_src = root.path().join("plain-dir-src");
+        let inherited_dir_dst = root.path().join("inherited-dir-dst");
+        std::fs::create_dir(&plain_dir_src).unwrap();
+        std::fs::create_dir(&inherited_dir_dst).unwrap();
+        let plain_src_fd = std::fs::File::open(&plain_dir_src).unwrap();
+        let inherited_dst_fd = std::fs::File::open(&inherited_dir_dst).unwrap();
+        fsetxattr(
+            &inherited_dst_fd,
+            "system.posix_acl_default",
+            &acl,
+            XattrFlags::empty(),
+        )
+        .unwrap();
+        preserve_copy_metadata(&plain_src_fd, &inherited_dst_fd).unwrap();
+        assert_eq!(
+            fgetxattr_query(&inherited_dst_fd, "system.posix_acl_default"),
+            Err(Errno::NODATA),
+            "inherited default ACL must be removed when source has none"
+        );
+    }
 }

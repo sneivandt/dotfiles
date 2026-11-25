@@ -454,9 +454,12 @@ fn apply_repository_updates_handles_first_merge_failure_and_inspect_errors() {
     });
     let ctx_cancel = make_update_context(&main3, None, mock_cancel).with_cancellation(cancel_token);
     let (res_cancel, _) = run_update(&ctx_cancel);
+    let cancel_err = res_cancel.expect_err("expected Err when cancelled during inspect");
     assert!(
-        res_cancel.is_err(),
-        "expected Err when cancelled during inspect"
+        cancel_err
+            .downcast_ref::<crate::engine::BatchReport>()
+            .is_none(),
+        "first-repo error must not attach a partial BatchReport"
     );
 }
 

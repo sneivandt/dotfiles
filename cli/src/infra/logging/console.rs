@@ -594,6 +594,16 @@ mod tests {
     }
 
     #[test]
+    fn report_output_error_writes_formatted_error_to_stderr() {
+        let console = super::Console::new(false);
+        console.report_output_error("disk full");
+        assert_eq!(
+            console.lock().captured,
+            vec![(true, "ERROR disk full\n".into())]
+        );
+    }
+
+    #[test]
     fn progress_clear_sequences_cover_each_row_once() {
         for (rows, expected) in [
             (0, ""),

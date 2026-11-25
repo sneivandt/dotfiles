@@ -274,6 +274,16 @@ mod tests {
         // A symlink under an unselected skill is not a directory traversal.
         std::os::unix::fs::symlink(&target, unselected.join("unfollowed")).unwrap();
         check(fixture.path(), &target, &cancel).unwrap();
+
+        // Real dev/ino overlap and symlink destinations are rejected by check().
+        let err = check(fixture.path(), &source, &cancel).unwrap_err();
+        assert!(
+            err.to_string().contains("overlaps shared skills"),
+            "{err:#}"
+        );
+        let linked_dest = fixture.path().join("linked-cowork");
+        std::os::unix::fs::symlink(&target, &linked_dest).unwrap();
+        assert!(check(fixture.path(), &linked_dest, &cancel).is_err());
     }
 
     #[test]

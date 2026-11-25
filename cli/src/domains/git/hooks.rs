@@ -352,6 +352,33 @@ mod tests {
     }
 
     #[test]
+    fn add_recorded_hooks_accepts_only_removal_and_regular_ownership_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let hooks_dir = dir.path().join("hooks");
+        std::fs::create_dir(&hooks_dir).unwrap();
+        std::fs::write(hooks_dir.join("ignored.txt"), "").unwrap();
+        std::fs::write(
+            hooks_dir.join(format!("pre-commit.{REMOVAL_EXTENSION}")),
+            "",
+        )
+        .unwrap();
+        std::fs::write(
+            hooks_dir.join(format!("post-merge.{OWNERSHIP_EXTENSION}")),
+            "",
+        )
+        .unwrap();
+        std::fs::create_dir(hooks_dir.join(format!("pre-push.{OWNERSHIP_EXTENSION}"))).unwrap();
+
+        let mut names = BTreeSet::new();
+        add_recorded_hooks(&hooks_dir, &mut names).unwrap();
+        let collected: Vec<String> = names
+            .into_iter()
+            .map(|n| n.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(collected, vec!["post-merge", "pre-commit"]);
+    }
+
+    #[test]
     fn uninstall_run_removes_installed_hook() {
         let dir = tempfile::tempdir().unwrap();
 

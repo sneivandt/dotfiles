@@ -5,7 +5,7 @@
 //! path is resolved from CLI args, the `DOTFILES_OVERLAY` environment
 //! variable, or the repository's local git config (`dotfiles.overlay`).
 use anyhow::{Context as _, Result, bail};
-use std::io::{self, IsTerminal as _, Write as _};
+use std::io::{self, IsTerminal as _};
 use std::path::{Path, PathBuf};
 
 /// Try to read the overlay path from the `DOTFILES_OVERLAY` environment variable.
@@ -208,16 +208,26 @@ fn confirm_linked_worktree(path: &Path) -> Result<bool> {
     reason = "the interactive safety prompt must remain on one terminal line"
 )]
 fn read_worktree_confirmation(path: &Path) -> Result<bool> {
-    eprint!(
+    read_worktree_confirmation_with(path, &mut io::stderr(), &mut io::stdin().lock())
+}
+
+fn read_worktree_confirmation_with(
+    path: &Path,
+    output: &mut impl io::Write,
+    input: &mut impl io::BufRead,
+) -> Result<bool> {
+    write!(
+        output,
         "Overlay path {} is a linked Git worktree. Use this worktree anyway? [y/N] ",
         path.display()
-    );
-    io::stderr()
+    )
+    .context("writing overlay worktree confirmation")?;
+    output
         .flush()
         .context("flushing overlay worktree confirmation")?;
 
     let mut answer = String::new();
-    io::stdin()
+    input
         .read_line(&mut answer)
         .context("reading overlay worktree confirmation")?;
     Ok(is_affirmative(&answer))
@@ -231,6 +241,24 @@ fn is_affirmative(answer: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_worktree_confirmation_with_writes_prompt_and_parses_response() {
+        for (input, expected) in [("y\n", true), ("YES\n", true), ("n\n", false), ("", false)] {
+            let mut prompt = Vec::new();
+            let mut reader = io::Cursor::new(input.as_bytes());
+            let confirmed = read_worktree_confirmation_with(
+                Path::new("/tmp/overlay-wt"),
+                &mut prompt,
+                &mut reader,
+            )
+            .unwrap();
+            assert_eq!(confirmed, expected, "input={input:?}");
+            let rendered = String::from_utf8(prompt).unwrap();
+            assert!(rendered.contains("/tmp/overlay-wt"), "{rendered}");
+            assert!(rendered.contains("[y/N] "), "{rendered}");
+        }
+    }
 
     #[test]
     fn worktree_prompt_requires_both_terminal_streams() {

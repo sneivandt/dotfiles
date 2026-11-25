@@ -144,5 +144,14 @@ packages = [
             let warnings = validate(&[package], Platform::new(Os::Linux, false));
             assert_messages(&warnings, count, &[message]);
         }
+
+        let standard = Package {
+            name: "git".into(),
+            is_aur: false,
+        };
+        assert!(
+            validate(&[standard], Platform::new(Os::Linux, false)).is_empty(),
+            "non-AUR package on non-Arch Linux must not warn"
+        );
     }
 }

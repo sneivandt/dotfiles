@@ -19,7 +19,99 @@ fn target_for_bashrc() {
             legacy_editor_source(&entry, &root),
             Some(win_target.as_str())
         );
+
+        let linux_target = format!(".config/Code - Insiders/User/{file}");
+        let expected_linux_legacy = format!("config/Code - Insiders/User/{file}");
+        let linux_entry = Symlink {
+            source: format!("config/Code/User/{file}"),
+            target: Some(linux_target),
+            allow_external_target: false,
+            origin: Some(root.clone()),
+        };
+        assert_eq!(
+            legacy_editor_source(&linux_entry, &root),
+            Some(expected_linux_legacy.as_str())
+        );
     }
+}
+
+#[test]
+fn resources_for_tracks_other_checkout_and_target_validators_reject_duplicates() {
+    use crate::infra::exec::MockExecutor;
+    use crate::infra::platform::{Os, Platform};
+    use std::sync::Arc;
+
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path().join("main");
+    let overlay = fixture.path().join("overlay");
+    let home = fixture.path().join("home");
+    std::fs::create_dir_all(root.join("symlinks")).unwrap();
+    std::fs::create_dir_all(overlay.join("symlinks")).unwrap();
+    std::fs::create_dir(&home).unwrap();
+    std::fs::write(root.join("symlinks/from-main"), "m").unwrap();
+    std::fs::write(overlay.join("symlinks/from-overlay"), "o").unwrap();
+
+    let main_entry = Symlink {
+        source: "from-main".into(),
+        target: Some(".redirect-ov/from-main".into()),
+        allow_external_target: true,
+        origin: Some(root.clone()),
+    };
+    let overlay_entry = Symlink {
+        source: "from-overlay".into(),
+        target: Some(".redirect-main/from-overlay".into()),
+        allow_external_target: true,
+        origin: Some(overlay.clone()),
+    };
+    let exec: Arc<dyn crate::infra::exec::Executor> = Arc::new(MockExecutor::new());
+    let resources = resources_for(
+        &root,
+        Some(&overlay),
+        &home,
+        Platform::new(Os::Linux, false),
+        &exec,
+        &[main_entry, overlay_entry],
+    );
+    assert_eq!(resources.len(), 2);
+    // Parent links redirecting into the other checkout's `symlinks/` tree must be rejected.
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(overlay.join("symlinks"), home.join(".redirect-ov")).unwrap();
+        let main_state = resources[0].current_state().unwrap();
+        assert!(
+            matches!(main_state, ResourceState::Invalid { ref reason } if reason.contains("managed source tree")),
+            "{main_state:?}"
+        );
+        std::os::unix::fs::symlink(root.join("symlinks"), home.join(".redirect-main")).unwrap();
+        let overlay_state = resources[1].current_state().unwrap();
+        assert!(
+            matches!(overlay_state, ResourceState::Invalid { ref reason } if reason.contains("managed source tree")),
+            "{overlay_state:?}"
+        );
+    }
+
+    // Duplicate resolved targets must be rejected by both target validators.
+    let dup_a = SymlinkResource::new(
+        root.join("symlinks/from-main"),
+        home.join(".dup"),
+        Arc::clone(&exec),
+    );
+    let dup_b = SymlinkResource::new(
+        overlay.join("symlinks/from-overlay"),
+        home.join(".dup"),
+        exec,
+    );
+    let err = validate_resolved_targets(&[dup_a.clone(), dup_b.clone()]).unwrap_err();
+    assert!(err.to_string().contains("collision"), "{err:#}");
+    let obs_err = validate_observed_targets(
+        [
+            (&dup_a, Some(home.join(".dup"))),
+            (&dup_b, Some(home.join(".dup"))),
+        ]
+        .into_iter(),
+    )
+    .unwrap_err();
+    assert!(obs_err.to_string().contains("collision"), "{obs_err:#}");
 }
 
 #[test]

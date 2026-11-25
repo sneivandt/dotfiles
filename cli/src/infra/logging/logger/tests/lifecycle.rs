@@ -39,8 +39,11 @@ fn task_entry(
 
 #[test]
 fn logger_new() {
-    let (log, _tmp, _guard) = isolated_logger();
+    let (mut log, _tmp, _guard) = isolated_logger();
     assert!(log.task_entries().is_empty(), "expected empty task list");
+    assert!(!log.is_quiet());
+    log.set_output_mode(super::super::super::OutputMode::Quiet);
+    assert!(log.is_quiet());
 }
 
 #[test]

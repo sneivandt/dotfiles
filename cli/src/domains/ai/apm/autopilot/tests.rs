@@ -16,11 +16,74 @@ use crate::engine::Context;
 use super::lockfile::parse_deployed_workflow_ids;
 use super::outcome::{
     FixupExecution, FixupFailure, FixupOutcome, decide_fixup_outcome, interpret_fixup_result,
+    report_fixup_execution,
 };
 use super::scripts::{
     WORKFLOW_AUTOPILOT_SCRIPT, WORKFLOW_DESIRED_IDS_SCRIPT, WORKFLOW_PRESENT_IDS_SCRIPT,
     build_workflow_script_args, parse_autopilot_result, parse_desired_ids,
 };
+
+#[test]
+fn report_fixup_execution_logs_outcomes_and_failures() {
+    use crate::infra::logging::MsgKind;
+    use crate::test_helpers::CapturingOutput;
+    use std::sync::Arc;
+
+    let dir = tempfile::tempdir().unwrap();
+    let log = Arc::new(CapturingOutput::default());
+    let log_clone = Arc::clone(&log);
+    let log_handle: Arc<dyn crate::infra::logging::Log> = log_clone;
+    let ctx = Context::from_raw(
+        dir.path().to_path_buf(),
+        None,
+        crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
+        log_handle,
+        Arc::new(MockExecutor::new()),
+        dir.path().to_path_buf(),
+        crate::engine::ContextOpts::default(),
+    );
+
+    report_fixup_execution(
+        &ctx,
+        FixupExecution::Completed {
+            outcome: FixupOutcome::Set(2),
+            stdout: "SET 2\n".into(),
+        },
+    );
+    report_fixup_execution(&ctx, FixupExecution::Failed(FixupFailure::DatabaseLocked));
+    report_fixup_execution(
+        &ctx,
+        FixupExecution::Failed(FixupFailure::WorkflowsTableMissing),
+    );
+    report_fixup_execution(
+        &ctx,
+        FixupExecution::Failed(FixupFailure::SchemaDrift("bad col".into())),
+    );
+    report_fixup_execution(
+        &ctx,
+        FixupExecution::Failed(FixupFailure::Other("boom".into())),
+    );
+
+    let infos = log.messages_of(MsgKind::Info);
+    assert!(
+        infos
+            .iter()
+            .any(|m| m.contains("restore 2 apm workflow(s)")),
+        "{infos:?}"
+    );
+    let warns = log.messages_of(MsgKind::Warn);
+    for expected in [
+        "is locked",
+        "workflows table is missing",
+        "bad col",
+        "autopilot fixup failed: boom",
+    ] {
+        assert!(
+            warns.iter().any(|m| m.contains(expected)),
+            "missing {expected:?} in {warns:?}"
+        );
+    }
+}
 
 #[test]
 fn snapshot_desired_workflows_handles_missing_table_and_query_errors() {

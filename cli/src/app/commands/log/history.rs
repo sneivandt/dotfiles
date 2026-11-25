@@ -344,16 +344,10 @@ fn read_run_metadata_from<R: std::io::Read + std::io::Seek>(
         .read_until(b'\n', &mut discard)
         .context("skipping partial tail line")?;
     let mut tail_lines = 0_usize;
-    loop {
-        line.clear();
-        let count = tail_reader
-            .read_line(&mut line)
-            .context("reading run metadata tail")?;
-        if count == 0 {
-            break;
-        }
+    for tail_line in (&mut tail_reader).lines() {
+        let tail_line = tail_line.context("reading run metadata tail")?;
         tail_lines = tail_lines.saturating_add(1);
-        parse_metadata_line(line.trim_end_matches(['\r', '\n']), run);
+        parse_metadata_line(&tail_line, run);
     }
 
     let needs_full_scan = !run.started

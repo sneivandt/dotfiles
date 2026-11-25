@@ -134,4 +134,15 @@ mod tests {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert!(prepare_private_directory(&path, uid).is_err());
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn account_lock_directory_returns_private_uid_scoped_tmp_dir() {
+        let uid = nix::unistd::Uid::effective().as_raw();
+        let dir = account_lock_directory().unwrap();
+        assert_eq!(
+            dir,
+            Path::new("/tmp").join(format!(".dotfiles-checkout-locks-{uid}"))
+        );
+    }
 }

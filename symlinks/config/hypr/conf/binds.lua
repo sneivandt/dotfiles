@@ -33,7 +33,8 @@ mediaBind("XF86AudioPrev", nil, "playerctl previous", false)
 
 -- Window management
 hl.bind(mod .. " + q", hl.dsp.window.close())
-hl.bind(mod .. " + f", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
+-- Fullscreen internally without notifying the client so browsers keep their tab bar.
+hl.bind(mod .. " + f", hl.dsp.window.fullscreen_state({ internal = 2, client = 0, action = "toggle" }))
 hl.bind(mod .. " + SHIFT + f", hl.dsp.window.fullscreen_state({ internal = 0, client = 2, action = "toggle" }))
 hl.bind(mod .. " + j", hl.dsp.layout("cyclenext"))
 hl.bind(mod .. " + k", hl.dsp.layout("cycleprev"))

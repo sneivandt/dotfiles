@@ -51,7 +51,7 @@ for the complete mapping.
 | Super + J / K | Focus the next / previous window in the layout |
 | Super + Shift + J / K | Swap the window with the next / previous layout position |
 | Super + T | Toggle floating mode |
-| Super + F | Toggle fullscreen mode |
+| Super + F | Toggle fullscreen without triggering in-app fullscreen |
 | Super + 1–9 | Change workspace |
 | Super + Shift + 1–9 | Move the window to a workspace without following it |
 | Super + End | Lock the session |

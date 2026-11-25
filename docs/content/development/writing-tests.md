@@ -32,7 +32,7 @@ domain-root task suites) without creating single-file feature directories just
 for tests.
 
 Integration tests import the curated
-[testing API](https://github.com/sneivandt/dotfiles/blob/main/cli/src/testing/mod.rs);
+[testing API](https://github.com/sneivandt/dotfiles/blob/main/cli/src/testing.rs);
 prefer testing observable behavior or adding a unit test rather than widening
 public visibility solely for an assertion.
 

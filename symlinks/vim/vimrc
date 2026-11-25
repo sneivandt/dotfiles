@@ -263,7 +263,7 @@ function! FoldText() " {{{
 endfunction " }}}
 
 " }}}
-" Filetype specitic ------------------------------------------------------- {{{
+" Filetype specific ------------------------------------------------------- {{{
 
 " Window-local options are inherited by new buffers and splits. Restore the
 " shared defaults before a buffer leaves, then apply the entering filetype.
@@ -292,48 +292,11 @@ augroup FiletypeWindowOptions
   autocmd BufWinEnter,FileType * call s:ApplyFiletypeWindowOptions()
 augroup END
 
-" C/C++ {{{
-
-augroup FiletypeCCpp
+" Indentation overrides for 4-space languages
+augroup FiletypeIndent
   autocmd!
-  " Indentation
-  autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
+  autocmd FileType c,cpp,haskell,java,python setlocal sw=4 ts=4 sts=4
 augroup END
-
-" }}}
-" Go {{{
-
-" Disable go version warning
-let g:go_version_warning=0
-
-" }}}
-" Haskell {{{
-
-augroup FiletypeHaskell
-  autocmd!
-  " Indentation
-  autocmd Filetype haskell setlocal sw=4 ts=4 sts=4
-augroup END
-
-" }}}
-" Java {{{
-
-augroup FiletypeJava
-  autocmd!
-  " Indentation
-  autocmd Filetype java setlocal sw=4 ts=4 sts=4
-augroup END
-
-" }}}
-" Python {{{
-
-augroup FiletypePython
-  autocmd!
-  " Indentation
-  autocmd Filetype python setlocal sw=4 ts=4 sts=4
-augroup END
-
-" }}}
 
 "}}}
 " Plugin settings --------------------------------------------------------- {{{
@@ -406,7 +369,8 @@ nmap ga <Plug>(EasyAlign)
 " }}}
 " Vim-go {{{
 
-" Disable autocreate templates
+" Disable go version warning and template autocreation
+let g:go_version_warning=0
 let g:go_template_autocreate=0
 
 " Autorun gofmt and goimports

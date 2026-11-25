@@ -113,22 +113,22 @@ impl Platform {
 
     /// Returns whether this platform is Arch Linux.
     pub const fn is_arch_linux(&self) -> bool {
-        self.is_arch
+        self.is_linux() && self.is_arch
     }
 
     /// Returns whether this platform is Windows Subsystem for Linux.
     pub const fn is_wsl(&self) -> bool {
-        self.is_wsl
+        self.is_linux() && self.is_wsl
     }
 
     /// Returns whether this platform uses pacman as the primary package manager.
     pub const fn uses_pacman(&self) -> bool {
-        self.os.is_unix_like() && self.is_arch
+        self.is_arch_linux()
     }
 
     /// Returns whether this platform supports AUR packages.
     pub const fn supports_aur(&self) -> bool {
-        self.is_arch
+        self.is_arch_linux()
     }
 
     /// Returns a display-friendly description of the platform.
@@ -303,11 +303,16 @@ mod tests {
         assert_eq!(Os::Windows.to_string(), "windows");
     }
 
-    fn platforms() -> [Platform; 5] {
+    fn platforms() -> [Platform; 6] {
         [
             Platform::new(Os::Linux, false),
             Platform::new(Os::Linux, true),
             Platform::new(Os::Windows, false),
+            Platform {
+                os: Os::Windows,
+                is_arch: true,
+                is_wsl: true,
+            },
             Platform::new_wsl(),
             Platform {
                 os: Os::Linux,
@@ -323,6 +328,7 @@ mod tests {
         let expected = [
             (true, false, false, false, "Linux"),
             (true, true, false, true, "Arch Linux"),
+            (false, false, false, false, "Windows"),
             (false, false, false, false, "Windows"),
             (true, false, true, false, "Linux"),
             (true, true, true, true, "Arch Linux"),
@@ -363,6 +369,7 @@ mod tests {
         let expected = [
             [false, true, true, true, false, false, false],
             [false, true, false, true, false, false, false],
+            [true, false, true, true, false, false, false],
             [true, false, true, true, false, false, false],
             [false, true, true, false, false, false, false],
             [false, true, false, false, false, false, false],

@@ -705,8 +705,8 @@ fn batch_probe_cancellation_propagates_without_fallback() {
         .run(&context(executor).with_dry_run(true))
         .expect_err("cancellation must abort instead of falling back");
     assert!(
-        err.downcast_ref::<crate::testing::error::ResourceError>()
-            .is_some_and(crate::testing::error::ResourceError::is_cancelled),
+        err.downcast_ref::<crate::engine::resource::ResourceError>()
+            .is_some_and(crate::engine::resource::ResourceError::is_cancelled),
         "unexpected error: {err:#}"
     );
 }

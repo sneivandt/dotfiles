@@ -322,9 +322,12 @@ mod tests {
     use std::any::TypeId;
 
     use crate::engine::{Context, TaskId, TaskMeta, TaskResult};
-    use crate::testing::engine::graph::validate;
 
     use anyhow::Result;
+
+    fn validate(tasks: &[&dyn Task]) -> Result<(), GraphError> {
+        ResolvedTaskGraph::resolve(tasks).map(|_| ())
+    }
 
     // -----------------------------------------------------------------------
     // Mock tasks — each is a distinct type so TaskId-based deps work.

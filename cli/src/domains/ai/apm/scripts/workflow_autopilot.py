@@ -146,18 +146,21 @@ def compute_next_run(interval, cron_expression, hour, minute, day, now_local):
 
 
 def parse_utc(value):
-    """Parse a stored next_run_at into an aware UTC datetime, or None."""
-    if not value:
+    """Parse a stored ISO-8601 UTC next_run_at into an aware UTC datetime, or None."""
+    if not isinstance(value, str):
         return None
     text = value.strip()
+    if not text:
+        return None
     if text.endswith("Z"):
-        text = text[:-1]
-    if "." in text:
-        text = text.split(".", 1)[0]
+        text = text[:-1] + "+00:00"
     try:
-        return datetime.strptime(text, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        parsed = datetime.fromisoformat(text)
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
 
 
 def table_has_rowid(connection):

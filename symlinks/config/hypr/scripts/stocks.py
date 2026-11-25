@@ -132,9 +132,13 @@ def write_cache(path, payload):
             temporary = Path(output.name)
             json.dump(payload, output, separators=(",", ":"), allow_nan=False)
         os.replace(temporary, path)
+        temporary = None
     finally:
         if temporary is not None:
-            temporary.unlink(missing_ok=True)
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def quotes(cache_dir, fetch=None, force=False):

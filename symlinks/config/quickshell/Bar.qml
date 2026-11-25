@@ -9,6 +9,7 @@ import Quickshell.Services.Mpris
 import Quickshell.Services.SystemTray
 import Quickshell.Services.UPower
 import Quickshell.Wayland
+import "Battery.js" as Battery
 import "MediaPlayer.js" as MediaPlayer
 import "Theme.js" as Theme
 
@@ -29,7 +30,7 @@ PanelWindow {
     readonly property real charge: hasBattery ? battery.percentage : 0
     readonly property bool charging: hasBattery && battery.state === UPowerDeviceState.Charging
     readonly property bool fullyCharged: hasBattery && battery.state === UPowerDeviceState.FullyCharged
-    readonly property string batteryIcon: charging ? "\uf0e7" : (fullyCharged ? "\uf240" : (charge <= 0.15 ? "\uf244" : (charge <= 0.35 ? "\uf243" : (charge <= 0.6 ? "\uf242" : (charge <= 0.85 ? "\uf241" : "\uf240")))))
+    readonly property string batteryIcon: Battery.icon(hasBattery, charging, fullyCharged, charge)
 
     function toggleMenu(menu) {
         menuController.toggle(menu);

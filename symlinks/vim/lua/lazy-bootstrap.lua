@@ -202,10 +202,9 @@ lazy.setup({
     end,
   },
 
-  -- Neovim-specific plugins (only loaded in Neovim)
+  -- Neovim-specific plugins
   {
     "nvim-tree/nvim-tree.lua",
-    cond = function() return vim.fn.has("nvim") == 1 end,
     config = function()
       require("nvim-tree").setup({
         disable_netrw = true,
@@ -239,7 +238,6 @@ lazy.setup({
 
   {
     "nvim-lualine/lualine.nvim",
-    cond = function() return vim.fn.has("nvim") == 1 end,
     config = function()
       require("lualine").setup({
         options = {
@@ -271,7 +269,6 @@ lazy.setup({
 
   {
     "nvim-treesitter/nvim-treesitter",
-    cond = function() return vim.fn.has("nvim") == 1 end,
     lazy = false,
     build = ":TSUpdate",
     config = function()
@@ -313,7 +310,6 @@ lazy.setup({
   {
     "lukas-reineke/indent-blankline.nvim",
     main = "ibl",
-    cond = function() return vim.fn.has("nvim") == 1 end,
     config = function()
       require("ibl").setup({
         indent = {
@@ -346,7 +342,6 @@ lazy.setup({
   -- Git integration with inline blame and signs
   {
     "lewis6991/gitsigns.nvim",
-    cond = function() return vim.fn.has("nvim") == 1 end,
     config = function()
       require("gitsigns").setup({
         signs = {

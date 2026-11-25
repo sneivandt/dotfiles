@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell.Services.UPower
+import "Battery.js" as Battery
 import "Theme.js" as Theme
 
 ShellPopup {
@@ -15,25 +16,7 @@ ShellPopup {
     readonly property color accentColor: !available ? Theme.mutedStrong : (charging || fullyCharged ? Theme.green : (charge <= 0.15 ? Theme.red : (charge <= 0.3 ? Theme.yellow : Theme.blue)))
 
     function batteryIcon() {
-        if (charging)
-            return "\uf0e7";
-
-        if (!available)
-            return "\uf128";
-
-        if (charge <= 0.15)
-            return "\uf244";
-
-        if (charge <= 0.35)
-            return "\uf243";
-
-        if (charge <= 0.6)
-            return "\uf242";
-
-        if (charge <= 0.85)
-            return "\uf241";
-
-        return "\uf240";
+        return Battery.icon(available, charging, fullyCharged, charge);
     }
 
     function stateLabel() {

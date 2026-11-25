@@ -151,6 +151,39 @@ print("spring and fall schedule repairs passed")
 }
 
 #[test]
+fn workflow_autopilot_script_parses_utc_timestamps() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    run_python_script(
+        python,
+        r#"
+import sys
+from datetime import datetime, timezone
+
+helpers = sys.argv[1].split("\ncon = sqlite3.connect", 1)[0]
+scope = {}
+exec(compile(helpers, "workflow_autopilot.py", "exec"), scope)
+parse_utc = scope["parse_utc"]
+
+assert parse_utc("2026-04-12T10:00:00.750Z") == datetime(
+    2026, 4, 12, 10, 0, 0, 750000, tzinfo=timezone.utc
+)
+assert parse_utc("2026-04-12T10:00:00Z") == datetime(
+    2026, 4, 12, 10, 0, 0, tzinfo=timezone.utc
+)
+assert parse_utc("2026-04-12T12:00:00+02:00") == datetime(
+    2026, 4, 12, 10, 0, 0, tzinfo=timezone.utc
+)
+assert parse_utc("2026-04-12T10:00:00.garbageZ") is None
+assert parse_utc("2026-04-12T10:00:00") is None
+assert parse_utc(None) is None
+"#,
+        &[WORKFLOW_AUTOPILOT_SCRIPT],
+    );
+}
+
+#[test]
 fn workflow_autopilot_script_deduplicates_managed_rows() {
     let Some(python) = python_for_script_tests() else {
         return;

@@ -151,6 +151,13 @@ PanelWindow {
                     onScrolled: steps => bar.audio.setVolume(bar.audio.volume + steps * 0.05)
                 }
                 BarBlock {
+                    id: powerButton
+                    glyph: "\uf011"
+                    tooltip: "Power and session"
+                    selected: powerMenu.visible && !powerMenu.closing
+                    onActivated: bar.toggleMenu(powerMenu)
+                }
+                BarBlock {
                     id: batteryButton
                     visible: bar.hasBattery
                     glyph: bar.batteryIcon
@@ -158,13 +165,6 @@ PanelWindow {
                     textColor: bar.charging || bar.fullyCharged ? Theme.green : (bar.charge <= 0.15 ? Theme.red : (bar.charge <= 0.3 ? Theme.yellow : Theme.foreground))
                     selected: batteryMenu.visible && !batteryMenu.closing
                     onActivated: bar.toggleMenu(batteryMenu)
-                }
-                BarBlock {
-                    id: powerButton
-                    glyph: "\uf011"
-                    tooltip: "Power and session"
-                    selected: powerMenu.visible && !powerMenu.closing
-                    onActivated: bar.toggleMenu(powerMenu)
                 }
             }
         }

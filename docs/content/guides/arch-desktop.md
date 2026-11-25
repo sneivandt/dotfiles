@@ -118,8 +118,8 @@ media, tray items, and system controls on the right:
 | Markets | View configured stock and cryptocurrency quotes, expand a quote, or request a refresh |
 | Network | Choose a saved network or enter a Wi-Fi password; right-click opens the connection editor |
 | Volume | Choose the output and adjust volume up to 150%, with 100% marked; scroll the bar icon for volume or middle-click to mute |
-| Battery, when present | Inspect battery status |
 | Power | Lock immediately, or confirm logout, restart, or shutdown |
+| Battery, when present | Inspect battery status |
 | Clock | Open the calendar |
 
 The media widget tracks whichever player is actively playing (or a paused

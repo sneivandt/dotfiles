@@ -43,14 +43,7 @@ fn workflow_scope_probe_is_read_only_and_scoped() {
     }
 }
 
-#[test]
-fn workflow_autopilot_script_uses_scheduled_date_timezone() {
-    let Some(python) = python_for_script_tests() else {
-        return;
-    };
-    run_python_script(
-        python,
-        r#"
+const PACIFIC_LOCAL_DATETIME_PRELUDE: &str = r#"
 import contextlib, io, sqlite3, struct, sys
 from datetime import datetime, timezone
 from unittest.mock import patch
@@ -84,7 +77,16 @@ class LocalDateTime(datetime):
         result = datetime.astimezone(value, local_zone if tz is None else tz)
         # Python's no-argument astimezone returns a fixed-offset local timezone.
         return result.replace(tzinfo=timezone(result.utcoffset())) if tz is None else result
+"#;
 
+#[test]
+fn workflow_autopilot_script_uses_scheduled_date_timezone() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    let script = format!(
+        "{PACIFIC_LOCAL_DATETIME_PRELUDE}\n{}",
+        r#"
 source = sys.argv[1]
 for name, current, expected in [
     ("spring", (2026, 3, 7, 9, 1), "2026-03-08T16:00:00.000Z"),
@@ -130,24 +132,41 @@ for name, current, expected in [
         "SELECT next_run_at FROM workflows WHERE id='apm--future'"
     ).fetchone()[0] == "2099-01-01T00:00:00.000Z"
     connection.close()
+"#
+    );
+    run_python_script(python, &script, &[WORKFLOW_AUTOPILOT_SCRIPT]);
+}
+
+#[test]
+fn workflow_autopilot_script_handles_dst_folds_and_gaps() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    let script = format!(
+        "{PACIFIC_LOCAL_DATETIME_PRELUDE}\n{}",
+        r#"
+source = sys.argv[1]
 helpers = source.split("\ncon = sqlite3.connect", 1)[0]
 scope = {}
 with patch("datetime.datetime", LocalDateTime):
     exec(compile(helpers, "workflow_autopilot.py", "exec"), scope)
-for wall_time, expected in [
-    (LocalDateTime(2026, 11, 1, 1, 15, fold=0), "2026-11-01T08:30:00.000Z"),
-    (LocalDateTime(2026, 11, 1, 1, 45, fold=0), "2026-11-01T09:30:00.000Z"),
-    (LocalDateTime(2026, 11, 1, 1, 15, fold=1), "2026-11-01T09:30:00.000Z"),
+for interval, cron, hour, minute, day, wall_time, expected in [
+    ("manual", "30 1 * * *", 0, 0, 0, LocalDateTime(2026, 11, 1, 1, 15, fold=0), "2026-11-01T08:30:00.000Z"),
+    ("manual", "30 1 * * *", 0, 0, 0, LocalDateTime(2026, 11, 1, 1, 45, fold=0), "2026-11-01T09:30:00.000Z"),
+    ("manual", "30 1 * * *", 0, 0, 0, LocalDateTime(2026, 11, 1, 1, 15, fold=1), "2026-11-01T09:30:00.000Z"),
+    ("manual", "30 2 * * *", 0, 0, 0, LocalDateTime(2026, 3, 8, 1, 45), "2026-03-09T09:30:00.000Z"),
+    ("hourly", None, 0, 30, 0, LocalDateTime(2026, 11, 1, 1, 45, fold=0), "2026-11-01T09:30:00.000Z"),
+    ("hourly", None, 0, 30, 0, LocalDateTime(2026, 3, 8, 1, 45), "2026-03-08T10:30:00.000Z"),
+    ("daily", None, 1, 30, 0, LocalDateTime(2026, 11, 1, 1, 45, fold=0), "2026-11-01T09:30:00.000Z"),
+    ("daily", None, 2, 30, 0, LocalDateTime(2026, 3, 8, 1, 45), "2026-03-09T09:30:00.000Z"),
+    ("weekly", None, 1, 30, 0, LocalDateTime(2026, 11, 1, 1, 45, fold=0), "2026-11-01T09:30:00.000Z"),
+    ("weekly", None, 2, 30, 0, LocalDateTime(2026, 3, 8, 1, 45), "2026-03-15T09:30:00.000Z"),
 ]:
-    actual = scope["compute_next_run"]("manual", "30 1 * * *", 0, 0, 0, wall_time)
-    assert actual == expected, (wall_time, wall_time.fold, actual, expected)
-assert scope["compute_next_run"](
-    "manual", "30 2 * * *", 0, 0, 0, LocalDateTime(2026, 3, 8, 1, 45)
-) == "2026-03-09T09:30:00.000Z"
-print("spring and fall schedule repairs passed")
-"#,
-        &[WORKFLOW_AUTOPILOT_SCRIPT],
+    actual = scope["compute_next_run"](interval, cron, hour, minute, day, wall_time)
+    assert actual == expected, (interval, wall_time, wall_time.fold, actual, expected)
+"#
     );
+    run_python_script(python, &script, &[WORKFLOW_AUTOPILOT_SCRIPT]);
 }
 
 #[test]

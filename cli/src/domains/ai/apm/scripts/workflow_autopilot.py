@@ -83,7 +83,7 @@ def compute_next_cron(expression, now_local):
     wildcard_day = month_day_text.startswith("*") or week_day_text.startswith("*")
 
     now_utc = now_local.astimezone(timezone.utc)
-    date = now_local.replace(hour=0, minute=0, second=0, microsecond=0, fold=0)
+    date = now_local.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0, fold=0)
     deadline = date + timedelta(days=8 * 366)
     while date < deadline:
         if date.month not in months:
@@ -127,19 +127,11 @@ def compute_next_run(interval, cron_expression, hour, minute, day, now_local):
     if cron_expression and cron_expression.strip():
         nxt = compute_next_cron(cron_expression.strip(), now_local)
     elif interval == "hourly":
-        nxt = now_local.replace(minute=minute, second=0, microsecond=0)
-        if nxt <= now_local:
-            nxt += timedelta(hours=1)
+        nxt = compute_next_cron(f"{minute} * * * *", now_local)
     elif interval == "daily":
-        nxt = now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if nxt <= now_local:
-            nxt += timedelta(days=1)
+        nxt = compute_next_cron(f"{minute} {hour} * * *", now_local)
     elif interval == "weekly":
-        nxt = now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        cur_dow = (nxt.weekday() + 1) % 7  # Python Mon=0..Sun=6 -> app Sun=0..Sat=6
-        nxt += timedelta(days=(day - cur_dow) % 7)
-        if nxt <= now_local:
-            nxt += timedelta(days=7)
+        nxt = compute_next_cron(f"{minute} {hour} * * {day}", now_local)
     else:
         return None
     return nxt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
@@ -262,7 +254,7 @@ cur = con.execute("UPDATE workflows SET mode='autopilot', enabled=1 WHERE id IN 
 # Keep local wall time naive: astimezone() on each future candidate must resolve
 # that date's local offset, not retain today's fixed UTC offset across DST.
 now_local = datetime.now()
-now_utc = datetime.now(timezone.utc)
+now_utc = now_local.astimezone(timezone.utc)
 cron_column = "cron_expression" if "cron_expression" in columns else "NULL"
 sched = con.execute(
     "SELECT id, interval, " + cron_column + ", schedule_hour, schedule_minute, "

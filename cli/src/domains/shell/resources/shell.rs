@@ -78,10 +78,14 @@ impl DefaultShellResource {
             .then(|| self.env.var("SUDO_USER"))
             .flatten()
             .filter(|user| !user.is_empty() && user != "root");
-        sudo_user
+        let user = sudo_user
             .or_else(|| self.env.var("USER").filter(|user| !user.is_empty()))
             .or_else(|| self.env.var("LOGNAME").filter(|user| !user.is_empty()))
-            .ok_or_else(|| anyhow::anyhow!("USER and LOGNAME are not set").into())
+            .ok_or_else(|| anyhow::anyhow!("USER and LOGNAME are not set"))?;
+        if user.starts_with('-') || user.contains([':', '\0', '\n', '\r']) {
+            return Err(anyhow::anyhow!("invalid target account name: {user:?}").into());
+        }
+        Ok(user)
     }
 
     fn account_shell(&self, user: &str) -> ResourceResult<ResourceState> {
@@ -129,10 +133,17 @@ impl DefaultShellResource {
         let allowed = self.allowed_shells.read()?;
         let preferred = self.system_shell();
         let alias = format!("/bin/{}", self.target_shell);
+        let mut last_error = None;
         for candidate in [&preferred, &alias] {
             if shell_is_listed(&allowed, candidate) {
-                return self.executor.which_path(candidate);
+                match self.executor.which_path(candidate) {
+                    Ok(path) => return Ok(path),
+                    Err(error) => last_error = Some(error),
+                }
             }
+        }
+        if let Some(error) = last_error {
+            return Err(error);
         }
         anyhow::bail!("{preferred} is not registered in /etc/shells (also checked {alias})")
     }
@@ -879,5 +890,79 @@ mod tests {
 
         let error = resource.apply().unwrap_err().to_string();
         assert!(error.contains("sudo probe could not start"), "{error}");
+    }
+
+    #[test]
+    fn target_user_rejects_option_like_and_malformed_account_names() {
+        for bad in [
+            "-f",
+            "--help",
+            "user:0",
+            "user\nname",
+            "user\rname",
+            "user\0name",
+        ] {
+            let resource = DefaultShellResource::new(
+                "zsh".into(),
+                Arc::new(MockExecutor::new()),
+                env_for(bad),
+            )
+            .with_root(true);
+            let error = resource.current_state().unwrap_err().to_string();
+            assert!(
+                error.contains("invalid target account name"),
+                "{bad:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn registered_shell_falls_back_to_listed_alias_when_preferred_path_is_missing() {
+        let mut mock = MockExecutor::new();
+        let mut seq = mockall::Sequence::new();
+        mock.expect_which_path()
+            .once()
+            .in_sequence(&mut seq)
+            .withf(|program| program == SYSTEM_ZSH)
+            .returning(|_| Err(anyhow::anyhow!("/usr/bin/zsh not found")));
+        mock.expect_which_path()
+            .once()
+            .in_sequence(&mut seq)
+            .withf(|program| program == "/bin/zsh")
+            .returning(|program| Ok(PathBuf::from(program)));
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .withf(|spec| {
+                spec.program() == "usermod"
+                    && spec.arguments() == ["-s", "/bin/zsh", "stuart"]
+                    && spec.is_checked()
+            })
+            .returning(|_| Ok(ExecResult::success("")));
+        let resource = DefaultShellResource::new("zsh".into(), Arc::new(mock), env_for("stuart"))
+            .with_root(true);
+
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    }
+
+    #[test]
+    fn registered_shell_reports_lookup_error_when_all_listed_paths_are_missing() {
+        let mut mock = MockExecutor::new();
+        let mut seq = mockall::Sequence::new();
+        mock.expect_which_path()
+            .once()
+            .in_sequence(&mut seq)
+            .withf(|program| program == SYSTEM_ZSH)
+            .returning(|_| Err(anyhow::anyhow!("/usr/bin/zsh not found")));
+        mock.expect_which_path()
+            .once()
+            .in_sequence(&mut seq)
+            .withf(|program| program == "/bin/zsh")
+            .returning(|_| Err(anyhow::anyhow!("/bin/zsh not found")));
+        let resource = DefaultShellResource::new("zsh".into(), Arc::new(mock), env_for("stuart"))
+            .with_root(true);
+
+        let error = resource.apply().unwrap_err().to_string();
+        assert!(error.contains("/bin/zsh not found"), "{error}");
     }
 }

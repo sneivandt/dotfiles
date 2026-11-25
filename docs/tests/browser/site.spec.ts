@@ -725,10 +725,13 @@ test('task pages combine behavior, configuration, and removal guidance', async (
     });
     expect(introduction?.trim(), task.href).toBeTruthy();
     await expect(page.locator('main table').first()).toContainText(task.selector!);
-    for (const anchor of ['what-it-does', 'configuration', 'preview-and-apply', 'removal']) {
+    for (const anchor of ['what-it-does', 'preview-and-apply', 'removal']) {
       await expect(page.locator(`main h2#${anchor}`)).toHaveCount(1);
       await expect(page.locator(`.VPDocAsideOutline a[href="#${anchor}"]`)).toHaveCount(1);
     }
+    // Fixed integrations explain their built-in behavior without a settings section.
+    await expect(page.locator('.VPDocAsideOutline a[href="#configuration"]'))
+      .toHaveCount(await page.locator('main h2#configuration').count());
     await assertNoPageOverflow(page);
   }
 });
@@ -767,6 +770,7 @@ for (const font of ['system', 'fallback']) {
           })),
         }));
         expect(dimensions.visible, route).toBeLessThanOrEqual(375);
+        expect(dimensions.content, route).toBeLessThanOrEqual(dimensions.visible + 1);
         for (const cell of dimensions.cells) {
           expect(cell.width, route).toBeGreaterThan(0);
           expect(cell.fontSize, route).toBeGreaterThanOrEqual(14);
@@ -995,8 +999,9 @@ test('client navigation and theme changes rerender diagrams', async ({ page, isM
 for (const { name } of documents.filter(({ source }) => /^```mermaid\s*$/m.test(source))) {
   const guide = name.replace(/\.md$/, '');
   for (const theme of ['light', 'dark'] as const) {
-    test(`${guide} has readable, accessible diagrams in ${theme} mode`, async ({ page }) => {
+    test(`${guide} has readable, accessible diagrams in ${theme} mode`, async ({ page, isMobile }) => {
       test.setTimeout(180_000);
+      if (isMobile) await page.setViewportSize({ width: 375, height: 667 });
       const errors: string[] = [];
       page.on('pageerror', (error) => errors.push(error.message));
       page.on('console', (message) => {
@@ -1019,6 +1024,8 @@ for (const { name } of documents.filter(({ source }) => /^```mermaid\s*$/m.test(
       });
       expect(labels.length).toBeGreaterThan(0);
       for (const size of labels) expect(size).toBeGreaterThanOrEqual(14);
+      const frame = page.locator('.mermaid');
+      expect(await frame.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
       await assertNoPageOverflow(page);
       expect(errors).toEqual([]);
     });

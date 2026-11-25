@@ -32,15 +32,12 @@ launcher records the checkout path, moving the checkout later can leave it point
 to a missing directory.
 
 Launcher installation and command discovery are separate tasks: [Shell PATH](shell-path.md)
-adds the destination directory to your user search path. If the launcher
-exists on disk but your shell cannot find `dotfiles`, check `PATH` before reinstalling
-or moving the checkout. [Getting started](../guides/getting-started.md#5-verify-the-installation)
+adds the destination directory to your user search path. Both the destination
+and launcher format are built in, with no TOML setting; keep the checkout in a
+permanent location so the recorded path stays valid. If the launcher exists on
+disk but your shell cannot find `dotfiles`, check `PATH` before reinstalling or
+moving the checkout. [Getting started](../guides/getting-started.md#5-verify-the-installation)
 shows how to verify the installed command.
-
-## Configuration
-
-The destination and launcher format are built in, with no TOML setting. Keep the
-checkout in a permanent location so the recorded path stays valid.
 
 ## Preview and apply
 
@@ -52,10 +49,9 @@ dotfiles update --only launcher --dry-run
 
 Confirm that the destination is this user's `.local/bin`. If an existing launcher
 is reported as foreign or modified, back it up and move it aside rather than
-overwriting it. After [applying the reviewed
-change](task-reference.md#preview-and-apply), verify that the launcher points to the
-intended checkout, and check [Shell PATH](shell-path.md) if the shell still cannot
-find `dotfiles`.
+overwriting it. After applying, verify that the launcher points to the intended
+checkout, and check [Shell PATH](shell-path.md) if the shell still cannot find
+`dotfiles`.
 
 ## Removal
 

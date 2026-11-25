@@ -36,7 +36,8 @@ shell alias, I edit the config file instead of adding a CLI flag. Profiles let
 me share the terminal basics everywhere without pulling a full desktop onto
 every machine.
 
-If you're here to borrow ideas, explore the guides above or browse the
+If you're here to borrow ideas, explore the [application settings](guides/application-settings.md)
+or browse the
 [repository](https://github.com/sneivandt/dotfiles). If you want to try it on
 your own machine, start with [Getting started](guides/getting-started.md) to
 review the defaults, back up existing files, and preview what would change

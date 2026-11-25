@@ -5,101 +5,53 @@ description: How this dotfiles setup separates Copilot and Codex preferences, re
 
 # Agent configuration
 
-This page explains how I organize coding-agent configuration across GitHub
-Copilot and OpenAI Codex with this dotfiles repository. The first half covers
-the three-layer design, what I actually manage in this setup, and where
-deployed content lands. The second half is the workflow for making changes,
-previewing deployments, and troubleshooting in this repository.
+To change how GitHub Copilot or OpenAI Codex behaves, start with the source
+that owns the change. Setting a model does not require redeploying skills,
+and guidance for one checkout does not require changing your home directory.
 
-The three-layer organization works in any setup, even without this CLI. The
-file paths, task names, and commands below describe this repository and assume
-dotfiles is installed with a selected profile; see
-[Getting started](getting-started.md) for installation.
+## Choose what to change
+
+- **Model, permissions, memory, or UI:** Edit
+  [conf/agent-settings.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml)
+  and [preview the preference change](#agent-preferences).
+- **A skill to use across projects:** [Add it to a local plugin](#add-a-skill-to-a-local-plugin)
+  under [symlinks/apm/plugins/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/).
+- **External package or MCP server:** [Declare the dependency](#add-a-package-or-configuration-fragment)
+  in a [configuration fragment](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/config/).
+  For private or employer-specific content, use the same layout in a
+  [private overlay](private-overlays.md). Keep credentials out of both checkouts.
+- **Instructions for one repository:** Edit its `AGENTS.md` or `.agents/skills/`.
+  The agent reads them there; skip the deployment steps.
 
 ## How the setup fits together
 
-An agent *harness* is the application running the agent, such as GitHub Copilot
-or OpenAI Codex. I keep three kinds of configuration separate:
+Your [profile and categories](profiles-and-categories.md) select preference
+keys for `agent-settings` and YAML fragments for `agent-packages`. The latter
+task merges the fragments into `~/.apm/apm.yml` and invokes
+[Microsoft APM](https://github.com/microsoft/apm) (Agent Package Manager).
+Edit the selected sources, not that generated manifest, the lockfile, or the
+copies deployed to a harness (the application that runs the agent).
 
-| Layer | Purpose | How it reaches the agent |
-|---|---|---|
-| Application preferences | Model, reasoning effort, permissions, memory, and UI defaults | The `agent-settings` task updates selected keys in application settings files without disturbing unmanaged keys |
-| Reusable agent content | Skills, instructions, hooks, workflows, and tool integrations used across repositories | The `agent-packages` task uses Microsoft APM to resolve and deploy packages |
-| Repository guidance | Project conventions and skills for work in one checkout | The harness reads that repository's `AGENTS.md` and `.agents/skills/` directly, without APM deployment |
-
-A *skill* is a focused set of instructions, optionally with supporting files.
-A *plugin* bundles reusable content; local plugins live in this checkout, while
-external packages come from remote dependencies. MCP servers provide tools the
-agent can call. [Microsoft APM](https://github.com/microsoft/apm), the Agent
-Package Manager, handles dependency resolution and native deployment for
-reusable content. It does not manage the Copilot and Codex preferences declared
-in this repository.
+A plugin can bundle skills (instructions with optional supporting files),
+hooks, or other reusable content. MCP servers provide tools the agent can call.
 
 ```mermaid
 flowchart TB
-    accTitle: How agent configuration flows from sources to harnesses
-    accDescr: Declared preferences update Copilot and Codex settings files directly. Selected APM fragments merge into one manifest that APM deploys to shared skills, Copilot MCP, and detected Copilot App or Cowork integrations. Each repository supplies its own AGENTS.md and .agents/skills directly.
-    Prefs["agent-settings.toml"] --> Settings["Copilot & Codex settings"]
-    Frags["APM fragments & plugins"] --> Merge["Merged apm.yml"]
-    Merge --> APM["APM deployment"]
-    APM --> Skills["Shared skills & Copilot MCP"]
-    APM --> Detected["Copilot App & Cowork"]
-    Repo["Repo AGENTS.md & skills"] --> Harness["Read directly by harness"]
+    accTitle: How reusable agent content reaches your tools
+    accDescr: Selected YAML fragments merge into one manifest. APM deploys to its listed targets, then dotfiles handles detected desktop integrations. User preferences and repository instructions do not pass through APM.
+    Frags["Selected fragments"] --> Manifest["Merged apm.yml"]
+    Manifest --> Primary["APM deploys to listed targets"]
+    Primary --> Extra["Detected integrations only"]
 ```
-
-Dotfiles supplies the selection and orchestration around those tools. Each
-machine runs a [profile](profiles-and-categories.md) that turns on categories
-such as `base`, `desktop`, `linux`, `windows`, or `arch`. Those categories
-decide which preference sections apply and which YAML configuration *fragments*
-(partial APM files) are selected. Before invoking APM, dotfiles combines the
-selected fragments into one generated *manifest* (`~/.apm/apm.yml`), deploys
-packages, and reconciles detected desktop integrations. Installing or upgrading
-the APM executable is a separate [package-management](package-management.md)
-concern.
-
-Employer-specific or private settings, fragments, and plugins live in a
-separate [private overlay](private-overlays.md) repository layered on top of
-this public one. Credentials stay outside tracked files.
-
-::: warning Packages can do more than provide text
-Review package sources before applying them. Packages can contain executable
-hooks, MCP servers (tools the agent can call), and scheduled workflows.
-When the Copilot App is detected, dotfiles enables its managed workflows in
-**autopilot** mode.
-:::
 
 ## What is in this setup
 
-Keeping the three layers separate makes it easy to share defaults across tools
-and machines while keeping host-specific or work-only pieces isolated:
-
-- **Targeted preferences across harnesses:**
-  [conf/agent-settings.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml)
-  pins shared defaults for both Copilot CLI and Codex (CLI, IDE extension, and
-  desktop app), including model and reasoning effort, memory generation and
-  use, Codex approval and workspace permissions, status-line and footer layout,
-  desktop IDE integration under `[desktop]`, and OS-specific CLI auto-update
-  rules (`autoUpdate` off on Linux where package management owns upgrades, on
-  under Windows). Volatile state, login data, and undeclared keys stay
-  untouched.
-- **Portable local plugins:**
-  [symlinks/apm/config/base.yml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/apm/config/base.yml)
-  selects two local plugins on every machine:
-  [dot-skill](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/dot-skill/)
-  (guidance on deciding whether customization belongs in dotfiles, a
-  repository, or a private overlay) and
-  [dot-workflow](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/dot-workflow/)
-  (reusable task workflows such as `ship` and `audit`).
-- **Platform-scoped external packages:**
-  [symlinks/apm/config/arch.yml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/apm/config/arch.yml)
-  adds an external Arch Linux triage skill only when the `arch` category is
-  active, keeping Arch-specific guidance off other hosts.
-- **Private overlays for work:** Work-only skills, MCP servers, and scheduled
-  workflows use the same fragment and plugin layout in a private overlay,
-  merged at update time without leaking into public dotfiles.
-- **Repository-local rules:** Guidance specific to one codebase stays in that
-  repository's `AGENTS.md` and `.agents/skills/` rather than being installed
-  globally.
+The [base fragment](https://github.com/sneivandt/dotfiles/blob/main/symlinks/apm/config/base.yml)
+selects two local plugins: [dot-skill](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/dot-skill/)
+for deciding where customization belongs, and [dot-workflow](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/dot-workflow/)
+for the `ship` and `audit` skills. These are skills you invoke, not scheduled
+Copilot App workflows. The [Arch fragment](https://github.com/sneivandt/dotfiles/blob/main/symlinks/apm/config/arch.yml)
+adds an external Arch Linux triage skill on Arch hosts.
 
 ## Deployment targets
 
@@ -126,23 +78,6 @@ These are not ordinary entries in the base target list. Removing a manifest
 target does not disable them. See [Detected integrations](#detected-integrations)
 for their selection and cleanup rules.
 
-## Choose what to change
-
-The rest of this page covers day-to-day changes in this repository. Start from
-the source file that owns what you want to update:
-
-| Change | Source |
-|---|---|
-| Set a Copilot or Codex preference | [conf/agent-settings.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml) |
-| Add an external plugin or MCP server | A YAML configuration fragment in [symlinks/apm/config/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/config/) |
-| Add or change a local plugin, including reusable skills, instructions, or hooks | A plugin directory under [symlinks/apm/plugins/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/), with its dependency in a configuration fragment |
-| Choose which profiles receive a fragment or plugin | [conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml) |
-| Guide contributors to this repository | [AGENTS.md](https://github.com/sneivandt/dotfiles/blob/main/AGENTS.md) or [.agents/skills/](https://github.com/sneivandt/dotfiles/tree/main/.agents/skills/) |
-
-Private overlays use the same fragment and plugin layout with compatible
-categories. Never edit the generated manifest (`~/.apm/apm.yml`), lock data,
-or deployed harness copies as a substitute for changing their sources.
-
 ## Agent preferences
 
 The `agent-settings` task edits only declared keys in these documents, leaving
@@ -157,7 +92,11 @@ Use the same `CODEX_HOME` when running dotfiles and Codex; a nonempty override
 must be an absolute path and does not move the old default file. Removing a
 declaration stops managing the key without deleting the stored value.
 
-Edit `conf/agent-settings.toml` and preview preference changes separately:
+For example, `[base]` sets model and reasoning effort for both harnesses,
+`[desktop]` connects Copilot CLI to the editor, and `autoUpdate` is off for
+Copilot on Linux and on for Windows. Edit the applicable section in
+`conf/agent-settings.toml`. With dotfiles installed and a profile selected,
+preview just the preference changes:
 
 ```sh
 dotfiles update --only agent-settings --dry-run
@@ -178,7 +117,7 @@ Use `example-tools` as a fictional plugin name in this walkthrough. Replace it
 with a name that describes your reusable content; a plugin can contain one
 skill or several related kinds of content.
 
-If the plugin already exists, add
+Create the skill in the plugin's directory:
 `symlinks/apm/plugins/example-tools/.apm/skills/change-summary/SKILL.md`:
 
 ```markdown title="symlinks/apm/plugins/example-tools/.apm/skills/change-summary/SKILL.md"
@@ -272,30 +211,36 @@ installation method as long as `apm` is on PATH.
 A dry run requires APM on PATH. What it can show depends on whether the
 generated manifest matches your source fragments:
 
-| Generated manifest | Preview behavior |
-|---|---|
-| Already matches the fragments | Runs `apm update -g --dry-run` and summarizes the native plan |
-| Would change | Describes the manifest write and update/install commands instead of asking APM to inspect stale inputs |
+- **Manifest matches:** dotfiles runs `apm update -g --dry-run` and summarizes
+  APM's plan.
+- **Manifest is missing or would change:** dotfiles describes the write and
+  update/install commands. It cannot list individual removals from the new
+  manifest without writing it first.
 
 Neither path deploys content, writes the generated manifest, or changes the
 Copilot App or Cowork integrations. APM's preview may contact upstream services.
 
 ### Apply the reviewed changes
 
-Review the sources, dependency changes, and destinations. Applying combines
-fragments into `~/.apm/apm.yml`, updates dependencies within their declared version
-rules, and installs content, including local edits with unchanged dependency refs.
-It then applies detected integrations. When you intend to deploy to your home:
+::: warning Packages can do more than provide text
+Review package sources and destinations before applying. Packages can contain
+executable hooks, MCP servers, and scheduled workflows. When the Copilot App
+is detected, dotfiles enables its managed workflows in **autopilot** mode.
+:::
+
+When you intend to deploy to your home, apply the reviewed changes:
 
 ```sh
 dotfiles update --only agent-packages
 ```
 
-This is a real deployment, not a way to test a skill edit in isolation.
-It can run package code and enable scheduled workflows. For preference changes,
-follow [Agent preferences](#agent-preferences). On Arch, the APM executable comes
-from the [apm-dotfiles package](package-management.md#custom-arch-packages);
-upgrading that application is separate from deploying agent content.
+Dotfiles writes the merged manifest if needed, updates dependencies within
+their version rules, then installs the result even if no revision advanced.
+This deploys local skill edits too. It then applies the detected integrations.
+For the example above, check for `~/.agents/skills/change-summary/SKILL.md`,
+not just the source link under `~/.apm/plugins/`.
+Upgrading the [APM executable](package-management.md#custom-arch-packages)
+is separate from deploying content.
 
 ## Configuration fragments
 
@@ -309,7 +254,8 @@ already in `~/.apm/config/` also contribute unless a selected source maps to
 the same entry. Links still pointing to a declared but inactive source are
 ignored and left in place.
 
-If you already maintain `~/.apm/apm.yml`, dotfiles will not replace it.
+If `~/.apm/apm.yml` is your own manifest rather than one generated by
+dotfiles, dotfiles will not replace it.
 Back it up outside `~/.apm/config/`, move the settings you want to keep into
 a fragment, and move the original manifest aside before retrying.
 

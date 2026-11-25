@@ -61,9 +61,9 @@ Here is how that single entry flows through the codebase:
 |---|---|
 | Decode and select | The [chmod decoder](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/files/config/chmod.rs) parses `permissions` into `ChmodEntry` values while the shared loader filters active categories |
 | Share the input | The [configuration inventory](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/config/mod.rs) exposes the selected entries as `store.chmod` |
-| Construct the task | The update catalog registers `Box::new(ApplyFilePermissions::new(store.chmod.clone()))`, while the remove catalog omits it |
+| Construct the task | The update catalog registers `ApplyFilePermissions` with `store.chmod`; the remove catalog omits it |
 | Schedule it | Task metadata sets selector `file-permissions` and a blocking dependency on `InstallSymlinks`; `should_run` checks for chmod-capable platforms |
-| Inspect and apply | Each entry becomes `ChmodResource::from_entry(entry, ctx.home())`; the adapter passes managed source roots and descendant exclusions into the shared lifecycle |
+| Inspect and apply | Each entry builds a `ChmodResource` via `from_entry` against `ctx.home()`; the adapter passes managed source roots and descendant exclusions into the shared lifecycle |
 
 Here are the core metadata and lifecycle calls from the task adapter (with
 surrounding setup omitted):

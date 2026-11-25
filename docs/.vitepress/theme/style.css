@@ -198,6 +198,18 @@
   margin-inline: auto;
 }
 
+@media (max-width: 639px) {
+  .vp-doc th,
+  .vp-doc td {
+    padding: 6px 8px;
+    overflow-wrap: anywhere;
+  }
+
+  .vp-doc :is(th, td) code {
+    white-space: normal;
+  }
+}
+
 .site-footer {
   margin-top: 32px;
   padding-top: 20px;

@@ -5,17 +5,11 @@ description: Choose packages, preview installation, and manage upgrades and remo
 
 # Package management
 
-Dotfiles ensures the software declared for your profile is installed, using
-pacman and Paru on Arch Linux or WinGet on Windows. It checks what is already
-present and installs only what is missing. Keeping existing applications up to
-date is a separate maintenance step, though installing a missing package on
-Arch can also upgrade the system.
-
-Installing a package and configuring it are managed separately: use
-[Application settings](application-settings.md) for linked dotfiles and
-preferences, and [Agent configuration](agent-configuration.md) for AI agent
-content. Updating the dotfiles CLI itself is also independent of system
-packages.
+Add a package to your profile to have dotfiles install it when missing. To
+**upgrade** software already installed, use [Paru on Arch Linux](#arch-linux)
+or [WinGet on Windows](#windows). To **uninstall** it, [remove the declaration
+and uninstall the package](#remove-a-package). None of these steps configures
+the application or updates the dotfiles CLI.
 
 ## Choose packages
 
@@ -25,15 +19,11 @@ Put packages in the matching category section: `[arch]` and `[windows]` apply
 to both profiles, while `[arch-desktop]` and `[windows-desktop]` add desktop
 applications (see [Profiles and categories](profiles-and-categories.md)).
 
-| Package source | Declaration |
-|---|---|
-| Arch official repositories, through pacman | Package name |
-| AUR (Arch User Repository), through Paru | Package name with `aur = true` |
-| Dotfiles-managed Arch recipe, through Paru | Custom package name with `aur = true` |
-| Windows, through WinGet | Exact WinGet ID |
-
-For example, these excerpts select a native Arch tool, an AUR application, and
-Git for Windows:
+Use a package name for the official Arch repositories. For an Arch User
+Repository (AUR) package or a [dotfiles-managed recipe](#custom-arch-packages),
+add `aur = true` so Paru handles it. On Windows, use the exact WinGet ID.
+This illustrative example selects ripgrep, the stable VS Code AUR package,
+and Git for Windows; the tracked desktop list selects VS Code **Insiders**.
 
 ```toml title="conf/packages.toml"
 [arch]
@@ -76,20 +66,13 @@ On an already configured machine, you can preview just the native package task:
 dotfiles update --only packages --dry-run
 ```
 
-Remember that `--only packages` covers **all active native packages**, not a
-single package and not the AUR list (use `aur-packages` on Arch for AUR and
-custom recipes). Scoped runs assume prerequisites are already installed; if you
-want dependencies pulled in, check the dependency graph before adding
-`--with-deps`, since it can also include Paru bootstrap and custom recipe
-preparation (see [Select tasks](commands-and-usage.md#select-tasks)).
+`--only packages` covers **all active native packages**, not one ID. For AUR
+and custom packages, select `aur-packages` instead. A scoped run assumes its
+prerequisites are ready. Before adding `--with-deps` to an AUR run, [inspect
+the dependency graph](commands-and-usage.md#select-tasks): it can bring in
+Paru bootstrap and custom recipe preparation.
 
 ### Arch Linux
-
-Both the weekly Reflector timer and the `update-mirrors` Zsh helper read
-`/etc/xdg/reflector/reflector.conf` for mirror filters and sorting. Include
-`--protocol https` there if you use the helper: if a generated mirrorlist is
-empty or contains a non-HTTPS mirror, `update-mirrors` leaves your current
-mirrorlist untouched even if those same filters work for the timer.
 
 ::: warning Installing a missing package can upgrade the system
 Pacman runs `pacman -Syu --needed --noconfirm`, which refreshes package
@@ -98,14 +81,15 @@ ones. Dry-run warns about this once per batch; its list names only the missing
 packages, not every package pacman may upgrade.
 :::
 
-When every declared native package is already installed, dotfiles skips pacman
-entirely rather than running a full system upgrade just because the command is
-called `update`.
+When every declared native package is already installed, dotfiles queries the
+inventory but does not run a pacman installation or upgrade.
 
 After a pacman or Paru install finishes (or fails or times out), dotfiles
 rechecks which requested packages are now present. Missing packages and
-timeouts still fail the task, while a retry requests only what is still absent.
-Investigate any failed install hook separately.
+timeouts still fail the task. A nonzero exit also remains a failure if every
+requested package is now present: a post-transaction hook may have failed. A
+retry requests only missing packages; it won't replay a hook for a package
+that is already installed.
 
 Paru builds and installs AUR packages, and the `paru` task bootstraps the
 helper or rebuilds it if a library upgrade breaks it. Keep the main dotfiles
@@ -113,25 +97,38 @@ run under your normal user account so Paru runs without an extra `sudo`
 wrapper, and always review AUR recipes and upstream sources before trusting
 them.
 
-Because dotfiles checks presence rather than upgrading installed software, run
-a normal dotfiles update followed by a full Paru upgrade when you want to
-refresh everything on Arch:
+To upgrade installed packages, refresh the dotfiles recipes first, then review
+Paru's transaction. The first command is a **full dotfiles update**, not just
+a package refresh.
 
-```sh
-dotfiles update
-paru -Syu
-```
+::: warning Preparation executes recipes and replaces Paru preferences
+A normal Arch update prepares every managed recipe, not just packages your
+profile installs. Metadata generation executes PKGBUILD code. Preparation
+replaces the entire Paru configuration without merging or backing up your
+preferences. Review the recipes and preserve settings you need before applying.
+:::
 
-Review Paru's transaction before confirming, since `paru -Syu` upgrades
-official, AUR, and custom packages across the whole machine. Running
-`dotfiles update` first ensures Paru sees refreshed snapshots for any
-[custom Arch packages](#custom-arch-packages).
+1. Run `dotfiles update`. Check that recipe preparation succeeded, not just
+   that the command exited successfully. Resolve any skips or failures first.
+2. Run `paru -Syu` and review its transaction before confirming. The upgrade
+   covers official, AUR, and custom packages, not just your declarations.
 
-The weekly `paccache.timer` keeps two cached versions of each package. On an
-existing machine, apply the retention drop-in with
-`dotfiles update --only system-files`, reload systemd with
-`sudo systemctl daemon-reload`, and preview what would be pruned with
-`paccache -d -k2`.
+### Arch mirrors and package cache
+
+Both the weekly Reflector timer and the `update-mirrors` Zsh helper read
+`/etc/xdg/reflector/reflector.conf` for mirror filters and sorting. Include
+`--protocol https` there if you use the helper: if a generated mirrorlist is
+empty or contains a non-HTTPS mirror, `update-mirrors` leaves your current
+mirrorlist untouched even if those same filters work for the timer.
+
+The default `paccache.timer` policy keeps two cached versions of each package.
+On an existing machine, review `dotfiles update --only system-files --dry-run`
+before applying: this scope includes **all selected system files**, not just
+the retention drop-in. Its two retention files are create-only; a differing
+file is a conflict to review, not something dotfiles overwrites. Check the
+effective `PACCACHE_ARGS`, reload systemd with `sudo systemctl daemon-reload`
+after installing a drop-in, and use `paccache -d -k2` to preview the
+two-version policy without pruning.
 
 ### Windows
 
@@ -141,9 +138,11 @@ reboot before retrying tasks that depend on it. Dotfiles never runs
 `winget upgrade --all`; use WinGet directly when you want to review and apply
 application upgrades.
 
-Installations try user scope first and fall back to machine scope only when no
-user-scope installer exists. Interactive prompts are suppressed and agreements
-accepted, though an individual installer can still trigger a UAC prompt.
+Installations use `--exact --no-upgrade` and try `--scope user` first. Only
+when WinGet reports no applicable installer does dotfiles retry **without a
+scope**, allowing WinGet to choose a machine installer rather than forcing
+one. WinGet's own prompts are suppressed and agreements accepted; an installer
+can still raise its own UAC prompt.
 
 If an install requires Administrator rights, is cancelled, or is blocked by
 policy, the task fails even if other packages installed cleanly. Responses
@@ -187,16 +186,18 @@ Use `aur-packages` for Arch AUR and custom-recipe installs. Fix the reported
 package-manager error before retrying; packages that already installed earlier
 in the batch stay installed.
 
-| Symptom | Check next |
-|---|---|
-| An expected package is absent from the plan | Active profile and categories, spelling, overlay declarations, and task filters |
-| Installed-package discovery fails | The pacman or WinGet error (never treated as an empty installed list) |
-| Pacman work is skipped for privileges | The reported elevation prerequisite; see [Elevation is unavailable](troubleshooting.md#elevation-is-unavailable) |
-| Paru cannot start or build | Helper health and [Rust/Cargo prerequisites](troubleshooting.md#paru-cannot-build-or-start) |
-| WinGet installation fails | Exact ID, installer scope, cancellation, or policy restrictions |
-| A custom package has no newer version | Refresh recipes first, then inspect `version.sh`, `.SRCINFO`, and `paru -Sl --pkgbuilds` |
-| Recipe preparation fails | The `custom-package-versions` or `custom-package-repository` log; existing pins survive a failed refresh |
-| A custom package is excluded from installation | Release metadata, snapshot ownership, and the generated repository section (never silently falls back to remote AUR) |
+- **Missing from the plan:** check inventory, active categories, spelling,
+  overlays, and task filters. An inventory query error stops planning; it
+  doesn't mean nothing is installed.
+- **Installer refused:** check pacman's [elevation prerequisite](troubleshooting.md#elevation-is-unavailable)
+  or WinGet's exact ID, installer scope, cancellation, and policy message.
+- **Paru won't start or build:** check [helper health and Rust/Cargo prerequisites](troubleshooting.md#paru-cannot-build-or-start).
+- **Custom package missing or out of date:** check the `custom-package-versions`
+  and `custom-package-repository` logs, then `version.sh`, `.SRCINFO`, and
+  `paru -Sl --pkgbuilds`. A failed release refresh preserves the existing
+  pin. If a recipe is excluded, inspect its release metadata, snapshot
+  ownership, and generated repository section; dotfiles won't silently
+  substitute a remote AUR package.
 
 See [Packages do not install](troubleshooting.md#packages-do-not-install) for
 broader recovery steps. If an ownership check rejects a snapshot cache
@@ -230,8 +231,7 @@ checkout.
 flowchart TB
     accTitle: Preparing and installing a custom Arch package
     accDescr: Release metadata and reviewed recipes produce snapshots for Paru. Package installation or upgrade is a separate step.
-    Release["Release metadata"] --> Snapshot["Prepared recipe"]
-    Recipe["Reviewed PKGBUILD"] --> Snapshot
+    Inputs["Recipe and release pin"] --> Snapshot["Local Git snapshot"]
     Snapshot --> Paru["Paru install or upgrade"]
 ```
 
@@ -240,13 +240,6 @@ older upstream packages; review Paru's replacement prompt carefully. The
 PowerShell recipe's install script adds `/usr/bin/pwsh` to `/etc/shells` when
 absent, and uninstalling removes only the marked entry it added while leaving
 existing or unmarked entries for you to review.
-
-::: warning Preparation executes recipes and replaces Paru preferences
-A normal Arch update prepares every managed recipe, not just selected packages.
-Metadata generation executes PKGBUILD code, and preparation replaces the entire
-Paru configuration without merging or backing up existing preferences. Review
-the recipes and preserve any Paru settings you want to keep before applying.
-:::
 
 For release-descriptor details, see
 [Custom package versions](../reference/custom-package-versions.md#configuration).

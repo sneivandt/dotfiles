@@ -36,7 +36,11 @@ behavior. For task reference pages, use the supporting
    with a link or remove it merely to shorten a page.
    Review its [findability guidance](../../../docs/content/development/writing-documentation.md#help-readers-find-the-topic)
    when changing titles, descriptions, headings, or topic terminology.
-5. Keep the root `README.md` concise and stable; avoid rewriting it unless a
+5. For a multi-page edit, follow one reader's path across the changed pages.
+   Check handoffs, shared terms, and where warnings affect a decision; use the
+   guide's [page review](../../../docs/content/development/writing-documentation.md#write-and-review-the-page)
+   to choose prose, a table, or a diagram that also reads well on a phone.
+6. Keep the root `README.md` concise and stable; avoid rewriting it unless a
    fact, managed-area entry, link, or `terminal-screenshot.svg` output has
    drifted. Read each edited guide as a direct shared link so its links supply
    depth rather than a missing essential step, and prefer the common workflow

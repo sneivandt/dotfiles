@@ -36,13 +36,11 @@ changing the dialect just to quiet a warning.
 
 ## Run the check
 
-With an [installed launcher and saved profile](../guides/getting-started.md):
-
 ```sh
 dotfiles check --only shellcheck --fail-on-skip
 ```
 
-Install ShellCheck and POSIX `sh` before running this check; `--fail-on-skip` turns a
+Install ShellCheck and POSIX `sh` before running; `--fail-on-skip` turns a
 missing analyzer into a failure. Fix the reported script and rerun, and run the
-[shell fixtures](../development/testing.md#application-configuration) whenever a change
-affects startup behavior.
+[shell fixtures](../development/testing.md#application-configuration) whenever a
+change affects startup behavior.

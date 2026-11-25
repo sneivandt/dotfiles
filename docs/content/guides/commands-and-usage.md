@@ -23,17 +23,16 @@ Windows directly.
 | Read the latest run log | `dotfiles log` |
 | Preview removal | `dotfiles remove --dry-run` |
 
-**Running `dotfiles` with no subcommand applies an update.** Always pass
-`--dry-run` when you only want to inspect what would change. Keep in mind that
-neither `base` nor `desktop` limits changes to your home directory, that
-existing files blocking managed links should be backed up before moving them
-aside, and that edits to linked settings can take effect immediately.
+**Running `dotfiles` with no subcommand applies an update.** For a routine
+update, start with `dotfiles update --dry-run`. Check the profile and overlay
+in the header, then review the planned actions before running `dotfiles update`.
+Neither profile is home-only: on Arch, installing a missing system package can
+also upgrade already-installed packages.
 
-If no profile is saved yet, `update`, `remove`, and `check` prompt in an
-interactive terminal. For `list`, `explain`, or any
-[unattended run](#unattended-runs), pass `--profile base` or `--profile desktop`
-explicitly. Explicit `--profile` flags override the saved role for that single
-run.
+If no profile is selected, an interactive `update`, `remove`, or `check` can
+prompt for one. For `list`, `explain`, or an [unattended run](#unattended-runs),
+supply `--profile base` or `--profile desktop` instead. An explicit profile
+applies only to that run.
 
 ## Dry-run scope
 
@@ -45,10 +44,10 @@ run.
 | Wrapper bootstrap | Can download a CLI binary, or build one with `--build`, before the CLI starts |
 | CLI release check | Can read local caches and query GitHub; does not replace the binary or write release caches |
 | Repository task | Can query remote refs without fetching or merging; omit it with `--no-repo-update` |
-| Bookkeeping | Writes a run log and acquires the repository lock |
+| Bookkeeping | Writes a run log and locks the checkout, home, and any active Git overlay |
 | Selection | Can save an interactive profile choice or an explicit `--overlay` |
 | Inspection | Reads host state and invokes external inspection tools outside a sandbox |
-| Overlay scripts | Runs `--check` and, when work is needed, `--dryrun`; the scripts themselves must stay read-only |
+| Overlay scripts | Update runs `--check` and, if needed, `--dryrun`. Removal runs `--check` or `--check-remove`, not `--remove`. Review scripts before either preview: they can ignore those flags. |
 
 If you want to inspect available tasks without probing the machine, run `list`
 using an existing binary. `dotfiles list` skips task probes, overlay scripts,
@@ -75,20 +74,18 @@ for graph markers and structured output formats.
 
 ## Update
 
-`dotfiles update` brings your machine in line with the checkout in a single
-run. It syncs the repository and applies the selected profile's packages,
-links, and settings, leaving already-correct state alone so you don't have to
-pull first or remember individual tasks afterward.
-
-When you only want to touch one area, narrow the run with `--only`. For
-example, to preview changes to managed symlinks:
+`dotfiles update` normally syncs the checkout, then applies the selected
+profile's packages, links, and settings. To work on just one area, preview
+its task with `--only`. For example:
 
 ```sh
 dotfiles update --only symlinks --dry-run
 ```
 
-Remove `--dry-run` after reviewing the output. Task filters narrow which tasks
-run, not the startup CLI release check.
+If an existing file blocks a link, inspect it with `dotfiles explain <path>`
+and back it up before moving it aside. Repeat the preview. When the planned
+links point where you expect, run the same command without `--dry-run`. Edits
+to linked files can affect applications immediately.
 
 ### Update lifecycle
 
@@ -98,28 +95,18 @@ applications happen at different stages:
 | Stage | What happens |
 |---|---|
 | Wrapper bootstrap | Downloads a verified CLI if needed, even before help or a preview; see [Wrapper bootstrap](../reference/cli-reference.md#wrapper-bootstrap) |
-| CLI self-update | An eligible release binary checks for a newer CLI, verifies and installs it, then restarts before task selection for `update` and `remove` |
+| CLI self-update | Before task selection for `update` and `remove`, an eligible binary checks for a newer release. Outside dry-run, it [verifies the download](security-and-trust.md#release-downloads), installs it, and restarts. |
 | Selected tasks | The repository task fetches and fast-forwards the checkout and any active Git overlay, then the remaining tasks apply configuration |
 
-Development builds and read-only commands never self-update. If a release
-lookup fails, the existing binary continues normally; download verification is
-explained in [Release downloads](security-and-trust.md#release-downloads).
+A preview cannot inspect commits it hasn't fetched. When a sync advances the
+checkout, linked settings can change immediately and the CLI reloads the new
+configuration before later tasks run. To use the checkout you reviewed, pass
+`--no-repo-update` to **both** preview and apply. Apply still inspects current
+state; it doesn't replay the preview. If sync fails, inspect the
+[repository task](../reference/dotfiles-repository.md) before retrying.
 
-When repository sync pulls new commits, the CLI restarts to reload the updated
-configuration before running later tasks, and live linked application settings
-can change right away. The [repository task](../reference/dotfiles-repository.md)
-reports local edits, missing upstreams, diverged branches, and remote errors
-instead of stashing, resetting, or rebasing. If a later task fails, earlier
-completed changes stay in place; follow linked child logs whenever a run
-restarts or delegates elevation.
-
-Because a preview cannot inspect commits it has not fetched, and because an
-actual run re-inspects the machine rather than replaying a saved plan, pass
-`--no-repo-update` to both preview and apply when you want to review a fixed
-checkout.
-
-Finally, package installation ensures declared packages are present rather than
-keeping every installed application up to date. See
+Package installation ensures declared packages are present, not that every
+application is at its latest version. See
 [Package management](package-management.md#install-and-upgrade) for upgrades,
 [Agent configuration](agent-configuration.md) for agent dependencies, and
 [Application settings](application-settings.md#visual-studio-code) for editor
@@ -133,7 +120,7 @@ needed:
 | Control | Effect and limit |
 |---|---|
 | `DOTFILES_SKIP_SELF_UPDATE=1` | Keeps the current CLI version; wrapper bootstrap can still download a missing binary |
-| `--no-repo-update` | Keeps checkout contents fixed; the CLI release check still runs |
+| `--no-repo-update` | Skips Git sync for the checkout and overlay; the CLI release check still runs |
 | `--only <selectors>` | Runs only the named tasks without disabling startup checks; add `--with-deps` for prerequisites |
 | `--skip agent-packages` | Leaves agent deployments alone; settings fragments and the APM binary are separate |
 | `--skip custom-package-versions` | Keeps existing custom package pins; recipe preparation can still use them |
@@ -190,47 +177,34 @@ any `CI` environment variable (even `CI=false`) disables prompts while enabling
 `--fail-on-skip`. Tasks that simply do not apply to the current platform or
 configuration never count as failures.
 
-Only one `update`, `remove`, or `check` command can run against a repository at
-a time (including previews and linked worktrees sharing the repository lock).
-`list` and `log` remain usable while another run is active.
+Don't overlap `update`, `remove`, or `check` runs that share a checkout, Git
+overlay, or home, even across clones or during previews. `list` and `log`
+remain usable while another run is active.
 
 ## Console output
 
-Start with the header line to verify the profile, platform, overlay, and run
-mode. Any CLI upgrade or repository sync notice appears right beneath it; when
-a sync restarts the process to reload configuration, task output continues
-cleanly without printing a second header. In an interactive terminal, a spinner
-tracks active work while tasks print as they finish rather than in file order.
-Read each status line together with its indented actions, since one task may
-modify many files or packages.
+Start with the header to check the run mode, platform, and active selections.
+Upgrade and sync notices appear below it. Tasks print as they finish, not
+necessarily in configuration order. Read the indented actions as well as the
+status: one task can change many files or packages.
 
 | Status | Meaning |
 |---|---|
 | `✓` / `CHANGED` or `PASSED` | Changes were applied, or a check passed |
 | `~` / `PLANNED` | A dry run found changes to make |
 | `○` / `UNCHANGED` | Already matches configuration; shown with `--verbose` |
-| `⊘` / `SKIPPED` | Work was not performed; check the printed reason |
+| `⊘` / `SKIPPED` | Read the reason. Work was not performed here; `ran in elevated session` points to work delegated to a child. |
 | `⊖` / `BLOCKED` | A required predecessor did not succeed |
 | `⊗` / `INTERRUPTED` | Work stopped during cancellation |
 | `✗` / `FAILED` | An operation failed |
 
-Pass `--verbose` to include unchanged tasks, decisions, and timings, or
-`--no-symbols` for plain text labels and an ASCII spinner. A nonempty
-`NO_COLOR` turns off ANSI styling (including profile-prompt highlighting) while
-keeping terminal redraws working; redirected streams omit ANSI styling
-automatically. Inapplicable and internal tasks stay out of normal rows and
-totals, though they are still recorded in logs.
+Use `--verbose` for unchanged tasks, decisions, and timings, `--no-symbols`
+for text labels, or a nonempty `NO_COLOR` to turn off ANSI styling. Even in
+`--quiet` mode, task warnings still print to stderr.
 
-Task warnings print beside the actions they affect. Even in `--quiet` mode, a
-warning from an unchanged task still prints to stderr along with the task name.
-
-The final summary reports task counts (not individual actions or CLI upgrades),
-such as **Tasks · 3 changed · 14 unchanged** or **Checks · 5 passed · 1
-skipped**, with previews using **planned** in place of **changed**.
-**Unchanged** means every selected task already matched its declaration, not
-that all installed software is on the latest upstream version. Repository syncs
-that trigger a restart appear in their notice rather than the child process's
-task totals. When nothing applies, the summary prints **No applicable tasks**.
+The summary counts tasks, not individual actions. **Unchanged** means the task
+already matched its declaration. Inapplicable and internal tasks stay out of
+normal totals; **No applicable tasks** doesn't mean a check passed.
 
 Here is an illustrative update that upgraded the CLI and synced the repository,
 with all configured tasks already up to date:
@@ -244,25 +218,18 @@ Repository synced · restarting to load configuration
 Tasks · 17 unchanged · 3.4s
 ```
 
-The reported duration spans the whole CLI invocation, including self-update and
-repository restarts, while saved logs keep separate timings per process.
-Failed, interrupted, blocked, and skipped counts appear ahead of successful
-ones, and failures or interruptions are always reported even when they happen
-in internal tasks outside the visible count. **An exit code of 0 with skipped
-tasks is not necessarily a complete installation**; pass `--fail-on-skip` when
-every applicable task must succeed.
-
-Whenever a run fails or is force-quit, copy the suggested `dotfiles log`
-command if one is printed. Its `--id` pins that exact run even after later
-invocations, and `-v` reveals full diagnostics. If logging itself failed, keep
-the terminal output instead.
+The restart notice accounts for the sync; the child doesn't count it again.
+The duration spans the whole invocation. An exit code of 0 can include skipped
+work: use `--fail-on-skip` when completeness matters. If a task failed or was
+blocked, [read the failed run](troubleshooting.md#read-the-failed-run) before
+retrying. Earlier changes stay in place.
 
 ## Check configuration
 
-`dotfiles check` validates your declarations, verifies tracked source files,
-and runs available static analyzers without changing machine state. It has no
-`--dry-run` flag, writes a run log, holds the repository lock, and can still
-save an interactively chosen profile or explicit `--overlay`.
+`dotfiles check` validates declarations and tracked sources and runs available
+static analyzers. It does not apply configuration or take `--dry-run`. Like
+an update, it takes run locks, writes a log, and can save a prompted profile
+choice or explicit `--overlay`.
 
 ```bash
 dotfiles check
@@ -402,8 +369,8 @@ see [Application settings](application-settings.md).
 
 ## Interrupting a run
 
-1. Press Ctrl-C once to stop scheduling new tasks while letting in-flight work
-   finish cleanly.
+1. Press Ctrl-C once to stop scheduling new tasks and let the CLI shut down.
+   It can terminate an in-flight subprocess; don't assume its work finished.
 2. Press Ctrl-C a second time to request a force quit. In an interactive
    terminal, the confirmation prompt defaults to no.
 3. Confirming (or pressing Ctrl-C again while the prompt is open) exits

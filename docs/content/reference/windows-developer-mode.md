@@ -27,22 +27,18 @@ checks its own link capability, so unavailable Developer Mode never blocks links
 are already correct or directory junctions that work without it.
 
 Home symlinks stay in your original user process and recheck file-link capability once
-this task finishes. If file links remain unavailable, they are skipped instead of being
-delegated to a potentially different Administrator account. See
-[Windows elevation](../guides/windows-and-wsl.md#elevation).
+this task finishes. If file links remain unavailable, they are skipped instead
+of being delegated to a potentially different Administrator account. See
+[Windows elevation](../guides/windows-and-wsl.md#elevation) and
+[Developer Mode and symlinks](../guides/windows-and-wsl.md#developer-mode-and-symlinks).
 
-## Configuration
-
-This task has no TOML settings; it manages the Windows Developer Mode policy as part of
-Windows setup. See [Windows and WSL](../guides/windows-and-wsl.md#developer-mode-and-symlinks)
-for symlink requirements.
-
-Specifically, it sets `AllowDevelopmentWithoutDevLicense` under
+There are no TOML settings for this task. It sets
+`AllowDevelopmentWithoutDevLicense` under
 `HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock` to DWORD `1`.
 Because this is a machine-wide policy (unlike the `HKCU` entries in
-[User registry settings](user-registry-settings.md)), check organizational device
-policies before applying it; adding a user registry setting cannot replace this
-machine-level flag.
+[User registry settings](user-registry-settings.md)), check organizational
+device policies before applying it; adding a user registry setting cannot
+replace this machine-level flag.
 
 ## Preview and apply
 
@@ -54,11 +50,10 @@ dotfiles update --only developer-mode --dry-run
 
 Confirm that the proposed change is the machine-wide value described above. If
 organizational policy or elevation blocks it, resolve that restriction before
-[applying the change](task-reference.md#preview-and-apply) rather than adding an
-`HKCU` entry. Afterward, preview [Home symlinks](home-symlinks.md) to see what link
-work remains.
+applying rather than adding an `HKCU` entry. Afterward, preview
+[Home symlinks](home-symlinks.md) to see what link work remains.
 
 ## Removal
 
 Developer Mode stays enabled after `dotfiles remove`. To turn it off, use Windows
-Settings and check first whether any applications or file symlinks depend on it.
+Settings after checking whether any applications or file symlinks depend on it.

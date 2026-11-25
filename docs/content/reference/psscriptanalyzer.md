@@ -36,12 +36,10 @@ argument handling or Windows PowerShell compatibility.
 
 ## Run the check
 
-With an [installed launcher and saved profile](../guides/getting-started.md):
-
 ```sh
 dotfiles check --only psscriptanalyzer --fail-on-skip
 ```
 
-With `--fail-on-skip`, a missing `pwsh` executable fails the command, and a missing or
-broken analyzer module fails even without that flag. Fix the reported prerequisite or
-rule finding, then rerun.
+With `--fail-on-skip`, a missing `pwsh` executable fails the command; a missing
+or broken analyzer module fails even without that flag. Fix the reported
+prerequisite or rule finding, then rerun.

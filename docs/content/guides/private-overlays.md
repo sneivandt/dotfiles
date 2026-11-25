@@ -5,15 +5,11 @@ description: Keep private or machine-specific configuration outside the public r
 
 # Private overlays
 
-A private overlay lets you layer personal, work, or machine-specific
-configuration on top of the public dotfiles repository without mixing private
-settings into the shared checkout. Store it in a separate private repository or
-directory using the same `conf/`, `symlinks/`, and `system/` layout.
-
-An overlay adds declarations and replaces matching entries from the main
-configuration; it does not patch inside individual application files. Keep
-private content and credentials out of public examples, test fixtures, shared
-logs, and agent messages.
+Use an overlay when a setting belongs on your machine but not in the shared
+checkout. It's a separate directory or private repository. Dotfiles reads
+both: the overlay can add a setting or replace a matching declaration without
+changing the public files. It doesn't patch the contents of an application
+file line by line.
 
 ## Create an overlay
 
@@ -25,7 +21,7 @@ dotfiles-private/
     git-config.toml
 ```
 
-All overlay files are optional and follow the exact same
+Overlay declarations are optional. They use the same
 [configuration formats](configuration-basics.md) and
 [category rules](profiles-and-categories.md) as the main repository. For
 example, an overlay's `conf/git-config.toml` might set a preferred editor:
@@ -67,8 +63,7 @@ replaces the main one whole rather than merging the two files. On Windows,
 create the same folder structure and copy the file using PowerShell or File
 Explorer.
 
-With a saved profile and installed launcher, preview the change from the main
-checkout:
+With a saved profile and installed launcher, preview from the main checkout:
 
 ```sh
 dotfiles update --overlay ../dotfiles-private --only symlinks --dry-run
@@ -116,26 +111,24 @@ backup until both checks pass.
 From the main checkout, inspect an overlay in `../dotfiles-private` (assuming a
 profile is already saved; see [Getting started](getting-started.md) otherwise):
 
+::: warning Review overlay scripts before previewing
+A full update preview can run the overlay's setup scripts in `--check` and
+`--dryrun` modes. Read them first: they run with your user permissions, and
+neither flag restricts what a script can do.
+:::
+
 ```sh
 dotfiles list --overlay ../dotfiles-private
 dotfiles update --overlay ../dotfiles-private --dry-run
 ```
 
-`dotfiles list` is read-only and never saves the selection, whereas `update`,
-`remove`, and `check` remember an explicit `--overlay` path once configuration
-loads cleanly. Check the resolved overlay path and profile in the header;
-subsequent `dotfiles update` runs will reuse the saved overlay automatically.
+Use `list` to inspect tasks without saving the selection. Check the resolved
+overlay and profile in the update preview header.
 
 Missing optional config files in an overlay simply contribute nothing. If an
 overlay file or its `conf/` directory is a broken symlink, however, loading
 stops with an error rather than silently falling back to the main checkout. Fix
 the broken target or remove the stale link before retrying.
-
-::: warning Review overlay scripts before previewing
-`--check` and `--dryrun` run overlay script code with your user permissions. A
-buggy or untrusted script can access the network, expose private data, or modify
-files; neither a private repository nor `--dry-run` sandboxes script execution.
-:::
 
 ### Selection and persistence
 
@@ -229,14 +222,18 @@ task in `update` and `remove`.
 
 See [Overlay scripts](../reference/overlay-scripts.md) for the schema, selector
 naming, required `--check`, apply, `--dryrun`, and `--remove` modes, and
-failure handling. Review every script before previewing, since its check and
-preview flags are a cooperative contract rather than a sandbox, and keep
-secrets out of script output and logs.
+failure handling. Keep secrets out of script output: it can end up in logs.
 
 ## Change or stop using an overlay
 
-Pass a new `--overlay` path to switch and save a different overlay. To clear
-the saved overlay from your main checkout:
+**If you want to detach managed links or run a script's removal action, do
+that before switching overlays.** [Removal](../reference/task-reference.md#remove-tasks)
+uses the current declarations and sources. Keep the old overlay intact until
+you've checked the result. Packages, settings, services, and merged system
+files remain in place unless you change them separately.
+
+Select a different overlay by passing `--overlay` to `update`, `remove`, or
+`check`. To use just the main checkout, clear the saved setting there:
 
 ```sh
 git config --local --unset dotfiles.overlay
@@ -245,13 +242,5 @@ git config --local --unset dotfiles.overlay
 Unset `DOTFILES_OVERLAY` as well if it is set, since the environment variable
 overrides the saved Git value.
 
-**Forgetting an overlay does not undo what it installed.** Keep the overlay's
-declarations and source files intact while running any
-[remove tasks](../reference/task-reference.md#remove-tasks) you want, then
-handle persistent state (packages, settings, services, and merged system files)
-manually.
-
-If an overlay isn't being picked up as expected, see
-[Overlay is ignored](troubleshooting.md#overlay-is-ignored). Next, explore the
-platform guides for [Arch desktop](arch-desktop.md) or
-[Windows and WSL](windows-and-wsl.md).
+If the wrong overlay is still selected, see
+[Overlay is ignored](troubleshooting.md#overlay-is-ignored).

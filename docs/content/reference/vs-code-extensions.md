@@ -16,7 +16,7 @@ are present; it does not pin extension versions or configure their preferences.
 | Commands | `update` |
 | Availability | Configured extensions |
 | [Requires success](task-reference.md#scheduling-model) | None |
-| [Runs after](task-reference.md#scheduling-model) | [System packages](system-packages.md) and [AUR packages](aur-packages.md) when needed for readiness; [Systemd units](systemd-units.md) when the first-login user service and its link are selected for setup |
+| [Runs after](task-reference.md#scheduling-model) | [System packages](system-packages.md) and [AUR packages](aur-packages.md) (conditional); [Systemd units](systemd-units.md) (first-login setup) |
 | Implementation | [editors/vscode_extensions.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/editors/vscode_extensions.rs) |
 
 ## What it does

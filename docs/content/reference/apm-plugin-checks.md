@@ -33,12 +33,10 @@ deployment preview).
 
 ## Run the check
 
-With an [installed launcher and saved profile](../guides/getting-started.md):
-
 ```sh
 dotfiles check --only apm-plugins --fail-on-skip
 ```
 
 Install `apm` first so `--fail-on-skip` passes instead of failing on a missing
-binary, fix any errors in the named plugin, and rerun before
+binary. Fix any errors in the named plugin and rerun before
 [previewing deployment](../guides/agent-configuration.md#validate-preview-and-apply).

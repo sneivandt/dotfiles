@@ -36,8 +36,6 @@ on disk rather than declaration conflicts, run
 
 ## Run the check
 
-With an [installed launcher and saved profile](../guides/getting-started.md):
-
 ```sh
 dotfiles check --only config-diagnostics
 ```

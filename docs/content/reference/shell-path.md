@@ -42,14 +42,8 @@ On Linux, Dotfiles manages `# Added by dotfiles` blocks in `~/.profile`:
   assignment.
 
 The [Bash invocation reference](https://www.gnu.org/software/bash/manual/html_node/Invoking-Bash.html)
-explains login and interactive startup modes, and
-[Application settings](../guides/application-settings.md#shell-configuration) covers
-this repository's shell startup files.
-
-## Configuration
-
-There is no TOML declaration; this task only ensures the launcher directory is on the
-current user's `PATH`. Put application-specific `PATH` additions in your
+explains login and interactive startup modes. There is no TOML declaration for
+this task; put application-specific `PATH` additions in your
 [shell configuration](../guides/application-settings.md#shell-configuration).
 
 ## Preview and apply
@@ -60,11 +54,10 @@ Preview the persisted launcher-directory addition:
 dotfiles update --only path --dry-run
 ```
 
-Confirm that the addition is your home directory's `.local/bin`, not the checkout or
-its `bin/` folder, and resolve any profile or saved-`PATH` read error before
-[applying the change](task-reference.md#preview-and-apply). Open a fresh shell to
-verify `dotfiles` is found; rerunning this task will not update an already-open
-terminal.
+Confirm that the addition is your home directory's `.local/bin`, not the
+checkout or its `bin/` folder, and resolve any profile or saved-`PATH` read
+error before applying. Open a fresh shell to verify `dotfiles` is found;
+rerunning this task will not update an already-open terminal.
 
 If the update reports a conflict, it leaves `~/.profile` untouched. Move displaced
 commands back inside the two blocks (or after the block if you have only one).

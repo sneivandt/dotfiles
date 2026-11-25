@@ -5,23 +5,10 @@ description: Find a task by selector, then review its behavior, configuration, p
 
 # Task reference
 
-A selector identifies a whole task rather than an individual item: `--only symlinks`
-selects the Home symlinks task, and your active configuration determines which
-links it manages. If you know the change you want but not its selector, start
-with [Find the right task](#find-the-right-task).
-
-To inspect the tasks available for your checkout and saved profile:
-
-```sh
-dotfiles list
-dotfiles list --all
-dotfiles list --graph update
-```
-
-`dotfiles list` hides tasks ruled out by your platform or config, while `--all`
-shows the full public catalog (neither checks runtime prerequisites or changes
-your machine). If you haven't set up the launcher or profile yet, see
-[Getting started](../guides/getting-started.md).
+Each task manages one kind of change. Use the lookup below if you know what
+you want to change, or go to the [catalog](#catalog-overview) for an exact
+selector. A selector names a whole task: `--only symlinks` selects all home
+links in your active configuration, not an individual file.
 
 ## Find the right task
 
@@ -38,14 +25,12 @@ your machine). If you haven't set up the launcher or profile yet, see
 | Sync the dotfiles checkout or run private setup scripts | [Dotfiles repository](dotfiles-repository.md), [Overlay scripts](overlay-scripts.md) |
 | Diagnose configuration or source problems | [Validation tasks](#validation-tasks) |
 
-Use the selector catalog below for exact names, or search by task title.
-
 ## Catalog overview
 
-These built-in selectors belong to `update`. Availability indicates whether a
-task applies to your platform and config, not whether required tools or
-privileges are present. Only `git-hooks`, `launcher`, and `symlinks` also
-support [removal](#remove-tasks).
+Run `dotfiles list` to see which tasks apply to your platform and profile, or
+`dotfiles list --all` to include the rest. Listing doesn't test prerequisites:
+a task can appear here and still skip during an update if a tool is missing.
+These are the built-in `update` selectors.
 
 | Selector | Task and availability |
 |---|---|
@@ -117,24 +102,10 @@ package or private overlay script. See
 
 ## Read a task page
 
-Each task detail page opens with its purpose and a metadata table, then covers
-behavior, configuration, preview/apply, and removal. Keep **availability**
-distinct from **prerequisites**: a task can apply to your platform yet still
-report unmet when a required tool, privilege, or input is missing.
-
-| Detail | How to use it |
-|---|---|
-| Selector and commands | Pick the task in the right `update`, `remove`, or `check` command |
-| Availability or scope | Check which platforms, declarations, and sources it covers |
-| Requires success / Runs after | Decide whether predecessor tasks are needed (see [Scheduling model](#scheduling-model)) |
-| Implementation | Jump straight to the owning Rust code and tests |
-| Configuration | Edit tracked declarations or sources rather than generated or installed copies |
-| Preview and removal | Review side effects and retained state before applying or retiring a feature |
-
-Upstream tool links document the underlying tool, not a guarantee that
-`dotfiles` exposes every upstream option (for instance, `systemd` supports more
-enablement patterns than dotfiles' offline user-unit preparation). Rely on each
-task page for dotfiles' supported scope.
+The summary at the top of each task page gives its selector, commands, and
+availability. **Requires success** and **Runs after** describe relationships
+between tasks, not tools you need to install. The [scheduling model](#scheduling-model)
+explains what happens if a preceding task fails.
 
 ## Preview and apply
 
@@ -142,19 +113,10 @@ Commands on task pages assume an installed launcher and saved profile (before
 installation, use the checkout wrapper shown in
 [Getting started](../guides/getting-started.md)).
 
-Start with `--dry-run` (add `--verbose` to see unchanged items too), resolve
-any failures or unmet prerequisites, and then rerun without `--dry-run`. Apply
-always re-inspects live state rather than replaying a saved plan.
-
-Selecting a single task doesn't automatically pull in its predecessors; use
-`--with-deps` on `update` when needed (see
-[Select tasks](../guides/commands-and-usage.md#select-tasks)) and check the
-expanded graph first so you don't unexpectedly trigger package installs or a
-repo sync.
-
-Remember that `--dry-run` can still access the network, write logs, save
-selections, run CLI release checks, and execute overlay preview scripts; see
-[Dry-run scope](../guides/commands-and-usage.md#dry-run-scope).
+Start with `--dry-run` and check both the planned changes and any unmet
+prerequisites. A preview can still write logs, save selections, contact the
+network, and execute overlay scripts; see [Dry-run scope](../guides/commands-and-usage.md#dry-run-scope).
+Rerun without `--dry-run` to apply. The task inspects current state again.
 
 ## Scheduling model
 
@@ -182,11 +144,11 @@ dotfiles list --graph remove
 dotfiles list --graph check
 ```
 
-Dependency edges only govern tasks that are selected together; pass
-`--with-deps` on `update` (or `list --graph update`) to expand predecessors
-automatically (`remove` and `check` don't accept `--with-deps`). See
-[Task discovery output](cli-reference.md#task-discovery-output) for graph
-notation.
+These relationships only govern tasks you select together. On `update`, add
+`--with-deps` to include predecessors too. Inspect the expanded selection with
+`list --graph update` and the same flags first: it may include package installs
+or repository sync. `remove` and `check` don't accept `--with-deps`. See
+[Task discovery output](cli-reference.md#task-discovery-output) for the notation.
 
 Listings and completions display canonical selectors, while `--only` and
 `--skip` still accept legacy aliases (`apm` for `agent-packages`, `paru-config`

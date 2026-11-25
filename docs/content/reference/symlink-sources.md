@@ -38,12 +38,10 @@ finding. Remember that glob syntax only allows standalone `*` segments, as cover
 
 ## Run the check
 
-With an [installed launcher and saved profile](../guides/getting-started.md):
-
 ```sh
 dotfiles check --only symlink-sources
 ```
 
 Fix any missing paths in the declaration or source tree and rerun, or run
-[CLI validation](../development/testing.md#cli-validation) to include declaration
-diagnostics and required-file checks.
+[CLI validation](../development/testing.md#cli-validation) to include
+declaration diagnostics and required-file checks.

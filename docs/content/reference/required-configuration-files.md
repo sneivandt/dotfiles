@@ -37,11 +37,10 @@ that.
 
 ## Run the check
 
-With an [installed launcher and saved profile](../guides/getting-started.md):
-
 ```sh
 dotfiles check --only config-files
 ```
 
-Restore any missing tracked files before retrying. To validate their declarations
-and source paths as well, run [CLI validation](../development/testing.md#cli-validation).
+Restore any missing tracked files before retrying. To validate declarations
+and source paths together, run
+[CLI validation](../development/testing.md#cli-validation).

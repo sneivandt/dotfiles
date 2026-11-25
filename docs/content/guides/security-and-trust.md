@@ -5,30 +5,22 @@ description: Understand trust boundaries, verified downloads, elevation, private
 
 # Security and trust
 
-Dotfiles modifies your account configuration and can request privileged system
-changes. Its validation and verification checks catch mistakes and reject
-invalid inputs, but they cannot make an untrusted checkout, package, or overlay
-safe to run.
-
-Always review what you are about to apply or share. Previews show planned work,
-checksums verify downloaded bytes, and CI covers tested code paths, yet none of
-them replaces judging whether a given configuration belongs on your machine.
+Decide whether you trust the checkout and any private overlay **before
+running their code**, including a wrapper or a preview. Dotfiles can change
+your home and request system privileges. A verified CLI can still apply
+configuration you didn't intend.
 
 ## Trust boundaries
 
-| What you are trusting | Why it matters |
+| Action | What to review first |
 |---|---|
-| The checkout and future repository updates | Shell/editor configuration, hooks, and managed scripts run code, and linked apps can reload edits immediately |
-| Configuration and profiles | Syntactically valid entries can still select paths or tasks you did not intend |
-| A private overlay | Its files and scripts run with your full account access rather than in an isolated sandbox |
-| Release binaries and upstream packages | Verification ties bytes to a publisher and build, not a review of every dependency |
-| Tools found on `PATH` | Package managers, installers, and agent tools execute outside the CLI's control |
-| Elevated tasks | Scoped elevation reduces privilege exposure, but it does not sandbox the code it runs |
-| Enabled services and timers | They continue running after dotfiles exits, including [automatic file cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service) |
-| Logs and diagnostic output | Paths, arguments, and tool output can capture private details |
-
-Back up important files before applying configuration. Task filtering isn't a
-security policy, and `remove` isn't a full rollback.
+| Run a wrapper | Check the wrapper and its release publisher. Verification authenticates the download, not every dependency. |
+| Preview an overlay | Read its script declarations and the scripts they invoke. Even the probes run with your account access. |
+| Apply an update | Confirm the profile, overlay, destinations, package sources, and tools on `PATH`. Back up important files; `remove` is not a rollback. |
+| Sync a checkout | Shell settings, editor configuration, and hooks can become live as soon as their sources change. To stay on reviewed sources, use `--no-repo-update` for both preview and apply. |
+| Approve elevation | Check which task needs privileges. Task selection limits what is scheduled, not what an external installer can do. |
+| Enable a service or timer | Check what it will do after dotfiles exits, including [automatic file cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service). |
+| Share diagnostics | Read the excerpt for private paths, arguments, or tool output before posting it. |
 
 ## Release downloads
 
@@ -39,10 +31,10 @@ over HTTPS, rejecting any mismatch before accepting the file. The CLI's
 [self-update path](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/dotfiles/self_update.rs)
 verifies downloads the same way before swapping binaries.
 
-A checksum confirms bytes weren't corrupted or altered in transit, though it
-cannot stop a compromised publisher who controls both files. Build attestations
-tie the asset back to a specific repository and workflow, which you still need
-to trust along with its dependencies and maintainers.
+A matching checksum says the bytes match the publisher's checksum file. It
+doesn't independently identify the publisher. Build provenance is a separate
+check: the attestation identifies the build, and the verifier requires it to
+come from the expected repository. Neither check reviews the code for you.
 
 Verification runs when downloading a release rather than continuously
 monitoring binaries already on disk. Passing `--build` compiles the local
@@ -50,17 +42,17 @@ checkout and its dependencies instead of checking a release attestation.
 
 ### Build provenance verification
 
-Provenance verification runs `gh attestation verify` scoped to the release
-repository. Wrappers derive that repository from configuration or `origin`,
-while the Rust binary uses the repository embedded at compile time. To verify
-this repository's Linux release binary manually:
+Wrappers use the GitHub repository named by `origin`, unless you set
+`DOTFILES_RELEASE_REPO`. Self-update uses the publisher embedded in the binary;
+changing `origin` doesn't change it. To verify this repository's Linux release
+binary manually:
 
 ```sh
 gh attestation verify bin/dotfiles --repo sneivandt/dotfiles
 ```
 
-Use `bin/dotfiles.exe` on Windows, and substitute your fork's repository name
-when verifying a fork's release.
+Use `bin/dotfiles.exe` on Windows. If the release came from a fork, substitute
+that fork's name only if it is the publisher you intended to trust.
 
 Both bootstrap and self-update require GitHub CLI (`gh`) and enforce checksum
 and provenance verification. If `gh` is missing, attestation fails, or
@@ -73,39 +65,31 @@ the CLI's `--skip-attestation` flag applies only to self-update, not bootstrap.
 Neither bypasses SHA-256 checksum verification. Avoid using either bypass to
 work around an unexplained failure.
 
-During self-update, the CLI fetches the checksum before the binary and rejects
-binary responses over 128 MiB. Network retries apply only to downloads, not to
-local staging failures.
-
-Automatic GitHub CLI calls disable interactive prompts and Linux desktop
-keyring access so background checks never hang on hidden dialogs (including
-under WSL). If your `gh` credentials live only in a desktop keyring, export
-`GH_TOKEN` or `GITHUB_TOKEN` in your shell before running dotfiles. This
-setting affects only the child `gh` process, not your system keyring or normal
-interactive `gh` usage, and missing credentials never allow an unverified
-update. See [Troubleshooting](troubleshooting.md) if verification fails.
+Automatic `gh` calls disable interactive prompts and Linux desktop keyring
+access, including under WSL. A working interactive login may therefore fail
+during verification. If your credentials live only in the keyring, supply
+`GH_TOKEN` or `GITHUB_TOKEN` in the invoking environment, not in tracked
+configuration or a shared diagnostic. See
+[Wrapper download fails](troubleshooting.md#wrapper-download-fails).
 
 ## Elevation
 
-Always launch dotfiles under your normal user account so it requests elevated
-privileges only for the specific tasks that need them.
+Launch dotfiles from your normal user account. Starting it from an elevated
+shell gives the whole run those privileges; dotfiles doesn't drop them.
 
 On Linux, dotfiles reuses cached `sudo` credentials or primes them in the
 foreground when running interactively. On Windows, machine-scoped Developer
 Mode work runs in a single short-lived UAC-elevated child while home symlinks
 and user registry settings remain in your original process (even if UAC
-authenticates a different Administrator account). Non-interactive and CI runs
-never prompt for `sudo` or UAC.
+authenticates a different Administrator account). Dotfiles itself doesn't
+prompt for `sudo` or UAC in a non-interactive or CI run.
 
-When privileges are unavailable or declined, affected tasks are skipped along
-with their blocking dependents, while independent tasks still run. Passing
-`--fail-on-skip` (or running in CI) turns those skips into command failures.
-A skipped privileged task makes no changes.
-
-Dotfiles does not drop privileges if you launch it from an already-elevated
-shell. System packages, system-scoped systemd units, and files under `/etc` are
-typical privileged tasks; see [Windows and WSL](windows-and-wsl.md) for
-Windows-specific symlink requirements.
+If you decline, tasks requiring that authorization don't run. Their blocking
+dependents can't proceed, but independent tasks can. `--fail-on-skip` (also
+enabled by CI) makes unavailable privileges a failure. On Windows, a parent
+row saying `ran in elevated session` means the child **did** run the task;
+inspect its linked log. See [Windows and WSL](windows-and-wsl.md) for symlink
+requirements.
 
 ## Private overlays
 
@@ -114,11 +98,10 @@ not isolate or sandbox that code. Verify which overlay is active before
 applying changes or sharing output, and review both its TOML declarations and
 any files it deploys into shells, editors, or AI agents.
 
-Only an overlay's `conf/scripts.toml` can define script tasks (the main
-repository never defines them). Remember that a script's `--check` and
-`--dryrun` modes are cooperative conventions rather than a sandbox: a script
-can ignore flags, call the network, log secrets, or write files. **Dry-run is
-not a sandbox.**
+Only an overlay's `conf/scripts.toml` can define script tasks. Read the script
+it names before an update **or removal** preview: the CLI executes the script
+to check state. `--check`, `--check-remove`, and `--dryrun` are requests, not
+restrictions. A script can still write files, call the network, or log secrets.
 
 Path validation restricts managed resources like home-relative symlinks and
 `/etc` destinations, but it cannot confine arbitrary external commands. See
@@ -132,9 +115,10 @@ machine/overlay details in tracked files, examples, test fixtures, or public
 uploads.
 
 The [pre-commit scanner](../development/testing.md#sensitive-pattern-scanning)
-scans newly staged lines against versioned patterns and redacts matches. It is
-a helpful local guardrail, not a guarantee: it can be bypassed and does not
-inspect git history, binaries, or encoded payloads.
+checks newly staged lines against known patterns. A match blocks the commit
+and is redacted **in the report**; you still need to remove it from the staged
+content. A passing scan does not clear the history, binaries, or unrecognized
+secrets.
 
 ### Sharing logs
 

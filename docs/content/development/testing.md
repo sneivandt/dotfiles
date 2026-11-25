@@ -5,21 +5,16 @@ description: Select and run existing checks for a patch, from focused commands t
 
 # Testing
 
-Use this guide to pick and run the right existing checks for your change. To
-design a new regression or fixture, see [Writing tests](writing-tests.md); to
-see what runs remotely after a push, read [CI and releases](ci-and-releases.md).
+Pick and run the smallest checks that cover what you changed, then verify the
+committed patch before pushing. To write a new regression or fixture, see
+[Writing tests](writing-tests.md); to see what runs remotely after a push, read
+[CI and releases](ci-and-releases.md).
 
-Start with a targeted check covering the behavior you changed, then verify the
-committed patch before pushing. A local pass never proves a full host
-installation, and a skipped check never counts as a pass.
-
-Choose local checks based on the diff and let remote CI supply the broader
-matrix. Focused checks can be your final local validation: there is no
+Focused local checks can be your final local gate before pushing: there is no
 mandatory full-suite run or second coordinator pass, and commit hooks stay
 lightweight. Reuse passing results while their inputs, platform, command, and
-toolchain haven't changed, and rerun whenever those inputs change or are
-uncertain. Remember that Linux and Windows tests cover distinct native runtime
-paths.
+toolchain are unchanged, and rerun when any of those change. A local pass never
+proves a full host install, and a skipped check never counts as a pass.
 
 Unless noted otherwise (or preceded by a `cd`), run every command below from
 the repository root.
@@ -28,7 +23,7 @@ the repository root.
 
 | Change | Start with |
 |---|---|
-| Skills, agent instructions, or ordinary prose | Review accuracy plus affected metadata and source-link checks; no Rust, site build, or browser run by default |
+| Skills, agent instructions, or ordinary prose | Accuracy review plus affected metadata and source-link checks; skip Rust, site build, and browser runs |
 | Docs routes, headings, rendering, navigation, search, or dependencies | Affected [site checks](#documentation-site); run build or browser tests only where they exercise the change |
 | TOML, categories, or source layout | `config_drift` and local `config` stage |
 | Task selection or dependencies | Affected command suite and `task_execution` |
@@ -37,42 +32,26 @@ the repository root.
 | Wrappers or hooks | [Wrapper and hook tests](#wrapper-and-hook-tests) |
 | Desktop or application content | [Desktop shell](#desktop-shell) or [Application configuration](#application-configuration) |
 | CI selection or workflows | Local `ci` stage and the changed job's command |
-| Arch package recipes | Offline Linux recipe tests, config validation/drift, and PKGBUILD/install-script ShellCheck; verify upstream availability and native build/install separately in a disposable Arch home/cache |
+| Arch package recipes | Offline Linux recipe tests, config validation/drift, and PKGBUILD/install-script ShellCheck; verify upstream availability and native build/install in a disposable Arch home/cache |
 
-Inspect both the changed files and what tests actually read: a test can depend
+Look at both the changed files and what tests actually read: a test can depend
 on a shared helper, embedded asset, real config file, or snapshot even when its
-own file wasn't edited (and include deletions plus both sides of renames). A
-Markdown file embedded in the CLI is a CLI input, not ordinary prose. Whenever
-impact is unclear, check the dependency or broaden your selection.
+own file was untouched (include deletions and both sides of renames). A
+Markdown file embedded in the CLI is a CLI input, not ordinary prose. Broaden
+your selection whenever impact is unclear or a focused check fails.
 
-Rust source edits typically need formatting, host Clippy, and the owning unit
-or integration tests under the
+Rust edits usually need formatting, host Clippy, and the owning unit or
+integration tests under the
 [pinned toolchain](contributing.md#selecting-the-pinned-toolchain). Broaden to
 the full Rust suite for shared config, catalog, scheduler, execution, or
-lifecycle changes. Test-only edits generally need only the affected target,
-while Cargo or build edits need relevant compilation and dependency checks (add
-MSRV checks when syntax, APIs, dependencies, or the MSRV itself could shift).
-
-Check [Platform coverage parity](#platform-coverage-parity) to decide whether
-cross-compilation or native runtime tests apply. Cross-target Clippy helps for
-changed `cfg` gates, imports, types, dependencies, or shared APIs used on
-Windows, whereas a strictly Linux-only implementation edit doesn't need Windows
-compilation. Because cross-compilation cannot exercise Windows paths, registry,
-elevation, processes, or symlinks, let exact-commit Windows CI cover those
-rather than provisioning a second OS locally.
-
-For prose and skills, source review plus metadata and link checks are usually
-enough (add incoming-link checks when changing headings or paths). Build the
-site when Markdown syntax, routes, metadata, assets, or dependencies change,
-and run browser tests for layout, navigation, search, diagrams, or interactive
-changes; see the
-[site check table](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#checks).
+lifecycle changes. Test-only edits generally need only the affected target;
+Cargo or build edits need relevant compilation and dependency checks (add MSRV
+checks when syntax, APIs, dependencies, or the MSRV itself could shift). Check
+[Platform coverage parity](#platform-coverage-parity) to decide whether
+Windows cross-target Clippy applies.
 
 Before running checks, note briefly what changed, which checks you selected,
-and what remains for CI. Broaden if anything fails or uncovers wider impact;
-once selected checks pass, commit, push, and follow CI. Desktop session
-behavior and Arch package builds still require suitable native or disposable
-environments.
+and what remains for CI.
 
 ### Isolation and side effects
 
@@ -93,7 +72,7 @@ creates real commits, so a clean developer checkout is **not** a safe fixture.
 
 Run Cargo from `cli/` with the
 [pinned toolchain](contributing.md#selecting-the-pinned-toolchain), combining
-related integration targets into a single invocation:
+related integration targets into one command:
 
 ```sh
 cd cli
@@ -108,8 +87,8 @@ cargo test --locked --profile ci --test update_command -- --list
 cargo test --locked --profile ci --test update_command repository
 ```
 
-Filters match test-name substrings, so verify the reported test count (a typo
-can match zero tests and still exit `0`). See the
+Filters match test-name substrings, so check the reported test count (a typo
+matches zero tests and still exits `0`). See the
 [suite inventory](writing-tests.md#integration-test-suites) to locate a target,
 or [Debugging](debugging.md) to trace a failure.
 
@@ -135,9 +114,6 @@ pwsh -File .github\workflows\scripts\windows\Check.ps1 -List
 pwsh -File .github\workflows\scripts\windows\Check.ps1 -Strict fmt clippy test config
 ```
 
-These examples run Rust and config stages; for docs work, pick the affected
-[documentation checks](#documentation-site).
-
 Omitting stage names runs the default set:
 
 | Stage | What it checks |
@@ -154,13 +130,12 @@ Omitting stage names runs the default set:
 | `audit` / `deny` | Dependency advisories and dependency policy |
 
 Cargo stages use `--locked` and `--profile ci` where applicable, resolving
-tools from `PATH` and rejecting the wrong Rust version rather than switching
-toolchains automatically.
-
-Missing tools normally print `SKIP`; passing `--strict`, `-Strict`, or
-`DOTFILES_CHECK_STRICT=1` turns skips into failures, and any installed tool's
-nonzero exit (including exit code `2`) fails immediately. See
-[Analyzer prerequisites](#analyzer-prerequisites) for required tools.
+tools from `PATH` and failing on a mismatched Rust version rather than
+switching toolchains automatically. Missing tools normally print `SKIP`;
+passing `--strict`, `-Strict`, or `DOTFILES_CHECK_STRICT=1` turns skips into
+failures, and any installed tool's nonzero exit (including exit code `2`) fails
+immediately. See [Analyzer prerequisites](#analyzer-prerequisites) for required
+tools.
 
 Two stages are opt-in: `msrv` installs and builds with the MSRV from
 `Cargo.toml`, and Linux `qml` runs Qt Quick Test (`--all` on Linux enables
@@ -179,41 +154,34 @@ standard library.
 The Markdown link checker scans tracked and unignored new Markdown files
 (including unstaged moves), verifying relative links and resolving this
 repository's GitHub `blob/main` and `tree/main` URLs, anchors, and line ranges
-against the checkout (it doesn't fetch external URLs or validate prose
-accuracy). For a quick link-only run:
+against the checkout (it does not fetch external URLs). For a quick link-only
+run:
 
 ```sh
 python3 -B .github/workflows/scripts/linux/check-doc-links.py .
 ```
 
-Generated site output and `node_modules` are ignored, and new files do not need
-to be staged first.
-
 ## Before pushing
 
 Inspect the full intended commit range against the refreshed destination
 branch (comparing against the last successful ancestor if an earlier push
-failed so pending changes stay in scope). Ensure your selected checks from
-[Choosing coverage](#choosing-coverage) cover the **committed** inputs;
-earlier passing results still count if those exact inputs didn't change, while
-unstaged fixes never validate a commit.
+failed so pending changes stay in scope). Make sure your selected checks cover
+the **committed** inputs: unstaged edits never validate a commit.
 
 ### Documentation and skills
 
 Pick the affected checks from the
 [site maintenance README](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md#checks).
-Ordinary prose and skill wording rarely need npm installs, a VitePress build,
-browser tests, or Cargo compilation. For broad site changes or uncertain
-impact, `python docs/check.py --committed` runs the full site suite once on a
-native platform.
+For broad site changes or uncertain impact, `python docs/check.py --committed`
+runs the full site suite once on a native platform.
 
 ### Implementation and mixed patches
 
-The pre-push coordinator is an optional conservative wrapper when you want
-CI's broad path classifier applied locally (note that it can pull in extra
-work, such as a full docs build on a CLI-only patch). Inspect `--plan` first
-and prefer focused commands whenever your coverage is already clear. With
-Python 3.11+, run on Windows:
+The pre-push coordinator is an optional conservative wrapper that applies CI's
+path classifier locally (note that it can pull in extra work, such as a full
+docs build on a CLI-only patch). Inspect `--plan` first and prefer focused
+commands when your coverage is already clear. With Python 3.11+, run on
+Windows:
 
 ```powershell
 python .github\workflows\scripts\linux\pre-push.py --plan
@@ -237,9 +205,7 @@ filesystem).
 The Windows coordinator runs docs once and forwards that exact commit's pass
 to WSL, avoiding duplicate PSScriptAnalyzer and Windows cross-target Clippy
 runs while still running both Linux and Windows Rust tests. A Linux-only run
-keeps Windows cross-target Clippy and notes the native Windows gap. Full host
-installs remain CI coverage, while safe shell and editor fixtures run locally
-when selected.
+keeps Windows cross-target Clippy and notes the native Windows gap.
 
 If you already passed `docs/check.py` for this exact commit, pass
 `--docs-checked <commit>` (using the SHA it printed) so the Linux worker skips
@@ -276,30 +242,28 @@ than replacing it with a failed push's tip. Pass `--full` for conservative full
 coverage. `--plan` prints the selection without running anything.
 
 The checker exports the target commit into temporary Git checkouts and runs
-CI-selected checks with strict skip handling (**unstaged edits never satisfy a
-committed patch**), reusing the Cargo cache and redirecting CLI state and logs
-into temporary directories.
+CI-selected checks with strict skip handling, reusing the Cargo cache and
+redirecting CLI state and logs into temporary directories.
 
-Provide the tools required by the printed plan before running the checker: keep
-the pinned Rust toolchain on `PATH` (plus MSRV and the Windows target when Rust
+Provide the tools required by the printed plan before running the checker: the
+pinned Rust toolchain on `PATH` (plus MSRV and the Windows target when Rust
 changes select them), a configured WSL distro for Windows implementation runs,
 Bash/Zsh/fzf/zstd/bat/tmux for shell fixtures, Vim/Neovim for editor fixtures,
-and Playwright's Chromium runtime when docs haven't already been checked. The
+and Playwright's Chromium runtime when docs have not already been checked. The
 checker only restores locked npm packages when running docs locally; it never
 installs system tools or pushes commits.
 
-Fix any selected local failures before pushing. Check the printed
+Fix any selected local failures before pushing. Review the printed
 `REMAINING CI` list for full builds, integration jobs, or publishing left to
-CI, and report any unavailable local checks clearly. Pushing includes following
-the [exact commit's CI results](ci-and-releases.md#reading-a-run) through
-completion rather than stopping at a successful `git push`.
+CI, and follow the [exact commit's CI results](ci-and-releases.md#reading-a-run)
+through completion after pushing.
 
 ### Local npm TLS failures
 
 If a local TLS error blocks npm from restoring locked dependencies inside the
 temporary snapshot, documentation checks are **unavailable** rather than failed
-and don't have to block a push when every other selected local check passes and
-GitHub CI will run the docs job for that exact commit.
+and do not have to block a push when every other selected local check passes
+and GitHub CI will run the docs job for that exact commit.
 
 After confirming the TLS error, record it explicitly for that exact commit (in
 PowerShell):
@@ -321,8 +285,7 @@ completion.
 
 ## Specialized checks
 
-Pick only the recipes matching the files you edited rather than running this
-whole section in order.
+Pick only the recipes matching the files you edited.
 
 ### Documentation site
 
@@ -339,7 +302,8 @@ DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
 ```
 
 `true` and `yes` also enable full mode (export the variable before `git commit`
-to run it on commit). Guards are selected by staged paths:
+to run it on commit). Guards are selected by staged paths (including deletions
+and both sides of renames):
 
 | Trigger | Additional coverage |
 |---|---|
@@ -350,11 +314,10 @@ to run it on commit). Guards are selected by staged paths:
 | POSIX wrapper or its tests | Linux wrapper tests |
 | Release workflow | Staged publishing invariants, including provenance and permissions |
 
-Deletions and both sides of renames trigger guards. Rust and CI guards inspect
-an isolated index snapshot (ignoring unstaged edits and untracked files),
-release guards read the staged workflow directly, and builds reuse the Cargo
-cache. Note that the verifier and pattern files themselves load from the
-working tree, so review edits to them separately.
+Rust and CI guards inspect an isolated index snapshot (ignoring unstaged edits
+and untracked files), release guards read the staged workflow directly, and
+builds reuse the Cargo cache. The verifier and pattern files themselves load
+from the working tree, so review edits to them separately.
 
 Running `sh hooks/check-ci-guards.sh` runs targeted guards directly (omitting
 `config_drift`, `cargo-deny`, and wrapper tests without full mode). Neither
@@ -377,7 +340,7 @@ the same line is still caught). Existing exceptions cover Action pins,
 checksums, `test.local` fixtures, and GitHub SSH syntax, not general
 `example.com` addresses.
 
-Because the scanner doesn't inspect history, binaries, or arbitrary encodings,
+Because the scanner does not inspect history, binaries, or arbitrary encodings,
 follow [Secrets](../guides/security-and-trust.md#secrets). Keep hook scripts
 POSIX `sh`-compatible, cover partial staging, renames/deletions, unusual
 filenames, and empty diffs, and run integration tests only via
@@ -526,29 +489,18 @@ The PowerShell suite checks first-start discovery, custom Cargo paths, literal
 fragment directories, and `PATH` deduplication on reload. Install required
 tools so cases actually run rather than skipping.
 
-### CI gates
-
-The `ci-success` job verifies that every selected gating job succeeded and
-every unselected job was intentionally skipped; see
-[CI and releases](ci-and-releases.md) for scheduling and informational jobs.
-
 ### CI selection fixtures
 
 ```sh
 python3 -B .github/workflows/scripts/linux/test-ci-changes.py
 ```
 
-Tests path classification, aggregate gating, release contracts, renames and
-deletions, unusual paths, and invalid ranges using temporary repos and mocked
-`gh` calls (pass `ClassificationTests GateTests` to run just those groups). Run
-the local `ci` stage too whenever workflow YAML or contracts change.
-
-### Release selection
-
-Release selection compares the exact tested commit against the last published
-release rather than the previous push; see
-[Release selection](ci-and-releases.md#release-selection) for how a docs-only
-push can complete an earlier pending release.
+Tests path classification, aggregate `ci-success` gating, release contracts,
+renames and deletions, unusual paths, and invalid ranges using temporary repos
+and mocked `gh` calls (pass `ClassificationTests GateTests` to run just those
+groups). Run the local `ci` stage too whenever workflow YAML or contracts
+change. See [CI and releases](ci-and-releases.md) for how gating and
+[release selection](ci-and-releases.md#release-selection) work remotely.
 
 ## Focused mutation testing
 
@@ -565,16 +517,13 @@ selectively before pushing when ordinary assertions still leave a real gap:
 
 Mention your mutation choice briefly alongside your selected checks. Target
 only the relevant file or function on its native platform rather than the whole
-crate, and don't defer a known safety-test gap to the nightly run (for native
+crate, and do not defer a known safety-test gap to the nightly run (for native
 Windows paths unavailable locally, report the gap or trigger a focused manual
 remote run).
 
 Follow [Mutation testing](mutation-testing.md) to run in a disposable worktree,
 keep the original source range, inspect survivors, and preserve reports before
-cleanup (a zero-mutant run proves nothing). Neither normal tests nor
-`check.sh --all` run mutations, and the
-[nightly workflow](ci-and-releases.md#scheduled-mutation-testing) runs
-separately from push CI.
+cleanup (a zero-mutant run proves nothing).
 
 ## Platform coverage parity
 
@@ -582,9 +531,10 @@ When running Linux checks from Windows, keep your checkout on WSL's native
 Linux filesystem (such as `~/src/dotfiles`) rather than under `/mnt/c`. Several
 fixtures create temporary directories **inside the checkout** requiring Unix
 permission bits and non-UTF-8 filenames that Windows mounts cannot represent
-(changing `TMPDIR` alone won't relocate them).
+(changing `TMPDIR` alone will not relocate them).
 
-Linux cross-target Clippy catches Windows type and import mistakes:
+Linux cross-target Clippy catches Windows `cfg`-gate, type, and import mistakes
+without needing a second OS locally:
 
 ```sh
 cd cli
@@ -597,7 +547,7 @@ process execution; native Windows tests (locally or in exact-commit CI) must
 cover those. See [Platform coverage](ci-and-releases.md#platform-coverage) for
 the full matrix.
 
-Executor tests spawn their ignored child-process fixture internally, so don't
+Executor tests spawn their ignored child-process fixture internally, so do not
 invoke it directly with `--ignored`.
 
 Next, see [Writing tests](writing-tests.md) when adding new regressions, or

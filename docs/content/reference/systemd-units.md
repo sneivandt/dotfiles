@@ -16,7 +16,7 @@ current running state, not the contents of the unit files themselves.
 | Commands | `update` |
 | Availability | Supported systemd platform with configured units, outside CI |
 | [Requires success](task-reference.md#scheduling-model) | None |
-| [Runs after](task-reference.md#scheduling-model) | [Home symlinks](home-symlinks.md). Waits for [system packages](system-packages.md) and [AUR packages](aur-packages.md) when unit readiness requires it. Waits for the [dotfiles launcher](dotfiles-launcher.md) when enabling the first-login user service. |
+| [Runs after](task-reference.md#scheduling-model) | [Home symlinks](home-symlinks.md); [System packages](system-packages.md) and [AUR packages](aur-packages.md) (conditional); [Dotfiles launcher](dotfiles-launcher.md) (first-login unit) |
 | Implementation | [system/systemd_units.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/systemd_units.rs) |
 
 ## What it does

@@ -31,10 +31,10 @@ When you're ready to implement a feature, move on to
 flowchart TB
     accTitle: Tasks, resources, and operations
     accDescr: The command loads configuration and schedules tasks. A task may converge independent resources or a whole-workflow operation; both report outcomes to the command summary and run log.
-    Command["Command and configuration"] --> Task["Task: eligibility and dependencies"]
-    Task --> Resources["Resources: independent items"]
-    Task --> Operation["Operation: whole workflow"]
-    Resources --> Result["Results and run log"]
+    Command["Command &<br/>configuration"] --> Task["Task<br/>eligibility & deps"]
+    Task --> Resources["Resources<br/>independent items"]
+    Task --> Operation["Operation<br/>whole workflow"]
+    Resources --> Result["Results & run log"]
     Operation --> Result
 ```
 

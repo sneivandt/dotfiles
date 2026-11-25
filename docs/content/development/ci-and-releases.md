@@ -27,13 +27,9 @@ flowchart TB
     accTitle: CI gates documentation and binary publication separately
     accDescr: Changed paths select CI jobs. After successful same-repository push CI on main, Pages deploys a built site only while its commit is current. Release selection separately checks for pending binary or publishing changes.
     Changes["Changed paths"] --> Jobs["Selected CI jobs"]
-    Jobs --> Gate["ci-success"]
-    Gate --> Push{"Successful push to main?"}
-    Push -- No --> Done["No publication"]
-    Push -- Yes --> Docs["Deploy site if built and current"]
-    Push -- Yes --> Select{"Binary or publishing change pending?"}
-    Select -- Yes --> Release["Build and publish release"]
-    Select -- No --> Done
+    Jobs --> Gate["ci-success gate"]
+    Gate -- "Main push passed" --> Docs["Pages deploy<br/>(if built & current)"]
+    Gate -- "Main push passed" --> Release["Release build<br/>(if binary changed)"]
 ```
 
 Only successful, same-repository **push** runs on `main` can publish a site
@@ -66,10 +62,10 @@ falls back to full coverage so earlier changes don't slip through untested.
 | Standalone Rust integration tests/fixtures | Both platform builds and Rust checks, not unrelated application/wrapper jobs |
 | Cargo manifests/lockfiles | Dependency audit and deny in addition to Rust checks |
 | `cli/deny.toml` or formatting policy | Dependency-policy or formatting check respectively |
-| `conf/` | Validation, drift, and profile/round-trip checks; `conf/system-files.toml` and `conf/chmod.toml` also select Rust checks, `conf/systemd-units.toml` selects lock-script checks, and package/Git/symlink manifests select applications |
+| `conf/` | Validation, drift, and profile/round-trip checks; `system-files.toml` and `chmod.toml` also select Rust checks, `systemd-units.toml` selects lock-script checks, and package/Git/symlink manifests select applications |
 | `system/` | Linux Rust checks, configuration validation/drift, and profile/round-trip checks |
 | `packages/` recipes | Linux build/Rust checks, config validation/drift, and ShellCheck |
-| Managed application files | Configuration checks and the affected application/script fixtures; Rust-tested files (`symlinks/config/git/templates/`, `symlinks/local/bin/code-insiders`, and `symlinks/config/systemd/user/dotfiles-first-login.service`) also select Rust checks |
+| Managed application files | Configuration checks and the affected application/script fixtures; Rust-tested files (Git templates, the VS Code wrapper, and the first-login systemd unit) also select Rust checks |
 | Quickshell | Python fixtures on both platforms and Linux offscreen QML |
 | Wrappers | The affected platform's build and wrapper integration |
 | Hooks | Hook and staged-input fixtures; hook-only edits do not request CLI builds |

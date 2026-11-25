@@ -5,13 +5,13 @@ description: Choose a guide's scope, verify procedures and examples, write searc
 
 # Writing documentation
 
-Write for someone trying to get a job done. A reader who lands on any page
-should immediately understand its assumptions, know what to do next, and
-recognize the expected result without having to read the entire site first.
+Start with the question that brought someone to the page. A first-time user
+needs to know what a preview will do; someone looking up `--only` needs its
+scope and syntax. Answer that question first. Give enough context to act and
+a way to tell whether it worked.
 
-This guide covers prose, examples, search metadata, and task-reference
-conventions. For local site previews, VitePress wiring, checks, and publishing,
-see the [site maintenance README](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md).
+For previews of the site itself, build checks, and publication, use the
+[site maintenance README](https://github.com/sneivandt/dotfiles/blob/main/docs/README.md).
 
 ## Choose the owning page
 
@@ -31,17 +31,13 @@ a distinct workflow or audience, not just because a page is getting long.
 | How do I run focused mutations safely? | [Mutation testing](mutation-testing.md) |
 | How are custom Arch recipes discovered and prepared? | [Custom package versions](../reference/custom-package-versions.md) and [Custom package repository](../reference/custom-package-repository.md) |
 
-Keep application, package, and agent workflows in their dedicated guides, and
-keep contributor implementation details out of user-facing instructions. Link
-to the full explanation instead of repeating it on every reference page, while
-still keeping short definitions and safety warnings right where the reader
-acts.
+A guide walks the reader through a job; a reference answers a lookup. Give the
+full explanation one home and link to it from the other. Repeat a consequence
+where it changes the reader's decision, not a disclaimer on every page. For
+example, the overlay guide owns script selection, but anyone about to preview
+an untrusted overlay still needs to know that the scripts execute.
 
-Human content standards live here, site build mechanics live in the site
-README, and agent skills route work to both without carrying a duplicate copy
-of these procedures.
-
-## Verify the behavior before explaining it
+## Verify behavior and transitions
 
 Before writing, read the owning command or task, its resource, its config
 decoder, and its tests. For task eligibility and dependencies, also check
@@ -49,35 +45,24 @@ decoder, and its tests. For task eligibility and dependencies, also check
 or the `check` command's task list. Never rely solely on older docs or an
 upstream tool's manual to assume what dotfiles supports.
 
-Be clear about what is declared, what is inspected, and what is changed.
-Distinguish an inapplicable task from an unmet prerequisite, a failed query
-from missing state, and a dry-run preview from a guarantee that apply will
-succeed. Call out startup and bookkeeping effects (like saving a profile or
-overlay path) wherever running a command triggers them.
+Trace the procedure from the reader's starting point: a fresh machine, an
+existing installation, or a partially failed run. Three questions catch errors
+that valid command syntax won't:
 
-Link upstream manuals to clarify a tool or format without implying dotfiles
-exposes every upstream option. Link repository source files with readable
-labels when contributors need to read the implementation. Never send human
-readers to agent skills as documentation; if a procedure matters to a person,
-write it in the owning guide.
+1. **What does the CLI know?** A task that doesn't apply is different from
+   one that lacks a tool. A failed inspection doesn't mean the file is absent.
+2. **What changes at this step?** A preview isn't a promise that apply will
+   succeed. It can also have effects of its own, such as saving a profile or
+   overlay path. Changing a declaration doesn't retarget an installed link.
+3. **What's left for the next step?** For instance, removal can leave a copy
+   that blocks a new link. Explain what to preserve, how to identify the
+   intended destination, and how to tell when the old source is no longer needed.
 
-## Review the starting state and transition
-
-A valid command isn't a complete procedure by itself. State whether the reader
-starts from a fresh machine, an existing install, or a partially failed run,
-and describe the before-and-after state of each consequential step in a
-migration.
-
-Trace what happens to existing files, symlink targets, ownership records,
-saved selections, and prerequisites. Changing a declaration doesn't
-automatically retarget an installed symlink, a copied file can block a later
-link, and switching profiles won't undo a previous update.
-
-Walk both the happy path and a realistic recovery path against the code or an
-isolated fixture. Tell the reader what to check at each decision point, what
-must stay in place, and when it is safe to delete a backup or old source. Never
-test procedures against your live home directory, package manager, or desktop
-session when an isolated fixture will do.
+Check the normal path and a realistic recovery path against code or an
+isolated fixture, not your live home directory or package manager. Link to an
+upstream manual for the tool's own behavior, to tracked source for an
+implementation detail, and to a human guide rather than an agent skill for
+instructions.
 
 ## Make examples reusable
 
@@ -85,18 +70,13 @@ Choose small examples that illustrate one decision at a time: familiar package
 names, a simple Git setting, or a clearly fictional app usually teach faster
 than a custom recipe or machine-specific unit.
 
-Label every example clearly:
-
-| Kind | What to state |
-|---|---|
-| Excerpt from this checkout | Link the source and note omitted context |
-| Illustrative configuration | Mark it as an example, note required files or tools, and verify keys and types against the decoder |
-| Placeholder command | Name every placeholder the reader must replace before running |
-| Abbreviated code sketch | Note setup and imports that are intentionally omitted |
+Tell readers whether they are looking at a real excerpt (link its source), a
+working example, or a sketch that omits setup. Name any placeholder they must
+replace and any tools or source files the example needs.
 
 For configuration snippets, state which file they belong in and whether to
 extend an existing array rather than duplicating a TOML table header or
-replacing a whole file. Mention any source file the declaration expects.
+replacing a whole file.
 
 Keep exact identifiers wherever the underlying mechanism requires them (such as
 registry value types, WinGet IDs, systemd unit suffixes, or config keys). Keep
@@ -125,7 +105,9 @@ ones) rather than opening with Rust struct names.
 Place the metadata summary table before detailed sections. State-changing task
 tables list the selector, command membership, availability, blocking
 dependencies, ordering waits, and source link; check-task tables list scope,
-tool requirements, and dependencies.
+tool requirements, and dependencies. Keep cells short. Put the explanation
+of an unusual ordering rule or failure mode in the body rather than making
+the reader piece it together across columns.
 
 | Section | What the reader needs |
 |---|---|
@@ -178,9 +160,20 @@ Give every page frontmatter with a nonempty single-line `title` and
 relative `.md` links between docs pages and full GitHub URLs for tracked repo
 files. Refer to other pages by name rather than by sidebar position.
 
-Lead with the common path using direct sentences and task-oriented headings.
-Reserve inline code for exact syntax and bold for consequential distinctions.
-Use `::: warning` callouts for safety notes and explain highlighted code.
+Lead with the common path, using direct sentences and task-oriented headings.
+Explain *why* a choice matters in terms of an observable effect. For example,
+“Keep the checkout: your installed links point into it” is more useful than
+“A permanent checkout is required.” Use the same term across guides and
+reference pages; don't alternate between “role,” “tier,” and “mode” to avoid
+repeating “profile.”
+
+Use a table for short values people compare. If each row reads like a
+paragraph, try a list or short subsections instead. Use a diagram when a
+relationship is easier to see than to describe, such as a home link pointing
+into the checkout. Prefer a top-to-bottom flow with short labels, give it an
+accessible title and description, and keep the essential point in nearby
+prose. Check the result at phone width: contained scrolling can prevent page
+overflow without making a diagram or table easy to read.
 
 Write readable link labels (filenames are fine) without inline code inside the
 label. Refer to tools and concepts in plain prose, reserving inline code for
@@ -199,8 +192,9 @@ Pick verification steps from
 [Documentation site checks](testing.md#documentation-site). Pure prose edits
 often only need link and metadata checks, while layout, syntax, navigation, or
 search changes benefit from inspecting the built site at desktop and narrow
-widths. Read links like a newcomer: links should add depth rather than hiding a
-mandatory step, and automated tests never replace verifying factual accuracy.
+widths. Read the page once as a direct link and once as the next step from a
+neighboring guide. A direct visitor shouldn't miss a prerequisite, and a
+reader following the sequence shouldn't get the same introduction twice.
 
 Keep key lookup headings at levels two and three so they appear in the page
 outline. Place rare recovery paths after the main procedure, and start a fresh

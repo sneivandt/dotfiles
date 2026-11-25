@@ -37,7 +37,9 @@ do not invent a separate keyword/tag taxonomy or copy the page inventory here.
 
 Prefer VitePress's native theme and controls. Preserve a reader's appearance
 choice, diagram titles/descriptions, warning information, and readable tables.
-Do not shrink text to hide overflow. Tests should protect these contracts,
+Check that the *content* fits at phone width, not just its scroll container.
+Shorten labels or reorganize the content before considering smaller text.
+Tests should protect these contracts,
 not incidental sentences or hardcoded inventory counts.
 
 ## Verify and publish within scope

@@ -166,7 +166,8 @@ network-checked.
 Browser regressions exercise the homepage, topic navigation,
 search, theme persistence, warning callouts, and every Mermaid diagram at
 desktop and mobile sizes. They also check that task details appear in the page
-contents and that tables fit a narrow screen without shrinking their text.
+contents and that tables and diagrams can be read at a 375-pixel viewport
+without horizontal panning or shrinking their text.
 Keyboard regressions cover skip navigation, search dismissal and restored
 focus; text and safety-callout contrast is checked in both themes.
 Diagram labels must stay at least 14 CSS pixels.

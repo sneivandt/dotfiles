@@ -5,32 +5,24 @@ description: Understand the Hyprland session, Quickshell bar, desktop services, 
 
 # Arch desktop
 
-The Arch `desktop` profile builds a Wayland environment around Hyprland for
-windows and workspaces and Quickshell for the bar and menus. UWSM (Universal
-Wayland Session Manager) launches the graphical session, and systemd manages
-its background services.
-
-This guide covers the running desktop rather than installing Arch Linux itself.
-Start with [Getting started](getting-started.md) and select `desktop` (Arch
-detection adds the `arch` category automatically), and see
-[Package management](package-management.md) for package installs and upgrades.
+On Arch Linux, choose `desktop` in [Getting started](getting-started.md) to
+install the Hyprland Wayland session and Quickshell bar. If the profile is
+already applied, log in on `tty1` to start the desktop, or go straight to the
+[shortcuts](#everyday-shortcuts) or [customization files](#where-to-customize).
 
 ## Start the desktop
 
-Once you have applied the desktop profile, save your work and log in as your
-normal user through Zsh on `tty1`. The managed login profile starts Hyprland
-via UWSM whenever no graphical session is active, so opening a terminal inside
-an existing desktop won't launch a second session, and applying the config
-won't cut over your current session mid-work.
+Save your work and log in as your normal user through Zsh on `tty1`. The
+managed login profile asks UWSM (Universal Wayland Session Manager) whether
+it can start Hyprland. Opening a terminal inside the desktop does not launch
+a second session.
 
-Running updates before a graphical session starts enables the desktop's user
-services without starting them immediately; UWSM activates
-`graphical-session.target` when the session launches. If logging in on `tty1`
-leaves you at a shell prompt, check that Zsh is your login shell, `~/.zprofile`
-is linked, and `uwsm` is installed. Check
-[Session and services](#session-and-services) and
-[Diagnose a desktop problem](#diagnose-a-desktop-problem) instead of adding
-duplicate autostart commands.
+If you stay at a prompt, check that this is an interactive login on `tty1`,
+`~/.zprofile` and `~/.config/shell/profile-arch-desktop.sh` are readable,
+and `uwsm` is installed. If a previous session is still stopping, the profile
+waits up to 15 seconds, then checks again. If Hyprland starts but the bar
+doesn't, [inspect the Quickshell service](#diagnose-a-desktop-problem) rather
+than adding another autostart command.
 
 <details>
 <summary>Upgrading from an older checkout that activated graphical-session.target early</summary>
@@ -61,13 +53,14 @@ for the complete mapping.
 | Super + T | Toggle floating mode |
 | Super + F | Toggle maximized mode |
 | Super + 1–9 | Change workspace |
-| Super + Shift + 1–9 | Move the window to a workspace |
+| Super + Shift + 1–9 | Move the window to a workspace without following it |
 | Super + End | Lock the session |
 | Super + Shift + S | Select an area for a screenshot |
 
-Screenshots save to `~/screenshots` and copy to the clipboard when available;
-cancelling the selection saves nothing. Move anything you want to keep long
-term, because the daily
+With Super + Shift + S, `slurp` lets you select an area; cancelling saves
+nothing. **Without `slurp`, the shortcut captures the whole screen.** The PNG
+stays in `~/screenshots` even if copying to the clipboard fails. Move captures
+you want to keep out of that directory: the daily
 [cleanup timer](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service)
 deletes files and symlinks after 31 full days since their last modification
 (`find -mtime +30`), along with old empty directories.
@@ -110,34 +103,27 @@ separate DDC/CI setup unless their driver exposes a standard backlight device.
 
 ## Bar and menus
 
-Quickshell places workspaces and the active window title on the left, with
-media, tray items, and system controls on the right:
+Click a workspace on the left to switch to it. The controls on the right
+include network, media, volume, [Markets](#markets), battery status when
+available, and a calendar under the clock.
 
-| Control | What you can do |
-|---|---|
-| Workspaces | Switch to a workspace |
-| Playing media | Click to play/pause, middle-click for the previous track, or right-click for the next |
-| Markets | View configured stock and cryptocurrency quotes, expand a quote, or request a refresh |
-| Network | Choose a saved network or enter a Wi-Fi password; right-click opens the connection editor |
-| Volume | Choose the output and adjust volume up to 150%, with 100% marked; scroll the bar icon for volume or middle-click to mute |
-| Power | Lock immediately, or confirm logout, restart, or shutdown |
-| Battery, when present | Inspect battery status |
-| Clock | Open the calendar |
+- **Network:** Open the menu to choose a saved network or enter a Wi-Fi
+  password. Right-click for the connection editor, including enterprise Wi-Fi.
+- **Volume:** Scroll the icon to adjust the default output or middle-click to
+  mute. In the menu, choose an output or set its volume up to 150%.
+- **Media:** Click to play or pause, middle-click for the previous track, or
+  right-click for the next. A playing player takes precedence over a paused
+  one; Spotify wins ties.
+- **Power:** Lock immediately, or confirm logout, restart, or shutdown.
 
-The media widget tracks whichever player is actively playing (or a paused
-player you can resume if everything is paused), with Spotify winning ties in
-the same state.
-
-Only one bar popup can be open at a time across monitors. The bar reserves
-space for tiled windows, sits behind floating windows, and hides on fullscreen
-workspaces.
+Only one popup opens at a time, even across monitors. The bar reserves space
+for tiled windows, sits behind floating windows, and hides on fullscreen workspaces.
 
 Network status follows live events from `nmcli monitor`, falling back to
 ten-second polling if the monitor or NetworkManager is temporarily unavailable.
 Opening the network menu scans nearby Wi-Fi networks and lists saved profiles
 (disambiguating multiple profiles on one adapter by profile name, pinned AP
-address, or UUID; hover or tab to read truncated labels). Use the
-NetworkManager connection editor for enterprise Wi-Fi networks.
+address, or UUID; hover or tab to read truncated labels).
 
 ### Tray applications
 
@@ -165,8 +151,9 @@ leaves the machine awake rather than suspending it.
 
 Before suspend, Hypridle requests a lock and waits for Hyprland to confirm it.
 Because systemd enforces a finite sleep-inhibit timeout, **if locking fails,
-the machine may still suspend**. Waking from sleep turns the displays back on
-at the lock screen without unlocking the session.
+the machine may still suspend**. Waking turns the displays back on; it does
+not unlock a successfully locked session. If locking is unreliable, use
+Super + End and confirm the lock screen appears before suspending.
 
 Hyprlock uses a solid Tokyo Night background with animations disabled in
 [hyprlock.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprlock.conf).
@@ -175,8 +162,8 @@ Hyprlock uses a solid Tokyo Night background with animations disabled in
 
 Edit the tracked files under
 [symlinks/config/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/)
-rather than installed copies. Because they are live symlinks, edits apply right
-away. To vary settings across machines, use a
+rather than installed copies. The link exposes new contents immediately, but
+when they take effect [depends on the component](#reloading-changes). To vary settings across machines, use a
 [private overlay](private-overlays.md) to replace the linked file whole.
 
 | Change | Start here |
@@ -212,11 +199,12 @@ open GTK applications may need a restart to pick up theme changes.
 
 ## Session and services
 
-The managed
-[zprofile](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zprofile)
-launches `hyprland-uwsm.desktop` through UWSM on `tty1` when no graphical
-session is running, leaving other TTYs and terminals as normal shells. UWSM
-exports shared Wayland and toolkit environment variables from
+The managed [zprofile](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zprofile)
+starts `hyprland-uwsm.desktop`. Before a graphical session starts, dotfiles
+enables the selected graphical services meant to run, without starting them.
+UWSM activates
+`graphical-session.target` when the session launches and exports shared
+Wayland and toolkit environment variables from
 [uwsm/env-hyprland.d/session.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/uwsm/env-hyprland.d/session.sh),
 backed by matching fallbacks in
 [conf/env.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/env.lua)
@@ -226,11 +214,9 @@ for direct Hyprland launches.
 flowchart TB
     accTitle: Who starts the Arch desktop components
     accDescr: The managed Zsh profile starts UWSM from tty1. UWSM starts Hyprland and manages graphical-session user services; these services run Quickshell, idle management, wallpaper, and notifications instead of using Hyprland autostart.
-    Login["Zsh login on tty1"] --> UWSM["UWSM session"]
-    UWSM --> Hyprland["Hyprland compositor"]
-    UWSM --> Services["Graphical user services"]
-    Services --> Shell["Quickshell bar"]
-    Services --> Daemons["Idle, wallpaper, notifications"]
+    Login["Zsh login on tty1"] --> UWSM["UWSM starts Hyprland"]
+    UWSM --> Target["Graphical session target"]
+    Target --> Services["Bar and session services"]
 ```
 
 Long-running desktop daemons run as systemd user services rather than Hyprland

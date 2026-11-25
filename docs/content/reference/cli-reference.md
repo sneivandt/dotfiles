@@ -50,7 +50,7 @@ Available on `update`, `remove`, `check`, `list`, and `explain`:
 |---|---|
 | `--only <selectors>` | Include tasks in `update`, `remove`, `check`, or a `list` graph |
 | `--skip <selectors>` | Exclude tasks in those commands; takes precedence over `--only` |
-| `--with-deps` | Include dependencies for `update` or an `update` graph |
+| `--with-deps` | With `--only`, include both required and ordering dependencies for `update` or an `update` graph |
 | `-n`, `--dry-run` | Preview `update` or `remove` |
 | `--no-repo-update` | Omit repository synchronization from `update` |
 | `--restore-missing` | With `remove`, also create source copies at missing configured home targets |
@@ -68,15 +68,14 @@ Available on `update`, `remove`, and `check`:
 | `-q`, `--quiet` | Show only warnings and incomplete outcomes |
 | `--format human\|jsonl` | Choose human-readable or JSON Lines output |
 | `--no-parallel` | Run selected work sequentially |
-| `--non-interactive` | Disable interactive prompts |
+| `--non-interactive` | Disable CLI prompts; does not by itself make skipped work fail |
 | `--fail-on-skip` | Fail if applicable tasks cannot complete |
 | `--no-symbols` | Use text status labels |
 
-`update` and `remove` also accept `--skip-attestation` to bypass CLI
-self-update provenance checks (never SHA-256 checksums). That flag doesn't
-affect wrapper bootstrap; set `DOTFILES_SKIP_ATTESTATION=1` to bypass
-provenance at both layers. Treat neither as a routine workaround for
-verification failures.
+`update` and `remove` also accept `--skip-attestation` for CLI self-update.
+Unlike `DOTFILES_SKIP_ATTESTATION=1`, the flag cannot bypass wrapper
+provenance checks. Neither disables SHA-256 checksums. Investigate an
+unexplained verification failure rather than bypassing it.
 
 ### Discovery and history
 
@@ -119,12 +118,13 @@ arguments:
 .\dotfiles.ps1 --version
 ```
 
-Both print the version without requiring a profile. If no cached binary is
-available, the wrapper downloads a release into `bin/`, checks its SHA-256
-checksum (using `flock` from `util-linux` on Linux to avoid concurrent installs),
-and verifies build provenance via `gh`. Missing `gh` or failed verification
-stops bootstrap unless `DOTFILES_SKIP_ATTESTATION=1` is explicitly set (see
-[Build provenance verification](../guides/security-and-trust.md#build-provenance-verification)).
+Both print the version without requiring a profile. If the wrapper needs to
+download a binary, it checks the SHA-256 checksum, verifies build provenance
+with `gh`, and checks that `--version` reports the requested release before
+installing it in `bin/`. A checksum mismatch always stops the download from
+being installed. See [Build provenance verification](../guides/security-and-trust.md#build-provenance-verification)
+if the publisher or authentication is in doubt. The Linux shell wrapper uses
+`flock` from `util-linux` to avoid concurrent installs.
 
 **Even wrapper `--help`, `list`, and `--dry-run` can trigger a download.**
 Invoke an existing binary directly if you want to skip bootstrap.
@@ -147,17 +147,19 @@ so keep your checkout at a stable path.
 
 ## CLI self-update
 
-Self-update runs only for a release binary living in the selected checkout's
-`bin/` directory with an embedded publisher (changing `origin` never retargets
-it, and dev builds never self-update).
+`update` and `remove` check for a newer CLI before task selection if the
+running binary is a release in the selected checkout's `bin/` with an
+embedded publisher. `--only` and `--no-repo-update` do not disable that
+check; `DOTFILES_SKIP_SELF_UPDATE=1` does. Fresh release metadata can be
+reused for ten minutes. `--dry-run` reports an available version without
+installing it or writing release caches.
 
-After passing SHA-256 and provenance checks, the candidate binary must pass a
-`--version` smoke test; if it fails, the CLI restores the previous binary (and
-reports any rollback error). Failed verification rejects the download outright.
-Release lookups cache fresh metadata for ten minutes; `--dry-run` reports
-available updates without installing or writing cache files. See
-[Release downloads](../guides/security-and-trust.md#release-downloads) for
-attestation rules and bypasses.
+A failed release lookup leaves the current CLI running. Once a newer release
+is found, a failed download or verification stops the run. After [release
+verification](../guides/security-and-trust.md#release-downloads), the CLI
+checks the exact `--version` output both before and after replacement. If the
+installed copy fails that check, it attempts to restore the backup. For an
+interrupted replacement, see [CLI does not self-update](../guides/troubleshooting.md#cli-does-not-self-update).
 
 ## Task discovery output
 
@@ -184,9 +186,11 @@ internal tasks), labeling each as `default`, `requested`, `dependency`,
 `after <-` waits without inheriting failure. Filters annotate excluded nodes
 instead of hiding them, and internal tasks cannot be selected directly.
 
-`list` requires loadable configuration and a saved (or explicit) profile and
-never prompts interactively (explicit linked-worktree overlays still require
-their confirmation).
+`list` and `explain` need loadable configuration and a profile from `--profile`,
+`DOTFILES_PROFILE`, or the saved setting. Neither prompts for a profile nor
+saves selections. Passing a linked Git worktree via `--overlay` still requires
+confirmation; without an interactive terminal or under CI, that selection
+is declined.
 
 ## Logs
 
@@ -281,16 +285,16 @@ lines are omitted):
 | `actions` | Object of integer item counts; these are not task totals |
 | `outcome`, `exit_code`, `elapsed_us` | Finish outcome string, integer process code, and integer elapsed microseconds |
 
-Match tasks by `selector` rather than internal `task_id` or `context`, ignore
-extra fields and unknown record types, and fail cleanly on an unrecognized
-`schema`. The
+Match tasks by `selector` rather than internal `task_id` or `context`. Group
+records by `run_id`, linking children via `parent_run_id`. Ignore extra fields
+and unknown record types, but reject an unrecognized `schema`. The
 [documentation contract fixture](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/docs_contracts.rs)
 verifies this excerpt against real CLI output.
 
-JSON Lines disables interactive prompts, keeps parse errors and logging
-warnings on stderr, and writes detailed subprocess output to logs. Group
-records by `run_id` (restarted or elevated children have their own IDs linked
-via `parent_run_id`) and tolerate a missing `run_finish` after a hard kill.
+JSON Lines disables CLI prompts, keeps parse errors and logging warnings on
+stderr, and writes detailed subprocess output to logs. Check the process
+exit code as well: a parse error can precede `run_start`, and a hard kill
+can leave no `run_finish`.
 
 **Closing stdout does not cancel a run:** a broken pipe stops stdout writes,
 but managed work continues to completion.

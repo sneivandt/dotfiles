@@ -5,17 +5,10 @@ description: Diagnose failed or skipped tasks, bootstrap and package problems, c
 
 # Troubleshooting
 
-**Inspect the failed run before retrying a full update.** Blindly retrying can
-update the CLI, sync repositories, or repeat external installs, and changes
-that already succeeded before the failure stay in place.
-
-1. Copy the log command printed at the end of the failure (it pins the run by
-   its stable `--id` rather than "most recent").
-2. Confirm the active profile, platform, overlay, and selected tasks.
-3. Locate the first failed or skipped task; for blocked tasks, trace back to
-   the prerequisite named in its skip reason.
-4. Fix the underlying cause, preview a focused retry, and apply once it looks
-   clean.
+**Start with the failed run, not another full update.** Earlier changes stay
+applied, and a retry can sync repositories or repeat external installs. If the
+CLI printed a `dotfiles log --id` command, copy it before you retry. If the
+wrapper never started the CLI, use the terminal error instead.
 
 The commands below assume you are in your checkout with `dotfiles` on `PATH`.
 If the launcher itself is in doubt, call `./bin/dotfiles` or
@@ -35,27 +28,24 @@ output.
 | Some changes applied before failure | [Recover from a partial update](#recover-from-a-partial-update) | Original run and linked child logs |
 | A service or WSL setting appears unchanged | [Service changes](#service-changes-are-not-visible) or [WSL settings](#wsl-settings-are-unchanged) | Unit scope/state or the environment where the CLI ran |
 
-Bootstrap and config-loading errors can happen before a persistent log file is
-created; keep the terminal output instead of retrying a full update just to
-produce a log.
-
 ## Read the failed run
 
-Use the run ID printed in the failure summary (or look it up with `--list`),
-substituting the failing task's selector for `symlinks`:
+Read the pinned run without a task filter first. Check its profile, overlay,
+and task selection. For a `BLOCKED` row, find the prerequisite named in the
+reason; its diagnostics tell you what to fix. If the run restarted or delegated
+elevation, follow the linked child log before narrowing by task.
+
+If you didn't save the run ID, look it up with `--list`. Replace `<run-id>`
+and `symlinks` with the ID and failing selector:
 
 ```bash
 dotfiles log --list
 dotfiles log --id <run-id> --task symlinks --verbose
 ```
 
-Run IDs remain stable even as newer runs are logged. Omitting `--id <run-id>`
-reads the latest run, so avoid that shortcut if you've already run another
-command since the failure.
-
-Read the failing command's diagnostics rather than stopping at the summary row
-or an "update available" banner. If the log ends in a restart or elevation
-handoff, follow the link it prints to the child process's log.
+Without `--id`, the log command reads the newest run, not necessarily the
+failed one. A configuration error can have a run ID even if no task started;
+in that case leave off `--task`.
 
 See the [Logs reference](../reference/cli-reference.md#logs) for raw/verbose
 modes, missing output, and interrupted runs. If logging itself failed, check
@@ -64,9 +54,6 @@ disk space and permissions at the
 private paths and tool output before sharing any excerpt.
 
 ## Recover from a partial update
-
-Changes that completed before a failure stay applied. Inspect the failure via
-its stable run ID and fix the root cause before rerunning.
 
 If the failure was an interrupted Git merge, follow
 [Recover from an interrupted merge](../reference/dotfiles-repository.md#recover-from-an-interrupted-merge)
@@ -86,10 +73,10 @@ review the entire preview before dropping `--dry-run`. Omit `--with-deps` when
 prerequisites are already satisfied, and keep the same profile and overlay as
 the failed run.
 
-The retry inspects current state and skips anything already in place rather
-than replaying or undoing earlier work. Address any other unrelated failures
-separately or preview a full update once every cause is resolved, and avoid
-deleting managed directories or running `remove` as a catch-all reset.
+After applying, repeat the focused preview: expect no further planned work
+for the repaired task and no unresolved skips, blocks, or failures. A clean
+focused retry says nothing about tasks it excluded. Preview a full update
+after addressing other failures; don't use `remove` as a reset.
 
 ## Startup and configuration
 
@@ -122,26 +109,21 @@ it first.
 
 ### CLI does not self-update
 
-Check these conditions before replacing anything manually:
+If no update appeared, first check which binary ran. Only `update` and
+`remove` check for a release, and only from a release binary in the selected
+checkout's `bin/`. Its publisher is embedded; changing `origin` or
+`DOTFILES_RELEASE_REPO` won't retarget it. `DOTFILES_SKIP_SELF_UPDATE=1`
+disables the check, `--dry-run` only reports an available update, and cached
+metadata can be reused for ten minutes.
 
-- Only `update` and `remove` trigger self-update (`help`, `version`, `list`,
-  `log`, and `check` do not).
-- The running binary must be an eligible release build with an embedded
-  publisher located inside the selected checkout's `bin/`.
-- `DOTFILES_SKIP_SELF_UPDATE=1` disables the check.
-- `--dry-run` reports available updates without installing them.
-- A fresh cache skips re-checking for up to 10 minutes (and on Linux, cache
-  entries must match the current boot).
-- A failed release lookup leaves your current binary working; a failed download
-  or verification surfaces as its own error.
+A release lookup failure lets the current CLI continue. A download or
+verification failure stops the run: read that error before retrying.
 
-Changing `origin` or `DOTFILES_RELEASE_REPO` does not alter the publisher
-embedded in an existing binary.
-
-If a CLI self-update was interrupted, run the checkout wrapper with
-`--version`. It checks the installed binary and automatically restores the
-previous one if it starts cleanly, with no network access required. Wait for
-any active update to finish before retrying.
+If self-update was interrupted, wait for any active update to finish, then run
+the checkout wrapper with `--version`. When it finds a pending update, it
+keeps a working installed binary or restores a working backup if the installed
+one won't start. That recovery needs no network. If neither starts, keep both
+files and inspect the reported `bin/` directory rather than deleting it.
 
 For GitHub API authentication, release discovery tries nonempty `GH_TOKEN`,
 then `GITHUB_TOKEN`, then an unattended saved `gh` login. An expired explicit
@@ -193,8 +175,8 @@ git config --local --get dotfiles.profile
 Profiles must be exactly `base` or `desktop` (invalid values, including stray
 whitespace, fail instead of falling back). `DOTFILES_PROFILE` overrides the
 saved Git setting, and `--profile` overrides both for one run without saving.
-`list` and unattended runs (non-TTY stdin, JSON Lines, or `CI`) never prompt;
-see [Resolution priority](profiles-and-categories.md#resolution-priority).
+`list`, `explain`, and unattended runs (non-TTY stdin, JSON Lines, or `CI`)
+never prompt for a profile. See [Resolution priority](profiles-and-categories.md#resolution-priority).
 
 ### Configuration does not parse
 
@@ -202,13 +184,18 @@ Start with the filename and full diagnostic message. Typical causes are a
 missing required file, syntax error, wrong type, unknown key or category,
 conflicting target declarations, unsafe path, or missing source file.
 
-**Configuration loads before task filtering**, so `--only symlinks` cannot
-skip past broken package TOML, and inactive categories are still parsed.
+Configuration normally loads before task filtering. `--only symlinks` cannot
+skip broken package TOML, even in an inactive category. If a **trusted
+upstream already contains the fix**, a repository-only update is the
+exception: preview `dotfiles update --only repository --dry-run` with no
+`--skip` filters. Apply only if you're ready for the checkout and its live
+linked files to advance. This won't bypass an interrupted-merge marker.
 
-Use [Configuration validation](configuration-basics.md#validation) to interpret
-diagnostics and [CLI validation](../development/testing.md#cli-validation) to
-retest. Remember that `dotfiles check` never modifies files, and
-`config-diagnostics` treats warning-severity findings as failures too.
+Otherwise repair the reported file and retest with `dotfiles check`. It does
+not apply configuration, but writes a log and can save selections.
+`config-diagnostics` fails on warnings too. See
+[Configuration validation](configuration-basics.md#validation) and
+[CLI validation](../development/testing.md#cli-validation).
 
 ### Overlay is ignored
 
@@ -231,8 +218,8 @@ Then verify:
 5. Script tasks live in the overlay's `conf/scripts.toml` with paths relative
    to the overlay root.
 
-Because optional overlay files can be omitted, pointing at the wrong directory
-looks like an empty overlay. See
+An existing directory without overlay declarations can look like an empty
+overlay; a missing path or non-directory produces an error. See
 [Selection and persistence](private-overlays.md#selection-and-persistence) for
 resolution order and linked-worktree rules.
 
@@ -302,7 +289,7 @@ Check remote URLs for embedded tokens before sharing this output.
 
 | Cause | Recovery |
 |---|---|
-| Tracked local changes | Commit, stash, or revert them; sync skips dirty checkouts |
+| Tracked local changes | Keep the edits. Commit or stash work you want to keep before syncing, or deliberately use the current checkout without syncing. |
 | Detached HEAD | Sync is inapplicable; check out your intended branch if appropriate |
 | Missing upstream | Configure an upstream branch or intentionally stay on local state |
 | Local/diverged commits | Reconcile the branch manually; dotfiles never resets or rebases |
@@ -428,8 +415,9 @@ Separate permission, conflict, and Git checkout issues before changing files:
 - Enable Developer Mode, then retry file links from your normal user's
   terminal (home links are never UAC-delegated; directory links can fall back
   to junctions).
-- Back up and move aside any existing file, directory, or unrelated symlink at
-  the destination.
+- Inspect the destination and proposed source first. Back up an existing file
+  or directory before moving it aside; for an obsolete link or junction, move
+  only the link, not the contents it points to.
 - Repair plain-text Git symlink placeholders in the source checkout, since
   turning on Developer Mode later won't convert already-checked-out text stubs.
 

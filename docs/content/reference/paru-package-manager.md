@@ -37,13 +37,9 @@ copy on `PATH`.
 
 Finding `paru` on `PATH` is not enough on its own, because Paru can stay installed yet
 fail to start after a shared library upgrade. Checking both package registration and
-execution catches that drift. If bootstrap is unmet, fix the reported build prerequisite
-before retrying instead of substituting an unverified binary.
-
-## Configuration
-
-There is no TOML declaration for this task. It manages the Paru helper itself, while
-[AUR packages](aur-packages.md) controls which packages Paru installs.
+execution catches that drift. There is no TOML declaration for this task: it manages
+the Paru helper itself, while [AUR packages](aur-packages.md) controls which packages
+Paru installs.
 
 ## Preview and apply
 
@@ -54,13 +50,10 @@ dotfiles update --only paru --dry-run
 ```
 
 If installation or a rebuild is proposed, verify the build prerequisites above before
-[applying the change](task-reference.md#preview-and-apply); preview does not build
-the helper or test the toolchain. After applying, confirm the task reports a validated
-helper before retrying AUR installs, and diagnose any failed health query rather than
-assuming a reinstall will fix it.
+applying; preview does not build the helper or test the toolchain. After applying,
+confirm the task reports a validated helper before retrying AUR installs.
 
 ## Removal
 
-This task is not part of `dotfiles remove`. Changing profiles or declarations does not
-uninstall Paru; see [removal scope](task-reference.md#remove-tasks) before planning a
-cleanup.
+Not part of `dotfiles remove`. Changing profiles or declarations does not uninstall
+Paru.

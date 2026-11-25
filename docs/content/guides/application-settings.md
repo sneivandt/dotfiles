@@ -5,49 +5,31 @@ description: Customize Git, shell prompts and completion, Vim, Neovim, and VS Co
 
 # Application settings
 
-Application preferences live in tracked files under
-[symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/). Always
-edit those tracked sources rather than installed copies or generated files.
-Because home symlinks point straight back into the checkout, many edits take
-effect as soon as you save.
-
-Installing software and configuring it are separate concerns:
-[Package management](package-management.md) chooses which applications are
-installed, [symlink declarations](../reference/home-symlinks.md#configuration)
-map tracked files into your home directory, and the files themselves govern how
-each tool behaves. Use the quick table below to jump to the right source, then
-read the sections on Git, shells, VS Code, and Vim/Neovim.
+To change a linked application setting, edit its source under
+[symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/) in
+your checkout. The home link exposes the edit immediately; the application
+may still need to reload or restart. You don't need to run `dotfiles update`
+for an edit to an already-linked file. To install the application itself, see
+[Package management](package-management.md).
 
 ## Find a common change
 
-| Change | Start here |
-|---|---|
-| Git identity, defaults, aliases, or templates | [Git settings](#git) below |
-| Bash/Zsh environment or shared commands | [Shell configuration](#shell-configuration) below |
-| User command directories on PATH | [config/shell/path.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/path.sh) for Bash/Zsh, or the [PowerShell profile](windows-and-wsl.md#powershell-configuration) |
-| Bash or Zsh prompt | [config/bash/prompt.bash](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/bash/prompt.bash) or [config/zsh/prompt.zsh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/prompt.zsh) |
-| PowerShell behavior | [PowerShell configuration](windows-and-wsl.md#powershell-configuration) |
-| Terminal colors, fonts, or keys | [Alacritty settings](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/alacritty/alacritty.toml) or [Windows Terminal settings](https://github.com/sneivandt/dotfiles/blob/main/symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json) |
-| tmux behavior | [config/tmux/tmux.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/tmux/tmux.conf) |
-| Desktop shortcuts, monitors, bar, or appearance | [Arch desktop](arch-desktop.md#where-to-customize) |
-| Editor settings, keybindings, or plugins | [Visual Studio Code](#visual-studio-code) or [Vim and Neovim](#vim-and-neovim) |
-| Agent preferences, skills, or integrations | [Agent configuration](agent-configuration.md) |
-| SSH client defaults | [ssh/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/ssh/config) |
-
-Every source path in this table lives beneath `symlinks/`. Clicking a link
-opens the public file on GitHub, so make your actual edits in your local
-checkout. Home paths like `~/.config/git/config` are the installed links rather
-than separate copies to edit.
+- **Git and SSH:** [Git identity, defaults, aliases, and templates](#git);
+  [SSH client defaults](https://github.com/sneivandt/dotfiles/blob/main/symlinks/ssh/config).
+- **Shells:** [Bash and Zsh startup and completion](#shell-configuration),
+  [command directories on PATH](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/path.sh),
+  [Bash prompt](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/bash/prompt.bash),
+  [Zsh prompt](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/prompt.zsh),
+  or the [PowerShell profile](windows-and-wsl.md#powershell-configuration).
+- **Terminal and desktop:** [Alacritty](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/alacritty/alacritty.toml),
+  [Windows Terminal](windows-and-wsl.md#windows-terminal), [tmux](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/tmux/tmux.conf),
+  or [Arch desktop shortcuts, monitors, and bar](arch-desktop.md#where-to-customize).
+- **Editors and coding agents:** [Visual Studio Code](#visual-studio-code),
+  [Vim and Neovim](#vim-and-neovim), or [Agent configuration](agent-configuration.md).
 
 ## Make the change
 
-When changing a preference in a file that is already linked, edit the tracked
-source and let the application reload or restart normally; you do not need to
-re-run `dotfiles update`. Keep in mind that interactive settings UIs (including
-VS Code's) can write directly back through a symlink into your checkout, so
-check `git diff` afterward.
-
-To link a new file or add a destination, declare it in
+To link a **new file or destination**, declare it in
 [conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml)
 and preview the link task:
 
@@ -55,12 +37,13 @@ and preview the link task:
 dotfiles update --only symlinks --dry-run
 ```
 
-Existing files, directories, and unrelated links are reported as conflicts so
-nothing is silently overwritten; back them up and move them aside before
-applying. For machine-specific or private alternatives, use a
-[private overlay](private-overlays.md) (which replaces the linked source whole
-rather than merging file contents), and keep credentials and private identity
-details out of the public checkout.
+If the destination holds a file, directory, or unrelated link, dotfiles
+reports a conflict. Back it up, move only that destination aside, and preview
+again. Apply without `--dry-run` once the plan shows the link you intended.
+For a private identity or a different source on one machine, see
+[Replace an application file](private-overlays.md#replace-an-application-file).
+An overlay selects a whole source, not individual lines, and changing the
+declaration alone does not retarget an installed link.
 
 ### Back up and restore a file
 
@@ -69,25 +52,31 @@ path you plan to manage. On Linux, for example, back up `~/.config/git/config`
 if it exists and is readable:
 
 ```sh
-backup_dir=$(mktemp -d "$HOME/dotfiles-backup.XXXXXX")
-cp -pL "$HOME/.config/git/config" "$backup_dir/config"
+backup_dir=$(mktemp -d "$HOME/dotfiles-backup.XXXXXX") &&
+cp -pL "$HOME/.config/git/config" "$backup_dir/config" &&
+cmp "$HOME/.config/git/config" "$backup_dir/config" &&
 printf 'Backup: %s\n' "$backup_dir/config"
 ```
 
-Check the backup before applying. Passing `-L` copies the actual file contents
-even if the existing path is a symlink; if it is a symlink and you might want
-that exact link back later, record its target with `readlink` as well. Back up
+Continue only if the command prints the backup path. Passing `-L` copies the
+contents even if the source is a symlink. To restore that exact link later,
+record its target with `readlink` as well. Back up
 any other targeted files separately, including files included by your Git
 config. On Windows, copy the resolved file contents to a separate backup folder
 and record any original symlink target.
 
-To restore a backup later, first stop selecting that link in
-`conf/symlinks.toml`. Move the current symlink itself aside, then copy your
-backup into place as an ordinary file (copying straight onto an active symlink
-would overwrite the tracked file in the checkout). If you want the original
-symlink back instead, recreate it only after confirming its recorded target
-still exists, then verify what Git reads with
-`git config --show-origin --get user.name`.
+To restore the original later:
+
+1. Stop selecting the link in `conf/symlinks.toml` and any contributing
+   overlay. `dotfiles remove` would copy the **current managed contents**, not
+   recover the original.
+2. Check where the installed link points and move the link itself aside.
+   **Do not copy a backup onto an active symlink**: that overwrites the
+   tracked file. Copy the saved contents to the now-vacant path, or recreate
+   the original symlink after checking its recorded target still exists.
+3. In the repository where the identity matters, run
+   `git config --show-origin --get user.name`. Check the value *and* the
+   file it came from before discarding your backup.
 
 ## Git
 
@@ -120,10 +109,9 @@ run `git config --show-origin --get <key>` inside the affected repository to
 see whether an included file or repository-local value is overriding the shared
 default.
 
-`git delete-merged` removes local branches already merged into `HEAD`, leaving
-tags, the current branch, `main`, `master`, `dev`, and `develop` intact while
-enforcing Git's standard `branch -d` safety check. Unlike the template hook
-below, it compares against `HEAD` rather than `origin/HEAD`.
+`git delete-merged` uses `git branch -d` on local branches merged into `HEAD`,
+not `origin/HEAD`. It skips branches checked out in any worktree and the names
+`main`, `master`, `dev`, and `develop`. Tags are not candidates.
 
 On Windows, the `base` profile leaves Git's editor choice to your environment,
 while `desktop` adds `config/git/windows-desktop` to select VS Code Insiders.

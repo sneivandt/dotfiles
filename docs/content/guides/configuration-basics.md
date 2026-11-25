@@ -5,15 +5,12 @@ description: Find configuration files and understand categories, paths, loading,
 
 # Configuration basics
 
-Dotfiles splits configuration into two places: files under `conf/` declare
-**what dotfiles manages**, while files under
-[symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/) and
-[system/](https://github.com/sneivandt/dotfiles/tree/main/system/) hold the
-actual settings. For example, an entry in `conf/symlinks.toml` tells `update`
-to link `~/.config/git/config` into your home directory, whereas changing your
-default Git branch happens inside `symlinks/config/git/config`. Once that link
-exists, Git reads the tracked file directly, so you don't need to re-run
-`dotfiles update` after editing it.
+To change **what dotfiles manages**, edit a declaration in `conf/`. To change
+**what an application reads** from a linked file, edit its source in
+[symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/).
+For example, `conf/symlinks.toml` tells dotfiles where to put your Git config.
+The Git defaults themselves live in `symlinks/config/git/config`. Once the
+link exists, Git sees edits to that source without another update.
 
 ```mermaid
 flowchart TB
@@ -23,10 +20,9 @@ flowchart TB
     home -->|points to| source["symlinks/config/git/config"]
 ```
 
-For administrator-owned files under `/etc`, dotfiles merges structured
-fragments from `system/` instead of creating symlinks. To jump straight to the
-tracked files for common tools, see
-[Application settings](application-settings.md).
+For administrator-owned files under `/etc`, dotfiles merges fragments from
+[system/](https://github.com/sneivandt/dotfiles/tree/main/system/) instead.
+To find a particular application's settings, use [Application settings](application-settings.md).
 
 ## Files
 
@@ -51,31 +47,23 @@ scripts. A `conf/scripts.toml` in the main repository is ignored.
 
 ## Making a configuration change
 
-1. Find the owning TOML file in the table above and check its task page for the
-   exact schema.
-2. Pick the right category section so related packages, symlinks, and services
-   stay aligned.
-3. Verify the [path conventions](#path-conventions): shorthand symlink entries
-   add a leading dot to the home path, whereas explicit `target` values do not.
-4. Validate your edits and preview the affected
-   [task](../reference/task-reference.md) before applying.
-5. Back up any existing target files you want to keep before applying, since
-   removing a declaration later stops management without undoing earlier
-   changes.
+Find the file in the table above and open its task page for the keys and
+values it accepts. Choose a [category section](#category-sections) that
+matches the machines you want to change. When following a TOML example, add
+entries to the existing section rather than repeating its header.
 
-All TOML examples in these docs are excerpts rather than full files. Extend
-the existing section instead of adding a duplicate table with the same name.
-
-For instance, after editing `conf/symlinks.toml`, validate and preview with:
+For example, after editing `conf/symlinks.toml`, validate the declarations
+and preview the installed paths:
 
 ```sh
 dotfiles check --only config-diagnostics,symlink-sources,config-files
 dotfiles update --only symlinks --dry-run
 ```
 
-Fix any failed or skipped checks before applying. The preview lists planned
-destinations under Home symlinks (pass `--verbose` to include unchanged links).
-Swap in the appropriate task selector for other configuration domains.
+Look under Home symlinks for the destination you intended, including the
+[leading dot](#path-conventions). Back up and move aside any conflicting file
+you want to replace, then preview again. Resolve failed checks and understand
+any skips before applying. Other changes have their own [task selectors](../reference/task-reference.md).
 
 If dotfiles is not installed yet, start with
 [Getting started](getting-started.md). Contributors changing the Rust loader or
@@ -98,14 +86,10 @@ symlinks = ["wslconfig"]
 symlinks = ["config/hypr/hyprland.lua"]
 ```
 
-Valid tags are `base`, `desktop`, `linux`, `windows`, `arch`, and `wsl`. A
-hyphen acts as **AND**, so `[arch-desktop]` applies only when both `arch` and
-`desktop` are active. Unknown or misspelled tags fail validation.
-
-`base` is always active, the `desktop` profile adds `desktop`, and the CLI
-detects the platform tags automatically. See
-[Profiles and categories](profiles-and-categories.md) for how profiles resolve
-and combine with platform categories.
+Here `[base]` applies everywhere, `[windows]` only on Windows, and
+`[arch-desktop]` only when **both** tags are active. Unknown tags are errors.
+[Profiles and categories](profiles-and-categories.md) lists the supported
+tags and explains how dotfiles decides which ones match.
 
 ## Path conventions
 
@@ -128,9 +112,8 @@ paths without a leading `~/`.
 ## Private overlays
 
 Keep personal, work, or machine-specific configuration in a separate
-[private overlay](private-overlays.md). Overlays layer cleanly on top of a
-valid main configuration without hiding conflicts or invalid entries in the
-base files.
+[private overlay](private-overlays.md). An overlay can replace a matching
+entry, but can't hide an error in the main configuration.
 
 ## Removing configuration
 

@@ -1763,10 +1763,27 @@ class GitRangeTests(unittest.TestCase):
 
     def test_built_docs_preserve_routes_anchors_and_assets(self):
         check_site = runpy.run_path(str(SCRIPTS / "check-doc-site.py"))["check_site"]
+        common_head = (
+            '<link rel="icon" href="/favicon.png">'
+            '<link rel="icon" href="/favicon.ico">'
+            '<link rel="apple-touch-icon" href="/apple-touch-icon.png">'
+            '<meta name="author" content="Stuart Neivandt">'
+            '<meta name="theme-color" content="#1a1b26">'
+            '<meta property="og:site_name" content="Dotfiles">'
+        )
+        social_head = (
+            '<meta property="og:locale" content="en_US">'
+            '<meta property="og:image" content="https://docs.example.invalid/assets/og-image.png">'
+            '<meta name="twitter:card" content="summary_large_image">'
+            '<meta name="twitter:image" content="https://docs.example.invalid/assets/og-image.png">'
+        )
         homepage = (
             '<link rel="shortcut icon" href="/favicon.svg">'
-            '<link rel="canonical" href="https://docs.example.invalid/getting-started">'
-            '<meta property="og:site_name" content="Dotfiles">'
+            + common_head
+            + social_head
+            + '<link rel="canonical" href="https://docs.example.invalid/getting-started">'
+            '<meta name="robots" content="noindex, follow">'
+            '<meta property="og:type" content="article">'
             '<meta property="og:url" content="https://docs.example.invalid/getting-started">'
             '<h1 id="getting-started">Getting started</h1><h2 id="setup">Setup</h2>'
             '<nav id="VPSidebarNav"><a href="/commands-and-usage#commands">Commands and usage</a></nav>'
@@ -1781,8 +1798,11 @@ class GitRangeTests(unittest.TestCase):
             "docs/content/guides/commands-and-usage.md": "---\ntitle: Commands and usage\ndescription: Everyday commands.\n---\n# Commands and usage\n\n## Commands\n",
             "docs/dist/index.html": (
                 '<link rel="icon" href="/favicon.svg">'
-                '<link rel="canonical" href="https://docs.example.invalid/">'
-                '<meta property="og:site_name" content="Dotfiles">'
+                + common_head
+                + social_head
+                + '<link rel="canonical" href="https://docs.example.invalid/">'
+                '<meta name="robots" content="index, follow, max-image-preview:large">'
+                '<meta property="og:type" content="website">'
                 '<meta property="og:url" content="https://docs.example.invalid/">'
                 '<header><a class="title" href="/">Dotfiles</a></header>'
                 '<h1 id="about-these-dotfiles">About these dotfiles</h1><h2 id="start-here">Start here</h2>'
@@ -1794,18 +1814,25 @@ class GitRangeTests(unittest.TestCase):
             "docs/dist/getting-started.html": homepage,
             "docs/dist/commands-and-usage.html": (
                 '<link rel="icon" href="/favicon.svg">'
-                '<link rel="canonical" href="https://docs.example.invalid/commands-and-usage">'
-                '<meta property="og:site_name" content="Dotfiles">'
+                + common_head
+                + social_head
+                + '<link rel="canonical" href="https://docs.example.invalid/commands-and-usage">'
+                '<meta name="robots" content="noindex, follow">'
+                '<meta property="og:type" content="article">'
                 '<meta property="og:url" content="https://docs.example.invalid/commands-and-usage">'
                 '<h1 id="commands-and-usage">Commands and usage</h1><h2 id="commands">Commands</h2>'
                 '<a href="/getting-started#setup">Setup</a>'
             ),
             "docs/dist/404.html": (
                 '<link rel="icon" href="/favicon.svg">'
-                '<meta property="og:site_name" content="Dotfiles">'
-                '<meta name="robots" content="noindex"><h1>Page not found</h1>'
+                + common_head
+                + '<meta name="robots" content="noindex, nofollow"><h1>Page not found</h1>'
             ),
             "docs/dist/favicon.svg": "<svg/>",
+            "docs/dist/favicon.png": "png",
+            "docs/dist/favicon.ico": "ico",
+            "docs/dist/apple-touch-icon.png": "png",
+            "docs/dist/assets/og-image.png": "png",
             "docs/dist/assets/example.svg": "<svg/>",
             "docs/dist/CNAME": "docs.example.invalid\n",
             "docs/dist/robots.txt": "User-agent: *\nAllow: /\nSitemap: https://docs.example.invalid/sitemap-index.xml\n",
@@ -1816,8 +1843,6 @@ class GitRangeTests(unittest.TestCase):
             "docs/dist/sitemap-0.xml": (
                 '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
                 '<url><loc>https://docs.example.invalid/</loc></url>'
-                '<url><loc>https://docs.example.invalid/getting-started</loc></url>'
-                '<url><loc>https://docs.example.invalid/commands-and-usage</loc></url>'
                 '</urlset>'
             ),
         }
@@ -1839,18 +1864,26 @@ class GitRangeTests(unittest.TestCase):
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<h1 id="about-these-dotfiles">About these dotfiles</h1>', '<h1 id="about-these-dotfiles">Welcome</h1>'), "Markdown title does not match page title"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('class="title"', 'class="other"'), "Homepage header must link"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('href="https://docs.example.invalid/"', 'href="https://docs.example.invalid/index.html"'), "expected canonical URL"),
+            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('content="index, follow, max-image-preview:large"', 'content="index, noindex"'), "landing page must allow indexing and following"),
+            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace("<h1", '<meta name="googlebot" content="none"><h1'), "landing page must allow indexing and following"),
+            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<meta property="og:type" content="website">', '<meta property="og:type" content="article">'), "expected og:type"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<nav id="VPSidebarNav">', '<nav id="VPSidebarNav"><a href="/index.html">Dotfiles</a>'), "Homepage must not appear in sidebar navigation"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('href="/getting-started"', 'href="/commands-and-usage"'), "missing from sidebar navigation"),
             ("docs/dist/commands-and-usage.html", None, "missing published route /commands-and-usage.html"),
             ("docs/dist/getting-started.html", homepage.replace('id="setup"', 'id="renamed"'), "missing heading anchors"),
             ("docs/dist/getting-started.html", homepage + "<h1>Extra title</h1>", "expected one page title"),
             ("docs/dist/getting-started.html", homepage + '<span id="setup"></span>', "duplicate IDs"),
-            ("docs/dist/getting-started.html", homepage.replace("shortcut icon", "stylesheet"), "missing site favicon"),
+            ("docs/dist/getting-started.html", homepage.replace("shortcut icon", "stylesheet"), "missing site icon /favicon.svg"),
+            ("docs/dist/getting-started.html", homepage.replace('<link rel="apple-touch-icon" href="/apple-touch-icon.png">', ""), "missing apple-touch-icon"),
+            ("docs/dist/getting-started.html", homepage.replace('<meta name="author" content="Stuart Neivandt">', ""), "expected author"),
+            ("docs/dist/getting-started.html", homepage.replace('<meta name="theme-color" content="#1a1b26">', ""), "expected theme-color"),
             ("docs/dist/getting-started.html", homepage.replace('<meta property="og:site_name" content="Dotfiles">', ""), "expected og:site_name"),
+            ("docs/dist/getting-started.html", homepage.replace('<meta property="og:image" content="https://docs.example.invalid/assets/og-image.png">', ""), "expected og:image"),
+            ("docs/dist/getting-started.html", homepage.replace('<meta name="twitter:card" content="summary_large_image">', ""), "expected twitter:card"),
             ("docs/dist/getting-started.html", homepage.replace('content="https://docs.example.invalid/getting-started"', 'content="https://docs.example.invalid/getting-started.html"'), "expected og:url"),
-            ("docs/dist/getting-started.html", homepage.replace("<h1", '<meta name="robots" content="index, noindex"><h1'), "noindex robots meta tag"),
-            ("docs/dist/getting-started.html", homepage.replace("<h1", '<meta name="googlebot" content="none"><h1'), "noindex robots meta tag"),
-            ("docs/dist/404.html", fixture["docs/dist/404.html"].replace('content="noindex"', 'content="index, follow"'), "missing noindex robots meta tag"),
+            ("docs/dist/getting-started.html", homepage.replace('content="noindex, follow"', 'content="index, follow"'), "non-home guide must emit noindex, follow"),
+            ("docs/dist/getting-started.html", homepage.replace('content="noindex, follow"', 'content="noindex, nofollow"'), "non-home guide must emit noindex, follow"),
+            ("docs/dist/404.html", fixture["docs/dist/404.html"].replace('content="noindex, nofollow"', 'content="index, follow"'), "expected noindex, nofollow robots meta tag"),
             ("docs/dist/getting-started.html", homepage.replace("<h1", '<link rel="canonical" href="https://docs.example.invalid/getting-started.html"><h1'), "expected canonical URL"),
             ("docs/dist/getting-started.html", homepage.replace("#commands", "#absent"), "broken anchor"),
             ("docs/dist/getting-started.html", homepage.replace("commands-and-usage#commands", "commands-and-usage.html#commands"), "expected clean URL without .html"),
@@ -1862,14 +1895,15 @@ class GitRangeTests(unittest.TestCase):
             ("docs/dist/getting-started.html", homepage.replace("Set up a machine.", "Outdated description."), "rendered description does not match"),
             ("docs/dist/getting-started.html", homepage.replace(">Commands and usage<", ">Wrong label<"), "navigation label"),
             ("docs/dist/favicon.svg", None, "broken destination /favicon.svg"),
+            ("docs/dist/assets/og-image.png", None, "broken destination https://docs.example.invalid/assets/og-image.png"),
             ("docs/dist/assets/example.svg", None, "broken destination /assets/example.svg"),
             ("docs/dist/CNAME", "wrong.example.invalid\n", "published CNAME"),
             ("docs/dist/robots.txt", None, "Missing published robots.txt"),
             ("docs/dist/robots.txt", "User-agent: *\nAllow: /\n", "does not declare the canonical sitemap"),
             ("docs/dist/sitemap-index.xml", None, "Missing published sitemap-index.xml"),
             ("docs/dist/sitemap-0.xml", None, "Missing published sitemap"),
-            ("docs/dist/sitemap-0.xml", fixture["docs/dist/sitemap-0.xml"].replace('invalid/</loc>', 'invalid/index.html</loc>'), "Sitemap URLs differ from canonical guide URLs"),
-            ("docs/dist/sitemap-0.xml", fixture["docs/dist/sitemap-0.xml"].replace("getting-started</loc>", "getting-started.html</loc>"), "Sitemap URLs differ from canonical guide URLs"),
+            ("docs/dist/sitemap-0.xml", fixture["docs/dist/sitemap-0.xml"].replace('invalid/</loc>', 'invalid/index.html</loc>'), "Sitemap URLs differ from indexable landing URL"),
+            ("docs/dist/sitemap-0.xml", fixture["docs/dist/sitemap-0.xml"].replace("</urlset>", "<url><loc>https://docs.example.invalid/getting-started</loc></url></urlset>"), "Sitemap URLs differ from indexable landing URL"),
         ]
         for path, content, message in cases:
             with self.subTest(path=path, message=message):

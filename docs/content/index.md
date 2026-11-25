@@ -1,6 +1,6 @@
 ---
 layout: home
-title: About these dotfiles
+title: About this project
 titleTemplate: false
 description: How Stuart Neivandt manages shell, editor, package, and Hyprland desktop settings across Arch Linux and Windows with a Rust CLI.
 head:
@@ -9,7 +9,7 @@ head:
     - '{"@context":"https://schema.org","@type":"WebSite","name":"Dotfiles","url":"https://dotfiles.stuartneivandt.com/","creator":{"@type":"Person","name":"Stuart Neivandt","url":"https://stuartneivandt.com/"}}'
 hero:
   name: Dotfiles
-  tagline: My personal shell, editor, package, and Hyprland setup kept in one checkout, with previews before anything changes.
+  tagline: My personal Arch Linux and Windows setup, managed with a Rust CLI.
   image:
     src: /favicon.svg
     alt: Dotfiles geometric tilde, slash, and dot emblem
@@ -27,7 +27,7 @@ hero:
 
 <section class="home-about">
 
-## About these dotfiles
+## About this project
 
 Hi, I'm [Stuart Neivandt](https://stuartneivandt.com/). I've kept my dotfiles
 here since 2014. Over the years they grew into a Rust CLI that keeps my shell,

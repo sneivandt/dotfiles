@@ -3,7 +3,7 @@
 </h1>
 
 <p align="center">
-  My Arch Linux and Windows configuration, managed with a Rust CLI.
+  My personal Arch Linux and Windows setup, managed with a Rust CLI.
 </p>
 
 <p align="center">

@@ -5,7 +5,7 @@ import MermaidDiagram from './MermaidDiagram.vue';
 import './style.css';
 
 const renderSiteFooter = (className: string) => h('div', { class: className }, [
-  'Maintained by ',
+  'Created by ',
   h('a', { href: 'https://stuartneivandt.com/' }, 'Stuart Neivandt'),
   '.',
 ]);

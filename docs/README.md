@@ -233,13 +233,12 @@ the repository link checker.
 The header switches between three documentation sections. Each section has its
 own sidebar and previous/next sequence:
 
-- Guides: Using dotfiles, Customization, Platforms, and Safety and
-  troubleshooting. Using dotfiles covers setup, everyday commands, profiles, and
-  configuration basics; Customization covers packages, application settings,
-  agent configuration, and private overlays; Platforms covers environment-specific
-  setup for Arch Linux and Windows/WSL; Safety and troubleshooting covers trust
-  boundaries and recovery. Getting started leads directly to Commands and usage,
-  then Profiles and categories and Configuration basics.
+- Guides: Introduction, Customization, and Platforms. Introduction covers setup,
+  everyday commands, profiles, configuration basics, trust boundaries, and
+  recovery; Customization covers packages, application settings, agent
+  configuration, and private overlays; Platforms covers environment-specific
+  setup for Arch Linux and Windows/WSL. Getting started leads directly to
+  Commands and usage, then Profiles and categories and Configuration basics.
 - Reference: direct CLI reference and Task reference overview links,
   followed by the Task details group. The overview explains task selection,
   scheduling, and removal scope; the individual pages cover each domain's
@@ -271,8 +270,8 @@ and test representative reader queries rather than adding keyword meta tags.
 
 The site title returns to the landing page at `/`, which is omitted from the
 Guides sidebar. The landing page uses VitePress's native `home` layout with a
-hero header and a showcase section pairing the terminal preview with the
-personal introduction. The Guides header link opens Getting started, which owns
+hero header, personal introduction, and footer aligned to a shared column width.
+The Guides header link opens Getting started, which owns
 the setup walkthrough. Guides have a heading outline through level three, source
 edit links, and previous/next navigation within the current section.
 

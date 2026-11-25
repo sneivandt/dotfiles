@@ -1,4 +1,5 @@
 :root {
+  --home-max-width: 800px;
   --vp-c-brand-1: #3d59a1;
   --vp-c-brand-2: #2f4988;
   --vp-c-brand-3: #3d59a1;
@@ -99,9 +100,22 @@
     mask-position: left center;
   }
 
+  .VPContent .VPHome .VPHero.has-image .main {
+    max-width: 500px;
+  }
+
+  .VPContent .VPHome .VPHero .image-container {
+    transform: none;
+  }
+
+  .VPContent .VPHome .VPHero .image-bg {
+    width: 260px;
+    height: 260px;
+  }
+
   .VPHome .VPHero .image-src {
-    max-width: 260px;
-    max-height: 260px;
+    max-width: 220px;
+    max-height: 220px;
   }
 }
 
@@ -119,17 +133,33 @@
   }
 }
 
-.VPHome {
-  margin-bottom: 48px;
+.Layout .VPContent .VPHome {
+  margin-bottom: 32px;
+}
+
+.VPContent .VPHome .VPHero {
+  padding-bottom: 40px;
+}
+
+.VPContent .VPHome .VPHero .container {
+  max-width: var(--home-max-width);
+}
+
+@media (min-width: 640px) {
+  .VPContent .VPHome .VPHero {
+    padding-bottom: 48px;
+  }
 }
 
 .VPHome .vp-doc {
-  padding-top: 24px;
+  padding-top: 0;
 }
 
 .VPHome .home-about {
-  max-width: 72ch;
+  max-width: var(--home-max-width);
   margin-inline: auto;
+  padding-top: 36px;
+  border-top: 1px solid var(--vp-c-divider);
 }
 
 .VPHome .home-about h2 {
@@ -144,7 +174,7 @@
 .VPHome .home-about p {
   margin: 0 0 14px;
   color: var(--vp-c-text-2);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.7;
 }
 
@@ -177,20 +207,20 @@
 }
 
 .site-footer--home {
-  width: min(1152px, calc(100% - 48px));
-  margin: 32px auto 0;
+  width: min(var(--home-max-width), calc(100% - 48px));
+  margin: 24px auto 0;
   padding: 20px 0 40px;
 }
 
 @media (min-width: 640px) {
   .site-footer--home {
-    width: min(1152px, calc(100% - 96px));
+    width: min(var(--home-max-width), calc(100% - 96px));
   }
 }
 
 @media (min-width: 960px) {
   .site-footer--home {
-    width: min(1152px, calc(100% - 128px));
+    width: min(var(--home-max-width), calc(100% - 128px));
   }
 }
 

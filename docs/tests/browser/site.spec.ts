@@ -115,11 +115,22 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/');
   await expect(page.locator('.VPFeatures .VPFeature')).toHaveCount(0);
   const homeAbout = page.locator('.home-about');
-  await expect(homeAbout.getByRole('heading', { name: 'About these dotfiles' })).toBeVisible();
+  await expect(homeAbout.getByRole('heading', { name: 'About this project' })).toBeVisible();
   await expect(homeAbout.locator('p').first()).not.toBeEmpty();
   await expect(homeAbout.getByRole('link', { name: 'Getting started' })).toHaveAttribute('href', '/getting-started');
   await expect(page.locator('img[src="/assets/terminal-screenshot.svg"]')).toHaveCount(0);
-  const footerLink = page.locator('.site-footer').getByRole('link', { name: 'Stuart Neivandt', exact: true });
+  const [heroBox, aboutBox, footerBox] = await Promise.all([
+    page.locator('.VPHome .VPHero .container').boundingBox(),
+    homeAbout.boundingBox(),
+    page.locator('.site-footer--home').boundingBox(),
+  ]);
+  expect(Math.abs(heroBox!.x - aboutBox!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(heroBox!.width - aboutBox!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(heroBox!.x - footerBox!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(heroBox!.width - footerBox!.width)).toBeLessThanOrEqual(1);
+  const footer = page.locator('.site-footer');
+  await expect(footer).toHaveText('Created by Stuart Neivandt.');
+  const footerLink = footer.getByRole('link', { name: 'Stuart Neivandt', exact: true });
   await expect(footerLink).toBeVisible();
   await expect(footerLink).toHaveAttribute('href', 'https://stuartneivandt.com/');
   expect(JSON.parse(await page.locator('head script[type="application/ld+json"]').textContent() ?? '')).toMatchObject({
@@ -151,16 +162,15 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const sidebar = page.locator('.VPSidebar');
   const groups = sidebar.locator('.group');
-  await expect(groups.locator('h2')).toHaveText(['Using dotfiles', 'Customization', 'Platforms', 'Safety and troubleshooting']);
+  await expect(groups.locator('h2')).toHaveText(['Introduction', 'Customization', 'Platforms']);
   for (const [label, titles] of [
-    ['Using dotfiles', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics']],
+    ['Introduction', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Troubleshooting']],
     ['Customization', ['Package management', 'Application settings', 'Agent configuration', 'Private overlays']],
     ['Platforms', ['Arch desktop', 'Windows and WSL']],
-    ['Safety and troubleshooting', ['Security and trust', 'Troubleshooting']],
   ] as const) {
     await expect(groups.filter({ has: page.getByRole('heading', { name: label, exact: true }) }).getByRole('link')).toHaveText([...titles]);
   }
-  await expect(sidebar.getByRole('link', { name: 'About these dotfiles', exact: true })).toHaveCount(0);
+  await expect(sidebar.getByRole('link', { name: 'About this project', exact: true })).toHaveCount(0);
   if (isMobile) {
     await page.keyboard.press('Escape');
     await expect(sidebar).not.toHaveClass(/open/);
@@ -183,7 +193,7 @@ test('header sections replace the sidebar, including direct links and search des
   for (const [label, entry, titles] of [
     ['Reference', '/cli-reference', referenceTitles],
     ['Development', '/contributing', ['Contributing', 'Architecture', 'Adding a task', 'Debugging', 'Writing documentation', 'Testing', 'Writing tests', 'Mutation testing', 'CI and releases']],
-    ['Guides', '/getting-started', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Package management', 'Application settings', 'Agent configuration', 'Private overlays', 'Arch desktop', 'Windows and WSL', 'Security and trust', 'Troubleshooting']],
+    ['Guides', '/getting-started', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Troubleshooting', 'Package management', 'Application settings', 'Agent configuration', 'Private overlays', 'Arch desktop', 'Windows and WSL']],
   ] as const) {
     if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
     await page.locator(isMobile ? '.VPNavScreen' : '.VPNavBarMenu').getByRole('link', { name: label, exact: true }).click();
@@ -199,7 +209,7 @@ test('header sections replace the sidebar, including direct links and search des
   await expect(page.locator('.VPSidebar a')).toHaveText(referenceTitles);
   await expect(page.locator('.VPDocFooter .next')).toContainText('Login shell');
   await expect(page.locator('.VPSidebar').getByRole('button', { name: 'toggle section', exact: true })).toHaveCount(1);
-  await page.goto('/troubleshooting');
+  await page.goto('/windows-and-wsl');
   await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
   await page.goto('/security-and-trust');
   await expect(page.locator('.VPDocFooter .next')).toContainText('Troubleshooting');
@@ -264,7 +274,7 @@ test('configuration basics follows profiles in Guides, including search destinat
   await expect(page).toHaveURL('/configuration-basics');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Configuration basics');
   await expect(page.locator('.VPDocFooter .prev')).toContainText('Profiles and categories');
-  await expect(page.locator('.VPDocFooter .next')).toContainText('Package management');
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Security and trust');
   if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText('Guides');
 
   await page.goto('/cli-reference');
@@ -388,7 +398,7 @@ test('developer guides cover debugging and documentation without assigning skill
 test('sidebar groups start expanded and collapse with their right-hand arrow', async ({ page, isMobile }) => {
   await page.goto('/getting-started');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
-  const group = page.locator('.VPSidebar .group').filter({ has: page.getByRole('heading', { name: 'Using dotfiles', exact: true }) });
+  const group = page.locator('.VPSidebar .group').filter({ has: page.getByRole('heading', { name: 'Introduction', exact: true }) });
   const link = group.getByRole('link', { name: 'Getting started', exact: true });
   await expect(link).toBeVisible();
   const control = group.getByRole('button', { name: 'toggle section', exact: true });

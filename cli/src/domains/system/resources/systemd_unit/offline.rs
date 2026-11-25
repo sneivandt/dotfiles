@@ -177,7 +177,7 @@ impl SystemdUnitResource {
         Ok(Some(self.enablement_link_state(&links, true)?))
     }
 
-    fn enablement_link_state(
+    pub(super) fn enablement_link_state(
         &self,
         links: &[(PathBuf, PathBuf)],
         accept_direct_links: bool,

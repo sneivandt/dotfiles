@@ -539,17 +539,17 @@ fn offline_enablement_propagates_non_missing_link_errors() {
     let home = tempfile::tempdir().unwrap();
     let user = home.path().join(".config/systemd/user");
     std::fs::create_dir_all(&user).unwrap();
-    std::fs::write(
-        user.join("audit.service"),
-        "[Install]\nWantedBy=default.target\n",
-    )
-    .unwrap();
-    // A regular file where the wants directory belongs causes symlink_metadata(link)
-    // to return ENOTDIR rather than NotFound.
-    std::fs::write(user.join("default.target.wants"), "not a directory").unwrap();
+    let unit = user.join("audit.service");
+    std::fs::write(&unit, "[Install]\nWantedBy=default.target\n").unwrap();
+    // A regular file as the parent of a candidate link makes symlink_metadata(link)
+    // return ENOTDIR rather than NotFound, without triggering offline_obsolete_links.
+    let not_a_dir = user.join("not-a-dir");
+    std::fs::write(&not_a_dir, "not a directory").unwrap();
     let resource = offline_unit(home.path(), "audit.service", true);
     assert!(
-        resource.current_state().is_err(),
+        resource
+            .enablement_link_state(&[(not_a_dir.join("audit.service"), unit)], false)
+            .is_err(),
         "ENOTDIR on enablement link lookup must fail rather than report Missing"
     );
 }

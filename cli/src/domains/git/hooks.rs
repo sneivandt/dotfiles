@@ -551,4 +551,26 @@ mod tests {
             assert!(!target.exists());
         }
     }
+
+    #[test]
+    fn read_hooks_directory_distinguishes_absent_from_dangling_and_disallowed_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("absent-hooks");
+        assert!(read_hooks_directory(&missing, true).is_ok());
+        assert!(read_hooks_directory(&missing, false).is_err());
+
+        let regular = dir.path().join("not-a-dir");
+        std::fs::write(&regular, "file").unwrap();
+        assert!(read_hooks_directory(&regular, true).is_err());
+
+        #[cfg(unix)]
+        {
+            let dangling = dir.path().join("dangling-hooks");
+            std::os::unix::fs::symlink(dir.path().join("nowhere"), &dangling).unwrap();
+            assert!(
+                read_hooks_directory(&dangling, true).is_err(),
+                "dangling symlink hooks dir must error even when allow_missing is true"
+            );
+        }
+    }
 }

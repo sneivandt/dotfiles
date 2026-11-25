@@ -1,12 +1,18 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { defineConfig, type DefaultTheme } from 'vitepress';
+import { defineConfig, type DefaultTheme, type HeadConfig } from 'vitepress';
 import { slug } from 'github-slugger';
 import { themeStartup } from './theme-startup.mts';
 
 const domain = readFileSync(new URL('../public/CNAME', import.meta.url), 'utf8').trim();
 const origin = `https://${domain}`;
 const siteTitle = 'Dotfiles';
+const authorName = 'Stuart Neivandt';
+const authorUrl = 'https://stuartneivandt.com/';
+const authorId = `${authorUrl}#person`;
+const repositoryUrl = 'https://github.com/sneivandt/dotfiles';
+const ogImage = `${origin}/assets/og-image.png`;
+const ogImageAlt = 'Dotfiles: Arch Linux and Windows setup managed with a Rust CLI by Stuart Neivandt';
 const pageSources = Object.fromEntries(
   ['guides', 'reference', 'development'].flatMap((section) =>
     readdirSync(new URL(`../content/${section}/`, import.meta.url))
@@ -78,10 +84,17 @@ export default defineConfig({
   },
   appearance: 'dark',
   lastUpdated: true,
-  head: [['link', { rel: 'icon', href: '/favicon.svg' }]],
+  head: [
+    ['meta', { name: 'author', content: authorName }],
+    ['meta', { name: 'theme-color', content: '#1a1b26' }],
+    ['link', { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' }],
+    ['link', { rel: 'icon', href: '/favicon.png', type: 'image/png', sizes: '96x96' }],
+    ['link', { rel: 'alternate icon', href: '/favicon.ico' }],
+    ['link', { rel: 'apple-touch-icon', href: '/apple-touch-icon.png', sizes: '180x180' }],
+  ],
   sitemap: {
     hostname: origin,
-    transformItems: (items) => items.filter((item) => item.url !== '404' && item.url !== '404.html'),
+    transformItems: (items) => items.filter((item) => item.url === ''),
   },
   async buildEnd(site) {
     writeFileSync(resolve(site.outDir, 'sitemap-index.xml'),
@@ -98,14 +111,74 @@ export default defineConfig({
         ['meta', { property: 'og:site_name', content: siteTitle }],
       ];
     }
-    const canonical = origin + (pagePath === 'index' ? '/' : `/${pagePath}`);
-    return [
+    const isHome = pagePath === 'index';
+    const canonical = origin + (isHome ? '/' : `/${pagePath}`);
+    const head: HeadConfig[] = [
+      ['meta', { name: 'robots', content: isHome ? 'index, follow, max-image-preview:large' : 'noindex, follow' }],
       ['link', { rel: 'canonical', href: canonical }],
+      ['meta', { property: 'og:type', content: isHome ? 'website' : 'article' }],
       ['meta', { property: 'og:site_name', content: siteTitle }],
+      ['meta', { property: 'og:locale', content: 'en_US' }],
       ['meta', { property: 'og:url', content: canonical }],
       ['meta', { property: 'og:title', content: pageData.title }],
       ['meta', { property: 'og:description', content: pageData.description }],
+      ['meta', { property: 'og:image', content: ogImage }],
+      ['meta', { property: 'og:image:secure_url', content: ogImage }],
+      ['meta', { property: 'og:image:type', content: 'image/png' }],
+      ['meta', { property: 'og:image:width', content: '1200' }],
+      ['meta', { property: 'og:image:height', content: '630' }],
+      ['meta', { property: 'og:image:alt', content: ogImageAlt }],
+      ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+      ['meta', { name: 'twitter:title', content: pageData.title }],
+      ['meta', { name: 'twitter:description', content: pageData.description }],
+      ['meta', { name: 'twitter:image', content: ogImage }],
+      ['meta', { name: 'twitter:image:alt', content: ogImageAlt }],
     ];
+    if (isHome) {
+      head.push([
+        'script',
+        { type: 'application/ld+json' },
+        JSON.stringify({
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'WebSite',
+              '@id': `${origin}/#website`,
+              url: `${origin}/`,
+              name: siteTitle,
+              description: pageData.description,
+              inLanguage: 'en-US',
+              author: { '@id': authorId },
+              creator: { '@id': authorId },
+            },
+            {
+              '@type': 'SoftwareSourceCode',
+              '@id': `${origin}/#software`,
+              name: siteTitle,
+              description: pageData.description,
+              url: `${origin}/`,
+              codeRepository: repositoryUrl,
+              programmingLanguage: 'Rust',
+              runtimePlatform: ['Arch Linux', 'Windows'],
+              author: { '@id': authorId },
+              creator: { '@id': authorId },
+            },
+            {
+              '@type': 'Person',
+              '@id': authorId,
+              name: authorName,
+              alternateName: 'sneivandt',
+              url: authorUrl,
+              sameAs: [
+                'https://github.com/sneivandt',
+                'https://www.linkedin.com/in/stuartneivandt',
+              ],
+            },
+          ],
+        }),
+      ]);
+    }
+    return head;
   },
   markdown: {
     headers: { level: [2, 3] },

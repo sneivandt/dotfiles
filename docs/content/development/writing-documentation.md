@@ -166,8 +166,10 @@ tag).
 After changing metadata or navigation, build the site and test natural-language
 queries alongside exact titles to confirm the right page surfaces prominently.
 Keep representative queries in browser tests without pinning brittle full
-rankings. Public routes appear in canonical URLs and the sitemap, while `404`
-stays excluded via `search: false` and `noindex`.
+rankings. Public routes keep canonical and social metadata, while only the
+landing page (`/`) is listed in the sitemap and marked indexable; guide,
+reference, and development pages emit `noindex, follow`, and `404` stays
+excluded via `search: false` and `noindex, nofollow`.
 
 ## Write and review the page
 

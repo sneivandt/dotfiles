@@ -3,10 +3,6 @@ layout: home
 title: About this project
 titleTemplate: false
 description: How Stuart Neivandt manages shell, editor, package, and Hyprland desktop settings across Arch Linux and Windows with a Rust CLI.
-head:
-  - - script
-    - type: application/ld+json
-    - '{"@context":"https://schema.org","@type":"WebSite","name":"Dotfiles","url":"https://dotfiles.stuartneivandt.com/","creator":{"@type":"Person","name":"Stuart Neivandt","url":"https://stuartneivandt.com/"}}'
 hero:
   name: Dotfiles
   tagline: My personal Arch Linux and Windows setup, managed with a Rust CLI.

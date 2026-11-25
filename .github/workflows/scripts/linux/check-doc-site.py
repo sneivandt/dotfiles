@@ -22,11 +22,19 @@ class Page(HTMLParser):
         self.nav_links = []
         self.site_title_links = []
         self.icons = []
+        self.apple_touch_icons = []
+        self.authors = []
+        self.theme_colors = []
         self.robots = []
         self.canonicals = []
         self.descriptions = []
+        self.og_types = []
         self.og_site_names = []
+        self.og_locales = []
         self.og_urls = []
+        self.og_images = []
+        self.twitter_cards = []
+        self.twitter_images = []
         self.in_title = False
         self.in_nav = False
         self.nav_link = None
@@ -57,18 +65,42 @@ class Page(HTMLParser):
             relations = attrs.get("rel", "").split()
             if "canonical" in relations:
                 self.canonicals.append(attrs["href"])
-            if "stylesheet" in relations or "icon" in relations:
+            if "stylesheet" in relations or "icon" in relations or "apple-touch-icon" in relations:
                 self.assets.append(attrs["href"])
             if "icon" in relations:
                 self.icons.append(attrs["href"])
-        if tag == "meta" and attrs.get("name", "").lower() in {"robots", "googlebot"}:
-            self.robots.append(attrs.get("content", ""))
-        if tag == "meta" and attrs.get("name", "").lower() == "description":
-            self.descriptions.append(attrs.get("content", ""))
-        if tag == "meta" and attrs.get("property", "").lower() == "og:site_name":
-            self.og_site_names.append(attrs.get("content", ""))
-        if tag == "meta" and attrs.get("property", "").lower() == "og:url":
-            self.og_urls.append(attrs.get("content", ""))
+            if "apple-touch-icon" in relations:
+                self.apple_touch_icons.append(attrs["href"])
+        if tag == "meta":
+            name = attrs.get("name", "").lower()
+            prop = attrs.get("property", "").lower()
+            content = attrs.get("content", "")
+            if name in {"robots", "googlebot"}:
+                self.robots.append(content)
+            elif name == "author":
+                self.authors.append(content)
+            elif name == "theme-color":
+                self.theme_colors.append(content)
+            elif name == "description":
+                self.descriptions.append(content)
+            elif name == "twitter:card":
+                self.twitter_cards.append(content)
+            elif name == "twitter:image":
+                self.twitter_images.append(content)
+                if content:
+                    self.assets.append(content)
+            if prop == "og:type":
+                self.og_types.append(content)
+            elif prop == "og:site_name":
+                self.og_site_names.append(content)
+            elif prop == "og:locale":
+                self.og_locales.append(content)
+            elif prop == "og:url":
+                self.og_urls.append(content)
+            elif prop == "og:image":
+                self.og_images.append(content)
+                if content:
+                    self.assets.append(content)
 
     def handle_data(self, text):
         if self.in_title:
@@ -235,29 +267,56 @@ def check_site(root):
                 if "title" in fields and fields["title"] != title:
                     errors.append(f"{source.name}: frontmatter title does not match page title {title!r}")
                 expected_nav_titles[route] = [t.strip().rstrip("#").strip() for t in page.titles]
-        if "/favicon.svg" not in page.icons:
-            errors.append(f"{route}: missing site favicon")
+        for icon in ("/favicon.svg", "/favicon.png", "/favicon.ico"):
+            if icon not in page.icons:
+                errors.append(f"{route}: missing site icon {icon}")
+        if "/apple-touch-icon.png" not in page.apple_touch_icons:
+            errors.append(f"{route}: missing apple-touch-icon")
+        if page.authors != ["Stuart Neivandt"]:
+            errors.append(f"{route}: expected author 'Stuart Neivandt', found {page.authors}")
+        if page.theme_colors != ["#1a1b26"]:
+            errors.append(f"{route}: expected theme-color '#1a1b26', found {page.theme_colors}")
         if page.og_site_names != ["Dotfiles"]:
             errors.append(f"{route}: expected og:site_name 'Dotfiles', found {page.og_site_names}")
-        noindex = any(
-            re.search(r"(?:^|[,\s])(?:noindex|none)(?:$|[,\s])", value, re.I)
+        robots_directives = {
+            token.strip().lower()
             for value in page.robots
-        )
+            for token in re.split(r"[,\s]+", value)
+            if token.strip()
+        }
+        noindex = bool(robots_directives & {"noindex", "none"})
+        nofollow = bool(robots_directives & {"nofollow", "none"})
         if source.stem == "404":
-            if not noindex:
-                errors.append(f"{route}: missing noindex robots meta tag")
+            if not (noindex and nofollow):
+                errors.append(f"{route}: expected noindex, nofollow robots meta tag, found {page.robots}")
         else:
             canonical = origin + public_route
+            expected_image = f"{origin}/assets/og-image.png"
+            expected_type = "website" if source.stem == "index" else "article"
             if page.canonicals != [canonical]:
                 errors.append(f"{route}: expected canonical URL {canonical}, found {page.canonicals}")
+            if page.og_types != [expected_type]:
+                errors.append(f"{route}: expected og:type {expected_type!r}, found {page.og_types}")
+            if page.og_locales != ["en_US"]:
+                errors.append(f"{route}: expected og:locale 'en_US', found {page.og_locales}")
             if page.og_urls != [canonical]:
                 errors.append(f"{route}: expected og:url {canonical}, found {page.og_urls}")
-            expected_urls.add(canonical)
-            if noindex:
-                errors.append(f"{route}: indexable guide has a noindex robots meta tag")
+            if page.og_images != [expected_image]:
+                errors.append(f"{route}: expected og:image {expected_image}, found {page.og_images}")
+            if page.twitter_cards != ["summary_large_image"]:
+                errors.append(f"{route}: expected twitter:card 'summary_large_image', found {page.twitter_cards}")
+            if page.twitter_images != [expected_image]:
+                errors.append(f"{route}: expected twitter:image {expected_image}, found {page.twitter_images}")
+            if source.stem == "index":
+                expected_urls.add(canonical)
+                if noindex or nofollow or "index" not in robots_directives or "follow" not in robots_directives:
+                    errors.append(f"{route}: landing page must allow indexing and following, found {page.robots}")
+            else:
+                if not noindex or nofollow or "follow" not in robots_directives:
+                    errors.append(f"{route}: non-home guide must emit noindex, follow, found {page.robots}")
     if indexed_urls != expected_urls:
         errors.append(
-            f"Sitemap URLs differ from canonical guide URLs: "
+            f"Sitemap URLs differ from indexable landing URL: "
             f"missing={sorted(expected_urls - indexed_urls)}, extra={sorted(indexed_urls - expected_urls)}"
         )
     for route, page in pages.items():

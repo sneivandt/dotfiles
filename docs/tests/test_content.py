@@ -100,8 +100,28 @@ class FrontmatterTests(unittest.TestCase):
             self.assertEqual(fields["title"], title)
 
     def test_rendered_metadata_decodes_html_entities(self):
-        page = SITE["Page"]('<meta name="description" content="Read &amp; act.">')
+        page = SITE["Page"](
+            '<meta name="author" content="Stuart Neivandt">'
+            '<meta name="theme-color" content="#1a1b26">'
+            '<meta name="robots" content="noindex, follow">'
+            '<meta name="description" content="Read &amp; act.">'
+            '<meta property="og:type" content="article">'
+            '<meta property="og:image" content="https://dotfiles.stuartneivandt.com/assets/og-image.png">'
+            '<meta name="twitter:card" content="summary_large_image">'
+            '<meta name="twitter:image" content="https://dotfiles.stuartneivandt.com/assets/og-image.png">'
+            '<link rel="apple-touch-icon" href="/apple-touch-icon.png">'
+        )
+        self.assertEqual(page.authors, ["Stuart Neivandt"])
+        self.assertEqual(page.theme_colors, ["#1a1b26"])
+        self.assertEqual(page.robots, ["noindex, follow"])
         self.assertEqual(page.descriptions, ["Read & act."])
+        self.assertEqual(page.og_types, ["article"])
+        self.assertEqual(page.og_images, ["https://dotfiles.stuartneivandt.com/assets/og-image.png"])
+        self.assertEqual(page.twitter_cards, ["summary_large_image"])
+        self.assertEqual(page.twitter_images, ["https://dotfiles.stuartneivandt.com/assets/og-image.png"])
+        self.assertEqual(page.apple_touch_icons, ["/apple-touch-icon.png"])
+        self.assertIn("/apple-touch-icon.png", page.assets)
+        self.assertIn("https://dotfiles.stuartneivandt.com/assets/og-image.png", page.assets)
 
 
 if __name__ == "__main__":

@@ -110,9 +110,17 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
   expect(heroWordmark.width).toBeGreaterThan(0);
   expect(heroWordmark.height).toBeGreaterThan(0);
   expect(heroWordmark.width / heroWordmark.height).toBeCloseTo(193.7 / 42.9, 1);
+  await expect(page.locator('meta[name="author"]')).toHaveAttribute('content', 'Stuart Neivandt');
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#1a1b26');
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow, max-image-preview:large');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/');
+  await expect(page.locator('meta[property="og:type"]')).toHaveAttribute('content', 'website');
   await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute('content', 'Dotfiles');
+  await expect(page.locator('meta[property="og:locale"]')).toHaveAttribute('content', 'en_US');
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/');
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/assets/og-image.png');
+  await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute('content', 'summary_large_image');
+  await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/assets/og-image.png');
   await expect(page.locator('.VPFeatures .VPFeature')).toHaveCount(0);
   const homeAbout = page.locator('.home-about');
   await expect(homeAbout.getByRole('heading', { name: 'About this project' })).toBeVisible();
@@ -134,9 +142,17 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
   await expect(footerLink).toBeVisible();
   await expect(footerLink).toHaveAttribute('href', 'https://stuartneivandt.com/');
   expect(JSON.parse(await page.locator('head script[type="application/ld+json"]').textContent() ?? '')).toMatchObject({
-    '@type': 'WebSite', name: 'Dotfiles', creator: { name: 'Stuart Neivandt', url: 'https://stuartneivandt.com/' },
+    '@context': 'https://schema.org',
+    '@graph': [
+      { '@type': 'WebSite', name: 'Dotfiles', url: 'https://dotfiles.stuartneivandt.com/', creator: { '@id': 'https://stuartneivandt.com/#person' } },
+      { '@type': 'SoftwareSourceCode', name: 'Dotfiles', codeRepository: 'https://github.com/sneivandt/dotfiles', programmingLanguage: 'Rust' },
+      { '@type': 'Person', '@id': 'https://stuartneivandt.com/#person', name: 'Stuart Neivandt', alternateName: 'sneivandt', url: 'https://stuartneivandt.com/' },
+    ],
   });
-  await expect(page.locator('link[rel~="icon"]')).toHaveAttribute('href', '/favicon.svg');
+  await expect(page.locator('link[rel="icon"][type="image/svg+xml"]')).toHaveAttribute('href', '/favicon.svg');
+  await expect(page.locator('link[rel="icon"][type="image/png"]')).toHaveAttribute('href', '/favicon.png');
+  await expect(page.locator('link[rel="alternate icon"]')).toHaveAttribute('href', '/favicon.ico');
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', '/apple-touch-icon.png');
   await expect(page.locator('.VPNavBarTitle a')).toHaveAccessibleName('Dotfiles');
   await expect(page.locator('.VPNavBarTitle img.logo.dark')).toBeVisible();
   await expect(page.locator('.VPNavBarTitle img.logo.light')).toBeHidden();
@@ -186,9 +202,13 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
 test('header sections replace the sidebar, including direct links and search destinations', async ({ page, isMobile }) => {
   await page.goto('/getting-started');
   await expect(page).toHaveTitle('Getting started | Dotfiles');
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex, follow');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/getting-started');
+  await expect(page.locator('meta[property="og:type"]')).toHaveAttribute('content', 'article');
   await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute('content', 'Dotfiles');
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/getting-started');
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/assets/og-image.png');
+  await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute('content', 'summary_large_image');
   await expect(page.locator('.site-footer').getByRole('link', { name: 'Stuart Neivandt', exact: true })).toHaveAttribute('href', 'https://stuartneivandt.com/');
   for (const [label, entry, titles] of [
     ['Reference', '/cli-reference', referenceTitles],

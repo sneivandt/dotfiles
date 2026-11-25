@@ -154,7 +154,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             LINUX + "select-mutations.py", LINUX + "run-mutations.py",
             LINUX + "report-mutations.py",
             ".github/workflows/mutation.yml",
-        }:
+        } or path.startswith(LINUX + "ci_changes_tests/"):
             pass  # Always executed by classify-changes.
         elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh", LINUX + "release-tag.sh"}:
             pass  # Publishing builds are selected independently of CI builds.
@@ -178,7 +178,9 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("git_hooks", "hook_inputs")
         elif path in {"dotfiles.sh", LINUX + "test-shell-wrapper.sh"}:
             enable("wrapper_linux")
-        elif path in {"dotfiles.ps1", WINDOWS + "Test-ShellWrapper.ps1"}:
+        elif path in {"dotfiles.ps1", WINDOWS + "Test-ShellWrapper.ps1"} or path.startswith(
+            WINDOWS + "shell_wrapper_tests/"
+        ):
             enable("wrapper_windows")
             if path == "dotfiles.ps1":
                 # The Windows PowerShell 5.1 smoke uses the installed fixture CLI.
@@ -193,7 +195,9 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("app_windows")
         elif path in {LINUX + "test-nvim-config.lua", LINUX + "test-nvim-lock.lua"}:
             apps.add("nvim")
-        elif path == LINUX + "test-shell-config.py":
+        elif path == LINUX + "test-shell-config.py" or path.startswith(
+            LINUX + "shell_config_tests/"
+        ):
             apps.add("zsh")
         elif path == LINUX + "install-apt-packages.sh":
             apps.update(APPS)

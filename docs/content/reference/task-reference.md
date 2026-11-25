@@ -101,12 +101,12 @@ place.
 
 | Selector | What it checks |
 |---|---|
-| `config-diagnostics` | [Configuration diagnostics](configuration-diagnostics.md): aggregated diagnostics (warning-severity findings also fail) |
-| `symlink-sources` | [Symlink sources](symlink-sources.md): symlink/glob and chmod sources, including inactive categories |
-| `config-files` | [Required configuration files](required-configuration-files.md): required main TOML files (warns if `hooks/` is absent) |
 | `apm-plugins` | [APM plugin checks](apm-plugin-checks.md): local plugins via `apm pack --dry-run --verbose` |
-| `shellcheck` | [ShellCheck](shellcheck.md): shell scripts in the main repository |
+| `config-diagnostics` | [Configuration diagnostics](configuration-diagnostics.md): aggregated diagnostics (warning-severity findings also fail) |
+| `config-files` | [Required configuration files](required-configuration-files.md): required main TOML files (warns if `hooks/` is absent) |
 | `psscriptanalyzer` | [PSScriptAnalyzer](psscriptanalyzer.md): PowerShell scripts in the main repository |
+| `shellcheck` | [ShellCheck](shellcheck.md): shell scripts in the main repository |
+| `symlink-sources` | [Symlink sources](symlink-sources.md): symlink/glob and chmod sources, including inactive categories |
 
 Configuration loads before task filters apply, so `--only` cannot bypass a
 malformed [required file](../guides/configuration-basics.md#files). Missing

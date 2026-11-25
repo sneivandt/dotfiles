@@ -8,9 +8,12 @@ const documents = readdirSync(contentDirectory, { recursive: true })
   .map((path) => ({ name: basename(path), path, source: readFileSync(new URL(path.replaceAll('\\', '/'), contentDirectory), 'utf8') }));
 const taskDocuments = documents.filter(({ name, source }) =>
   name !== 'task-reference.md' && /^\| Selector \|/m.test(source));
-const referenceTitles = ['CLI reference', 'Task reference', ...taskDocuments
+const sortedTitles = (items: typeof taskDocuments) => items
   .map(({ source }) => source.match(/^title: (.+)$/m)![1])
-  .sort((left, right) => left.localeCompare(right, 'en'))];
+  .sort((left, right) => left.localeCompare(right, 'en'));
+const updateTaskTitles = sortedTitles(taskDocuments.filter(({ source }) => /^\| Commands \|.*`update`/m.test(source)));
+const validationTaskTitles = sortedTitles(taskDocuments.filter(({ source }) => /^\| Commands \|.*`check`/m.test(source)));
+const referenceTitles = ['CLI reference', 'Task reference', ...updateTaskTitles, ...validationTaskTitles];
 const documentRoutes = documents.map(({ name }) =>
   name === 'index.md' ? '/' : `/${name.replace(/\.md$/, '')}`);
 
@@ -178,11 +181,12 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const sidebar = page.locator('.VPSidebar');
   const groups = sidebar.locator('.group');
-  await expect(groups.locator('h2')).toHaveText(['Introduction', 'Customization', 'Platforms']);
+  await expect(groups.locator('h2')).toHaveText(['Introduction', 'Customization', 'Platforms', 'Safety and troubleshooting']);
   for (const [label, titles] of [
-    ['Introduction', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Troubleshooting']],
+    ['Introduction', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics']],
     ['Customization', ['Package management', 'Application settings', 'Agent configuration', 'Private overlays']],
     ['Platforms', ['Arch desktop', 'Windows and WSL']],
+    ['Safety and troubleshooting', ['Security and trust', 'Troubleshooting']],
   ] as const) {
     await expect(groups.filter({ has: page.getByRole('heading', { name: label, exact: true }) }).getByRole('link')).toHaveText([...titles]);
   }
@@ -213,7 +217,7 @@ test('header sections replace the sidebar, including direct links and search des
   for (const [label, entry, titles] of [
     ['Reference', '/cli-reference', referenceTitles],
     ['Development', '/contributing', ['Contributing', 'Architecture', 'Adding a task', 'Debugging', 'Writing documentation', 'Testing', 'Writing tests', 'Mutation testing', 'CI and releases']],
-    ['Guides', '/getting-started', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Security and trust', 'Troubleshooting', 'Package management', 'Application settings', 'Agent configuration', 'Private overlays', 'Arch desktop', 'Windows and WSL']],
+    ['Guides', '/getting-started', ['Getting started', 'Commands and usage', 'Profiles and categories', 'Configuration basics', 'Package management', 'Application settings', 'Agent configuration', 'Private overlays', 'Arch desktop', 'Windows and WSL', 'Security and trust', 'Troubleshooting']],
   ] as const) {
     if (isMobile) await page.getByRole('button', { name: 'mobile navigation', exact: true }).click();
     await page.locator(isMobile ? '.VPNavScreen' : '.VPNavBarMenu').getByRole('link', { name: label, exact: true }).click();
@@ -228,11 +232,13 @@ test('header sections replace the sidebar, including direct links and search des
   await page.goto('/home-symlinks#configuration');
   await expect(page.locator('.VPSidebar a')).toHaveText(referenceTitles);
   await expect(page.locator('.VPDocFooter .next')).toContainText('Login shell');
-  await expect(page.locator('.VPSidebar').getByRole('button', { name: 'toggle section', exact: true })).toHaveCount(1);
+  await expect(page.locator('.VPSidebar').getByRole('button', { name: 'toggle section', exact: true })).toHaveCount(2);
   await page.goto('/windows-and-wsl');
-  await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Security and trust');
   await page.goto('/security-and-trust');
   await expect(page.locator('.VPDocFooter .next')).toContainText('Troubleshooting');
+  await page.goto('/troubleshooting');
+  await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
 });
 
 test('flat routes keep original section source edit links and removed pages are absent', async ({ page }) => {
@@ -250,23 +256,29 @@ test('flat routes keep original section source edit links and removed pages are 
   await expect(page.getByRole('heading', { name: 'Page not found', exact: true })).toBeVisible();
 });
 
-test('task details collapse separately from the task reference overview', async ({ page, isMobile }) => {
+test('task groups collapse separately from the task reference overview', async ({ page, isMobile }) => {
   await page.goto('/home-symlinks');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const sidebar = page.locator('.VPSidebar');
   const overviewGroup = sidebar.locator('.group')
     .filter({ has: page.getByRole('link', { name: 'Task reference', exact: true }) });
-  const tasks = sidebar.locator('.group')
-    .filter({ has: page.getByRole('heading', { name: 'Task details', exact: true }) });
+  const updateTasks = sidebar.locator('.group')
+    .filter({ has: page.getByRole('heading', { name: 'Update tasks', exact: true }) });
+  const validationTasks = sidebar.locator('.group')
+    .filter({ has: page.getByRole('heading', { name: 'Validation tasks', exact: true }) });
   await expect(overviewGroup).toHaveCount(1);
   await expect(overviewGroup.getByRole('link')).toHaveText(referenceTitles.slice(0, 2));
-  await expect(tasks).toHaveCount(1);
-  await expect(tasks.getByRole('link')).toHaveText(referenceTitles.slice(2));
-  await expect(sidebar.getByRole('link', { name: 'Task details', exact: true })).toHaveCount(0);
-  const toggle = tasks.getByRole('button', { name: 'toggle section', exact: true });
+  await expect(updateTasks).toHaveCount(1);
+  await expect(updateTasks.getByRole('link')).toHaveText(updateTaskTitles);
+  await expect(validationTasks).toHaveCount(1);
+  await expect(validationTasks.getByRole('link')).toHaveText(validationTaskTitles);
+  await expect(sidebar.getByRole('link', { name: 'Update tasks', exact: true })).toHaveCount(0);
+  await expect(sidebar.getByRole('link', { name: 'Validation tasks', exact: true })).toHaveCount(0);
+  const toggle = updateTasks.getByRole('button', { name: 'toggle section', exact: true });
   await toggle.click();
   await expect(page).toHaveURL('/home-symlinks');
-  await expect(tasks.getByRole('link', { name: 'Home symlinks', exact: true })).not.toBeVisible();
+  await expect(updateTasks.getByRole('link', { name: 'Home symlinks', exact: true })).not.toBeVisible();
+  await expect(validationTasks.getByRole('link', { name: 'ShellCheck', exact: true })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'CLI reference', exact: true })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'Configuration basics', exact: true })).toHaveCount(0);
   await expect(sidebar.getByRole('link', { name: 'Task reference', exact: true })).toBeVisible();
@@ -275,14 +287,14 @@ test('task details collapse separately from the task reference overview', async 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Task reference');
   await expect(page.locator('.VPDocFooter .next')).toContainText('Agent packages');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
-  await expect(tasks.getByRole('link', { name: 'Home symlinks', exact: true })).not.toBeVisible();
+  await expect(updateTasks.getByRole('link', { name: 'Home symlinks', exact: true })).not.toBeVisible();
   await toggle.click();
-  await expect(tasks.getByRole('link', { name: 'Home symlinks', exact: true })).toBeVisible();
-  const last = tasks.getByRole('link', { name: 'Windows Developer Mode', exact: true });
+  await expect(updateTasks.getByRole('link', { name: 'Home symlinks', exact: true })).toBeVisible();
+  const last = validationTasks.getByRole('link', { name: 'Symlink sources', exact: true });
   await last.scrollIntoViewIfNeeded();
   await expect(last).toBeInViewport();
   await last.click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Windows Developer Mode');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Symlink sources');
   await expect(page.locator('.VPDocFooter .next')).toHaveCount(0);
   await assertNoPageOverflow(page);
 });
@@ -294,7 +306,7 @@ test('configuration basics follows profiles in Guides, including search destinat
   await expect(page).toHaveURL('/configuration-basics');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Configuration basics');
   await expect(page.locator('.VPDocFooter .prev')).toContainText('Profiles and categories');
-  await expect(page.locator('.VPDocFooter .next')).toContainText('Security and trust');
+  await expect(page.locator('.VPDocFooter .next')).toContainText('Package management');
   if (!isMobile) await expect(page.locator('.VPNavBarMenu a.active')).toHaveText('Guides');
 
   await page.goto('/cli-reference');
@@ -315,6 +327,7 @@ test('the first reading path leads from setup through usage to configuration', a
     ['getting-started', 'Commands and usage'],
     ['commands-and-usage', 'Profiles and categories'],
     ['profiles-and-categories', 'Configuration basics'],
+    ['configuration-basics', 'Package management'],
   ]) {
     await page.goto(`/${route}`);
     await expect(page.locator('.VPDocFooter .next')).toContainText(next);
@@ -324,8 +337,10 @@ test('the first reading path leads from setup through usage to configuration', a
     .toContainText('SKIPPED VS Code extensions');
 });
 
-test('task lookup starts with reader questions and task details use title order', async ({ page }) => {
-  expect(referenceTitles.slice(2)).toEqual(referenceTitles.slice(2).sort((a, b) => a.localeCompare(b, 'en')));
+test('task lookup starts with reader questions and task groups use title order', async ({ page }) => {
+  expect(updateTaskTitles.length + validationTaskTitles.length).toBe(taskDocuments.length);
+  expect(updateTaskTitles).toEqual([...updateTaskTitles].sort((a, b) => a.localeCompare(b, 'en')));
+  expect(validationTaskTitles).toEqual([...validationTaskTitles].sort((a, b) => a.localeCompare(b, 'en')));
   await page.goto('/task-reference');
   const lookup = page.locator('main table').first();
   await expect(lookup).toContainText('What do you want to do?');

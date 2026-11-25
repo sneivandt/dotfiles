@@ -233,26 +233,29 @@ the repository link checker.
 The header switches between three documentation sections. Each section has its
 own sidebar and previous/next sequence:
 
-- Guides: Introduction, Customization, and Platforms. Introduction covers setup,
-  everyday commands, profiles, configuration basics, trust boundaries, and
-  recovery; Customization covers packages, application settings, agent
-  configuration, and private overlays; Platforms covers environment-specific
-  setup for Arch Linux and Windows/WSL. Getting started leads directly to
-  Commands and usage, then Profiles and categories and Configuration basics.
+- Guides: Introduction, Customization, Platforms, and Safety and
+  troubleshooting. Introduction covers setup, everyday commands, profiles, and
+  configuration basics; Customization covers packages, application settings,
+  agent configuration, and private overlays; Platforms covers
+  environment-specific setup for Arch Linux and Windows/WSL; Safety and
+  troubleshooting covers trust boundaries and recovery. Getting started leads
+  directly to Commands and usage, then Profiles and categories and
+  Configuration basics.
 - Reference: direct CLI reference and Task reference overview links,
-  followed by the Task details group. The overview explains task selection,
-  scheduling, and removal scope; the individual pages cover each domain's
-  behavior and declarations, including validation tasks. Task details are
-  ordered by page title; the overview also offers a question-based lookup table.
+  followed by the Update tasks and Validation tasks groups. The overview
+  explains task selection, scheduling, and removal scope; the individual pages
+  cover each domain's behavior and declarations. Each task group is ordered by
+  page title; the overview also offers a question-based lookup table.
 - Development: Overview covers contributor workflow and architecture;
   Implementation covers adding a task, debugging, and writing documentation;
   Testing and releases covers running checks, writing tests, mutation testing,
   and CI and releases.
 
 Guide and Development groups start expanded with native collapse controls.
-Reference has one collapsible group, Task details, rather than a separate
-group for every domain. Its heading only toggles the task links. The standalone
-Task reference overview stays visible above it when the group is collapsed.
+Reference has two collapsible groups, Update tasks and Validation tasks, rather
+than a separate group for every domain. Their headings only toggle the task
+links. The standalone Task reference overview stays visible above them when
+either group is collapsed.
 Keep existing task URLs flat: the grouping is navigation, not a second set of routes.
 Page boundaries follow reader tasks rather than length.
 The active header link follows the page, including direct links from another

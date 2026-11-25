@@ -31,27 +31,27 @@ const group = (text: string, pages: string[]): DefaultTheme.SidebarItem => ({
 });
 
 const guide = [
-  group('Introduction', ['getting-started', 'commands-and-usage', 'profiles-and-categories', 'configuration-basics', 'security-and-trust', 'troubleshooting']),
+  group('Introduction', ['getting-started', 'commands-and-usage', 'profiles-and-categories', 'configuration-basics']),
   group('Customization', ['package-management', 'application-settings', 'agent-configuration', 'private-overlays']),
   group('Platforms', ['arch-desktop', 'windows-and-wsl']),
+  group('Safety and troubleshooting', ['security-and-trust', 'troubleshooting']),
 ];
 const reference = [
   page('cli-reference'),
   page('task-reference'),
-  {
-    text: 'Task details',
-    collapsed: false,
-    items: [
-      'agent-packages', 'agent-settings', 'apm-plugin-checks', 'aur-packages',
-      'configuration-diagnostics', 'custom-package-repository', 'custom-package-versions',
-      'dotfiles-launcher', 'dotfiles-repository', 'file-permissions', 'git-hooks',
-      'global-git-settings', 'home-symlinks', 'login-shell', 'overlay-scripts',
-      'paru-package-manager', 'psscriptanalyzer', 'required-configuration-files',
-      'shell-completions', 'shell-path', 'shellcheck', 'symlink-sources',
-      'system-configuration-files', 'system-packages', 'systemd-units',
-      'user-registry-settings', 'vs-code-extensions', 'windows-developer-mode',
-    ].map(page),
-  },
+  group('Update tasks', [
+    'agent-packages', 'agent-settings', 'aur-packages',
+    'custom-package-repository', 'custom-package-versions',
+    'dotfiles-launcher', 'dotfiles-repository', 'file-permissions', 'git-hooks',
+    'global-git-settings', 'home-symlinks', 'login-shell', 'overlay-scripts',
+    'paru-package-manager', 'shell-completions', 'shell-path',
+    'system-configuration-files', 'system-packages', 'systemd-units',
+    'user-registry-settings', 'vs-code-extensions', 'windows-developer-mode',
+  ]),
+  group('Validation tasks', [
+    'apm-plugin-checks', 'configuration-diagnostics', 'psscriptanalyzer',
+    'required-configuration-files', 'shellcheck', 'symlink-sources',
+  ]),
 ];
 const contribute = [
   group('Overview', ['contributing', 'architecture']),

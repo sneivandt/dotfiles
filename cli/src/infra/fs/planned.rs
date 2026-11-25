@@ -14,7 +14,7 @@ pub(crate) struct PlannedDirectory {
 /// Only used on empty temporary fixture directories. Never request elevation.
 #[cfg(test)]
 #[cfg(windows)]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "set case sensitivity on the private fixture directory handle"
 )]
@@ -110,7 +110,7 @@ impl PlannedDirectory {
 
     #[cfg_attr(
         not(windows),
-        allow(
+        expect(
             clippy::unnecessary_wraps,
             reason = "Windows must query the containing directory before comparing missing names"
         )
@@ -154,7 +154,7 @@ impl PlannedDirectory {
 }
 
 #[cfg(windows)]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "read the enclosing directory's case-sensitivity flag"
 )]
@@ -198,7 +198,7 @@ fn directory_case_sensitive(path: &Path) -> Result<bool> {
 }
 
 #[cfg(windows)]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "Win32 ordinal comparison for not-yet-created path components"
 )]

@@ -128,7 +128,7 @@ fn check_direct_hook(resource: &HookFileResource) -> Result<()> {
 }
 
 #[cfg(not(unix))]
-#[allow(
+#[expect(
     clippy::unnecessary_wraps,
     reason = "match the Unix hook check signature"
 )]

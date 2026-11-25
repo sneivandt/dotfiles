@@ -16,7 +16,7 @@ fn fixture_command(role: &str) -> Command {
 
 #[test]
 #[ignore = "subprocess fixture launched by the native process-tree tests"]
-#[allow(
+#[expect(
     clippy::print_stdout,
     clippy::print_stderr,
     reason = "the fixture supplies captured output to the executor under test"

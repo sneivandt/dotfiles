@@ -446,7 +446,7 @@ macro_rules! output_methods {
 /// latter moves its `String` rather than copying it.
 ///
 /// Import it as `use crate::infra::logging::OutputExt as _;`.
-pub trait OutputExt: Output {
+pub(crate) trait OutputExt: Output {
     output_methods! {
         /// Persist aggregate counters without repeating them in console details.
         summary => Summary,
@@ -510,13 +510,13 @@ pub trait TaskRecorder: Send + Sync {
 /// Combined logging interface: user-facing output plus task recording.
 ///
 /// This is the primary trait stored in the execution `Context`.
-/// It composes [`Output`] (display methods) and [`TaskRecorder`] (structured
+/// It composes `Output` (display methods) and `TaskRecorder` (structured
 /// task results), allowing callers that need the full interface to accept a
 /// single trait object.
 ///
 /// A blanket implementation is provided for any type that implements both
-/// sub-traits, so concrete types only need to implement [`Output`] and
-/// [`TaskRecorder`].
+/// sub-traits, so concrete types only need to implement `Output` and
+/// `TaskRecorder`.
 pub trait Log: Output + TaskRecorder {}
 
 impl<T: Output + TaskRecorder> Log for T {}

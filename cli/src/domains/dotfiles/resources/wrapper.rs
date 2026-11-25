@@ -12,7 +12,7 @@ use crate::engine::{
 
 /// Which wrapper script to install on the user's `PATH`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WrapperType {
+pub(crate) enum WrapperType {
     /// POSIX shell wrapper (`dotfiles.sh`).
     Sh,
     /// `PowerShell` wrapper (`dotfiles.ps1`).
@@ -22,7 +22,7 @@ pub enum WrapperType {
 impl WrapperType {
     /// Select a launcher format the target OS can execute.
     #[must_use]
-    pub const fn detect(platform: crate::infra::platform::Platform) -> Self {
+    pub(crate) const fn detect(platform: crate::infra::platform::Platform) -> Self {
         if platform.is_windows() {
             Self::Pwsh
         } else {
@@ -33,7 +33,7 @@ impl WrapperType {
 
 /// A resource that installs a CLI wrapper script on the user's `PATH`.
 #[derive(Debug)]
-pub struct WrapperResource {
+pub(crate) struct WrapperResource {
     /// Where the wrapper script will be installed.
     target: PathBuf,
     /// Expected file content.
@@ -52,7 +52,7 @@ impl WrapperResource {
     /// it produces a `.cmd` shim that directly invokes the repository's
     /// `dotfiles.ps1`.
     #[must_use]
-    pub fn new(wrapper_type: WrapperType, dotfiles_root: &Path, home: &Path) -> Self {
+    pub(crate) fn new(wrapper_type: WrapperType, dotfiles_root: &Path, home: &Path) -> Self {
         let bin_dir = home.join(".local").join("bin");
 
         let (target, content) = match wrapper_type {

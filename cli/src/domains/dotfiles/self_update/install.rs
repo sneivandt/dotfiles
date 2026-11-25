@@ -290,6 +290,7 @@ pub(super) fn download_and_install(
     root: &Path,
     tag: &str,
     client: &dyn HttpClient,
+    env: &dyn crate::infra::env::Env,
     skip_attestation: bool,
 ) -> Result<()> {
     install_release(
@@ -297,7 +298,7 @@ pub(super) fn download_and_install(
         tag,
         client,
         &SystemGh,
-        policy(skip_attestation),
+        policy(env, skip_attestation),
         smoke_test_binary,
     )
 }

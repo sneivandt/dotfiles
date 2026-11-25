@@ -33,13 +33,13 @@ pub(crate) const ELEVATION_DECLINED_EXIT_CODE: i32 = 1223;
 /// from the environment as a fallback for wrappers that set it directly.
 #[must_use]
 #[cfg_attr(
-    not(windows),
-    allow(
+    not(any(windows, test)),
+    expect(
         dead_code,
         reason = "only the Windows exit wait uses process-wide child state"
     )
 )]
-pub fn is_elevated_child() -> bool {
+pub(crate) fn is_elevated_child() -> bool {
     *ELEVATED_CHILD
         .get_or_init(|| env_marks_elevated_child(std::env::var_os(ELEVATED_CHILD_VAR).as_deref()))
 }
@@ -52,7 +52,7 @@ fn env_marks_elevated_child(value: Option<&std::ffi::OsStr>) -> bool {
 ///
 /// Must be called before any [`is_elevated_child`] query; later calls are
 /// ignored so the answer stays stable for the lifetime of the process.
-pub fn mark_elevated_child() {
+pub(crate) fn mark_elevated_child() {
     // `set` reports Err once the flag has already been resolved, which is the
     // documented no-op rather than a failure.
     let _already_resolved = ELEVATED_CHILD.set(true).is_err();
@@ -70,7 +70,7 @@ static ELEVATED_CHILD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 /// On non-Windows platforms, always returns `false`.
 #[cfg(windows)]
 #[must_use]
-pub fn is_elevated_windows() -> bool {
+pub(crate) fn is_elevated_windows() -> bool {
     use crate::infra::exec::{CommandSpec, Executor as _};
     use std::sync::OnceLock;
 
@@ -84,32 +84,28 @@ pub fn is_elevated_windows() -> bool {
 }
 
 #[cfg(windows)]
-pub use is_elevated_windows as is_elevated;
+pub(crate) use is_elevated_windows as is_elevated;
 
 /// Check if the current process is running with administrator privileges.
 ///
 /// Always returns `false` on non-Windows platforms.
 #[cfg(not(windows))]
 #[must_use]
-#[allow(
-    dead_code,
-    reason = "called only from Windows cfg-gated elevation path"
-)]
-pub const fn is_elevated() -> bool {
+pub(crate) const fn is_elevated() -> bool {
     false
 }
 
 /// Return whether `sudo` is available through the configured executor.
 #[cfg(unix)]
 #[must_use]
-pub fn sudo_available(executor: &dyn crate::infra::exec::Executor) -> bool {
+pub(crate) fn sudo_available(executor: &dyn crate::infra::exec::Executor) -> bool {
     executor.which("sudo")
 }
 
 /// Return whether sudo credentials are already cached.
 #[cfg(unix)]
 #[must_use]
-pub fn sudo_credentials_cached() -> bool {
+pub(crate) fn sudo_credentials_cached() -> bool {
     use std::process::Stdio;
 
     std::process::Command::new("sudo")
@@ -127,7 +123,7 @@ pub fn sudo_credentials_cached() -> bool {
 ///
 /// Returns an error if the `sudo` process cannot be started.
 #[cfg(unix)]
-pub fn prime_sudo_credentials() -> std::io::Result<bool> {
+pub(crate) fn prime_sudo_credentials() -> std::io::Result<bool> {
     use std::process::Stdio;
 
     let tty_in = std::fs::File::open("/dev/tty");
@@ -261,8 +257,8 @@ pub(crate) fn run_elevated_child(
 /// without the pause its output would be unreadable. A normal run — elevated or
 /// not — owns the user's existing terminal and must never block on exit.
 #[cfg(windows)]
-#[allow(clippy::print_stderr, reason = "intentional user-facing output")]
-pub fn wait_if_elevated(non_interactive: bool) {
+#[expect(clippy::print_stderr, reason = "intentional user-facing output")]
+pub(crate) fn wait_if_elevated(non_interactive: bool) {
     // Never block on input where nothing can supply it: a `--elevated-child`
     // run driven by automation would otherwise stall until the command timeout.
     if should_pause_on_exit(
@@ -279,7 +275,7 @@ pub fn wait_if_elevated(non_interactive: bool) {
 
 /// Pause only an interactive elevated window with an available input terminal.
 #[cfg(any(windows, test))]
-#[allow(
+#[expect(
     clippy::fn_params_excessive_bools,
     reason = "independent execution and terminal capabilities"
 )]
@@ -294,7 +290,7 @@ const fn should_pause_on_exit(
 
 /// No-op on non-Windows platforms.
 #[cfg(not(windows))]
-pub const fn wait_if_elevated(_non_interactive: bool) {}
+pub(crate) const fn wait_if_elevated(_non_interactive: bool) {}
 
 #[cfg(test)]
 mod exit_pause_tests {
@@ -547,7 +543,7 @@ mod escaping_tests {
     }
 
     #[test]
-    #[allow(
+    #[expect(
         clippy::print_stderr,
         reason = "make optional runtime coverage gaps visible to the test harness"
     )]

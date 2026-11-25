@@ -36,7 +36,7 @@ impl CmdCommand {
     #[must_use]
     #[cfg_attr(
         not(windows),
-        allow(dead_code, reason = "used by Windows-only command wrappers")
+        expect(dead_code, reason = "used by Windows-only command wrappers")
     )]
     pub(crate) fn args(mut self, args: &[&str]) -> Self {
         self.args.extend(args.iter().map(|arg| (*arg).to_string()));
@@ -49,10 +49,6 @@ impl CmdCommand {
     ///
     /// Returns an error when a literal cannot be represented safely in a
     /// `cmd.exe` command string or the process cannot be executed.
-    #[cfg_attr(
-        not(windows),
-        allow(dead_code, reason = "used by Windows-only command wrappers")
-    )]
     pub(crate) fn run_unchecked(&self, executor: &dyn Executor) -> Result<ExecResult> {
         let command_line = self.command_line()?;
         Ok(executor.execute(CommandSpec::windows_cmd(command_line))?)
@@ -90,17 +86,13 @@ fn quote_cmd_literal(value: &str) -> Result<String> {
 /// A `PowerShell` script encoded for the injection-safe `-EncodedCommand`
 /// process boundary.
 #[derive(Debug, Clone)]
-#[cfg_attr(
-    not(windows),
-    allow(dead_code, reason = "used by Windows-only process launchers")
-)]
 pub(crate) struct PowerShellCommand {
     encoded: String,
 }
 
 #[cfg_attr(
     not(windows),
-    allow(dead_code, reason = "used by Windows-only process launchers")
+    expect(dead_code, reason = "used by Windows-only process launchers")
 )]
 impl PowerShellCommand {
     /// Encode a script as Base64 UTF-16LE.

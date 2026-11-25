@@ -33,7 +33,7 @@ pub(crate) fn rename_noreplace(source: &Path, target: &Path) -> std::io::Result<
 }
 
 #[cfg(windows)]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "Win32 provides the no-replace rename missing from std"
 )]
@@ -68,7 +68,7 @@ pub(crate) use rename_noreplace_windows as rename_noreplace;
 /// Returns an error if the rename fails. Callers that need to handle a
 /// cross-filesystem rename should inspect the source
 /// [`std::io::ErrorKind::CrossesDevices`].
-pub fn rename_into_place(staged: &Path, target: &Path) -> Result<()> {
+pub(crate) fn rename_into_place(staged: &Path, target: &Path) -> Result<()> {
     std::fs::rename(staged, target)
         .with_context(|| format!("rename {} to {}", staged.display(), target.display()))
 }
@@ -90,7 +90,7 @@ pub fn rename_into_place(staged: &Path, target: &Path) -> Result<()> {
 /// Returns an error if target metadata cannot be read, the parent directory
 /// cannot be created, the staged file cannot be written, its permissions cannot
 /// be restored, or the rename fails.
-pub fn write_atomic(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
+pub(crate) fn write_atomic(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     write_atomic_checked(path, content, || Ok(()))
 }
 
@@ -117,7 +117,7 @@ pub(crate) fn publish_with_ownership<E: From<anyhow::Error>>(
 /// # Errors
 ///
 /// Returns staging, validation, or publication errors without replacing the target.
-pub fn write_atomic_checked(
+pub(crate) fn write_atomic_checked(
     path: &Path,
     content: impl AsRef<[u8]>,
     check: impl FnOnce() -> Result<()>,

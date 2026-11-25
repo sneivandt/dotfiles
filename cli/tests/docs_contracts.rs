@@ -1,4 +1,4 @@
-#![allow(
+#![expect(
     clippy::expect_used,
     clippy::unwrap_used,
     clippy::indexing_slicing,
@@ -6,6 +6,10 @@
 )]
 //! Contracts for examples and state transitions in the human documentation.
 
+#[expect(
+    dead_code,
+    reason = "docs_contracts uses a subset of the shared integration helpers"
+)]
 mod common;
 
 use dotfiles_cli::testing as test_api;
@@ -43,7 +47,7 @@ const LINUX: Platform = Platform {
 };
 
 #[cfg(unix)]
-#[allow(
+#[expect(
     clippy::panic,
     reason = "asserting the documentation fixture result variant"
 )]

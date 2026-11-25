@@ -97,8 +97,8 @@ You only need this setup for Rust CLI changes or local source builds. Editing
 application preferences or guide prose doesn't require compiling the CLI; see
 [Choosing coverage](testing.md#choosing-coverage) for what to run instead.
 
-Install Git, rustup-managed Rust/Cargo, and native build libraries for the
-CLI's C dependencies: `base-devel`, `pkgconf`, and `openssl` on Arch, or the
+Install Git, rustup-managed Rust/Cargo, and native build tools for the
+CLI's C dependencies: `base-devel` and `pkgconf` on Arch, or the
 C++ build tools and Windows SDK requested by the Rust installer for Windows
 MSVC builds.
 
@@ -156,7 +156,7 @@ Match the environment variable to Cargo's active profile:
 `cli/`, enable debug info for a single CI-profile test run in a POSIX shell:
 
 ```sh
-CARGO_PROFILE_CI_DEBUG=2 cargo test --locked --profile ci --test update_command repository
+CARGO_PROFILE_CI_DEBUG=2 cargo test --locked --profile ci --test integration update_command::
 ```
 
 In PowerShell, restore the previous value afterward so later commands don't
@@ -166,7 +166,7 @@ inherit it:
 $previousDebug = $env:CARGO_PROFILE_CI_DEBUG
 try {
     $env:CARGO_PROFILE_CI_DEBUG = '2'
-    cargo test --locked --profile ci --test update_command repository
+    cargo test --locked --profile ci --test integration update_command::
 } finally {
     $env:CARGO_PROFILE_CI_DEBUG = $previousDebug
 }

@@ -13,7 +13,7 @@ const MARKER_CONTENT: &str = "# VS Code extensions were deferred during Arch chr
 
 /// A marker consumed by the first-session systemd user service.
 #[derive(Debug)]
-pub struct DeferredExtensionsResource {
+pub(crate) struct DeferredExtensionsResource {
     marker: PathBuf,
     assignments: String,
 }
@@ -24,7 +24,7 @@ impl DeferredExtensionsResource {
     /// # Errors
     ///
     /// Returns an error when the overlay path or extension list cannot be encoded.
-    pub fn new(
+    pub(crate) fn new(
         home: &Path,
         profile: &str,
         overlay: Option<&Path>,

@@ -24,7 +24,7 @@ use crate::infra::logging::OutputExt as _;
 
 /// Select the native APM operation for an install command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ApmPackageMode {
+pub(crate) enum ApmPackageMode {
     /// Converge the locked dependency graph without advancing refs.
     Install,
     /// Advance eligible refs and converge the resulting dependency graph.
@@ -46,7 +46,7 @@ impl ApmPackageMode {
 /// fragments must be merged. APM owns dependency resolution, local-source
 /// integrity, deployment convergence, and stale/orphan cleanup.
 #[derive(Debug)]
-pub struct InstallApmPackages {
+pub(crate) struct InstallApmPackages {
     fragments: ConfigHandle<Vec<ApmFragmentSource>>,
     inactive: Option<ConfigHandle<InactiveApmFragments>>,
     mode: ApmPackageMode,
@@ -56,7 +56,7 @@ impl InstallApmPackages {
     /// Create the task with the managed symlink configuration that supplies APM
     /// fragments.
     #[must_use]
-    pub const fn new(
+    pub(crate) const fn new(
         fragments: ConfigHandle<Vec<ApmFragmentSource>>,
         mode: ApmPackageMode,
     ) -> Self {

@@ -114,7 +114,7 @@ pub(crate) fn value_is_finite(value: &toml::Value) -> bool {
 
 /// Validate agent settings entries and return semantic diagnostics.
 #[must_use]
-pub fn validate(settings: &[AgentSetting]) -> Vec<Diagnostic> {
+pub(crate) fn validate(settings: &[AgentSetting]) -> Vec<Diagnostic> {
     use crate::infra::config::validation::{Validator, check_error};
 
     let mut diagnostics = Validator::new(AGENT_SETTINGS_TOML)

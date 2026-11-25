@@ -101,7 +101,7 @@ fn restarted_overlay_update_keeps_a_validated_exclusion_when_its_script_is_retir
 
 #[cfg(unix)]
 #[test]
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "real repository restart, parent death, and concurrent command fixture"
 )]

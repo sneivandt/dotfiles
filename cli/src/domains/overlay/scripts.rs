@@ -29,7 +29,7 @@ crate::engine::config_task! {
     ///
     /// The actual execution of each script is handled by individual
     /// [`OverlayScriptTask`] instances created from the same configuration snapshot.
-    pub struct ReportOverlayScriptSnapshot(Vec<ScriptEntry>);
+    pub(crate) struct ReportOverlayScriptSnapshot(Vec<ScriptEntry>);
 }
 
 const REPORT_NAME: &str = "Report overlay scripts";
@@ -63,7 +63,7 @@ impl Task for ReportOverlayScriptSnapshot {
 /// Instances are created after configuration synchronization and injected into
 /// the task list so they appear in the output like any other task.
 #[derive(Debug)]
-pub struct OverlayScriptTask {
+pub(crate) struct OverlayScriptTask {
     entry: ScriptEntry,
     overlay_root: PathBuf,
     selector: String,
@@ -138,7 +138,7 @@ impl Operation for OverlayScriptTask {
 impl OverlayScriptTask {
     /// Create a new overlay script task.
     #[must_use]
-    pub fn new(entry: ScriptEntry, overlay_root: PathBuf) -> Self {
+    pub(crate) fn new(entry: ScriptEntry, overlay_root: PathBuf) -> Self {
         let selector = overlay_script_selector(&entry.name);
         Self {
             entry,
@@ -211,7 +211,7 @@ fn emit_script_lines(ctx: &Context, output: &str, dry_run: bool) {
 /// Called from `update.rs` during startup to create dynamic tasks alongside
 /// the static catalog.
 #[must_use]
-pub fn overlay_script_tasks(
+pub(crate) fn overlay_script_tasks(
     scripts: &[ScriptEntry],
     overlay_root: &std::path::Path,
 ) -> Vec<Box<dyn Task>> {
@@ -220,7 +220,7 @@ pub fn overlay_script_tasks(
 
 /// Create removal tasks for every active overlay script.
 #[must_use]
-pub fn overlay_script_removal_tasks(
+pub(crate) fn overlay_script_removal_tasks(
     scripts: &[ScriptEntry],
     overlay_root: &std::path::Path,
 ) -> Vec<Box<dyn Task>> {

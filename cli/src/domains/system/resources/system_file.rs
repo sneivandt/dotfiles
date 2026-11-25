@@ -41,7 +41,7 @@ use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, Re
 use crate::infra::exec::{CommandSpec, Executor, OutputLog};
 
 /// Converges one system file from a tracked source fragment.
-pub struct SystemFileResource {
+pub(crate) struct SystemFileResource {
     entry: SystemFile,
     target_root: PathBuf,
     executor: Arc<dyn Executor>,
@@ -66,7 +66,7 @@ impl std::fmt::Debug for SystemFileResource {
 impl SystemFileResource {
     /// Create a resource from one configured system file.
     #[must_use]
-    pub fn new(entry: SystemFile, executor: Arc<dyn Executor>) -> Self {
+    pub(crate) fn new(entry: SystemFile, executor: Arc<dyn Executor>) -> Self {
         Self {
             entry,
             target_root: PathBuf::from("/etc"),

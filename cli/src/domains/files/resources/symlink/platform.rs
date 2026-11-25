@@ -49,7 +49,7 @@ fn create_symlink_windows(target: &Path, link: &Path, executor: &dyn Executor) -
 /// Check if metadata represents a managed link-like entry.
 #[cfg_attr(
     not(windows),
-    allow(
+    expect(
         unused_variables,
         reason = "path is only needed to validate Windows reparse points"
     )

@@ -40,7 +40,7 @@ const MAX_RETAINED_RUNS: usize = 50;
 
 static DEGRADATION_WARNING_EMITTED: AtomicBool = AtomicBool::new(false);
 
-#[allow(
+#[expect(
     clippy::print_stderr,
     reason = "the console is the only remaining sink when the run log degrades"
 )]
@@ -65,7 +65,7 @@ thread_local! {
 /// Called by the parallel scheduler when a thread starts working on a task.
 /// The name is used by [`RunLog::emit`] as a fallback when the OS thread has
 /// no name.
-pub fn set_log_thread_name(name: &str) {
+pub(crate) fn set_log_thread_name(name: &str) {
     LOG_TASK_NAME.with(|cell| {
         *cell.borrow_mut() = Some(name.to_string());
     });
@@ -73,7 +73,7 @@ pub fn set_log_thread_name(name: &str) {
 
 /// Guard that restores the previous run-log task context when dropped.
 #[derive(Debug)]
-pub struct LogTaskContextGuard {
+pub(crate) struct LogTaskContextGuard {
     previous: Option<String>,
 }
 
@@ -87,14 +87,14 @@ impl Drop for LogTaskContextGuard {
 
 /// Set the run-log task context for the current scope.
 #[must_use]
-pub fn log_task_context(name: &str) -> LogTaskContextGuard {
+pub(crate) fn log_task_context(name: &str) -> LogTaskContextGuard {
     let previous = LOG_TASK_NAME.with(|cell| cell.borrow_mut().replace(name.to_string()));
     LogTaskContextGuard { previous }
 }
 
 /// Read the run-log task name for the current thread.
 #[must_use]
-pub fn log_thread_name() -> String {
+pub(crate) fn log_thread_name() -> String {
     if let Some(name) = LOG_TASK_NAME.with(|cell| cell.borrow().clone()) {
         return name;
     }

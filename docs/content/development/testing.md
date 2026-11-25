@@ -76,15 +76,15 @@ related integration targets into one command:
 
 ```sh
 cd cli
-cargo test --locked --profile ci --test config_drift --test check_command
+cargo test --locked --profile ci --test config_drift --test integration check_command
 ```
 
 To narrow down one failure, list the target's tests before picking a filter:
 
 ```sh
 cd cli
-cargo test --locked --profile ci --test update_command -- --list
-cargo test --locked --profile ci --test update_command repository
+cargo test --locked --profile ci --test integration update_command -- --list
+cargo test --locked --profile ci --test integration update_command::
 ```
 
 Filters match test-name substrings, so check the reported test count (a typo

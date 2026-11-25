@@ -1,16 +1,9 @@
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::wildcard_imports,
-    clippy::indexing_slicing,
-    reason = "panicking allowed at this trust boundary"
-)]
 //! Integration tests for the `remove` command.
 //!
 //! These tests verify the structure and naming of the remove task list
 //! returned by [`all_remove_tasks`].
 
-mod common;
+use crate::common;
 
 use dotfiles_cli::testing as test_api;
 

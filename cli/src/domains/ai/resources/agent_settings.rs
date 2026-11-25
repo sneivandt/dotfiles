@@ -23,7 +23,7 @@ use crate::engine::{
 
 /// Serialization format of an agent settings document.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum SettingsFormat {
+pub(crate) enum SettingsFormat {
     /// JSON object, used by GitHub Copilot CLI.
     Json,
     /// TOML table, used by `OpenAI` Codex.
@@ -32,7 +32,7 @@ pub enum SettingsFormat {
 
 /// A single key within an agent settings document.
 #[derive(Debug)]
-pub struct AgentSettingResource {
+pub(crate) struct AgentSettingResource {
     target: String,
     key: String,
     desired_value: toml::Value,
@@ -43,7 +43,7 @@ pub struct AgentSettingResource {
 impl AgentSettingResource {
     /// Create a new agent settings resource.
     #[must_use]
-    pub const fn new(
+    pub(crate) const fn new(
         target: String,
         key: String,
         desired_value: toml::Value,
@@ -307,7 +307,7 @@ fn publish_document(
 
 /// One transaction for all managed keys in a resolved settings document.
 #[derive(Debug)]
-pub struct AgentSettingsDocument {
+pub(crate) struct AgentSettingsDocument {
     path: PathBuf,
     settings: Vec<AgentSettingResource>,
 }
@@ -318,7 +318,7 @@ impl AgentSettingsDocument {
     /// # Errors
     ///
     /// Returns resolution errors or conflicting format errors before any writes.
-    pub fn group(settings: Vec<AgentSettingResource>) -> Result<Vec<Self>> {
+    pub(crate) fn group(settings: Vec<AgentSettingResource>) -> Result<Vec<Self>> {
         Self::group_with(settings, document_path)
     }
 

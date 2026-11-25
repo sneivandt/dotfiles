@@ -154,10 +154,6 @@ fn apm_fragment_target(symlink: &Symlink) -> Option<std::path::PathBuf> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::indexing_slicing,
-    reason = "test code uses direct indexing for focused assertions"
-)]
 mod tests {
     use super::*;
     use crate::domains::files::config::symlinks::Symlink;

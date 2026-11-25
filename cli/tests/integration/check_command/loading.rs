@@ -37,7 +37,7 @@ fn config_selects_only_active_sections_from_desktop_fixture() {
     let ctx = common::TestContextBuilder::new()
         .with_config_file(
             "symlinks.toml",
-            include_str!("../fixtures/desktop_profile.toml"),
+            include_str!("../../fixtures/desktop_profile.toml"),
         )
         .with_symlink_source("bashrc")
         .with_symlink_source("config/Code/User/settings.json")

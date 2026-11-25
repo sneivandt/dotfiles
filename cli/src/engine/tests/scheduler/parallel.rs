@@ -347,7 +347,7 @@ fn a_dispatch_panic_reaches_the_scheduler_caller() {
             TaskMeta::new("panicking-log-key")
         }
 
-        #[allow(clippy::panic, reason = "exercise the scheduler's worker unwind path")]
+        #[expect(clippy::panic, reason = "exercise the scheduler's worker unwind path")]
         fn log_key(&self) -> String {
             panic!("fixture dispatch panic");
         }

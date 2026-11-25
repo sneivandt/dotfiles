@@ -178,7 +178,7 @@ pub(super) fn dotfiles_log_subdir(base: &std::path::Path) -> Option<PathBuf> {
 /// Decompose seconds since the Unix epoch into `(year, month, day, hour, min, sec)`.
 ///
 /// Uses Howard Hinnant's civil-from-days algorithm.
-#[allow(
+#[expect(
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,

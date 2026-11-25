@@ -72,7 +72,7 @@ fn write_cache_at(root: &Path, tag: &str, now: u64, boot_id: Option<&str>) -> Re
 
 #[cfg_attr(
     not(target_os = "linux"),
-    allow(
+    expect(
         clippy::missing_const_for_fn,
         reason = "the shared boot-ID function reads the kernel boot ID on Linux"
     )

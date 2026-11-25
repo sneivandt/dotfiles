@@ -13,20 +13,20 @@ use crate::test_helpers::make_context;
 use super::fragments::{discover_fragment_files, merge_fragments};
 use super::install::{ApmPackageMode, InstallApmPackages};
 
-pub const DEFAULT_FRAGMENT: &str =
+pub(super) const DEFAULT_FRAGMENT: &str =
     "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - example/plugin\n";
 
-pub fn write_home_fragment(home: &Path, filename: &str, content: &str) {
+pub(super) fn write_home_fragment(home: &Path, filename: &str, content: &str) {
     let fragment_dir = home.join(".apm").join("config");
     std::fs::create_dir_all(&fragment_dir).expect("create fragment dir");
     std::fs::write(fragment_dir.join(filename), content).expect("write manifest fragment");
 }
 
-pub fn write_default_home_fragment(home: &Path) {
+pub(super) fn write_default_home_fragment(home: &Path) {
     write_home_fragment(home, "base.yml", DEFAULT_FRAGMENT);
 }
 
-pub fn write_current_manifest_and_lock(home: &Path) {
+pub(super) fn write_current_manifest_and_lock(home: &Path) {
     write_default_home_fragment(home);
     let fragments = discover_fragment_files(home).expect("discover fragments");
     let merged = merge_fragments(&fragments).expect("merge fragments");
@@ -38,7 +38,7 @@ pub fn write_current_manifest_and_lock(home: &Path) {
     .expect("write lock");
 }
 
-pub fn write_copilot_app_db(home: &Path) -> PathBuf {
+pub(super) fn write_copilot_app_db(home: &Path) -> PathBuf {
     let copilot_dir = home.join(".copilot");
     std::fs::create_dir_all(&copilot_dir).expect("create .copilot dir");
     let db_path = copilot_dir.join("data.db");
@@ -46,13 +46,17 @@ pub fn write_copilot_app_db(home: &Path) -> PathBuf {
     db_path
 }
 
-pub fn make_context_with_home(home: &Path, platform: Platform, executor: MockExecutor) -> Context {
+pub(super) fn make_context_with_home(
+    home: &Path,
+    platform: Platform,
+    executor: MockExecutor,
+) -> Context {
     make_context(home.to_path_buf(), None, platform, Arc::new(executor))
         .with_home(home.to_path_buf())
         .with_env(MapEnv::new().into_handle())
 }
 
-pub fn make_windows_cowork_context(home: &Path, executor: MockExecutor) -> Context {
+pub(super) fn make_windows_cowork_context(home: &Path, executor: MockExecutor) -> Context {
     std::fs::create_dir_all(home.join(".agents").join("skills"))
         .expect("create shared APM skills target");
     let onedrive = home.join("OneDrive - Test");
@@ -64,20 +68,20 @@ pub fn make_windows_cowork_context(home: &Path, executor: MockExecutor) -> Conte
     )
 }
 
-pub fn make_home_context_with_executor(home: &Path, executor: MockExecutor) -> Context {
+pub(super) fn make_home_context_with_executor(home: &Path, executor: MockExecutor) -> Context {
     write_copilot_app_db(home);
     make_context_with_home(home, Platform::new(Os::Linux, false), executor)
 }
 
-pub fn install_task() -> InstallApmPackages {
+pub(super) fn install_task() -> InstallApmPackages {
     InstallApmPackages::new(ConfigHandle::new(Vec::new()), ApmPackageMode::Install)
 }
 
-pub fn update_task() -> InstallApmPackages {
+pub(super) fn update_task() -> InstallApmPackages {
     InstallApmPackages::new(ConfigHandle::new(Vec::new()), ApmPackageMode::UpdatePins)
 }
 
-pub fn expect_which_apm(mock: &mut MockExecutor, found: bool) {
+pub(super) fn expect_which_apm(mock: &mut MockExecutor, found: bool) {
     mock.expect_which()
         .with(mockall::predicate::eq("apm"))
         .once()
@@ -90,7 +94,7 @@ fn has_env(spec: &CommandSpec, key: &str, value: &str) -> bool {
         .any(|(actual_key, actual_value)| actual_key == key && actual_value == value)
 }
 
-pub fn assert_apm_command(spec: &CommandSpec) {
+pub(super) fn assert_apm_command(spec: &CommandSpec) {
     assert_eq!(spec.program(), "apm");
     assert!(
         spec.is_checked(),
@@ -109,20 +113,20 @@ pub fn assert_apm_command(spec: &CommandSpec) {
     }
 }
 
-pub const INSTALL: &[&str] = &["install", "-g"];
-pub const UPDATE: &[&str] = &["update", "-g", "--yes"];
-pub const PREVIEW_UPDATE: &[&str] = &["update", "-g", "--dry-run"];
+pub(super) const INSTALL: &[&str] = &["install", "-g"];
+pub(super) const UPDATE: &[&str] = &["update", "-g", "--yes"];
+pub(super) const PREVIEW_UPDATE: &[&str] = &["update", "-g", "--dry-run"];
 
 /// Ordered native commands (and, for Copilot App, workflow snapshots and repairs)
 /// sharing the same isolated home. No other programs or calls are accepted.
-pub struct ApmRun<'a> {
+pub(super) struct ApmRun<'a> {
     pub home: &'a Path,
     pub mock: MockExecutor,
     pub seq: mockall::Sequence,
 }
 
 impl<'a> ApmRun<'a> {
-    pub fn new(home: &'a Path, apm_probes: usize) -> Self {
+    pub(super) fn new(home: &'a Path, apm_probes: usize) -> Self {
         let mut mock = MockExecutor::new();
         mock.expect_which()
             .with(mockall::predicate::eq("apm"))
@@ -135,7 +139,7 @@ impl<'a> ApmRun<'a> {
         }
     }
 
-    pub fn command(
+    pub(super) fn command(
         &mut self,
         args: &[&str],
         respond: impl FnOnce(&Path) -> Result<ExecResult, ExecError> + Send + 'static,
@@ -154,11 +158,11 @@ impl<'a> ApmRun<'a> {
             });
     }
 
-    pub fn ok(&mut self, args: &[&str], stdout: &'static str) {
+    pub(super) fn ok(&mut self, args: &[&str], stdout: &'static str) {
         self.command(args, move |_| Ok(ExecResult::success(stdout)));
     }
 
-    pub fn enable(&mut self, target: &'static str) {
+    pub(super) fn enable(&mut self, target: &'static str) {
         self.command(&["experimental", "enable", target], move |_| {
             Ok(ExecResult::success(format!(
                 "[!] {target} is already enabled.\n"
@@ -166,20 +170,20 @@ impl<'a> ApmRun<'a> {
         });
     }
 
-    pub fn workflow_install(&mut self) {
+    pub(super) fn workflow_install(&mut self) {
         self.ok(
             &["install", "-g", "--target", "copilot-app", "--only", "apm"],
             "installed workflows\n",
         );
     }
 
-    pub fn copilot_install(&mut self) {
+    pub(super) fn copilot_install(&mut self) {
         self.ok(INSTALL, "installed\n");
         self.enable("copilot-app");
         self.workflow_install();
     }
 
-    pub fn copilot_update(&mut self, stdout: &'static str) {
+    pub(super) fn copilot_update(&mut self, stdout: &'static str) {
         self.ok(UPDATE, stdout);
         self.ok(INSTALL, "converged deployments\n");
         self.enable("copilot-app");

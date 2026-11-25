@@ -1,10 +1,3 @@
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::wildcard_imports,
-    clippy::indexing_slicing,
-    reason = "panicking allowed at this trust boundary"
-)]
 //! Integration tests for the `test` command.
 //!
 //! Split by concern so a failure names the behaviour rather than one large
@@ -12,13 +5,11 @@
 //! - [`loading`] — `Config::load` and profile resolution, including parse errors
 //! - [`validation`] — warnings produced by `Config::validate`
 //!
-//! This root binary keeps the shared imports and the end-to-end behaviour of
+//! This root module keeps the shared imports and the end-to-end behaviour of
 //! the command itself.
 
-mod common;
-#[path = "check_command/loading.rs"]
+use crate::common;
 mod loading;
-#[path = "check_command/validation.rs"]
 mod validation;
 
 // ---------------------------------------------------------------------------

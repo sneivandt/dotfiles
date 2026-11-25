@@ -6,13 +6,14 @@ use std::path::Path;
 use super::env::Env;
 
 /// Environment variable set by an operating-system installer around dotfiles.
-pub const ENV_VAR: &str = "DOTFILES_PROVISIONING";
+pub(crate) const ENV_VAR: &str = "DOTFILES_PROVISIONING";
 
 /// Value used while `install-arch` invokes dotfiles through `arch-chroot`.
-pub const ARCH_CHROOT: &str = "arch-chroot";
+pub(crate) const ARCH_CHROOT: &str = "arch-chroot";
 
 /// Marker path relative to the user's home directory.
-pub const DEFERRED_EXTENSIONS_MARKER: &str = ".local/state/dotfiles/deferred-vscode-extensions";
+pub(crate) const DEFERRED_EXTENSIONS_MARKER: &str =
+    ".local/state/dotfiles/deferred-vscode-extensions";
 pub(crate) const FIRST_LOGIN_UNIT: &str = "dotfiles-first-login.service";
 pub(crate) const FIRST_LOGIN_UNIT_PATH: &str = ".config/systemd/user/dotfiles-first-login.service";
 pub(crate) const DEFERRED_EXTENSIONS_IDS: &str = "DOTFILES_DEFERRED_VSCODE_IDS";
@@ -23,7 +24,7 @@ pub(crate) fn resuming_extensions(env: &dyn Env) -> bool {
 
 /// Filesystem state of the deferred extension provisioning marker.
 #[derive(Debug)]
-pub enum DeferredExtensionsState {
+pub(crate) enum DeferredExtensionsState {
     /// A regular marker file signals pending work.
     Pending,
     /// The marker path does not exist.
@@ -37,7 +38,7 @@ pub enum DeferredExtensionsState {
 /// # Errors
 ///
 /// Returns inspection errors other than a missing marker.
-pub fn deferred_extensions_state(marker: &Path) -> io::Result<DeferredExtensionsState> {
+pub(crate) fn deferred_extensions_state(marker: &Path) -> io::Result<DeferredExtensionsState> {
     match std::fs::symlink_metadata(marker) {
         Ok(metadata) if metadata.is_file() => Ok(DeferredExtensionsState::Pending),
         Ok(_) => Ok(DeferredExtensionsState::Invalid),
@@ -50,7 +51,7 @@ pub fn deferred_extensions_state(marker: &Path) -> io::Result<DeferredExtensions
 
 /// Return whether dotfiles is configuring a target from an Arch chroot.
 #[must_use]
-pub fn is_arch_chroot(env: &dyn Env) -> bool {
+pub(crate) fn is_arch_chroot(env: &dyn Env) -> bool {
     env.var(ENV_VAR).as_deref() == Some(ARCH_CHROOT)
 }
 

@@ -64,7 +64,7 @@ impl TaskId {
 
 /// Whether a task applies to the current run.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Applicability {
+pub(super) enum Applicability {
     /// The task is eligible to execute.
     Applicable,
     /// The task is ineligible for this run.
@@ -156,7 +156,7 @@ impl TaskAssessment {
 /// The four values here used to be four separately defaulted trait methods.
 /// Bundling them into one required method means a task declares its identity
 /// in exactly one place, and a decorator such as
-/// [`TaskWithExtraDeps`](crate::engine::TaskWithExtraDeps) forwards one method
+/// `TaskWithExtraDeps` forwards one method
 /// instead of four — it can no longer silently drop a selector or a visibility
 /// override by forgetting to forward it.
 ///

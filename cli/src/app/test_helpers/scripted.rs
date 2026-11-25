@@ -20,7 +20,7 @@ struct Step {
 
 /// Executor double consuming an ordered queue of expected commands; see the builders below.
 #[derive(Debug, Default)]
-pub struct ScriptedExecutor {
+pub(crate) struct ScriptedExecutor {
     steps: Mutex<VecDeque<Step>>,
     programs: Vec<String>,
 }
@@ -28,25 +28,30 @@ pub struct ScriptedExecutor {
 impl ScriptedExecutor {
     /// Create an empty script.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// Queue an unconditional step returning success with `stdout`.
     #[must_use]
-    pub fn ok(self, stdout: impl Into<String>) -> Self {
+    pub(crate) fn ok(self, stdout: impl Into<String>) -> Self {
         self.push(None, Ok(ExecResult::success(stdout)))
     }
 
     /// Queue an unconditional step failing with `error`.
     #[must_use]
-    pub fn err(self, error: ExecError) -> Self {
+    pub(crate) fn err(self, error: ExecError) -> Self {
         self.push(None, Err(error))
     }
 
     /// Queue a step requiring an exact checked `git`/`args`/`cwd` match.
     #[must_use]
-    pub fn git(self, cwd: impl Into<PathBuf>, args: &[&str], stdout: impl Into<String>) -> Self {
+    pub(crate) fn git(
+        self,
+        cwd: impl Into<PathBuf>,
+        args: &[&str],
+        stdout: impl Into<String>,
+    ) -> Self {
         self.command(
             CommandSpec::new("git").args(args).current_dir(cwd),
             Ok(ExecResult::success(stdout)),
@@ -55,7 +60,7 @@ impl ScriptedExecutor {
 
     /// Queue a command, checking its program, arguments, cwd and checked mode.
     #[must_use]
-    pub fn command(
+    pub(crate) fn command(
         self,
         spec: CommandSpec,
         result: std::result::Result<ExecResult, ExecError>,
@@ -65,7 +70,7 @@ impl ScriptedExecutor {
 
     /// Report only these programs as available to `which`.
     #[must_use]
-    pub fn with_programs(mut self, programs: &[&str]) -> Self {
+    pub(crate) fn with_programs(mut self, programs: &[&str]) -> Self {
         self.programs = programs
             .iter()
             .map(|program| (*program).to_string())

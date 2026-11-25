@@ -29,7 +29,7 @@ use crate::infra::exec::{CommandSpec, Executor};
 
 /// A resource that runs a custom script from an overlay repository.
 #[derive(Debug)]
-pub struct ScriptResource {
+pub(crate) struct ScriptResource {
     /// Human-readable name for this script.
     name: String,
     /// Absolute path to the script file.
@@ -43,7 +43,7 @@ pub struct ScriptResource {
 impl ScriptResource {
     /// Create a new script resource.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         name: String,
         script_path: PathBuf,
         working_dir: PathBuf,
@@ -63,7 +63,7 @@ impl ScriptResource {
     ///
     /// Returns an error when the configured script path is absolute or escapes
     /// the overlay root.
-    pub fn from_entry(
+    pub(crate) fn from_entry(
         entry: &crate::domains::overlay::config::scripts::ScriptEntry,
         overlay_root: &Path,
         executor: Arc<dyn Executor>,
@@ -84,7 +84,7 @@ impl ScriptResource {
     ///
     /// Returns an error when the script path is invalid, its interpreter is
     /// unavailable, or execution fails.
-    pub fn apply_with_output(&self) -> Result<(ResourceChange, String)> {
+    pub(crate) fn apply_with_output(&self) -> Result<(ResourceChange, String)> {
         self.execute(ScriptMode::Apply)
     }
 
@@ -94,7 +94,7 @@ impl ScriptResource {
     ///
     /// Returns an error when the script path is invalid, its interpreter is
     /// unavailable, or execution fails.
-    pub fn preview_with_output(&self) -> Result<(ResourceChange, String)> {
+    pub(crate) fn preview_with_output(&self) -> Result<(ResourceChange, String)> {
         self.execute(ScriptMode::DryRun)
     }
 
@@ -103,7 +103,7 @@ impl ScriptResource {
     /// # Errors
     ///
     /// Returns an error when the script cannot be run or removal fails.
-    pub fn remove_with_output(&self) -> Result<(ResourceChange, String)> {
+    pub(crate) fn remove_with_output(&self) -> Result<(ResourceChange, String)> {
         self.execute(ScriptMode::Remove)
     }
 

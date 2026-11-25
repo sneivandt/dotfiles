@@ -4,7 +4,7 @@ mod checks;
 mod discovery;
 mod linters;
 
-pub use checks::{
+pub(crate) use checks::{
     RunPSScriptAnalyzer, RunShellcheck, ValidateApmPlugins, ValidateConfigFiles,
     ValidateConfigWarnings, ValidateSymlinkSources,
 };

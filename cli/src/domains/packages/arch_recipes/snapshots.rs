@@ -31,7 +31,7 @@ impl Snapshot {
         self.path.join(".git/dotfiles-validated-metadata")
     }
 
-    pub fn record_validation(&self, source: &ReleaseSource, srcinfo: &str) -> Result<()> {
+    pub(super) fn record_validation(&self, source: &ReleaseSource, srcinfo: &str) -> Result<()> {
         let key = self.validation_key(source, srcinfo)?;
         let path = self.validation_path();
         if read_optional(&path)?.as_deref() != Some(&key) {
@@ -40,7 +40,7 @@ impl Snapshot {
         Ok(())
     }
 
-    pub fn validated_metadata(&self, source: &ReleaseSource) -> Result<Option<&str>> {
+    pub(super) fn validated_metadata(&self, source: &ReleaseSource) -> Result<Option<&str>> {
         if let Some(srcinfo) = self.srcinfo.as_deref()
             && !self.needs_write()?
             && read_optional(&self.validation_path())?.as_deref()
@@ -53,7 +53,11 @@ impl Snapshot {
 
     // PKGBUILDs are executable code. Evaluate only during apply, from copies of
     // the exact planned inputs, before changing the published build repository.
-    pub fn validate_metadata(&self, ctx: &Context, source: &ReleaseSource) -> Result<String> {
+    pub(super) fn validate_metadata(
+        &self,
+        ctx: &Context,
+        source: &ReleaseSource,
+    ) -> Result<String> {
         if let Some(srcinfo) = self.validated_metadata(source)? {
             return Ok(srcinfo.to_owned());
         }
@@ -71,7 +75,7 @@ impl Snapshot {
         Ok(output.stdout)
     }
 
-    pub fn plan(
+    pub(super) fn plan(
         build_root: &Path,
         package_base: &str,
         source: &Path,
@@ -167,7 +171,7 @@ impl Snapshot {
         Ok(Some(repo))
     }
 
-    pub fn needs_write(&self) -> Result<bool> {
+    pub(super) fn needs_write(&self) -> Result<bool> {
         if self.pending_pins {
             return Ok(true);
         }
@@ -230,7 +234,7 @@ impl Snapshot {
         Ok(false)
     }
 
-    pub fn metadata_changed(&self, srcinfo: &str) -> bool {
+    pub(super) fn metadata_changed(&self, srcinfo: &str) -> bool {
         self.srcinfo.as_deref() != Some(srcinfo)
     }
 
@@ -248,7 +252,7 @@ impl Snapshot {
             .chain(std::iter::once((".SRCINFO", srcinfo)))
     }
 
-    pub fn apply(&self, srcinfo: &str) -> Result<()> {
+    pub(super) fn apply(&self, srcinfo: &str) -> Result<()> {
         ensure!(
             !self.pending_pins,
             "cannot publish snapshot without release pins"

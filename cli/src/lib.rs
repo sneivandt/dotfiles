@@ -1,10 +1,6 @@
-#![allow(
-    unreachable_pub,
-    reason = "internal modules are hidden behind the binary entry point and the testing facade"
-)]
 #![cfg_attr(
     test,
-    allow(
+    expect(
         clippy::expect_used,
         clippy::unwrap_used,
         clippy::panic,

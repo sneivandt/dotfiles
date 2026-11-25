@@ -372,7 +372,7 @@ exec "$FIXTURE_GIT" "$@"
     assert!(home.join(".local/bin/dotfiles").is_file());
 }
 
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "real Git remotes and update recovery"
 )]

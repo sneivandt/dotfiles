@@ -85,7 +85,7 @@ fn default_linux_modes_preserve_local_zsh_files_and_restrict_ssh_config() {
     use std::os::unix::fs::PermissionsExt as _;
 
     let repo = common::TestContextBuilder::new()
-        .with_config_file("chmod.toml", include_str!("../../../conf/chmod.toml"))
+        .with_config_file("chmod.toml", include_str!("../../../../conf/chmod.toml"))
         .build();
     let cli = LifecycleCli::new(repo.root_path());
     let files = [
@@ -303,7 +303,7 @@ const HISTORICAL_EDITOR_LINKS: &[(&str, &str, &str, Option<&str>)] = &[
 ];
 
 #[test]
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "cover the complete lifecycle and ownership of historical links"
 )]

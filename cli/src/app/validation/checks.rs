@@ -18,14 +18,14 @@ use crate::infra::logging::OutputExt as _;
 
 /// Fail the check command when config validation emits warnings.
 #[derive(Debug)]
-pub struct ValidateConfigWarnings {
+pub(crate) struct ValidateConfigWarnings {
     config: ConfigHandle<Config>,
 }
 
 impl ValidateConfigWarnings {
     /// Create the task with a handle to the aggregate configuration.
     #[must_use]
-    pub const fn new(config: ConfigHandle<Config>) -> Self {
+    pub(crate) const fn new(config: ConfigHandle<Config>) -> Self {
         Self { config }
     }
 }
@@ -70,14 +70,14 @@ impl Task for ValidateConfigWarnings {
 
 /// Validate that all symlink and file-permission source paths exist on disk.
 #[derive(Debug)]
-pub struct ValidateSymlinkSources {
+pub(crate) struct ValidateSymlinkSources {
     config: ConfigHandle<Config>,
 }
 
 impl ValidateSymlinkSources {
     /// Create the task with a handle to the aggregate configuration.
     #[must_use]
-    pub const fn new(config: ConfigHandle<Config>) -> Self {
+    pub(crate) const fn new(config: ConfigHandle<Config>) -> Self {
         Self { config }
     }
 }
@@ -186,7 +186,7 @@ impl Task for ValidateSymlinkSources {
 
 /// Validate that required configuration files exist.
 #[derive(Debug)]
-pub struct ValidateConfigFiles;
+pub(crate) struct ValidateConfigFiles;
 
 impl Task for ValidateConfigFiles {
     task_metadata! {
@@ -231,7 +231,7 @@ impl Task for ValidateConfigFiles {
 
 /// Validate local APM plugin package shape with APM's own pack dry-run.
 #[derive(Debug)]
-pub struct ValidateApmPlugins;
+pub(crate) struct ValidateApmPlugins;
 
 impl Task for ValidateApmPlugins {
     task_metadata! {
@@ -286,7 +286,7 @@ impl Task for ValidateApmPlugins {
 
 /// Run shellcheck on all shell scripts in the repository.
 #[derive(Debug)]
-pub struct RunShellcheck;
+pub(crate) struct RunShellcheck;
 
 impl Task for RunShellcheck {
     task_metadata! {
@@ -317,7 +317,7 @@ impl Task for RunShellcheck {
 
 /// Run `PSScriptAnalyzer` on `PowerShell` scripts.
 #[derive(Debug)]
-pub struct RunPSScriptAnalyzer;
+pub(crate) struct RunPSScriptAnalyzer;
 
 impl Task for RunPSScriptAnalyzer {
     task_metadata! {

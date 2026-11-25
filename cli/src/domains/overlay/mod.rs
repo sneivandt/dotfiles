@@ -1,6 +1,6 @@
 //! Overlay domain: private overlay configuration and convention-based scripts.
 
-pub mod config;
-pub mod resolution;
-pub mod resources;
-pub mod scripts;
+pub(crate) mod config;
+pub(crate) mod resolution;
+pub(crate) mod resources;
+pub(crate) mod scripts;

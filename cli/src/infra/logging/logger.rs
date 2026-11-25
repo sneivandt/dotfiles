@@ -85,7 +85,7 @@ impl Logger {
     /// Opens the run log for `command` in the dotfiles log directory.  If
     /// the file cannot be created the run continues without a file log.
     #[must_use]
-    #[allow(
+    #[expect(
         clippy::assertions_on_constants,
         clippy::missing_panics_doc,
         reason = "unit-test builds deliberately reject the production log sink before resolving host paths"
@@ -275,7 +275,7 @@ impl Logger {
     /// cursor sequencing rather than shared data, so there is no invariant to
     /// restore: recovering keeps the remaining tasks and the final summary
     /// visible instead of turning one panic into a cascade of them.
-    #[allow(
+    #[expect(
         clippy::print_stderr,
         reason = "the console is the only sink able to report that console sequencing degraded"
     )]

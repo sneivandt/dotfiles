@@ -12,7 +12,7 @@ use super::ResourceError;
 /// downcasting. Helper errors that have no dedicated variant flow through
 /// [`ResourceError::Other`], which preserves their context chain and still
 /// recovers the original category on round-trip.
-pub type ResourceResult<T> = Result<T, ResourceError>;
+pub(crate) type ResourceResult<T> = Result<T, ResourceError>;
 
 /// Interface for resources that can be described, applied, and removed.
 ///
@@ -68,10 +68,10 @@ pub trait IntrinsicState: Resource {
     ///
     /// # Errors
     ///
-    /// Returns a [`ResourceError`](super::ResourceError) if the resource state
+    /// Returns a [`ResourceError`] if the resource state
     /// cannot be determined due to I/O failures, permission issues, or other
     /// system errors. Returning the typed error (rather than `anyhow::Error`)
-    /// keeps [`ResourceError::category`](super::ResourceError::category)
+    /// keeps [`ResourceError::category`]
     /// available to the orchestration layer without downcasting.
     fn current_state(&self) -> ResourceResult<ResourceState>;
 }
@@ -83,7 +83,7 @@ pub trait IntrinsicState: Resource {
 /// fails at runtime. The removal entry points in the orchestration layer
 /// require this bound, which makes "this resource cannot be removed" a
 /// compile error at the call site instead of a failed task.
-pub trait RemovableResource: Resource {
+pub(crate) trait RemovableResource: Resource {
     /// Human-readable subject for removal actions.
     ///
     /// Override when removal has different effects from applying the resource.
@@ -204,10 +204,8 @@ pub enum ResourceChange {
     /// Resource was skipped without applying a change (e.g., missing source
     /// file, unavailable tool, or protected target directory).
     ///
-    /// `kind` mirrors [`ApplyOperation::Skip`] in the planning layer: a skip
+    /// `kind` mirrors `ApplyOperation::Skip` in the planning layer: a skip
     /// decided at apply time is not automatically a failure.
-    ///
-    /// [`ApplyOperation::Skip`]: crate::engine::plan::ApplyOperation::Skip
     Skipped {
         /// Reason why the resource was skipped.
         reason: String,

@@ -20,7 +20,7 @@ pub(crate) use section_macro::config_section;
 pub(crate) use string_or_table::StringOrTable;
 
 #[cfg(test)]
-pub mod test_helpers;
+pub(crate) mod test_helpers;
 
 #[cfg(test)]
 macro_rules! test_load_missing_returns_empty {

@@ -24,7 +24,7 @@ pub(crate) fn path_identity(path: &Path) -> Vec<OsString> {
 /// Ask the filesystem for the entry's spelling, without following a final
 /// symlink or conflating hard links. Keep native code units, including non-UTF-8.
 #[cfg(windows)]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "Win32 returns the stored entry spelling from a non-following handle"
 )]

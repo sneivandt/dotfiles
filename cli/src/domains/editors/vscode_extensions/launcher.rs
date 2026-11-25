@@ -20,7 +20,7 @@ const CODE_COMMANDS: [&str; 2] = ["code-insiders", "code"];
 ///
 /// Returns an error if the VS Code command fails to execute, cannot be found,
 /// or exits with a non-zero status code.
-pub fn get_installed_extensions(
+pub(super) fn get_installed_extensions(
     code_cmd: &str,
     executor: &dyn Executor,
 ) -> Result<HashSet<String>> {
@@ -72,7 +72,7 @@ fn nonempty_output(output: &str) -> &str {
 ///
 /// Returns an error if an available launcher cannot be resolved. That failure
 /// must not silently select a different VS Code installation.
-pub fn find_code_command(
+pub(super) fn find_code_command(
     executor: &dyn Executor,
     skip_insiders: impl Fn(&std::path::Path) -> Result<bool>,
 ) -> Result<Option<String>> {
@@ -101,7 +101,7 @@ pub(crate) fn managed_insiders_unavailable(
 }
 
 #[cfg(not(target_os = "linux"))]
-#[allow(clippy::unnecessary_wraps, reason = "matches the fallible Linux probe")]
+#[expect(clippy::unnecessary_wraps, reason = "matches the fallible Linux probe")]
 pub(crate) const fn managed_insiders_unavailable_non_linux(
     _path: &std::path::Path,
     _root: &std::path::Path,

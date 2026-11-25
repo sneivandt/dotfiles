@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 /// Returns an error if the destination directory cannot be created, a source
 /// entry cannot be read, a file cannot be copied, a symlink cannot be recreated,
 /// or (on Unix) directory permissions cannot be preserved.
-pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
+pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
     copy_tree(src, dst, skip_git, &mut HashMap::new())
 }
 
@@ -433,7 +433,7 @@ fn reject_recursive_destination(src: &Path, dst: &Path) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if metadata cannot be read or the destination is a link.
-pub fn reject_destination_link(path: &Path) -> Result<()> {
+pub(crate) fn reject_destination_link(path: &Path) -> Result<()> {
     if let Some(metadata) = super::symlink_metadata_optional(path, "reading copy destination")? {
         anyhow::ensure!(
             !is_link_like(path, &metadata),

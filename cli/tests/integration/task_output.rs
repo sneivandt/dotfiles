@@ -1,11 +1,6 @@
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "fixture assertions"
-)]
 //! Console and exit-status regressions for task outcomes.
 
-mod common;
+use crate::common;
 
 #[test]
 fn explicitly_selected_inapplicable_work_is_not_reported_as_unchanged() {

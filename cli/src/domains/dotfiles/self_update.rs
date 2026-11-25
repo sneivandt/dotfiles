@@ -217,7 +217,7 @@ fn with_status<T>(log: &dyn Output, status: &str, work: impl FnOnce() -> T) -> T
 /// Returns an error if the download, checksum or provenance verification,
 /// binary replacement, or smoke test fails. Release lookup and cache failures
 /// are reported without failing the invocation.
-pub fn pre_update(
+pub(crate) fn pre_update(
     root: &std::path::Path,
     log: &dyn Output,
     dry_run: bool,
@@ -249,7 +249,7 @@ pub fn pre_update(
             log.stage("CLI upgrade");
             log.debug(format!("updating: {current} \u{2192} {latest}"));
             with_status(log, &format!("Updating CLI to {latest}"), || {
-                download_and_install(root, &latest, &client, skip_attestation)
+                download_and_install(root, &latest, &client, &SystemEnv, skip_attestation)
             })?;
 
             Ok(Some(format!(
@@ -263,7 +263,7 @@ pub fn pre_update(
 ///
 /// Exposed so the application layer can re-exec the binary that self-update
 /// just replaced without re-deriving the platform-specific file name.
-pub fn installed_binary_path(root: &std::path::Path) -> std::path::PathBuf {
+pub(crate) fn installed_binary_path(root: &std::path::Path) -> std::path::PathBuf {
     paths::binary_path(root)
 }
 

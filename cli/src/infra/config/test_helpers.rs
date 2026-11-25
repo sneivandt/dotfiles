@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 ///
 /// Panics if the temp directory or file cannot be created.
 #[must_use]
-pub fn write_temp_toml(content: &str) -> (tempfile::TempDir, PathBuf) {
+pub(crate) fn write_temp_toml(content: &str) -> (tempfile::TempDir, PathBuf) {
     write_named_toml("test.toml", content)
 }
 
@@ -28,7 +28,7 @@ pub(crate) fn write_named_toml(name: &str, content: &str) -> (tempfile::TempDir,
 /// # Panics
 ///
 /// Panics if the temp directory cannot be created or the loader fails.
-pub fn assert_load_missing_returns_empty<T>(
+pub(crate) fn assert_load_missing_returns_empty<T>(
     loader: impl Fn(&Path, &[Category]) -> anyhow::Result<Vec<T>>,
 ) {
     assert_load_missing_unfiltered_returns_empty(|path| loader(path, &[Category::Base]));
@@ -40,7 +40,7 @@ pub fn assert_load_missing_returns_empty<T>(
 /// # Panics
 ///
 /// Panics if the temp directory cannot be created or the loader fails.
-pub fn assert_load_missing_unfiltered_returns_empty<T>(
+pub(crate) fn assert_load_missing_unfiltered_returns_empty<T>(
     loader: impl Fn(&Path) -> anyhow::Result<Vec<T>>,
 ) {
     let dir = tempfile::tempdir().expect("failed to create temp dir");

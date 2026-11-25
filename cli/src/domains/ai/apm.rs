@@ -31,7 +31,7 @@ mod validation;
 use crate::engine::TaskResult;
 
 pub(crate) use fragments::{ApmFragmentSource, InactiveApmFragments};
-pub use install::{ApmPackageMode, InstallApmPackages};
+pub(crate) use install::{ApmPackageMode, InstallApmPackages};
 pub(crate) use validation::validate;
 
 /// Header written at the top of the generated `~/.apm/apm.yml`.

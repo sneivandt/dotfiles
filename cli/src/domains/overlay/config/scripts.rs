@@ -41,7 +41,7 @@ pub(crate) const SCRIPTS_TOML: &str = "scripts.toml";
 
 /// Validate overlay script entries.
 #[must_use]
-pub fn validate(entries: &[ScriptEntry]) -> Vec<Diagnostic> {
+pub(crate) fn validate(entries: &[ScriptEntry]) -> Vec<Diagnostic> {
     use crate::infra::config::Severity;
     use crate::infra::config::validation::{Validator, check_error};
 
@@ -97,7 +97,7 @@ pub(crate) fn overlay_script_selector(name: &str) -> String {
 ///
 /// Returns an error when the configured script path is absolute or contains
 /// parent-directory traversal.
-pub fn resolve_script_path(entry: &ScriptEntry, overlay_root: &Path) -> Result<PathBuf> {
+pub(crate) fn resolve_script_path(entry: &ScriptEntry, overlay_root: &Path) -> Result<PathBuf> {
     validate_relative_script_path(entry)?;
     Ok(overlay_root.join(&entry.path))
 }

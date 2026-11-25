@@ -38,7 +38,7 @@ fn config_validate_no_warning_when_symlink_source_exists() {
     let ctx = common::TestContextBuilder::new()
         .with_config_file(
             "symlinks.toml",
-            include_str!("../fixtures/base_profile.toml"),
+            include_str!("../../fixtures/base_profile.toml"),
         )
         .with_symlink_source("bashrc")
         .build();

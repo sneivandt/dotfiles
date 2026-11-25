@@ -254,7 +254,7 @@ impl Task for TestTask {
         TaskAssessment::applicable().with_satisfied_ordering(&self.satisfied_ordering)
     }
 
-    #[allow(clippy::panic, reason = "exercise scheduler panic payload handling")]
+    #[expect(clippy::panic, reason = "exercise scheduler panic payload handling")]
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         self.runs.fetch_add(1, Ordering::SeqCst);
         match &self.behavior {

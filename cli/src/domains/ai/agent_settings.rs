@@ -17,7 +17,7 @@ crate::engine::config_task! {
     /// without disturbing unmanaged keys. Resolved document access claims serialize
     /// aliases while independent documents can overlap. Contradictory values
     /// for the same harness/key are rejected before any document is changed.
-    pub struct ConfigureAgentSettings(Vec<AgentSetting>);
+    pub(crate) struct ConfigureAgentSettings(Vec<AgentSetting>);
 }
 
 const NAME: &str = "Agent settings";

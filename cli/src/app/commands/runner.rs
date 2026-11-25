@@ -141,7 +141,7 @@ fn inherited_overlay_marker(
 
 /// Shared orchestration helper that combines setup and task execution.
 #[derive(Debug)]
-pub struct CommandRunner {
+pub(crate) struct CommandRunner {
     run_lock: Option<crate::infra::run_lock::CommandLocks>,
     ctx: Context,
     log: Arc<Logger>,
@@ -239,7 +239,7 @@ impl CommandRunner {
                 save_explicit_overlay(&root, selection)
             }
         });
-        #[allow(clippy::print_stderr, reason = "intentional user-facing warning")]
+        #[expect(clippy::print_stderr, reason = "intentional user-facing warning")]
         if !runtime.execution.elevated_child
             && source == profiles::ProfileSource::Prompt
             && let Err(e) = profiles::persist(&root, &profile.name)
@@ -324,13 +324,13 @@ impl CommandRunner {
 
     /// Build the full set of remove tasks, wired to the shared config store.
     #[must_use]
-    pub fn remove_tasks(&self, restore_missing: bool) -> Vec<Box<dyn Task>> {
+    pub(crate) fn remove_tasks(&self, restore_missing: bool) -> Vec<Box<dyn Task>> {
         crate::app::catalog::all_remove_tasks(&self.store, restore_missing)
     }
 
     /// A handle to the aggregate configuration for app-owned validation tasks.
     #[must_use]
-    pub fn config_handle(&self) -> ConfigHandle<Config> {
+    pub(crate) fn config_handle(&self) -> ConfigHandle<Config> {
         self.store.aggregate.clone()
     }
 
@@ -353,7 +353,7 @@ impl CommandRunner {
 
     /// Create dynamic overlay script tasks from the current configuration.
     #[must_use]
-    pub fn overlay_script_tasks(&self) -> Vec<Box<dyn Task>> {
+    pub(crate) fn overlay_script_tasks(&self) -> Vec<Box<dyn Task>> {
         self.ctx.overlay().map_or_else(Vec::new, |root| {
             let scripts = self.store.scripts.get();
             crate::domains::overlay::scripts::overlay_script_tasks(scripts, root)
@@ -362,7 +362,7 @@ impl CommandRunner {
 
     /// Create removal tasks for active overlay scripts.
     #[must_use]
-    pub fn overlay_script_removal_tasks(&self) -> Vec<Box<dyn Task>> {
+    pub(crate) fn overlay_script_removal_tasks(&self) -> Vec<Box<dyn Task>> {
         self.ctx.overlay().map_or_else(Vec::new, |root| {
             let scripts = self.store.scripts.get();
             crate::domains::overlay::scripts::overlay_script_removal_tasks(scripts, root)
@@ -374,7 +374,7 @@ impl CommandRunner {
     /// # Errors
     ///
     /// Returns an error if one or more tasks fail.
-    pub fn run<'a>(&self, tasks: impl IntoIterator<Item = &'a dyn Task>) -> Result<()> {
+    pub(crate) fn run<'a>(&self, tasks: impl IntoIterator<Item = &'a dyn Task>) -> Result<()> {
         let config = self.store.aggregate.get();
         RunCoordinator::new(&self.ctx, &self.log)
             .with_profile(config.profile.name.as_str())
@@ -476,7 +476,7 @@ fn root_from_executable(exe: &Path) -> Result<Option<PathBuf>> {
     Ok(None)
 }
 
-#[allow(clippy::print_stderr, reason = "intentional user-facing warning")]
+#[expect(clippy::print_stderr, reason = "intentional user-facing warning")]
 fn save_explicit_overlay(root: &Path, (path, source): (PathBuf, OverlaySource)) -> PathBuf {
     if source == OverlaySource::Argument
         && let Err(e) = overlay_resolution::persist(root, &path)

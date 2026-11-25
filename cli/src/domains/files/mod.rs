@@ -1,6 +1,6 @@
 //! Files domain: managed symlinks and file permissions.
 
-pub mod chmod;
-pub mod config;
-pub mod resources;
-pub mod symlinks;
+pub(crate) mod chmod;
+pub(crate) mod config;
+pub(crate) mod resources;
+pub(crate) mod symlinks;

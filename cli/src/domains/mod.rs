@@ -5,13 +5,13 @@
 //! and [`crate::infra`] only; cross-domain wiring lives in the application
 //! layer.
 
-pub mod ai;
-pub mod dotfiles;
-pub mod editors;
-pub mod files;
-pub mod git;
-pub mod overlay;
-pub mod packages;
-pub mod repository;
-pub mod shell;
-pub mod system;
+pub(crate) mod ai;
+pub(crate) mod dotfiles;
+pub(crate) mod editors;
+pub(crate) mod files;
+pub(crate) mod git;
+pub(crate) mod overlay;
+pub(crate) mod packages;
+pub(crate) mod repository;
+pub(crate) mod shell;
+pub(crate) mod system;

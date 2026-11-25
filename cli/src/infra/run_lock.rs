@@ -14,7 +14,7 @@ use crate::infra::env::Env;
 use crate::infra::platform::Platform;
 
 #[cfg(windows)]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "Win32 file mapping and process snapshot for legacy updater compatibility"
 )]

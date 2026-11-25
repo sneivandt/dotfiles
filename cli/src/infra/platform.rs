@@ -194,18 +194,19 @@ fn is_wsl_proc_version(version: &str) -> bool {
 
 /// Registry subkey holding the Windows Developer Mode flag.
 #[cfg(windows)]
-pub const DEVELOPER_MODE_SUBKEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock";
+pub(crate) const DEVELOPER_MODE_SUBKEY: &str =
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock";
 
 /// Registry value name for the Windows Developer Mode flag.
 #[cfg(windows)]
-pub const DEVELOPER_MODE_VALUE: &str = "AllowDevelopmentWithoutDevLicense";
+pub(crate) const DEVELOPER_MODE_VALUE: &str = "AllowDevelopmentWithoutDevLicense";
 
 /// Observed Developer Mode policy. A readable value of the wrong type or size
 /// is repairable, unlike an actual registry read failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(
     not(any(windows, test)),
-    allow(
+    expect(
         dead_code,
         reason = "only Missing can be observed without the Windows registry"
     )
@@ -262,7 +263,7 @@ pub(crate) fn developer_mode_flag_windows() -> std::io::Result<DeveloperModeFlag
 pub(crate) use developer_mode_flag_windows as developer_mode_flag;
 
 #[cfg(not(windows))]
-#[allow(
+#[expect(
     clippy::unnecessary_wraps,
     reason = "matches the fallible Windows probe"
 )]
@@ -277,7 +278,7 @@ pub(crate) const fn developer_mode_flag() -> std::io::Result<DeveloperModeFlag> 
 /// exist, so the answer is always `false` and callers fall back to the
 /// platform's native symlink support.
 #[must_use]
-pub fn developer_mode_enabled() -> bool {
+pub(crate) fn developer_mode_enabled() -> bool {
     developer_mode_flag().is_ok_and(DeveloperModeFlag::enabled)
 }
 

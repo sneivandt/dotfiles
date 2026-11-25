@@ -5,7 +5,7 @@ use crate::engine::{Context, ProcessOpts, Task, TaskResult, process_resources, t
 
 /// Ensure `~/.local/bin` is on the user's `PATH`.
 #[derive(Debug)]
-pub struct ConfigurePath;
+pub(crate) struct ConfigurePath;
 
 impl Task for ConfigurePath {
     task_metadata! {

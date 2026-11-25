@@ -93,6 +93,7 @@ struct_excessive_bools = "allow"
 # typed empty values solely for diagnostic formatting.
 assert_is_empty = "allow"
 # Restriction lints (opt-in individually)
+allow_attributes = "deny"
 allow_attributes_without_reason = "deny"
 as_conversions = "deny"
 clone_on_ref_ptr = "deny"

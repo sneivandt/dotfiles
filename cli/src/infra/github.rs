@@ -542,7 +542,7 @@ fn unix_timestamp() -> Result<u64> {
 
 #[cfg_attr(
     not(target_os = "linux"),
-    allow(
+    expect(
         clippy::missing_const_for_fn,
         reason = "Linux implementation performs filesystem I/O"
     )

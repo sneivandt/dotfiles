@@ -1,5 +1,5 @@
 //! Stage under the intended access policy, not just the destination's parent.
-#![allow(
+#![expect(
     unsafe_code,
     reason = "Win32 exposes file security descriptors only through pointer APIs"
 )]

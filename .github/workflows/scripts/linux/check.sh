@@ -129,7 +129,7 @@ stage_rustdoc()
 {
   have cargo || { note "cargo not installed; skipping"; return 2; }
   sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
-  cargo doc --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" \
+  RUSTDOCFLAGS='-D warnings' cargo doc --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" \
     --no-deps --document-private-items || return 1
 }
 

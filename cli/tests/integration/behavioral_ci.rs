@@ -1,17 +1,10 @@
-#![allow(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::unwrap_used,
-    reason = "integration tests use panicking assertions for clear failures"
-)]
 //! Behavioral CI coverage.
 //!
 //! These tests focus on contracts that are easy for CI smoke tests to miss:
 //! profile/platform filtering, complete filesystem outcomes, idempotency, and
 //! command lines emitted to external tools through fake executors.
 
-mod common;
+use crate::common;
 
 use dotfiles_cli::testing as test_api;
 use std::collections::{HashSet, VecDeque};

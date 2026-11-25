@@ -164,7 +164,7 @@ pub(crate) fn set_origin(symlinks: &mut [Symlink], root: &Path) {
 ///
 /// Returns an error when a glob is malformed, matches no entries, or has
 /// mismatched source/target wildcard counts.
-pub fn expand_glob_patterns(symlinks: &[Symlink], fallback: &Path) -> Result<Vec<Symlink>> {
+pub(crate) fn expand_glob_patterns(symlinks: &[Symlink], fallback: &Path) -> Result<Vec<Symlink>> {
     glob_expansion::expand_glob_patterns(symlinks, fallback)
 }
 
@@ -208,7 +208,7 @@ fn load_all(path: &Path) -> Result<Vec<Symlink>> {
 /// Returns `<origin>/symlinks/` when `origin` is set, otherwise falls back to
 /// `<fallback>/symlinks/`.
 #[must_use]
-pub fn resolve_symlinks_dir(symlink: &Symlink, fallback: &Path) -> PathBuf {
+pub(crate) fn resolve_symlinks_dir(symlink: &Symlink, fallback: &Path) -> PathBuf {
     symlink
         .origin
         .as_deref()
@@ -305,7 +305,7 @@ pub(super) fn path_segments(path: &str) -> Vec<String> {
 
 /// Validate symlink entries and return any warnings.
 #[must_use]
-pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
+pub(crate) fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
     use crate::infra::config::validation::{CheckItem, Validator, check, check_error};
 
     Validator::new(SYMLINKS_TOML)

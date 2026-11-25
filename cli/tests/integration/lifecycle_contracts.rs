@@ -1,13 +1,7 @@
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    reason = "lifecycle fixture assertions"
-)]
 //! Real-task lifecycle contracts, including native Windows filesystem behavior.
 
-mod common;
-#[path = "common/lifecycle.rs"]
+use crate::common;
+#[path = "../common/lifecycle.rs"]
 mod lifecycle;
 
 use std::path::Path;

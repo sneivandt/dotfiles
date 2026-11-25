@@ -18,7 +18,7 @@ use entry::LogEntry;
 /// Task results are forwarded directly to the underlying [`Logger`] because
 /// summary collection is already thread-safe.
 #[derive(Debug)]
-pub struct BufferedLog {
+pub(crate) struct BufferedLog {
     inner: Arc<Logger>,
     entries: Mutex<Vec<LogEntry>>,
 }
@@ -26,7 +26,7 @@ pub struct BufferedLog {
 impl BufferedLog {
     /// Create a new buffered logger backed by the given [`Logger`].
     #[must_use]
-    pub const fn new(inner: Arc<Logger>) -> Self {
+    pub(crate) const fn new(inner: Arc<Logger>) -> Self {
         Self {
             inner,
             entries: Mutex::new(Vec::new()),
@@ -35,7 +35,7 @@ impl BufferedLog {
 
     /// Replay all buffered entries to the backing [`Logger`].
     #[cfg(test)]
-    pub fn flush(&self) {
+    pub(crate) fn flush(&self) {
         let entries = self.take_entries();
         for entry in &entries {
             if self.inner.is_verbose()
@@ -55,7 +55,7 @@ impl BufferedLog {
     ///
     /// Entries are already present in the run log, so anything not replayed
     /// here is simply not shown on the console.
-    pub fn flush_and_complete(&self, task_id: &str, task_name: &str) {
+    pub(crate) fn flush_and_complete(&self, task_id: &str, task_name: &str) {
         let mut entries = self.take_entries();
         // Parallel resource processing finishes in a nondeterministic order, so
         // sort the action lines before they reach either console path.
@@ -127,5 +127,4 @@ impl TaskRecorder for BufferedLog {
 }
 
 #[cfg(test)]
-#[path = "tests.rs"]
 mod tests;

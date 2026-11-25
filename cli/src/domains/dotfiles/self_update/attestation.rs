@@ -16,6 +16,7 @@ use std::path::Path;
 use anyhow::{Result, bail};
 
 use super::REPO;
+use crate::infra::env::Env;
 use crate::infra::exec::{Executor, ProcessExecutor};
 
 /// Number of verification attempts before an unverifiable asset is rejected.
@@ -48,8 +49,8 @@ fn policy_from_inputs(skip_flag: bool, skip_env: Option<&str>) -> Policy {
 }
 
 /// Resolve the policy for this invocation.
-pub(super) fn policy(skip_flag: bool) -> Policy {
-    let skip = std::env::var(SKIP_ENV).ok();
+pub(super) fn policy(env: &dyn Env, skip_flag: bool) -> Policy {
+    let skip = env.var(SKIP_ENV);
     policy_from_inputs(skip_flag, skip.as_deref())
 }
 
@@ -258,14 +259,24 @@ mod tests {
 
     #[test]
     fn cli_flag_or_environment_selects_skip_policy() {
-        assert_eq!(policy_from_inputs(true, None), Policy::Skip);
-        assert_eq!(policy_from_inputs(false, Some("1")), Policy::Skip);
+        use crate::infra::env::MapEnv;
+
+        assert_eq!(policy(&MapEnv::new(), true), Policy::Skip);
+        assert_eq!(
+            policy(&MapEnv::new().with(SKIP_ENV, "1"), false),
+            Policy::Skip
+        );
     }
 
     #[test]
     fn unset_or_disabled_bypasses_select_required_policy() {
-        assert_eq!(policy_from_inputs(false, None), Policy::Required);
-        assert_eq!(policy_from_inputs(false, Some("0")), Policy::Required);
+        use crate::infra::env::MapEnv;
+
+        assert_eq!(policy(&MapEnv::new(), false), Policy::Required);
+        assert_eq!(
+            policy(&MapEnv::new().with(SKIP_ENV, "0"), false),
+            Policy::Required
+        );
     }
 
     #[test]

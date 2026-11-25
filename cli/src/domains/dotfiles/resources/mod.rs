@@ -1,7 +1,7 @@
 //! Resource implementations for the dotfiles core domain.
 
-pub mod path_entry;
-pub mod wrapper;
+pub(crate) mod path_entry;
+pub(crate) mod wrapper;
 
 #[cfg(test)]
 mod tests;

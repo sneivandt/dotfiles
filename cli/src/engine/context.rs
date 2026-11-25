@@ -76,7 +76,10 @@ impl ExecutionPolicy {
     }
 
     /// Whether a consent dialog can be answered on the interactive desktop.
-    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows UAC policy"))]
+    #[cfg_attr(
+        not(any(windows, test)),
+        expect(dead_code, reason = "Windows UAC policy")
+    )]
     pub(crate) const fn can_prompt_for_elevation(self) -> bool {
         !self.non_interactive && !self.is_ci && self.stdout_terminal
     }
@@ -390,13 +393,13 @@ impl Context {
     /// Always `false` off Windows. Unix elevation is per-command through
     /// `sudo`, so tasks express their needs through `needs_elevation`.
     #[must_use]
-    #[allow(
+    #[expect(
         clippy::unused_self,
         reason = "the Windows implementation inspects process state"
     )]
     #[cfg_attr(
         not(windows),
-        allow(
+        expect(
             clippy::missing_const_for_fn,
             reason = "the Windows implementation inspects the process token"
         )
@@ -552,7 +555,7 @@ impl Context {
 }
 
 #[cfg(test)]
-#[path = "tests.rs"]
+#[path = "tests/context.rs"]
 mod tests;
 
 pub(crate) const fn windows_can_create_symlinks(dev_mode: bool, elevated: bool) -> bool {

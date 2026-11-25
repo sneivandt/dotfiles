@@ -45,7 +45,7 @@ Documentation: https://dotfiles.stuartneivandt.com/",
 {all-args}{after-help}
 "
 )]
-pub struct Cli {
+pub(crate) struct Cli {
     /// Internal linkage for restarted and elevated processes.
     #[arg(long, hide = true, global = true)]
     pub parent_run_id: Option<String>,
@@ -115,7 +115,7 @@ pub(super) fn normalize_command_position(
 
 /// Available subcommands.
 #[derive(Subcommand, Debug)]
-pub enum Command {
+pub(crate) enum Command {
     /// Sync the repository and apply configuration
     #[command(
         after_help = "Installs missing system packages. On Arch, installing one can also upgrade the system.
@@ -165,7 +165,7 @@ JSON Lines output disables prompts."
 
 /// Internal arguments for the scoped system-file installer.
 #[derive(Args, Debug)]
-pub struct SystemFileHelperOpts {
+pub(crate) struct SystemFileHelperOpts {
     /// Verified destination entry.
     #[arg(long)]
     pub target: std::path::PathBuf,
@@ -185,7 +185,7 @@ pub struct SystemFileHelperOpts {
 
 /// Repository and profile options used by configuration-aware commands.
 #[derive(Args, Debug, Clone, Default)]
-pub struct RepositoryOpts {
+pub(crate) struct RepositoryOpts {
     /// Select a configuration profile
     #[arg(
         short,
@@ -206,7 +206,7 @@ pub struct RepositoryOpts {
 
 /// Execution output protocol. JSON Lines supports streamed and restarted runs.
 #[derive(Debug, Clone, Copy, Default, ValueEnum, PartialEq, Eq)]
-pub enum ExecutionFormat {
+pub(crate) enum ExecutionFormat {
     /// Human-readable task output.
     #[default]
     Human,
@@ -216,7 +216,7 @@ pub enum ExecutionFormat {
 
 /// Options shared by commands that execute a task graph.
 #[derive(Args, Debug, Clone)]
-pub struct ExecutionOpts {
+pub(crate) struct ExecutionOpts {
     /// Show additional task diagnostics
     #[arg(short, long, conflicts_with = "quiet")]
     pub verbose: bool,
@@ -268,7 +268,7 @@ impl Default for ExecutionOpts {
 
 /// Options for the `update` command.
 #[derive(Args, Debug, Clone)]
-pub struct UpdateCommandOpts {
+pub(crate) struct UpdateCommandOpts {
     /// Repository and profile selection.
     #[command(flatten, next_help_heading = "Repository")]
     pub repository: RepositoryOpts,
@@ -301,7 +301,7 @@ pub struct UpdateCommandOpts {
 /// Options for the `check` command.
 #[derive(Args, Debug, Clone)]
 #[command(group(clap::ArgGroup::new("CheckOpts").args(["skip", "only"]).multiple(true)))]
-pub struct CheckCommandOpts {
+pub(crate) struct CheckCommandOpts {
     /// Repository and profile selection.
     #[command(flatten, next_help_heading = "Repository")]
     pub repository: RepositoryOpts,
@@ -318,7 +318,7 @@ pub struct CheckCommandOpts {
 /// Options for the `remove` command.
 #[derive(Args, Debug, Clone)]
 #[command(group(clap::ArgGroup::new("CheckOpts").args(["skip", "only"]).multiple(true)))]
-pub struct RemoveCommandOpts {
+pub(crate) struct RemoveCommandOpts {
     /// Repository and profile selection.
     #[command(flatten, next_help_heading = "Repository")]
     pub repository: RepositoryOpts,
@@ -359,7 +359,7 @@ pub enum DiscoveryFormat {
 /// Command whose task dependency graph is shown by `list --graph`.
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TaskGraphCommand {
+pub(crate) enum TaskGraphCommand {
     /// Configuration and dependency updates.
     Update,
     /// Removal of managed integrations.
@@ -380,7 +380,7 @@ impl TaskGraphCommand {
 
 /// Options for inspecting one managed home target.
 #[derive(Args, Debug, Clone)]
-pub struct ExplainOpts {
+pub(crate) struct ExplainOpts {
     /// Repository and profile selection.
     #[command(flatten)]
     pub repository: RepositoryOpts,
@@ -391,7 +391,7 @@ pub struct ExplainOpts {
 
 /// Options for the `list` command.
 #[derive(Args, Debug, Clone)]
-pub struct ListOpts {
+pub(crate) struct ListOpts {
     /// Repository and profile selection.
     #[command(flatten, next_help_heading = "Repository")]
     pub repository: RepositoryOpts,
@@ -490,7 +490,7 @@ impl GlobalOpts {
 impl UpdateCommandOpts {
     /// Split parsed options into engine context, task filters, and output policy.
     #[must_use]
-    pub fn into_engine_parts(self) -> (GlobalOpts, UpdateOpts, bool) {
+    pub(crate) fn into_engine_parts(self) -> (GlobalOpts, UpdateOpts, bool) {
         let verbose = self.execution.verbose;
         let global = GlobalOpts {
             dry_run: self.dry_run,
@@ -506,7 +506,7 @@ impl UpdateCommandOpts {
 impl CheckCommandOpts {
     /// Split parsed options into engine context, task filters, and output policy.
     #[must_use]
-    pub fn into_engine_parts(self) -> (GlobalOpts, CheckOpts, bool) {
+    pub(crate) fn into_engine_parts(self) -> (GlobalOpts, CheckOpts, bool) {
         let verbose = self.execution.verbose;
         let global = GlobalOpts::from_execution(self.repository, &self.execution);
         (global, self.tasks, verbose)
@@ -516,7 +516,7 @@ impl CheckCommandOpts {
 impl RemoveCommandOpts {
     /// Split parsed options into engine context and output policy.
     #[must_use]
-    pub fn into_engine_parts(self) -> (GlobalOpts, RemoveOpts, bool) {
+    pub(crate) fn into_engine_parts(self) -> (GlobalOpts, RemoveOpts, bool) {
         let verbose = self.execution.verbose;
         let global = GlobalOpts {
             dry_run: self.dry_run,
@@ -530,7 +530,7 @@ impl RemoveCommandOpts {
 
 /// Subcommands that drive the task engine.
 #[derive(Debug)]
-pub enum EngineCommand {
+pub(crate) enum EngineCommand {
     /// Apply dotfiles and system configuration.
     Update {
         /// Shared task-engine options.
@@ -563,7 +563,7 @@ pub enum EngineCommand {
 impl EngineCommand {
     /// Name used for run logs and progress output.
     #[must_use]
-    pub const fn name(&self) -> &'static str {
+    pub(crate) const fn name(&self) -> &'static str {
         match self {
             Self::Update { .. } => "update",
             Self::Remove { .. } => "remove",
@@ -573,7 +573,7 @@ impl EngineCommand {
 
     /// Shared execution options.
     #[must_use]
-    pub const fn global(&self) -> &GlobalOpts {
+    pub(crate) const fn global(&self) -> &GlobalOpts {
         match self {
             Self::Update { global, .. }
             | Self::Remove { global, .. }
@@ -583,7 +583,7 @@ impl EngineCommand {
 
     /// Whether diagnostic output is enabled.
     #[must_use]
-    pub const fn verbose(&self) -> bool {
+    pub(crate) const fn verbose(&self) -> bool {
         match self {
             Self::Update { verbose, .. }
             | Self::Remove { verbose, .. }
@@ -715,7 +715,7 @@ pub struct LogOpts {
 
 /// Options for the `completions` subcommand.
 #[derive(Args, Debug, Clone)]
-pub struct CompletionsOpts {
+pub(crate) struct CompletionsOpts {
     /// Target shell
     #[arg(value_enum)]
     pub shell: clap_complete::Shell,

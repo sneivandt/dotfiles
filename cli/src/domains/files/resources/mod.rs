@@ -1,7 +1,7 @@
 //! Resource implementations for the files domain.
 
-pub mod chmod;
-pub mod symlink;
+pub(crate) mod chmod;
+pub(crate) mod symlink;
 
 #[cfg(test)]
 mod tests;

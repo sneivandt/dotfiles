@@ -1,3 +1,3 @@
 //! Resource implementations for the agent tooling domain.
 
-pub mod agent_settings;
+pub(crate) mod agent_settings;

@@ -14,12 +14,12 @@ const DEVELOPER_MODE_VALUE: &str = "AllowDevelopmentWithoutDevLicense";
 /// Developer Mode allows symlink creation without administrator privileges.
 /// Uses the `winreg` crate for native registry access on Windows.
 #[derive(Debug)]
-pub struct DeveloperModeResource;
+pub(crate) struct DeveloperModeResource;
 
 impl DeveloperModeResource {
     /// Create a new developer mode resource.
     #[must_use]
-    pub const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self
     }
 }

@@ -96,11 +96,11 @@ unreadable, regular file vs. symlink, or managed vs. foreign target.
 Run the targeted test binary from `cli/`:
 
 ```sh
-cargo test --locked --profile ci --test update_command -- --list
-cargo test --locked --profile ci --test update_command repository -- --nocapture
+cargo test --locked --profile ci --test integration update_command -- --list
+cargo test --locked --profile ci --test integration update_command::repository -- --nocapture
 ```
 
-Replace `repository` with a test name from the listing and verify the filter
+Replace `update_command::repository` with a test name from the listing and verify the filter
 actually matches tests. Assert on filesystem state, executed commands, task
 results, and visible diagnostics rather than leaving temporary print debugging
 behind.
@@ -110,14 +110,14 @@ behind.
 For panics, enable backtraces for that single command:
 
 ```sh
-RUST_BACKTRACE=1 cargo test --locked --profile ci --test update_command
+RUST_BACKTRACE=1 cargo test --locked --profile ci --test integration update_command
 ```
 
 In PowerShell:
 
 ```powershell
 $env:RUST_BACKTRACE = '1'
-cargo test --locked --profile ci --test update_command
+cargo test --locked --profile ci --test integration update_command
 ```
 
 Backtraces supplement panics rather than replacing clear error context on

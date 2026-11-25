@@ -137,7 +137,7 @@ fn classify_value(value: &toml::Value) -> (String, RegistryValueType) {
 const SUPPORTED_HIVE_PREFIX: &str = r"HKCU:\";
 
 #[cfg(windows)]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "registry identity requires the native, infallible UTF-16 uppercase table"
 )]
@@ -237,7 +237,7 @@ pub(crate) fn validate_conflicts(entries: &[RegistryEntry]) -> Vec<Diagnostic> {
 
 /// Validate the fields and values of each registry declaration.
 #[must_use]
-pub fn validate(entries: &[RegistryEntry]) -> Vec<Diagnostic> {
+pub(crate) fn validate(entries: &[RegistryEntry]) -> Vec<Diagnostic> {
     use crate::infra::config::validation::{check, check_error};
 
     let mut diagnostics = Validator::new(REGISTRY_TOML)

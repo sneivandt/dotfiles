@@ -99,7 +99,7 @@ pub(crate) fn validate_conflicts(settings: &[GitSetting]) -> Vec<Diagnostic> {
 
 /// Validate git config entries and return any warnings.
 #[must_use]
-pub fn validate(settings: &[GitSetting]) -> Vec<Diagnostic> {
+pub(crate) fn validate(settings: &[GitSetting]) -> Vec<Diagnostic> {
     use crate::infra::config::validation::check;
 
     let mut diagnostics = Validator::new(GIT_CONFIG_TOML)

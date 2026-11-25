@@ -31,7 +31,7 @@ pub(super) fn pam_rule_identity(line: &str) -> anyhow::Result<(&str, &str)> {
     if control.eq_ignore_ascii_case("include") || control.eq_ignore_ascii_case("substack") {
         bail!("PAM fragment rule includes a stack rather than a module: {line}");
     }
-    #[allow(
+    #[expect(
         clippy::case_sensitive_file_extension_comparisons,
         reason = "PAM module names and Linux file extensions are case-sensitive"
     )]

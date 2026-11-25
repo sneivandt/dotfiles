@@ -36,7 +36,10 @@ const MAX_CAPTURE_BYTES: usize = 8 * 1024 * 1024;
 
 /// Create a new [`Command`] with platform-appropriate defaults.
 fn new_command<S: AsRef<OsStr>>(program: S) -> Command {
-    #[allow(unused_mut, reason = "platform-specific mutability")]
+    #[cfg_attr(
+        not(unix),
+        expect(unused_mut, reason = "unix configures process_group on cmd")
+    )]
     let mut cmd = Command::new(program);
     #[cfg(unix)]
     {

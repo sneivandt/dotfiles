@@ -4,10 +4,8 @@
 mod contract;
 mod error;
 
-pub use contract::{
-    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
-    SkipKind,
-};
+pub use contract::{IntrinsicState, ResourceChange, ResourceState};
+pub(crate) use contract::{RemovableResource, Resource, ResourceResult, SkipKind};
 pub use error::ResourceError;
 
 #[cfg(test)]

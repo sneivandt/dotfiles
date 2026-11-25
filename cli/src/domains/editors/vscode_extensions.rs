@@ -143,5 +143,4 @@ fn launcher_requirement() -> Requirement<'static, String> {
 }
 
 #[cfg(test)]
-#[path = "tests/vscode_extensions.rs"]
 mod tests;

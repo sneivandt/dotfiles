@@ -10,7 +10,7 @@ use crate::engine::{
 
 /// Configure the default shell to zsh.
 #[derive(Debug)]
-pub struct ConfigureShell;
+pub(crate) struct ConfigureShell;
 
 const NAME: &str = "Login shell";
 

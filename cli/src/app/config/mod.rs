@@ -2,7 +2,7 @@
 mod error;
 mod merge;
 mod preflight;
-pub mod profiles;
+pub(crate) mod profiles;
 
 // One inventory owns section fields, required files, ordinary loading, handles,
 // counts and empty unit fixtures. Special loaders stay explicit in Config::load.
@@ -53,7 +53,7 @@ macro_rules! config_section_inventory {
     };
 }
 
-pub mod store;
+pub(crate) mod store;
 
 use std::path::{Path, PathBuf};
 

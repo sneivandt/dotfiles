@@ -26,13 +26,13 @@ fn main() -> Result<(), String> {
     {
         return Err("DOTFILES_RELEASE_REPO must be a GitHub owner/repo".to_string());
     }
-    println!("cargo:rustc-env=DOTFILES_RELEASE_REPO={release_repo}");
-    println!("cargo:rerun-if-env-changed=DOTFILES_RELEASE_REPO");
+    println!("cargo::rustc-env=DOTFILES_RELEASE_REPO={release_repo}");
+    println!("cargo::rerun-if-env-changed=DOTFILES_RELEASE_REPO");
 
     // Prefer DOTFILES_VERSION env var if set (e.g., by CI release workflow),
     // otherwise fall back to git describe for local development builds.
     if let Ok(version) = std::env::var("DOTFILES_VERSION") {
-        println!("cargo:rustc-env=DOTFILES_VERSION={version}");
+        println!("cargo::rustc-env=DOTFILES_VERSION={version}");
     } else {
         if let Ok(output) = Command::new("git")
             .args(["describe", "--tags", "--always", "--dirty"])
@@ -40,7 +40,7 @@ fn main() -> Result<(), String> {
             && output.status.success()
         {
             let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            println!("cargo:rustc-env=DOTFILES_VERSION={version}");
+            println!("cargo::rustc-env=DOTFILES_VERSION={version}");
         }
 
         // Re-run if git HEAD changes when version is derived from git.
@@ -52,8 +52,8 @@ fn main() -> Result<(), String> {
         register_git_rerun_triggers();
     }
 
-    println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-env-changed=DOTFILES_VERSION");
+    println!("cargo::rerun-if-changed=build.rs");
+    println!("cargo::rerun-if-env-changed=DOTFILES_VERSION");
     Ok(())
 }
 
@@ -116,7 +116,7 @@ fn register_git_rerun_triggers() {
 /// checkouts such as GitHub Actions).
 fn emit_rerun_if_exists(path: &str) {
     if std::path::Path::new(path).exists() {
-        println!("cargo:rerun-if-changed={path}");
+        println!("cargo::rerun-if-changed={path}");
     }
 }
 

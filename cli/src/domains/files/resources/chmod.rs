@@ -20,7 +20,7 @@ pub(crate) struct ValidatedDeclaredModes {
 
 /// A file permission resource that can be checked and applied (Unix only).
 #[derive(Debug, Clone)]
-pub struct ChmodResource {
+pub(crate) struct ChmodResource {
     /// Target file path (absolute).
     pub target: PathBuf,
     pub(super) mode: Result<OctalMode, String>,
@@ -37,7 +37,7 @@ impl ChmodResource {
     /// Create a new chmod resource.
     #[must_use]
     #[cfg(test)]
-    pub const fn new(target: PathBuf, mode: OctalMode) -> Self {
+    pub(crate) const fn new(target: PathBuf, mode: OctalMode) -> Self {
         Self {
             target,
             mode: Ok(mode),
@@ -53,7 +53,7 @@ impl ChmodResource {
 
     /// Create from a config entry and home directory.
     ///
-    pub fn from_entry(
+    pub(crate) fn from_entry(
         entry: &crate::domains::files::config::chmod::ChmodEntry,
         home: &std::path::Path,
     ) -> Self {
@@ -73,14 +73,14 @@ impl ChmodResource {
 
     /// Permit links into the public and overlay managed source trees.
     #[must_use]
-    pub fn with_source_roots(mut self, roots: &[PathBuf]) -> Self {
+    pub(crate) fn with_source_roots(mut self, roots: &[PathBuf]) -> Self {
         self.source_roots = roots.to_vec();
         self
     }
 
     /// Leave explicitly configured descendants to their own permission resources.
     #[must_use]
-    pub fn excluding(mut self, targets: &[PathBuf]) -> Self {
+    pub(crate) fn excluding(mut self, targets: &[PathBuf]) -> Self {
         // Traversal checks only child entries. The root itself and unrelated
         // configured destinations cannot match those entries.
         self.excluded_targets = targets.to_vec();

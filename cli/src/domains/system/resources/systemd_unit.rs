@@ -33,7 +33,7 @@ pub(crate) struct BatchUnitProbe {
 
 /// A systemd unit resource that converges its configured enablement state.
 #[derive(Debug)]
-pub struct SystemdUnitResource {
+pub(crate) struct SystemdUnitResource {
     /// Unit name (e.g. "clean-home-tmp.timer").
     pub name: String,
     /// Systemd scope.
@@ -56,7 +56,11 @@ pub struct SystemdUnitResource {
 impl SystemdUnitResource {
     /// Create a new systemd unit resource.
     #[must_use]
-    pub fn new(name: impl Into<String>, scope: UnitScope, executor: Arc<dyn Executor>) -> Self {
+    pub(crate) fn new(
+        name: impl Into<String>,
+        scope: UnitScope,
+        executor: Arc<dyn Executor>,
+    ) -> Self {
         Self {
             name: name.into(),
             scope,
@@ -82,7 +86,7 @@ impl SystemdUnitResource {
 
     /// Create from a config entry.
     #[must_use]
-    pub fn from_entry(
+    pub(crate) fn from_entry(
         entry: &crate::domains::system::config::systemd_units::SystemdUnit,
         executor: Arc<dyn Executor>,
         home: &Path,

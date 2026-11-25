@@ -23,24 +23,25 @@ mod terminal;
 mod types;
 mod utils;
 
-pub use buffered::BufferedLog;
+pub(crate) use buffered::BufferedLog;
 pub use logger::Logger;
 #[cfg(test)]
 pub(crate) use runlog::RunLog;
-pub use runlog::{log_task_context, log_thread_name, set_log_thread_name};
+pub(crate) use runlog::{log_task_context, log_thread_name, set_log_thread_name};
 pub(crate) use style::{StyleChoice, TextStyle, stderr_style, stdout_style};
 #[cfg(windows)]
 pub(crate) use terminal::enable_console_ansi;
 pub(crate) use types::TaskEntry;
-pub use types::{
-    ActionCounts, CompletionDisposition, Log, LogEvent, Output, OutputExt, TaskResultDisplay,
-    TaskStatus, TaskVisibility,
+pub(crate) use types::{
+    ActionCounts, CompletionDisposition, LogEvent, Output, OutputExt, TaskResultDisplay,
+    TaskVisibility,
 };
+pub use types::{Log, TaskStatus};
 // Only the in-crate unit tests reach these types from outside the `logging`
 // module; production code uses the `super::types` path directly.
 pub(crate) use runlog::{parse_run_log_file_name, run_log_sort_stamp};
 #[cfg(test)]
-pub use types::{MsgKind, TaskRecorder};
+pub(crate) use types::{MsgKind, TaskRecorder};
 pub(crate) use utils::{dotfiles_log_dir_readonly, format_elapsed};
 
 /// Console protocol, independent of durable run logging.
@@ -61,7 +62,7 @@ pub enum OutputMode {
 /// plus the run-log bridge), and returns the [`Logger`] that shares the same
 /// run log. Must be called once at program startup, before any logging.
 #[must_use]
-pub fn init(verbose: bool, symbols: bool, command: &str, mode: OutputMode) -> Logger {
+pub(crate) fn init(verbose: bool, symbols: bool, command: &str, mode: OutputMode) -> Logger {
     let mut log = Logger::new(command);
     log.set_verbose(verbose);
     log.set_symbols(symbols);
@@ -116,7 +117,6 @@ fn test_dispatch_guard(dispatch: &tracing::Dispatch) -> TestDispatchGuard {
 /// dropped and serializes test dispatchers because tracing callsite interest
 /// caches are process-global.
 #[cfg(test)]
-#[allow(clippy::expect_used, reason = "test code uses panicking helpers")]
 pub(crate) fn isolated_logger() -> (Logger, tempfile::TempDir, TestDispatchGuard) {
     isolated_logger_for("check")
 }
@@ -124,7 +124,6 @@ pub(crate) fn isolated_logger() -> (Logger, tempfile::TempDir, TestDispatchGuard
 /// Like [`isolated_logger`] but for an explicit command name, so tests can
 /// exercise command-dependent summary formatting.
 #[cfg(test)]
-#[allow(clippy::expect_used, reason = "test code uses panicking helpers")]
 pub(crate) fn isolated_logger_for(command: &str) -> (Logger, tempfile::TempDir, TestDispatchGuard) {
     use tracing_subscriber::layer::SubscriberExt as _;
     let tmp = tempfile::tempdir().expect("failed to create temp dir");

@@ -1,4 +1,4 @@
 //! Configuration models for the files domain.
 
-pub mod chmod;
-pub mod symlinks;
+pub(crate) mod chmod;
+pub(crate) mod symlinks;

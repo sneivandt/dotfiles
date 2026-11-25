@@ -22,7 +22,7 @@ APP_SHARD_TARGET = 250
 MAX_APP_SHARDS = 3
 WINDOWS_SHARDS = 2
 COUNTS = ("caught", "missed", "timeout", "unviable")
-APP_PATHS = ("src/main.rs", "src/lib.rs", "src/app/**", "src/testing/**")
+APP_PATHS = ("src/main.rs", "src/lib.rs", "src/app/**", "src/testing.rs")
 
 # Mutants that can block unrelated tests get a bounded test target.
 FOCUSED = {
@@ -32,8 +32,8 @@ FOCUSED = {
         "engine::access::tests::",
     ),
     "context": (
-        ("src/engine/context/mod.rs",),
-        r"^src/engine/context/mod\.rs:[0-9]+:[0-9]+: (delete ! in Context::scoped_access|replace Context::try_access -> Option<AccessGuard> with None|replace Context::cancellation_token -> CancellationToken with Default::default\(\))$",
+        ("src/engine/context.rs",),
+        r"^src/engine/context\.rs:[0-9]+:[0-9]+: (delete ! in Context::scoped_access|replace Context::try_access -> Option<AccessGuard> with None|replace Context::cancellation_token -> CancellationToken with Default::default\(\))$",
         "engine::context::tests::",
     ),
     "process": (
@@ -77,13 +77,13 @@ LINUX_EXCLUSIONS = (
     ("--exclude-re", r"^src/infra/platform\.rs:.*\b(developer_mode_flag_windows|developer_mode_enabled|detect_arch|detect_wsl)\b"),
     ("--exclude-re", r"^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated|is_elevated_windows|is_elevated_child|sudo_credentials_cached|prime_sudo_credentials)\b"),
     ("--exclude-re", r"^src/infra/logging/runlog/naming\.rs:[0-9]+:[0-9]+: replace \| with \^$"),
-    ("--exclude-re", r"^src/infra/logging/subscriber/mod\.rs:.*\binit_subscriber\b"),
+    ("--exclude-re", r"^src/infra/logging/subscriber\.rs:.*\binit_subscriber\b"),
     ("--exclude-re", r"^src/infra/logging/terminal\.rs:.*\b(columns|stream_columns_windows|enable_console_ansi)\b"),
     ("--exclude-re", r"^src/infra/logging/style\.rs:.*\bno_color_enabled\b"),
     ("--exclude-re", r"^src/infra/logging/utils\.rs:.*\bdotfiles_log_dir\b"),
     ("--exclude-re", r"^src/app/commands/execution/elevation\.rs:.*\b(prepare_windows_elevation|prepare_elevation_fallback)\b"),
     ("--exclude-re", r"^src/app/interrupt\.rs:.*\bend_prompt_line\b"),
-    ("--exclude-re", r"^src/engine/context/mod\.rs:.*\bis_elevated\b"),
+    ("--exclude-re", r"^src/engine/context\.rs:.*\bis_elevated\b"),
     ("--exclude-re", r"^src/engine/orchestrate\.rs:[0-9]+:[0-9]+: replace > with >= in process_items$"),
     ("--exclude-re", r"^src/engine/task/mod\.rs:.*\b(dependencies|ordering_dependencies)\b"),
     ("--exclude-re", r"^src/domains/system/config/registry\.rs:.*\buppercase_native_registry_name\b"),

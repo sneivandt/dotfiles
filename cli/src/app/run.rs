@@ -19,7 +19,7 @@ use crate::infra::logging::OutputExt as _;
 /// binary target delegates here so argument parsing, logging setup, graceful
 /// cancellation, elevation handling, and command dispatch live in one place.
 #[must_use = "return the CLI exit code from main"]
-pub fn run() -> ExitCode {
+pub(crate) fn run() -> ExitCode {
     clap_complete::CompleteEnv::with_factory(super::completion::command)
         .var(super::completion::environment_variable())
         .complete();

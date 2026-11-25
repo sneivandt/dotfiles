@@ -7,8 +7,8 @@ mod winget;
 #[cfg(test)]
 pub(super) use winget::mock_inventory;
 
-pub mod package;
-pub mod report;
+pub(crate) mod package;
+pub(crate) mod report;
 
 #[cfg(test)]
 mod tests;

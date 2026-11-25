@@ -16,11 +16,11 @@ use crate::infra::platform::Platform;
 use crate::engine::{Context, TaskId, TaskResult, TaskStats};
 
 /// Give numeric graph fixtures the same structured identity as production dynamic tasks.
-#[allow(
+#[expect(
     clippy::needless_pass_by_value,
     reason = "test graph builders pass both usize indices and u64 fixture keys"
 )]
-pub fn numeric_task_id(key: impl ToString) -> TaskId {
+pub(crate) fn numeric_task_id(key: impl ToString) -> TaskId {
     struct NumericTestTask;
     TaskId::dynamic::<NumericTestTask>(key.to_string())
 }
@@ -78,12 +78,12 @@ mod failure;
 mod output;
 mod scripted;
 
-pub use failure::{FailAt, FailingExecutor, FailingResource, ResourceErrorKind};
-pub use output::CapturingOutput;
-pub use scripted::ScriptedExecutor;
+pub(crate) use failure::{FailAt, FailingExecutor, FailingResource, ResourceErrorKind};
+pub(crate) use output::CapturingOutput;
+pub(crate) use scripted::ScriptedExecutor;
 
 /// Build an un-stamped symlink declaration for isolated configuration fixtures.
-pub fn symlink(
+pub(crate) fn symlink(
     source: &str,
     target: Option<&str>,
 ) -> crate::domains::files::config::symlinks::Symlink {
@@ -97,11 +97,7 @@ pub fn symlink(
 
 /// Build a [`Config`] with all lists empty and `root` set to `root`.
 #[must_use]
-#[allow(
-    clippy::expect_used,
-    reason = "test helper: setup failures should abort the calling test"
-)]
-pub fn empty_config(root: PathBuf) -> Config {
+pub(crate) fn empty_config(root: PathBuf) -> Config {
     Config::empty(
         root,
         Profile {
@@ -112,7 +108,7 @@ pub fn empty_config(root: PathBuf) -> Config {
 }
 
 /// Build a [`Context`] from explicit repository paths, platform and executor.
-pub fn make_context(
+pub(crate) fn make_context(
     root: PathBuf,
     overlay: Option<PathBuf>,
     platform: Platform,
@@ -136,7 +132,7 @@ pub fn make_context(
 /// Build a stub [`MockExecutor`] that returns `which_result` for every
 /// `which()` / `which_path()` call and panics on any `run*()` call.
 #[must_use]
-pub fn stub_executor(which_result: bool) -> MockExecutor {
+pub(crate) fn stub_executor(which_result: bool) -> MockExecutor {
     let mut mock = MockExecutor::new();
     mock.expect_which().returning(move |_| which_result);
     mock.expect_which_path().returning(move |program| {
@@ -169,7 +165,7 @@ pub fn stub_executor(which_result: bool) -> MockExecutor {
 /// ```
 #[derive(Debug)]
 #[must_use]
-pub struct ContextBuilder {
+pub(crate) struct ContextBuilder {
     root: PathBuf,
     overlay: Option<PathBuf>,
     os: crate::infra::platform::Os,
@@ -181,7 +177,7 @@ pub struct ContextBuilder {
 
 impl ContextBuilder {
     /// Create a new builder with Linux, non-arch, `which = false` defaults.
-    pub fn new(root: PathBuf) -> Self {
+    pub(crate) fn new(root: PathBuf) -> Self {
         Self {
             root,
             overlay: None,
@@ -194,25 +190,25 @@ impl ContextBuilder {
     }
 
     /// Set the optional overlay repository path.
-    pub fn overlay(mut self, overlay: Option<PathBuf>) -> Self {
+    pub(crate) fn overlay(mut self, overlay: Option<PathBuf>) -> Self {
         self.overlay = overlay;
         self
     }
 
     /// Set the target OS.
-    pub fn os(mut self, os: crate::infra::platform::Os) -> Self {
+    pub(crate) fn os(mut self, os: crate::infra::platform::Os) -> Self {
         self.os = os;
         self
     }
 
     /// Set whether the platform is Arch Linux.
-    pub fn arch(mut self, is_arch: bool) -> Self {
+    pub(crate) fn arch(mut self, is_arch: bool) -> Self {
         self.is_arch = is_arch;
         self
     }
 
     /// Set the value returned by `executor.which()`.
-    pub fn which(mut self, which_result: bool) -> Self {
+    pub(crate) fn which(mut self, which_result: bool) -> Self {
         self.which_result = which_result;
         self
     }
@@ -221,14 +217,14 @@ impl ContextBuilder {
     ///
     /// Tasks that check [`Context::is_ci`] (such as `ConfigureShell`)
     /// can be tested without mutating process-global environment variables.
-    pub fn ci(mut self, is_ci: bool) -> Self {
+    pub(crate) fn ci(mut self, is_ci: bool) -> Self {
         self.is_ci = is_ci;
         self
     }
 
     /// Consume the builder and produce a [`Context`].
     #[must_use]
-    pub fn build(self) -> Context {
+    pub(crate) fn build(self) -> Context {
         make_context(
             self.root,
             self.overlay,
@@ -249,7 +245,7 @@ impl ContextBuilder {
 /// Use this when a task's `should_run` or `run` method gates on tool
 /// availability via `ctx.executor().which(...)`.
 #[must_use]
-pub fn make_platform_context_with_which(
+pub(crate) fn make_platform_context_with_which(
     root: PathBuf,
     overlay: Option<PathBuf>,
     os: crate::infra::platform::Os,
@@ -268,7 +264,7 @@ pub fn make_platform_context_with_which(
 ///
 /// Convenience shorthand for tests that only need a plain Linux context.
 #[must_use]
-pub fn make_linux_context(root: PathBuf, overlay: Option<PathBuf>) -> Context {
+pub(crate) fn make_linux_context(root: PathBuf, overlay: Option<PathBuf>) -> Context {
     ContextBuilder::new(root).overlay(overlay).build()
 }
 
@@ -276,7 +272,7 @@ pub fn make_linux_context(root: PathBuf, overlay: Option<PathBuf>) -> Context {
 ///
 /// Convenience shorthand for tests that only need a plain Windows context.
 #[must_use]
-pub fn make_windows_context(root: PathBuf, overlay: Option<PathBuf>) -> Context {
+pub(crate) fn make_windows_context(root: PathBuf, overlay: Option<PathBuf>) -> Context {
     ContextBuilder::new(root)
         .overlay(overlay)
         .os(crate::infra::platform::Os::Windows)
@@ -287,7 +283,10 @@ pub fn make_windows_context(root: PathBuf, overlay: Option<PathBuf>) -> Context 
 /// default [`MockExecutor`], also returning the [`Logger`] so tests can
 /// inspect recorded task state.
 #[must_use]
-pub fn make_static_context(root: PathBuf, overlay: Option<PathBuf>) -> (Context, Arc<Logger>) {
+pub(crate) fn make_static_context(
+    root: PathBuf,
+    overlay: Option<PathBuf>,
+) -> (Context, Arc<Logger>) {
     let log = Arc::new(Logger::test());
     let log_output: Arc<dyn crate::infra::logging::Log> = Arc::<Logger>::clone(&log);
     let ctx = make_linux_context(root, overlay).with_log(log_output);
@@ -295,7 +294,7 @@ pub fn make_static_context(root: PathBuf, overlay: Option<PathBuf>) -> (Context,
 }
 
 #[track_caller]
-pub fn assert_task_ok(result: &TaskResult) {
+pub(crate) fn assert_task_ok(result: &TaskResult) {
     assert!(
         matches!(result, TaskResult::Ok),
         "expected TaskResult::Ok, got {result:?}"
@@ -303,7 +302,7 @@ pub fn assert_task_ok(result: &TaskResult) {
 }
 
 #[track_caller]
-pub fn assert_task_changed(result: &TaskResult) {
+pub(crate) fn assert_task_changed(result: &TaskResult) {
     assert!(
         task_batch(result).changed_count() > 0,
         "expected a changed batch result, got {result:?}"
@@ -311,7 +310,7 @@ pub fn assert_task_changed(result: &TaskResult) {
 }
 
 #[track_caller]
-pub fn task_batch(result: &TaskResult) -> &TaskStats {
+pub(crate) fn task_batch(result: &TaskResult) -> &TaskStats {
     let TaskResult::Batch(stats) = result else {
         panic!("expected TaskResult::Batch, got {result:?}");
     };
@@ -319,7 +318,7 @@ pub fn task_batch(result: &TaskResult) -> &TaskStats {
 }
 
 #[track_caller]
-pub fn task_skipped(result: &TaskResult) -> &str {
+pub(crate) fn task_skipped(result: &TaskResult) -> &str {
     let TaskResult::Skipped { reason, .. } = result else {
         panic!("expected TaskResult::Skipped, got {result:?}");
     };

@@ -1,3 +1,3 @@
 //! Resource implementations for the overlay domain.
 
-pub mod script;
+pub(crate) mod script;

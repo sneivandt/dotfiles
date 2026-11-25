@@ -185,10 +185,26 @@ $StageActions = @{
     }
 
     rustdoc  = {
-        Invoke-CargoStage @(
-            'doc', '--locked', '--profile', $CargoProfile, '--manifest-path', $Manifest,
-            '--no-deps', '--document-private-items'
-        )
+        $previousRustdocFlags = $env:RUSTDOCFLAGS
+        try
+        {
+            $env:RUSTDOCFLAGS = '-D warnings'
+            Invoke-CargoStage @(
+                'doc', '--locked', '--profile', $CargoProfile, '--manifest-path', $Manifest,
+                '--no-deps', '--document-private-items'
+            )
+        }
+        finally
+        {
+            if ($null -eq $previousRustdocFlags)
+            {
+                Remove-Item Env:RUSTDOCFLAGS -ErrorAction SilentlyContinue
+            }
+            else
+            {
+                $env:RUSTDOCFLAGS = $previousRustdocFlags
+            }
+        }
     }
 
     # Runs the CLI's own repository validator against this working tree.

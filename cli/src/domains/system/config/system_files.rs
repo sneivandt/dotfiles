@@ -161,7 +161,7 @@ pub(crate) fn validate_target_overlaps(files: &[SystemFile]) -> Result<()> {
 
 /// Validate tracked fragments without reading their installed destinations.
 #[must_use]
-pub fn validate(files: &[SystemFile]) -> Vec<crate::infra::config::Diagnostic> {
+pub(crate) fn validate(files: &[SystemFile]) -> Vec<crate::infra::config::Diagnostic> {
     use crate::infra::config::{Diagnostic, DiagnosticCode};
 
     const MISSING_SOURCE: DiagnosticCode = DiagnosticCode::new("system-file", "missing-source");

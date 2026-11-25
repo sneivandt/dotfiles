@@ -50,7 +50,7 @@ fn with_ordering_deps(inner: impl Task, extra: &[TaskId]) -> Box<dyn Task> {
 /// resulting content is injected into the shell-completions task so that domain
 /// stays free of any CLI dependency.
 #[must_use]
-pub fn generate_zsh_completions() -> String {
+pub(crate) fn generate_zsh_completions() -> String {
     crate::app::completion::registration(clap_complete::Shell::Zsh)
 }
 
@@ -60,7 +60,7 @@ pub fn generate_zsh_completions() -> String {
 /// so `dot` uses a parameter completer that expands the command name and
 /// delegates to the generated `dotfiles` native completer.
 #[must_use]
-pub fn generate_powershell_completions() -> String {
+pub(crate) fn generate_powershell_completions() -> String {
     crate::app::completion::registration(clap_complete::Shell::PowerShell)
 }
 

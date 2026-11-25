@@ -94,7 +94,7 @@ impl Operation for CompletionOperation<'_> {
 /// Generate the selected shell's content only when the task runs.
 ///
 #[derive(Debug)]
-pub struct GenerateCompletions {
+pub(crate) struct GenerateCompletions {
     generate_zsh: fn() -> String,
     generate_powershell: fn() -> String,
 }
@@ -102,7 +102,10 @@ pub struct GenerateCompletions {
 impl GenerateCompletions {
     /// Create the task with the shell completion generators.
     #[must_use]
-    pub const fn new(generate_zsh: fn() -> String, generate_powershell: fn() -> String) -> Self {
+    pub(crate) const fn new(
+        generate_zsh: fn() -> String,
+        generate_powershell: fn() -> String,
+    ) -> Self {
         Self {
             generate_zsh,
             generate_powershell,

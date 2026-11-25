@@ -40,7 +40,7 @@ config_section! {
 
 /// Validate package entries and return any warnings.
 #[must_use]
-pub fn validate(
+pub(crate) fn validate(
     packages: &[Package],
     platform: crate::infra::platform::Platform,
 ) -> Vec<Diagnostic> {

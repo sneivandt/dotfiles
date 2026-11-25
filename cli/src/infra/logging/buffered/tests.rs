@@ -217,7 +217,7 @@ fn only_typed_actions_sort_and_only_typed_summaries_are_hidden() {
 }
 
 #[test]
-#[allow(
+#[expect(
     clippy::panic,
     reason = "the test intentionally poisons the mutex to verify recovery"
 )]

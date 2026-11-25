@@ -46,7 +46,7 @@ pub(crate) fn pending_recovery_marker(root: &Path) -> Result<Option<std::path::P
 
 /// Shared indication that the checkout changed and the command must restart.
 #[derive(Debug, Clone, Default)]
-pub struct RepositoryUpdateSignal {
+pub(crate) struct RepositoryUpdateSignal {
     flag: crate::infra::atomic_flag::AtomicFlag,
     recovery_required: crate::infra::atomic_flag::AtomicFlag,
 }
@@ -79,7 +79,7 @@ impl RepositoryUpdateSignal {
 
 /// Pull latest changes from the remote repository.
 #[derive(Debug)]
-pub struct UpdateRepository {
+pub(crate) struct UpdateRepository {
     /// Set when the repository changes so the application can restart from the
     /// freshly loaded checkout.
     pub(super) repo_updated: RepositoryUpdateSignal,
@@ -89,7 +89,7 @@ pub struct UpdateRepository {
 impl UpdateRepository {
     /// Create a new task sharing the application's restart signal.
     #[must_use]
-    pub const fn new(repo_updated: RepositoryUpdateSignal) -> Self {
+    pub(crate) const fn new(repo_updated: RepositoryUpdateSignal) -> Self {
         Self {
             repo_updated,
             result_display: TaskResultDisplay::RestartNotice,
@@ -183,7 +183,7 @@ impl Operation for UpdateRepositoryOperation<'_> {
 }
 
 #[cfg(test)]
-#[allow(
+#[expect(
     clippy::expect_used,
     clippy::unwrap_used,
     clippy::indexing_slicing,

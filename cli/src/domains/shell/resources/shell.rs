@@ -29,7 +29,7 @@ impl RegisteredShells {
 
 /// A resource for configuring the current account's default login shell.
 #[derive(Debug)]
-pub struct DefaultShellResource {
+pub(crate) struct DefaultShellResource {
     target_shell: String,
     executor: Arc<dyn Executor>,
     env: Arc<dyn Env>,
@@ -41,7 +41,11 @@ pub struct DefaultShellResource {
 impl DefaultShellResource {
     /// Create a new default shell resource.
     #[must_use]
-    pub fn new(target_shell: String, executor: Arc<dyn Executor>, env: Arc<dyn Env>) -> Self {
+    pub(crate) fn new(
+        target_shell: String,
+        executor: Arc<dyn Executor>,
+        env: Arc<dyn Env>,
+    ) -> Self {
         Self {
             target_shell,
             executor,
@@ -60,7 +64,7 @@ impl DefaultShellResource {
 
     /// Apply the command's resolved policy for authentication prompts.
     #[must_use]
-    pub const fn with_interaction(mut self, allow_prompt: bool) -> Self {
+    pub(crate) const fn with_interaction(mut self, allow_prompt: bool) -> Self {
         self.allow_prompt = allow_prompt;
         self
     }

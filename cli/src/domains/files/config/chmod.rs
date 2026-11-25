@@ -66,13 +66,6 @@ impl OctalMode {
 
     /// The numeric permission bits.
     #[must_use]
-    #[cfg_attr(
-        not(unix),
-        allow(
-            dead_code,
-            reason = "numeric chmod bits are only consumed by Unix permission operations"
-        )
-    )]
     pub const fn as_u32(&self) -> u32 {
         self.bits
     }
@@ -92,10 +85,6 @@ impl std::fmt::Display for OctalMode {
 
 /// A file permission directive.
 #[derive(Debug, Clone)]
-#[allow(
-    dead_code,
-    reason = "fields are read only by the Unix-gated chmod resource"
-)]
 pub struct ChmodEntry {
     /// Configured permission mode (e.g., `"600"`, `"755"`).
     pub mode: String,
@@ -208,7 +197,7 @@ fn load_all(path: &Path) -> anyhow::Result<Vec<ChmodEntry>> {
 
 /// Validate chmod entries and return any warnings.
 #[must_use]
-pub fn validate(
+pub(crate) fn validate(
     entries: &[ChmodEntry],
     platform: crate::infra::platform::Platform,
 ) -> Vec<Diagnostic> {

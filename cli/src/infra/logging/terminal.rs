@@ -15,7 +15,7 @@ fn stream_columns(stream: &impl std::os::fd::AsFd) -> Option<usize> {
 }
 
 #[cfg(windows)]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "Win32 exposes the visible console window through an out-pointer"
 )]
@@ -37,7 +37,7 @@ use stream_columns_windows as stream_columns;
 
 /// Enable ANSI output on the attached Windows console, even if stdout is redirected.
 #[cfg(windows)]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "Win32 console modes have no standard-library API"
 )]

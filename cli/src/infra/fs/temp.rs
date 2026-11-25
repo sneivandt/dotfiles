@@ -20,7 +20,7 @@ use std::{fs::File, io};
 /// tmp.persist(); // prevent cleanup since rename succeeded
 /// ```
 #[derive(Debug)]
-pub struct TempGuard {
+pub(crate) struct TempGuard {
     path: PathBuf,
     active: bool,
     kind: TempKind,
@@ -101,7 +101,7 @@ impl TempKind {
 impl TempGuard {
     /// Create a guard that removes the given temporary *file* on drop.
     #[must_use]
-    pub const fn file(path: PathBuf) -> Self {
+    pub(crate) const fn file(path: PathBuf) -> Self {
         Self {
             path,
             active: true,
@@ -121,7 +121,11 @@ impl TempGuard {
     /// # Errors
     ///
     /// Returns an error if no candidate can be created exclusively.
-    pub fn create_unique_file(dir: &Path, prefix: &str, suffix: &str) -> io::Result<(Self, File)> {
+    pub(crate) fn create_unique_file(
+        dir: &Path,
+        prefix: &str,
+        suffix: &str,
+    ) -> io::Result<(Self, File)> {
         Self::reserve_file(dir, prefix, suffix, &mut File::options())
     }
 
@@ -132,7 +136,7 @@ impl TempGuard {
     /// # Errors
     ///
     /// Returns an error if no candidate can be created exclusively.
-    pub fn create_unique_file_with_mode(
+    pub(crate) fn create_unique_file_with_mode(
         dir: &Path,
         prefix: &str,
         suffix: &str,
@@ -185,7 +189,7 @@ impl TempGuard {
     /// # Errors
     ///
     /// Returns an error if no candidate can be created exclusively.
-    pub fn create_unique_dir(dir: &Path, prefix: &str, suffix: &str) -> io::Result<Self> {
+    pub(crate) fn create_unique_dir(dir: &Path, prefix: &str, suffix: &str) -> io::Result<Self> {
         Self::create_unique_dir_with_mode(dir, prefix, suffix, 0o777)
     }
 
@@ -196,7 +200,7 @@ impl TempGuard {
     /// # Errors
     ///
     /// Returns an error if no candidate can be created exclusively.
-    pub fn create_unique_dir_with_mode(
+    pub(crate) fn create_unique_dir_with_mode(
         dir: &Path,
         prefix: &str,
         suffix: &str,
@@ -239,7 +243,7 @@ impl TempGuard {
     /// Create a guard that recursively removes the given temporary
     /// *directory* on drop.
     #[must_use]
-    pub const fn dir(path: PathBuf) -> Self {
+    pub(crate) const fn dir(path: PathBuf) -> Self {
         Self {
             path,
             active: true,
@@ -249,12 +253,12 @@ impl TempGuard {
 
     /// Borrow the underlying path.
     #[must_use]
-    pub fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.path
     }
 
     /// Disarm the guard so the path is **not** removed on drop.
-    pub const fn persist(&mut self) {
+    pub(crate) const fn persist(&mut self) {
         self.active = false;
     }
 }

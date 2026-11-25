@@ -301,7 +301,7 @@ class ClassificationTests(unittest.TestCase):
                      ".cargo/config.toml", "rust-toolchain.toml"):
             with self.subTest(path=path):
                 self.assertTrue(classify([path])["run_release"])
-        for path in ("cli/tests/update_command.rs", "cli/benches/fixture.json",
+        for path in ("cli/tests/integration/update_command.rs", "cli/benches/fixture.json",
                      "cli/deny.toml", "cli/rustfmt.toml", "cli/README.md",
                      "dotfiles.sh", "conf/symlinks.toml", "symlinks/bashrc",
                      "packages/apm/PKGBUILD", "packages/apm/release.json"):
@@ -1256,7 +1256,7 @@ class GateTests(unittest.TestCase):
         for suite, example, expected_target in (
             ("liveness", "src/engine/access.rs:6:3: replace AccessRegistry::try_acquire -> Option<AccessGuard> with None",
              "engine::access::tests::"),
-            ("context", "src/engine/context/mod.rs:6:3: delete ! in Context::scoped_access",
+            ("context", "src/engine/context.rs:6:3: delete ! in Context::scoped_access",
              "engine::context::tests::"),
             ("process", "src/infra/exec/process.rs:6:3: replace || with && in collect_child",
              "infra::exec::tests::interruption::bounded_command_wait_"),
@@ -1291,7 +1291,7 @@ class MutationSelectionTests(unittest.TestCase):
             (["cli/src/tests.rs"], ["cli/src"], True),
             (["cli/src/app/test_helpers/fixture.rs"], ["cli/src"], True),
             (["cli/src/domains/ai/apm/test_fixture.rs"], ["cli/src"], True),
-            (["cli/tests/update_command.rs"], ["cli/src"], True),
+            (["cli/tests/integration/update_command.rs"], ["cli/src"], True),
             (["cli/src/domains/ai/apm/autopilot/tests/schedules.rs", "cli/src/feature.rs"],
              ["cli/src/domains/ai/apm/autopilot", "cli/src/domains/ai/apm/autopilot.rs", "cli/src/feature.rs"], True),
             (["cli/src/domains/packages/arch_recipes/tests/releases.rs"],

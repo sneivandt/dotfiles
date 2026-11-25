@@ -44,7 +44,7 @@ where
         D: Deserializer<'de>,
     {
         let value = toml::Value::deserialize(deserializer)?;
-        #[allow(
+        #[expect(
             clippy::wildcard_enum_match_arm,
             reason = "any value kind other than string or table is invalid, including future ones"
         )]
@@ -62,12 +62,6 @@ where
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers and direct indexing"
-)]
 mod tests {
     use super::*;
 

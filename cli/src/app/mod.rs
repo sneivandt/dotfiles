@@ -5,16 +5,16 @@
 //! The app layer may depend on every other layer ([`crate::engine`],
 //! [`crate::infra`], and [`crate::domains`]); nothing else may depend on it.
 
-pub mod catalog;
-pub mod cli;
+pub(crate) mod catalog;
+pub(crate) mod cli;
 mod cli_words;
-pub mod commands;
-pub mod completion;
-pub mod config;
-pub mod filter;
-pub mod interrupt;
-pub mod run;
-pub mod validation;
+pub(crate) mod commands;
+pub(crate) mod completion;
+pub(crate) mod config;
+pub(crate) mod filter;
+pub(crate) mod interrupt;
+pub(crate) mod run;
+pub(crate) mod validation;
 
 #[cfg(test)]
-pub mod test_helpers;
+pub(crate) mod test_helpers;

@@ -1,3 +1,3 @@
 //! Repository synchronization.
 
-pub mod update;
+pub(crate) mod update;

@@ -40,24 +40,29 @@ public visibility solely for an assertion.
 
 Integration binaries under
 [cli/tests/](https://github.com/sneivandt/dotfiles/tree/main/cli/tests/) run
-against isolated fixtures rather than modifying your host:
+against isolated fixtures rather than modifying your host. Standalone binaries
+are reserved for targets invoked individually by CI and mutation scripts, while
+command and lifecycle suites share one consolidated `integration` binary so
+shared helpers compile once:
 
 | Target | Main responsibility |
 |---|---|
 | `config_drift` | Real configuration, source, and category invariants |
-| `domain_boundaries` | Architectural dependencies and platform/environment boundaries |
-| `update_command`, `remove_command`, `list_command`, `check_command` | Command membership, selection, loading, and outcomes |
-| `completion_contracts` | Runtime shell completion, parsing parity, and read-only task discovery |
-| `task_execution` | Task/resource convergence and dry-run |
-| `task_output` | Statuses, reasons, logs, and exit behavior |
-| `lifecycle_contracts` | Preview, apply/repeat, retry, and conservative removal across real tasks |
-| `audit_lifecycle` | Existing user-state preservation across preview, convergence, conflicts, and removal |
 | `docs_contracts` | Configuration examples and state transitions in human documentation |
-| `e2e_apply` | CLI convergence against controlled state |
-| `behavioral_ci` | Cross-cutting regressions for CI assumptions |
+| `domain_boundaries` | Architectural dependencies and platform/environment boundaries |
+| `integration` (`update_command`, `remove_command`, `list_command`, `check_command`) | Command membership, selection, loading, and outcomes |
+| `integration` (`completion_contracts`) | Runtime shell completion, parsing parity, and read-only task discovery |
+| `integration` (`task_execution`) | Task/resource convergence and dry-run |
+| `integration` (`task_output`) | Statuses, reasons, logs, and exit behavior |
+| `integration` (`lifecycle_contracts`) | Preview, apply/repeat, retry, and conservative removal across real tasks |
+| `integration` (`audit_lifecycle`) | Existing user-state preservation across preview, convergence, conflicts, and removal |
+| `integration` (`e2e_apply`) | CLI convergence against controlled state |
+| `integration` (`behavioral_ci`) | Cross-cutting regressions for CI assumptions |
 
-Use command suites to verify task selection and exit status, and keep per-branch
-resource logic in unit tests so failures point straight to the owning module.
+Filter a single module inside the consolidated binary with
+`cargo test --locked --profile ci --test integration <module>::`. Use command
+suites to verify task selection and exit status, and keep per-branch resource
+logic in unit tests so failures point straight to the owning module.
 
 ## Confine every writable path
 
@@ -224,7 +229,7 @@ Verify that ordering-only failures don't block independent work, blocking
 dependencies do block dependents, unavailable tasks prune cleanly, and
 `AccessClaim` blocks conflicting work while allowing independent work to run
 concurrently. See
-[task_execution.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/task_execution.rs),
+[task_execution.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/integration/task_execution.rs),
 [scheduler/conformance.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/scheduler/conformance.rs),
 [batch_reports.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/batch_reports.rs),
 and [parallel.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/parallel.rs).

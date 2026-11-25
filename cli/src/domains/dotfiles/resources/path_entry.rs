@@ -26,10 +26,6 @@ trait UserPath: std::fmt::Debug + Send + Sync {
 
 #[derive(Debug)]
 struct RegistryPath {
-    #[cfg_attr(
-        not(windows),
-        allow(dead_code, reason = "registry backend is Windows-only")
-    )]
     env: Arc<dyn crate::infra::env::Env>,
 }
 
@@ -65,14 +61,13 @@ enum PathStrategy {
         store: Arc<dyn UserPath>,
         /// Executor for broadcasting the environment change to other
         /// processes after the registry write.
-        #[cfg_attr(not(windows), allow(dead_code, reason = "used conditionally via cfg"))]
         executor: Arc<dyn Executor>,
     },
 }
 
 /// A resource that ensures a directory is on the user's `PATH`.
 #[derive(Debug)]
-pub struct PathEntryResource {
+pub(crate) struct PathEntryResource {
     /// The directory that should be on `PATH`.
     dir: PathBuf,
     /// How to persist the `PATH` change.
@@ -85,7 +80,7 @@ impl PathEntryResource {
     /// On Unix the resource appends to `~/.profile`; on Windows it modifies
     /// the user `PATH` via the registry.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         home: &Path,
         platform: crate::infra::platform::Platform,
         executor: Arc<dyn Executor>,
@@ -108,7 +103,7 @@ impl PathEntryResource {
         Self { dir, strategy }
     }
 
-    #[allow(
+    #[expect(
         clippy::verbose_file_reads,
         reason = "read through the validated handle instead of reopening an unchecked path"
     )]
@@ -313,9 +308,8 @@ fn broadcast_environment_change(executor: &dyn Executor) -> Result<()> {
 
 /// Non-Windows environment broadcast fallback.
 #[cfg(not(windows))]
-#[allow(
+#[expect(
     clippy::unnecessary_wraps,
-    clippy::missing_const_for_fn,
     reason = "matches Windows backend signature"
 )]
 fn broadcast_environment_change(_executor: &dyn Executor) -> Result<()> {

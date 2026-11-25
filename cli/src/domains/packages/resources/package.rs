@@ -22,7 +22,7 @@ use super::winget::WingetProvider;
 /// Membership index for one inventory snapshot, separate from the spelling
 /// used in provider output and install arguments.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InstalledPackages {
+pub(crate) struct InstalledPackages {
     keys: Arc<HashSet<String>>,
     manager: PackageManager,
 }
@@ -47,7 +47,7 @@ impl InstalledPackages {
 
     /// Compare a configured name using the inventory provider's identity rules.
     #[must_use]
-    pub fn contains_package(&self, name: &str) -> bool {
+    pub(crate) fn contains_package(&self, name: &str) -> bool {
         match self.manager {
             PackageManager::Winget => self.keys.contains(&name.to_ascii_lowercase()),
             PackageManager::Pacman | PackageManager::Paru => self.keys.contains(name),
@@ -67,7 +67,7 @@ impl InstalledPackages {
 ///
 /// See [`PacmanProvider`], [`ParuProvider`], and [`WingetProvider`] for
 /// concrete implementations.
-pub trait PackageProvider: std::fmt::Debug + Send + Sync {
+pub(crate) trait PackageProvider: std::fmt::Debug + Send + Sync {
     /// Human-readable name of this provider (e.g., `"pacman"`).
     fn name(&self) -> &'static str;
 
@@ -289,7 +289,7 @@ fn reconcile_failed_batch(
 
 /// Supported package managers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PackageManager {
+pub(crate) enum PackageManager {
     /// Official Arch Linux packages (pacman).
     Pacman,
     /// AUR packages (paru).
@@ -301,7 +301,7 @@ pub enum PackageManager {
 impl PackageManager {
     /// Return the [`PackageProvider`] implementation for this manager.
     #[must_use]
-    pub fn provider(self) -> &'static dyn PackageProvider {
+    pub(crate) fn provider(self) -> &'static dyn PackageProvider {
         match self {
             Self::Pacman => &PacmanProvider,
             Self::Paru => &ParuProvider,
@@ -318,7 +318,7 @@ impl std::fmt::Display for PackageManager {
 
 /// A system package resource that can be checked and installed.
 #[derive(Debug, Clone)]
-pub struct PackageResource {
+pub(crate) struct PackageResource {
     /// Package name (or winget ID).
     pub name: String,
     /// Package manager to use.
@@ -332,7 +332,7 @@ pub struct PackageResource {
 impl PackageResource {
     /// Create a new package resource.
     #[must_use]
-    pub fn new(name: String, manager: PackageManager, executor: Arc<dyn Executor>) -> Self {
+    pub(crate) fn new(name: String, manager: PackageManager, executor: Arc<dyn Executor>) -> Self {
         Self {
             name,
             manager,
@@ -346,7 +346,7 @@ impl PackageResource {
     /// This avoids running a per-package query when used with
     /// [`get_installed_packages`].
     #[must_use]
-    pub fn state_from_installed(&self, installed: &InstalledPackages) -> ResourceState {
+    pub(crate) fn state_from_installed(&self, installed: &InstalledPackages) -> ResourceState {
         if installed.contains_package(&self.name) {
             ResourceState::Correct
         } else {
@@ -365,7 +365,7 @@ impl PackageResource {
 ///
 /// Returns an error if the package manager command fails to execute or if
 /// the output cannot be parsed.
-pub fn get_installed_packages(
+pub(crate) fn get_installed_packages(
     manager: PackageManager,
     executor: &dyn Executor,
 ) -> Result<InstalledPackages> {
@@ -381,7 +381,7 @@ pub fn get_installed_packages(
 ///
 /// Returns an error when the package manager's batch operation fails before it
 /// can produce a per-package report.
-pub fn install_missing_packages(
+pub(crate) fn install_missing_packages(
     manager: PackageManager,
     resources: &[&PackageResource],
     executor: &dyn Executor,

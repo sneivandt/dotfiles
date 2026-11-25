@@ -14,12 +14,12 @@
 
 mod access;
 /// Single-resource processing: check state, apply or remove one resource.
-pub mod apply;
+pub(crate) mod apply;
 mod batch;
 /// Shared execution context for tasks.
-pub mod context;
+pub(crate) mod context;
 /// Task dependency graph and cycle detection.
-pub mod graph;
+pub(crate) mod graph;
 mod mode;
 mod operation;
 mod orchestrate;
@@ -31,9 +31,9 @@ pub(crate) mod scheduler;
 mod stats;
 
 /// Generic resource contract shared by all concrete domain resources.
-pub mod resource;
+pub(crate) mod resource;
 /// Generic task contract, metadata vocabulary, macros, and executor.
-pub mod task;
+pub(crate) mod task;
 
 pub use crate::infra::cancellation::CancellationToken;
 pub use access::AccessClaim;
@@ -43,19 +43,18 @@ pub use context::ContextOpts;
 pub use mode::ProcessMode;
 pub use mode::ProcessOpts;
 pub(crate) use operation::{Operation, OperationState, process_operation};
-pub use orchestrate::{process_resources, process_resources_remove, process_resources_with_cache};
+pub use orchestrate::process_resources;
+pub(crate) use orchestrate::{process_resources_remove, process_resources_with_cache};
 pub use requirement::{Requirement, RequirementStage, RequirementState, process_requirement};
-pub use resource::{
-    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
-    SkipKind,
-};
+pub use resource::{IntrinsicState, ResourceChange, ResourceState};
+pub(crate) use resource::{RemovableResource, Resource, ResourceResult, SkipKind};
 pub use stats::{TaskResult, TaskStats};
 #[cfg(test)]
-pub use task::requires_elevation;
-pub use task::{
-    AssessmentInputs, Task, TaskAssessment, TaskId, TaskMeta, TaskResultDisplay, TaskVisibility,
-    TaskWithExtraDeps, execute,
+pub(crate) use task::requires_elevation;
+pub(crate) use task::{
+    AssessmentInputs, TaskAssessment, TaskResultDisplay, TaskVisibility, TaskWithExtraDeps,
 };
+pub use task::{Task, TaskId, TaskMeta, execute};
 pub(crate) use task::{
     TaskOutcome, config_task, run_batch_resource_task, run_resource_task, task_deps, task_metadata,
 };

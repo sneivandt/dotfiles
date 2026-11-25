@@ -1,11 +1,11 @@
 //! System domain: registry, systemd units, developer mode, WSL.
 
-pub mod config;
-pub mod developer_mode;
-pub mod registry;
-pub mod resources;
-pub mod system_files;
-pub mod systemd_units;
+pub(crate) mod config;
+pub(crate) mod developer_mode;
+pub(crate) mod registry;
+pub(crate) mod resources;
+pub(crate) mod system_files;
+pub(crate) mod systemd_units;
 
 #[cfg(test)]
 mod systemd_fixture;

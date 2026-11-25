@@ -1,5 +1,5 @@
 //! Task dependency graph utilities.
-#![allow(
+#![expect(
     clippy::indexing_slicing,
     reason = "resolved graph indices and topological in-degrees are validated by graph construction"
 )]
@@ -262,7 +262,7 @@ fn topological_order(dependencies: &[Vec<usize>], dependents: &[Vec<usize>]) -> 
     (order.len() == dependencies.len()).then_some(order)
 }
 
-#[allow(
+#[expect(
     clippy::expect_used,
     clippy::unreachable,
     reason = "the DFS stack and state values are established by this traversal"

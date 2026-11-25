@@ -71,8 +71,8 @@ pub(super) enum ElevationPlan {
     Ready,
     /// The tasks already ran elsewhere; drop them from this run's graph.
     #[cfg_attr(
-        not(windows),
-        allow(dead_code, reason = "only the Windows broker delegates to a child")
+        not(any(windows, test)),
+        expect(dead_code, reason = "only the Windows broker delegates to a child")
     )]
     Delegated,
     /// Elevation was interrupted by cancellation before completing.
@@ -416,7 +416,7 @@ fn prepare_windows_elevation(
 
 #[cfg_attr(
     not(any(windows, test)),
-    allow(dead_code, reason = "used by the Windows elevation broker")
+    expect(dead_code, reason = "used by the Windows elevation broker")
 )]
 fn collect_utf8_args(
     args: impl IntoIterator<Item = std::ffi::OsString>,
@@ -502,7 +502,7 @@ use prepare_elevation_fallback as prepare_elevation;
 /// the parent's resolved values.
 #[cfg_attr(
     not(any(windows, test)),
-    allow(dead_code, reason = "used by the Windows elevation broker")
+    expect(dead_code, reason = "used by the Windows elevation broker")
 )]
 pub(super) fn build_elevated_child_args(
     args: &[String],
@@ -565,7 +565,7 @@ pub(super) fn build_elevated_child_args(
 
 #[cfg_attr(
     not(any(windows, test)),
-    allow(dead_code, reason = "used by the Windows elevation broker")
+    expect(dead_code, reason = "used by the Windows elevation broker")
 )]
 fn strip_profile_arg(
     arg: &str,

@@ -13,7 +13,7 @@ macro_rules! config_task {
         impl $name {
             /// Create the task with a handle to its configuration slice.
             #[must_use]
-            pub const fn new(config: $crate::infra::ConfigHandle<$config>) -> Self {
+            $vis const fn new(config: $crate::infra::ConfigHandle<$config>) -> Self {
                 Self { config }
             }
         }

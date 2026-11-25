@@ -17,7 +17,7 @@ use std::path::Path;
 /// # Errors
 ///
 /// Returns an error when opening the selected repository or reading its configuration fails.
-pub fn read_local(root: &Path, key: &str) -> Result<Option<String>> {
+pub(crate) fn read_local(root: &Path, key: &str) -> Result<Option<String>> {
     let repo = match git2::Repository::open(root) {
         Ok(repo) => repo,
         Err(error)
@@ -45,7 +45,7 @@ pub fn read_local(root: &Path, key: &str) -> Result<Option<String>> {
 ///
 /// Returns an error if the repository at the dotfiles root cannot be opened or the config
 /// cannot be written.
-pub fn persist_local(root: &Path, key: &str, value: &str) -> Result<()> {
+pub(crate) fn persist_local(root: &Path, key: &str, value: &str) -> Result<()> {
     let repo = git2::Repository::open(root).context("opening git repository at dotfiles root")?;
     let config = repo.config().context("opening git config")?;
     let mut local = config

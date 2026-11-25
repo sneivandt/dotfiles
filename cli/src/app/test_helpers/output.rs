@@ -7,7 +7,7 @@ use crate::infra::logging::{Logger, MsgKind, Output, RunLog, TaskEntry, TaskReco
 
 /// Records messages by kind and completed task entries without console output.
 #[derive(Debug, Default)]
-pub struct CapturingOutput {
+pub(crate) struct CapturingOutput {
     messages: Mutex<Vec<(MsgKind, String)>>,
     actions: Mutex<Vec<CapturedAction>>,
     records: Mutex<Vec<TaskEntry>>,
@@ -16,7 +16,7 @@ pub struct CapturingOutput {
 
 /// Semantic spans and display text supplied by a task action.
 #[derive(Debug, Clone)]
-pub struct CapturedAction {
+pub(crate) struct CapturedAction {
     pub verb: String,
     pub subject: String,
     pub planned: bool,
@@ -25,7 +25,7 @@ pub struct CapturedAction {
 
 impl CapturingOutput {
     /// Retain an isolated logger so failure-reporting tests can inspect log hints.
-    pub fn with_logger(logger: Logger) -> Self {
+    pub(crate) fn with_logger(logger: Logger) -> Self {
         Self {
             logger: Some(logger),
             ..Self::default()
@@ -33,12 +33,12 @@ impl CapturingOutput {
     }
 
     /// Snapshot every emitted message in emission order.
-    pub fn messages(&self) -> Vec<(MsgKind, String)> {
+    pub(crate) fn messages(&self) -> Vec<(MsgKind, String)> {
         self.messages.lock().unwrap().clone()
     }
 
     /// Snapshot messages of one kind in emission order.
-    pub fn messages_of(&self, kind: MsgKind) -> Vec<String> {
+    pub(crate) fn messages_of(&self, kind: MsgKind) -> Vec<String> {
         self.messages()
             .into_iter()
             .filter_map(|(actual, text)| (actual == kind).then_some(text))
@@ -46,12 +46,12 @@ impl CapturingOutput {
     }
 
     /// Snapshot typed actions with their styling spans intact.
-    pub fn actions(&self) -> Vec<CapturedAction> {
+    pub(crate) fn actions(&self) -> Vec<CapturedAction> {
         self.actions.lock().unwrap().clone()
     }
 
     /// Snapshot completed task entries in recording order.
-    pub fn records(&self) -> Vec<TaskEntry> {
+    pub(crate) fn records(&self) -> Vec<TaskEntry> {
         self.records.lock().unwrap().clone()
     }
 }

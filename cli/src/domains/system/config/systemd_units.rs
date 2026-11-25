@@ -129,7 +129,7 @@ pub(crate) fn validate_conflicts(units: &[SystemdUnit]) -> Vec<Diagnostic> {
 
 /// Validate systemd unit entries and return any warnings.
 #[must_use]
-pub fn validate(
+pub(crate) fn validate(
     units: &[SystemdUnit],
     platform: crate::infra::platform::Platform,
 ) -> Vec<Diagnostic> {
@@ -144,10 +144,6 @@ pub fn validate(
         )
         .check_each(units, |u| &u.name, |u| {
             // Note: systemd unit extensions are case-sensitive on Linux
-            #[allow(
-                clippy::case_sensitive_file_extension_comparisons,
-                reason = "extensions are ASCII-only"
-            )]
             let has_valid_ext = VALID_UNIT_EXTENSIONS
                 .iter()
                 .any(|ext| u.name.ends_with(ext));

@@ -1,10 +1,6 @@
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "fixture assertions"
-)]
 //! Runtime shell completion, parsing parity, and read-only task discovery.
-mod common;
+
+use crate::common;
 
 fn candidates(
     repo: &common::IntegrationTestContext,

@@ -1,7 +1,7 @@
 //! Task execution engine: applicability evaluation and outcome recording.
 //!
 //! This module is the runner that the orchestration layer drives.  Given a
-//! [`Task`](super::Task) trait object it decides applicability, runs the task,
+//! [`Task`] trait object it decides applicability, runs the task,
 //! and records the outcome into the logger.
 
 use crate::engine::batch::is_interrupted;

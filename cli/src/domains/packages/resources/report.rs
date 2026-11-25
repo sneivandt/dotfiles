@@ -5,7 +5,7 @@ use crate::infra::exec::ExecError;
 
 /// Per-package installation failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PackageInstallFailure {
+pub(crate) struct PackageInstallFailure {
     /// Package name or ID that failed to install.
     pub package: String,
     /// Human-readable failure reason.
@@ -14,7 +14,7 @@ pub struct PackageInstallFailure {
 
 /// Outcome of installing a set of missing packages.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct PackageInstallReport {
+pub(crate) struct PackageInstallReport {
     applied: Vec<String>,
     pending_reboot: Vec<String>,
     already_correct: Vec<String>,
@@ -24,7 +24,7 @@ pub struct PackageInstallReport {
 impl PackageInstallReport {
     /// Create an empty package install report.
     #[must_use]
-    pub const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             applied: Vec::new(),
             pending_reboot: Vec::new(),
@@ -35,19 +35,19 @@ impl PackageInstallReport {
 
     /// Number of packages successfully applied.
     #[must_use]
-    pub const fn applied_count(&self) -> usize {
+    pub(crate) const fn applied_count(&self) -> usize {
         self.applied.len() + self.pending_reboot.len()
     }
 
     /// Number of requested packages that were already installed.
     #[must_use]
-    pub const fn already_correct_count(&self) -> usize {
+    pub(crate) const fn already_correct_count(&self) -> usize {
         self.already_correct.len()
     }
 
     /// Per-package install failures.
     #[must_use]
-    pub fn failures(&self) -> &[PackageInstallFailure] {
+    pub(crate) fn failures(&self) -> &[PackageInstallFailure] {
         &self.failures
     }
 
@@ -57,7 +57,7 @@ impl PackageInstallReport {
 
     /// Whether any package failed.
     #[must_use]
-    pub const fn has_failures(&self) -> bool {
+    pub(crate) const fn has_failures(&self) -> bool {
         !self.failures.is_empty()
     }
 

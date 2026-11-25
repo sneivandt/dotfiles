@@ -371,14 +371,14 @@ impl Task for InstallAurPackages {
 
 /// Install paru AUR helper.
 #[derive(Debug, Default)]
-pub struct InstallParu {
+pub(crate) struct InstallParu {
     inventory_cache: Option<PacmanInventoryCache>,
 }
 
 impl InstallParu {
     /// Construct the paru installation task.
     #[must_use]
-    pub const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             inventory_cache: None,
         }

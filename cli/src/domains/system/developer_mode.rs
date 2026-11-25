@@ -7,7 +7,7 @@ use crate::engine::{Context, ProcessOpts, Task, TaskResult, run_resource_task, t
 
 /// Enable Windows Developer Mode (allows symlink creation without admin).
 #[derive(Debug)]
-pub struct EnableDeveloperMode;
+pub(crate) struct EnableDeveloperMode;
 
 const NAME: &str = "Windows Developer Mode";
 

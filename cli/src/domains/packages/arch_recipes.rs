@@ -18,12 +18,12 @@ use crate::infra::logging::OutputExt as _;
 
 crate::engine::config_task! {
     /// Generate Paru configuration from the selected managed base.
-    pub struct ConfigureParu(Option<ParuBase>);
+    pub(crate) struct ConfigureParu(Option<ParuBase>);
 }
 
 /// Selected base file and its owning managed source tree.
 #[derive(Debug, Clone)]
-pub struct ParuBase {
+pub(crate) struct ParuBase {
     /// Source file selected by the symlink declaration.
     pub path: PathBuf,
     /// Owning repository's symlinks directory.
@@ -418,7 +418,7 @@ impl Operation for ParuConfig<'_> {
 
 /// Refresh release pins for the tracked Arch package recipe directories.
 #[derive(Debug)]
-pub struct UpdateCustomPackageVersions;
+pub(crate) struct UpdateCustomPackageVersions;
 
 impl Task for UpdateCustomPackageVersions {
     task_metadata! {

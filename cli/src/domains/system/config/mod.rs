@@ -1,5 +1,5 @@
 //! Configuration models for the system domain.
 
-pub mod registry;
-pub mod system_files;
-pub mod systemd_units;
+pub(crate) mod registry;
+pub(crate) mod system_files;
+pub(crate) mod systemd_units;

@@ -11,7 +11,7 @@ use crate::infra::config::Severity;
 
 crate::engine::config_task! {
     /// Apply Windows registry settings.
-    pub struct ApplyRegistry(Vec<RegistryEntry>);
+    pub(crate) struct ApplyRegistry(Vec<RegistryEntry>);
 }
 
 const NAME: &str = "User registry settings";

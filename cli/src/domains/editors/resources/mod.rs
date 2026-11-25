@@ -1,3 +1,3 @@
 //! Resource implementations for the editors domain.
 
-pub mod deferred_extensions;
+pub(crate) mod deferred_extensions;

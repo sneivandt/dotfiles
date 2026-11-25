@@ -14,7 +14,7 @@ use crate::engine::{
 
 /// Install the CLI wrapper script in `~/.local/bin`.
 #[derive(Debug)]
-pub struct InstallWrapper;
+pub(crate) struct InstallWrapper;
 
 impl Task for InstallWrapper {
     task_metadata! {
@@ -35,7 +35,7 @@ impl Task for InstallWrapper {
 
 /// Remove the CLI wrapper script from `~/.local/bin`.
 #[derive(Debug)]
-pub struct UninstallWrapper;
+pub(crate) struct UninstallWrapper;
 
 impl Task for UninstallWrapper {
     task_metadata! {

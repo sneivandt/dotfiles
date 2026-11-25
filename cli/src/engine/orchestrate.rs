@@ -140,7 +140,7 @@ where
 /// # Errors
 ///
 /// Returns an error if resource state discovery or processing fails.
-pub fn process_resources_with_cache<R, Cache, State>(
+pub(crate) fn process_resources_with_cache<R, Cache, State>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
     cache: &Cache,
@@ -157,7 +157,7 @@ where
 
 /// Process resources by checking each one's intrinsic current state.
 ///
-/// This is a convenience wrapper around [`process_resources_with_state`] for
+/// This is a convenience wrapper around `process_resources_with_state` for
 /// resources that implement [`IntrinsicState`].
 ///
 /// # Errors
@@ -187,7 +187,7 @@ pub fn process_resources<R: IntrinsicState + Send>(
 ///
 /// Returns an error if a resource fails to check its current state or fails
 /// during the removal process.
-pub fn process_resources_remove<R: IntrinsicState + RemovableResource + Send>(
+pub(crate) fn process_resources_remove<R: IntrinsicState + RemovableResource + Send>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
     verb: &'static str,

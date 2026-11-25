@@ -5,21 +5,21 @@
 //! This is the lowest layer of the crate. It depends only on `std` and external
 //! crates — never on `engine`, `domains`, or `app`.
 
-pub mod config;
-pub mod elevation;
-pub mod env;
-pub mod exec;
-pub mod fs;
+pub(crate) mod config;
+pub(crate) mod elevation;
+pub(crate) mod env;
+pub(crate) mod exec;
+pub(crate) mod fs;
 pub(crate) mod github;
-pub mod logging;
-pub mod platform;
-pub mod provisioning;
+pub(crate) mod logging;
+pub(crate) mod platform;
+pub(crate) mod provisioning;
 pub(crate) mod run_lock;
 pub(crate) mod yaml;
 
 /// Shared one-shot boolean flag backing cross-thread signalling primitives.
 pub(crate) mod atomic_flag;
 /// Process-wide cancellation flag for graceful shutdown.
-pub mod cancellation;
+pub(crate) mod cancellation;
 
 pub use config::ConfigHandle;

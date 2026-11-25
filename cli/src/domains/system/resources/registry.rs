@@ -12,7 +12,7 @@ use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
 
 /// Current registry value data and its native value type.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CurrentRegistryValue {
+pub(crate) struct CurrentRegistryValue {
     data: String,
     value_type: Option<RegistryValueType>,
 }
@@ -25,7 +25,7 @@ impl CurrentRegistryValue {
 }
 
 /// A key path and value name kept separate because value names may contain `\`.
-pub type RegistryTarget = (String, String);
+pub(crate) type RegistryTarget = (String, String);
 
 /// Native Windows registry access via the `winreg` crate.
 #[cfg(windows)]
@@ -100,7 +100,7 @@ mod native {
     }
 
     /// Convert a raw registry value to a string representation.
-    #[allow(
+    #[expect(
         clippy::indexing_slicing,
         reason = "each arm indexes only within a length checked above"
     )]
@@ -231,8 +231,7 @@ fn parse_hkcu_subkey(key_path: &str) -> Result<&str> {
 ///
 /// Uses the `winreg` crate for native registry access on Windows.
 #[derive(Debug)]
-#[cfg_attr(not(windows), allow(dead_code, reason = "used conditionally via cfg"))]
-pub struct RegistryResource {
+pub(crate) struct RegistryResource {
     /// Registry key path (e.g., "HKCU:\Console").
     pub key_path: String,
     /// Value name.
@@ -246,7 +245,7 @@ pub struct RegistryResource {
 impl RegistryResource {
     /// Create a new registry resource.
     #[must_use]
-    pub const fn new(
+    pub(crate) const fn new(
         key_path: String,
         value_name: String,
         value_data: String,
@@ -262,7 +261,9 @@ impl RegistryResource {
 
     /// Create from a config entry.
     #[must_use]
-    pub fn from_entry(entry: &crate::domains::system::config::registry::RegistryEntry) -> Self {
+    pub(crate) fn from_entry(
+        entry: &crate::domains::system::config::registry::RegistryEntry,
+    ) -> Self {
         Self::new(
             entry.key_path.clone(),
             entry.value_name.clone(),
@@ -279,7 +280,10 @@ impl RegistryResource {
     ///
     /// [`batch_check_states`] reads all values before convergence starts.
     #[must_use]
-    pub fn state_from_cached(&self, current_value: Option<&CurrentRegistryValue>) -> ResourceState {
+    pub(crate) fn state_from_cached(
+        &self,
+        current_value: Option<&CurrentRegistryValue>,
+    ) -> ResourceState {
         current_value.map_or(ResourceState::Missing, |current| {
             if value_matches(current, &self.value_data, self.value_type) {
                 ResourceState::Correct
@@ -293,7 +297,7 @@ impl RegistryResource {
 }
 
 /// Snapshot independent reads: a denied key must not hide another key's state.
-pub fn batch_check_states(
+pub(crate) fn batch_check_states(
     resources: &[RegistryResource],
 ) -> HashMap<RegistryTarget, ResourceState> {
     #[cfg(windows)]
@@ -354,7 +358,6 @@ impl Resource for RegistryResource {
 }
 
 /// Compare registry values without losing the native registry type.
-#[cfg_attr(not(windows), allow(dead_code, reason = "used conditionally via cfg"))]
 fn value_matches(
     current: &CurrentRegistryValue,
     expected_data: &str,

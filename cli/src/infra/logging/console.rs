@@ -151,10 +151,6 @@ impl Console {
 }
 
 impl ConsoleState {
-    #[allow(
-        clippy::needless_pass_by_ref_mut,
-        reason = "writes require exclusive console access and mutate test capture"
-    )]
     fn write(&mut self, error: bool, text: &str) {
         if self.mode == super::OutputMode::Jsonl
             || (self.mode == super::OutputMode::Quiet && !error)

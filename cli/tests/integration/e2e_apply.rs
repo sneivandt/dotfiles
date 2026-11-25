@@ -1,16 +1,9 @@
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::wildcard_imports,
-    clippy::indexing_slicing,
-    reason = "panicking allowed at this trust boundary"
-)]
 //! End-to-end convergence against a temporary repository and home.
 //!
 //! Exercise configuration loading, real task execution, dry-run safety,
 //! repeated installation, and conservative removal without system commands.
 
-mod common;
+use crate::common;
 
 #[test]
 fn ambiguous_copilot_members_survive_preview_apply_and_retry() {

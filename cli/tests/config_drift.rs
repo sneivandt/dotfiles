@@ -1,4 +1,4 @@
-#![allow(
+#![expect(
     clippy::expect_used,
     clippy::unwrap_used,
     clippy::indexing_slicing,

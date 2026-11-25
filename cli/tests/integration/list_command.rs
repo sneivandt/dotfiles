@@ -1,10 +1,6 @@
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "fixture assertions"
-)]
 //! Read-only command discovery and graph-selection contracts.
-mod common;
+
+use crate::common;
 
 #[test]
 fn list_displays_agent_packages_with_canonical_selector_and_legacy_alias() {

@@ -1,3 +1,3 @@
 //! Configuration models for the packages domain.
 
-pub mod packages;
+pub(crate) mod packages;

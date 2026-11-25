@@ -1,11 +1,6 @@
 //! Existing user state must survive preview, convergence, conflicts and removal.
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "isolated lifecycle assertions"
-)]
 
-mod common;
+use crate::common;
 
 use std::path::Path;
 use std::process::Command;

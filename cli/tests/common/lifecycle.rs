@@ -226,7 +226,7 @@ impl Fixture {
         let repo = sandbox.path().join("repo with spaces");
         let home = sandbox.path().join("home with spaces");
         std::fs::create_dir_all(&home).expect("create fixture home");
-        super::common::setup_minimal_repo(&repo);
+        crate::common::setup_minimal_repo(&repo);
         let repository = git2::Repository::init(&repo).expect("initialize fixture Git repository");
         repository
             .config()

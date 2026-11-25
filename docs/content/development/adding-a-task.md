@@ -197,7 +197,7 @@ inheriting `update` edges.
 Test task selection with and without `--with-deps`, skipped predecessors,
 inapplicable tasks, and command membership using the existing
 [catalog tests](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs)
-and [task execution tests](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/task_execution.rs).
+and [task execution tests](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/integration/task_execution.rs).
 
 ## Finish the reader-facing contract
 

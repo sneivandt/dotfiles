@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 /// Try to read the overlay path from the `DOTFILES_OVERLAY` environment variable.
 #[must_use]
-pub fn read_from_env(env: &dyn crate::infra::env::Env) -> Option<PathBuf> {
+pub(crate) fn read_from_env(env: &dyn crate::infra::env::Env) -> Option<PathBuf> {
     parse_env_overlay(env.var_os("DOTFILES_OVERLAY"))
 }
 
@@ -27,7 +27,7 @@ const OVERLAY_KEY: &str = "dotfiles.overlay";
 /// # Errors
 ///
 /// Returns an error if the repository or its local configuration cannot be read.
-pub fn read_persisted(root: &Path) -> Result<Option<PathBuf>> {
+pub(crate) fn read_persisted(root: &Path) -> Result<Option<PathBuf>> {
     crate::infra::config::git_state::read_local(root, OVERLAY_KEY)
         .map(|value| value.map(PathBuf::from))
 }
@@ -39,7 +39,7 @@ pub fn read_persisted(root: &Path) -> Result<Option<PathBuf>> {
 ///
 /// Returns an error if the repository cannot be discovered or the config
 /// cannot be written, or the path cannot be stored without loss.
-pub fn persist(root: &Path, overlay_path: &Path) -> Result<()> {
+pub(crate) fn persist(root: &Path, overlay_path: &Path) -> Result<()> {
     crate::infra::config::git_state::persist_local(
         root,
         OVERLAY_KEY,
@@ -84,7 +84,7 @@ pub(crate) fn resolve_from_args(
 /// Returns an error if saved configuration cannot be read, a linked worktree is
 /// declined, its confirmation prompt fails, or the selected path cannot be made
 /// absolute.
-pub fn resolve_read_only(
+pub(crate) fn resolve_read_only(
     cli_overlay: Option<&Path>,
     root: &Path,
     env: &dyn crate::infra::env::Env,
@@ -203,10 +203,6 @@ fn confirm_linked_worktree(path: &Path) -> Result<bool> {
     )
 }
 
-#[allow(
-    clippy::print_stderr,
-    reason = "the interactive safety prompt must remain on one terminal line"
-)]
 fn read_worktree_confirmation(path: &Path) -> Result<bool> {
     read_worktree_confirmation_with(path, &mut io::stderr(), &mut io::stdin().lock())
 }

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, Result};
 
 #[cfg(windows)]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "Windows known folder lookup and directory identity use native handles"
 )]

@@ -48,7 +48,7 @@ esac
 
 #[test]
 #[cfg(target_os = "linux")]
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "shared setup for publication and preservation cases"
 )]

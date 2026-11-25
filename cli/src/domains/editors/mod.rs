@@ -1,5 +1,5 @@
 //! Editors domain: VS Code extension management.
 
-pub mod config;
-pub mod resources;
-pub mod vscode_extensions;
+pub(crate) mod config;
+pub(crate) mod resources;
+pub(crate) mod vscode_extensions;

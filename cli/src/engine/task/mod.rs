@@ -7,14 +7,15 @@ mod execute;
 pub(crate) mod macros;
 mod types;
 
-pub use crate::infra::logging::{TaskResultDisplay, TaskVisibility};
+pub(crate) use crate::infra::logging::{TaskResultDisplay, TaskVisibility};
 pub use execute::execute;
 pub(crate) use execute::task_entry;
 pub(crate) use execute::{TaskExecution, TaskOutcome, execute_assessed};
 pub(crate) use macros::{
     config_task, run_batch_resource_task, run_resource_task, task_deps, task_metadata,
 };
-pub use types::{TaskAssessment, TaskId, TaskMeta};
+pub(crate) use types::TaskAssessment;
+pub use types::{TaskId, TaskMeta};
 
 use std::any::TypeId;
 use std::sync::Arc;
@@ -75,7 +76,7 @@ pub trait Task: Send + Sync + 'static {
     /// Static descriptive metadata: name, selector, visibility, and whether the
     /// task belongs to `update` only.
     ///
-    /// Use the [`task_metadata!`] macro to implement this — it turns a
+    /// Use the `task_metadata!` macro to implement this — it turns a
     /// declarative block into the single method body.
     fn meta(&self) -> TaskMeta<'_>;
 
@@ -134,7 +135,7 @@ pub trait Task: Send + Sync + 'static {
     /// execute independent tasks in parallel.  The default implementation
     /// returns an empty slice (no dependencies).
     ///
-    /// Use the [`task_deps!`] macro to implement this method — it eliminates
+    /// Use the `task_deps!` macro to implement this method — it eliminates
     /// the manual `const DEPS` boilerplate and automatically wraps each type
     /// in [`TaskId::Type`].
     fn dependencies(&self) -> &[TaskId] {
@@ -222,7 +223,7 @@ pub trait Task: Send + Sync + 'static {
 /// Whether a task's single assessment requires elevation.
 #[must_use]
 #[cfg(test)]
-pub fn requires_elevation(task: &dyn Task, ctx: &Context) -> bool {
+pub(crate) fn requires_elevation(task: &dyn Task, ctx: &Context) -> bool {
     let assessment = task.assess(ctx, &mut AssessmentInputs::new(&|_| false));
     assessment.is_applicable() && assessment.requires_elevation()
 }
@@ -239,7 +240,7 @@ pub fn requires_elevation(task: &dyn Task, ctx: &Context) -> bool {
 ///
 /// Because [`task_id`](Task::task_id) is forwarded to the inner task, other
 /// tasks that depend on the wrapped task by type continue to resolve correctly.
-pub struct TaskWithExtraDeps {
+pub(crate) struct TaskWithExtraDeps {
     inner: Box<dyn Task>,
     deps: Vec<TaskId>,
     ordering_deps: Vec<TaskId>,
@@ -254,7 +255,7 @@ struct ConditionalOrdering {
 impl TaskWithExtraDeps {
     /// Wrap `inner`, merging application-owned dependency ids with its own.
     #[must_use]
-    pub fn new(inner: Box<dyn Task>, extra: &[TaskId], extra_ordering: &[TaskId]) -> Self {
+    pub(crate) fn new(inner: Box<dyn Task>, extra: &[TaskId], extra_ordering: &[TaskId]) -> Self {
         let merge = |existing: &[TaskId], additional: &[TaskId]| {
             let mut merged = Vec::new();
             for id in existing.iter().chain(additional) {
@@ -276,7 +277,7 @@ impl TaskWithExtraDeps {
     /// the provider requirement proves their inputs will remain stable. Consumers
     /// that share a requirement instance share its probe within each phase.
     #[must_use]
-    pub fn with_conditional_ordering(
+    pub(crate) fn with_conditional_ordering(
         mut self,
         ids: &[TaskId],
         provider_stability: impl Into<Arc<Requirement<'static>>>,
@@ -290,7 +291,7 @@ impl TaskWithExtraDeps {
 
     /// Wrap `inner` and box the decorator as a `dyn Task`.
     #[must_use]
-    pub fn boxed(
+    pub(crate) fn boxed(
         inner: Box<dyn Task>,
         extra: &[TaskId],
         extra_ordering: &[TaskId],
@@ -372,5 +373,4 @@ impl Task for TaskWithExtraDeps {
 }
 
 #[cfg(test)]
-#[path = "tests.rs"]
 mod tests;

@@ -12,14 +12,14 @@ use crate::infra::ConfigHandle;
 
 /// Converge every active entry from `conf/system-files.toml`.
 #[derive(Debug)]
-pub struct ConfigureSystemFiles {
+pub(crate) struct ConfigureSystemFiles {
     files: ConfigHandle<Vec<SystemFile>>,
 }
 
 impl ConfigureSystemFiles {
     /// Create the shared system-file task.
     #[must_use]
-    pub const fn new(files: ConfigHandle<Vec<SystemFile>>) -> Self {
+    pub(crate) const fn new(files: ConfigHandle<Vec<SystemFile>>) -> Self {
         Self { files }
     }
 

@@ -16,7 +16,7 @@ config_section! {
 
 /// Validate VS Code extension entries and return any warnings.
 #[must_use]
-pub fn validate(extensions: &[String]) -> Vec<Diagnostic> {
+pub(crate) fn validate(extensions: &[String]) -> Vec<Diagnostic> {
     use crate::infra::config::validation::{Validator, check};
 
     Validator::new(VSCODE_EXTENSIONS_TOML)

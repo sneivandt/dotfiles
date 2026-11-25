@@ -114,7 +114,7 @@ state-directory environment overrides. Static `update` and `remove` tasks come
 from [catalog.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs),
 while `check` uses its own
 [task list](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/check.rs).
-The [execution coordinator](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/execution/mod.rs)
+The [execution coordinator](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/execution.rs)
 manages elevation, restart phases, progress output, and final exit status.
 
 Read-only `list` commands inspect configuration and task metadata without

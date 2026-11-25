@@ -22,7 +22,7 @@ use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor};
 
 /// Which invocation of an injected operation should fail.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum FailAt {
+pub(crate) enum FailAt {
     /// Never fail; every invocation succeeds.
     #[default]
     Never,
@@ -64,7 +64,7 @@ impl FailAt {
 /// assert_eq!(exec.calls().len(), 3);
 /// ```
 #[derive(Debug)]
-pub struct FailingExecutor {
+pub(crate) struct FailingExecutor {
     fail_at: FailAt,
     only_program: Option<String>,
     stdout: String,
@@ -77,7 +77,7 @@ pub struct FailingExecutor {
 impl FailingExecutor {
     /// Create an executor that fails according to `fail_at`.
     #[must_use]
-    pub fn new(fail_at: FailAt) -> Self {
+    pub(crate) fn new(fail_at: FailAt) -> Self {
         Self {
             fail_at,
             only_program: None,
@@ -91,14 +91,14 @@ impl FailingExecutor {
 
     /// Only count and fail invocations of `program`.
     #[must_use]
-    pub fn only_program(mut self, program: impl Into<String>) -> Self {
+    pub(crate) fn only_program(mut self, program: impl Into<String>) -> Self {
         self.only_program = Some(program.into());
         self
     }
 
     /// Set the stdout returned by successful invocations.
     #[must_use]
-    pub fn with_stdout(mut self, stdout: impl Into<String>) -> Self {
+    pub(crate) fn with_stdout(mut self, stdout: impl Into<String>) -> Self {
         self.stdout = stdout.into();
         self
     }
@@ -108,21 +108,21 @@ impl FailingExecutor {
     /// Use `false` to model a command that ran but reported failure, which is
     /// distinct from an invocation that could not be run at all.
     #[must_use]
-    pub const fn with_exit_success(mut self, exit_success: bool) -> Self {
+    pub(crate) const fn with_exit_success(mut self, exit_success: bool) -> Self {
         self.exit_success = exit_success;
         self
     }
 
     /// Set the value returned by `which()` / `which_path()`.
     #[must_use]
-    pub fn with_which(mut self, which_result: bool) -> Self {
+    pub(crate) fn with_which(mut self, which_result: bool) -> Self {
         self.which_result = which_result;
         self
     }
 
     /// Every command line issued so far, in invocation order.
     #[must_use]
-    pub fn calls(&self) -> Vec<String> {
+    pub(crate) fn calls(&self) -> Vec<String> {
         self.calls
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -131,7 +131,7 @@ impl FailingExecutor {
 
     /// Number of invocations that matched the program filter.
     #[must_use]
-    pub fn matched_calls(&self) -> usize {
+    pub(crate) fn matched_calls(&self) -> usize {
         self.matched.load(Ordering::SeqCst)
     }
 
@@ -209,7 +209,7 @@ impl Executor for FailingExecutor {
 /// resources converge and one does not, which is the shape that surfaces
 /// partial-application and error-aggregation bugs.
 #[derive(Debug)]
-pub struct FailingResource {
+pub(crate) struct FailingResource {
     description: String,
     state: ResourceState,
     apply_fail_at: FailAt,
@@ -221,7 +221,7 @@ pub struct FailingResource {
 
 /// Which [`ResourceError`] variant an injected resource failure produces.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum ResourceErrorKind {
+pub(crate) enum ResourceErrorKind {
     /// An untyped `anyhow` error, the most common shape in domain code.
     #[default]
     Other,
@@ -246,7 +246,7 @@ impl ResourceErrorKind {
 impl FailingResource {
     /// Create a resource that needs changing and fails `apply()` per `fail_at`.
     #[must_use]
-    pub fn new(description: impl Into<String>, fail_at: FailAt) -> Self {
+    pub(crate) fn new(description: impl Into<String>, fail_at: FailAt) -> Self {
         Self {
             description: description.into(),
             state: ResourceState::Missing,
@@ -260,34 +260,34 @@ impl FailingResource {
 
     /// Set the state reported by `current_state()`.
     #[must_use]
-    pub fn with_state(mut self, state: ResourceState) -> Self {
+    pub(crate) fn with_state(mut self, state: ResourceState) -> Self {
         self.state = state;
         self
     }
 
     /// Set when `remove()` should fail.
     #[must_use]
-    pub const fn with_remove_failure(mut self, fail_at: FailAt) -> Self {
+    pub(crate) const fn with_remove_failure(mut self, fail_at: FailAt) -> Self {
         self.remove_fail_at = fail_at;
         self
     }
 
     /// Set which [`ResourceError`] variant injected failures produce.
     #[must_use]
-    pub const fn with_error(mut self, error: ResourceErrorKind) -> Self {
+    pub(crate) const fn with_error(mut self, error: ResourceErrorKind) -> Self {
         self.error = error;
         self
     }
 
     /// Number of times `apply()` has been called.
     #[must_use]
-    pub fn apply_calls(&self) -> usize {
+    pub(crate) fn apply_calls(&self) -> usize {
         self.applies.load(Ordering::SeqCst)
     }
 
     /// Number of times `remove()` has been called.
     #[must_use]
-    pub fn remove_calls(&self) -> usize {
+    pub(crate) fn remove_calls(&self) -> usize {
         self.removes.load(Ordering::SeqCst)
     }
 }

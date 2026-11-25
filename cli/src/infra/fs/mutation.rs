@@ -68,7 +68,7 @@ pub(crate) fn require_single_link(metadata: &std::fs::Metadata) -> Result<()> {
 }
 
 #[cfg(windows)]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "query link count from the already-open Windows file handle"
 )]

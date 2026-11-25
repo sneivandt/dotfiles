@@ -1,11 +1,11 @@
 //! Top-level command handlers and shared command orchestration.
 
-pub mod check;
+pub(crate) mod check;
 pub(crate) mod explain;
-pub mod list;
-pub mod log;
-pub mod remove;
-pub mod update;
+pub(crate) mod list;
+pub(crate) mod log;
+pub(crate) mod remove;
+pub(crate) mod update;
 
 pub(crate) mod error;
 mod execution;
@@ -15,7 +15,7 @@ mod runtime;
 
 pub(crate) use execution::validate_elevated_child_command;
 pub(crate) use reexec::re_exec_after_repository_update;
-pub use runner::CommandRunner;
+pub(crate) use runner::CommandRunner;
 pub use runtime::RuntimePolicy;
 
 #[cfg(test)]
@@ -25,7 +25,6 @@ use reexec::{
 };
 
 #[cfg(test)]
-#[path = "tests.rs"]
 mod tests;
 
 /// Retain requested selectors before startup can fail or restart the process.

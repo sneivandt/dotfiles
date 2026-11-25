@@ -114,7 +114,7 @@ impl Escalation {
 ///
 /// Losing the handler is not fatal — the run simply cannot be interrupted
 /// gracefully — so a registration failure is reported as a warning.
-pub fn install<L: Output + 'static>(
+pub(crate) fn install<L: Output + 'static>(
     token: &CancellationToken,
     log: &Arc<L>,
     non_interactive: bool,
@@ -203,7 +203,7 @@ const fn can_prompt(non_interactive: bool, stdin_terminal: bool, stderr_terminal
 }
 
 /// Ask the user whether to abandon the run.
-#[allow(
+#[expect(
     clippy::print_stderr,
     reason = "the prompt is interactive output that must bypass the logger to stay on one line"
 )]
@@ -229,7 +229,7 @@ fn is_affirmative(answer: &str) -> bool {
 }
 
 /// Move off an unanswered prompt line so the next message starts clean.
-#[allow(
+#[expect(
     clippy::print_stderr,
     reason = "terminates the raw prompt written by confirm_force_quit"
 )]

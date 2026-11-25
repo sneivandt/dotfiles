@@ -164,7 +164,7 @@ fn expand_segments(
 
         let mut matches = Vec::new();
         for entry in entries {
-            #[allow(
+            #[expect(
                 clippy::unnecessary_debug_formatting,
                 reason = "escape non-UTF-8 bytes so distinct filenames remain distinguishable"
             )]

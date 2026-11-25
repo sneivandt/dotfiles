@@ -302,11 +302,11 @@ struct PendingTask {
     signal: DependencySignal,
 }
 
-#[allow(
+#[expect(
     clippy::expect_used,
     reason = "scoped workers report every dispatched task, including unwinds"
 )]
-#[allow(
+#[expect(
     clippy::indexing_slicing,
     reason = "the resolved graph and scheduler queues share indices into the task slice"
 )]

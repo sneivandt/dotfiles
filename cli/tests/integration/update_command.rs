@@ -1,17 +1,10 @@
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::wildcard_imports,
-    clippy::indexing_slicing,
-    reason = "panicking allowed at this trust boundary"
-)]
 //! Integration tests for the `update` command.
 //!
 //! These tests exercise the full task list produced by [`all_update_tasks`],
 //! the task-selector filtering applied by the `--skip` and `--only` CLI
 //! flags, and the structural properties of the update dependency graph.
 
-mod common;
+use crate::common;
 
 use dotfiles_cli::testing as test_api;
 

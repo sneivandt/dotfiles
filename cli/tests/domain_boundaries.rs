@@ -1,4 +1,4 @@
-#![allow(
+#![expect(
     clippy::expect_used,
     clippy::panic,
     clippy::wildcard_enum_match_arm,
@@ -554,6 +554,35 @@ fn subprocess_construction_is_owned_by_infrastructure() {
         violations.is_empty(),
         "direct process construction must use crate::infra::exec; \
                  app/commands/reexec.rs is the documented lifecycle exception:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn direct_environment_access_is_owned_by_infrastructure() {
+    const ENV_ACCESSORS: &[&str] = &["var", "var_os", "vars", "vars_os", "set_var", "remove_var"];
+    let mut violations = Vec::new();
+
+    for source in production_sources(&source_root()) {
+        if source.relative.starts_with("infra/") {
+            continue;
+        }
+
+        for (segments, line) in source.facts.imports.iter().chain(&source.facts.paths) {
+            for accessor in ENV_ACCESSORS {
+                if contains_sequence(segments, &["env", accessor]) {
+                    violations.push(format!(
+                        "{}:{line} reads or mutates process environment directly via env::{accessor}",
+                        source.path.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "direct environment access must use crate::infra::env::Env:\n{}",
         violations.join("\n")
     );
 }

@@ -1,10 +1,3 @@
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::wildcard_imports,
-    clippy::indexing_slicing,
-    reason = "panicking allowed at this trust boundary"
-)]
 //! Integration tests that exercise task execution against a real filesystem.
 //!
 //! Unlike the structural tests in `update_command.rs` (which verify task lists,
@@ -12,7 +5,7 @@
 //! `tasks::execute()` to validate that the full config-load → task-execution →
 //! filesystem-outcome pipeline works correctly.
 
-mod common;
+use crate::common;
 
 use dotfiles_cli::testing as test_api;
 #[cfg(unix)]
@@ -55,7 +48,7 @@ fn symlinks_install_desktop_profile_includes_both_sections() {
     let test = common::TestContextBuilder::new()
         .with_config_file(
             "symlinks.toml",
-            include_str!("fixtures/desktop_profile.toml"),
+            include_str!("../fixtures/desktop_profile.toml"),
         )
         .with_symlink_source("bashrc")
         .with_symlink_source("config/Code/User/settings.json")
@@ -209,7 +202,10 @@ const FILESYSTEM_TASKS: &[&str] = &["symlinks", "git-hooks", "git"];
 #[test]
 fn dry_run_pipeline_produces_no_failures() {
     let test = common::TestContextBuilder::new()
-        .with_config_file("symlinks.toml", include_str!("fixtures/base_profile.toml"))
+        .with_config_file(
+            "symlinks.toml",
+            include_str!("../fixtures/base_profile.toml"),
+        )
         .with_symlink_source("bashrc")
         .with_hook_source("pre-commit", "#!/bin/sh\nexit 0\n")
         .with_git_hooks_dir()

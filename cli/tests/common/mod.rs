@@ -4,8 +4,7 @@
 // so each integration test can set up an isolated environment without
 // repeating filesystem boilerplate.
 //
-// Used by all integration test binaries that declare `mod common;`.
-#![allow(dead_code, reason = "used conditionally via cfg")]
+// Used by the consolidated `integration` binary and `docs_contracts`.
 
 use dotfiles_cli::testing as test_api;
 use std::collections::HashSet;
@@ -320,7 +319,7 @@ impl TestContextBuilder {
 #[derive(Debug)]
 pub(crate) struct StubExecutor;
 
-#[allow(clippy::panic, reason = "panicking allowed at this trust boundary")]
+#[expect(clippy::panic, reason = "panicking allowed at this trust boundary")]
 impl Executor for StubExecutor {
     fn execute(&self, spec: CommandSpec) -> Result<ExecResult, ExecError> {
         panic!(

@@ -319,7 +319,7 @@ When changing the domain, update these together:
   [public/robots.txt](public/robots.txt)
   and the published-site links in the root README.
 - Domain-specific expectations in the
-  [browser tests](tests/browser/site.spec.ts).
+  [browser tests](tests/browser/responsive.spec.ts).
 
 The current site assumes a domain root. Publishing a fork under a Pages project
 path such as `/dotfiles/` needs a VitePress base-path configuration and a review of

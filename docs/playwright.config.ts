@@ -5,7 +5,7 @@ const port = Number(process.env.DOCS_TEST_PORT ?? 8000);
 export default defineConfig({
   testDir: './tests/browser',
   fullyParallel: true,
-  workers: 2,
+  workers: process.env.CI ? 4 : undefined,
   forbidOnly: Boolean(process.env.CI),
   use: {
     baseURL: `http://localhost:${port}`,
@@ -13,7 +13,11 @@ export default defineConfig({
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } } },
-    { name: 'mobile', use: { ...devices['Pixel 7'] } },
+    {
+      name: 'mobile',
+      testMatch: /responsive\.spec\.ts$/,
+      use: { ...devices['Pixel 7'] },
+    },
   ],
   webServer: {
     command: 'node tests/preview.mjs',

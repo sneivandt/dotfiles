@@ -123,6 +123,59 @@ class FrontmatterTests(unittest.TestCase):
         self.assertIn("/apple-touch-icon.png", page.assets)
         self.assertIn("https://dotfiles.stuartneivandt.com/assets/og-image.png", page.assets)
 
+    def test_static_doc_structure_checks_detect_boxed_code_edit_links_and_task_sections(self):
+        with tempfile.TemporaryDirectory(prefix="docs-structure-") as temp:
+            root = Path(temp)
+            (root / "docs/content/guides").mkdir(parents=True)
+            (root / "docs/content/reference").mkdir(parents=True)
+            guide = root / "docs/content/guides/contributing.md"
+            guide.write_text("# Contributing\n", encoding="utf-8")
+            task_ref = root / "docs/content/reference/task-reference.md"
+            task_ref.write_text("# Task reference\n", encoding="utf-8")
+            task_doc = root / "docs/content/reference/agent-packages.md"
+            task_doc.write_text(
+                "---\ntitle: Agent packages\ndescription: Manage.\n---\n"
+                "| Selector | `agent-packages` |\n| Commands | `update` |\n",
+                encoding="utf-8",
+            )
+            pages = {
+                "/contributing.html": SITE["Page"](
+                    '<div class="vp-doc"><div>'
+                    '<a href="/guide"><code>boxed</code></a>'
+                    '<a href="https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/x/SKILL.md">skill</a>'
+                    '<h2 id="development-setup">Setup</h2>'
+                    '<h2 id="2-find-the-owning-files">Find</h2>'
+                    '</div></div>'
+                    '<div class="edit-link"><a href="https://example.invalid/wrong">Edit</a></div>'
+                ),
+                "/task-reference.html": SITE["Page"](
+                    '<div class="vp-doc"><div>'
+                    '<table><tbody><tr><td><code>agent-packages</code></td>'
+                    '<td><a href="./agent-packages">Agent packages</a></td></tr></tbody></table>'
+                    '</div></div>'
+                    '<div class="edit-link"><a href="https://github.com/sneivandt/dotfiles/edit/main/docs/content/reference/task-reference.md">Edit</a></div>'
+                ),
+                "/agent-packages.html": SITE["Page"](
+                    '<nav class="VPDocAsideOutline"><a class="outline-link" href="#what-it-does">What</a></nav>'
+                    '<div class="vp-doc"><div>'
+                    '<table><tbody><tr><td>wrong</td></tr></tbody></table>'
+                    '<h2 id="what-it-does">What</h2>'
+                    '</div></div>'
+                    '<div class="edit-link"><a href="https://github.com/sneivandt/dotfiles/edit/main/docs/content/reference/agent-packages.md">Edit</a></div>'
+                ),
+            }
+            errors = []
+            SITE["check_doc_structure"](root, [guide, task_ref, task_doc], pages, errors)
+            joined = "\n".join(errors)
+            self.assertIn("must not wrap inline code", joined)
+            self.assertIn("must not assign repository skills", joined)
+            self.assertIn("expected edit link", joined)
+            self.assertIn("expected #2-find-the-owning-files before #development-setup", joined)
+            self.assertIn("expected introductory paragraph immediately before first table", joined)
+            self.assertIn("first table must mention selector 'agent-packages'", joined)
+            self.assertIn("expected one h2#preview-and-apply", joined)
+            self.assertIn("expected one outline link to #removal", joined)
+
 
 if __name__ == "__main__":
     unittest.main()

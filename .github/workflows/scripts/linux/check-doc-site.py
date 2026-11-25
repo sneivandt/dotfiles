@@ -9,17 +9,54 @@ import sys
 from urllib.parse import unquote, urljoin, urlsplit
 from xml.etree import ElementTree
 
+HEADING_ORDER = (
+    ("task-reference", "catalog-overview", "scheduling-model"),
+    ("configuration-basics", "files", "making-a-configuration-change"),
+    ("contributing", "2-find-the-owning-files", "development-setup"),
+    ("testing", "before-pushing", "specialized-checks"),
+    ("agent-configuration", "deployment-targets", "validate-preview-and-apply"),
+    ("agent-configuration", "what-a-preview-can-show", "configuration-fragments"),
+    ("package-management", "logs-and-troubleshooting", "custom-arch-packages"),
+    ("contributing", "contribution-workflow", "git-hooks"),
+    ("commands-and-usage", "update-lifecycle", "select-tasks"),
+    ("commands-and-usage", "control-what-advances", "move-a-checkout"),
+    ("testing", "baseline-and-prerequisites", "local-npm-tls-failures"),
+)
+
+NO_SKILL_READING_GUIDES = frozenset({
+    "contributing",
+    "adding-a-task",
+    "application-settings",
+    "testing",
+    "writing-documentation",
+})
+
+EDIT_LINK_PREFIX = "https://github.com/sneivandt/dotfiles/edit/main/docs/content/"
+VOID_TAGS = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+})
+
 
 class Page(HTMLParser):
     def __init__(self, text):
         super().__init__()
         self.ids = set()
+        self.id_order = []
         self.duplicates = set()
         self.links = []
         self.assets = []
         self.h1_count = 0
         self.titles = []
+        self.h2_ids = []
         self.nav_links = []
+        self.outline_links = []
+        self.edit_links = []
+        self.boxed_code_links = []
+        self.doc_skill_links = []
+        self.doc_tables = []
+        self.first_table_intro = None
+        self.has_vp_doc = False
         self.site_title_links = []
         self.icons = []
         self.apple_touch_icons = []
@@ -37,28 +74,121 @@ class Page(HTMLParser):
         self.twitter_images = []
         self.in_title = False
         self.in_nav = False
+        self.in_outline = False
         self.nav_link = None
         self.site_title_link = None
+        self._depth = 0
+        self._vp_doc_depth = None
+        self._vp_doc_body_depth = None
+        self._edit_link_depth = None
+        self._doc_link_href = None
+        self._doc_link_depth = None
+        self._doc_link_has_code = False
+        self._last_block = None
+        self._active_p_text = None
+        self._active_p_depth = None
+        self._table = None
+        self._table_depth = None
+        self._in_tbody = False
+        self._row = None
+        self._row_code = None
+        self._row_code_depth = None
         self.feed(text)
 
     def handle_starttag(self, tag, attributes):
         attrs = dict(attributes)
+        classes = set(attrs.get("class", "").split())
+        is_void = tag in VOID_TAGS
+        if not is_void:
+            self._depth += 1
+        depth = self._depth
+
         if identifier := attrs.get("id"):
             if identifier in self.ids:
                 self.duplicates.add(identifier)
             self.ids.add(identifier)
+            self.id_order.append(identifier)
+
+        if self._vp_doc_depth is None and tag == "div" and "vp-doc" in classes:
+            self.has_vp_doc = True
+            self._vp_doc_depth = depth
+        elif (
+            self._vp_doc_depth is not None
+            and self._vp_doc_body_depth is None
+            and tag == "div"
+            and depth == self._vp_doc_depth + 1
+        ):
+            self._vp_doc_body_depth = depth
+
+        if self._edit_link_depth is None and tag == "div" and "edit-link" in classes:
+            self._edit_link_depth = depth
+
+        in_doc = self._vp_doc_depth is not None
+        if in_doc and tag == "h2" and (identifier := attrs.get("id")):
+            self.h2_ids.append(identifier)
+
+        if (
+            self._vp_doc_body_depth is not None
+            and depth == self._vp_doc_body_depth + 1
+            and self._table is None
+        ):
+            if tag == "p":
+                self._active_p_text = []
+                self._active_p_depth = depth
+            elif tag == "table":
+                if self.first_table_intro is None and not self.doc_tables:
+                    if self._last_block and self._last_block[0] == "p":
+                        self.first_table_intro = self._last_block[1]
+                    else:
+                        self.first_table_intro = ""
+                self._last_block = ("table", "")
+            else:
+                self._last_block = (tag, "")
+
+        if in_doc and tag == "table" and self._table is None:
+            self._table = {"text": [], "rows": []}
+            self._table_depth = depth
+        elif self._table is not None:
+            if tag == "tbody":
+                self._in_tbody = True
+            elif tag == "tr" and self._in_tbody and self._row is None:
+                self._row = {"code": None, "href": None, "text": []}
+            elif self._row is not None:
+                if tag == "code" and self._row["code"] is None and self._row_code is None:
+                    self._row_code = []
+                    self._row_code_depth = depth
+                elif tag == "a" and self._row["href"] is None and attrs.get("href"):
+                    self._row["href"] = attrs["href"]
+
         if tag == "h1":
             self.h1_count += 1
             self.titles.append("")
             self.in_title = True
-        if tag == "nav" and attrs.get("id") == "VPSidebarNav":
-            self.in_nav = True
+        if tag == "nav":
+            if attrs.get("id") == "VPSidebarNav":
+                self.in_nav = True
+            if "VPDocAsideOutline" in classes:
+                self.in_outline = True
         if tag == "a" and attrs.get("href"):
-            self.links.append(attrs["href"])
+            href = attrs["href"]
+            self.links.append(href)
             if self.in_nav:
-                self.nav_link = [attrs["href"], ""]
-            if "title" in attrs.get("class", "").split():
-                self.site_title_link = [attrs["href"], ""]
+                self.nav_link = [href, ""]
+            if self.in_outline and "outline-link" in classes:
+                self.outline_links.append(href)
+            if self._edit_link_depth is not None:
+                self.edit_links.append(href)
+            if in_doc:
+                if "/.agents/skills/" in href and "/SKILL.md" in href:
+                    self.doc_skill_links.append(href)
+                if self._doc_link_depth is None:
+                    self._doc_link_href = href
+                    self._doc_link_depth = depth
+                    self._doc_link_has_code = False
+            if "title" in classes:
+                self.site_title_link = [href, ""]
+        if tag == "code" and self._doc_link_depth is not None:
+            self._doc_link_has_code = True
         if tag in {"script", "img"} and attrs.get("src"):
             self.assets.append(attrs["src"])
         if tag == "link" and attrs.get("href"):
@@ -109,12 +239,24 @@ class Page(HTMLParser):
             self.nav_link[1] += text
         if self.site_title_link is not None:
             self.site_title_link[1] += text
+        if self._active_p_text is not None:
+            self._active_p_text.append(text)
+        if self._table is not None:
+            self._table["text"].append(text)
+            if self._row is not None:
+                self._row["text"].append(text)
+                if self._row_code is not None:
+                    self._row_code.append(text)
 
     def handle_endtag(self, tag):
+        if tag in VOID_TAGS:
+            return
+        depth = self._depth
         if tag == "h1":
             self.in_title = False
         if tag == "nav":
             self.in_nav = False
+            self.in_outline = False
         if tag == "a" and self.nav_link is not None:
             href, label = self.nav_link
             self.nav_links.append((href, " ".join(label.split())))
@@ -123,6 +265,42 @@ class Page(HTMLParser):
             href, label = self.site_title_link
             self.site_title_links.append((href, " ".join(label.split())))
             self.site_title_link = None
+        if self._doc_link_depth == depth and tag == "a":
+            if self._doc_link_has_code:
+                self.boxed_code_links.append(self._doc_link_href)
+            self._doc_link_href = None
+            self._doc_link_depth = None
+            self._doc_link_has_code = False
+        if self._active_p_depth == depth and tag == "p":
+            self._last_block = ("p", " ".join("".join(self._active_p_text).split()))
+            self._active_p_text = None
+            self._active_p_depth = None
+        if self._row_code_depth == depth and tag == "code":
+            self._row["code"] = "".join(self._row_code).strip()
+            self._row_code = None
+            self._row_code_depth = None
+        if self._table is not None:
+            if tag == "tr" and self._row is not None:
+                self._row["text"] = " ".join("".join(self._row["text"]).split())
+                self._table["rows"].append(self._row)
+                self._row = None
+            elif tag == "tbody":
+                self._in_tbody = False
+            elif self._table_depth == depth and tag == "table":
+                self.doc_tables.append({
+                    "text": " ".join("".join(self._table["text"]).split()),
+                    "rows": self._table["rows"],
+                })
+                self._table = None
+                self._table_depth = None
+                self._in_tbody = False
+        if self._edit_link_depth == depth and tag == "div":
+            self._edit_link_depth = None
+        if self._vp_doc_body_depth == depth and tag == "div":
+            self._vp_doc_body_depth = None
+        if self._vp_doc_depth == depth and tag == "div":
+            self._vp_doc_depth = None
+        self._depth = max(0, self._depth - 1)
 
 
 def sitemap_urls(output, origin, errors):
@@ -183,6 +361,77 @@ def resolve_page_route(path):
     if path.endswith("/"):
         return path + "index.html"
     return path if path.endswith(".html") else path + ".html"
+
+
+def check_doc_structure(root, sources, pages, errors):
+    source_texts = {source.stem: source.read_text(encoding="utf-8") for source in sources}
+    for source in sources:
+        route = "/" + source.stem + ".html"
+        page = pages.get(route)
+        if page is None:
+            continue
+        if page.boxed_code_links:
+            errors.append(f"{route}: guide links must not wrap inline code ({page.boxed_code_links})")
+        if source.stem in NO_SKILL_READING_GUIDES and page.doc_skill_links:
+            errors.append(f"{route}: guide must not assign repository skills as reading ({page.doc_skill_links})")
+        if source.stem not in {"404", "index"} and page.has_vp_doc:
+            rel = source.relative_to(root / "docs/content").as_posix()
+            expected_edit = EDIT_LINK_PREFIX + rel
+            if page.edit_links != [expected_edit]:
+                errors.append(f"{route}: expected edit link {expected_edit!r}, found {page.edit_links}")
+
+    for guide, earlier, later in HEADING_ORDER:
+        route = f"/{guide}.html"
+        page = pages.get(route)
+        if page is None or not page.has_vp_doc:
+            continue
+        if earlier not in page.id_order or later not in page.id_order:
+            errors.append(f"{route}: missing ordered headings {earlier!r}, {later!r}")
+        elif page.id_order.index(earlier) >= page.id_order.index(later):
+            errors.append(f"{route}: expected #{earlier} before #{later}")
+
+    task_reference = pages.get("/task-reference.html")
+    if task_reference is None or not task_reference.has_vp_doc:
+        return
+    catalog = next((table for table in task_reference.doc_tables if "agent-packages" in table["text"]), None)
+    if catalog is None:
+        errors.append("/task-reference.html: missing update-task catalog table")
+        return
+    expected_update_tasks = sorted(
+        stem
+        for stem, text in source_texts.items()
+        if stem not in {"task-reference", "overlay-scripts"}
+        and re.search(r"^\| Selector \|", text, re.M)
+        and re.search(r"^\| Commands \|.*`update`", text, re.M)
+    )
+    catalog_tasks = []
+    for row in catalog["rows"]:
+        href = row.get("href") or ""
+        selector = row.get("code") or ""
+        stem = href.rstrip("/").split("/")[-1].removesuffix(".html")
+        catalog_tasks.append((stem, selector))
+    actual_update_tasks = sorted(stem for stem, _ in catalog_tasks)
+    if actual_update_tasks != expected_update_tasks:
+        errors.append(
+            f"/task-reference.html: update-task catalog {actual_update_tasks} "
+            f"does not match task docs {expected_update_tasks}"
+        )
+    for stem, selector in catalog_tasks:
+        route = f"/{stem}.html"
+        page = pages.get(route)
+        if page is None:
+            continue
+        if not (page.first_table_intro and page.first_table_intro.strip()):
+            errors.append(f"{route}: expected introductory paragraph immediately before first table")
+        if not page.doc_tables or not selector or selector not in page.doc_tables[0]["text"]:
+            errors.append(f"{route}: first table must mention selector {selector!r}")
+        for anchor in ("what-it-does", "preview-and-apply", "removal"):
+            if page.h2_ids.count(anchor) != 1:
+                errors.append(f"{route}: expected one h2#{anchor}")
+            if page.outline_links.count(f"#{anchor}") != 1:
+                errors.append(f"{route}: expected one outline link to #{anchor}")
+        if page.outline_links.count("#configuration") != page.h2_ids.count("configuration"):
+            errors.append(f"{route}: outline link count for #configuration does not match h2#configuration")
 
 
 def check_site(root):
@@ -347,6 +596,7 @@ def check_site(root):
                 errors.append(f"{route}: broken destination {target}")
             elif url.fragment and page_route in pages and unquote(url.fragment) not in pages[page_route].ids:
                 errors.append(f"{route}: broken anchor {target}")
+    check_doc_structure(root, sources, pages, errors)
     published_cname = output / "CNAME"
     if not published_cname.is_file() or published_cname.read_text(encoding="utf-8").strip() != domain:
         errors.append("The published CNAME does not match docs/public/CNAME")

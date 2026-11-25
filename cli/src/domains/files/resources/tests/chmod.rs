@@ -653,3 +653,266 @@ fn recursive_apply_never_follows_file_or_directory_symlinks() {
         "external content"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn exclusion_fallback_preserves_non_permission_resolution_errors() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let root = fixture.path().canonicalize().unwrap();
+    let locked = root.join("locked");
+    let target = locked.join("config");
+    std::fs::create_dir(&locked).unwrap();
+    std::fs::write(&target, "fixture").unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    for kind in [
+        std::io::ErrorKind::NotFound,
+        std::io::ErrorKind::NotADirectory,
+        std::io::ErrorKind::Other,
+    ] {
+        let error = exclusion_target_with(&target, |ancestor| {
+            if ancestor == locked {
+                Err(std::io::Error::new(kind, "ancestor changed during resolution").into())
+            } else {
+                crate::infra::fs::canonicalize(ancestor)
+            }
+        })
+        .unwrap_err();
+        assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(), kind);
+    }
+    let hint = exclusion_target_with(&target, |ancestor| {
+        if ancestor == locked {
+            Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied).into())
+        } else {
+            crate::infra::fs::canonicalize(ancestor)
+        }
+    })
+    .unwrap();
+    assert_eq!(hint, target);
+    assert_eq!(
+        locked.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+        0
+    );
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn recovery_rejects_replaced_non_directories_without_changing_permissions() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let file = fixture.path().join("replaced-directory");
+    std::fs::write(&file, "fixture").unwrap();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert!(
+        RecoveredDirectory::acquire(&file, 0o600).is_err(),
+        "recovery must reject a directory replaced by a regular file"
+    );
+    assert_eq!(
+        file.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+        0o600
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn recovery_restores_original_directories_after_restrictive_ancestors_and_alias_replacement() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    for replace_path in [false, true] {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().join("tree");
+        let branch = root.join("branch");
+        let nested = branch.join("nested");
+        let preserved = branch.join("preserved");
+        let outside = fixture.path().join("outside");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::set_permissions(&branch, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::write(&outside, "unmanaged").unwrap();
+        std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o600)).unwrap();
+        for path in [&nested, &root] {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        let recovered = [
+            RecoveredDirectory::acquire(&root, 0).unwrap(),
+            RecoveredDirectory::acquire(&nested, 0).unwrap(),
+        ];
+        if replace_path {
+            std::fs::rename(&nested, &preserved).unwrap();
+            std::os::unix::fs::symlink(&outside, &nested).unwrap();
+        } else {
+            set_permissions(&nested, 0).unwrap();
+        }
+        // Model a completed restrictive branch before a later apply failure.
+        set_permissions(&branch, 0).unwrap();
+        restore_directory_access(recovered.iter()).unwrap();
+
+        assert_eq!(
+            root.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+            0
+        );
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(
+            branch.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+            0
+        );
+        std::fs::set_permissions(&branch, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let restored = if replace_path { &preserved } else { &nested };
+        assert_eq!(
+            restored.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+            0
+        );
+        std::fs::set_permissions(restored, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(
+            outside.metadata().unwrap().permissions().mode() & MODE_BITS_MASK,
+            0o600
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn changed_final_entries_are_rejected_at_the_permission_write() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let fixture = tempfile::tempdir().unwrap();
+    let file = fixture.path().join("private");
+    let alias = fixture.path().join("alias");
+    std::fs::write(&file, "private").unwrap();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::hard_link(&file, &alias).unwrap();
+    assert!(
+        permission_tree_reason(fixture.path(), &|_| Ok(false), &mut |_, _| Ok(true))
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        permission_tree_reason(
+            fixture.path(),
+            &|path| Ok(path == file || path == alias),
+            &mut |_, _| Ok(true),
+        )
+        .unwrap()
+        .is_none()
+    );
+    assert!(set_permissions(&file, 0o644).is_err());
+    std::fs::remove_file(&alias).unwrap();
+    std::os::unix::fs::symlink(&file, &alias).unwrap();
+    assert!(set_permissions(&alias, 0o644).is_err());
+    assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+    set_permissions(&file, 0o640).unwrap();
+    assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o640);
+}
+
+#[cfg(unix)]
+#[test]
+fn apply_recursive_skips_unchanged_files_and_respects_preresolved_exclusions() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let root = fixture.path().canonicalize().unwrap();
+    let ok_file = root.join("already-ok");
+    let drift_file = root.join("drifted");
+    let excluded_file = root.join("excluded");
+    std::fs::write(&ok_file, "ok").unwrap();
+    std::fs::write(&drift_file, "drift").unwrap();
+    std::fs::write(&excluded_file, "excluded").unwrap();
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::set_permissions(&ok_file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::set_permissions(&drift_file, std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::fs::set_permissions(&excluded_file, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    let resource = ChmodResource::new(root, OctalMode::parse("600").unwrap())
+        .excluding(std::slice::from_ref(&excluded_file));
+    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    assert_eq!(
+        ok_file.metadata().unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(
+        drift_file.metadata().unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(
+        excluded_file.metadata().unwrap().permissions().mode() & 0o777,
+        0o644,
+        "excluded descendant must remain untouched"
+    );
+    assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+}
+
+#[cfg(unix)]
+#[test]
+fn retargeted_symlink_invalidates_cached_mode_validation_before_ordinary_file_chmod() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let home = fixture.path().canonicalize().unwrap();
+    let other = home.join(".other");
+    let file = home.join(".file");
+    let link = home.join(".link");
+    std::fs::write(&other, "other").unwrap();
+    std::fs::write(&file, "secret").unwrap();
+    std::fs::set_permissions(&other, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::os::unix::fs::symlink(&other, &link).unwrap();
+
+    let modes = vec![(link.clone(), 0o600), (file.clone(), 0o644)];
+    let validated = ChmodResource::validate_declared_modes(&modes).unwrap();
+    let shared = std::sync::Arc::new(std::sync::Mutex::new(validated));
+    let resource = ChmodResource::new(file.clone(), OctalMode::parse("644").unwrap())
+        .with_declared_modes(&modes)
+        .with_modes_validated(std::sync::Arc::clone(&shared));
+
+    assert!(matches!(
+        resource.current_state().unwrap(),
+        ResourceState::Incorrect { .. }
+    ));
+
+    // Retarget the symlink declaration to alias the ordinary file after
+    // initial validation succeeded.
+    std::fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink(&file, &link).unwrap();
+
+    let apply_err = resource.apply().unwrap_err();
+    assert!(
+        format!("{apply_err:#}").contains("conflicting permission modes"),
+        "{apply_err:#}"
+    );
+    assert_eq!(
+        file.metadata().unwrap().permissions().mode() & 0o777,
+        0o600,
+        "stricter file mode must be preserved when a retargeted symlink creates a conflict"
+    );
+    let state_err = resource.current_state().unwrap_err();
+    assert!(
+        format!("{state_err:#}").contains("conflicting permission modes"),
+        "{state_err:#}"
+    );
+
+    // Restoring the non-conflicting symlink target lets subsequent apply proceed.
+    std::fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink(&other, &link).unwrap();
+    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o644);
+}
+
+#[cfg(unix)]
+#[test]
+fn validate_declared_modes_records_resolved_targets_and_rejects_conflicts() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("secret");
+    std::fs::write(&file, b"x").unwrap();
+    let validated = ChmodResource::validate_declared_modes(&[(file.clone(), 0o600)]).unwrap();
+    assert_eq!(validated.resolved.len(), 1);
+    assert!(validated.resolved[0].is_some());
+
+    let link = dir.path().join("alias");
+    std::os::unix::fs::symlink(&file, &link).unwrap();
+    let err = ChmodResource::validate_declared_modes(&[(file, 0o600), (link, 0o644)]).unwrap_err();
+    assert!(
+        format!("{err:#}").contains("conflicting permission modes"),
+        "{err:#}"
+    );
+}

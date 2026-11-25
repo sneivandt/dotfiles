@@ -565,4 +565,5 @@ fn boot_id() -> Option<String> {
 }
 
 #[cfg(test)]
+#[path = "tests/github.rs"]
 pub(crate) mod tests;

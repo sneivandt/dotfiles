@@ -27,13 +27,15 @@ flowchart TB
     accTitle: CI gates documentation and binary publication separately
     accDescr: Changed paths select CI jobs. After successful same-repository push CI on main, Pages deploys a built site only while its commit is current. Release selection separately checks for pending binary or publishing changes.
     Changes["Changed paths"] --> Jobs["Selected CI jobs"]
-    Jobs --> Gate["ci-success gate"]
-    Gate -- "Main push passed" --> Docs["Pages deploy<br/>(if built & current)"]
-    Gate -- "Main push passed" --> Release["Release build<br/>(if binary changed)"]
+    Jobs --> Gate["Main push passes CI"]
+    Gate --> Docs["Pages"]
+    Gate --> Release["CLI release"]
 ```
 
-Only successful, same-repository **push** runs on `main` can publish a site
-update or binary release; pull request runs never publish.
+Only successful, same-repository **push** runs on `main` can publish. The
+two outputs are independent: Pages needs a built site from the current commit;
+a CLI release needs pending binary or publishing changes. Pull request runs
+never publish either output.
 
 Every run executes always-on checks (Markdown links, skill metadata,
 actionlint, workflow contracts, and classifier tests), while site builds,

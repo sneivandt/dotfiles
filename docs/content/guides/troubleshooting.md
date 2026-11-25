@@ -21,7 +21,7 @@ output.
 | Symptom | Start here | First evidence |
 |---|---|---|
 | No CLI starts or a download is rejected | [Wrapper download fails](#wrapper-download-fails) | Terminal error and selected binary publisher |
-| Wrong role or private configuration | [No profile selected](#no-profile-selected) or [Overlay is ignored](#overlay-is-ignored) | Flags, environment, and repository-local selection |
+| Wrong profile or private configuration | [No profile selected](#no-profile-selected) or [Overlay is ignored](#overlay-is-ignored) | Flags, environment, and repository-local selection |
 | Existing content blocks a link | [Home symlink preview](../reference/home-symlinks.md#preview-and-apply) or [Windows symlink fails](#windows-symlink-fails) | Destination type, current link target, and proposed source |
 | A task is absent, skipped, or blocked | [Task is missing or skipped](#task-is-missing-or-skipped) | Failed run ID, reason, and selected graph |
 | Applications do not install | [Packages do not install](#packages-do-not-install) | Package task's diagnostics, exact ID, and provider |

@@ -14,7 +14,7 @@ with the role to select entries from `conf/`.
 - Use `base` for core shell tools and terminal configuration.
 - Use `desktop` for everything in `base` plus workstation applications and graphical settings.
 
-Compare the tasks available for each role without changing your saved choice:
+Compare the tasks available for each profile without changing your saved choice:
 
 ```bash
 dotfiles list --profile base

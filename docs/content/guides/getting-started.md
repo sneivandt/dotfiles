@@ -71,7 +71,7 @@ Before applying for the first time, review these defaults carefully:
   times are all at least 8 days old. Arch desktops also enable
   [~/screenshots cleanup](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service)
   for files, links, and empty directories last modified at least 31 days ago.
-- **System settings:** both roles can touch privileged configuration. Inspect
+- **System settings:** either profile can change privileged configuration. Inspect
   [system files](../reference/system-configuration-files.md#configuration),
   [services](../reference/systemd-units.md#configuration), and Windows
   [registry settings](windows-and-wsl.md#registry-settings).

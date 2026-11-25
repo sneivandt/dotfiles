@@ -6,6 +6,9 @@ from script_test_support import BASH, ScriptFixture
 
 MOCKS = r"""
 command() {
+    if [ "$1" = "-v" ] && [ "$2" = "quickshell" ]; then
+        [ "${HAVE_QUICKSHELL:-0}" = 1 ]; return
+    fi
     if [ "$1" = "-v" ] && [ "$2" = "notify-send" ]; then
         [ "${NO_NOTIFY:-0}" = 0 ]; return
     fi
@@ -18,6 +21,10 @@ wpctl() {
         [ "${READBACK_FAIL:-0}" = 0 ] || return 37
         printf '%s\n' "${VOLUME_STATE:-Volume: 0.55}"
     fi
+}
+quickshell() {
+    printf '%s\n' "$*" > "$HOME/osd"
+    return "${QUICKSHELL_STATUS:-0}"
 }
 notify-send() {
     printf '%s\n' "$@" > "$HOME/notification"
@@ -81,6 +88,22 @@ class VolumeTests(ScriptFixture):
             with self.subTest(env=env):
                 result = self.volume("up", **env)
                 self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_quickshell_osd_suppresses_duplicate_notification_and_falls_back(self):
+        result = self.volume("up", HAVE_QUICKSHELL="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.work / "osd").read_text().strip(), "ipc call osd display volume 55 false")
+        self.assertFalse((self.work / "notification").exists())
+
+        (self.work / "osd").unlink()
+        result = self.volume("mic-mute", HAVE_QUICKSHELL="1", VOLUME_STATE="Volume: 0.55 [MUTED]")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.work / "osd").read_text().strip(), "ipc call osd display microphone 55 true")
+        self.assertFalse((self.work / "notification").exists())
+
+        result = self.volume("up", HAVE_QUICKSHELL="1", QUICKSHELL_STATUS="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Volume 55%", (self.work / "notification").read_text())
 
     def test_invalid_action_has_no_side_effects(self):
         result = self.volume("invalid")

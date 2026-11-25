@@ -13,5 +13,5 @@ end
 set_default_env("QT_QPA_PLATFORM", "wayland;xcb")
 set_default_env("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")
 set_default_env("GDK_BACKEND", "wayland,x11")
-set_default_env("XCURSOR_THEME", "Adwaita")
+set_default_env("XCURSOR_THEME", "Bibata-Modern-Classic")
 set_default_env("XCURSOR_SIZE", "24")

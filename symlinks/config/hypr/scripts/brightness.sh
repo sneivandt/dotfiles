@@ -15,12 +15,16 @@ for device in "${BACKLIGHT_DIR:-/sys/class/backlight}"/*; do
   [ -d "$device" ] || continue
   brightnessctl --class=backlight --quiet --min-value=1 set "$change"
 
-  # Feedback is optional; a notification failure must not undo a brightness change.
-  command -v notify-send >/dev/null 2>&1 || exit 0
+  # Feedback is optional; an OSD or notification failure must not undo a brightness change.
   current=$(brightnessctl --class=backlight get) || exit 0
   maximum=$(brightnessctl --class=backlight max) || exit 0
   percent=$(awk -v current="$current" -v maximum="$maximum" 'BEGIN { if (maximum > 0) printf "%.0f", current * 100 / maximum }')
   [ -n "$percent" ] || exit 0
+  if command -v quickshell >/dev/null 2>&1 \
+    && quickshell ipc call osd display brightness "$percent" false >/dev/null 2>&1; then
+    exit 0
+  fi
+  command -v notify-send >/dev/null 2>&1 || exit 0
   notify-send --app-name=dotfiles --category=progress --expire-time=2000 \
     --hint="string:x-canonical-private-synchronous:dotfiles-brightness" \
     --hint="int:value:$percent" --icon=display-brightness-symbolic \

@@ -43,10 +43,14 @@ var padding = 16
 var textSmall = 12
 var textBody = 13
 var textHeading = 16
-var barHeight = 36
+var barHeight = 40
+var barTopMargin = 8
+var barBottomMargin = 4
 var barControlHeight = 28
-// Keep these aligned with gaps_out and border_size in hypr/conf/appearance.lua.
+// Keep these aligned with gaps_out ({ top = 4, right = 8, bottom = 8, left = 8 })
+// and border_size in hypr/conf/appearance.lua.
 var windowGap = 8
+var windowGapTop = 4
 var windowBorderWidth = 2
 
 var font = "Source Code Pro"

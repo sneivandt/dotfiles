@@ -57,9 +57,11 @@ PanelWindow {
     RowLayout {
         id: barLayout
         anchors.fill: parent
-        anchors.leftMargin: 8
-        anchors.rightMargin: 8
-        spacing: 8
+        anchors.topMargin: Theme.barTopMargin
+        anchors.bottomMargin: Theme.barBottomMargin
+        anchors.leftMargin: Theme.windowGap
+        anchors.rightMargin: Theme.windowGap
+        spacing: Theme.spacing
 
         WorkspaceGroup {
             id: workspaceGroup

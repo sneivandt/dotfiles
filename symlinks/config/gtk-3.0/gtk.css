@@ -1,4 +1,4 @@
-/* Tokyo Night surfaces for GTK 3 file choosers. */
+/* Tokyo Night surfaces for GTK 3 file choosers and Thunar. */
 @define-color files_canvas #1a1b26;
 @define-color files_panel #1f2333;
 @define-color files_chrome #24283b;
@@ -9,14 +9,25 @@
 @define-color files_selection #293d60;
 
 window.filechooser,
-filechooser treeview.view {
+filechooser treeview.view,
+window.thunar,
+window.thunar .standard-view,
+window.thunar .standard-view .view,
+window.thunar treeview.view,
+window.thunar iconview.view {
   background-color: @files_canvas;
   color: @files_text;
 }
 
 window.filechooser headerbar,
 window.filechooser .dialog-action-box,
-filechooser treeview header button {
+filechooser treeview header button,
+window.thunar menubar,
+window.thunar toolbar,
+window.thunar .location-bar,
+window.thunar statusbar,
+window.thunar notebook > header,
+window.thunar treeview header button {
   background-image: none;
   background-color: @files_chrome;
   border-color: @files_edge;
@@ -28,12 +39,15 @@ window.filechooser headerbar {
   padding: 4px 8px;
 }
 
-filechooser treeview header button:hover {
+filechooser treeview header button:hover,
+window.thunar treeview header button:hover,
+window.thunar toolbar button:hover {
   background-color: @files_edge;
   color: @files_text;
 }
 
-filechooser entry {
+filechooser entry,
+window.thunar entry {
   background-image: none;
   background-color: @files_canvas;
   border: 1px solid @files_edge;
@@ -42,26 +56,41 @@ filechooser entry {
   color: @files_text;
 }
 
-filechooser entry:focus {
+filechooser entry:focus,
+window.thunar entry:focus {
   border-color: @files_accent;
   box-shadow: inset 0 0 0 1px @files_accent;
 }
 
-filechooser placessidebar list {
+filechooser placessidebar list,
+window.thunar .sidebar,
+window.thunar .sidebar treeview.view {
   background-color: @files_panel;
   color: @files_secondary;
 }
 
 filechooser treeview.view:selected,
-filechooser placessidebar row:selected {
+filechooser placessidebar row:selected,
+window.thunar .standard-view .view:selected,
+window.thunar treeview.view:selected,
+window.thunar iconview.view:selected,
+window.thunar .sidebar treeview.view:selected {
   background-color: @files_selection;
   color: @files_text;
 }
 
 filechooser treeview.view:selected:focus,
-filechooser placessidebar row:selected:focus {
+filechooser placessidebar row:selected:focus,
+window.thunar .standard-view .view:selected:focus,
+window.thunar treeview.view:selected:focus,
+window.thunar iconview.view:selected:focus,
+window.thunar .sidebar treeview.view:selected:focus {
   background-color: @files_accent;
   color: @files_canvas;
+}
+
+window.thunar paned > separator {
+  background-color: @files_edge;
 }
 
 window.filechooser.csd decoration {

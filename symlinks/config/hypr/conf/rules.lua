@@ -28,3 +28,40 @@ hl.window_rule({
     match = { title = "^Select Project Root$", float = true },
     decorate = false,
 })
+
+-- Frosted glass blur for translucent shell, launcher, and notification layers.
+hl.layer_rule({
+    name = "blur-bar",
+    match = { namespace = "^dotfiles-bar$" },
+    blur = true,
+    blur_popups = true,
+    ignore_alpha = 0.2,
+})
+
+hl.layer_rule({
+    name = "blur-osd",
+    match = { namespace = "^dotfiles-osd$" },
+    blur = true,
+    ignore_alpha = 0.2,
+})
+
+hl.layer_rule({
+    name = "blur-reload-notice",
+    match = { namespace = "^quickshell-reload-notice$" },
+    blur = true,
+    ignore_alpha = 0.2,
+})
+
+hl.layer_rule({
+    name = "blur-launcher",
+    match = { namespace = "^launcher$" },
+    blur = true,
+    ignore_alpha = 0.2,
+})
+
+hl.layer_rule({
+    name = "blur-notifications",
+    match = { namespace = "^notifications$" },
+    blur = true,
+    ignore_alpha = 0.2,
+})

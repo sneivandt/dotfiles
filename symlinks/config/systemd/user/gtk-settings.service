@@ -11,6 +11,8 @@ RemainAfterExit=yes
 ExecStart=/usr/bin/gsettings set org.gnome.desktop.interface color-scheme prefer-dark
 ExecStart=/usr/bin/gsettings set org.gnome.desktop.interface gtk-theme Adwaita-dark
 ExecStart=/usr/bin/gsettings set org.gnome.desktop.interface icon-theme Tokyo-Night
+ExecStart=/usr/bin/gsettings set org.gnome.desktop.interface cursor-theme Bibata-Modern-Classic
+ExecStart=/usr/bin/gsettings set org.gnome.desktop.interface cursor-size 24
 ExecStart=/usr/bin/gsettings set org.gnome.desktop.interface font-name "Noto Sans 11"
 ExecStart=/usr/bin/gsettings set org.gtk.Settings.FileChooser sort-directories-first true
 

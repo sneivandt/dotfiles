@@ -15,7 +15,7 @@ PopupWindow {
     // Animate inside a stable Wayland buffer; resizing it mid-transition flickers.
     property real reservedContentHeight: availableContentHeight
     readonly property int shadowMargin: 8
-    readonly property int topOffset: Theme.windowGap + Theme.windowBorderWidth
+    readonly property int topOffset: Theme.windowGap
     readonly property int screenInset: Theme.windowGap + shadowMargin
     readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
     readonly property int availableContentHeight: Math.max(96, (anchorWindow && anchorWindow.screen ? anchorWindow.screen.height : 720) - (anchorWindow ? anchorWindow.height : Theme.barHeight) - topOffset - Theme.windowGap - Theme.padding * 2 - shadowMargin * 2)
@@ -49,7 +49,7 @@ PopupWindow {
                 return;
             const point = root.anchorWindow.contentItem.mapFromItem(root.anchorItem, root.anchorItem.width - root.width + root.shadowMargin, root.anchorItem.height + root.topOffset - root.shadowMargin);
             anchor.rect.x = root.alignToWindowFrame ? root.anchorWindow.contentItem.width - Theme.windowGap + Theme.windowBorderWidth - root.width + root.shadowMargin : point.x;
-            anchor.rect.y = root.alignToWindowFrame ? root.anchorWindow.contentItem.height + Theme.windowGap - root.shadowMargin : point.y;
+            anchor.rect.y = root.alignToWindowFrame ? root.anchorWindow.contentItem.height + Theme.windowGapTop - root.shadowMargin : point.y;
         }
     }
 

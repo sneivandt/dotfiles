@@ -97,9 +97,11 @@ shortcuts are always available:
 | Super + F4 | Toggle microphone mute |
 | Super + F5 / F6 | Lower / raise display brightness by 5% |
 
-Volume follows the default output via `pactl` (and can go above 100%), while
+Volume follows the default output via `wpctl` (and can go above 100%), while
 media playback uses `playerctl`. Dedicated hardware media keys also work on the
-lock screen; the `Super + F*` fallbacks do not.
+lock screen; the `Super + F*` fallbacks do not. Volume and brightness changes
+appear in Quickshell's bottom-center OSD when the shell is running, falling back
+to Mako progress notifications otherwise.
 
 [brightness.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/scripts/brightness.sh)
 adjusts display backlights (never keyboard LEDs), keeps brightness above zero,
@@ -166,9 +168,7 @@ Because systemd enforces a finite sleep-inhibit timeout, **if locking fails,
 the machine may still suspend**. Waking from sleep turns the displays back on
 at the lock screen without unlocking the session.
 
-Hyprlock uses a solid background with animations disabled to work around a
-known crash when displays reconnect. Before turning either feature back on,
-check the tracked issue and affected version noted in
+Hyprlock uses a solid Tokyo Night background with animations disabled in
 [hyprlock.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprlock.conf).
 
 ## Where to customize

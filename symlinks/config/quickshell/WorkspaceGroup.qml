@@ -11,9 +11,23 @@ BarGroup {
     required property var activeToplevel
     required property real titleWidthBudget
     readonly property int activeId: activeWorkspace ? activeWorkspace.id : 0
+
+    function workspaceFor(number) {
+        return workspaces.find(workspace => workspace && workspace.id === number) || null;
+    }
+
+    function isUrgent(workspace) {
+        if (!workspace)
+            return false;
+        if (workspace.urgent === true)
+            return true;
+        const toplevels = workspace.toplevels && workspace.toplevels.values ? workspace.toplevels.values : [];
+        return toplevels.some(toplevel => toplevel && toplevel.urgent === true);
+    }
+
     readonly property var shownWorkspaceIds: {
         const monitor = activeWorkspace ? activeWorkspace.monitor : null;
-        const ids = workspaces.filter(workspace => workspace.id >= 1 && workspace.id <= 9 && (workspace.id === activeId || workspace.toplevels.values.length > 0 || (workspace.active && (!monitor || (workspace.monitor && workspace.monitor.id !== monitor.id))))).map(workspace => workspace.id);
+        const ids = workspaces.filter(workspace => workspace && workspace.id >= 1 && workspace.id <= 9 && (workspace.id === activeId || workspace.toplevels.values.length > 0 || isUrgent(workspace) || (workspace.active && (!monitor || (workspace.monitor && workspace.monitor.id !== monitor.id))))).map(workspace => workspace.id);
         // The monitor can switch before the workspace model includes its new entry.
         if (activeId >= 1 && activeId <= 9 && !ids.includes(activeId))
             ids.push(activeId);
@@ -60,19 +74,25 @@ BarGroup {
                     }
                     required property int index
                     readonly property int number: index + 1
+                    readonly property var workspaceEntry: root.workspaceFor(number)
                     readonly property bool current: root.activeId === number
+                    readonly property bool urgent: !current && root.isUrgent(workspaceEntry)
+                    readonly property bool otherMonitor: !current && !urgent && workspaceEntry !== null && workspaceEntry.active === true
                     visible: root.shownWorkspaceIds.includes(number)
                     width: Theme.barControlHeight
                     horizontalPadding: 0
-                    tooltip: "Workspace " + number
+                    tooltip: "Workspace " + number + (urgent ? " (urgent)" : (otherMonitor ? " (other monitor)" : ""))
                     onActivated: root.workspaceRequested(number)
                     contentItem: Item {
                         Rectangle {
+                            objectName: "workspaceIndicator" + workspaceButton.number
                             anchors.centerIn: parent
-                            width: workspaceButton.current ? 14 : 6
+                            width: workspaceButton.current ? 16 : (workspaceButton.urgent || workspaceButton.otherMonitor ? 10 : 6)
                             height: 6
                             radius: 3
-                            color: workspaceButton.current ? Theme.blue : Theme.mutedStrong
+                            color: workspaceButton.current ? Theme.blue : (workspaceButton.urgent ? Theme.red : (workspaceButton.otherMonitor ? "transparent" : Theme.mutedStrong))
+                            border.width: workspaceButton.otherMonitor ? 1.5 : 0
+                            border.color: workspaceButton.otherMonitor ? Theme.blue : "transparent"
                             Behavior on width {
                                 NumberAnimation {
                                     duration: Theme.animationNormal

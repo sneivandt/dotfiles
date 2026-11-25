@@ -6,6 +6,9 @@ from script_test_support import BASH, ScriptFixture
 
 MOCKS = r"""
 command() {
+    if [ "$1" = "-v" ] && [ "$2" = "quickshell" ]; then
+        [ "${HAVE_QUICKSHELL:-0}" = 1 ]; return
+    fi
     if [ "$1" = "-v" ] && [ "$2" = "notify-send" ]; then
         [ "${NO_NOTIFY:-0}" = 0 ]; return
     fi
@@ -27,6 +30,10 @@ brightnessctl() {
             ;;
         *) return 99 ;;
     esac
+}
+quickshell() {
+    printf '%s\n' "$*" > "$HOME/osd"
+    return "${QUICKSHELL_STATUS:-0}"
 }
 notify-send() {
     printf '%s\n' "$@" > "$HOME/notification"
@@ -84,6 +91,16 @@ class BrightnessTests(ScriptFixture):
             with self.subTest(env=env):
                 result = self.brightness("up", **env)
                 self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_quickshell_osd_suppresses_duplicate_notification_and_falls_back(self):
+        result = self.brightness("up", HAVE_QUICKSHELL="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.work / "osd").read_text().strip(), "ipc call osd display brightness 60 false")
+        self.assertFalse((self.work / "notification").exists())
+
+        result = self.brightness("up", HAVE_QUICKSHELL="1", QUICKSHELL_STATUS="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Brightness 60%", (self.work / "notification").read_text())
 
     def test_invalid_action_has_no_side_effects(self):
         result = self.brightness("invalid")

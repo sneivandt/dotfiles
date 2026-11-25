@@ -53,8 +53,8 @@ PanelWindow {
     }
 
     margins {
-        top: Theme.barHeight + Theme.spacing
-        right: Theme.spacing
+        top: Theme.barHeight + Theme.windowGapTop
+        right: Theme.windowGap
     }
 
     Timer {

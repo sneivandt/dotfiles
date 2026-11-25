@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 
 import QtQml
 import Quickshell
+import Quickshell.Io
 
 ShellRoot {
     id: shell
@@ -40,6 +41,17 @@ ShellRoot {
     }
     ReloadNotice {
         id: reloadNotice
+    }
+    Osd {
+        id: osd
+        audio: audioState
+        suppressAudio: shell.openMenu instanceof VolumeMenu && shell.openMenu.visible
+    }
+    IpcHandler {
+        target: "osd"
+        function display(kind: string, percent: string, muted: string): void {
+            osd.show(kind, percent, muted);
+        }
     }
 
     Connections {

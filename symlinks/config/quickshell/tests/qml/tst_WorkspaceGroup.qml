@@ -117,6 +117,47 @@ Item {
             compare(group.shownWorkspaceIds, [1, 4]);
         }
 
+        function test_workspace_indicators_distinguish_active_other_monitor_urgent_and_occupied() {
+            const monitor = { id: 0 };
+            const current = workspace(1, monitor, true, true);
+            const occupied = workspace(2, monitor, true, false);
+            const otherMonitor = workspace(3, { id: 1 }, true, true);
+            const urgent = {
+                id: 4,
+                monitor: monitor,
+                active: false,
+                urgent: true,
+                toplevels: { values: [{}] }
+            };
+            const urgentToplevel = {
+                id: 5,
+                monitor: monitor,
+                active: false,
+                urgent: false,
+                toplevels: { values: [{ urgent: true }] }
+            };
+            const group = makeGroup([current, occupied, otherMonitor, urgent, urgentToplevel], current, null);
+            compare(group.shownWorkspaceIds, [1, 2, 3, 4, 5]);
+
+            const activeDot = findChild(group, "workspaceIndicator1");
+            const occupiedDot = findChild(group, "workspaceIndicator2");
+            const otherDot = findChild(group, "workspaceIndicator3");
+            const urgentDot = findChild(group, "workspaceIndicator4");
+            const urgentToplevelDot = findChild(group, "workspaceIndicator5");
+
+            tryCompare(activeDot, "width", 16);
+            compare(activeDot.border.width, 0);
+            tryCompare(occupiedDot, "width", 6);
+            compare(occupiedDot.border.width, 0);
+            tryCompare(otherDot, "width", 10);
+            compare(otherDot.border.width, 1.5);
+            compare(otherDot.color, Qt.color("transparent"));
+            tryCompare(urgentDot, "width", 10);
+            compare(urgentDot.color, Qt.color("#f7768e"));
+            tryCompare(urgentToplevelDot, "width", 10);
+            compare(urgentToplevelDot.color, Qt.color("#f7768e"));
+        }
+
         function test_title_is_measured_without_waiting_for_layout() {
             const used = workspace(1, {
                 id: 0

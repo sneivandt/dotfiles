@@ -96,6 +96,7 @@ packages = [
   "xdg-desktop-portal-gtk",
   "xdg-desktop-portal-hyprland",
   "xorg-xwayland",
+  { name = "bibata-cursor-theme-bin", aur = true },
   { name = "chatgpt-desktop", aur = true },
   { name = "chromium-widevine", aur = true },
   { name = "github-copilot-app-dotfiles", aur = true },

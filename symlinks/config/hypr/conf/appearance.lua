@@ -2,7 +2,8 @@
 hl.config({
     general = {
         gaps_in = 4,
-        gaps_out = 8,
+        -- Top gap (4) combines with the bar's bottom inset (4) to match the 8px outer edges.
+        gaps_out = { top = 4, right = 8, bottom = 8, left = 8 },
         border_size = 2,
         col = {
             active_border = { colors = { "rgb(7aa2f7)", "rgb(bb9af7)" }, angle = 45 },
@@ -14,8 +15,16 @@ hl.config({
 
     decoration = {
         rounding = 8,
+        rounding_power = 3.5,
+        dim_inactive = true,
+        dim_strength = 0.08,
         blur = {
-            enabled = false,
+            enabled = true,
+            size = 6,
+            passes = 2,
+            new_optimizations = true,
+            vibrancy = 0.16,
+            ignore_opacity = true,
         },
         shadow = {
             enabled = true,
@@ -53,14 +62,16 @@ hl.config({
     },
 })
 
--- Remove gaps and borders for maximized windows (f[1]).
-hl.workspace_rule({
-    workspace = "f[1]",
-    gaps_in = 0,
-    gaps_out = 0,
-    no_border = true,
-    no_rounding = true,
-})
+-- Remove gaps and borders for single tiled (w[tv1]) and maximized (f[1]) windows.
+for _, workspace in ipairs({ "w[tv1]", "f[1]" }) do
+    hl.workspace_rule({
+        workspace = workspace,
+        gaps_in = 0,
+        gaps_out = 0,
+        no_border = true,
+        no_rounding = true,
+    })
+end
 
 hl.curve("smooth", { type = "bezier", points = { { 0.05, 0.9 }, { 0.1, 1.0 } } })
 

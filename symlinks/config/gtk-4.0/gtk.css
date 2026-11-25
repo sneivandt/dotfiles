@@ -1,3 +1,35 @@
-/* Existing links to this stylesheet can remain in place.
- * GTK4 dark-theme preference is managed through gtk-4.0/settings.ini and gsettings.
- */
+/* Tokyo Night Night surfaces for GTK 4 and libadwaita applications. */
+@define-color window_bg_color #1a1b26;
+@define-color window_fg_color #c0caf5;
+@define-color view_bg_color #16161e;
+@define-color view_fg_color #c0caf5;
+@define-color headerbar_bg_color #1f2333;
+@define-color headerbar_fg_color #c0caf5;
+@define-color headerbar_border_color #414868;
+@define-color headerbar_backdrop_color #1a1b26;
+@define-color sidebar_bg_color #1f2333;
+@define-color sidebar_fg_color #c0caf5;
+@define-color sidebar_backdrop_color #1a1b26;
+@define-color secondary_sidebar_bg_color #1f2333;
+@define-color secondary_sidebar_fg_color #c0caf5;
+@define-color card_bg_color #24283b;
+@define-color card_fg_color #c0caf5;
+@define-color dialog_bg_color #1f2333;
+@define-color dialog_fg_color #c0caf5;
+@define-color popover_bg_color #1f2333;
+@define-color popover_fg_color #c0caf5;
+@define-color accent_bg_color #7aa2f7;
+@define-color accent_fg_color #1a1b26;
+@define-color accent_color #7aa2f7;
+@define-color destructive_bg_color #f7768e;
+@define-color destructive_fg_color #1a1b26;
+@define-color destructive_color #f7768e;
+@define-color success_bg_color #9ece6a;
+@define-color success_fg_color #1a1b26;
+@define-color success_color #9ece6a;
+@define-color warning_bg_color #e0af68;
+@define-color warning_fg_color #1a1b26;
+@define-color warning_color #e0af68;
+@define-color error_bg_color #f7768e;
+@define-color error_fg_color #1a1b26;
+@define-color error_color #f7768e;

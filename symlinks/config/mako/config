@@ -7,9 +7,10 @@ font=Source Code Pro 11
 width=368
 height=200
 # The bar's exclusive zone already supplies the top offset.
-# Align with ShellPopup's frame edge: gaps_out (8) - border_size (2).
+# Align with ShellPopup's frame edge: gaps_out (8) - border_size (2) on the
+# right, and gaps_out top (4) below the bar.
 outer-margin=0,6,0
-margin=8,0
+margin=4,0
 padding=16
 anchor=top-right
 border-size=1
@@ -17,8 +18,8 @@ border-radius=12
 max-visible=3
 layer=overlay
 
-# Colors (Tokyo Night)
-background-color=#1f2335fa
+# Colors (Tokyo Night Night)
+background-color=#1a1b26fa
 text-color=#c0caf5
 border-color=#414868
 
@@ -32,17 +33,18 @@ max-history=100
 default-timeout=8000
 group-by=app-name
 
-# Progress bar (e.g. volume, brightness)
+# Progress bar (e.g. volume, brightness fallback when Quickshell is not running)
 [category=progress]
 # Transient feedback should not fill notification history.
 history=0
 border-color=#7aa2f7
+progress-color=over #7aa2f733
 default-timeout=2000
 group-by=category
 
 # Low urgency — subdued styling
 [urgency=low]
-background-color=#1f2335fa
+background-color=#1a1b26fa
 text-color=#9aa5ce
 border-color=#414868
 default-timeout=5000

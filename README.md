@@ -24,10 +24,6 @@ and review the settings before using it on your own machine.
 
 ## What it manages
 
-Which settings apply depends on the operating system and the
-[profile](https://dotfiles.stuartneivandt.com/profiles-and-categories):
-`base` covers command-line tools, while `desktop` adds workstation settings.
-
 | Area | Examples from this setup |
 |---|---|
 | Shells and terminals | Zsh, Bash, and PowerShell startup files, dotfiles completions, tmux, Alacritty, and Windows Terminal |

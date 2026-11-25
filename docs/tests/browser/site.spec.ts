@@ -114,21 +114,11 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
   await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute('content', 'Dotfiles');
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/');
   await expect(page.locator('.VPFeatures .VPFeature')).toHaveCount(0);
-  const previewImg = page.locator('.home-showcase .home-preview img[src="/assets/terminal-screenshot.svg"]');
-  const previewCaption = page.locator('.home-showcase .home-preview figcaption');
-  const homeAbout = page.locator('.home-showcase .home-about');
-  await expect(previewImg).toBeVisible();
-  await expect(previewCaption).toBeVisible();
-  await expect(homeAbout.locator('h2')).toHaveText('About these dotfiles');
+  const homeAbout = page.locator('.home-about');
+  await expect(homeAbout.getByRole('heading', { name: 'About these dotfiles' })).toBeVisible();
   await expect(homeAbout.locator('p').first()).not.toBeEmpty();
-  const [captionBox, imgBox, aboutBox, previewBox] = await Promise.all([
-    previewCaption.boundingBox(),
-    previewImg.boundingBox(),
-    homeAbout.boundingBox(),
-    page.locator('.home-showcase .home-preview').boundingBox(),
-  ]);
-  expect(captionBox!.y + captionBox!.height).toBeLessThanOrEqual(imgBox!.y);
-  if (!isMobile) expect(aboutBox!.x + aboutBox!.width).toBeLessThanOrEqual(previewBox!.x);
+  await expect(homeAbout.getByRole('link', { name: 'Getting started' })).toHaveAttribute('href', '/getting-started');
+  await expect(page.locator('img[src="/assets/terminal-screenshot.svg"]')).toHaveCount(0);
   const footerLink = page.locator('.site-footer').getByRole('link', { name: 'Stuart Neivandt', exact: true });
   await expect(footerLink).toBeVisible();
   await expect(footerLink).toHaveAttribute('href', 'https://stuartneivandt.com/');
@@ -833,7 +823,7 @@ for (const theme of ['light', 'dark'] as const) {
     for (const route of ['/', '/getting-started', '/package-management', '/private-overlays']) {
       await page.goto(route);
       const selector = route === '/'
-        ? '.VPHero .tagline, .VPHero .actions .VPButton, main p, main p a, main li a, .home-preview figcaption, .site-footer, .site-footer a'
+        ? '.VPHero .tagline, .VPHero .actions .VPButton, main p, main p a, main li a, .site-footer, .site-footer a'
         : 'main p, main p a, main li a, main .custom-block-title, .site-footer, .site-footer a';
       const measurements = await page.locator(selector).evaluateAll((elements) => {
         type Color = [number, number, number, number];

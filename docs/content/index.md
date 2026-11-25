@@ -25,8 +25,7 @@ hero:
       link: https://github.com/sneivandt/dotfiles
 ---
 
-<section class="home-showcase">
-<div class="home-about">
+<section class="home-about">
 
 ## About these dotfiles
 
@@ -47,10 +46,4 @@ your own machine, start with [Getting started](guides/getting-started.md) to
 review the defaults, back up existing files, and preview what would change
 before applying anything.
 
-</div>
-
-<figure class="home-preview">
-  <figcaption>A single <code>dotfiles update</code> upgrades the CLI, syncs the checkout, links configs, and installs packages.</figcaption>
-  <img src="/assets/terminal-screenshot.svg" width="760" height="548" alt="Animated terminal session: one dotfiles update groups CLI upgrade and repository sync notices beneath its header, then links configuration, refreshes shell completions, and installs missing packages">
-</figure>
 </section>

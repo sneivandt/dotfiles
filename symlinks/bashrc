@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Dotfiles Bash interactive startup
 # shellcheck shell=bash
+# shellcheck source-path=SCRIPTDIR
 
 # Only run for interactive shells
 [[ $- != *i* ]] && return
@@ -49,7 +50,7 @@ __bash_history_append() { history -a; }
 PROMPT_COMMAND=("${PROMPT_COMMAND[@]}" __bash_history_append)
 
 # Path
-# shellcheck disable=SC1090
+# shellcheck source=config/shell/path.sh
 [ -r ~/.config/shell/path.sh ] && . ~/.config/shell/path.sh
 
 # virtualenvwrapper
@@ -57,24 +58,24 @@ PROMPT_COMMAND=("${PROMPT_COMMAND[@]}" __bash_history_append)
 # script (a ~200-500 ms Python startup) on first use.
 if command -v virtualenvwrapper_lazy.sh >/dev/null 2>&1; then
   export WORKON_HOME="${WORKON_HOME:-$HOME/.venv}"
-  # shellcheck disable=SC1091
+  # shellcheck source=/dev/null
   . virtualenvwrapper_lazy.sh
 elif command -v virtualenvwrapper.sh >/dev/null 2>&1; then
   export WORKON_HOME="${WORKON_HOME:-$HOME/.venv}"
-  # shellcheck disable=SC1091
+  # shellcheck source=/dev/null
   . virtualenvwrapper.sh
 fi
 
 # Aliases
-# shellcheck disable=SC1090
+# shellcheck source=config/shell/aliases.sh
 [ -r ~/.config/shell/aliases.sh ] && . ~/.config/shell/aliases.sh
 
 # GUI Aliases (optional)
-# shellcheck disable=SC1090
+# shellcheck source=config/shell/aliases-desktop.sh
 [ -r ~/.config/shell/aliases-desktop.sh ] && . ~/.config/shell/aliases-desktop.sh
 
 # Prompt
-# shellcheck disable=SC1090
+# shellcheck source=config/bash/prompt.bash
 [ -r ~/.config/bash/prompt.bash ] && . ~/.config/bash/prompt.bash
 
 # zoxide
@@ -88,9 +89,9 @@ fi
 # --bash. Keep this aligned with the equivalent block in zshrc.
 for _fzf_dir in /usr/share/fzf /usr/share/doc/fzf/examples; do
   if [ -f "$_fzf_dir/key-bindings.bash" ] || [ -f "$_fzf_dir/completion.bash" ]; then
-    # shellcheck disable=SC1090
+    # shellcheck source=/dev/null
     [ ! -f "$_fzf_dir/key-bindings.bash" ] || . "$_fzf_dir/key-bindings.bash"
-    # shellcheck disable=SC1090
+    # shellcheck source=/dev/null
     [ ! -f "$_fzf_dir/completion.bash" ] || . "$_fzf_dir/completion.bash"
     break
   fi

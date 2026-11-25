@@ -1,7 +1,8 @@
 #!/bin/sh
+# shellcheck source-path=SCRIPTDIR
 
 # User commands must be available to capability checks and session startup.
-# shellcheck disable=SC1090
+# shellcheck source=path.sh
 [ -r ~/.config/shell/path.sh ] && . ~/.config/shell/path.sh
 
 # gpg
@@ -86,15 +87,14 @@ else
   fi
   if [ -n "$_man_bat" ] && command -v col >/dev/null 2>&1; then
     # MANPAGER is executed through shell; quotes are part of the command string
-    # shellcheck disable=SC2089,SC2090
-    export MANPAGER="sh -c 'col -bx | $_man_bat -l man -p'"
+    _man_pager="sh -c 'col -bx | $_man_bat -l man -p'"
     # Disable groff SGR output so col -bx does not leave raw escape fragments.
     export MANROFFOPT="${MANROFFOPT:--c}"
   else
-    # shellcheck disable=SC2090
-    export MANPAGER="less"
+    _man_pager=less
   fi
-  unset _man_bat
+  export MANPAGER="$_man_pager"
+  unset _man_bat _man_pager
 fi
 
 # readline
@@ -139,16 +139,17 @@ if command -v fzf >/dev/null 2>&1; then
 
   # Preview one directory level and cap the output for large directories.
   # FZF parses the quoted preview command from this options string itself.
-  if [ "${FZF_ALT_C_OPTS+x}" != x ]; then
-    # shellcheck disable=SC2089,SC2090
+  if [ "${FZF_ALT_C_OPTS+x}" = x ]; then
+    export FZF_ALT_C_OPTS
+  else
     if command -v eza >/dev/null 2>&1; then
-      FZF_ALT_C_OPTS="--preview 'eza --all --group-directories-first --color=always -- {} | head -80'"
+      _fzf_alt_c_opts="--preview 'eza --all --group-directories-first --color=always -- {} | head -80'"
     else
-      FZF_ALT_C_OPTS="--preview 'ls -A -- {} | head -80'"
+      _fzf_alt_c_opts="--preview 'ls -A -- {} | head -80'"
     fi
+    export FZF_ALT_C_OPTS="$_fzf_alt_c_opts"
+    unset _fzf_alt_c_opts
   fi
-  # shellcheck disable=SC2090
-  export FZF_ALT_C_OPTS
 
   _bat_cmd=
   if command -v bat >/dev/null 2>&1; then
@@ -157,12 +158,9 @@ if command -v fzf >/dev/null 2>&1; then
     _bat_cmd=batcat
   fi
   if [ -n "$_bat_cmd" ]; then
-    if [ "${FZF_CTRL_T_OPTS+x}" != x ]; then
-      # shellcheck disable=SC2089
-      FZF_CTRL_T_OPTS="--preview '$_bat_cmd --style=numbers --color=always --line-range :500 -- {}'"
-    fi
-    # shellcheck disable=SC2090
-    export FZF_CTRL_T_OPTS
+    _fzf_ctrl_t_opts="--preview '$_bat_cmd --style=numbers --color=always --line-range :500 -- {}'"
+    export FZF_CTRL_T_OPTS="${FZF_CTRL_T_OPTS-$_fzf_ctrl_t_opts}"
+    unset _fzf_ctrl_t_opts
   fi
   unset _bat_cmd
 fi

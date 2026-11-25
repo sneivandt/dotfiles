@@ -789,9 +789,8 @@ test_wrapper_release_pinned_urls()
   wrapper="$DIR/dotfiles.sh"
   content=$(cat "$wrapper")
 
-  # shellcheck disable=SC2016
   if echo "$content" | grep -q "resolve_release_tag" && \
-     echo "$content" | grep -q 'releases/download/\$tag' && \
+     echo "$content" | grep -Fq "releases/download/\$tag" && \
      ! echo "$content" | grep -q 'releases/latest/download'; then
     log_verbose "✓ Wrapper resolves release tag and uses pinned URLs for binary and checksum"
   else

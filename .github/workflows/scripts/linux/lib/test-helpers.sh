@@ -1,12 +1,11 @@
 #!/bin/sh
-# shellcheck disable=SC2034
 # Minimal helpers for CI test scripts.
 set -o errexit
 set -o nounset
 
-RED="" GREEN="" YELLOW="" NC=""
+RED="" NC=""
 if [ -t 1 ]; then
-  RED="\033[0;31m"; GREEN="\033[0;32m"; YELLOW="\033[1;33m"; NC="\033[0m"
+  RED="\033[0;31m"; NC="\033[0m"
 fi
 
 log_stage()  { printf ":: %s\n" "$1"; }

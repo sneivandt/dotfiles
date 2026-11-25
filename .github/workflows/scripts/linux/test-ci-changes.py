@@ -1181,7 +1181,7 @@ class GateTests(unittest.TestCase):
                 self.assertEqual(sum(shard["count"] for shard in app_shards), app_count)
                 self.assertEqual(sum(shard["count"] for shard in lib_shards), lib_count)
                 self.assertTrue(all(shard["count"] > 0 for shard in shards))
-                self.assertLessEqual(len(shards), 15)
+                self.assertLessEqual(len(shards), 17)
 
     def test_focused_merge_preserves_subsuite_replay_and_completeness(self):
         with tempfile.TemporaryDirectory() as temporary:

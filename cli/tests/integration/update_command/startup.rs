@@ -378,10 +378,8 @@ fn update_console_separates_tasks_and_keeps_no_op_compact() {
 fn conflicting_overlay_desired_state_stops_update_before_selected_tasks_run() {
     let mut cases = vec![(
         "git-config.toml",
-        "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\" }]\n",
-        "[base]\nsettings = [\
-         { key = \"core.editor\", value = \"vim\" },\
-         { key = \"CORE.EDITOR\", value = \"nano\" }]\n",
+        "[base]\ncore.editor = \"vim\"\n",
+        "[base]\ncore.editor = \"vim\"\nCORE.EDITOR = \"nano\"\n",
         "git.conflicting-values",
     )];
     if cfg!(windows) {

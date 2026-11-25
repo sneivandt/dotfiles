@@ -28,7 +28,7 @@ example, an overlay's `conf/git-config.toml` might set a preferred editor:
 
 ```toml title="dotfiles-private/conf/git-config.toml"
 [base]
-settings = [{ key = "core.editor", value = "nvim" }]
+core.editor = "nvim"
 ```
 
 This adds `core.editor`, or replaces any main declaration for that same key,

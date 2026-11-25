@@ -44,17 +44,14 @@ fn broken_hook_directory_is_not_an_empty_or_retired_source() {
 #[test]
 fn missing_overlay_cannot_replace_the_saved_selection_or_apply_base_settings() {
     let repo = common::TestContextBuilder::new()
-        .with_config_file(
-            "git-config.toml",
-            "[base]\nsettings=[{key='core.editor',value='vim'}]\n",
-        )
+        .with_config_file("git-config.toml", "[base]\ncore.editor = 'vim'\n")
         .build();
     let cli = LifecycleCli::new(repo.root_path());
     let overlay = tempfile::tempdir().unwrap();
     std::fs::create_dir(overlay.path().join("conf")).unwrap();
     std::fs::write(
         overlay.path().join("conf/git-config.toml"),
-        "[base]\nsettings=[{key='core.editor',value='nano'}]\n",
+        "[base]\ncore.editor = 'nano'\n",
     )
     .unwrap();
     let run = |selected_overlay, success| cli.run(selected_overlay, "update", "git", success);
@@ -81,21 +78,14 @@ fn missing_overlay_cannot_replace_the_saved_selection_or_apply_base_settings() {
 #[test]
 fn dangling_optional_overlay_config_cannot_revert_an_installed_preference() {
     let repo = common::TestContextBuilder::new()
-        .with_config_file(
-            "agent-settings.toml",
-            "[base]\nsettings=[{target='copilot',key='model',value='base'}]\n",
-        )
+        .with_config_file("agent-settings.toml", "[base.copilot]\nmodel = 'base'\n")
         .build();
     let cli = LifecycleCli::new(repo.root_path());
     let overlay = tempfile::tempdir().unwrap();
     let conf = overlay.path().join("conf");
     std::fs::create_dir(&conf).unwrap();
     let active = overlay.path().join("active.toml");
-    std::fs::write(
-        &active,
-        "[base]\nsettings=[{target='copilot',key='model',value='overlay'}]\n",
-    )
-    .unwrap();
+    std::fs::write(&active, "[base.copilot]\nmodel = 'overlay'\n").unwrap();
     std::os::unix::fs::symlink("../active.toml", conf.join("agent-settings.toml")).unwrap();
     let update = |selection| cli.command(selection, "update", "agent-settings");
     output(&mut update(Some(overlay.path())), true);

@@ -163,14 +163,8 @@ fn config_validate_collects_diagnostics_from_each_config_domain() {
             "vscode-extensions.toml",
             "[base]\nextensions = [\"invalid_no_dot\"]\n",
         )
-        .with_config_file(
-            "git-config.toml",
-            "[base]\nsettings = [{ key = \"  \", value = \"value\" }]\n",
-        )
-        .with_config_file(
-            "agent-settings.toml",
-            "[base]\nsettings = [{ target = \"copilot\", key = \"  \", value = true }]\n",
-        )
+        .with_config_file("git-config.toml", "[base]\n\"  \" = \"value\"\n")
+        .with_config_file("agent-settings.toml", "[base.copilot]\n\"  \" = true\n")
         .build();
     let platform = linux();
     let warnings = ctx

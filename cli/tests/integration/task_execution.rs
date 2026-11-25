@@ -129,10 +129,7 @@ fn git_config_converges_without_mutating_dry_runs_or_current_values() {
         ("current value", Some("false"), false, Some("false"), false),
     ] {
         let test = common::TestContextBuilder::new()
-            .with_config_file(
-                "git-config.toml",
-                "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n",
-            )
+            .with_config_file("git-config.toml", "[base]\ncore.autocrlf = \"false\"\n")
             .build();
         let ec = test.make_context("base");
         let ctx = ec.ctx.with_dry_run(dry_run);
@@ -209,10 +206,7 @@ fn dry_run_pipeline_produces_no_failures() {
         .with_symlink_source("bashrc")
         .with_hook_source("pre-commit", "#!/bin/sh\nexit 0\n")
         .with_git_hooks_dir()
-        .with_config_file(
-            "git-config.toml",
-            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n",
-        )
+        .with_config_file("git-config.toml", "[base]\ncore.autocrlf = \"false\"\n")
         .build();
 
     let ec = test.make_dry_run_context("base");

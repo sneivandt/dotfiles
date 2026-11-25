@@ -628,10 +628,8 @@ const fn platform(os: Os) -> Platform {
     }
 }
 
-const GIT_SETTINGS: &str = "[base]\nsettings = [\
-    { key = 'fixture.first', value = 'one' }, \
-    { key = 'fixture.second', value = 'two' }, \
-    { key = 'fixture.third', value = 'three' }]\n";
+const GIT_SETTINGS: &str =
+    "[base]\nfixture.first = 'one'\nfixture.second = 'two'\nfixture.third = 'three'\n";
 
 fn git_fixture(os: Os) -> Fixture {
     let fixture = Fixture::new(platform(os));
@@ -728,8 +726,8 @@ fn git_config_transition_updates_selected_keys_and_preserves_other_values() {
             .unwrap();
         fixture.config(
             "git-config.toml",
-            "[base]\nsettings = [{ key = 'fixture.first', value = 'updated' }]\n\
-             [desktop]\nsettings = [{ key = 'fixture.second', value = 'inactive' }]\n",
+            "[base]\nfixture.first = 'updated'\n\
+             [desktop]\nfixture.second = 'inactive'\n",
         );
         let before = fixture.snapshot();
         assert_lifecycle(

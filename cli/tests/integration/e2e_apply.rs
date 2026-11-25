@@ -10,9 +10,7 @@ fn ambiguous_copilot_members_survive_preview_apply_and_retry() {
     let repo = common::TestContextBuilder::new()
         .with_config_file(
             "agent-settings.toml",
-            "[base]\nsettings = [\
-             {target='copilot', key='model', value='requested'},\
-             {target='copilot', key='footer.showBranch', value=true}]\n",
+            "[base.copilot]\nmodel = 'requested'\nfooter.showBranch = true\n",
         )
         .build();
     let home = tempfile::tempdir().unwrap();
@@ -58,9 +56,7 @@ fn agent_settings_overlay_preview_and_repeat_preserve_unmanaged_values() {
         let test = common::TestContextBuilder::new()
             .with_config_file(
                 "agent-settings.toml",
-                "[base]\nsettings = [\
-                 { target = 'copilot', key = 'model', value = 'baseline' },\
-                 { target = 'copilot', key = 'beep', value = false }]\n",
+                "[base.copilot]\nmodel = 'baseline'\nbeep = false\n",
             )
             .build();
         let home = tempfile::tempdir().unwrap();
@@ -68,7 +64,7 @@ fn agent_settings_overlay_preview_and_repeat_preserve_unmanaged_values() {
         std::fs::create_dir(overlay.path().join("conf")).unwrap();
         std::fs::write(
             overlay.path().join("conf/agent-settings.toml"),
-            "[base]\nsettings = [{ target = 'copilot', key = 'model', value = 'work-model' }]\n",
+            "[base.copilot]\nmodel = 'work-model'\n",
         )
         .unwrap();
         let settings_path = home.path().join(".copilot/settings.json");

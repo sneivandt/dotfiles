@@ -7,10 +7,7 @@ fn rewriting_global_git_config_preserves_linux_access_metadata() {
     use std::os::unix::fs::MetadataExt as _;
 
     let repo = common::TestContextBuilder::new()
-        .with_config_file(
-            "git-config.toml",
-            "[base]\nsettings = [{key='core.editor',value='vim'}]\n",
-        )
+        .with_config_file("git-config.toml", "[base]\ncore.editor = 'vim'\n")
         .build();
     let cli = LifecycleCli::new(repo.root_path());
     let config = cli.home.path().join(".gitconfig");
@@ -52,10 +49,7 @@ fn rewriting_global_git_config_preserves_linux_access_metadata() {
 #[test]
 fn global_git_update_honors_the_selected_file_and_later_conditional_includes() {
     let repo = common::TestContextBuilder::new()
-        .with_config_file(
-            "git-config.toml",
-            "[base]\nsettings = [{key='core.editor',value='vim'}]\n",
-        )
+        .with_config_file("git-config.toml", "[base]\ncore.editor = 'vim'\n")
         .build();
     let cli = LifecycleCli::new(repo.root_path());
     let default = cli.home.path().join(".gitconfig");
@@ -119,10 +113,7 @@ fn global_git_update_honors_the_selected_file_and_later_conditional_includes() {
 #[test]
 fn included_git_settings_converge_without_modifying_included_files() {
     let repo = common::TestContextBuilder::new()
-        .with_config_file(
-            "git-config.toml",
-            "[base]\nsettings = [{ key = 'core.autocrlf', value = 'false' }]\n",
-        )
+        .with_config_file("git-config.toml", "[base]\ncore.autocrlf = 'false'\n")
         .build();
     let cli = LifecycleCli::new(repo.root_path());
     let config = cli.home.path().join(".gitconfig");
@@ -160,7 +151,7 @@ fn git_update_lock_contention_retry_and_fresh_home_converge() {
         let repo = common::TestContextBuilder::new()
             .with_config_file(
                 "git-config.toml",
-                "[base]\nsettings = [{ key = 'core.editor', value = 'fixture-editor' }]\n",
+                "[base]\ncore.editor = 'fixture-editor'\n",
             )
             .build();
         let cli = LifecycleCli::new(repo.root_path());

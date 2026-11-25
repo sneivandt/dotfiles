@@ -56,12 +56,13 @@ with your real units; these entries never create unit files:
 units = [
   "backup.timer",
   { name = "fstrim.timer", scope = "system" },
-  { name = "old-backup.timer", scope = "user", enabled = false },
+  { name = "old-backup.timer", enabled = false },
 ]
 ```
 
-A plain string declares an enabled user unit. A table requires `name` and `scope`
-(`user` or `system`), with `enabled` defaulting to `true`. Include a supported suffix
+A plain string declares an enabled user unit. A table requires `name`, with
+`scope` defaulting to `user` (`user` or `system`) and `enabled` defaulting to
+`true`. Include a supported suffix
 (`.service`, `.timer`, `.socket`, `.target`, `.path`, `.mount`, `.automount`, or
 `.swap`) and use the canonical unit name; if the live manager reports an alias,
 Dotfiles asks you to declare the backing unit.

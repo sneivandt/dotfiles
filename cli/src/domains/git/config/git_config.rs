@@ -1,6 +1,6 @@
 //! Git configuration loading.
 use serde::Deserialize;
-#[cfg(test)]
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::infra::config::Diagnostic;
@@ -18,22 +18,83 @@ crate::infra::config::diagnostic_codes! {
 }
 
 /// A git config key-value pair to apply globally.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone)]
 pub struct GitSetting {
     /// Config key (e.g. `"core.autocrlf"`).
     pub key: String,
     /// Desired value (e.g. `"false"`).
     pub value: String,
-    /// File, section, and entry position of the declaration.
-    #[serde(skip)]
+    /// File, section, and key of the declaration.
     pub(crate) origin: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Section {
-    settings: Vec<GitSetting>,
+enum GitConfigNode {
+    Value(String),
+    Table(BTreeMap<String, Self>),
+}
+
+impl<'de> Deserialize<'de> for GitConfigNode {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct NodeVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for NodeVisitor {
+            type Value = GitConfigNode;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a string value or nested table of git settings")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                Ok(GitConfigNode::Value(value.to_owned()))
+            }
+
+            fn visit_string<E: serde::de::Error>(self, value: String) -> Result<Self::Value, E> {
+                Ok(GitConfigNode::Value(value))
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut entries = BTreeMap::new();
+                while let Some((key, value)) = map.next_entry::<String, GitConfigNode>()? {
+                    entries.insert(key, value);
+                }
+                if entries.is_empty() {
+                    return Err(serde::de::Error::custom(
+                        "nested git config table must contain at least one setting",
+                    ));
+                }
+                Ok(GitConfigNode::Table(entries))
+            }
+        }
+
+        deserializer.deserialize_any(NodeVisitor)
+    }
+}
+
+fn flatten_nodes(
+    path: &Path,
+    section: &str,
+    prefix: Option<&str>,
+    nodes: BTreeMap<String, GitConfigNode>,
+    out: &mut Vec<GitSetting>,
+) {
+    for (segment, node) in nodes {
+        let key = match prefix {
+            Some(parent) => format!("{parent}.{segment}"),
+            None => segment,
+        };
+        match node {
+            GitConfigNode::Value(value) => {
+                let origin = Some(format!("{} [{section}] {key}", path.display()));
+                out.push(GitSetting { key, value, origin });
+            }
+            GitConfigNode::Table(nested) => {
+                flatten_nodes(path, section, Some(&key), nested, out);
+            }
+        }
+    }
 }
 
 /// Load active Git settings while retaining their declaration locations.
@@ -53,18 +114,13 @@ fn load(path: &Path, active_categories: &[Category]) -> anyhow::Result<Vec<GitSe
 pub(crate) fn decode(
     document: &toml_loader::ConfigDocument<'_>,
 ) -> anyhow::Result<Vec<(String, Vec<GitSetting>)>> {
-    let path = &document.path;
-    let sections = document.section_items(|section: Section| section.settings)?;
+    let path = document.path;
+    let sections: BTreeMap<String, BTreeMap<String, GitConfigNode>> = document.deserialize()?;
     Ok(sections
         .into_iter()
-        .map(|(section, mut settings)| {
-            for (index, setting) in settings.iter_mut().enumerate() {
-                setting.origin = Some(format!(
-                    "{} [{section}] settings entry {}",
-                    path.display(),
-                    index.saturating_add(1)
-                ));
-            }
+        .map(|(section, nodes)| {
+            let mut settings = Vec::new();
+            flatten_nodes(path, &section, None, nodes, &mut settings);
             (section, settings)
         })
         .collect())
@@ -147,26 +203,36 @@ mod tests {
     fn load_windows_settings() {
         let (_dir, path) = write_temp_toml(
             r#"[windows]
-settings = [
-  { key = "core.autocrlf", value = "false" },
-  { key = "core.symlinks", value = "true" },
-]
+core.autocrlf = "false"
+core.symlinks = "true"
+"remote.Origin.url" = "https://example.com/repo.git"
 "#,
         );
         let settings = load(&path, &[Category::Windows]).unwrap();
-        assert_eq!(settings.len(), 2);
+        assert_eq!(settings.len(), 3);
         assert_eq!(settings[0].key, "core.autocrlf");
         assert_eq!(settings[0].value, "false");
+        assert_eq!(settings[1].key, "core.symlinks");
+        assert_eq!(settings[1].value, "true");
+        assert_eq!(settings[2].key, "remote.Origin.url");
+        assert_eq!(settings[2].value, "https://example.com/repo.git");
     }
 
     #[test]
     fn load_excludes_unmatched_category() {
         let (_dir, path) = write_temp_toml(
             r#"[windows]
-settings = [{ key = "core.autocrlf", value = "false" }]
+core.autocrlf = "false"
 "#,
         );
         let settings = load(&path, &[Category::Base, Category::Linux]).unwrap();
+        assert!(settings.is_empty());
+    }
+
+    #[test]
+    fn load_empty_category_section_returns_empty() {
+        let (_dir, path) = write_temp_toml("[base]\n");
+        let settings = load(&path, &[Category::Base]).unwrap();
         assert!(settings.is_empty());
     }
 
@@ -259,12 +325,11 @@ settings = [{ key = "core.autocrlf", value = "false" }]
         let (_dir, path) = write_temp_toml(
             r#"
 [base]
-settings = [
-  { key = "core.editor", value = "vim" },
-  { key = "core.editor", value = "nano" },
-]
+core.editor = "vim"
+CORE.EDITOR = "nano"
+
 [desktop]
-settings = [{ key = "core.editor", value = "code" }]
+core.editor = "code"
 "#,
         );
         let settings = load(&path, &[Category::Base]).expect("load active settings");
@@ -279,8 +344,8 @@ settings = [{ key = "core.editor", value = "code" }]
             &diagnostics[0].message,
             &[
                 &path.display().to_string(),
-                "[base] settings entry 1",
-                "[base] settings entry 2",
+                "[base] CORE.EDITOR",
+                "[base] core.editor",
             ],
         );
     }
@@ -288,8 +353,8 @@ settings = [{ key = "core.editor", value = "code" }]
     #[test]
     fn conflicting_values_across_active_categories_are_rejected() {
         let (_dir, path) = write_temp_toml(
-            "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\" }]\n\
-             [desktop]\nsettings = [{ key = \"core.editor\", value = \"nano\" }]\n",
+            "[base]\ncore.editor = \"vim\"\n\
+             [desktop]\ncore.editor = \"nano\"\n",
         );
         let settings = load(&path, &[Category::Base, Category::Desktop]).unwrap();
         assert_eq!(validate_conflicts(&settings).len(), 1);
@@ -297,13 +362,12 @@ settings = [{ key = "core.editor", value = "code" }]
 
     rejects_toml! {
         "test.toml", |path| load(path, &[Category::Base]);
-        declaration_origin_cannot_be_supplied_by_configuration:
-            "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\", origin = \"fake\" }]\n";
-        load_returns_error_on_malformed_toml: "[base\nsettings = [";
-        load_returns_error_on_type_mismatch: "[base]\nsettings = [{ key = 123, value = \"ok\" }]\n";
-        load_returns_error_on_unknown_field_in_entry:
-            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\", typo = \"x\" }]\n";
-        load_returns_error_on_unknown_section_field:
-            "[base]\nsetting = [{ key = \"core.autocrlf\", value = \"false\" }]\n";
+        load_returns_error_on_malformed_toml: "[base\ncore.editor = \"vim\"";
+        load_returns_error_on_integer_value: "[base]\ncore.editor = 123\n";
+        load_returns_error_on_boolean_value: "[base]\ncore.symlinks = true\n";
+        load_returns_error_on_legacy_settings_array:
+            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n";
+        load_returns_error_on_empty_nested_table: "[base.core]\n";
+        load_returns_error_on_empty_inline_table: "[base]\ncore = {}\n";
     }
 }

@@ -2,8 +2,6 @@
 # Applied via `git config --global` on the target platform
 
 [windows]
-settings = [
-  { key = "core.longpaths",    value = "true"    },
-  { key = "core.symlinks",     value = "true"    },
-  { key = "credential.helper", value = "manager" },
-]
+core.longpaths = "true"
+core.symlinks = "true"
+credential.helper = "manager"

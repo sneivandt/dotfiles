@@ -1,8 +1,12 @@
 //! Agent harness settings loading.
 use serde::Deserialize;
+#[cfg(test)]
+use std::path::Path;
 
 use crate::infra::config::Diagnostic;
-use crate::infra::config::config_section;
+#[cfg(test)]
+use crate::infra::config::category_matcher::Category;
+use crate::infra::config::toml_loader;
 
 crate::infra::config::diagnostic_codes! {
     "agent-settings";
@@ -13,8 +17,7 @@ crate::infra::config::diagnostic_codes! {
 }
 
 /// An agent harness with a supported user settings document.
-#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum AgentHarness {
     /// GitHub Copilot CLI.
     Copilot,
@@ -39,8 +42,7 @@ impl AgentHarness {
 /// `"footer.showBranch"`) or TOML document (for example
 /// `"model_reasoning_effort"` or `"tui.theme"`). The value is expressed in
 /// TOML and converted to JSON when the target uses JSON.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone)]
 pub struct AgentSetting {
     /// Harness whose user settings document owns this key.
     pub target: AgentHarness,
@@ -50,7 +52,62 @@ pub struct AgentSetting {
     pub value: toml::Value,
 }
 
-config_section!(field: "settings", ty: AgentSetting);
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HarnessSection {
+    #[serde(default)]
+    copilot: toml::Table,
+    #[serde(default)]
+    codex: toml::Table,
+}
+
+fn flatten_table(
+    target: AgentHarness,
+    prefix: Option<&str>,
+    table: toml::Table,
+    out: &mut Vec<AgentSetting>,
+) {
+    for (segment, value) in table {
+        let key = match prefix {
+            Some(parent) => format!("{parent}.{segment}"),
+            None => segment,
+        };
+        if let toml::Value::Table(nested) = value {
+            if nested.is_empty() {
+                out.push(AgentSetting {
+                    target,
+                    key,
+                    value: toml::Value::Table(nested),
+                });
+            } else {
+                flatten_table(target, Some(&key), nested, out);
+            }
+        } else {
+            out.push(AgentSetting { target, key, value });
+        }
+    }
+}
+
+/// Load active agent settings for unit tests.
+#[cfg(test)]
+fn load(path: &Path, active_categories: &[Category]) -> anyhow::Result<Vec<AgentSetting>> {
+    Ok(toml_loader::filter_by_categories(
+        toml_loader::with_optional_document(path, decode)?,
+        active_categories,
+    ))
+}
+
+/// Decode settings once per source before deriving category views.
+pub(crate) fn decode(
+    document: &toml_loader::ConfigDocument<'_>,
+) -> anyhow::Result<Vec<(String, Vec<AgentSetting>)>> {
+    document.section_items(|section: HarnessSection| {
+        let mut settings = Vec::new();
+        flatten_table(AgentHarness::Copilot, None, section.copilot, &mut settings);
+        flatten_table(AgentHarness::Codex, None, section.codex, &mut settings);
+        settings
+    })
+}
 
 /// Find settings that cannot converge to a single value in their target document.
 pub(crate) fn validate_conflicts(settings: &[AgentSetting]) -> Vec<Diagnostic> {
@@ -161,47 +218,86 @@ mod tests {
     #[test]
     fn load_base_settings() {
         let (_dir, path) = write_temp_toml(
-            r#"[base]
-settings = [
-  { target = "copilot", key = "model", value = "claude-opus-4.8" },
-  { target = "copilot", key = "beep", value = false },
-  { target = "codex", key = "model_reasoning_effort", value = "high" },
-]
+            r#"[base.copilot]
+model = "claude-opus-4.8"
+beep = false
+
+[base.codex]
+model_reasoning_effort = "high"
 "#,
         );
         let settings = load(&path, &[Category::Base]).unwrap();
         assert_eq!(settings.len(), 3);
         assert_eq!(settings[0].target, AgentHarness::Copilot);
-        assert_eq!(settings[0].key, "model");
+        assert_eq!(settings[0].key, "beep");
+        assert_eq!(settings[0].value, toml::Value::Boolean(false));
+        assert_eq!(settings[1].target, AgentHarness::Copilot);
+        assert_eq!(settings[1].key, "model");
         assert_eq!(
-            settings[0].value,
+            settings[1].value,
             toml::Value::String("claude-opus-4.8".to_string())
         );
-        assert_eq!(settings[1].value, toml::Value::Boolean(false));
         assert_eq!(settings[2].target, AgentHarness::Codex);
+        assert_eq!(settings[2].key, "model_reasoning_effort");
         assert_eq!(settings[2].value, toml::Value::String("high".to_string()));
     }
 
     #[test]
-    fn load_preserves_nested_table_value() {
+    fn load_flattens_nested_tables_and_preserves_empty_tables_and_arrays() {
         let (_dir, path) = write_temp_toml(
-            r#"[base]
-settings = [
-  { target = "copilot", key = "footer", value = { showBranch = true, showQuota = false } },
-]
+            r#"[base.copilot]
+empty = {}
+items = [{ name = "a" }]
+ide.autoConnect = true
+
+[base.copilot.footer]
+showBranch = true
+showQuota = false
 "#,
         );
         let settings = load(&path, &[Category::Base]).unwrap();
-        let table = settings[0].value.as_table().unwrap();
-        assert_eq!(table["showBranch"], toml::Value::Boolean(true));
-        assert_eq!(table["showQuota"], toml::Value::Boolean(false));
+        let actual: Vec<_> = settings
+            .iter()
+            .map(|setting| (setting.key.as_str(), &setting.value))
+            .collect();
+        assert_eq!(
+            actual,
+            vec![
+                ("empty", &toml::Value::Table(toml::Table::new())),
+                ("footer.showBranch", &toml::Value::Boolean(true)),
+                ("footer.showQuota", &toml::Value::Boolean(false)),
+                ("ide.autoConnect", &toml::Value::Boolean(true)),
+                (
+                    "items",
+                    &toml::Value::Array(vec![toml::Value::Table(toml::Table::from_iter([(
+                        "name".to_string(),
+                        toml::Value::String("a".to_string()),
+                    )]))]),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn load_preserves_empty_key_segments_for_validation() {
+        let (_dir, path) = write_temp_toml(
+            r#"[base.copilot]
+"".showBranch = true
+"#,
+        );
+        let settings = load(&path, &[Category::Base]).unwrap();
+        assert_eq!(settings.len(), 1);
+        assert_eq!(settings[0].key, ".showBranch");
+        let diagnostics = validate(&settings);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, AGENT_SETTINGS_KEY_EMPTY_SEGMENT);
     }
 
     #[test]
     fn load_excludes_unmatched_category() {
         let (_dir, path) = write_temp_toml(
-            r#"[desktop]
-settings = [{ target = "codex", key = "model", value = "x" }]
+            r#"[desktop.codex]
+model = "x"
 "#,
         );
         let settings = load(&path, &[Category::Base, Category::Linux]).unwrap();
@@ -297,11 +393,13 @@ settings = [{ target = "codex", key = "model", value = "x" }]
 
     rejects_toml! {
         "test.toml", |path| load(path, &[Category::Base]);
-        load_returns_error_on_unknown_field_in_entry:
-            "[base]\nsettings = [{ target = \"copilot\", key = \"model\", value = \"x\", typo = \"y\" }]\n";
+        load_returns_error_on_legacy_settings_array:
+            "[base]\nsettings = [{ target = \"copilot\", key = \"model\", value = \"x\" }]\n";
         load_returns_error_on_unknown_target:
-            "[base]\nsettings = [{ target = \"other\", key = \"model\", value = \"x\" }]\n";
-        load_returns_error_on_malformed_toml: "[base\nsettings = [";
+            "[base.other]\nmodel = \"x\"\n";
+        load_returns_error_on_non_table_target:
+            "[base]\ncopilot = \"not-a-table\"\n";
+        load_returns_error_on_malformed_toml: "[base.copilot\nmodel = \"x\"";
     }
 
     #[test]

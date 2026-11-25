@@ -47,20 +47,20 @@ Edit
 
 ```toml
 [windows]
-settings = [
-  { key = "core.longpaths", value = "true" },
-]
+core.longpaths = "true"
 ```
 
-Both fields are strings, including booleans written as `"true"` or `"false"`. Because
-these entries write to **global** Git configuration, avoid contradicting the shared files
-under [symlinks/config/git/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git).
+Declare keys directly under category sections as dotted keys or nested tables;
+leaf values must be strings, including booleans written as `"true"` or `"false"`.
+Because these entries write to **global** Git configuration, avoid contradicting
+the shared files under
+[symlinks/config/git/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git).
 Included files stay untouched. Managed values are written to the global file after its
 includes so scalar settings win, though this does not clear inherited entries for
 multivalue settings such as `credential.helper`.
 
 On Windows, the task also removes global `core.autocrlf` whenever no active declaration
-manages it, even if `settings` is empty. Declare that key explicitly if you want the
+manages it, even if no Git settings are declared. Declare that key explicitly if you want the
 task to set a value instead. This cleanup is independent of the repository-local Git
 keys that store profile and overlay choices.
 

@@ -23,6 +23,7 @@ pub struct SystemdUnit {
     /// Unit name including extension (e.g., `"clean-home-tmp.timer"`).
     pub name: String,
     /// Systemd scope.
+    #[serde(default)]
     pub scope: UnitScope,
     /// Whether the unit should be enabled and started.
     #[serde(default = "default_enabled")]
@@ -340,6 +341,30 @@ units = [{ name = "dhcpcd.service", scope = "system", enabled = false }]
         assert_eq!(units[0].name, "dhcpcd.service");
         assert_eq!(units[0].scope, UnitScope::System);
         assert!(!units[0].enabled);
+    }
+
+    #[test]
+    fn load_table_entry_defaults_scope_to_user() {
+        let (_dir, path) = write_temp_toml(
+            r#"[base]
+units = [
+  { name = "hypridle.service", graphical = true },
+  { name = "old.service", enabled = false },
+  { name = "explicit.service", scope = "user", graphical = true },
+]
+"#,
+        );
+        let units = load(&path, &[Category::Base]).unwrap();
+        assert_eq!(units.len(), 3);
+        assert_eq!(units[0].scope, UnitScope::User);
+        assert!(units[0].enabled);
+        assert!(units[0].graphical);
+        assert_eq!(units[1].scope, UnitScope::User);
+        assert!(!units[1].enabled);
+        assert!(!units[1].graphical);
+        assert_eq!(units[2].scope, UnitScope::User);
+        assert!(units[2].enabled);
+        assert!(units[2].graphical);
     }
 
     test_load_missing_returns_empty!(load);

@@ -151,10 +151,7 @@ fn load_overlay_replaces_matching_git_and_registry_values_and_preserves_origins(
         &[
             (
                 "git-config.toml",
-                "[base]\nsettings = [\
-                 { key = 'core.editor', value = 'vim' },\
-                 { key = 'core.autocrlf', value = 'false' },\
-                 { key = 'remote.Work.url', value = 'keep-case-sensitive' }]\n",
+                "[base]\ncore.editor = 'vim'\ncore.autocrlf = 'false'\nremote.Work.url = 'keep-case-sensitive'\n",
             ),
             (
                 "registry.toml",
@@ -168,9 +165,7 @@ fn load_overlay_replaces_matching_git_and_registry_values_and_preserves_origins(
             &overlay,
             "git-config.toml",
             &format!(
-                "[base]\nsettings = [\
-                 {{ key = 'CORE.EDITOR', value = '{editor}' }},\
-                 {{ key = 'remote.work.url', value = 'different-subsection' }}]\n"
+                "[base]\nCORE.EDITOR = '{editor}'\nremote.work.url = 'different-subsection'\n"
             ),
         );
         let registry_path = write_overlay_config(
@@ -218,8 +213,8 @@ fn load_checks_only_active_desired_state_for_conflicts() {
         &[
             (
                 "git-config.toml",
-                "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\" }]\n\
-                 [desktop]\nsettings = [{ key = \"core.editor\", value = \"nano\" }]\n",
+                "[base]\ncore.editor = \"vim\"\n\
+                 [desktop]\ncore.editor = \"nano\"\n",
             ),
             (
                 "registry.toml",
@@ -254,13 +249,13 @@ fn load_agent_settings_overlay_overrides_only_exact_active_harness_keys() {
         linux(),
         &[(
             "agent-settings.toml",
-            r#"[base]
-settings = [
-  { target = "copilot", key = "model", value = "baseline" },
-  { target = "copilot", key = "Model", value = "case-sensitive" },
-  { target = "codex", key = "model", value = "other-harness" },
-  { target = "copilot", key = "beep", value = false },
-]
+            r#"[base.copilot]
+model = "baseline"
+Model = "case-sensitive"
+beep = false
+
+[base.codex]
+model = "other-harness"
 "#,
         )],
     );
@@ -268,13 +263,12 @@ settings = [
     write_overlay_config(
         &overlay,
         "agent-settings.toml",
-        r#"[base]
-settings = [
-  { target = "copilot", key = "model", value = "work-model" },
-  { target = "copilot", key = "memory", value = true },
-]
-[desktop]
-settings = [{ target = "copilot", key = "model", value = "inactive" }]
+        r#"[base.copilot]
+model = "work-model"
+memory = true
+
+[desktop.copilot]
+model = "inactive"
 "#,
     );
     let config = Config::load(main.path(), &profile, platform, Some(overlay.path())).unwrap();
@@ -297,14 +291,14 @@ settings = [{ target = "copilot", key = "model", value = "inactive" }]
                 "Model",
                 toml::Value::String("case-sensitive".into())
             ),
+            ("copilot", "beep", toml::Value::Boolean(false)),
             (
                 "codex",
                 "model",
                 toml::Value::String("other-harness".into())
             ),
-            ("copilot", "beep", toml::Value::Boolean(false)),
-            ("copilot", "model", toml::Value::String("work-model".into())),
             ("copilot", "memory", toml::Value::Boolean(true)),
+            ("copilot", "model", toml::Value::String("work-model".into())),
         ]
     );
     assert!(agent_settings::validate(&config.agent_settings).is_empty());
@@ -580,7 +574,7 @@ fn load_agent_settings_keeps_main_defaults_without_active_overrides() {
         linux(),
         &[(
             "agent-settings.toml",
-            "[base]\nsettings = [{ target = 'copilot', key = 'model', value = 'baseline' }]\n",
+            "[base.copilot]\nmodel = 'baseline'\n",
         )],
     );
     let overlay = tempfile::tempdir().unwrap();
@@ -588,12 +582,7 @@ fn load_agent_settings_keeps_main_defaults_without_active_overrides() {
         (false, None),
         (true, None),
         (true, Some("")),
-        (
-            true,
-            Some(
-                "[desktop]\nsettings = [{ target = 'copilot', key = 'model', value = 'inactive' }]\n",
-            ),
-        ),
+        (true, Some("[desktop.copilot]\nmodel = 'inactive'\n")),
     ] {
         if let Some(content) = content {
             write_overlay_config(&overlay, "agent-settings.toml", content);
@@ -612,14 +601,17 @@ fn load_agent_settings_keeps_main_defaults_without_active_overrides() {
 
 #[test]
 fn load_agent_settings_rejects_conflicts_within_either_source_before_overriding() {
-    let valid = "[base]\nsettings = [{ target = 'copilot', key = 'model', value = 'baseline' }]\n";
+    let valid = "[base.copilot]\nmodel = 'baseline'\n";
     for is_overlay in [false, true] {
-        for conflict in [
-            "[base]\nsettings = [\
-             { target = 'copilot', key = 'model', value = 'first' },\
-             { target = 'copilot', key = 'model', value = 'second' }]\n",
-            "[base]\nsettings = [{ target = 'copilot', key = 'model', value = 'first' }]\n\
-             [desktop]\nsettings = [{ target = 'copilot', key = 'model', value = 'second' }]\n",
+        for (conflict, expected_item) in [
+            (
+                "[base.copilot]\n\"footer.showBranch\" = true\nfooter.showBranch = false\n",
+                "copilot:footer.showBranch",
+            ),
+            (
+                "[base.copilot]\nmodel = 'first'\n[desktop.copilot]\nmodel = 'second'\n",
+                "copilot:model",
+            ),
         ] {
             let (main, mut profile, platform) =
                 setup_load(linux(), &[("agent-settings.toml", valid)]);
@@ -635,7 +627,7 @@ fn load_agent_settings_rejects_conflicts_within_either_source_before_overriding(
                 message.contains("agent-settings.conflicting-values"),
                 "{message}"
             );
-            assert!(message.contains("copilot:model"), "{message}");
+            assert!(message.contains(expected_item), "{message}");
             assert!(message.contains(&path.display().to_string()), "{message}");
         }
     }
@@ -644,43 +636,56 @@ fn load_agent_settings_rejects_conflicts_within_either_source_before_overriding(
 #[test]
 fn load_agent_settings_cross_source_parent_child_conflicts_fail_before_task_execution() {
     for harness in ["copilot", "codex"] {
-        for (parent_value, child_value, conflicting) in [
-            ("{ enabled = true }", "false", true),
-            ("false", "true", true),
-            ("{ enabled = true }", "true", false),
-        ] {
-            let parent = format!(
-                "[base]\nsettings = [{{ target = '{harness}', key = 'feature', value = {parent_value} }}]\n"
-            );
-            let child = format!(
-                "[base]\nsettings = [{{ target = '{harness}', key = 'feature.enabled', value = {child_value} }}]\n"
-            );
+        for (parent_value, child_value) in [("false", "true"), ("{}", "true")] {
+            let parent = format!("[base.{harness}]\nfeature = {parent_value}\n");
+            let child = format!("[base.{harness}]\nfeature.enabled = {child_value}\n");
             for (main_content, overlay_content) in [(&parent, &child), (&child, &parent)] {
                 let (main, profile, platform) =
                     setup_load(linux(), &[("agent-settings.toml", main_content)]);
                 let overlay = tempfile::tempdir_in(".").unwrap();
                 write_overlay_config(&overlay, "agent-settings.toml", overlay_content);
-                let result = Config::load(main.path(), &profile, platform, Some(overlay.path()));
-                if conflicting {
-                    let error =
-                        result.expect_err("merged conflicts must abort configuration loading");
-                    let message = format!("{error:#}");
-                    assert!(
-                        message.contains("agent-settings.conflicting-values"),
-                        "{message}"
-                    );
-                    assert!(message.contains("feature.enabled"), "{message}");
-                    assert!(
-                        message.contains("conflicting parent/child settings"),
-                        "{message}"
-                    );
-                } else {
-                    let config = result.expect("compatible parent/child declarations remain valid");
-                    assert_eq!(config.agent_settings.len(), 2);
-                    assert!(agent_settings::validate_conflicts(&config.agent_settings).is_empty());
-                }
+                let error = Config::load(main.path(), &profile, platform, Some(overlay.path()))
+                    .expect_err("merged conflicts must abort configuration loading");
+                let message = format!("{error:#}");
+                assert!(
+                    message.contains("agent-settings.conflicting-values"),
+                    "{message}"
+                );
+                assert!(message.contains("feature.enabled"), "{message}");
+                assert!(
+                    message.contains("conflicting parent/child settings"),
+                    "{message}"
+                );
             }
         }
+        // Nested tables flatten to leaf keys, so overlays override individual leaves cleanly.
+        let (main, profile, platform) = setup_load(
+            linux(),
+            &[(
+                "agent-settings.toml",
+                &format!("[base.{harness}.feature]\nenabled = true\nkeep = true\n"),
+            )],
+        );
+        let overlay = tempfile::tempdir_in(".").unwrap();
+        write_overlay_config(
+            &overlay,
+            "agent-settings.toml",
+            &format!("[base.{harness}]\nfeature.enabled = false\n"),
+        );
+        let config = Config::load(main.path(), &profile, platform, Some(overlay.path())).unwrap();
+        assert_eq!(config.agent_settings.len(), 2);
+        assert!(
+            config
+                .agent_settings
+                .iter()
+                .any(|s| s.key == "feature.enabled" && s.value == toml::Value::Boolean(false))
+        );
+        assert!(
+            config
+                .agent_settings
+                .iter()
+                .any(|s| s.key == "feature.keep" && s.value == toml::Value::Boolean(true))
+        );
     }
 }
 

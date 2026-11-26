@@ -22,7 +22,7 @@ test_shellcheck()
 
 test_ruff()
 {
-  ruff check --config "$DIR/ruff.toml" "$DIR"
+  ruff check --config "$DIR/.github/linters/ruff.toml" "$DIR"
 }
 
 test_luacheck()
@@ -30,7 +30,7 @@ test_luacheck()
   (
     cd "$DIR"
     find symlinks tests -type f -name '*.lua' -print0 |
-      xargs -0 -r luacheck --config "$DIR/.luacheckrc"
+      xargs -0 -r luacheck --config "$DIR/.github/linters/luacheckrc"
   )
 }
 

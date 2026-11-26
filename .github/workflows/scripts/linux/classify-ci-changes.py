@@ -151,9 +151,9 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             linters.add("shell")
         if path.endswith((".ps1", ".psm1", ".psd1")):
             linters.add("powershell")
-        if path.endswith(".py") or path in {"ruff.toml", LINUX + "install-ruff.sh"}:
+        if path.endswith(".py") or path in {".github/linters/ruff.toml", LINUX + "install-ruff.sh"}:
             linters.add("python")
-        if path.endswith(".lua") or path == ".luacheckrc":
+        if path.endswith(".lua") or path == ".github/linters/luacheckrc":
             linters.add("lua")
 
         if path == ".github/workflows/ci.yml" or path in {
@@ -172,9 +172,9 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             pass  # Always executed by classify-changes.
         elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh", LINUX + "release-tag.sh"}:
             pass  # Publishing builds are selected independently of CI builds.
-        elif path in {"ruff.toml", LINUX + "install-ruff.sh"}:
+        elif path in {".github/linters/ruff.toml", LINUX + "install-ruff.sh"}:
             linters.add("python")
-        elif path == ".luacheckrc":
+        elif path == ".github/linters/luacheckrc":
             linters.add("lua")
         elif path in {"tests/desktop/quickshell/test-desktop-qml.sh",
                       "tests/desktop/quickshell/test-desktop-session.sh",

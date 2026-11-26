@@ -25,6 +25,7 @@ when wiring new config or catalog entries.
 | Command selection, restart, exit status, or output contract | The corresponding integration target in `cli/tests/` |
 | Real declarations agreeing with supported behavior | `config_drift` |
 | A materially different apply/remove journey | Isolated lifecycle or end-to-end integration cases |
+| Shell, editor, desktop, hook, wrapper, or end-to-end app behavior | The matching domain folder under [tests/](https://github.com/sneivandt/dotfiles/tree/main/tests/) |
 
 Keep small unit suites inline. Larger sibling suites fit cleanly in `tests.rs`
 (or `domains/<domain>/tests/<feature>.rs` via a test-only `#[path]` for
@@ -63,6 +64,31 @@ Filter a single module inside the consolidated binary with
 `cargo test --locked --profile ci --test integration <module>::`. Use command
 suites to verify task selection and exit status, and keep per-branch resource
 logic in unit tests so failures point straight to the owning module.
+
+### Non-Rust test layout
+
+Application, desktop, hook, wrapper, and end-to-end tests live in root
+[tests/](https://github.com/sneivandt/dotfiles/tree/main/tests/), grouped by
+domain rather than by CI runner:
+
+| Directory | Covers |
+|---|---|
+| `tests/applications/` | Installed-application smoke harnesses (`test-applications.sh`, `Test-Applications.ps1`) |
+| `tests/shell/` | Isolated Bash/Zsh startup fixtures (`test-shell-config.py`, `shell_config_tests/`) and PowerShell prompt tests |
+| `tests/vim/` | Plugin-free Vim and Neovim startup, filetype, and lockfile suites |
+| `tests/desktop/quickshell/` | Offscreen QML tests, `qmllint`, headless Sway session checks, Python helpers, and stock-cache tests |
+| `tests/desktop/hypr/` | Hyprland helper script unit tests (brightness, volume, launchers, lock screen, screenshot, resize) |
+| `tests/hooks/` | Staged-input guards, full pre-commit integration, and Git maintenance/retention suites |
+| `tests/wrapper/` | POSIX (`dotfiles.sh`) and PowerShell (`dotfiles.ps1`) bootstrap wrapper suites |
+| `tests/integration/` | Install/uninstall round-trips, Arch container acceptance, and APM deployment |
+| `tests/lib/` | Shared POSIX test assertion helpers |
+
+Keep CI-only orchestration (`check.sh`, `Check.ps1`, `pre-push.py`, path/release
+classification, docs checks, and mutation runners) under
+`.github/workflows/scripts/`. When adding a new file under `tests/`, wire its
+path into
+[classify-ci-changes.py](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/classify-ci-changes.py)
+and its regression suite if it needs its own CI job.
 
 ## Confine every writable path
 

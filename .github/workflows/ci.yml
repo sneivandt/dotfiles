@@ -165,7 +165,7 @@ jobs:
           persist-credentials: false
       - name: Check PowerShell profile behavior
         shell: pwsh
-        run: ./.github/workflows/scripts/windows/Test-Prompt.ps1
+        run: ./tests/shell/Test-Prompt.ps1
 
   desktop-script-regressions:
     name: "Regression: Desktop scripts"
@@ -182,10 +182,10 @@ jobs:
         run: sh .github/workflows/scripts/linux/install-apt-packages.sh lua5.4 jq
       - name: Check desktop script behavior
         if: needs.classify-changes.outputs.run_lock == 'true'
-        run: python3 -B -m unittest discover -s .github/workflows/scripts/linux/hypr_script_tests -p 'test_*.py'
+        run: python3 -B -m unittest discover -s tests/desktop/hypr -p 'test_*.py'
       - name: Check desktop network and power actions
         if: needs.classify-changes.outputs.run_desktop_python == 'true'
-        run: python3 -B -m unittest discover -s .github/workflows/scripts/linux/quickshell_tests/python -p 'test_*.py'
+        run: python3 -B -m unittest discover -s tests/desktop/quickshell/python -p 'test_*.py'
 
   desktop-qml:
     name: "Regression: Quickshell QML"
@@ -203,12 +203,12 @@ jobs:
           version: '6.8.3'
           arch: linux_gcc_64
       - name: Test QML with inert Quickshell mocks
-        run: sh .github/workflows/scripts/linux/test-desktop-qml.sh
+        run: sh tests/desktop/quickshell/test-desktop-qml.sh
       - name: Start Quickshell in a disposable Wayland session
         run: >-
           docker run --rm --init --volume "$GITHUB_WORKSPACE:/workspace:ro"
           archlinux@sha256:767de6eaa40dcfeda5263a48737ea03a782caabdf3a403b6e6a203c7fd333681
-          sh /workspace/.github/workflows/scripts/linux/test-desktop-session.sh
+          sh /workspace/tests/desktop/quickshell/test-desktop-session.sh
 
   # ── Documentation Consistency ─────────────────────────
   docs-links:
@@ -316,7 +316,7 @@ jobs:
           apm-version: '0.37.0'
       - name: Verify public agent package deployment
         if: needs.classify-changes.outputs.run_apm == 'true'
-        run: python3 -B .github/workflows/scripts/linux/test-apm.py bin/dotfiles
+        run: python3 -B tests/integration/test-apm.py bin/dotfiles
 
   test-stocks:
     name: "Regression: Stock ticker"
@@ -331,7 +331,7 @@ jobs:
       - name: Test stock ticker
         env:
           DIR: ${{ github.workspace }}
-        run: sh .github/workflows/scripts/linux/test-stocks.sh
+        run: sh tests/desktop/quickshell/test-stocks.sh
 
   test-hook-inputs:
     name: "Regression: Isolated hook inputs"
@@ -344,7 +344,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Test staged inputs and repository isolation
-        run: sh .github/workflows/scripts/linux/test-hook-inputs.sh
+        run: sh tests/hooks/test-hook-inputs.sh
 
   # ── Security ──────────────────────────────────────────
   audit:
@@ -434,7 +434,7 @@ jobs:
         run: cargo test --locked --profile ci --test config_drift
       - name: Test build-version Git dependencies
         if: needs.classify-changes.outputs.run_rust_checks == 'true' || needs.classify-changes.outputs.run_hook_inputs == 'true'
-        run: sh ../.github/workflows/scripts/linux/test-hook-inputs.sh test_build_version_ref_triggers
+        run: sh ../tests/hooks/test-hook-inputs.sh test_build_version_ref_triggers
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dotfiles-linux
@@ -651,12 +651,12 @@ jobs:
         env:
           DIR: ${{ github.workspace }}
           BINARY_PATH: ${{ github.workspace }}/bin/dotfiles
-        run: sh .github/workflows/scripts/linux/test-uninstall.sh
+        run: sh tests/integration/test-uninstall.sh
       - name: Check native Arch convergence and recovery
         run: >-
           docker run --rm --init --volume "$GITHUB_WORKSPACE:/workspace:ro"
           archlinux@sha256:767de6eaa40dcfeda5263a48737ea03a782caabdf3a403b6e6a203c7fd333681
-          sh /workspace/.github/workflows/scripts/linux/test-arch-acceptance.sh
+          sh /workspace/tests/integration/test-arch-acceptance.sh
 
   test-install-uninstall-windows:
     name: "Integration: Install/Uninstall round-trip (Windows)"
@@ -680,7 +680,7 @@ jobs:
         env:
           DIR: ${{ github.workspace }}
           BINARY_PATH: ${{ github.workspace }}/bin/dotfiles.exe
-        run: ./.github/workflows/scripts/windows/Test-InstallUninstall.ps1
+        run: ./tests/integration/Test-InstallUninstall.ps1
 
   # ── Application Tests ─────────────────────────────────
   test-applications:
@@ -712,7 +712,7 @@ jobs:
       - name: Test ${{ matrix.application }}
         env:
           DIR: ${{ github.workspace }}
-        run: sh .github/workflows/scripts/linux/test-applications.sh ${{ matrix.application }} ${{ matrix.tests }}
+        run: sh tests/applications/test-applications.sh ${{ matrix.application }} ${{ matrix.tests }}
 
   # Windows counterpart. Only git is covered: zsh, vim, and nvim are excluded
   # from the Windows profile, so they have no Windows equivalent to test.
@@ -749,7 +749,7 @@ jobs:
         shell: pwsh
         env:
           DIR: ${{ github.workspace }}
-        run: ./.github/workflows/scripts/windows/Test-Applications.ps1 ${{ matrix.application }} ${{ matrix.tests }}
+        run: ./tests/applications/Test-Applications.ps1 ${{ matrix.application }} ${{ matrix.tests }}
 
   # ── Specialized Tests ─────────────────────────────────
   test-git-hooks:
@@ -765,7 +765,7 @@ jobs:
       - name: Test pre-commit hook
         env:
           DIR: ${{ github.workspace }}
-        run: sh .github/workflows/scripts/linux/test-git-hooks.sh
+        run: sh tests/hooks/test-git-hooks.sh
 
   test-shell-wrapper-linux:
     name: "Shell Wrapper: Linux (dotfiles.sh)"
@@ -787,7 +787,7 @@ jobs:
         env:
           DIR: ${{ github.workspace }}
           BINARY_PATH: ${{ github.workspace }}/bin/dotfiles
-        run: sh .github/workflows/scripts/linux/test-shell-wrapper.sh
+        run: sh tests/wrapper/test-shell-wrapper.sh
 
   test-shell-wrapper-windows:
     name: "Shell Wrapper: Windows (dotfiles.ps1)"
@@ -810,7 +810,7 @@ jobs:
         shell: pwsh
         env:
           BINARY_PATH: ${{ github.workspace }}/bin/dotfiles.exe
-        run: ./.github/workflows/scripts/windows/Test-ShellWrapper.ps1
+        run: ./tests/wrapper/Test-ShellWrapper.ps1
 
   # ── CI Gate ───────────────────────────────────────────
   ci-success:

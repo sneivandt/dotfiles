@@ -16,28 +16,17 @@ if tty -s; then
   export GPG_TTY
 fi
 
+# Shared interactive helpers
+# shellcheck source=config/shell/interactive.sh
+[ -r ~/.config/shell/interactive.sh ] && . ~/.config/shell/interactive.sh
+
 # History
-_bash_legacy_history="${XDG_CACHE_HOME:-$HOME/.cache}/bash/history"
-export HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/bash/history"
-if mkdir -p "$(dirname -- "$HISTFILE")"; then
-  # Keep the old file for shells still using it; never replace newer state.
-  if [[ ! -e $HISTFILE && -f $_bash_legacy_history ]]; then
-    if ! (
-      umask 077
-      stage=$HISTFILE.migrate.$$
-      mkdir -- "$stage" || exit 1
-      trap 'rm -f -- "$stage/history"; rmdir -- "$stage"' EXIT
-      cp -- "$_bash_legacy_history" "$stage/history" &&
-        { ln -T -- "$stage/history" "$HISTFILE" || [[ -f $HISTFILE ]]; }
-    ); then
-      printf 'Could not migrate Bash history; keeping the previous location.\n' >&2
-      HISTFILE="$_bash_legacy_history"
-    fi
-  fi
+if command -v _dotfiles_init_history >/dev/null 2>&1; then
+  _dotfiles_init_history bash Bash
 else
-  HISTFILE="$_bash_legacy_history"
+  HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/bash/history"
 fi
-unset _bash_legacy_history
+export HISTFILE
 export HISTSIZE=100000
 export HISTFILESIZE=100000
 export HISTCONTROL=ignoreboth
@@ -54,16 +43,8 @@ PROMPT_COMMAND=("${PROMPT_COMMAND[@]}" __bash_history_append)
 [ -r ~/.config/shell/path.sh ] && . ~/.config/shell/path.sh
 
 # virtualenvwrapper
-# Prefer the lazy loader: it installs stub functions and only sources the real
-# script (a ~200-500 ms Python startup) on first use.
-if command -v virtualenvwrapper_lazy.sh >/dev/null 2>&1; then
-  export WORKON_HOME="${WORKON_HOME:-$HOME/.venv}"
-  # shellcheck source=/dev/null
-  . virtualenvwrapper_lazy.sh
-elif command -v virtualenvwrapper.sh >/dev/null 2>&1; then
-  export WORKON_HOME="${WORKON_HOME:-$HOME/.venv}"
-  # shellcheck source=/dev/null
-  . virtualenvwrapper.sh
+if command -v _dotfiles_init_virtualenvwrapper >/dev/null 2>&1; then
+  _dotfiles_init_virtualenvwrapper
 fi
 
 # Aliases
@@ -85,18 +66,8 @@ then
 fi
 
 # FZF (optional)
-# Prefer packaged scripts, including older Debian/Ubuntu FZF versions without
-# --bash. Keep this aligned with the equivalent block in zshrc.
-for _fzf_dir in /usr/share/fzf /usr/share/doc/fzf/examples; do
-  if [ -f "$_fzf_dir/key-bindings.bash" ] || [ -f "$_fzf_dir/completion.bash" ]; then
-    # shellcheck source=/dev/null
-    [ ! -f "$_fzf_dir/key-bindings.bash" ] || . "$_fzf_dir/key-bindings.bash"
-    # shellcheck source=/dev/null
-    [ ! -f "$_fzf_dir/completion.bash" ] || . "$_fzf_dir/completion.bash"
-    break
-  fi
-done
-if [ ! -f "$_fzf_dir/key-bindings.bash" ] && [ ! -f "$_fzf_dir/completion.bash" ] && command -v fzf >/dev/null 2>&1; then
-  eval "$(fzf --bash)"
+if command -v _dotfiles_init_fzf >/dev/null 2>&1; then
+  _dotfiles_init_fzf bash
 fi
-unset _fzf_dir
+
+unset -f _dotfiles_init_history _dotfiles_init_virtualenvwrapper _dotfiles_init_fzf 2>/dev/null || true

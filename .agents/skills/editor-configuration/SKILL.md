@@ -25,7 +25,7 @@ User-facing entry points, bootstrap, and parser notes live in
 ## Verification
 
 Run the plugin-free harness in
-[`.github/workflows/scripts/linux/vim_tests/`](../../../.github/workflows/scripts/linux/vim_tests/)
+[`tests/vim/`](../../../tests/vim/)
 (see [Application configuration](../../../docs/content/development/testing.md#application-configuration)).
 Exercise bootstrap-pin changes against an absent manager in an isolated data
 path, and keep `lazy-lock.json` untouched during verification unless updating

@@ -8,21 +8,26 @@ Scope {
     property var missingSymbols: []
     property int updated: 0
     property string error: ""
+    property bool menuOpen: false
     property bool _queryActive: false
     readonly property int staleAfterSeconds: 15 * 60
     readonly property bool loading: _queryActive || query.running
+    readonly property string helperPath: decodeURIComponent(Qt.resolvedUrl("stocks.py").toString().replace(/^file:\/\//, ""))
 
     function refresh(force) {
         if (loading)
             return;
         _queryActive = true;
-        const command = ["python3", "-B", Quickshell.env("HOME") + "/.config/hypr/scripts/stocks.py"];
+        const command = ["python3", "-B", helperPath];
         if (force === true)
             command.push("--force");
         query.exec(command);
     }
 
-    Component.onCompleted: refresh()
+    onMenuOpenChanged: {
+        if (menuOpen)
+            refresh();
+    }
 
     Process {
         id: query
@@ -69,9 +74,10 @@ Scope {
         }
     }
     Timer {
+        objectName: "marketPollTimer"
         interval: 300000
         repeat: true
-        running: true
+        running: root.menuOpen
         onTriggered: root.refresh()
     }
 }

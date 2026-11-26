@@ -37,6 +37,16 @@ LINTERS = {
         "setup": 'pwsh -NoProfile -Command "Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser"',
         "test_function": "test_psscriptanalyzer",
     },
+    "python": {
+        "name": "Python (Ruff)",
+        "setup": f"sh {LINUX}install-ruff.sh",
+        "test_function": "test_ruff",
+    },
+    "lua": {
+        "name": "Lua (Luacheck)",
+        "setup": f"sh {LINUX}install-apt-packages.sh luacheck",
+        "test_function": "test_luacheck",
+    },
 }
 
 
@@ -141,11 +151,15 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             linters.add("shell")
         if path.endswith((".ps1", ".psm1", ".psd1")):
             linters.add("powershell")
+        if path.endswith(".py") or path in {"ruff.toml", LINUX + "install-ruff.sh"}:
+            linters.add("python")
+        if path.endswith(".lua") or path == ".luacheckrc":
+            linters.add("lua")
 
         if path == ".github/workflows/ci.yml" or path in {
             LINUX + "classify-ci-changes.py", LINUX + "classify-ci-changes.sh",
             LINUX + "ci-comparison-range.sh", LINUX + "ci-fixture-home.sh",
-            LINUX + "lib/test-helpers.sh", LINUX + "check.sh", WINDOWS + "Check.ps1",
+            "tests/lib/test-helpers.sh", LINUX + "check.sh", WINDOWS + "Check.ps1",
             LINUX + "pre-push.py",
         }:
             full = True
@@ -158,62 +172,67 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             pass  # Always executed by classify-changes.
         elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh", LINUX + "release-tag.sh"}:
             pass  # Publishing builds are selected independently of CI builds.
-        elif path in {LINUX + "test-desktop-qml.sh", LINUX + "test-desktop-session.sh",
-                      LINUX + "test-desktop-session.py"} or path.startswith(
-            LINUX + "quickshell_tests/qml/"
+        elif path in {"ruff.toml", LINUX + "install-ruff.sh"}:
+            linters.add("python")
+        elif path == ".luacheckrc":
+            linters.add("lua")
+        elif path in {"tests/desktop/quickshell/test-desktop-qml.sh",
+                      "tests/desktop/quickshell/test-desktop-session.sh",
+                      "tests/desktop/quickshell/test-desktop-session.py"} or path.startswith(
+            "tests/desktop/quickshell/qml/"
         ):
             enable("desktop_qml")
-        elif path.startswith(LINUX + "quickshell_tests/python/"):
+        elif path.startswith("tests/desktop/quickshell/python/"):
             enable("desktop_python")
-        elif path.startswith(LINUX + "hypr_script_tests/"):
-            enable("lock")
-            if path == LINUX + "hypr_script_tests/test_stocks.py":
+            if path == "tests/desktop/quickshell/python/test_stocks.py":
                 enable("stocks")
-        elif path.startswith(LINUX + "vim_tests/"):
+        elif path.startswith("tests/desktop/hypr/"):
+            enable("lock")
+        elif path in {"tests/vim/test-nvim-config.lua", "tests/vim/test-nvim-lock.lua"}:
+            apps.add("nvim")
+        elif path.startswith("tests/vim/"):
             apps.update(("vim", "nvim"))
-        elif path == WINDOWS + "Test-Prompt.ps1":
+        elif path == "tests/shell/Test-Prompt.ps1":
             enable("prompt")
         elif path == LINUX + "test-workflows.sh":
             pass  # Always executed by classify-changes.
-        elif path == LINUX + "test-apm.py":
+        elif path == "tests/integration/test-apm.py":
             enable("apm")
         elif path in {LINUX + "test-docs.sh", LINUX + "check-doc-links.py", LINUX + "check-doc-site.py",
                       LINUX + "docs-publication-base.py"}:
             pass
         elif path == LINUX + "test-static-analysis.sh":
             linters.update(LINTERS)
-        elif path == LINUX + "test-hook-inputs.sh":
+        elif path == "tests/hooks/test-hook-inputs.sh":
             enable("hook_inputs", "build_linux")
-        elif path == LINUX + "test-stocks.sh":
+        elif path == "tests/desktop/quickshell/test-stocks.sh":
             enable("stocks")
-        elif path in {LINUX + "test-git-hooks.sh", LINUX + "test-maintenance.py"} or path.startswith("hooks/"):
+        elif path in {"tests/hooks/test-git-hooks.sh", "tests/hooks/test-maintenance.py"} or path.startswith("hooks/"):
             enable("git_hooks", "hook_inputs")
-        elif path in {"dotfiles.sh", LINUX + "test-shell-wrapper.sh"}:
+        elif path in {"dotfiles.sh", "tests/wrapper/test-shell-wrapper.sh"}:
             enable("wrapper_linux")
-        elif path in {"dotfiles.ps1", WINDOWS + "Test-ShellWrapper.ps1"} or path.startswith(
-            WINDOWS + "shell_wrapper_tests/"
+        elif path in {"dotfiles.ps1", "tests/wrapper/Test-ShellWrapper.ps1"} or path.startswith(
+            "tests/wrapper/shell_wrapper_tests/"
         ):
             enable("wrapper_windows")
             if path == "dotfiles.ps1":
                 # The Windows PowerShell 5.1 smoke uses the installed fixture CLI.
                 enable("roundtrip_windows")
-        elif path in {LINUX + "test-uninstall.sh", LINUX + "test-arch-acceptance.sh"}:
+        elif path in {"tests/integration/test-uninstall.sh", "tests/integration/test-arch-acceptance.sh"}:
             enable("roundtrip_linux")
-        elif path == WINDOWS + "Test-InstallUninstall.ps1":
+        elif path == "tests/integration/Test-InstallUninstall.ps1":
             enable("roundtrip_windows")
-        elif path == LINUX + "test-applications.sh":
+        elif path == "tests/applications/test-applications.sh":
             apps.update(APPS)
-        elif path == WINDOWS + "Test-Applications.ps1":
+        elif path == "tests/applications/Test-Applications.ps1":
             enable("app_windows")
-        elif path in {LINUX + "test-nvim-config.lua", LINUX + "test-nvim-lock.lua"}:
-            apps.add("nvim")
-        elif path == LINUX + "test-shell-config.py" or path.startswith(
-            LINUX + "shell_config_tests/"
+        elif path == "tests/shell/test-shell-config.py" or path.startswith(
+            "tests/shell/shell_config_tests/"
         ):
             apps.add("zsh")
         elif path == LINUX + "install-apt-packages.sh":
             apps.update(APPS)
-            linters.add("shell")
+            linters.update(("shell", "lua"))
         elif path == "cli/deny.toml":
             enable("deny")
         elif path in {"cli/rustfmt.toml", "rustfmt.toml", ".rustfmt.toml"}:
@@ -251,7 +270,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 enable("rust_checks")
             if path == "symlinks/local/bin/code-insiders":
                 # Exercised by Rust config tests, test-shell-config.py (zsh),
-                # and hypr_script_tests/test_launchers.py (lock).
+                # and tests/desktop/hypr/test_launchers.py (lock).
                 enable("rust_checks", "lock")
                 apps.add("zsh")
             if path.startswith("symlinks/config/git/templates/") or path in {
@@ -303,7 +322,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                     enable("lock")
             if path.startswith("symlinks/config/quickshell/"):
                 enable("desktop_python", "desktop_qml")
-            if path == "symlinks/config/hypr/scripts/stocks.py":
+            if path == "symlinks/config/quickshell/stocks.py":
                 enable("stocks")
         elif path.startswith(".github/workflows/") and not path.startswith(SCRIPTS):
             full = True

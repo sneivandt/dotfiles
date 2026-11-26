@@ -15,7 +15,9 @@
 # `cron_expression` is additive and detected at runtime so older App schemas
 # retain interval-only state checks. If the required contract changes, bump this
 # version and update the Rust callers in autopilot.rs.
-import json, sqlite3, sys
+import json
+import sqlite3
+import sys
 from pathlib import Path
 
 con = sqlite3.connect(Path(sys.argv[1]).resolve().as_uri() + "?mode=ro", uri=True, timeout=5)

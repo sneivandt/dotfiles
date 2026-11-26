@@ -163,29 +163,60 @@ if not ok then
 end
 
 lazy.setup({
-  -- Core plugins
-  { "tpope/vim-surround" },
-  { "tpope/vim-fugitive" },
-  { "tpope/vim-dispatch" },
+  -- Core editing and Git commands
+  { "tpope/vim-surround", event = "VeryLazy" },
+  {
+    "tpope/vim-fugitive",
+    cmd = {
+      "G", "Git", "Gdiffsplit", "Gread", "Gwrite", "Ggrep",
+      "GMove", "GDelete", "GBrowse", "GRemove", "GRename", "Glgrep", "Gedit",
+    },
+  },
+  {
+    "tpope/vim-dispatch",
+    cmd = { "Dispatch", "Make", "Focus", "Start", "Spawn" },
+  },
 
   -- File navigation and search
-  { "junegunn/fzf", build = "./install --bin" },
-  { "junegunn/fzf.vim" },
-  { "christoomey/vim-tmux-navigator" },
+  {
+    "junegunn/fzf.vim",
+    dependencies = { "junegunn/fzf" },
+    cmd = {
+      "FzfFiles", "FzfGFiles", "FzfBuffers", "FzfRg", "FzfLines", "FzfBLines",
+      "FzfTags", "FzfBTags", "FzfMarks", "FzfWindows", "FzfLocate", "FzfHistory",
+      "FzfCommits", "FzfBCommits", "FzfCommands", "FzfMaps", "FzfHelptags", "FzfFiletypes",
+    },
+  },
+  {
+    "christoomey/vim-tmux-navigator",
+    cmd = {
+      "TmuxNavigateLeft", "TmuxNavigateDown", "TmuxNavigateUp",
+      "TmuxNavigateRight", "TmuxNavigatePrevious", "TmuxNavigatorProcessList",
+    },
+    keys = {
+      { "<c-h>", "<cmd><C-U>TmuxNavigateLeft<cr>" },
+      { "<c-j>", "<cmd><C-U>TmuxNavigateDown<cr>" },
+      { "<c-k>", "<cmd><C-U>TmuxNavigateUp<cr>" },
+      { "<c-l>", "<cmd><C-U>TmuxNavigateRight<cr>" },
+      { "<c-\\>", "<cmd><C-U>TmuxNavigatePrevious<cr>" },
+    },
+  },
 
   -- Editor enhancements
-  { "junegunn/vim-easy-align" },
-  { "thirtythreeforty/lessspace.vim" },
+  {
+    "junegunn/vim-easy-align",
+    cmd = "EasyAlign",
+    keys = {
+      { "<Enter>", "<Plug>(EasyAlign)", mode = "v" },
+      { "ga", "<Plug>(EasyAlign)", mode = "n" },
+    },
+  },
+  { "thirtythreeforty/lessspace.vim", event = { "BufReadPre", "BufNewFile" } },
 
-  -- Language support
-  { "neovimhaskell/haskell-vim", ft = "haskell" },
-  { "pangloss/vim-javascript", ft = "javascript" },
+  -- Language support (Go formatting/tooling; syntax & indent use Tree-sitter)
   { "fatih/vim-go", ft = "go" },
-  { "rust-lang/rust.vim", ft = "rust" },
 
-  -- Color schemes
-  { "nanotech/jellybeans.vim" },
-  { "morhetz/gruvbox" },
+  -- Color scheme
   {
     "folke/tokyonight.nvim",
     lazy = false,
@@ -204,6 +235,7 @@ lazy.setup({
   -- Neovim-specific plugins
   {
     "nvim-tree/nvim-tree.lua",
+    cmd = { "NvimTreeToggle", "NvimTreeOpen", "NvimTreeFocus", "NvimTreeFindFile", "NvimTreeClose" },
     config = function()
       require("nvim-tree").setup({
         disable_netrw = true,
@@ -237,6 +269,7 @@ lazy.setup({
 
   {
     "nvim-lualine/lualine.nvim",
+    lazy = false,
     config = function()
       require("lualine").setup({
         options = {
@@ -308,6 +341,7 @@ lazy.setup({
   -- Modern indent guides
   {
     "lukas-reineke/indent-blankline.nvim",
+    event = { "BufReadPost", "BufNewFile" },
     main = "ibl",
     config = function()
       require("ibl").setup({
@@ -334,6 +368,7 @@ lazy.setup({
   -- Git integration with inline blame and signs
   {
     "lewis6991/gitsigns.nvim",
+    event = { "BufReadPre", "BufNewFile" },
     config = function()
       require("gitsigns").setup({
         signs = {
@@ -402,7 +437,7 @@ lazy.setup({
 }, {
   -- Lazy.nvim configuration options
   defaults = {
-    lazy = false, -- Load plugins on startup by default
+    lazy = true, -- Lazy-load plugins by default; eager plugins opt in explicitly
   },
   install = {
     missing = true, -- Auto-install missing plugins

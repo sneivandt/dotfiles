@@ -67,10 +67,10 @@ falls back to full coverage so earlier changes don't slip through untested.
 | `system/` | Linux Rust checks, configuration validation/drift, and profile/round-trip checks |
 | `packages/` recipes | Linux build/Rust checks, config validation/drift, and ShellCheck |
 | Managed application files | Configuration checks and the affected application/script fixtures; Rust-tested files (Git templates, the VS Code wrapper, and the first-login systemd unit) also select Rust checks |
-| Quickshell | Python fixtures on both platforms and Linux offscreen QML |
+| Quickshell | Python fixtures on both platforms, Linux `qmllint`, and offscreen QML/session checks |
 | Wrappers | The affected platform's build and wrapper integration |
 | Hooks | Hook and staged-input fixtures; hook-only edits do not request CLI builds |
-| Shell/PowerShell files | The matching linter in addition to other selected work |
+| Shell, PowerShell, Python, or Lua files | The matching linter (`ShellCheck`, `PSScriptAnalyzer`, `Ruff`, or `Luacheck`) in addition to other selected work |
 | CI workflow/shared orchestration, manual dispatch, or unknown inputs | Conservative full CI |
 | Release workflow/selection | Publication eligibility without unrelated CI compilation |
 

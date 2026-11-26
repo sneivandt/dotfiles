@@ -1,5 +1,6 @@
 # Read-only scope probe: stale APM lock entries can outlive their workflow rows.
-import sqlite3, sys
+import sqlite3
+import sys
 from pathlib import Path
 
 con = sqlite3.connect(Path(sys.argv[1]).resolve().as_uri() + "?mode=ro", uri=True, timeout=5)

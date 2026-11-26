@@ -127,6 +127,8 @@ Omitting stage names runs the default set:
 | `ci` | Workflow contracts, path/release classification, aggregate gating, and actionlint (Linux only) |
 | `shell` | Shared ShellCheck discovery and rules |
 | `powershell` | PSScriptAnalyzer at Warning/Error severity |
+| `python` | Ruff linting across repository Python scripts and tests |
+| `lua` | Luacheck linting across Hyprland and Neovim Lua files |
 | `audit` / `deny` | Dependency advisories and dependency policy |
 
 Cargo stages use `--locked` and `--profile ci` where applicable, resolving
@@ -138,9 +140,9 @@ immediately. See [Analyzer prerequisites](#analyzer-prerequisites) for required
 tools.
 
 Two stages are opt-in: `msrv` installs and builds with the MSRV from
-`Cargo.toml`, and Linux `qml` runs Qt Quick Test (`--all` on Linux enables
-both; `-All` on Windows adds `msrv`). Neither runs mutation testing or live
-host integration.
+`Cargo.toml`, and Linux `qml` runs Qt `qmllint` and Qt Quick Test (`--all` on
+Linux enables both; `-All` on Windows adds `msrv`). Neither runs mutation
+testing or live host integration.
 
 The Linux `docs` stage requires Python, Cargo, the Node version in
 `docs/.node-version`, and the
@@ -375,7 +377,7 @@ To reproduce Linux CI's APM deployment check with APM 0.37.0 on `PATH`:
 
 ```sh
 cargo build --locked --profile ci --manifest-path cli/Cargo.toml
-python3 -B .github/workflows/scripts/linux/test-apm.py cli/target/ci/dotfiles
+python3 -B tests/integration/test-apm.py cli/target/ci/dotfiles
 ```
 
 This copies the public base packages into a temporary home and checkout; its
@@ -389,6 +391,9 @@ overwriting it.
 | Local APM package validation | `apm` |
 | ShellCheck | `shellcheck` and POSIX `sh` |
 | PSScriptAnalyzer | PowerShell 7 (`pwsh`) and the PSScriptAnalyzer module |
+| Python (Ruff) | `ruff` |
+| Lua (Luacheck) | `luacheck` |
+| QML (`qml` stage) | Qt 6.8+ `qmltestrunner` and `qmllint` |
 
 Missing tools cause the affected CLI check to skip (turning into failures under
 `--fail-on-skip` or `CI`). Windows PowerShell cannot substitute for `pwsh` in
@@ -405,9 +410,9 @@ installing the real CLI (for full commit-hook integration, see
 [Full commit-hook suite](#full-commit-hook-suite)):
 
 ```sh
-sh .github/workflows/scripts/linux/test-hook-inputs.sh \
+sh tests/hooks/test-hook-inputs.sh \
   test_staged_ci_guards test_staged_ci_guard_deletions
-DIR="$PWD" sh .github/workflows/scripts/linux/test-shell-wrapper.sh \
+DIR="$PWD" sh tests/wrapper/test-shell-wrapper.sh \
   test_wrapper_preserves_runtime_context test_wrapper_uses_cargo_artifact
 ```
 
@@ -417,7 +422,7 @@ metadata case needs the pinned Rust toolchain and skips otherwise).
 On Windows, dot-source the wrapper suite to invoke individual isolated cases:
 
 ```powershell
-. .\.github\workflows\scripts\windows\Test-ShellWrapper.ps1
+. .\tests\wrapper\Test-ShellWrapper.ps1
 Test-IsolatedWrapperPath
 Test-CargoArtifactPath
 ```
@@ -430,7 +435,7 @@ their setup before running every case.
 Run the full pre-commit integration suite from the repository root:
 
 ```sh
-sh .github/workflows/scripts/linux/test-git-hooks.sh
+sh tests/hooks/test-git-hooks.sh
 ```
 
 The script initializes a disposable temporary Git repository, copies `hooks/`
@@ -440,7 +445,7 @@ modified.
 ### Cleanup retention and Git templates
 
 ```sh
-python3 -B .github/workflows/scripts/linux/test-maintenance.py
+python3 -B tests/hooks/test-maintenance.py
 ```
 
 Verifies branch cleanup, protected branches, worktrees, and retention rules in
@@ -449,8 +454,8 @@ files.
 
 ### Desktop shell
 
-QML tests require Qt Quick Test from Qt 6.8+ and replace Quickshell components
-with test doubles so your live desktop stays untouched:
+QML checks require Qt 6.8+ (`qmllint` and `qmltestrunner`) and replace
+Quickshell components with test doubles so your live desktop stays untouched:
 
 ```sh
 sh .github/workflows/scripts/linux/check.sh --strict qml
@@ -460,10 +465,10 @@ Run the Python helper, lock-script, and stock-cache suites in isolation:
 
 ```sh
 python3 -B -m unittest discover \
-  -s .github/workflows/scripts/linux/quickshell_tests/python -p 'test_*.py'
+  -s tests/desktop/quickshell/python -p 'test_*.py'
 python3 -B -m unittest discover \
-  -s .github/workflows/scripts/linux/hypr_script_tests -p 'test_*.py'
-sh .github/workflows/scripts/linux/test-stocks.sh
+  -s tests/desktop/hypr -p 'test_*.py'
+sh tests/desktop/quickshell/test-stocks.sh
 ```
 
 Offscreen suites verify logic and layout rather than live rendering, focus, or
@@ -481,9 +486,9 @@ tests passwords, systemd user services, physical monitors, or suspend/resume.
 Run the isolated shell, Vim/Neovim, and PowerShell prompt fixtures:
 
 ```sh
-python3 -B .github/workflows/scripts/linux/test-shell-config.py
-python3 -B -m unittest discover -s .github/workflows/scripts/linux/vim_tests -p 'test_*.py'
-pwsh -NoProfile -File .github/workflows/scripts/windows/Test-Prompt.ps1
+python3 -B tests/shell/test-shell-config.py
+python3 -B -m unittest discover -s tests/vim -p 'test_*.py'
+pwsh -NoProfile -File tests/shell/Test-Prompt.ps1
 ```
 
 The PowerShell suite checks first-start discovery, custom Cargo paths, literal

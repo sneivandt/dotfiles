@@ -26,6 +26,6 @@ description: >
 
 ## Verification
 
-Run [test-shell-config.py](../../../.github/workflows/scripts/linux/test-shell-config.py)
+Run [test-shell-config.py](../../../tests/shell/test-shell-config.py)
 (isolated homes, controlled env, fake tools) rather than sourcing changes in the
 live shell. See [Application configuration](../../../docs/content/development/testing.md#application-configuration).

@@ -26,7 +26,7 @@ cd "$REPO_ROOT/cli" || exit 1
 CARGO_PROFILE=ci
 
 # Stages run when no stage arguments are given.
-DEFAULT_STAGES="fmt clippy test rustdoc config docs ci shell powershell audit deny"
+DEFAULT_STAGES="fmt clippy test rustdoc config docs ci shell powershell python lua audit deny"
 
 # Stages only run when explicitly requested or via --all. `msrv` downloads a
 # second toolchain; `qml` requires Qt >= 6.8 Quick Test.
@@ -175,6 +175,20 @@ stage_powershell()
     test_psscriptanalyzer || return 1
 }
 
+stage_python()
+{
+  have ruff || { note "ruff not installed; skipping"; return 2; }
+  DIR="$REPO_ROOT" sh "$REPO_ROOT/.github/workflows/scripts/linux/test-static-analysis.sh" \
+    test_ruff || return 1
+}
+
+stage_lua()
+{
+  have luacheck || { note "luacheck not installed; skipping"; return 2; }
+  DIR="$REPO_ROOT" sh "$REPO_ROOT/.github/workflows/scripts/linux/test-static-analysis.sh" \
+    test_luacheck || return 1
+}
+
 stage_audit()
 {
   have cargo || { note "cargo not installed; skipping"; return 2; }
@@ -203,7 +217,7 @@ stage_qml()
     note "Qt Quick Test not installed; skipping (requires Qt >= 6.8)"
     return 2
   fi
-  sh "$REPO_ROOT/.github/workflows/scripts/linux/test-desktop-qml.sh" || return 1
+  sh "$REPO_ROOT/tests/desktop/quickshell/test-desktop-qml.sh" || return 1
 }
 
 # Checks the crate still compiles on the declared minimum toolchain.

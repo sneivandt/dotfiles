@@ -176,11 +176,10 @@ run_wrapper_guards() {
     fi
   fi
   export BINARY_PATH
-  scripts_dir="$REPO_ROOT/.github/workflows/scripts/linux"
-  if ! sh "$scripts_dir/test-shell-wrapper.sh"; then
+  if ! sh "$REPO_ROOT/tests/wrapper/test-shell-wrapper.sh"; then
     abort_with_hint \
       "Linux shell wrapper tests failed." \
-      "DIR=\"\$(git rev-parse --show-toplevel)\" BINARY_PATH=\"\" sh .github/workflows/scripts/linux/test-shell-wrapper.sh"
+      "DIR=\"\$(git rev-parse --show-toplevel)\" BINARY_PATH=\"\" sh tests/wrapper/test-shell-wrapper.sh"
   fi
 }
 
@@ -220,9 +219,9 @@ if has_staged_match '*.sh' '*.bash' hooks/pre-commit symlinks/bashrc symlinks/ba
   run_shell_guards
 fi
 
-if full_checks_enabled && has_staged_match dotfiles.sh .github/workflows/scripts/linux/test-shell-wrapper.sh; then
+if full_checks_enabled && has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh; then
   run_wrapper_guards
-elif has_staged_match dotfiles.sh .github/workflows/scripts/linux/test-shell-wrapper.sh; then
+elif has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh; then
   printf '%sSkipping Linux shell wrapper tests: set DOTFILES_HOOKS_FULL=1 to run them.%s\n' "$DIM" "$NC"
 fi
 

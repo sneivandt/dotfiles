@@ -57,7 +57,7 @@ if [ "${1:-}" = --root ]; then
   if [ -e "$root/dotfiles.sh" ] || [ -L "$root/dotfiles.sh" ]; then
     printf '%s\0' "$root/dotfiles.sh" > "$inputs"
   fi
-  for dir in symlinks hooks .github cli/src/app/validation/scripts; do
+  for dir in symlinks hooks tests .github cli/src/app/validation/scripts; do
     path="$root/$dir"
     if [ -e "$path" ] || [ -L "$path" ]; then
       collect_scripts "$path" >> "$inputs"

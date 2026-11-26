@@ -44,14 +44,14 @@ class PrePushPlanTests(unittest.TestCase):
     def test_config_and_desktop_select_their_regressions(self):
         commands, _ = PRE_PUSH["plan"](classify(["symlinks/config/quickshell/Bar.qml"]), "1.91")
         flattened = [argument for _, _, command in commands for argument in command]
-        for argument in ("config_drift", "qml", LINUX + "quickshell_tests/python"):
+        for argument in ("config_drift", "qml", "tests/desktop/quickshell/python"):
             self.assertIn(argument, flattened)
         self.assertNotIn("clippy", flattened)
 
     def test_application_fixtures_follow_selected_applications(self):
         for path, expected, absent in (
-            ("symlinks/zshrc", "test-shell-config.py", LINUX + "vim_tests"),
-            ("symlinks/vim/vimrc", LINUX + "vim_tests", "test-shell-config.py"),
+            ("symlinks/zshrc", "tests/shell/test-shell-config.py", "tests/vim"),
+            ("symlinks/vim/vimrc", "tests/vim", "tests/shell/test-shell-config.py"),
         ):
             commands, _ = PRE_PUSH["plan"](classify([path]), "1.91")
             flattened = " ".join(arg for _, _, command in commands for arg in command)
@@ -59,9 +59,9 @@ class PrePushPlanTests(unittest.TestCase):
             self.assertNotIn(absent, flattened)
 
     def test_local_plan_tracks_fixture_inputs_without_running_installations(self):
-        desktop = LINUX + "hypr_script_tests"
-        maintenance = LINUX + "test-maintenance.py"
-        shell = LINUX + "test-shell-config.py"
+        desktop = "tests/desktop/hypr"
+        maintenance = "tests/hooks/test-maintenance.py"
+        shell = "tests/shell/test-shell-config.py"
         for path, fixtures in (
             ("conf/systemd-units.toml", {desktop}),
             ("symlinks/config/systemd/user/dotfiles-first-login.service", {desktop}),
@@ -129,15 +129,15 @@ class PrePushCoordinatorTests(unittest.TestCase):
             docs_checked=True,
         )
         flattened = [arg for _, _, command in desktop_commands for arg in command]
-        self.assertNotIn(LINUX + "hypr_script_tests", flattened)
-        self.assertNotIn(LINUX + "quickshell_tests/python", flattened)
+        self.assertNotIn("tests/desktop/hypr", flattened)
+        self.assertNotIn("tests/desktop/quickshell/python", flattened)
 
         prompt_commands = PRE_PUSH["windows_plan"](
             classify(["symlinks/config/powershell/Microsoft.PowerShell_profile.ps1"]),
             docs_checked=True,
         )
         prompt_args = [arg for _, _, command in prompt_commands for arg in command]
-        self.assertIn(WINDOWS + "Test-Prompt.ps1", prompt_args)
+        self.assertIn("tests/shell/Test-Prompt.ps1", prompt_args)
 
     def test_windows_receipt_omits_only_redundant_compilation_and_analyzer(self):
         selection = classify(["cli/src/main.rs", "dotfiles.ps1"])
@@ -349,12 +349,14 @@ class LocalCheckTests(unittest.TestCase):
     def test_tool_failures_are_not_optional_tool_skips(self):
         stages = (
             "fmt", "clippy", "test", "rustdoc", "config", "docs", "ci",
-            "shell", "powershell", "audit", "deny", "msrv", "qml",
+            "shell", "powershell", "python", "lua", "audit", "deny", "msrv", "qml",
         )
         with tempfile.TemporaryDirectory(prefix="dotfiles-check-status-") as temporary:
             root = Path(temporary)
             scripts = root / LINUX
             scripts.mkdir(parents=True)
+            qml_script = root / "tests/desktop/quickshell/test-desktop-qml.sh"
+            qml_script.parent.mkdir(parents=True)
             (root / "cli").mkdir()
             (root / "cli/Cargo.toml").write_text(
                 '[package]\nrust-version = "1.91"\n', encoding="utf-8", newline="\n",
@@ -364,17 +366,17 @@ class LocalCheckTests(unittest.TestCase):
                 "#!/bin/sh\nexit 0\n", encoding="utf-8", newline="\n",
             )
             shutil.copyfile(SCRIPTS / "check.sh", scripts / "check.sh")
-            for name in (
-                "test-docs.sh", "test-static-analysis.sh", "test-workflows.sh",
-                "test-desktop-qml.sh",
-            ):
+            for name in ("test-docs.sh", "test-static-analysis.sh", "test-workflows.sh"):
                 (scripts / name).write_text(
                     '#!/bin/sh\nexit "$CHECK_STATUS"\n', encoding="utf-8", newline="\n",
                 )
+            qml_script.write_text(
+                '#!/bin/sh\nexit "$CHECK_STATUS"\n', encoding="utf-8", newline="\n",
+            )
             tools = root / "tools"
             tools.mkdir()
             for name in ("cargo", "rustup", "python3", "shellcheck", "pwsh",
-                         "actionlint", "qmltestrunner"):
+                         "ruff", "luacheck", "actionlint", "qmltestrunner"):
                 tool = tools / name
                 tool.write_text(
                     '#!/bin/sh\n'

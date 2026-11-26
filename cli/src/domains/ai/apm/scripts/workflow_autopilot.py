@@ -25,7 +25,9 @@
 # `next_run_at` (TEXT, ISO-8601 UTC). `cron_expression` is additive and detected
 # at runtime so older App schemas retain interval-only repair. If the required
 # contract changes, bump this version and update the Rust callers in autopilot.rs.
-import json, sqlite3, sys
+import json
+import sqlite3
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 

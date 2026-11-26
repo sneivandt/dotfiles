@@ -67,8 +67,11 @@ The Rust CLI is organized into four layers:
 | [infra/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra) | Filesystem, subprocesses, environment, platform capabilities, and logging |
 
 Desired-state data lives outside Rust: `conf/` holds declarations, `symlinks/`
-holds managed home content, and `system/` holds `/etc` fragments. Most
-preference edits stay in those directories rather than in Rust.
+holds managed home content, and `system/` holds `/etc` fragments. Application,
+shell, desktop, wrapper, hook, and integration tests live under
+[tests/](https://github.com/sneivandt/dotfiles/tree/main/tests/), while CI
+orchestration scripts stay under `.github/workflows/scripts/`. Most preference
+edits stay in `conf/`, `symlinks/`, or `system/` rather than in Rust.
 
 Sibling domains never import each other directly to coordinate work; cross-domain
 edges live in the application catalog. The

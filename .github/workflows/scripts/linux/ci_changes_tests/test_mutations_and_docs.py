@@ -2,7 +2,6 @@
 
 import contextlib
 import io
-import json
 import os
 from pathlib import Path
 import runpy
@@ -15,8 +14,6 @@ from ci_changes_tests.helpers import (
     CONTRACT,
     LINUX,
     MUTATION,
-    MUTATION_REPORT,
-    MUTATION_RUN,
     SCRIPTS,
 )
 

@@ -29,7 +29,7 @@ User-facing session, service, and shortcut documentation lives in
 ## Verification
 
 Run the affected tests in
-[`.github/workflows/scripts/linux/hypr_script_tests/`](../../../.github/workflows/scripts/linux/hypr_script_tests/)
+[`tests/desktop/hypr/`](../../../tests/desktop/hypr/)
 (see [Application configuration](../../../docs/content/development/testing.md#application-configuration)).
 Offline fixtures do not prove live rendering, locking, portals, or suspend;
 live lock/suspend, workspace switches, or service restarts require explicit

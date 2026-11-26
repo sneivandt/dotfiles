@@ -140,7 +140,7 @@ The Markets menu fetches quotes at startup and every five minutes, plus on
 demand via its refresh button. If a fetch fails for a symbol, the menu keeps
 the last good quote and timestamp and marks it stale instead of blanking out
 everything. Configure tracked symbols in
-[stocks.py](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/scripts/stocks.py).
+[stocks.py](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/stocks.py).
 
 ## Screen locking and suspend
 

@@ -9,8 +9,8 @@ set -o nounset
 # -----------------------------------------------------------------------------
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-# shellcheck source=lib/test-helpers.sh
-. "$SCRIPT_DIR"/lib/test-helpers.sh
+# shellcheck source=../../../../tests/lib/test-helpers.sh
+. "$SCRIPT_DIR"/../../../../tests/lib/test-helpers.sh
 
 # Python preserves Git's NUL-delimited filenames and Markdown destinations.
 docs_links()

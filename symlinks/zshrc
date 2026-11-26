@@ -23,6 +23,9 @@ setopt NO_LIST_BEEP
 autoload -Uz select-word-style
 select-word-style bash
 
+# Shared interactive helpers
+[ -r ~/.config/shell/interactive.sh ] && . ~/.config/shell/interactive.sh
+
 # History
 setopt extended_history
 setopt hist_ignore_space
@@ -33,27 +36,11 @@ setopt hist_reduce_blanks
 setopt hist_verify
 setopt sharehistory
 setopt extendedglob
-_zsh_legacy_history="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/history"
-HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history"
-if [[ -d ${HISTFILE:h} ]] || mkdir -p "${HISTFILE:h}"; then
-  # Seed persistent state once. Keep the old file for shells still using it.
-  if [[ ! -e $HISTFILE && -f $_zsh_legacy_history ]]; then
-    if ! (
-      umask 077
-      stage=$HISTFILE.migrate.$$
-      mkdir -- "$stage" || exit 1
-      trap 'rm -f -- "$stage/history"; rmdir -- "$stage"' EXIT
-      cp -- "$_zsh_legacy_history" "$stage/history" &&
-        { ln -T -- "$stage/history" "$HISTFILE" || [[ -f $HISTFILE ]]; }
-    ); then
-      print -u2 -- "Could not migrate Zsh history; keeping the previous location."
-      HISTFILE="$_zsh_legacy_history"
-    fi
-  fi
+if command -v _dotfiles_init_history >/dev/null 2>&1; then
+  _dotfiles_init_history zsh Zsh
 else
-  HISTFILE="$_zsh_legacy_history"
+  HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history"
 fi
-unset _zsh_legacy_history
 # Keep a duplicate-entry cushion above the saved history limit.
 HISTSIZE=120000
 SAVEHIST=100000
@@ -69,14 +56,8 @@ setopt pushdtohome
 [ -r ~/.config/shell/path.sh ] && . ~/.config/shell/path.sh
 
 # virtualenvwrapper
-# Prefer the lazy loader: it installs stub functions and only sources the real
-# script (a ~200-500 ms Python startup) on first use.
-if command -v virtualenvwrapper_lazy.sh >/dev/null 2>&1; then
-  export WORKON_HOME="${WORKON_HOME:-$HOME/.venv}"
-  . virtualenvwrapper_lazy.sh
-elif command -v virtualenvwrapper.sh >/dev/null 2>&1; then
-  export WORKON_HOME="${WORKON_HOME:-$HOME/.venv}"
-  . virtualenvwrapper.sh
+if command -v _dotfiles_init_virtualenvwrapper >/dev/null 2>&1; then
+  _dotfiles_init_virtualenvwrapper
 fi
 
 # Aliases
@@ -118,19 +99,11 @@ then
 fi
 
 # FZF (optional)
-# Prefer packaged scripts, including older Debian/Ubuntu FZF versions without
-# --zsh. Keep this aligned with the equivalent block in bashrc.
-for _fzf_dir in /usr/share/fzf /usr/share/doc/fzf/examples; do
-  if [ -f "$_fzf_dir/key-bindings.zsh" ] || [ -f "$_fzf_dir/completion.zsh" ]; then
-    [ ! -f "$_fzf_dir/key-bindings.zsh" ] || . "$_fzf_dir/key-bindings.zsh"
-    [ ! -f "$_fzf_dir/completion.zsh" ] || . "$_fzf_dir/completion.zsh"
-    break
-  fi
-done
-if [ ! -f "$_fzf_dir/key-bindings.zsh" ] && [ ! -f "$_fzf_dir/completion.zsh" ] && command -v fzf >/dev/null 2>&1; then
-  eval "$(fzf --zsh)"
+if command -v _dotfiles_init_fzf >/dev/null 2>&1; then
+  _dotfiles_init_fzf zsh
 fi
-unset _fzf_dir
+
+unset -f _dotfiles_init_history _dotfiles_init_virtualenvwrapper _dotfiles_init_fzf 2>/dev/null || true
 
 # Functions
 fpath=(~/.config/zsh/functions $fpath)

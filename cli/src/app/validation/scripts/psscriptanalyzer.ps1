@@ -44,7 +44,7 @@ if ($Root)
     $Paths = @(
         $wrapper = Join-Path $Root 'dotfiles.ps1'
         if (Test-Path -LiteralPath $wrapper) { $wrapper }
-        foreach ($dir in 'symlinks', 'hooks', '.github', 'cli/src/app/validation/scripts')
+        foreach ($dir in 'symlinks', 'hooks', 'tests', '.github', 'cli/src/app/validation/scripts')
         {
             $path = Join-Path $Root $dir
             if (Test-Path -LiteralPath $path)

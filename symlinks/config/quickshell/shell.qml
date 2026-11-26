@@ -34,6 +34,7 @@ ShellRoot {
     }
     MarketState {
         id: marketState
+        menuOpen: shell.openMenu instanceof StocksMenu && shell.openMenu.visible
     }
     SystemClock {
         id: clock

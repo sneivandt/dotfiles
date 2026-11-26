@@ -1,0 +1,15 @@
+-- Luacheck configuration for Neovim and Hyprland Lua files.
+std = "max"
+max_line_length = false
+
+files["symlinks/config/hypr/**"] = {
+  read_globals = { "hl" },
+}
+
+files["symlinks/vim/**"] = {
+  globals = { "vim" },
+}
+
+files["tests/vim/**"] = {
+  globals = { "vim" },
+}

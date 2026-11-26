@@ -20,8 +20,9 @@ for commands and coverage matrix.
 ## Workflow contracts
 
 - Pin external actions to full commit SHAs with the release tag in a comment.
-  Keep recurring logic in `.github/workflows/scripts/{linux,windows}/` and
-  extend existing jobs before adding new ones.
+  Keep recurring CI/orchestration logic in `.github/workflows/scripts/{linux,windows}/`
+  and application/component/integration tests under `tests/`; extend existing
+  jobs before adding new ones.
 - Concurrency: let active `main` CI runs finish and keep only the newest
   pending run; cancel superseded runs on other refs; preserve non-cancelling
   concurrency on `release.yml` and `pages.yml`.

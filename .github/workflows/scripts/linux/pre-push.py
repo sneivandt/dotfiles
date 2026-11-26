@@ -36,8 +36,13 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False):
     for item in selection["lint_matrix"]["include"]:
         if item["name"] == "ShellCheck":
             stages.append("shell")
-        elif not windows_checked:
-            stages.append("powershell")
+        elif item["name"] == "PSScriptAnalyzer":
+            if not windows_checked:
+                stages.append("powershell")
+        elif item["name"] == "Python (Ruff)":
+            stages.append("python")
+        elif item["name"] == "Lua (Luacheck)":
+            stages.append("lua")
     commands = []
     if not docs_checked:
         commands.append(("documentation dependencies", "docs", ["npm", "ci", "--no-audit", "--no-fund"]))
@@ -48,28 +53,27 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False):
         if not windows_checked:
             commands.append(("Windows compilation (no runtime coverage)", "cli", ["cargo", "clippy", "--locked", "--profile", "ci", "--target", "x86_64-pc-windows-gnu", "--all-targets", "--", "-D", "warnings"]))
         commands.append(("minimum Rust compilation", "cli", ["rustup", "run", msrv, "cargo", "check", "--locked", "--profile", "ci", "--all-targets"]))
-    scripts = ".github/workflows/scripts/linux/"
     if selection["run_hook_inputs"] or selection["run_rust_checks"]:
-        commands.append(("isolated hook inputs", ".", ["sh", scripts + "test-hook-inputs.sh"]))
+        commands.append(("isolated hook inputs", ".", ["sh", "tests/hooks/test-hook-inputs.sh"]))
     if selection["run_git_hooks"]:
-        commands.append(("Git template and cleanup fixtures", ".", ["python3", "-B", scripts + "test-maintenance.py"]))
+        commands.append(("Git template and cleanup fixtures", ".", ["python3", "-B", "tests/hooks/test-maintenance.py"]))
     if selection["run_wrapper_linux"]:
-        commands.append(("isolated wrapper fixtures", ".", ["sh", scripts + "test-shell-wrapper.sh", "test_wrapper_preserves_runtime_context", "test_wrapper_uses_cargo_artifact"]))
+        commands.append(("isolated wrapper fixtures", ".", ["sh", "tests/wrapper/test-shell-wrapper.sh", "test_wrapper_preserves_runtime_context", "test_wrapper_uses_cargo_artifact"]))
     for flag, directory in (
-        ("lock", scripts + "hypr_script_tests"),
-        ("desktop_python", scripts + "quickshell_tests/python"),
+        ("lock", "tests/desktop/hypr"),
+        ("desktop_python", "tests/desktop/quickshell/python"),
     ):
         if selection["run_" + flag]:
             commands.append((flag + " fixtures", ".", ["python3", "-B", "-m", "unittest", "discover", "-s", directory, "-p", "test_*.py"]))
     if selection["run_prompt"]:
-        commands.append(("PowerShell prompt fixtures", ".", ["pwsh", "-NoProfile", "-File", ".github/workflows/scripts/windows/Test-Prompt.ps1"]))
+        commands.append(("PowerShell prompt fixtures", ".", ["pwsh", "-NoProfile", "-File", "tests/shell/Test-Prompt.ps1"]))
     if selection["run_stocks"]:
-        commands.append(("stock concurrency fixtures", ".", ["sh", scripts + "test-stocks.sh"]))
+        commands.append(("stock concurrency fixtures", ".", ["sh", "tests/desktop/quickshell/test-stocks.sh"]))
     apps = {item["application"] for item in selection["app_matrix"]["include"]}
     if "zsh" in apps:
-        commands.append(("isolated shell configuration", ".", ["python3", "-B", scripts + "test-shell-config.py"]))
+        commands.append(("isolated shell configuration", ".", ["python3", "-B", "tests/shell/test-shell-config.py"]))
     if apps & {"vim", "nvim"}:
-        commands.append(("isolated editor configuration", ".", ["python3", "-B", "-m", "unittest", "discover", "-s", scripts + "vim_tests", "-p", "test_*.py"]))
+        commands.append(("isolated editor configuration", ".", ["python3", "-B", "-m", "unittest", "discover", "-s", "tests/vim", "-p", "test_*.py"]))
     deferred = [name.removeprefix("run_") for name in (
         "run_build_windows", "run_profile_linux", "run_profile_windows",
         "run_roundtrip_linux", "run_roundtrip_windows", "run_app_tests",
@@ -101,11 +105,11 @@ def windows_plan(selection, docs_checked=False):
     if selection["run_wrapper_windows"]:
         # These functions use fixture executors, not the live installation.
         commands.append(("isolated PowerShell wrapper", ".", ["pwsh", "-NoProfile", "-Command",
-            ". ./.github/workflows/scripts/windows/Test-ShellWrapper.ps1; "
+            ". ./tests/wrapper/Test-ShellWrapper.ps1; "
             "if (-not (Test-IsolatedWrapperPath)) { exit 1 }; "
             "if (-not (Test-CargoArtifactPath)) { exit 1 }"]))
     if selection["run_prompt"]:
-        commands.append(("native PowerShell prompt", ".", ["pwsh", "-NoProfile", "-File", ".github/workflows/scripts/windows/Test-Prompt.ps1"]))
+        commands.append(("native PowerShell prompt", ".", ["pwsh", "-NoProfile", "-File", "tests/shell/Test-Prompt.ps1"]))
     return commands
 
 

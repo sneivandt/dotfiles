@@ -115,7 +115,6 @@ set wildignore+=*/.svn/*
 set wildignore+=*/.apm/*
 set wildignore+=*/.node-gyp/*
 set wildignore+=*/__pycache__/*
-set wildignore+=*/bower_components/*
 set wildignore+=*/node_modules/*
 
 " }}}
@@ -284,8 +283,8 @@ nnoremap <leader>. :FzfTags<cr>
 nnoremap <leader>b :FzfBuffers<cr>
 nnoremap <leader>/ :FzfRg<cr>
 
-" Use ripgrep if available for faster searching
-if executable('rg')
+" Use ripgrep if available and the shell did not already set a default
+if empty($FZF_DEFAULT_COMMAND) && executable('rg')
   let $FZF_DEFAULT_COMMAND = 'rg --files --hidden --follow --glob "!.git/*"'
 endif
 
@@ -326,15 +325,6 @@ augroup END
 " Dispatch {{{
 
 nnoremap <f5> :Dispatch<CR>
-
-" }}}
-" Easy align {{{
-
-" Start interactive EasyAlign in visual mode
-vmap <Enter> <Plug>(EasyAlign)
-
-" Start interactive EasyAlign for a motion/text object
-nmap ga <Plug>(EasyAlign)
 
 " }}}
 " Vim-go {{{

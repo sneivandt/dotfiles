@@ -11,7 +11,7 @@ description: >
 # Desktop Shell
 
 Sources live in [`symlinks/config/quickshell/`](../../../symlinks/config/quickshell/),
-tests in [`.github/workflows/scripts/linux/quickshell_tests/`](../../../.github/workflows/scripts/linux/quickshell_tests/),
+tests in [`tests/desktop/quickshell/`](../../../tests/desktop/quickshell/),
 and user documentation in [Arch desktop](../../../docs/content/guides/arch-desktop.md)
 (not Application settings).
 
@@ -19,8 +19,8 @@ and user documentation in [Arch desktop](../../../docs/content/guides/arch-deskt
 
 - Reuse shared state objects in `shell.qml` rather than spawning per-screen or
   per-popup pollers. Keep expensive detail queries on-demand (e.g., Wi-Fi details
-  only while `NetworkMenu` is open) and guard lifecycle behavior in
-  `qml/tst_ServiceLifecycle.qml`.
+  only while `NetworkMenu` is open, market data only while `MarketMenu` is open)
+  and guard lifecycle behavior in `tests/desktop/quickshell/qml/tst_ServiceLifecycle.qml`.
 - Keep media controls tracking the actively playing player (`MediaPlayer.js`),
   not the first registered player.
 - Calendar and bar clocks share `shell.qml`'s date; keep highlighting and month

@@ -54,7 +54,7 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False):
             commands.append(("Windows compilation (no runtime coverage)", "cli", ["cargo", "clippy", "--locked", "--profile", "ci", "--target", "x86_64-pc-windows-gnu", "--all-targets", "--", "-D", "warnings"]))
         commands.append(("minimum Rust compilation", "cli", ["rustup", "run", msrv, "cargo", "check", "--locked", "--profile", "ci", "--all-targets"]))
     if selection["run_hook_inputs"] or selection["run_rust_checks"]:
-        commands.append(("isolated hook inputs", ".", ["sh", "tests/hooks/test-hook-inputs.sh"]))
+        commands.append(("isolated hook inputs", ".", ["python3", "-B", "tests/hooks/test-hook-inputs.py"]))
     if selection["run_git_hooks"]:
         commands.append(("Git template and cleanup fixtures", ".", ["python3", "-B", "tests/hooks/test-maintenance.py"]))
     if selection["run_wrapper_linux"]:
@@ -67,8 +67,6 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False):
             commands.append((flag + " fixtures", ".", ["python3", "-B", "-m", "unittest", "discover", "-s", directory, "-p", "test_*.py"]))
     if selection["run_prompt"]:
         commands.append(("PowerShell prompt fixtures", ".", ["pwsh", "-NoProfile", "-File", "tests/shell/Test-Prompt.ps1"]))
-    if selection["run_stocks"]:
-        commands.append(("stock concurrency fixtures", ".", ["sh", "tests/desktop/quickshell/test-stocks.sh"]))
     apps = {item["application"] for item in selection["app_matrix"]["include"]}
     if "zsh" in apps:
         commands.append(("isolated shell configuration", ".", ["python3", "-B", "tests/shell/test-shell-config.py"]))

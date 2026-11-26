@@ -73,14 +73,14 @@ domain rather than by CI runner:
 
 | Directory | Covers |
 |---|---|
-| `tests/git/` | Git configuration, aliases, behavior, and cleanup suites (`test-git.sh`, `Test-Git.ps1`) |
-| `tests/shell/` | Zsh completion/history (`test-zsh.sh`), isolated Bash/Zsh fixtures (`test-shell-config.py`, `shell_config_tests/`), and PowerShell prompt tests |
-| `tests/vim/` | Vim (`test-vim.sh`) and Neovim (`test-nvim.sh`) startup, plugin, filetype, and lockfile suites |
-| `tests/desktop/quickshell/` | Offscreen QML tests, `qmllint`, headless Sway session checks, Python helpers, and stock-cache tests |
+| `tests/git/` | Cross-platform Git configuration, aliases, behavior, and cleanup suite (`test-git.py`) |
+| `tests/shell/` | Zsh completion/history (`test-zsh.py`), isolated Bash/Zsh fixtures (`test-shell-config.py`, `shell_config_tests/`), and PowerShell prompt tests |
+| `tests/vim/` | Vim (`test-vim.py`) and Neovim (`test-nvim.py`) startup, plugin, filetype, and lockfile suites |
+| `tests/desktop/quickshell/` | Offscreen QML tests, `qmllint`, headless Sway session checks, and Python helper/stock-cache tests |
 | `tests/desktop/hypr/` | Hyprland helper script unit tests (brightness, volume, launchers, lock screen, screenshot, resize) |
-| `tests/hooks/` | Staged-input guards (`test-hook-inputs.sh`, `inputs/`), pre-commit integration (`test-git-hooks.sh`, `git/`), and maintenance tests |
+| `tests/hooks/` | Staged-input guards (`test-hook-inputs.py`, `hook_inputs_tests/`), pre-commit integration (`test-git-hooks.py`, `git_hook_tests/`), and maintenance tests |
 | `tests/wrapper/` | POSIX (`test-shell-wrapper.sh`, `linux/`) and PowerShell (`Test-ShellWrapper.ps1`, `windows/`) bootstrap wrapper suites |
-| `tests/integration/` | Install/uninstall round-trips, Arch container acceptance, and APM deployment |
+| `tests/integration/` | Cross-platform install/uninstall round-trip (`test-install-uninstall.py`), Arch container acceptance, and APM deployment |
 | `tests/lib/` | Shared POSIX test assertion helpers |
 
 Keep CI-only orchestration (`check.sh`, `Check.ps1`, `pre-push.py`, path/release

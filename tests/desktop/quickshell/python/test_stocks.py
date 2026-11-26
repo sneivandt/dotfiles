@@ -411,6 +411,124 @@ class StocksCacheTests(unittest.TestCase):
                     self.assertEqual(stocks.load_quotes(config), stocks.DEFAULT_QUOTES)
                 self.assertIn("Ignoring invalid market config", stderr.getvalue())
 
+    def test_concurrent_subprocesses_single_refresh_ignores_legacy_lock_dirs(self):
+        with tempfile.TemporaryDirectory() as root_str:
+            root = Path(root_str)
+            bin_dir = root / "bin"
+            cache_dir = root / "home" / ".cache" / "quickshell-stocks"
+            (cache_dir / "quotes-prices.lock").mkdir(parents=True)
+            (cache_dir / "quotes-prices.lock.reap").mkdir(parents=True)
+            bin_dir.mkdir(parents=True)
+            # Orphaned directories from the old protocol must not block the kernel lock.
+            (cache_dir / "quotes-prices.lock" / "pid").write_text("99999999\n", encoding="utf-8")
+
+            curl_calls = root / "curl-calls"
+            fake_curl = bin_dir / "curl"
+            fake_curl.write_text(
+                "#!/bin/sh\n"
+                f'printf x >> "{curl_calls}"\n'
+                "# Hold the owner until every contender has observed the busy lock and exited.\n"
+                "attempt=0\n"
+                'while [ "$attempt" -lt 100 ]; do\n'
+                "  completed=0\n"
+                f'  for result in "{root}"/result-*; do\n'
+                '    if [ -s "$result" ]; then completed=$((completed + 1)); fi\n'
+                "  done\n"
+                '  if [ "$completed" -ge 19 ]; then exit 1; fi\n'
+                "  attempt=$((attempt + 1))\n"
+                "  sleep 0.05\n"
+                "done\n"
+                "exit 2\n",
+                encoding="utf-8",
+            )
+            fake_curl.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin"
+            env["HOME"] = str(root / "home")
+            env["XDG_CACHE_HOME"] = str(root / "home" / ".cache")
+            env.pop("DOTFILES_STOCKS_CONFIG", None)
+
+            procs = []
+            handles = []
+            try:
+                for i in range(20):
+                    handle = (root / f"result-{i}").open("wb")
+                    handles.append(handle)
+                    procs.append(
+                        subprocess.Popen(
+                            [sys.executable, str(SCRIPT)],
+                            env=env,
+                            stdout=handle,
+                            stderr=subprocess.DEVNULL,
+                        )
+                    )
+                for proc in procs:
+                    proc.wait(timeout=30)
+            finally:
+                for handle in handles:
+                    handle.close()
+
+            calls = len(curl_calls.read_bytes()) if curl_calls.exists() else 0
+            self.assertEqual(calls, 5, f"expected one stock refresh (5 calls), observed {calls}")
+
+    def test_subprocess_end_to_end_json_schema(self):
+        sample_chart = json.dumps({
+            "chart": {
+                "result": [{
+                    "meta": {
+                        "regularMarketPrice": 110,
+                        "regularMarketChangePercent": 5.5,
+                        "chartPreviousClose": 80,
+                        "fiftyTwoWeekLow": 70,
+                        "fiftyTwoWeekHigh": 120,
+                        "shortName": "Test Instrument ",
+                    },
+                    "timestamp": [1000, 2000, 3000, 4000],
+                    "indicators": {
+                        "quote": [{"close": [80, None, 100, 110]}],
+                    },
+                }]
+            }
+        })
+        with tempfile.TemporaryDirectory() as root_str:
+            root = Path(root_str)
+            bin_dir = root / "bin"
+            bin_dir.mkdir(parents=True)
+            fake_curl = bin_dir / "curl"
+            fake_curl.write_text(f"#!/bin/sh\nprintf '%s\\n' '{sample_chart}'\n", encoding="utf-8")
+            fake_curl.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin"
+            env["HOME"] = str(root / "home")
+            env["XDG_CACHE_HOME"] = str(root / "home" / ".cache")
+            env.pop("DOTFILES_STOCKS_CONFIG", None)
+
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT)],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["version"], 4)
+            self.assertGreater(payload["updated"], 0)
+            self.assertEqual(len(payload["quotes"]), 5)
+            for quote in payload["quotes"]:
+                self.assertGreater(quote["updated"], 0)
+                self.assertEqual(quote["price"], 110)
+                self.assertEqual(quote["name"], "Test Instrument")
+                self.assertEqual(quote["change"], 5.5)
+                self.assertEqual(quote["history"], [80, 100, 110])
+                self.assertEqual(quote["historyStart"], 1000)
+                self.assertEqual(quote["yearChange"], 37.5)
+                self.assertEqual(quote["yearLow"], 70)
+                self.assertEqual(quote["yearHigh"], 120)
+
 
 if __name__ == "__main__":
     unittest.main()

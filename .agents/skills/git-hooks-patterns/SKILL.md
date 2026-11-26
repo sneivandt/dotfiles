@@ -36,5 +36,5 @@ description: >
 ## Verification
 
 See [Wrapper and hook tests](../../../docs/content/development/testing.md#wrapper-and-hook-tests).
-`test-git-hooks.sh` runs commits in its own disposable temp repository without
+`test-git-hooks.py` runs commits in its own disposable temp repository without
 touching the caller's checkout. Use `ci-cd-patterns` when changing CI parity scope.

@@ -18,30 +18,30 @@ FLAGS = (
     "run_roundtrip_linux", "run_roundtrip_windows", "run_app_tests",
     "run_app_windows", "run_git_hooks", "run_hook_inputs", "run_wrapper_linux",
     "run_wrapper_windows", "run_lint", "run_desktop_scripts", "run_prompt",
-    "run_lock", "run_desktop_qml", "run_desktop_python", "run_stocks", "run_release",
+    "run_lock", "run_desktop_qml", "run_desktop_python", "run_release",
 )
 APPS = {
     "git": {
         "application": "git",
-        "script": "tests/git/test-git.sh",
+        "script": "tests/git/test-git.py",
         "packages": "git",
         "tests": "config aliases behavior clean",
     },
     "zsh": {
         "application": "zsh",
-        "script": "tests/shell/test-zsh.sh",
+        "script": "tests/shell/test-zsh.py",
         "packages": "zsh fzf wget libarchive-tools bat zstd",
         "tests": "completion history configuration",
     },
     "vim": {
         "application": "vim",
-        "script": "tests/vim/test-vim.sh",
+        "script": "tests/vim/test-vim.py",
         "packages": "vim",
         "tests": "opens configuration",
     },
     "nvim": {
         "application": "nvim",
-        "script": "tests/vim/test-nvim.sh",
+        "script": "tests/vim/test-nvim.py",
         "packages": "neovim",
         "tests": "opens plugins configuration",
     },
@@ -204,13 +204,11 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("desktop_qml")
         elif path.startswith("tests/desktop/quickshell/python/"):
             enable("desktop_python")
-            if path == "tests/desktop/quickshell/python/test_stocks.py":
-                enable("stocks")
         elif path.startswith("tests/desktop/hypr/"):
             enable("lock")
-        elif path in {"tests/vim/test-nvim.sh", "tests/vim/test-nvim-config.lua", "tests/vim/test-nvim-lock.lua"}:
+        elif path in {"tests/vim/test-nvim.py", "tests/vim/test-nvim-config.lua", "tests/vim/test-nvim-lock.lua"}:
             apps.add("nvim")
-        elif path == "tests/vim/test-vim.sh":
+        elif path == "tests/vim/test-vim.py":
             apps.add("vim")
         elif path.startswith("tests/vim/"):
             apps.update(("vim", "nvim"))
@@ -225,12 +223,10 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             pass
         elif path == LINUX + "test-static-analysis.sh":
             linters.update(LINTERS)
-        elif path == "tests/hooks/test-hook-inputs.sh" or path.startswith("tests/hooks/inputs/"):
+        elif path == "tests/hooks/test-hook-inputs.py" or path.startswith("tests/hooks/hook_inputs_tests/"):
             enable("hook_inputs", "build_linux")
-        elif path == "tests/desktop/quickshell/test-stocks.sh":
-            enable("stocks")
-        elif path in {"tests/hooks/test-git-hooks.sh", "tests/hooks/test-maintenance.py"} or path.startswith(
-            ("tests/hooks/git/", "hooks/")
+        elif path in {"tests/hooks/test-git-hooks.py", "tests/hooks/test-maintenance.py"} or path.startswith(
+            ("tests/hooks/git_hook_tests/", "hooks/")
         ):
             enable("git_hooks", "hook_inputs")
         elif path in {"dotfiles.sh", "tests/wrapper/test-shell-wrapper.sh"} or path.startswith(
@@ -244,15 +240,14 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             if path == "dotfiles.ps1":
                 # The Windows PowerShell 5.1 smoke uses the installed fixture CLI.
                 enable("roundtrip_windows")
-        elif path in {"tests/integration/test-uninstall.sh", "tests/integration/test-arch-acceptance.sh"}:
+        elif path == "tests/integration/test-install-uninstall.py":
+            enable("roundtrip_linux", "roundtrip_windows")
+        elif path == "tests/integration/test-arch-acceptance.sh":
             enable("roundtrip_linux")
-        elif path == "tests/integration/Test-InstallUninstall.ps1":
-            enable("roundtrip_windows")
-        elif path == "tests/git/test-git.sh":
+        elif path == "tests/git/test-git.py":
             apps.add("git")
-        elif path == "tests/git/Test-Git.ps1":
             enable("app_windows")
-        elif path in {"tests/shell/test-zsh.sh", "tests/shell/test-shell-config.py"} or path.startswith(
+        elif path in {"tests/shell/test-zsh.py", "tests/shell/test-shell-config.py"} or path.startswith(
             "tests/shell/shell_config_tests/"
         ):
             apps.add("zsh")
@@ -348,8 +343,6 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                     enable("lock")
             if path.startswith("symlinks/config/quickshell/"):
                 enable("desktop_python", "desktop_qml")
-            if path == "symlinks/config/quickshell/helpers/stocks.py":
-                enable("stocks")
         elif path.startswith(".github/workflows/") and not path.startswith(SCRIPTS):
             full = True
         elif path.startswith(".vscode/") or path in {

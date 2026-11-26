@@ -38,7 +38,6 @@ JOB_CONDITIONS = {
     "test-git-hooks": "run_git_hooks",
     "test-shell-wrapper-linux": "run_wrapper_linux",
     "test-shell-wrapper-windows": "run_wrapper_windows",
-    "test-stocks": "run_stocks",
     "test-hook-inputs": "run_hook_inputs",
 }
 SPECIAL_CONDITIONS = {

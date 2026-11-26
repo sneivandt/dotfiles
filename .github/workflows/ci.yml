@@ -57,7 +57,6 @@ jobs:
       run_lock: ${{ steps.classify.outputs.run_lock }}
       run_desktop_qml: ${{ steps.classify.outputs.run_desktop_qml }}
       run_desktop_python: ${{ steps.classify.outputs.run_desktop_python }}
-      run_stocks: ${{ steps.classify.outputs.run_stocks }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -173,7 +172,7 @@ jobs:
       - name: Check desktop script behavior
         if: needs.classify-changes.outputs.run_lock == 'true'
         run: python3 -B -m unittest discover -s tests/desktop/hypr -p 'test_*.py'
-      - name: Check desktop network and power actions
+      - name: Check Quickshell Python helpers
         if: needs.classify-changes.outputs.run_desktop_python == 'true'
         run: python3 -B -m unittest discover -s tests/desktop/quickshell/python -p 'test_*.py'
 
@@ -308,21 +307,6 @@ jobs:
         if: needs.classify-changes.outputs.run_apm == 'true'
         run: python3 -B tests/integration/test-apm.py bin/dotfiles
 
-  test-stocks:
-    name: "Regression: Stock ticker"
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [classify-changes]
-    if: needs.classify-changes.outputs.run_stocks == 'true'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Test stock ticker
-        env:
-          DIR: ${{ github.workspace }}
-        run: sh tests/desktop/quickshell/test-stocks.sh
-
   test-hook-inputs:
     name: "Regression: Isolated hook inputs"
     runs-on: ubuntu-latest
@@ -334,7 +318,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Test staged inputs and repository isolation
-        run: sh tests/hooks/test-hook-inputs.sh
+        run: python3 -B tests/hooks/test-hook-inputs.py
 
   # ── Security ──────────────────────────────────────────
   audit:
@@ -424,7 +408,7 @@ jobs:
         run: cargo test --locked --profile ci --test config_drift
       - name: Test build-version Git dependencies
         if: needs.classify-changes.outputs.run_rust_checks == 'true' || needs.classify-changes.outputs.run_hook_inputs == 'true'
-        run: sh ../tests/hooks/test-hook-inputs.sh test_build_version_ref_triggers
+        run: python3 -B ../tests/hooks/test-hook-inputs.py test_build_version_ref_triggers
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dotfiles-linux
@@ -641,7 +625,7 @@ jobs:
         env:
           DIR: ${{ github.workspace }}
           BINARY_PATH: ${{ github.workspace }}/bin/dotfiles
-        run: sh tests/integration/test-uninstall.sh
+        run: python3 -B tests/integration/test-install-uninstall.py
       - name: Check native Arch convergence and recovery
         run: >-
           docker run --rm --init --volume "$GITHUB_WORKSPACE:/workspace:ro"
@@ -670,7 +654,7 @@ jobs:
         env:
           DIR: ${{ github.workspace }}
           BINARY_PATH: ${{ github.workspace }}/bin/dotfiles.exe
-        run: ./tests/integration/Test-InstallUninstall.ps1
+        run: python -B tests/integration/test-install-uninstall.py
 
   # ── Application Tests ─────────────────────────────────
   test-applications:
@@ -702,7 +686,7 @@ jobs:
       - name: Test ${{ matrix.application }}
         env:
           DIR: ${{ github.workspace }}
-        run: sh ${{ matrix.script }} ${{ matrix.tests }}
+        run: python3 -B ${{ matrix.script }} ${{ matrix.tests }}
 
   # Windows counterpart. Only git is covered: zsh, vim, and nvim are excluded
   # from the Windows profile, so they have no Windows equivalent to test.
@@ -717,7 +701,7 @@ jobs:
       matrix:
         include:
           - application: Git
-            tests: Config Alias Behavior
+            tests: config aliases behavior
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -739,7 +723,7 @@ jobs:
         shell: pwsh
         env:
           DIR: ${{ github.workspace }}
-        run: ./tests/git/Test-Git.ps1 ${{ matrix.tests }}
+        run: python -B tests/git/test-git.py ${{ matrix.tests }}
 
   # ── Specialized Tests ─────────────────────────────────
   test-git-hooks:
@@ -755,7 +739,7 @@ jobs:
       - name: Test pre-commit hook
         env:
           DIR: ${{ github.workspace }}
-        run: sh tests/hooks/test-git-hooks.sh
+        run: python3 -B tests/hooks/test-git-hooks.py
 
   test-shell-wrapper-linux:
     name: "Shell Wrapper: Linux (dotfiles.sh)"
@@ -833,7 +817,6 @@ jobs:
       - test-git-hooks
       - test-shell-wrapper-linux
       - test-shell-wrapper-windows
-      - test-stocks
       - test-hook-inputs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

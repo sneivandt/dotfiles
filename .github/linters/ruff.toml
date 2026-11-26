@@ -15,4 +15,6 @@ select = ["E4", "E7", "E9", "F"]
 # Test runners insert their sibling package directory into sys.path before importing.
 "**/.github/workflows/scripts/linux/test-ci-changes.py" = ["E402"]
 "**/tests/shell/test-shell-config.py" = ["E402"]
+"**/tests/hooks/test-git-hooks.py" = ["E402"]
+"**/tests/hooks/test-hook-inputs.py" = ["E402"]
 "**/tests/desktop/quickshell/python/test_network_helper.py" = ["E402"]

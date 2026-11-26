@@ -411,13 +411,13 @@ installing the real CLI (for full commit-hook integration, see
 [Full commit-hook suite](#full-commit-hook-suite)):
 
 ```sh
-sh tests/hooks/test-hook-inputs.sh \
+python3 -B tests/hooks/test-hook-inputs.py \
   test_staged_ci_guards test_staged_ci_guard_deletions
 DIR="$PWD" sh tests/wrapper/test-shell-wrapper.sh \
   test_wrapper_preserves_runtime_context test_wrapper_uses_cargo_artifact
 ```
 
-Omitting test names runs every case in `test-hook-inputs.sh` (its build
+Omitting test names runs every case in `test-hook-inputs.py` (its build
 metadata case needs the pinned Rust toolchain and skips otherwise).
 
 On Windows, dot-source the wrapper suite to invoke individual isolated cases:
@@ -436,7 +436,7 @@ their setup before running every case.
 Run the full pre-commit integration suite from the repository root:
 
 ```sh
-sh tests/hooks/test-git-hooks.sh
+python3 -B tests/hooks/test-git-hooks.py
 ```
 
 The script initializes a disposable temporary Git repository, copies `hooks/`
@@ -462,14 +462,13 @@ Quickshell components with test doubles so your live desktop stays untouched:
 sh .github/workflows/scripts/linux/check.sh --strict qml
 ```
 
-Run the Python helper, lock-script, and stock-cache suites in isolation:
+Run the Python helper, stock-cache, and lock-script suites in isolation:
 
 ```sh
 python3 -B -m unittest discover \
   -s tests/desktop/quickshell/python -p 'test_*.py'
 python3 -B -m unittest discover \
   -s tests/desktop/hypr -p 'test_*.py'
-sh tests/desktop/quickshell/test-stocks.sh
 ```
 
 Offscreen suites verify logic and layout rather than live rendering, focus, or
@@ -493,9 +492,9 @@ pwsh -NoProfile -File tests/shell/Test-Prompt.ps1
 ```
 
 Each managed application also has a dedicated installed-config smoke harness
-under its own directory (`tests/git/test-git.sh`, `tests/git/Test-Git.ps1`,
-`tests/shell/test-zsh.sh`, `tests/vim/test-vim.sh`, `tests/vim/test-nvim.sh`)
-that runs every check by default or accepts specific test names.
+under its own directory (`tests/git/test-git.py`, `tests/shell/test-zsh.py`,
+`tests/vim/test-vim.py`, `tests/vim/test-nvim.py`) that runs every check by
+default or accepts specific test names.
 
 The PowerShell suite checks first-start discovery, custom Cargo paths, literal
 fragment directories, and `PATH` deduplication on reload. Install required

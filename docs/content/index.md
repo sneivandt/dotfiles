@@ -31,10 +31,13 @@ editor, and package setup in sync across Arch Linux and Windows, and sets up
 the Hyprland desktop on my workstation. It's also where I experiment with
 coding agents, sometimes building more than I strictly need.
 
-This is a personal setup, not a general-purpose tool. If I want a different
-shell alias, I edit the config file instead of adding a CLI flag. Profiles let
-me share the terminal basics everywhere without pulling a full desktop onto
-every machine.
+This is a personal setup, not a general-purpose dotfiles manager. I build it
+around the tools, packages, and defaults I actually use instead of trying to
+support every platform or workflow.
+[Profiles](guides/profiles-and-categories.md) separate shared terminal basics
+from my workstation desktop, and a
+[private overlay](guides/private-overlays.md) holds work and machine-specific
+settings outside this repository.
 
 If you're here to borrow ideas, explore the [application settings](guides/application-settings.md)
 or browse the

@@ -96,10 +96,10 @@ test('maintenance procedures link to task references and contributor guides', as
   await expect(page).toHaveURL('/custom-package-repository');
   await expect(page.locator('main #configuration')).toBeVisible();
   await page.goto('/testing');
-  await expect(page.locator('main #prepare-an-isolated-source-snapshot')).toHaveCount(0);
+  await expect(page.locator('main #prerequisites-and-baseline')).toHaveCount(0);
   await page.locator('main').getByRole('link', { name: 'Mutation testing', exact: true }).first().click();
   await expect(page).toHaveURL('/mutation-testing');
-  await expect(page.locator('main #prepare-an-isolated-source-snapshot')).toBeVisible();
+  await expect(page.locator('main #prerequisites-and-baseline')).toBeVisible();
   await assertNoPageOverflow(page);
 });
 

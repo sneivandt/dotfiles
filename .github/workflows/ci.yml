@@ -712,7 +712,7 @@ jobs:
       - name: Test ${{ matrix.application }}
         env:
           DIR: ${{ github.workspace }}
-        run: sh tests/applications/test-applications.sh ${{ matrix.application }} ${{ matrix.tests }}
+        run: sh ${{ matrix.script }} ${{ matrix.tests }}
 
   # Windows counterpart. Only git is covered: zsh, vim, and nvim are excluded
   # from the Windows profile, so they have no Windows equivalent to test.
@@ -749,7 +749,7 @@ jobs:
         shell: pwsh
         env:
           DIR: ${{ github.workspace }}
-        run: ./tests/applications/Test-Applications.ps1 ${{ matrix.application }} ${{ matrix.tests }}
+        run: ./tests/git/Test-Git.ps1 ${{ matrix.tests }}
 
   # ── Specialized Tests ─────────────────────────────────
   test-git-hooks:

@@ -219,9 +219,9 @@ if has_staged_match '*.sh' '*.bash' hooks/pre-commit symlinks/bashrc symlinks/ba
   run_shell_guards
 fi
 
-if full_checks_enabled && has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh; then
+if full_checks_enabled && has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh 'tests/wrapper/linux/*'; then
   run_wrapper_guards
-elif has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh; then
+elif has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh 'tests/wrapper/linux/*'; then
   printf '%sSkipping Linux shell wrapper tests: set DOTFILES_HOOKS_FULL=1 to run them.%s\n' "$DIM" "$NC"
 fi
 

@@ -16,10 +16,10 @@ fi
 run_qmllint() {
   mode=$1
   shift
-  if [ "$mode" = production ]; then
-    set -- --read-only-property=error "$@"
-  fi
   if "$linter" --help 2>&1 | grep -q -- --only-explicit-categories; then
+    if [ "$mode" = production ]; then
+      set -- --read-only-property=error "$@"
+    fi
     set -- \
       --only-explicit-categories \
       --syntax=error \
@@ -37,26 +37,48 @@ run_qmllint() {
       --with=error \
       "$@"
   else
-    # Qt 6.8 lacks --only-explicit-categories and several 6.9+ categories.
-    # -W -1 ignores unresolvable Quickshell metatype warnings while still
-    # failing on syntax errors and every explicit =error category.
+    # Qt 6.8 lacks --only-explicit-categories and the `error` severity level;
+    # `warning` is its failing level. Disable categories that require compiled
+    # Quickshell metatypes while failing on syntax and structural errors.
+    if [ "$mode" = production ]; then
+      set -- --read-only-property=warning "$@"
+    else
+      set -- --read-only-property=disable "$@"
+    fi
     set -- \
-      -W -1 \
       --ignore-settings \
+      --required=disable \
+      --unresolved-alias=disable \
       --import=disable \
-      --missing-property=disable \
-      --missing-type=disable \
-      --unqualified=disable \
-      --incompatible-type=disable \
+      --deprecated=disable \
       --signal-handler-parameters=disable \
+      --missing-type=disable \
+      --unresolved-type=disable \
+      --restricted-type=disable \
+      --prefixed-import-type=disable \
+      --incompatible-type=disable \
+      --missing-property=disable \
+      --non-list-property=disable \
+      --unqualified=disable \
       --unused-imports=disable \
-      --duplicate-property-binding=error \
-      --duplicated-name=error \
-      --alias-cycle=error \
-      --inheritance-cycle=error \
-      --invalid-lint-directive=error \
-      --var-used-before-declaration=error \
-      --with=error \
+      --multiline-strings=disable \
+      --use-proper-function=disable \
+      --access-singleton-via-object=disable \
+      --top-level-component=disable \
+      --uncreatable-type=disable \
+      --Quick.layout-positioning=disable \
+      --Quick.attached-property-type=disable \
+      --Quick.anchor-combinations=disable \
+      --Quick.controls-native-customize=disable \
+      --Quick.unexpected-var-type=disable \
+      --Quick.property-changes-parsed=disable \
+      --duplicate-property-binding=warning \
+      --duplicated-name=warning \
+      --alias-cycle=warning \
+      --inheritance-cycle=warning \
+      --invalid-lint-directive=warning \
+      --var-used-before-declaration=warning \
+      --with=warning \
       "$@"
   fi
   "$linter" \

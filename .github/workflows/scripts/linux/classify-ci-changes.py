@@ -21,10 +21,30 @@ FLAGS = (
     "run_lock", "run_desktop_qml", "run_desktop_python", "run_stocks", "run_release",
 )
 APPS = {
-    "git": {"application": "git", "packages": "git", "tests": "config aliases behavior clean"},
-    "zsh": {"application": "zsh", "packages": "zsh fzf wget libarchive-tools bat zstd", "tests": "completion history configuration"},
-    "vim": {"application": "vim", "packages": "vim", "tests": "opens configuration"},
-    "nvim": {"application": "nvim", "packages": "neovim", "tests": "opens plugins configuration"},
+    "git": {
+        "application": "git",
+        "script": "tests/git/test-git.sh",
+        "packages": "git",
+        "tests": "config aliases behavior clean",
+    },
+    "zsh": {
+        "application": "zsh",
+        "script": "tests/shell/test-zsh.sh",
+        "packages": "zsh fzf wget libarchive-tools bat zstd",
+        "tests": "completion history configuration",
+    },
+    "vim": {
+        "application": "vim",
+        "script": "tests/vim/test-vim.sh",
+        "packages": "vim",
+        "tests": "opens configuration",
+    },
+    "nvim": {
+        "application": "nvim",
+        "script": "tests/vim/test-nvim.sh",
+        "packages": "neovim",
+        "tests": "opens plugins configuration",
+    },
 }
 LINTERS = {
     "shell": {
@@ -188,8 +208,10 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 enable("stocks")
         elif path.startswith("tests/desktop/hypr/"):
             enable("lock")
-        elif path in {"tests/vim/test-nvim-config.lua", "tests/vim/test-nvim-lock.lua"}:
+        elif path in {"tests/vim/test-nvim.sh", "tests/vim/test-nvim-config.lua", "tests/vim/test-nvim-lock.lua"}:
             apps.add("nvim")
+        elif path == "tests/vim/test-vim.sh":
+            apps.add("vim")
         elif path.startswith("tests/vim/"):
             apps.update(("vim", "nvim"))
         elif path == "tests/shell/Test-Prompt.ps1":
@@ -203,16 +225,20 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             pass
         elif path == LINUX + "test-static-analysis.sh":
             linters.update(LINTERS)
-        elif path == "tests/hooks/test-hook-inputs.sh":
+        elif path == "tests/hooks/test-hook-inputs.sh" or path.startswith("tests/hooks/inputs/"):
             enable("hook_inputs", "build_linux")
         elif path == "tests/desktop/quickshell/test-stocks.sh":
             enable("stocks")
-        elif path in {"tests/hooks/test-git-hooks.sh", "tests/hooks/test-maintenance.py"} or path.startswith("hooks/"):
+        elif path in {"tests/hooks/test-git-hooks.sh", "tests/hooks/test-maintenance.py"} or path.startswith(
+            ("tests/hooks/git/", "hooks/")
+        ):
             enable("git_hooks", "hook_inputs")
-        elif path in {"dotfiles.sh", "tests/wrapper/test-shell-wrapper.sh"}:
+        elif path in {"dotfiles.sh", "tests/wrapper/test-shell-wrapper.sh"} or path.startswith(
+            "tests/wrapper/linux/"
+        ):
             enable("wrapper_linux")
         elif path in {"dotfiles.ps1", "tests/wrapper/Test-ShellWrapper.ps1"} or path.startswith(
-            "tests/wrapper/shell_wrapper_tests/"
+            "tests/wrapper/windows/"
         ):
             enable("wrapper_windows")
             if path == "dotfiles.ps1":
@@ -222,11 +248,11 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("roundtrip_linux")
         elif path == "tests/integration/Test-InstallUninstall.ps1":
             enable("roundtrip_windows")
-        elif path == "tests/applications/test-applications.sh":
-            apps.update(APPS)
-        elif path == "tests/applications/Test-Applications.ps1":
+        elif path == "tests/git/test-git.sh":
+            apps.add("git")
+        elif path == "tests/git/Test-Git.ps1":
             enable("app_windows")
-        elif path == "tests/shell/test-shell-config.py" or path.startswith(
+        elif path in {"tests/shell/test-zsh.sh", "tests/shell/test-shell-config.py"} or path.startswith(
             "tests/shell/shell_config_tests/"
         ):
             apps.add("zsh")

@@ -491,6 +491,11 @@ python3 -B -m unittest discover -s tests/vim -p 'test_*.py'
 pwsh -NoProfile -File tests/shell/Test-Prompt.ps1
 ```
 
+Each managed application also has a dedicated installed-config smoke harness
+under its own directory (`tests/git/test-git.sh`, `tests/git/Test-Git.ps1`,
+`tests/shell/test-zsh.sh`, `tests/vim/test-vim.sh`, `tests/vim/test-nvim.sh`)
+that runs every check by default or accepts specific test names.
+
 The PowerShell suite checks first-start discovery, custom Cargo paths, literal
 fragment directories, and `PATH` deduplication on reload. Install required
 tools so cases actually run rather than skipping.

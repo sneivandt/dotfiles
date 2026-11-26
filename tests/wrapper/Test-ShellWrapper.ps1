@@ -11,7 +11,7 @@ foreach ($testModule in @(
     'Test-ErrorAndIsolation.ps1'
     'Test-ArtifactsAndStartup.ps1'
 )) {
-    . (Join-Path $PSScriptRoot "shell_wrapper_tests/$testModule")
+    . (Join-Path $PSScriptRoot "windows/$testModule")
 }
 
 function Invoke-TestSuite {

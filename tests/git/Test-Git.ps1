@@ -1,23 +1,15 @@
 # -----------------------------------------------------------------------------
-# Test-Applications.ps1 - Application-level tests for Windows.
+# Test-Git.ps1 - Windows Git configuration, aliases, and behavior tests.
 #
-# Windows counterpart to scripts/linux/test-applications.sh. Only applications
-# managed on Windows are covered here; zsh, vim, and nvim have no Windows
-# equivalent in this repository.
+# Windows counterpart to tests/git/test-git.sh.
 #
-# Expected: $env:DIR (repo root)
-#
-# Usage: Test-Applications.ps1 <app> <test> [<test>...]
-#        Test-Applications.ps1 git Config Aliases Behavior
+# Usage: ./tests/git/Test-Git.ps1 [Config] [Alias] [Behavior]
 # -----------------------------------------------------------------------------
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true, Position = 0)]
-    [string]$Application,
-
-    [Parameter(Mandatory = $true, Position = 1, ValueFromRemainingArguments = $true)]
-    [string[]]$Tests
+    [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
+    [string[]]$Tests = @('Config', 'Alias', 'Behavior')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -108,10 +100,6 @@ function Invoke-OutsideRepository
         Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
-
-# ---------------------------------------------------------------------------
-# Git
-# ---------------------------------------------------------------------------
 
 function Test-GitConfig
 {
@@ -234,13 +222,9 @@ function Test-GitBehavior
     }
 }
 
-# ---------------------------------------------------------------------------
-# Dispatch
-# ---------------------------------------------------------------------------
-
 foreach ($test in $Tests)
 {
-    $function = "Test-$($Application)$($test)"
+    $function = "Test-Git$test"
     if (-not (Get-Command -Name $function -ErrorAction SilentlyContinue))
     {
         throw "Unknown test function: $function"

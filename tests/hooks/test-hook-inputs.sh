@@ -33,3 +33,4 @@ test_pkgbuild_checksum_allowlist
 test_sensitive_posix_patterns
 test_staged_quoted_shell
 test_staged_quoted_powershell
+test_staged_python_and_lua_guards

@@ -6,7 +6,7 @@ import re
 import unittest
 
 
-MENU = Path(__file__).resolve().parents[4] / "symlinks/config/quickshell/PowerMenu.qml"
+MENU = Path(__file__).resolve().parents[4] / "symlinks/config/quickshell/menus/PowerMenu.qml"
 
 
 class PowerMenuTests(unittest.TestCase):

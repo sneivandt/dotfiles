@@ -88,17 +88,7 @@ jobs:
           DOCS_BASE_SHA: ${{ steps.published-docs.outputs.base_sha }}
         run: sh .github/workflows/scripts/linux/classify-ci-changes.sh
       - name: Install actionlint
-        run: |
-          version=1.7.12
-          archive="actionlint_${version}_linux_amd64.tar.gz"
-          checksums="actionlint_${version}_checksums.txt"
-          base_url="https://github.com/rhysd/actionlint/releases/download/v${version}"
-          install_dir="$(mktemp -d)"
-          curl --fail --location --retry 3 "$base_url/$archive" -o "$install_dir/$archive"
-          curl --fail --location --retry 3 "$base_url/$checksums" -o "$install_dir/$checksums"
-          (cd "$install_dir" && sha256sum --check --ignore-missing "$checksums")
-          tar -xzf "$install_dir/$archive" -C "$install_dir" actionlint
-          printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
+        run: sh .github/workflows/scripts/linux/install-actionlint.sh
       - name: Check workflow syntax and expressions
         run: sh .github/workflows/scripts/linux/test-workflows.sh
       - name: Check CI job gate
@@ -368,7 +358,7 @@ jobs:
       - name: Install cargo-audit
         uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
-          tool: cargo-audit
+          tool: cargo-audit@0.23.0
       - run: cargo audit
 
   deny:
@@ -392,7 +382,7 @@ jobs:
       - name: Install cargo-deny
         uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
-          tool: cargo-deny
+          tool: cargo-deny@0.20.2
       - run: cargo deny check all
 
   # ── Build, Clippy & Test ──────────────────────────────

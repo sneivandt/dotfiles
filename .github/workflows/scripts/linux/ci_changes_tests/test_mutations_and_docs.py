@@ -21,7 +21,7 @@ from ci_changes_tests.helpers import (
 class MutationSelectionTests(unittest.TestCase):
     def test_source_tests_build_and_unrelated_paths(self):
         for paths, sources, windows in (
-            (["docs/example.md", "conf/README.md", "symlinks/config/quickshell/Bar.qml"], [], False),
+            (["docs/example.md", "conf/README.md", "symlinks/config/quickshell/bar/Bar.qml"], [], False),
             (["symlinks/config/hypr/conf/binds.lua", "symlinks/config/Code/User/settings.json"], [], False),
             (["cli/src/feature.rs"], ["cli/src/feature.rs"], True),
             (["cli/src/feature/tests.rs"], ["cli/src/feature", "cli/src/feature.rs"], True),

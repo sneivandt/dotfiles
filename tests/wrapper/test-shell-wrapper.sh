@@ -44,6 +44,7 @@ case "$0" in
     test_wrapper_attestation_verification
     test_wrapper_release_pinned_urls
     test_wrapper_release_repository
+    test_wrapper_api_headers_and_error_diagnostics
     echo "All shell wrapper tests passed"
     ;;
 esac

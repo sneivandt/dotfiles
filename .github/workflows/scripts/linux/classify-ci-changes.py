@@ -54,7 +54,7 @@ LINTERS = {
     },
     "powershell": {
         "name": "PSScriptAnalyzer",
-        "setup": 'pwsh -NoProfile -Command "Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser"',
+        "setup": 'pwsh -NoProfile -Command "Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser"',
         "test_function": "test_psscriptanalyzer",
     },
     "python": {
@@ -216,7 +216,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             apps.update(("vim", "nvim"))
         elif path == "tests/shell/Test-Prompt.ps1":
             enable("prompt")
-        elif path == LINUX + "test-workflows.sh":
+        elif path in {LINUX + "test-workflows.sh", LINUX + "install-actionlint.sh"}:
             pass  # Always executed by classify-changes.
         elif path == "tests/integration/test-apm.py":
             enable("apm")
@@ -348,7 +348,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                     enable("lock")
             if path.startswith("symlinks/config/quickshell/"):
                 enable("desktop_python", "desktop_qml")
-            if path == "symlinks/config/quickshell/stocks.py":
+            if path == "symlinks/config/quickshell/helpers/stocks.py":
                 enable("stocks")
         elif path.startswith(".github/workflows/") and not path.startswith(SCRIPTS):
             full = True

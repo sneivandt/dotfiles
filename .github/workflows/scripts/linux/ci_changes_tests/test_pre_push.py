@@ -42,7 +42,7 @@ class PrePushPlanTests(unittest.TestCase):
         self.assertFalse(any("update" in command or "remove" in command for _, _, command in commands))
 
     def test_config_and_desktop_select_their_regressions(self):
-        commands, _ = PRE_PUSH["plan"](classify(["symlinks/config/quickshell/Bar.qml"]), "1.91")
+        commands, _ = PRE_PUSH["plan"](classify(["symlinks/config/quickshell/bar/Bar.qml"]), "1.91")
         flattened = [argument for _, _, command in commands for argument in command]
         for argument in ("config_drift", "qml", "tests/desktop/quickshell/python"):
             self.assertIn(argument, flattened)
@@ -125,7 +125,7 @@ class PrePushCoordinatorTests(unittest.TestCase):
 
     def test_windows_plan_runs_prompt_without_linux_desktop_script_suites(self):
         desktop_commands = PRE_PUSH["windows_plan"](
-            classify(["symlinks/config/hypr/scripts/lock-screen.sh", "symlinks/config/quickshell/network_helper.py"]),
+            classify(["symlinks/config/hypr/scripts/lock-screen.sh", "symlinks/config/quickshell/helpers/network_helper.py"]),
             docs_checked=True,
         )
         flattened = [arg for _, _, command in desktop_commands for arg in command]

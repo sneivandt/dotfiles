@@ -136,31 +136,69 @@ resolve_release_repo() {
 download_file() {
   _df_url="$1"
   _df_out="$2"
+  _df_err=$(mktemp) || return 1
+  _df_rc=0
   if command -v curl >/dev/null 2>&1; then
     curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
-         -o "$_df_out" "$_df_url" 2>/dev/null
+         -o "$_df_out" "$_df_url" 2>"$_df_err" || _df_rc=$?
   elif command -v wget >/dev/null 2>&1; then
     wget -qO "$_df_out" --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
-         "$_df_url" 2>/dev/null
+         "$_df_url" 2>"$_df_err" || _df_rc=$?
   else
+    rm -f "$_df_err"
     echo "ERROR: curl or wget required to download binary." >&2
     exit 1
   fi
+  if [ "$_df_rc" -ne 0 ] && [ -s "$_df_err" ]; then
+    cat "$_df_err" >&2
+  fi
+  rm -f "$_df_err"
+  return "$_df_rc"
 }
 
 # Resolve the latest release tag from the GitHub API.
 # Prints the tag (e.g. "v0.2.0") on success, or an empty string on failure.
 resolve_release_tag() {
   _api_url="https://api.github.com/repos/$REPO/releases/latest"
+  _token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+  case "$_token" in
+    *[!A-Za-z0-9_+/=.-]*) _token="" ;;
+  esac
+  _rt_err=$(mktemp) || return 1
+  _rt_rc=0
   if command -v curl >/dev/null 2>&1; then
-    _release_json=$(curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
-         "$_api_url" 2>/dev/null) || return 1
+    if [ -n "$_token" ]; then
+      # Pass Authorization via stdin config so the token does not appear in argv.
+      _release_json=$(printf 'header = "Authorization: Bearer %s"\n' "$_token" | \
+        curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
+             -H "Accept: application/vnd.github+json" -K - "$_api_url" 2>"$_rt_err") || _rt_rc=$?
+    else
+      _release_json=$(curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
+           -H "Accept: application/vnd.github+json" "$_api_url" 2>"$_rt_err") || _rt_rc=$?
+    fi
   elif command -v wget >/dev/null 2>&1; then
-    _release_json=$(wget -qO- --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
-         "$_api_url" 2>/dev/null) || return 1
+    if [ -n "$_token" ]; then
+      _release_json=$(wget -qO- --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
+           --header="Accept: application/vnd.github+json" \
+           --header="Authorization: Bearer $_token" \
+           "$_api_url" 2>"$_rt_err") || _rt_rc=$?
+    else
+      _release_json=$(wget -qO- --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
+           --header="Accept: application/vnd.github+json" \
+           "$_api_url" 2>"$_rt_err") || _rt_rc=$?
+    fi
   else
+    rm -f "$_rt_err"
     return 1
   fi
+  if [ "$_rt_rc" -ne 0 ]; then
+    if [ -s "$_rt_err" ]; then
+      cat "$_rt_err" >&2
+    fi
+    rm -f "$_rt_err"
+    return 1
+  fi
+  rm -f "$_rt_err"
   printf '%s\n' "$_release_json" | awk '
     match($0, /"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"/) {
       tag = substr($0, RSTART, RLENGTH)

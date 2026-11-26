@@ -18,12 +18,15 @@ provides=("copilot=${pkgver}" "github-copilot-cli=${pkgver}" "github-copilot-cli
 source_x86_64=("copilot-cli-${pkgver}-x86_64.tar.gz::${url}/releases/download/v${pkgver}/copilot-linux-x64.tar.gz")
 source_aarch64=("copilot-cli-${pkgver}-aarch64.tar.gz::${url}/releases/download/v${pkgver}/copilot-linux-arm64.tar.gz")
 
-package() {
-  install -Dm755 "${srcdir}/copilot" "${pkgdir}/usr/bin/copilot"
+build() {
   local shell
   for shell in bash zsh fish; do
     "${srcdir}/copilot" completion "$shell" > "${srcdir}/copilot.${shell}"
   done
+}
+
+package() {
+  install -Dm755 "${srcdir}/copilot" "${pkgdir}/usr/bin/copilot"
   install -Dm644 "${srcdir}/copilot.bash" "${pkgdir}/usr/share/bash-completion/completions/copilot"
   install -Dm644 "${srcdir}/copilot.zsh" "${pkgdir}/usr/share/zsh/site-functions/_copilot"
   install -Dm644 "${srcdir}/copilot.fish" "${pkgdir}/usr/share/fish/vendor_completions.d/copilot.fish"

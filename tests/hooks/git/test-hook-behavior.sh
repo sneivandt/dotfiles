@@ -33,7 +33,7 @@ test_hook_modes() {
   for script in check-sensitive.sh check-rust.sh check-ci-guards.sh; do
     cat > "$repo/hooks/$script" <<EOF
 #!/bin/sh
-printf '%s\n' '$script' >> "\$HOOK_LOG"
+printf '%s full=%s\n' '$script' "\${DOTFILES_HOOKS_FULL:-0}" >> "\$HOOK_LOG"
 EOF
   done
 
@@ -42,9 +42,12 @@ EOF
     HOOK_LOG="$hook_log" sh hooks/pre-commit
   )
 
-  expected=$(printf '%s\n' check-sensitive.sh check-rust.sh)
+  expected=$(printf '%s\n' \
+    'check-sensitive.sh full=0' \
+    'check-rust.sh full=0' \
+    'check-ci-guards.sh full=0')
   if [ "$(cat "$hook_log")" = "$expected" ]; then
-    pass "Default hook runs sensitive-data and Rust checks"
+    pass "Default hook runs sensitive-data, Rust, and fast CI guard checks"
   else
     fail "Default hook did not run the expected checks"
   fi
@@ -55,9 +58,12 @@ EOF
     HOOK_LOG="$hook_log" DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
   )
 
-  expected=$(printf '%s\n' check-sensitive.sh check-rust.sh check-ci-guards.sh)
+  expected=$(printf '%s\n' \
+    'check-sensitive.sh full=1' \
+    'check-rust.sh full=1' \
+    'check-ci-guards.sh full=1')
   if [ "$(cat "$hook_log")" = "$expected" ]; then
-    pass "Full hook mode runs all helper scripts"
+    pass "Full hook mode runs all helper scripts with full mode enabled"
   else
     fail "Full hook mode did not run all helper scripts"
   fi

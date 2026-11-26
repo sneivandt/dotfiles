@@ -23,6 +23,7 @@ $DotfilesRoot = $PSScriptRoot -replace '^\\\\\?\\', ''
 $env:DOTFILES_ROOT = $DotfilesRoot
 $env:DOTFILES_WRAPPER = "pwsh"
 $BinDir = Join-Path $DotfilesRoot "bin"
+$ConnectTimeout = 10    # seconds — TCP/TLS connection timeout (PowerShell 7.4+)
 $TransferTimeout = 120  # seconds — total transfer timeout
 $Build = $false
 $EndOfOptions = $false
@@ -156,13 +157,48 @@ if ($Build)
 # Production mode: bootstrap binary if not present.
 # Subsequent update checks are handled by the binary itself.
 
+function Invoke-GitHubRequest
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [string]$OutFile,
+        [hashtable]$Headers
+    )
+    $requestParams = @{
+        Uri = $Uri
+        UseBasicParsing = $true
+        TimeoutSec = $TransferTimeout
+    }
+    if ($OutFile)
+    {
+        $requestParams.Method = 'Get'
+        $requestParams.OutFile = $OutFile
+    }
+    if ($Headers)
+    {
+        $requestParams.Headers = $Headers
+    }
+    $webCmd = Get-Command Invoke-WebRequest -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($webCmd -and $webCmd.Parameters.ContainsKey('ConnectionTimeoutSeconds'))
+    {
+        $requestParams.ConnectionTimeoutSeconds = $ConnectTimeout
+    }
+    return Invoke-WebRequest @requestParams
+}
+
 function Resolve-ReleaseTag
 {
     param([Parameter(Mandatory = $true)][string]$Repo)
     $url = "https://api.github.com/repos/$Repo/releases/latest"
+    $headers = @{ Accept = 'application/vnd.github+json' }
+    $token = if ($env:GH_TOKEN) { $env:GH_TOKEN } elseif ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { $null }
+    if (-not [string]::IsNullOrWhiteSpace($token))
+    {
+        $headers['Authorization'] = "Bearer $token"
+    }
     try
     {
-        $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec $TransferTimeout
+        $response = Invoke-GitHubRequest -Uri $url -Headers $headers
         $json = $response.Content | ConvertFrom-Json
         return $json.tag_name
     }
@@ -223,7 +259,7 @@ function Test-Attestation
     $ghCommand = Get-Command gh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $ghCommand -or $ghCommand.CommandType -ne 'Application' -or [string]::IsNullOrWhiteSpace($ghCommand.Source))
     {
-        [Console]::Error.WriteLine("WARNING: gh not found. Install GitHub CLI or use --build; DOTFILES_SKIP_ATTESTATION=1 explicitly bypasses provenance, not checksums.")
+        [Console]::Error.WriteLine("ERROR: gh not found. Install GitHub CLI or use --build; DOTFILES_SKIP_ATTESTATION=1 explicitly bypasses provenance, not checksums.")
         return $false
     }
 
@@ -264,8 +300,8 @@ function Test-Attestation
         return $true
     }
 
-    [Console]::Error.WriteLine("WARNING: Build provenance verification failed for $Path.")
-    [Console]::Error.WriteLine("WARNING: Check GitHub access and GH_TOKEN/GITHUB_TOKEN; automatic verification disables desktop keyring access to prevent hidden credential prompts.")
+    [Console]::Error.WriteLine("ERROR: Build provenance verification failed for $Path.")
+    [Console]::Error.WriteLine("ERROR: Check GitHub access and GH_TOKEN/GITHUB_TOKEN; automatic verification disables desktop keyring access to prevent hidden credential prompts.")
     return $false
 }
 
@@ -351,7 +387,7 @@ function Get-Binary
             [Console]::Error.WriteLine("Bootstrap · dotfiles $tag · $($assetName -replace '^dotfiles-', '' -replace '\.exe$', '')")
             try
             {
-                Invoke-WebRequest -Uri $url -Method Get -OutFile $stagedBinary -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
+                Invoke-GitHubRequest -Uri $url -OutFile $stagedBinary | Out-Null
             }
             catch
             {
@@ -369,7 +405,7 @@ function Get-Binary
             $checksumUrl = "$releaseBaseUrl/checksums.sha256"
             try
             {
-                $checksumResponse = Invoke-WebRequest -Uri $checksumUrl -Method Get -UseBasicParsing -TimeoutSec $TransferTimeout
+                $checksumResponse = Invoke-GitHubRequest -Uri $checksumUrl
                 $checksumContent = if ($checksumResponse.Content -is [byte[]])
                 {
                     [System.Text.Encoding]::UTF8.GetString($checksumResponse.Content)

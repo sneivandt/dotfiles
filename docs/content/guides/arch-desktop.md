@@ -139,8 +139,11 @@ dedicated launcher script whose failures appear in both its tooltip and log.
 The Markets menu fetches quotes at startup and every five minutes, plus on
 demand via its refresh button. If a fetch fails for a symbol, the menu keeps
 the last good quote and timestamp and marks it stale instead of blanking out
-everything. Configure tracked symbols in
-[stocks.py](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/stocks.py).
+everything. Defaults live in
+[stocks.py](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/helpers/stocks.py);
+override the tracked list locally in `~/.config/quickshell-stocks.json` (or the
+file named by `DOTFILES_STOCKS_CONFIG`) using a JSON array (or `{"quotes": [...]}`)
+of objects with `query` and optional `symbol`, `name`, and `prefix` fields.
 
 ## Screen locking and suspend
 
@@ -172,9 +175,9 @@ when they take effect [depends on the component](#reloading-changes). To vary se
 | Keyboard, mouse, and touchpad | [input.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/input.lua) |
 | Window and application shortcuts | [binds.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/binds.lua) |
 | Window appearance | [appearance.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/appearance.lua) |
-| Bar colors, typography, spacing, and motion | [Theme.js](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/Theme.js) |
-| Bar contents and layout | [Bar.qml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/Bar.qml) |
-| Popup placement, focus, dismissal, and scrolling | [ShellPopup.qml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/ShellPopup.qml) |
+| Bar colors, typography, spacing, and motion | [Theme.js](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/lib/Theme.js) |
+| Bar contents and layout | [Bar.qml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/bar/Bar.qml) |
+| Popup placement, focus, dismissal, and scrolling | [ShellPopup.qml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/components/ShellPopup.qml) |
 | Notification spacing | [mako/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/mako/config) |
 | Qt 5 and Qt 6 widget theme | [Kvantum settings](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Kvantum/kvantum.kvconfig) |
 

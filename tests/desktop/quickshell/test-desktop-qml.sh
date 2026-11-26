@@ -88,9 +88,11 @@ run_qmllint() {
 }
 
 if [ -x "$linter" ] || command -v "$linter" >/dev/null 2>&1; then
-  run_qmllint production \
-    "$REPO_ROOT"/symlinks/config/quickshell/*.qml \
-    "$REPO_ROOT"/symlinks/config/quickshell/*.js
+  set --
+  for file in $(find "$REPO_ROOT/symlinks/config/quickshell" -type f \( -name '*.qml' -o -name '*.js' \) | LC_ALL=C sort); do
+    set -- "$@" "$file"
+  done
+  run_qmllint production "$@"
   run_qmllint test \
     "$REPO_ROOT"/tests/desktop/quickshell/qml/tst_*.qml
 fi

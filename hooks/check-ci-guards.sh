@@ -162,6 +162,84 @@ run_shell_guards() {
   fi
 }
 
+run_python_guards() {
+  if command -v ruff >/dev/null 2>&1; then
+    prepare_staged_tree
+    printf "Running Ruff...\n"
+    git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- \
+      '*.py' > "$CHECK_ROOT/.python-inputs"
+    if [ ! -s "$CHECK_ROOT/.python-inputs" ]; then
+      return 0
+    fi
+    ruff_config=""
+    if [ -f "$REPO_ROOT/.github/linters/ruff.toml" ]; then
+      ruff_config="$REPO_ROOT/.github/linters/ruff.toml"
+    elif [ -f "$WORKTREE_ROOT/.github/linters/ruff.toml" ]; then
+      ruff_config="$WORKTREE_ROOT/.github/linters/ruff.toml"
+    fi
+    if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
+      config=$1
+      shift
+      for file do
+        case "$file" in
+          -*) file="./$file" ;;
+        esac
+        set -- "$@" "$file"
+        shift
+      done
+      if [ -n "$config" ]; then
+        exec ruff check --config "$config" -- "$@"
+      fi
+      exec ruff check -- "$@"
+    ' sh "$ruff_config" < .python-inputs); then
+      abort_with_hint \
+        "Ruff reported Python lint issues." \
+        "ruff check --config .github/linters/ruff.toml <staged python files>"
+    fi
+  else
+    printf '%sSkipping Ruff: ruff not installed.%s\n' "$DIM" "$NC"
+  fi
+}
+
+run_lua_guards() {
+  if command -v luacheck >/dev/null 2>&1; then
+    prepare_staged_tree
+    printf "Running Luacheck...\n"
+    git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- \
+      '*.lua' > "$CHECK_ROOT/.lua-inputs"
+    if [ ! -s "$CHECK_ROOT/.lua-inputs" ]; then
+      return 0
+    fi
+    luacheck_config=""
+    if [ -f "$REPO_ROOT/.github/linters/luacheckrc" ]; then
+      luacheck_config="$REPO_ROOT/.github/linters/luacheckrc"
+    elif [ -f "$WORKTREE_ROOT/.github/linters/luacheckrc" ]; then
+      luacheck_config="$WORKTREE_ROOT/.github/linters/luacheckrc"
+    fi
+    if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
+      config=$1
+      shift
+      for file do
+        case "$file" in
+          -*) file="./$file" ;;
+        esac
+        set -- "$@" "$file"
+        shift
+      done
+      if [ -n "$config" ]; then
+        exec luacheck --config "$config" -- "$@"
+      fi
+      exec luacheck -- "$@"
+    ' sh "$luacheck_config" < .lua-inputs); then
+      abort_with_hint \
+        "Luacheck reported Lua lint issues." \
+        "luacheck --config .github/linters/luacheckrc <staged lua files>"
+    fi
+  else
+    printf '%sSkipping Luacheck: luacheck not installed.%s\n' "$DIM" "$NC"
+  fi
+}
+
 run_wrapper_guards() {
   prepare_staged_tree
   printf "Running Linux shell wrapper tests...\n"
@@ -217,6 +295,14 @@ if has_staged_match '*.sh' '*.bash' hooks/pre-commit symlinks/bashrc symlinks/ba
   'symlinks/config/git/templates/hooks/*' 'symlinks/config/git/templates/hooks.local/*' \
   'packages/*/PKGBUILD' 'packages/*/*.install'; then
   run_shell_guards
+fi
+
+if has_staged_match '*.py'; then
+  run_python_guards
+fi
+
+if has_staged_match '*.lua'; then
+  run_lua_guards
 fi
 
 if full_checks_enabled && has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh 'tests/wrapper/linux/*'; then

@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import "../../../../symlinks/config/quickshell/Battery.js" as Battery
+import "../../../../symlinks/config/quickshell/lib/Battery.js" as Battery
 
 TestCase {
     name: "Battery"

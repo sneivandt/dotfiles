@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 import Quickshell
-import "../../../../symlinks/config/quickshell" as Shell
+import "../../../../symlinks/config/quickshell/bar" as Shell
 
 Item {
     id: scene

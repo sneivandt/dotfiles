@@ -62,6 +62,18 @@ test_sensitive_scan_unusual_paths() {
     rm -- "$repo/$file"
   done
 
+  printf 'safe line\n%s\n' "$(printf '%s%s' '-----BEGIN RSA ' 'PRIVATE KEY-----')" > "$repo/rsa-key.txt"
+  git -C "$repo" add rsa-key.txt
+  if scan_output=$(cd "$repo" && sh hooks/check-sensitive.sh 2>&1); then
+    fail "Sensitive scan allowed an RSA private key header"
+  elif [ "$(printf '%s\n' "$scan_output" | grep -Fc 'Line 2: <redacted>')" -ne 1 ]; then
+    fail "Sensitive scan reported duplicate matches for a single RSA private key header"
+  else
+    pass "Sensitive scan reports a single finding for an RSA private key header"
+  fi
+  git -C "$repo" reset -q HEAD -- rsa-key.txt
+  rm -- "$repo/rsa-key.txt"
+
   printf 'safe line\n%s\n' "$key_header" > "$repo/first.txt"
   printf 'safe line\nanother safe line\n++%s\n' "$key_header" > "$repo/second space.txt"
   git -C "$repo" add -- first.txt 'second space.txt'

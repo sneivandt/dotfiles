@@ -95,9 +95,9 @@ class ClassificationTests(unittest.TestCase):
              {"desktop_scripts", "lock", "lint"}),
             ("symlinks/config/hypr/hypridle.conf",
              config | {"desktop_scripts", "lock"}),
-            ("symlinks/config/quickshell/network_helper.py",
+            ("symlinks/config/quickshell/helpers/network_helper.py",
              config | {"desktop_scripts", "desktop_python", "desktop_qml", "lint"}),
-            ("symlinks/config/quickshell/stocks.py",
+            ("symlinks/config/quickshell/helpers/stocks.py",
              config | {"stocks", "desktop_scripts", "desktop_python", "desktop_qml", "lint"}),
             ("tests/desktop/quickshell/python/test_stocks.py",
              {"stocks", "desktop_scripts", "desktop_python", "lint"}),
@@ -115,10 +115,11 @@ class ClassificationTests(unittest.TestCase):
             (LINUX + "check-doc-site.py", {"docs_site", "lint"}),
             (LINUX + "docs-publication-base.py", {"docs_site", "lint"}),
             (LINUX + "test-workflows.sh", {"lint"}),
+            (LINUX + "install-actionlint.sh", {"lint"}),
             ("tests/desktop/quickshell/test-desktop-qml.sh", {"lint", "desktop_qml"}),
-            ("symlinks/config/quickshell/Bar.qml",
+            ("symlinks/config/quickshell/bar/Bar.qml",
              config | {"desktop_scripts", "desktop_python", "desktop_qml"}),
-            ("symlinks/config/quickshell/Theme.js",
+            ("symlinks/config/quickshell/lib/Theme.js",
              config | {"desktop_scripts", "desktop_python", "desktop_qml"}),
             ("tests/desktop/quickshell/python/test_network_helper.py",
              {"desktop_scripts", "desktop_python", "lint"}),
@@ -313,7 +314,7 @@ class ClassificationTests(unittest.TestCase):
         paths = [
             "cli/tests/config_drift.rs", "dotfiles.sh", "dotfiles.ps1",
             "symlinks/config/git/config", "symlinks/config/zsh/prompt.zsh",
-            "symlinks/config/quickshell/Bar.qml", "README.md",
+            "symlinks/config/quickshell/bar/Bar.qml", "README.md",
         ]
         expected = classify(paths)
         for ordered in (list(reversed(paths)), paths[3:] + paths[:3], paths + paths):

@@ -70,7 +70,7 @@ function Test-AttestationVerification {
         if ($script:functionGhInvoked) {
             throw 'Test-Attestation invoked a PowerShell function instead of a native gh application'
         }
-        if (-not $stderr.ToString().Contains('WARNING: gh not found. Install GitHub CLI')) {
+        if (-not $stderr.ToString().Contains('ERROR: gh not found. Install GitHub CLI')) {
             throw 'Missing gh did not explain the refusal on stderr'
         }
 
@@ -206,8 +206,8 @@ function Test-AttestationVerification {
         if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
             throw 'Test-Attestation did not restore credential environment after launch failure'
         }
-        if (-not $stderr.ToString().Contains('WARNING: Build provenance verification failed')) {
-            throw 'Launch failure did not emit verification failure warning on stderr'
+        if (-not $stderr.ToString().Contains('ERROR: Build provenance verification failed')) {
+            throw 'Launch failure did not emit verification failure error on stderr'
         }
     } finally {
         [Console]::SetError($savedStderr)
@@ -226,7 +226,7 @@ function Test-AttestationVerification {
 function Test-ReleaseRepository {
     Write-TestStage 'Testing GitHub release repository discovery and overrides'
     $savedEnvironment = @{}
-    foreach ($name in @('DOTFILES_RELEASE_REPO', 'DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'PATH', 'WRAPPER_TEST_NATIVE_EXIT', 'WRAPPER_TEST_NATIVE_MARKER', 'WRAPPER_TEST_NATIVE_STDOUT')) {
+    foreach ($name in @('DOTFILES_RELEASE_REPO', 'DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'GH_TOKEN', 'GITHUB_TOKEN', 'PATH', 'WRAPPER_TEST_NATIVE_EXIT', 'WRAPPER_TEST_NATIVE_MARKER', 'WRAPPER_TEST_NATIVE_STDOUT')) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
     $fixture = [System.IO.Path]::GetFullPath(
@@ -350,20 +350,26 @@ function Test-ReleaseRepository {
         $fixtureWrapper = Join-Path $fixture 'dotfiles.ps1'
         Copy-Item -LiteralPath $wrapper -Destination $fixtureWrapper
         Set-Item Function:Invoke-WebRequest -Value {
-            param($Uri, [switch]$UseBasicParsing, $TimeoutSec)
-            if (-not $UseBasicParsing -or $TimeoutSec -ne 120) {
+            param($Uri, [switch]$UseBasicParsing, $TimeoutSec, $ConnectionTimeoutSeconds, $Headers)
+            if (-not $UseBasicParsing -or $TimeoutSec -ne 120 -or $ConnectionTimeoutSeconds -ne 10) {
                 throw 'Bootstrap changed its metadata request options'
             }
             $releaseCapture.Uri = $Uri
+            $releaseCapture.Headers = $Headers
             return @{ Content = '{}' }
         }
         $env:DOTFILES_RELEASE_REPO = 'publisher/releases'
-        $releaseCapture = @{ Uri = $null }
+        $env:GH_TOKEN = 'fixture-tok'
+        $releaseCapture = @{ Uri = $null; Headers = $null }
         try { & $fixtureWrapper --version | Out-Null } catch {
             if ($_ -notmatch 'Failed to resolve latest release tag') { throw }
         }
         if ($releaseCapture.Uri -cne 'https://api.github.com/repos/publisher/releases/releases/latest') {
             throw 'Bootstrap did not pass the selected publisher to release lookup'
+        }
+        if ($releaseCapture.Headers['Accept'] -cne 'application/vnd.github+json' -or
+            $releaseCapture.Headers['Authorization'] -cne 'Bearer fixture-tok') {
+            throw 'Bootstrap did not send GitHub API Accept and Authorization headers'
         }
         Write-TestPass 'Release repository discovery, override, and rejection cases'
         return $true

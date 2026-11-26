@@ -1,0 +1,211 @@
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import "../components"
+import "../lib/Theme.js" as Theme
+
+ShellPopup {
+    id: root
+
+    required property var audio
+    property bool devicesExpanded: false
+
+    onVisibleChanged: {
+        if (visible) {
+            audio.refresh();
+            outputSlider.forceActiveFocus();
+        }
+    }
+
+    ColumnLayout {
+        width: parent.width
+        spacing: Theme.spacing
+
+        MenuHeader {
+            Layout.fillWidth: true
+            title: "Volume"
+            subtitle: root.audio.outputName || (root.audio.loading ? "Finding outputs..." : "No output device")
+            icon: root.audio.muted ? "\uf6a9" : "\uf028"
+            accentColor: root.audio.muted ? Theme.red : Theme.blue
+            accentBackground: root.audio.muted ? Theme.redSoft : Theme.blueSoft
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.topMargin: Theme.spacing
+            spacing: Theme.spacing
+
+            Text {
+                Layout.fillWidth: true
+                text: root.audio.available ? Math.round(outputSlider.value * 100) + "%" : "--"
+                color: outputSlider.value > 1 ? Theme.purple : Theme.foreground
+                font.family: Theme.font
+                font.pixelSize: 30
+                font.weight: Font.DemiBold
+                Accessible.name: root.audio.available ? "Volume " + text : "Volume unavailable"
+            }
+
+            Text {
+                text: root.audio.muted ? "Muted" : outputSlider.value > 1 ? "Boost" : ""
+                color: root.audio.muted ? Theme.red : Theme.purple
+                font.family: Theme.font
+                font.pixelSize: Theme.textBody
+            }
+
+            MenuIconButton {
+                enabled: root.audio.available && !root.audio.switchingOutput
+                glyph: root.audio.muted ? "\uf6a9" : "\uf028"
+                tooltip: root.audio.muted ? "Unmute output" : "Mute output"
+                selected: root.audio.muted
+                onTriggered: root.audio.toggleMuted()
+            }
+        }
+
+        VolumeSlider {
+            id: outputSlider
+
+            Layout.fillWidth: true
+            enabled: root.audio.available && !root.audio.switchingOutput
+            onMoved: root.audio.setVolume(value)
+
+            Binding {
+                target: outputSlider
+                property: "value"
+                value: root.audio.volume
+                when: !outputSlider.pressed
+            }
+        }
+
+        Item {
+            Layout.fillWidth: true
+            implicitHeight: scaleStart.implicitHeight
+
+            Text {
+                id: scaleStart
+
+                text: "0%"
+                color: Theme.mutedStrong
+                font.family: Theme.font
+                font.pixelSize: Theme.textSmall
+            }
+
+            Text {
+                x: outputSlider.leftPadding + outputSlider.handle.width / 2 + (outputSlider.availableWidth - outputSlider.handle.width) * 2 / 3 - width / 2
+                text: "100%"
+                color: Theme.cyan
+                font.family: Theme.font
+                font.pixelSize: Theme.textSmall
+            }
+
+            Text {
+                anchors.right: parent.right
+                text: "150%"
+                color: Theme.mutedStrong
+                font.family: Theme.font
+                font.pixelSize: Theme.textSmall
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: root.audio.available && outputSlider.value > 1
+            text: "Above 100% may distort audio."
+            color: Theme.yellow
+            font.family: Theme.font
+            font.pixelSize: Theme.textSmall
+            wrapMode: Text.WordWrap
+        }
+
+        MenuButton {
+            id: deviceToggle
+
+            Layout.fillWidth: true
+            Layout.topMargin: Theme.spacing
+            label: "Output device"
+            trailing: root.devicesExpanded ? "Hide" : "Choose"
+            glyph: "\uf390"
+            selected: root.devicesExpanded
+            showChevron: false
+            Accessible.description: root.devicesExpanded ? "Hide output devices" : "Choose the default output device"
+            onTriggered: root.devicesExpanded = !root.devicesExpanded
+        }
+
+        ScrollView {
+            id: deviceScroll
+
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(deviceList.implicitHeight, Math.max(58, root.availableContentHeight - 310))
+            visible: root.devicesExpanded && root.audio.outputs.length > 0
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical: ShellScrollBar {}
+
+            ColumnLayout {
+                id: deviceList
+
+                width: deviceScroll.availableWidth
+                spacing: 2
+
+                Repeater {
+                    model: root.audio.outputs
+
+                    MenuButton {
+                        id: deviceButton
+
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        label: modelData.name
+                        detail: modelData.available ? modelData.detail : "Disconnected"
+                        trailing: selected ? "Active" : ""
+                        selected: modelData.id === root.audio.outputId
+                        enabled: modelData.available && !root.audio.switchingOutput
+                        showChevron: false
+                        Accessible.description: selected ? "Current default output" : "Make default output"
+                        ShellToolTip {
+                            text: deviceButton.modelData.name
+                            visible: deviceButton.hovered || deviceButton.visualFocus
+                        }
+                        onTriggered: root.audio.selectOutput(modelData.id)
+                        onActiveFocusChanged: {
+                            if (!activeFocus)
+                                return;
+                            const viewport = deviceScroll.contentItem as Flickable;
+                            if (!viewport)
+                                return;
+                            const top = deviceButton.y;
+                            if (top < viewport.contentY)
+                                viewport.contentY = top;
+                            else if (top + height > viewport.contentY + viewport.height)
+                                viewport.contentY = top + height - viewport.height;
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: root.audio.error.length > 0 || root.audio.switchingOutput || (root.devicesExpanded && root.audio.outputs.length === 0)
+            text: root.audio.error || (root.audio.switchingOutput ? "Switching output..." : root.audio.loading ? "Finding outputs..." : "No output devices connected.")
+            color: root.audio.error ? Theme.red : Theme.mutedStrong
+            font.family: Theme.font
+            font.pixelSize: Theme.textSmall
+            wrapMode: Text.WordWrap
+            Accessible.role: Accessible.StaticText
+        }
+
+        MenuButton {
+            objectName: "volumeDismissErrorButton"
+            Layout.fillWidth: true
+            visible: root.audio.actionError.length > 0
+            label: "Dismiss"
+            glyph: "\uf00d"
+            showChevron: false
+            onTriggered: root.audio.clearError()
+        }
+    }
+}

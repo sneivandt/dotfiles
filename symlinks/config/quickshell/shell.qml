@@ -4,6 +4,10 @@ pragma ComponentBehavior: Bound
 import QtQml
 import Quickshell
 import Quickshell.Io
+import "bar"
+import "menus"
+import "overlays"
+import "state"
 
 ShellRoot {
     id: shell

@@ -306,23 +306,24 @@ DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
 to run it on commit). Guards are selected by staged paths (including deletions
 and both sides of renames):
 
-| Trigger | Additional coverage |
-|---|---|
-| Rust/build inputs | Windows GNU-target Clippy when available, then full Rust tests |
-| `conf/*.toml`, `symlinks/`, `system/`, or `packages/` | Typed configuration and `config_drift` |
-| Cargo inputs or deny policy | Wildcard dependency guard and available cargo-deny checks |
-| Shell, hook, or package recipe paths (`packages/*/PKGBUILD`, `packages/*/*.install`) | Available ShellCheck on affected inputs |
-| POSIX wrapper or its tests | Linux wrapper tests |
-| Release workflow | Staged publishing invariants, including provenance and permissions |
+| Trigger | Default pre-commit (`check-ci-guards.sh`) | Additional `DOTFILES_HOOKS_FULL=1` coverage |
+|---|---|---|
+| Rust/build inputs | `cargo fmt` and host Clippy (`check-rust.sh`) | Windows GNU-target Clippy when available, then full Rust tests |
+| `conf/*.toml`, `symlinks/`, `system/`, or `packages/` | Fast typed configuration validation | `config_drift` integration test |
+| Cargo inputs or deny policy | Wildcard dependency guard | Available `cargo-deny` checks |
+| Shell, hook, or package recipe paths (`packages/*/PKGBUILD`, `packages/*/*.install`) | Available ShellCheck on affected inputs | — |
+| Python (`*.py`) or Lua (`*.lua`) paths | Available Ruff and Luacheck on affected inputs | — |
+| POSIX wrapper or its tests | — | Linux wrapper tests |
+| Release workflow | Staged publishing invariants, including provenance and permissions | — |
 
 Rust and CI guards inspect an isolated index snapshot (ignoring unstaged edits
 and untracked files), release guards read the staged workflow directly, and
 builds reuse the Cargo cache. The verifier and pattern files themselves load
 from the working tree, so review edits to them separately.
 
-Running `sh hooks/check-ci-guards.sh` runs targeted guards directly (omitting
-`config_drift`, `cargo-deny`, and wrapper tests without full mode). Neither
-hook invocation replaces [Before pushing](#before-pushing) checks.
+Running `sh hooks/check-ci-guards.sh` runs the fast targeted guards directly
+(omitting `config_drift`, `cargo-deny`, and wrapper tests without full mode).
+Neither hook invocation replaces [Before pushing](#before-pushing) checks.
 
 ### Sensitive-pattern scanning
 

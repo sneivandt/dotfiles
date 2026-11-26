@@ -1,7 +1,8 @@
 import QtQuick
 import QtTest
 import Quickshell
-import "../../../../symlinks/config/quickshell" as Shell
+import "../../../../symlinks/config/quickshell/menus" as Menus
+import "../../../../symlinks/config/quickshell/components" as Components
 
 Item {
     width: 500
@@ -10,7 +11,7 @@ Item {
     Component {
         id: menuComponent
 
-        Shell.NetworkMenu {
+        Menus.NetworkMenu {
             anchorItem: null
             network: QtObject {
                 property bool detailsAvailable: true
@@ -75,7 +76,7 @@ Item {
             const choices = findChild(menu, "networkChoices");
             const connected = choices.itemAt(0);
             const guest = choices.itemAt(1);
-            const tip = connected.data.find(item => item instanceof Shell.ShellToolTip);
+            const tip = connected.data.find(item => item instanceof Components.ShellToolTip);
             verify(tip !== undefined);
             const detail = findText(connected.contentItem, name);
             verify(detail !== null && detail.truncated);

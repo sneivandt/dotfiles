@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-QUICKSHELL_DIR = Path(__file__).resolve().parents[4] / "symlinks/config/quickshell"
+QUICKSHELL_DIR = Path(__file__).resolve().parents[4] / "symlinks/config/quickshell/helpers"
 sys.path.insert(0, str(QUICKSHELL_DIR))
 
 import network_helper as network

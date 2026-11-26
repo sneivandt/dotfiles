@@ -397,3 +397,36 @@ EOF
   [ ! -e "$fixture/repo space/request" ] || log_error "Missing origin reached network tool"
 )}
 
+test_wrapper_api_headers_and_error_diagnostics()
+{(
+  log_stage "Testing wrapper GitHub API headers, stdin token passing, and error diagnostics"
+  fixture=$(mktemp -d)
+  trap 'rm -rf "$fixture"' EXIT
+  mkdir -p "$fixture/fake-bin"
+  cp "$DIR/dotfiles.sh" "$fixture/dotfiles.sh"
+  cat > "$fixture/fake-bin/curl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@" > "$DOTFILES_ROOT/argv"
+if [ ! -t 0 ]; then
+  cat > "$DOTFILES_ROOT/stdin"
+fi
+echo "curl: (22) The requested URL returned error: 403" >&2
+exit 22
+EOF
+  chmod +x "$fixture/fake-bin/curl"
+
+  if PATH="$fixture/fake-bin:$PATH" DOTFILES_RELEASE_REPO=fixture/releases \
+    GH_TOKEN=fixture-tok GITHUB_TOKEN='' \
+    "$fixture/dotfiles.sh" --version > "$fixture/stdout" 2> "$fixture/stderr"; then
+    log_error "Failed API call unexpectedly succeeded"
+  fi
+  grep -Fxq 'Accept: application/vnd.github+json' "$fixture/argv" ||
+    log_error "Wrapper did not send Accept header on GitHub API request"
+  if grep -Fq 'fixture-tok' "$fixture/argv"; then
+    log_error "Wrapper exposed GH_TOKEN in curl argv"
+  fi
+  grep -Fxq 'header = "Authorization: Bearer fixture-tok"' "$fixture/stdin" ||
+    log_error "Wrapper did not pass Authorization header via curl -K stdin"
+  grep -Fq '403' "$fixture/stderr" ||
+    log_error "Wrapper discarded curl stderr diagnostic on failure"
+)}

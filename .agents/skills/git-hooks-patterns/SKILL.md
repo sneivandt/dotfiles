@@ -14,9 +14,11 @@ description: >
   dir or `core.hooksPath` (a linked worktree has a `.git` file, not a hooks
   directory). Keep directory enumeration in `run()`, not `should_run()`.
 - By default the installed `pre-commit` entry point is a copy, while it resolves
-  `hooks/check-*.sh` helpers from the checkout root at runtime (`DOTFILES_HOOKS_FULL=1`
-  adds `check-ci-guards.sh`). Entry-point edits need redeployment; helper-only
-  edits take effect immediately.
+  `hooks/check-*.sh` helpers from the checkout root at runtime (`pre-commit`
+  runs `check-sensitive.sh`, `check-rust.sh`, and fast checks in
+  `check-ci-guards.sh`; `DOTFILES_HOOKS_FULL=1` enables the heavier checks in
+  `check-rust.sh` and `check-ci-guards.sh`). Entry-point edits need
+  redeployment; helper-only edits take effect immediately.
 - If `core.hooksPath` already points at the tracked `hooks/` sources, preserve
   them rather than copying over or removing them.
 

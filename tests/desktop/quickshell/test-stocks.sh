@@ -3,7 +3,7 @@ set -o errexit
 set -o nounset
 
 DIR=${DIR:-$(CDPATH='' cd -- "$(dirname -- "$0")/../../.." && pwd)}
-SCRIPT="$DIR/symlinks/config/quickshell/stocks.py"
+SCRIPT="$DIR/symlinks/config/quickshell/helpers/stocks.py"
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT HUP INT TERM
 

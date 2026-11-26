@@ -20,6 +20,18 @@ from ci_changes_tests.helpers import (
 
 
 class GateTests(unittest.TestCase):
+    def test_archlinux_image_digest_must_be_consistent(self):
+        workflow = CONTRACT["WORKFLOW"].read_text(encoding="utf-8")
+        CONTRACT["check"](workflow)
+        drifted = re.sub(
+            r"archlinux@sha256:[0-9a-f]{64}",
+            "archlinux@sha256:" + "0" * 64,
+            workflow,
+            count=1,
+        )
+        with self.assertRaisesRegex(ValueError, "single archlinux@sha256 digest"):
+            CONTRACT["check"](drifted)
+
     def test_scheduled_security_checks_are_independent_and_read_only(self):
         workflow = CONTRACT["WORKFLOW"].with_name("dependency-security.yml").read_text(encoding="utf-8")
         self.assertRegex(workflow, r"(?m)^  schedule:$")
@@ -47,7 +59,7 @@ class GateTests(unittest.TestCase):
 
     def test_intentional_skips(self):
         for paths in (["README.md"], ["dotfiles.ps1"], ["conf/packages.toml"], ["cli/src/main.rs"],
-                      ["symlinks/config/quickshell/Bar.qml"], ["packages/apm/PKGBUILD"]):
+                      ["symlinks/config/quickshell/bar/Bar.qml"], ["packages/apm/PKGBUILD"]):
             with self.subTest(paths=paths):
                 CONTRACT["check_results"](self.results(paths))
 

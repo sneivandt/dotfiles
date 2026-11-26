@@ -337,6 +337,114 @@ EOF
   sh "$DIR/hooks/check-ci-guards.sh"
 )}
 
+test_staged_python_and_lua_guards()
+{(
+  log_stage "Checking CI guards lint staged Python and Lua files with Ruff and Luacheck"
+  fixture="$DIR/.ci-python-lua-guards-$$"
+  mkdir "$fixture"
+  trap 'rm -rf "$fixture"' EXIT
+  export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+  mkdir -p "$fixture/mock-bin" "$fixture/repo/.github/linters" "$fixture/repo/scripts"
+  cat > "$fixture/mock-bin/ruff" <<'EOF'
+#!/bin/sh
+set -eu
+[ "$1" = check ]
+shift
+seen_config=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --config)
+      shift
+      [ -f "$1" ]
+      seen_config=1
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+[ "$seen_config" -eq 1 ]
+for file do
+  [ "$(cat "$file")" = valid-staged ]
+done
+printf 'ruff\n' >> "$HOOK_INPUT_LOG"
+EOF
+  cat > "$fixture/mock-bin/luacheck" <<'EOF'
+#!/bin/sh
+set -eu
+seen_config=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --config)
+      shift
+      [ -f "$1" ]
+      seen_config=1
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+[ "$seen_config" -eq 1 ]
+for file do
+  [ "$(cat "$file")" = valid-staged ]
+done
+printf 'luacheck\n' >> "$HOOK_INPUT_LOG"
+EOF
+  chmod +x "$fixture/mock-bin/"*
+  PATH="$fixture/mock-bin:$PATH"
+  HOOK_INPUT_LOG="$fixture/checks.log"
+  export PATH HOOK_INPUT_LOG
+  cd "$fixture/repo" || exit 1
+  init_fixture_repository
+  printf 'line-length = 100\n' > .github/linters/ruff.toml
+  printf 'std = "lua54"\n' > .github/linters/luacheckrc
+  printf 'valid-staged\n' > 'scripts/check tool.py'
+  printf 'valid-staged\n' > '-leading.lua'
+  git add -- .github/linters 'scripts/check tool.py' '-leading.lua'
+  printf 'invalid-unstaged\n' > 'scripts/check tool.py'
+  printf 'invalid-unstaged\n' > '-leading.lua'
+  sh "$DIR/hooks/check-ci-guards.sh"
+  [ "$(cat "$HOOK_INPUT_LOG")" = "$(printf 'ruff\nluacheck')" ] ||
+    log_error "Staged Python and Lua files were not both linted"
+
+  printf 'invalid-staged\n' > 'scripts/check tool.py'
+  git add -- 'scripts/check tool.py'
+  printf 'valid-staged\n' > 'scripts/check tool.py'
+  if sh "$DIR/hooks/check-ci-guards.sh" > "$fixture/output" 2>&1; then
+    log_error "CI guards accepted invalid staged Python content"
+  fi
+  grep -q 'Ruff reported Python lint issues' "$fixture/output" ||
+    log_error "Unexpected staged Python failure"
+  git add -- 'scripts/check tool.py'
+
+  printf 'invalid-staged\n' > '-leading.lua'
+  git add -- '-leading.lua'
+  printf 'valid-staged\n' > '-leading.lua'
+  if sh "$DIR/hooks/check-ci-guards.sh" > "$fixture/output" 2>&1; then
+    log_error "CI guards accepted invalid staged Lua content"
+  fi
+  grep -q 'Luacheck reported Lua lint issues' "$fixture/output" ||
+    log_error "Unexpected staged Lua failure"
+  git add -- '-leading.lua'
+
+  git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null commit -qm baseline
+  git rm -q -- 'scripts/check tool.py' '-leading.lua'
+  : > "$HOOK_INPUT_LOG"
+  sh "$DIR/hooks/check-ci-guards.sh"
+  [ ! -s "$HOOK_INPUT_LOG" ] || log_error "Deleted Python or Lua files were linted"
+)}
+
 test_rust_and_shellcheck_inputs()
 {
 

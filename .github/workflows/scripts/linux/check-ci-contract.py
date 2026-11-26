@@ -265,6 +265,11 @@ def check_checkout_steps(workflow: str, workflow_name: str = "workflow") -> None
 
 def check(workflow: str) -> None:
     check_checkout_steps(workflow, "ci.yml")
+    arch_digests = set(re.findall(r"\barchlinux@sha256:[0-9a-f]{64}\b", workflow))
+    if len(arch_digests) != 1:
+        raise ValueError(
+            f"ci.yml must pin a single archlinux@sha256 digest across jobs, found: {sorted(arch_digests)}"
+        )
     jobs = job_blocks(workflow)
     gate = jobs.get("ci-success")
     if gate is None:

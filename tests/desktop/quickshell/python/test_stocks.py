@@ -16,7 +16,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-SCRIPT = Path(__file__).resolve().parents[4] / "symlinks/config/quickshell/stocks.py"
+SCRIPT = Path(__file__).resolve().parents[4] / "symlinks/config/quickshell/helpers/stocks.py"
 spec = importlib.util.spec_from_file_location("stocks", SCRIPT)
 stocks = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stocks)
@@ -377,6 +377,39 @@ class StocksCacheTests(unittest.TestCase):
              patch("builtins.print"):
             self.assertEqual(stocks.main(["--force"]), 0)
             fetch.assert_called_once_with(self.cache / "quickshell-stocks", force=True)
+
+    def test_load_quotes_reads_custom_config_and_validates_entries(self):
+        config = self.cache / "stocks.json"
+        self.assertEqual(stocks.load_quotes(config), stocks.DEFAULT_QUOTES)
+
+        config.write_text(json.dumps({
+            "quotes": [
+                {"query": "AAPL", "name": "Apple"},
+                {"query": "ETH-USD", "symbol": "ETH", "name": "Ethereum", "prefix": "$"},
+            ]
+        }))
+        custom = stocks.load_quotes(config)
+        self.assertEqual(custom, (("AAPL", "AAPL", "Apple", "$"), ("ETH-USD", "ETH", "Ethereum", "$")))
+
+        with patch.dict(os.environ, {"DOTFILES_STOCKS_CONFIG": str(config), "XDG_CACHE_HOME": str(self.cache)}), \
+             patch.object(stocks, "quotes", return_value={"quotes": [], "updated": 0}) as fetch, \
+             patch("builtins.print") as output:
+            self.assertEqual(stocks.main(), 0)
+        fetch.assert_called_once_with(self.cache / "quickshell-stocks", configured=custom)
+        self.assertEqual(json.loads(output.call_args.args[0])["missing"], ["AAPL", "ETH"])
+
+        for bad in (
+            "not json",
+            "[]",
+            json.dumps([{"query": "../evil"}]),
+            json.dumps([{"query": "AAPL"}, {"query": "AAPL"}]),
+        ):
+            with self.subTest(bad=bad):
+                config.write_text(bad)
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr):
+                    self.assertEqual(stocks.load_quotes(config), stocks.DEFAULT_QUOTES)
+                self.assertIn("Ignoring invalid market config", stderr.getvalue())
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 """Validate documentation natively, optionally from a committed-only snapshot."""
 
 import argparse
+import importlib.util
 import os
 from pathlib import Path
 import shlex
@@ -9,6 +10,22 @@ import shutil
 import subprocess
 import sys
 import tempfile
+
+
+def _load_ci_classifier():
+    classifier_path = (
+        Path(__file__).resolve().parents[1]
+        / ".github/workflows/scripts/linux/classify-ci-changes.py"
+    )
+    spec = importlib.util.spec_from_file_location("classify_ci_changes", classifier_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load CI path classifier: {classifier_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_CI_CLASSIFIER = _load_ci_classifier()
 
 
 def npm_command():
@@ -46,9 +63,7 @@ def git(root, *arguments):
 
 
 def documentation_path(path):
-    return not path.startswith("cli/src/") and (
-        path.endswith(".md") or path.startswith(("docs/", ".agents/"))
-    )
+    return _CI_CLASSIFIER.documentation(path) and not path.startswith(".github/workflows/")
 
 
 def check_committed(root, base, env):

@@ -2,16 +2,17 @@ import QtQuick
 import QtTest
 import Quickshell
 import Quickshell.Services.Pipewire
-import "../../../../symlinks/config/quickshell" as Shell
+import "../../../../symlinks/config/quickshell/state" as State
+import "../../../../symlinks/config/quickshell/menus" as Menus
 
 Item {
     Component {
         id: audioComponent
-        Shell.AudioState {}
+        State.AudioState {}
     }
     Component {
         id: volumeMenuComponent
-        Shell.VolumeMenu {
+        Menus.VolumeMenu {
             anchorItem: null
         }
     }

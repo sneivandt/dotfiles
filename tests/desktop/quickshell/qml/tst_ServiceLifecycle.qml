@@ -1,7 +1,8 @@
 import QtQuick
 import QtTest
 import Quickshell
-import "../../../../symlinks/config/quickshell" as Shell
+import "../../../../symlinks/config/quickshell/state" as State
+import "../../../../symlinks/config/quickshell/menus" as Menus
 
 Item {
     width: 500
@@ -9,19 +10,19 @@ Item {
 
     Component {
         id: networkComponent
-        Shell.NetworkState {}
+        State.NetworkState {}
     }
     Component {
         id: marketComponent
-        Shell.MarketState {}
+        State.MarketState {}
     }
     Component {
         id: stockCardComponent
-        Shell.StockCard {}
+        Menus.StockCard {}
     }
     Component {
         id: powerComponent
-        Shell.PowerMenu {
+        Menus.PowerMenu {
             anchorItem: null
         }
     }
@@ -443,7 +444,7 @@ Item {
             const query = process(market, "marketQueryProcess");
             market.refresh();
             compare(query.command, ["python3", "-B", market.helperPath]);
-            verify(market.helperPath.endsWith("/symlinks/config/quickshell/stocks.py"));
+            verify(market.helperPath.endsWith("/symlinks/config/quickshell/helpers/stocks.py"));
             query.finish(0,
                 JSON.stringify({ quotes: [{ symbol: "OLD", updated: 1 }], updated: 1 }));
             verify(market.error.includes("stale"));

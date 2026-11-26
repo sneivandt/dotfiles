@@ -33,6 +33,10 @@ package() {
   install -dm755 "${pkgdir}/opt/apm" "${pkgdir}/usr/bin"
   cp -a --no-preserve=ownership "${srcdir}/${bundle}/." "${pkgdir}/opt/apm/"
   ln -s /opt/apm/apm "${pkgdir}/usr/bin/apm"
-  install -Dm644 "${srcdir}/${bundle}/_internal/apm_cli-${pkgver}.dist-info/licenses/LICENSE" \
-    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  local license_files=("${srcdir}/${bundle}/_internal/"apm_cli-*.dist-info/licenses/LICENSE)
+  if [[ ${#license_files[@]} -ne 1 || ! -f ${license_files[0]} ]]; then
+    echo "Expected exactly one APM license file under ${bundle}/_internal/" >&2
+    return 1
+  fi
+  install -Dm644 "${license_files[0]}" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }

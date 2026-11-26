@@ -255,8 +255,7 @@ download_binary() {(
   url="https://github.com/$REPO/releases/download/$tag/$asset"
 
   mkdir -p "$BIN_DIR"
-  bootstrap_dir="$BIN_DIR/.bootstrap-$$"
-  (umask 077 && mkdir "$bootstrap_dir")
+  bootstrap_dir=$(mktemp -d "$BIN_DIR/.bootstrap.XXXXXX")
   staged_binary="$bootstrap_dir/binary"
   trap 'rm -f "$staged_binary" "$staged_binary.sha256"; rmdir "$bootstrap_dir"' EXIT
   trap 'exit 1' HUP INT TERM

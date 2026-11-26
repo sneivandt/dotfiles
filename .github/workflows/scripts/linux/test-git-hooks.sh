@@ -195,8 +195,10 @@ test_release_workflow_guards() {
   repo="$(mktemp -d)"
 
   git init -q "$repo"
-  mkdir -p "$repo/hooks" "$repo/.github/workflows"
+  mkdir -p "$repo/hooks" "$repo/.github/workflows/scripts/linux"
   cp "$repo_root/hooks/check-ci-guards.sh" "$repo/hooks/check-ci-guards.sh"
+  cp "$repo_root/.github/workflows/scripts/linux/check-ci-contract.py" \
+    "$repo/.github/workflows/scripts/linux/check-ci-contract.py"
   cp "$repo_root/.github/workflows/release.yml" "$repo/.github/workflows/release.yml"
   git -C "$repo" add .github/workflows/release.yml
 

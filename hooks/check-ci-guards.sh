@@ -32,11 +32,9 @@ trap 'exit 1' HUP INT TERM
 
 prepare_staged_tree() {
   [ -z "$CHECK_ROOT" ] || return 0
-  check_dir="$(git rev-parse --absolute-git-dir)/dotfiles-ci-guards-$$"
-  (umask 077 && mkdir "$check_dir")
-  CHECK_ROOT="$check_dir"
+  CHECK_ROOT=$(mktemp -d)
   git -C "$REPO_ROOT" checkout-index --all --prefix="$CHECK_ROOT/"
-  HOOK_CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-"$REPO_ROOT/cli/target"}
+  HOOK_CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-"$REPO_ROOT/cli/target/hooks"}
   case "$HOOK_CARGO_TARGET_DIR" in
     /*|?:/*|?:\\*) ;;
     *) HOOK_CARGO_TARGET_DIR="$REPO_ROOT/cli/$HOOK_CARGO_TARGET_DIR" ;;
@@ -46,7 +44,12 @@ prepare_staged_tree() {
 }
 
 run_cargo() {
-  (cd "$REPO_ROOT/cli" && CARGO_TARGET_DIR="$HOOK_CARGO_TARGET_DIR" cargo "$@")
+  (
+    cd "$REPO_ROOT/cli" &&
+      CARGO_TARGET_DIR="$HOOK_CARGO_TARGET_DIR" \
+      DOTFILES_VERSION="${DOTFILES_VERSION:-dev-hook}" \
+      cargo "$@"
+  )
 }
 
 full_checks_enabled() {
@@ -181,17 +184,12 @@ run_wrapper_guards() {
   fi
 }
 
-require_workflow_pattern() {
-  pattern="$1"
-  description="$2"
-  if ! printf '%s\n' "$workflow_contents" | grep -Eq "$pattern"; then
-    abort_with_hint \
-      "release workflow is missing $description." \
-      "restore the publishing invariant in .github/workflows/release.yml"
-  fi
-}
-
 run_release_workflow_guards() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '%sSkipping release workflow guards: python3 not installed.%s\n' "$DIM" "$NC"
+    return
+  fi
+
   printf "Running release workflow guards...\n"
 
   if ! workflow_contents=$(git show ":.github/workflows/release.yml"); then
@@ -200,49 +198,11 @@ run_release_workflow_guards() {
       "stage .github/workflows/release.yml before running the publishing guards"
   fi
 
-  require_workflow_pattern '^[[:space:]]+group:[[:space:]]+release[[:space:]]*$' "serialized release concurrency"
-  require_workflow_pattern '^[[:space:]]+cancel-in-progress:[[:space:]]+false[[:space:]]*$' "non-cancelling release concurrency"
-  require_workflow_pattern "github\.event\.workflow_run\.conclusion[[:space:]]*==[[:space:]]*'success'" "successful CI conclusion validation"
-  require_workflow_pattern "github\.event\.workflow_run\.event[[:space:]]*==[[:space:]]*'push'" "CI push-event validation"
-  require_workflow_pattern "github\.event\.workflow_run\.head_branch[[:space:]]*==[[:space:]]*'main'" "main-branch validation"
-  require_workflow_pattern 'github\.event\.workflow_run\.head_repository\.full_name[[:space:]]*==[[:space:]]*github\.repository' "same-repository validation"
-  require_workflow_pattern 'needs\.check-ci\.outputs\.sha' "the validated CI commit handoff"
-  require_workflow_pattern '^[[:space:]]+id-token:[[:space:]]+write[[:space:]]*$' "OIDC permission for provenance signing"
-  require_workflow_pattern '^[[:space:]]+attestations:[[:space:]]+write[[:space:]]*$' "attestation upload permission"
-  require_workflow_pattern 'actions/attest-build-provenance@' "the build provenance action"
-  require_workflow_pattern '^[[:space:]]+dotfiles-linux-x86_64[[:space:]]*$' "the Linux x86_64 attestation subject"
-  require_workflow_pattern '^[[:space:]]+dotfiles-linux-aarch64[[:space:]]*$' "the Linux aarch64 attestation subject"
-  require_workflow_pattern '^[[:space:]]+dotfiles-windows-x86_64\.exe[[:space:]]*$' "the Windows attestation subject"
-  require_workflow_pattern 'gh attestation verify "\$artifact" --repo "\$GITHUB_REPOSITORY"' "the attestation discoverability check"
-  require_workflow_pattern 'target_commitish:[[:space:]]+\$\{\{ needs\.version\.outputs\.sha \}\}' "the exact tested release tag target"
-
-  retention_count=$(printf '%s\n' "$workflow_contents" | grep -Ec '^[[:space:]]+retention-days:[[:space:]]+1[[:space:]]*$' || true)
-  if [ "$retention_count" -ne 2 ]; then
+  contract="$(CDPATH='' cd -- "$(dirname -- "$0")/../.github/workflows/scripts/linux" && pwd)/check-ci-contract.py"
+  if ! printf '%s\n' "$workflow_contents" | python3 -B "$contract" --release - 2>&1; then
     abort_with_hint \
-      "release handoff artifacts are not limited to one-day retention." \
-      "set retention-days: 1 on both release artifact upload steps"
-  fi
-
-  attest_line=$(printf '%s\n' "$workflow_contents" | grep -nF -- '- name: Attest build provenance' | head -n 1 | cut -d: -f1)
-  verify_line=$(printf '%s\n' "$workflow_contents" | grep -nF -- '- name: Verify attestation discoverability' | head -n 1 | cut -d: -f1)
-  release_line=$(printf '%s\n' "$workflow_contents" | grep -nF -- '- name: Create release' | head -n 1 | cut -d: -f1)
-  if [ -z "$attest_line" ] || [ -z "$verify_line" ] || [ -z "$release_line" ] ||
-    [ "$attest_line" -ge "$verify_line" ] || [ "$verify_line" -ge "$release_line" ]; then
-    abort_with_hint \
-      "release provenance is not verified before publication." \
-      "keep the attest, discoverability verification, and release steps in that order"
-  fi
-
-  if printf '%s\n' "$workflow_contents" | grep -Fq 'github.event.workflow_run.head_sha || github.sha'; then
-    abort_with_hint \
-      "releases can fall back to an unverified workflow commit." \
-      "use needs.check-ci.outputs.sha for every release checkout and build"
-  fi
-
-  if printf '%s\n' "$workflow_contents" | grep -Eq '^[[:space:]]+workflow_dispatch:'; then
-    abort_with_hint \
-      "release workflow permits cache-poisonable manual dispatches." \
-      "keep privileged release execution limited to validated workflow_run events"
+      "release workflow contract check failed." \
+      "python3 -B .github/workflows/scripts/linux/check-ci-contract.py"
   fi
 }
 

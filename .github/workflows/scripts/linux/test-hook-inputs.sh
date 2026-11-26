@@ -76,9 +76,17 @@ EOF
 #!/bin/sh
 set -eu
 [ "$1" = run ]
+[ -n "${DOTFILES_VERSION:-}" ]
+case "${CARGO_TARGET_DIR:-}" in
+  */cli/target/hooks) ;;
+  *) exit 1 ;;
+esac
 while [ "$#" -gt 0 ]; do
   if [ "$1" = --root ]; then
     shift
+    case "$1" in
+      */.git/*) exit 1 ;;
+    esac
     [ "$(cat "$1/conf/fixture.toml")" = staged-config ]
     [ ! -e "$1/conf/untracked.toml" ]
     printf 'config\n' >> "$HOOK_INPUT_LOG"
@@ -89,6 +97,7 @@ done
 exit 1
 EOF
   chmod +x "$fixture/mock-bin/"*
+  unset CARGO_TARGET_DIR DOTFILES_VERSION
   PATH="$fixture/mock-bin:$PATH"
   HOOK_INPUT_LOG="$fixture/checks.log"
   export PATH HOOK_INPUT_LOG
@@ -573,6 +582,13 @@ cat > "$fixture/mock-bin/cargo" <<'EOF'
 #!/bin/sh
 set -eu
 printf '%s\n' "$1" >> "$HOOK_INPUT_LOG"
+if [ -n "${EXPECT_HOOK_CARGO_ENV:-}" ]; then
+  [ -n "${DOTFILES_VERSION:-}" ]
+  case "${CARGO_TARGET_DIR:-}" in
+    */cli/target/hooks) ;;
+    *) exit 1 ;;
+  esac
+fi
 [ "$(cat src/lib.rs)" = valid-staged ]
 [ "$(cat ../conf/fixture.toml)" = staged-config ]
 [ ! -e src/untracked.rs ]
@@ -633,7 +649,10 @@ log_stage "Checking index-only Rust and PowerShell hook inputs"
   printf 'untracked\n' > cli/src/untracked.rs
   rm 'script with spaces.ps1'
   : > "$HOOK_INPUT_LOG"
-  DOTFILES_HOOKS_FULL=1 sh "$DIR/hooks/check-rust.sh"
+  (
+    unset CARGO_TARGET_DIR DOTFILES_VERSION
+    EXPECT_HOOK_CARGO_ENV=1 DOTFILES_HOOKS_FULL=1 sh "$DIR/hooks/check-rust.sh"
+  )
   expected=$(printf '%s\n' fmt clippy test powershell)
   [ "$(cat "$HOOK_INPUT_LOG")" = "$expected" ] || log_error "Not all checks ran against staged content"
 

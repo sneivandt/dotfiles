@@ -106,6 +106,38 @@ class StocksCacheTests(unittest.TestCase):
             self.assertEqual(stocks.quotes(self.cache, self.fetch), {"quotes": [], "updated": 0})
         self.fetch.assert_not_called()
 
+    def test_force_busy_lock_reports_refresh_in_progress(self):
+        with self.lock.open("a") as owner:
+            stocks.fcntl.flock(owner, stocks.fcntl.LOCK_EX | stocks.fcntl.LOCK_NB)
+            empty_result = stocks.quotes(self.cache, self.fetch, force=True)
+            self.assertEqual(empty_result["quotes"], [])
+            self.assertIn("already in progress", empty_result["error"])
+            self.write_cache()
+            cached_result = stocks.quotes(self.cache, self.fetch, force=True)
+            self.assertEqual(cached_result["quotes"], self.cached["quotes"])
+            self.assertIn("already in progress", cached_result["error"])
+            self.assertIn("Showing cached prices", cached_result["error"])
+        self.fetch.assert_not_called()
+
+    def test_main_force_busy_lock_exits_nonzero_with_cached_quotes(self):
+        cache_dir = self.cache / "quickshell-stocks"
+        cache_dir.mkdir()
+        self.path = cache_dir / "quotes.json"
+        self.lock = cache_dir / "quotes-prices.flock"
+        self.write_cache()
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with self.lock.open("a") as owner:
+            stocks.fcntl.flock(owner, stocks.fcntl.LOCK_EX | stocks.fcntl.LOCK_NB)
+            with patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache)}), \
+                 contextlib.redirect_stdout(stdout), \
+                 contextlib.redirect_stderr(stderr):
+                code = stocks.main(["--force"])
+        self.assertEqual(code, 1)
+        self.assertIn("already in progress", stderr.getvalue())
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["quotes"], self.cached["quotes"])
+        self.assertIn("already in progress", payload["error"])
+
     def test_lock_errors_are_not_treated_as_contention(self):
         with patch.object(stocks.fcntl, "flock", side_effect=OSError("lock failed")):
             with self.assertRaises(OSError):

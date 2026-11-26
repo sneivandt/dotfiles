@@ -327,7 +327,7 @@ if ((Get-Command "codex" -ErrorAction SilentlyContinue) -and (Test-DotfilesAlias
 }
 
 # Load additional profile scripts from profile.d directory
-$profileDir = Join-Path $HOME ".config\powershell\profile.d"
+$profileDir = Join-Path (Join-Path (Join-Path $HOME ".config") "powershell") "profile.d"
 if (Test-Path -LiteralPath $profileDir -PathType Container)
 {
     Get-ChildItem -LiteralPath $profileDir -Filter "*.ps1" -File |

@@ -155,7 +155,14 @@ def quotes(cache_dir, fetch=None, force=False):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            return read_cache(path)
+            cached = read_cache(path)
+            if force:
+                error = (
+                    "Market data refresh is already in progress. Showing cached prices."
+                    if cached["quotes"] else "Market data refresh is already in progress."
+                )
+                return {**cached, "error": error}
+            return cached
         if not force:
             cached = fresh_cache(path, time.time())
             if cached is not None:

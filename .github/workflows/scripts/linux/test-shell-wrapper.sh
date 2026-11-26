@@ -178,7 +178,7 @@ EOF
   wrapper_path="$tmpdir/fake-bin:$PATH"
   if [ "${WRAPPER_DOWNLOADER:-curl}" = wget ]; then
     mv "$tmpdir/fake-bin/curl" "$tmpdir/fake-bin/wget"
-    for command_name in awk cat chmod dirname flock mkdir mv readlink rm rmdir sha256sum uname grep; do
+    for command_name in awk cat chmod dirname flock mkdir mktemp mv readlink rm rmdir sha256sum uname grep; do
       ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
     done
     wrapper_path="$tmpdir/fake-bin"
@@ -700,7 +700,7 @@ EOF
   # Missing gh: fail closed, unless provenance is explicitly bypassed.
   rm -rf "${tmpdir:?}/bin"
   rm -f "$tmpdir/fake-bin/gh"
-  for command_name in awk cat chmod dirname flock mkdir mv readlink rm rmdir sha256sum uname grep; do
+  for command_name in awk cat chmod dirname flock mkdir mktemp mv readlink rm rmdir sha256sum uname grep; do
     ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
   done
   if PATH="$tmpdir/fake-bin" DOTFILES_SKIP_ATTESTATION=0 \

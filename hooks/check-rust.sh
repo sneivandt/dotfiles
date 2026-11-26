@@ -65,11 +65,12 @@ trap 'rm -rf "$CHECK_ROOT"' EXIT
 trap 'exit 1' HUP INT TERM
 git -C "$REPO_ROOT" checkout-index --all --prefix="$CHECK_ROOT/"
 case "${CARGO_TARGET_DIR:-}" in
-  '') CARGO_TARGET_DIR="$REPO_ROOT/cli/target" ;;
+  '') CARGO_TARGET_DIR="$REPO_ROOT/cli/target/hooks" ;;
   /*|?:/*|?:\\*) ;;
   *) CARGO_TARGET_DIR="$REPO_ROOT/cli/$CARGO_TARGET_DIR" ;;
 esac
-export CARGO_TARGET_DIR
+DOTFILES_VERSION="${DOTFILES_VERSION:-dev-hook}"
+export CARGO_TARGET_DIR DOTFILES_VERSION
 
 # ── Rust checks ────────────────────────────────────────
 if [ -n "$RUST_CHANGED" ]; then

@@ -393,9 +393,26 @@ def check_mutation(workflow: str) -> None:
 
 def check_release(workflow: str) -> None:
     check_checkout_steps(workflow, "release.yml")
+    header = workflow.split("\njobs:\n", 1)[0]
+    if not re.search(
+        r"(?m)^concurrency:[ \t]*\n(?:  [^\n]+\n)*?  group:[ \t]+release[ \t]*$",
+        header,
+    ):
+        raise ValueError("release workflow is missing serialized release concurrency")
+    if not re.search(
+        r"(?m)^concurrency:[ \t]*\n(?:  [^\n]+\n)*?  cancel-in-progress:[ \t]+false[ \t]*$",
+        header,
+    ):
+        raise ValueError("release workflow is missing non-cancelling release concurrency")
+    if re.search(r"(?m)^[ \t]+workflow_dispatch:", workflow):
+        raise ValueError("release workflow permits cache-poisonable manual dispatches")
+    if "github.event.workflow_run.head_sha || github.sha" in workflow:
+        raise ValueError("releases can fall back to an unverified workflow commit")
     jobs = job_blocks(workflow)
     if job_condition(jobs["version"]) != "needs.check-ci.outputs.run_release == 'true'":
         raise ValueError("release version resolution must require changed binary inputs")
+    if "needs.check-ci.outputs.sha" not in jobs["version"]:
+        raise ValueError("release version resolution is missing the validated CI commit handoff")
     classify = jobs["check-ci"]
     for guard in (
         "github.event.workflow_run.conclusion == 'success'",
@@ -411,12 +428,45 @@ def check_release(workflow: str) -> None:
     for name in ("build-linux", "build-windows", "release"):
         if "version" not in job_needs(jobs[name]):
             raise ValueError(f"release {name} must depend on the selected version")
+    for name in ("build-linux", "build-windows"):
+        if not re.search(r"(?m)^[ \t]+retention-days:[ \t]+1[ \t]*$", jobs[name]):
+            raise ValueError(f"release {name} handoff artifact is not limited to one-day retention")
     for name, command in {
         "version": 'release-tag.sh next "$date_part"',
         "release": 'release-tag.sh check "$VERSION"',
     }.items():
         if command not in jobs[name]:
             raise ValueError(f"release {name} must use the checked remote tag helper")
+    release_job = jobs["release"]
+    for pattern, description in (
+        (r"(?m)^[ \t]+id-token:[ \t]+write[ \t]*$", "OIDC permission for provenance signing"),
+        (r"(?m)^[ \t]+attestations:[ \t]+write[ \t]*$", "attestation upload permission"),
+    ):
+        if not re.search(pattern, release_job):
+            raise ValueError(f"release workflow is missing {description}")
+    attest_pos = release_job.find("- name: Attest build provenance")
+    verify_pos = release_job.find("- name: Verify attestation discoverability")
+    create_pos = release_job.find("- name: Create release")
+    if attest_pos < 0 or verify_pos < 0 or create_pos < 0 or not (attest_pos < verify_pos < create_pos):
+        raise ValueError("release provenance is not verified before publication")
+    attest_step = release_job[attest_pos:verify_pos]
+    verify_step = release_job[verify_pos:create_pos]
+    create_step = release_job[create_pos:]
+    for pattern, description in (
+        (r"actions/attest-build-provenance@", "the build provenance action"),
+        (r"(?m)^[ \t]+dotfiles-linux-x86_64[ \t]*$", "the Linux x86_64 attestation subject"),
+        (r"(?m)^[ \t]+dotfiles-linux-aarch64[ \t]*$", "the Linux aarch64 attestation subject"),
+        (r"(?m)^[ \t]+dotfiles-windows-x86_64\.exe[ \t]*$", "the Windows attestation subject"),
+    ):
+        if not re.search(pattern, attest_step):
+            raise ValueError(f"release workflow is missing {description}")
+    if 'gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY"' not in verify_step:
+        raise ValueError("release workflow is missing the attestation discoverability check")
+    if not re.search(
+        r"(?m)^[ \t]+target_commitish:[ \t]+\$\{\{ needs\.version\.outputs\.sha \}\}[ \t]*$",
+        create_step,
+    ):
+        raise ValueError("release workflow is missing the exact tested release tag target")
 
 def check_pages(workflow: str, ci_workflow: str) -> None:
     jobs = job_blocks(workflow)
@@ -697,6 +747,11 @@ def check_results(needs: dict) -> None:
 
 if __name__ == "__main__":
     try:
+        if len(sys.argv) == 3 and sys.argv[1] == "--release":
+            source = sys.stdin.read() if sys.argv[2] == "-" else Path(sys.argv[2]).read_text(encoding="utf-8")
+            check_release(source)
+            print("Release workflow matches the contract")
+            sys.exit(0)
         for workflow_path in sorted(WORKFLOW.parent.glob("*.yml")):
             check_checkout_steps(workflow_path.read_text(encoding="utf-8"), workflow_path.name)
         check(WORKFLOW.read_text(encoding="utf-8"))
@@ -707,6 +762,8 @@ if __name__ == "__main__":
                     WORKFLOW.read_text(encoding="utf-8"))
         if sys.argv[1:] == ["--results"]:
             check_results(json.loads(os.environ["CI_NEEDS"]))
+        elif sys.argv[1:]:
+            raise ValueError(f"unsupported arguments: {' '.join(sys.argv[1:])}")
     except ValueError as error:
         print(f"CI contract failed: {error}", file=sys.stderr)
         sys.exit(1)

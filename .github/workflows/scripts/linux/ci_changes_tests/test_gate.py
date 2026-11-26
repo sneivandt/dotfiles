@@ -145,8 +145,44 @@ class GateTests(unittest.TestCase):
         ):
             with self.assertRaises(ValueError):
                 CONTRACT["check"](broken)
-        with self.assertRaises(ValueError):
-            CONTRACT["check_release"](release.replace("run_release == 'true'", "true"))
+        for label, broken in (
+            ("run_release condition", release.replace("run_release == 'true'", "true")),
+            ("concurrency group", release.replace("  group: release\n", "")),
+            ("cancel-in-progress", release.replace("  cancel-in-progress: false\n", "  cancel-in-progress: true\n")),
+            ("workflow_dispatch", release.replace("  workflow_run:\n", "  workflow_dispatch:\n  workflow_run:\n", 1)),
+            ("head_sha fallback", release.replace("needs.check-ci.outputs.sha", "github.event.workflow_run.head_sha || github.sha", 1)),
+            ("version sha handoff", release.replace("needs.check-ci.outputs.sha", "github.sha")),
+            ("retention-days", release.replace("          retention-days: 1\n", "", 1)),
+            ("id-token permission", release.replace("      id-token: write\n", "")),
+            ("attestations permission", release.replace("      attestations: write\n", "")),
+            ("attestation subject", release.replace("            dotfiles-linux-aarch64\n", "", 1)),
+            ("discoverability check", release.replace('gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY"', "true")),
+            ("target_commitish", release.replace("target_commitish: ${{ needs.version.outputs.sha }}\n", "")),
+            ("step order", release.replace(
+                "      - name: Verify attestation discoverability",
+                "__TEMP_STEP__",
+            ).replace(
+                "      - name: Create release",
+                "      - name: Verify attestation discoverability",
+            ).replace(
+                "__TEMP_STEP__",
+                "      - name: Create release",
+            )),
+        ):
+            with self.subTest(release_case=label), self.assertRaises(ValueError):
+                CONTRACT["check_release"](broken)
+        contract_cli = SCRIPTS / "check-ci-contract.py"
+        ok = subprocess.run(
+            [sys.executable, "-B", str(contract_cli), "--release", "-"],
+            input=release, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        bad = subprocess.run(
+            [sys.executable, "-B", str(contract_cli), "--release", "-"],
+            input=release.replace("  group: release\n", ""),
+            text=True, capture_output=True, check=False,
+        )
+        self.assertNotEqual(bad.returncode, 0)
         for platform in ("linux", "windows"):
             build = CONTRACT["job_blocks"](workflow)["build-" + platform]
             for step in (("Clippy", "Tests", "Rustdoc") if platform == "linux" else ("Clippy", "Tests")):

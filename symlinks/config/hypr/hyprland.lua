@@ -1,9 +1,8 @@
--- Hyprland configuration
+-- Hyprland configuration (session daemons run as systemd user services)
 require("conf.monitors")
 require("conf.env")
 require("conf.input")
 require("conf.appearance")
 require("conf.resize-on-border")
-require("conf.autostart")
 require("conf.binds")
 require("conf.rules")

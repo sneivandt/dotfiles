@@ -7,18 +7,25 @@ AbstractButton {
     id: root
 
     property string glyph: ""
+    property color glyphColor: danger || selected ? accentColor : Theme.mutedStrong
     property string label: ""
     property string detail: ""
     property string trailing: ""
     property string trailingDetail: ""
     property color trailingDetailColor: Theme.mutedStrong
+    property string badgeGlyph: ""
+    property color badgeColor: Theme.mutedStrong
     property bool danger: false
     property bool selected: false
     property bool showSelectionIndicator: selected
     property bool clickable: true
     property bool showChevron: true
+    property bool centerLabel: false
     property color accentColor: danger ? Theme.red : Theme.blue
     property color accentBackground: danger ? Theme.redSoft : Theme.blueSoft
+    property alias trailingItem: trailingSlot.data
+    readonly property bool labelTruncated: labelText.truncated
+    readonly property bool detailTruncated: detailText.truncated
 
     signal triggered()
 
@@ -43,6 +50,20 @@ AbstractButton {
     Keys.onEnterPressed: {
         if (clickable && enabled) {
             triggered();
+        }
+    }
+    Keys.onDownPressed: event => {
+        const next = nextItemInFocusChain(true);
+        if (next && next !== root) {
+            next.forceActiveFocus(Qt.TabFocusReason);
+            event.accepted = true;
+        }
+    }
+    Keys.onUpPressed: event => {
+        const previous = nextItemInFocusChain(false);
+        if (previous && previous !== root) {
+            previous.forceActiveFocus(Qt.BacktabFocusReason);
+            event.accepted = true;
         }
     }
 
@@ -96,7 +117,7 @@ AbstractButton {
             Text {
                 anchors.centerIn: parent
                 text: root.glyph
-                color: root.danger || root.selected ? root.accentColor : Theme.mutedStrong
+                color: root.glyphColor
                 font.family: Theme.iconFont
                 font.pixelSize: 13
             }
@@ -108,17 +129,22 @@ AbstractButton {
             spacing: 3
 
             Text {
+                id: labelText
+
                 Layout.fillWidth: true
                 text: root.label
                 textFormat: Text.PlainText
                 color: root.danger ? Theme.red : Theme.foreground
                 font.family: Theme.font
                 font.pixelSize: Theme.textBody
-                font.weight: root.selected ? Font.DemiBold : Font.Normal
+                font.weight: root.selected || root.centerLabel ? Font.DemiBold : Font.Normal
+                horizontalAlignment: root.centerLabel ? Text.AlignHCenter : Text.AlignLeft
                 elide: Text.ElideRight
             }
 
             Text {
+                id: detailText
+
                 visible: root.detail.length > 0
                 Layout.fillWidth: true
                 text: root.detail
@@ -126,9 +152,18 @@ AbstractButton {
                 color: Theme.mutedStrong
                 font.family: Theme.font
                 font.pixelSize: Theme.textSmall
+                horizontalAlignment: root.centerLabel ? Text.AlignHCenter : Text.AlignLeft
                 elide: Text.ElideRight
             }
 
+        }
+
+        Text {
+            visible: root.badgeGlyph.length > 0
+            text: root.badgeGlyph
+            color: root.badgeColor
+            font.family: Theme.iconFont
+            font.pixelSize: 11
         }
 
         ColumnLayout {
@@ -155,6 +190,14 @@ AbstractButton {
                 font.pixelSize: Theme.textSmall
             }
 
+        }
+
+        Item {
+            id: trailingSlot
+
+            visible: children.length > 0
+            implicitWidth: childrenRect.width
+            implicitHeight: childrenRect.height
         }
 
         Text {

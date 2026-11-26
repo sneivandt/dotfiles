@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import "../lib/Theme.js" as Theme
 
-RowLayout {
+ColumnLayout {
     id: root
 
     property string icon: ""
@@ -10,60 +10,74 @@ RowLayout {
     property string subtitle: ""
     property color accentColor: Theme.blue
     property color accentBackground: Theme.blueSoft
+    property bool showDivider: true
     property alias trailingItem: trailingSlot.data
 
-    spacing: 12
+    spacing: 10
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 12
+
+        Rectangle {
+            visible: root.icon.length > 0
+            Layout.preferredWidth: 36
+            Layout.preferredHeight: 36
+            radius: Theme.itemRadius
+            color: root.accentBackground
+
+            Text {
+                anchors.centerIn: parent
+                text: root.icon
+                color: root.accentColor
+                font.family: Theme.iconFont
+                font.pixelSize: 16
+            }
+
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 4
+
+            Text {
+                Layout.fillWidth: true
+                text: root.title
+                textFormat: Text.PlainText
+                color: Theme.foreground
+                font.family: Theme.font
+                font.pixelSize: Theme.textHeading
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+
+            Text {
+                visible: root.subtitle.length > 0
+                Layout.fillWidth: true
+                text: root.subtitle
+                textFormat: Text.PlainText
+                color: Theme.mutedStrong
+                font.family: Theme.font
+                font.pixelSize: Theme.textSmall
+                elide: Text.ElideRight
+            }
+
+        }
+
+        Item {
+            id: trailingSlot
+
+            implicitWidth: childrenRect.width
+            implicitHeight: childrenRect.height
+        }
+
+    }
 
     Rectangle {
-        visible: root.icon.length > 0
-        Layout.preferredWidth: 36
-        Layout.preferredHeight: 36
-        radius: Theme.itemRadius
-        color: root.accentBackground
-
-        Text {
-            anchors.centerIn: parent
-            text: root.icon
-            color: root.accentColor
-            font.family: Theme.iconFont
-            font.pixelSize: 16
-        }
-
-    }
-
-    ColumnLayout {
+        visible: root.showDivider
         Layout.fillWidth: true
-        spacing: 4
-
-        Text {
-            Layout.fillWidth: true
-            text: root.title
-            textFormat: Text.PlainText
-            color: Theme.foreground
-            font.family: Theme.font
-            font.pixelSize: Theme.textHeading
-            font.weight: Font.DemiBold
-            elide: Text.ElideRight
-        }
-
-        Text {
-            visible: root.subtitle.length > 0
-            Layout.fillWidth: true
-            text: root.subtitle
-            textFormat: Text.PlainText
-            color: Theme.mutedStrong
-            font.family: Theme.font
-            font.pixelSize: Theme.textSmall
-            elide: Text.ElideRight
-        }
-
-    }
-
-    Item {
-        id: trailingSlot
-
-        implicitWidth: childrenRect.width
-        implicitHeight: childrenRect.height
+        implicitHeight: 1
+        color: Theme.borderSubtle
     }
 
 }

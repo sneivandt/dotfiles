@@ -10,6 +10,7 @@ AbstractButton {
     property color accentColor: Theme.blue
     property color accentBackground: Theme.blueSoft
     property bool selected: false
+    property bool spinning: false
 
     signal triggered()
 
@@ -48,12 +49,26 @@ AbstractButton {
     }
 
     contentItem: Text {
+        id: iconLabel
+
         text: root.glyph
         color: root.selected ? root.accentColor : Theme.foreground
         font.family: Theme.iconFont
         font.pixelSize: 14
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
+
+        NumberAnimation on rotation {
+            from: 0
+            to: 360
+            duration: 1000
+            loops: Animation.Infinite
+            running: root.visible && root.spinning
+            onRunningChanged: {
+                if (!running)
+                    iconLabel.rotation = 0;
+            }
+        }
     }
 
 }

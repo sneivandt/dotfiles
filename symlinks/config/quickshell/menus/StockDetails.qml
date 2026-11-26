@@ -7,6 +7,8 @@ Item {
 
     required property var quote
     readonly property bool hasHistory: Boolean(quote.history && quote.history.length > 1)
+    readonly property bool hasRange: Number.isFinite(Number(quote.yearLow)) && Number.isFinite(Number(quote.yearHigh)) && Number(quote.yearHigh) > Number(quote.yearLow)
+    readonly property real rangePosition: hasRange ? Math.max(0, Math.min(1, (Number(quote.price) - Number(quote.yearLow)) / (Number(quote.yearHigh) - Number(quote.yearLow)))) : 0
     readonly property color accentColor: Number(quote.yearChange) === 0 ? Theme.mutedStrong : (quote.yearChange > 0 ? Theme.green : Theme.red)
     readonly property color accentBackground: Number(quote.yearChange) === 0 ? "transparent" : (quote.yearChange > 0 ? Theme.greenSoft : Theme.redSoft)
 
@@ -85,8 +87,10 @@ Item {
                     high = Math.max(high, Number(values[i]));
                 }
                 const spread = Math.max(high - low, Math.max(high * 0.01, 0.01));
-                const xFor = index => index * width / (values.length - 1);
-                const yFor = value => 3 + (high - Number(value)) / spread * (height - 6);
+                const rightPad = 5;
+                const plotWidth = Math.max(1, width - rightPad);
+                const xFor = index => index * plotWidth / (values.length - 1);
+                const yFor = value => 5 + (high - Number(value)) / spread * (height - 10);
 
                 context.strokeStyle = Theme.borderSubtle;
                 context.lineWidth = 1;
@@ -94,7 +98,7 @@ Item {
                     const y = Math.round(line * height / 3) + 0.5;
                     context.beginPath();
                     context.moveTo(0, y);
-                    context.lineTo(width, y);
+                    context.lineTo(plotWidth, y);
                     context.stroke();
                 }
 
@@ -102,7 +106,7 @@ Item {
                 context.moveTo(0, height);
                 for (let point = 0; point < values.length; ++point)
                     context.lineTo(xFor(point), yFor(values[point]));
-                context.lineTo(width, height);
+                context.lineTo(plotWidth, height);
                 context.closePath();
                 const fill = context.createLinearGradient(0, 0, 0, height);
                 fill.addColorStop(0, root.accentBackground);
@@ -119,6 +123,52 @@ Item {
                 context.lineJoin = "round";
                 context.lineCap = "round";
                 context.stroke();
+
+                const lastX = xFor(values.length - 1);
+                const lastY = yFor(values[values.length - 1]);
+                context.beginPath();
+                context.arc(lastX, lastY, 5, 0, Math.PI * 2);
+                context.fillStyle = root.accentBackground;
+                context.fill();
+                context.beginPath();
+                context.arc(lastX, lastY, 2.75, 0, Math.PI * 2);
+                context.fillStyle = root.accentColor;
+                context.fill();
+            }
+        }
+
+        Item {
+            Layout.fillWidth: true
+            visible: root.hasHistory && root.hasRange
+            implicitHeight: 10
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                height: 4
+                radius: 2
+                color: Theme.borderSubtle
+
+                Rectangle {
+                    width: parent.width * root.rangePosition
+                    height: parent.height
+                    radius: parent.radius
+                    color: root.accentColor
+                    opacity: 0.75
+                }
+            }
+
+            Rectangle {
+                objectName: "stockRangeMarker"
+                x: Math.max(0, Math.min(parent.width - width, root.rangePosition * (parent.width - width)))
+                anchors.verticalCenter: parent.verticalCenter
+                width: 8
+                height: 8
+                radius: width / 2
+                color: Theme.foreground
+                border.width: 2
+                border.color: root.accentColor
             }
         }
 

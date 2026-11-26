@@ -29,34 +29,79 @@ ColumnLayout {
     }
 
     spacing: Theme.spacing
+    Keys.onLeftPressed: event => {
+        root.monthOffset--;
+        event.accepted = true;
+    }
+    Keys.onRightPressed: event => {
+        root.monthOffset++;
+        event.accepted = true;
+    }
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Home && root.monthOffset !== 0) {
+            root.monthOffset = 0;
+            event.accepted = true;
+        }
+    }
 
-    RowLayout {
-        id: clockRow
+    ColumnLayout {
+        id: headerBlock
 
         Layout.fillWidth: true
-        spacing: Theme.spacing
-        Accessible.role: Accessible.StaticText
-        Accessible.name: Qt.formatDate(root.currentDate, "dddd, MMMM d, yyyy") + ", " + Qt.formatTime(root.currentDate, "HH:mm") + ", UTC " + root.utcTime()
+        spacing: 10
 
-        Text {
-            objectName: "localClock"
+        RowLayout {
+            id: clockRow
+
             Layout.fillWidth: true
-            Layout.minimumWidth: 0
-            Layout.alignment: Qt.AlignVCenter
-            text: Qt.formatTime(root.currentDate, "HH:mm")
-            color: Theme.foreground
-            font.family: Theme.font
-            font.pixelSize: 24
-            font.weight: Font.DemiBold
+            spacing: Theme.spacing
+            Accessible.role: Accessible.StaticText
+            Accessible.name: Qt.formatDate(root.currentDate, "dddd, MMMM d, yyyy") + ", " + Qt.formatTime(root.currentDate, "HH:mm") + ", UTC " + root.utcTime()
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                spacing: 2
+
+                Text {
+                    objectName: "localClock"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    text: Qt.formatTime(root.currentDate, "HH:mm")
+                    color: Theme.foreground
+                    font.family: Theme.font
+                    font.pixelSize: 24
+                    font.weight: Font.DemiBold
+                }
+
+                Text {
+                    objectName: "fullDate"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    text: Qt.formatDate(root.currentDate, "dddd, MMM d")
+                    textFormat: Text.PlainText
+                    color: Theme.mutedStrong
+                    font.family: Theme.font
+                    font.pixelSize: Theme.textSmall
+                    elide: Text.ElideRight
+                }
+            }
+
+            Text {
+                objectName: "utcClock"
+                Layout.alignment: Qt.AlignRight | Qt.AlignTop
+                Layout.topMargin: 6
+                text: root.utcTime() + " UTC"
+                color: Theme.cyan
+                font.family: Theme.font
+                font.pixelSize: Theme.textSmall
+            }
         }
 
-        Text {
-            objectName: "utcClock"
-            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-            text: root.utcTime() + " UTC"
-            color: Theme.cyan
-            font.family: Theme.font
-            font.pixelSize: Theme.textSmall
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 1
+            color: Theme.borderSubtle
         }
     }
 
@@ -73,7 +118,7 @@ ColumnLayout {
         }
 
         Layout.fillWidth: true
-        implicitHeight: Math.min(contentHeight, Math.max(0, root.availableContentHeight - clockRow.implicitHeight - Theme.spacing))
+        implicitHeight: Math.min(contentHeight, Math.max(0, root.availableContentHeight - headerBlock.implicitHeight - Theme.spacing))
         contentHeight: calendarContent.implicitHeight
         contentWidth: width
         clip: true
@@ -89,7 +134,7 @@ ColumnLayout {
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: Theme.spacing
+                spacing: 4
 
                 MenuIconButton {
                     id: previousMonth
@@ -115,6 +160,24 @@ ColumnLayout {
                     font.weight: Font.DemiBold
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
+                }
+
+                MenuIconButton {
+                    id: todayButton
+                    objectName: "todayButton"
+
+                    glyph: "\uf133"
+                    tooltip: "Back to today"
+                    enabled: root.monthOffset !== 0
+                    selected: root.monthOffset !== 0
+                    onTriggered: {
+                        previousMonth.forceActiveFocus(Qt.TabFocusReason);
+                        root.monthOffset = 0;
+                    }
+                    onActiveFocusChanged: {
+                        if (activeFocus)
+                            scroll.reveal(todayButton);
+                    }
                 }
 
                 MenuIconButton {
@@ -167,6 +230,7 @@ ColumnLayout {
                         readonly property date cellDate: root.dateForCell(index)
                         readonly property bool inMonth: cellDate.getMonth() === root.shownMonth.getMonth()
                         readonly property bool today: root.isToday(cellDate)
+                        readonly property bool weekend: index % 7 === 0 || index % 7 === 6
 
                         function changeMonth() {
                             const previous = cellDate < root.shownMonth;
@@ -199,7 +263,7 @@ ColumnLayout {
 
                         contentItem: Text {
                             text: day.cellDate.getDate()
-                            color: day.today ? Theme.backgroundSolid : (day.inMonth ? Theme.foreground : Theme.mutedStrong)
+                            color: day.today ? Theme.backgroundSolid : (!day.inMonth ? Theme.muted : (day.weekend ? Theme.mutedStrong : Theme.foreground))
                             font.family: Theme.font
                             font.pixelSize: Theme.textBody
                             font.weight: day.today ? Font.DemiBold : Font.Normal
@@ -219,28 +283,6 @@ ColumnLayout {
                             cursorShape: Qt.PointingHandCursor
                         }
                     }
-                }
-            }
-
-            MenuButton {
-                id: todayButton
-                objectName: "todayButton"
-
-                Layout.fillWidth: true
-                visible: root.monthOffset !== 0
-                implicitHeight: 32
-                padding: 6
-                glyph: "\uf133"
-                label: "Back to today"
-                clickable: root.monthOffset !== 0
-                showChevron: false
-                onTriggered: {
-                    previousMonth.forceActiveFocus(Qt.TabFocusReason);
-                    root.monthOffset = 0;
-                }
-                onActiveFocusChanged: {
-                    if (activeFocus)
-                        scroll.reveal(todayButton);
                 }
             }
         }

@@ -30,9 +30,11 @@ Item {
                 property string actionLabel: ""
                 property string error: ""
                 property string requestedUuid: ""
+                property string disconnectedDevice: ""
 
                 signal credentialsRequested(var accessPoint)
                 function connectNetwork(accessPoint, password, ssid) { requestedUuid = accessPoint.uuid; }
+                function disconnectNetwork(accessPoint) { disconnectedDevice = accessPoint.device; }
             }
         }
     }
@@ -162,6 +164,33 @@ Item {
                 compare(label.text, expectation[1]);
                 compare(label.textFormat, Text.PlainText);
             }
+        }
+
+        function test_disconnect_button_and_escape_during_credentials() {
+            const menu = createTemporaryObject(menuComponent, parent);
+            const active = {name: "Home", uuid: "home-id", device: "wlan0", active: true,
+                            available: true, signal: 82, protected: true, saved: true, advanced: false};
+            const protectedAp = {name: "Cafe", uuid: "", device: "wlan0", active: false,
+                                 available: true, signal: 60, protected: true, saved: false, advanced: false};
+            menu.network.networks = [active, protectedAp];
+            menu.visible = true;
+            tryCompare(menu, "reveal", 1);
+
+            const disconnectButton = findChild(menu, "networkDisconnectButton");
+            verify(disconnectButton !== null && disconnectButton.visible);
+            mouseClick(disconnectButton);
+            compare(menu.network.disconnectedDevice, "wlan0");
+
+            const choices = findChild(menu, "networkChoices");
+            mouseClick(choices.itemAt(1));
+            compare(menu.enteringCredentials, true);
+            compare(menu.dismissOnEscape, false);
+            keyClick(Qt.Key_Escape);
+            compare(menu.enteringCredentials, false);
+            compare(menu.visible, true);
+            compare(menu.closing, false);
+            keyClick(Qt.Key_Escape);
+            tryCompare(menu, "visible", false);
         }
     }
 }

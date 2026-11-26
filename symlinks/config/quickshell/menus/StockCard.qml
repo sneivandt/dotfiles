@@ -29,6 +29,14 @@ FocusScope {
     height: implicitHeight
     clip: true
 
+    Rectangle {
+        anchors.fill: parent
+        radius: Theme.itemRadius
+        color: root.expansionProgress > 0 ? Theme.raised : "transparent"
+        border.width: summary.visualFocus ? 1 : (root.expansionProgress > 0 ? 1 : 0)
+        border.color: summary.visualFocus ? Theme.blue : Theme.borderSubtle
+    }
+
     AbstractButton {
         id: summary
 
@@ -50,6 +58,20 @@ FocusScope {
                 root.triggered();
 
         }
+        Keys.onDownPressed: (event) => {
+            const next = nextItemInFocusChain(true);
+            if (next && next !== summary) {
+                next.forceActiveFocus(Qt.TabFocusReason);
+                event.accepted = true;
+            }
+        }
+        Keys.onUpPressed: (event) => {
+            const previous = nextItemInFocusChain(false);
+            if (previous && previous !== summary) {
+                previous.forceActiveFocus(Qt.BacktabFocusReason);
+                event.accepted = true;
+            }
+        }
 
         HoverHandler {
             cursorShape: Qt.PointingHandCursor
@@ -58,8 +80,24 @@ FocusScope {
         background: Rectangle {
             radius: Theme.itemRadius
             color: summary.down ? Theme.pressed : (summary.hovered ? Theme.hover : (root.expanded ? Theme.blueSoft : Theme.raised))
-            border.width: summary.visualFocus ? 1 : 0
-            border.color: Theme.blue
+
+            Rectangle {
+                visible: root.expansionProgress > 0
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.leftMargin: Theme.spacing
+                anchors.rightMargin: Theme.spacing
+                height: 1
+                color: Theme.borderSubtle
+                opacity: root.expansionProgress
+            }
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: Theme.animationFast
+                }
+            }
         }
 
         contentItem: RowLayout {

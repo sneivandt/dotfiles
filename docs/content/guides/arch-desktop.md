@@ -107,8 +107,9 @@ Click a workspace on the left to switch to it. The controls on the right
 include network, media, volume, [Markets](#markets), battery status when
 available, and a calendar under the clock.
 
-- **Network:** Open the menu to choose a saved network or enter a Wi-Fi
-  password. Right-click for the connection editor, including enterprise Wi-Fi.
+- **Network:** Open the menu to choose a saved network, enter a Wi-Fi
+  password, or disconnect from Wi-Fi. Right-click for the connection editor,
+  including enterprise Wi-Fi.
 - **Volume:** Scroll the icon to adjust the default output or middle-click to
   mute. In the menu, choose an output or set its volume up to 150%.
 - **Media:** Click to play or pause, middle-click for the previous track, or

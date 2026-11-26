@@ -386,6 +386,16 @@ def action(request):
         if failures:
             raise NetworkError("Rescan failed on " + ", ".join(failures) + ". Cached networks are still shown.")
         return {"ok": True}
+    elif operation == "disconnect":
+        network = request.get("network")
+        if not isinstance(network, dict):
+            raise NetworkError("A disconnect request must include a network object.")
+        device = request_string(network, "device")
+        if not device:
+            raise NetworkError("Choose a Wi-Fi adapter to disconnect.")
+        invalidate_profiles()
+        result = nmcli(["--wait", "15", "device", "disconnect", device], timeout=25)
+        invalidate_profiles()
     elif operation == "connect":
         network = request.get("network")
         if not isinstance(network, dict):

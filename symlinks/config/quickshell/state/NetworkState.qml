@@ -90,6 +90,18 @@ Scope {
         }, enabled ? "Enabling Wi-Fi…" : "Disabling Wi-Fi…");
     }
 
+    function disconnectNetwork(accessPoint) {
+        if (!detailsAvailable || working || !accessPoint || !accessPoint.device)
+            return;
+
+        runAction({
+            "operation": "disconnect",
+            "network": {
+                "device": accessPoint.device
+            }
+        }, "Disconnecting from " + (accessPoint.name || accessPoint.device) + "…");
+    }
+
     function connectNetwork(accessPoint, password, ssid) {
         if (!detailsAvailable || !wifiEnabled || working)
             return;

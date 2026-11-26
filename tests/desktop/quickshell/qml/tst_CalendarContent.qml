@@ -24,13 +24,39 @@ Item {
             verify(calendar !== null);
 
             const localClock = findChild(calendar, "localClock");
+            const fullDate = findChild(calendar, "fullDate");
             const utcClock = findChild(calendar, "utcClock");
             verify(localClock !== null);
+            verify(fullDate !== null);
             verify(utcClock !== null);
             compare(localClock.text, Qt.formatTime(calendar.currentDate, "HH:mm"));
+            compare(fullDate.text, Qt.formatDate(calendar.currentDate, "dddd, MMM d"));
             compare(utcClock.text, calendar.utcTime() + " UTC");
             compare(findChild(calendar, "localTimezone"), null);
             compare(findChild(calendar, "utcTimezone"), null);
+        }
+
+        function test_today_button_in_header_and_keyboard_month_navigation() {
+            const calendar = createTemporaryObject(calendarComponent, parent);
+            verify(calendar !== null);
+            const todayButton = findChild(calendar, "todayButton");
+            verify(todayButton !== null);
+            compare(todayButton.visible, true);
+            compare(todayButton.enabled, false);
+
+            calendar.forceActiveFocus();
+            keyClick(Qt.Key_Right);
+            compare(calendar.monthOffset, 1);
+            compare(todayButton.enabled, true);
+
+            keyClick(Qt.Key_Home);
+            compare(calendar.monthOffset, 0);
+            compare(todayButton.enabled, false);
+
+            keyClick(Qt.Key_Left);
+            compare(calendar.monthOffset, -1);
+            todayButton.triggered();
+            compare(calendar.monthOffset, 0);
         }
 
         function test_sunday_first_grid_data() {

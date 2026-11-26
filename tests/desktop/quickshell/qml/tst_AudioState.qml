@@ -206,5 +206,22 @@ Item {
             compare(audio.error, "");
             compare(dismissButton.visible, false);
         }
+
+        function test_volume_menu_nominal_shortcut_and_mute_state() {
+            const speaker = node();
+            const audio = make([speaker]);
+            const menu = createTemporaryObject(volumeMenuComponent, parent, { audio: audio });
+            menu.visible = true;
+            const slider = findChild(menu, "volumeSlider");
+            const nominal = findChild(menu, "volumeNominalButton");
+            verify(slider !== null && nominal !== null);
+
+            compare(slider.muted, false);
+            speaker.audio.muted = true;
+            compare(slider.muted, true);
+
+            nominal.clicked();
+            compare(speaker.audio.volume, 1.0);
+        }
     }
 }

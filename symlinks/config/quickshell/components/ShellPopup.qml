@@ -12,9 +12,10 @@ PopupWindow {
     required property Item anchorItem
     property int panelWidth: 368
     property bool alignToWindowFrame: false
+    property bool dismissOnEscape: true
     // Animate inside a stable Wayland buffer; resizing it mid-transition flickers.
     property real reservedContentHeight: availableContentHeight
-    readonly property int shadowMargin: 8
+    readonly property int shadowMargin: 9
     readonly property int topOffset: Theme.windowGap
     readonly property int screenInset: Theme.windowGap + shadowMargin
     readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
@@ -22,6 +23,8 @@ PopupWindow {
     readonly property bool closing: closeAnimation.running
     default property alias contentData: body.data
     property real reveal: 0
+
+    signal escapePressed()
 
     function close() {
         if (!visible || closing)
@@ -109,7 +112,10 @@ PopupWindow {
             y: -5 * (1 - root.reveal)
         }
         Keys.onEscapePressed: event => {
-            root.close();
+            if (root.dismissOnEscape)
+                root.close();
+            else
+                root.escapePressed();
             event.accepted = true;
         }
 
@@ -117,10 +123,11 @@ PopupWindow {
             model: 3
             Rectangle {
                 required property int index
+                readonly property int spread: index === 0 ? 2 : (index === 1 ? 5 : 8)
                 anchors.fill: panel
-                anchors.margins: -(index + 1) * 3
-                radius: Theme.menuRadius + (index + 1) * 3
-                color: index === 0 ? Theme.shadow : "#18000000"
+                anchors.margins: -spread
+                radius: Theme.menuRadius + spread
+                color: index === 0 ? "#32000000" : (index === 1 ? "#1a000000" : "#0c000000")
             }
         }
 

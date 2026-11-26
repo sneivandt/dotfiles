@@ -10,11 +10,22 @@ ShellPopup {
     id: root
 
     required property var battery
+    panelWidth: 304
     readonly property bool available: Boolean(battery && battery.ready)
     readonly property real charge: available ? battery.percentage : -1
     readonly property bool charging: available && battery.state === UPowerDeviceState.Charging
     readonly property bool fullyCharged: available && battery.state === UPowerDeviceState.FullyCharged
+    readonly property real watts: available && Number.isFinite(battery.changeRate) ? Math.abs(battery.changeRate) : 0
+    readonly property bool hasWatts: available && watts >= 0.1
+    readonly property real health: available && battery.healthSupported && Number.isFinite(battery.healthPercentage) ? battery.healthPercentage : -1
+    readonly property bool hasHealth: available && health > 0
     readonly property color accentColor: !available ? Theme.mutedStrong : (charging || fullyCharged ? Theme.green : (charge <= 0.15 ? Theme.red : (charge <= 0.3 ? Theme.yellow : Theme.blue)))
+
+    function powerSummary() {
+        if (!hasWatts)
+            return "";
+        return watts.toFixed(1) + " W " + (charging ? "charging" : "draw");
+    }
 
     function batteryIcon() {
         return Battery.icon(available, charging, fullyCharged, charge);
@@ -70,7 +81,7 @@ ShellPopup {
 
     ColumnLayout {
         width: parent.width
-        spacing: Theme.padding
+        spacing: Theme.spacing
 
         MenuHeader {
             id: header
@@ -87,7 +98,7 @@ ShellPopup {
             id: scroll
 
             Layout.fillWidth: true
-            implicitHeight: Math.min(contentHeight, Math.max(0, root.availableContentHeight - header.implicitHeight - Theme.padding))
+            implicitHeight: Math.min(contentHeight, Math.max(0, root.availableContentHeight - header.implicitHeight - Theme.spacing))
             contentHeight: batteryContent.implicitHeight
             contentWidth: width
             clip: true
@@ -125,8 +136,8 @@ ShellPopup {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.spacing
-                    Layout.bottomMargin: Theme.spacing
+                    Layout.topMargin: 4
+                    Layout.bottomMargin: 4
                     implicitHeight: 10
                     radius: 5
                     color: Theme.borderSubtle
@@ -158,6 +169,36 @@ ShellPopup {
 
                     }
 
+                }
+
+                RowLayout {
+                    visible: root.hasWatts || root.hasHealth
+                    Layout.fillWidth: true
+                    Layout.topMargin: 2
+                    spacing: Theme.spacing
+
+                    Text {
+                        objectName: "batteryPowerRate"
+                        visible: root.hasWatts
+                        Layout.fillWidth: true
+                        text: root.powerSummary()
+                        textFormat: Text.PlainText
+                        color: Theme.mutedStrong
+                        font.family: Theme.font
+                        font.pixelSize: Theme.textSmall
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        objectName: "batteryHealth"
+                        visible: root.hasHealth
+                        Layout.alignment: Qt.AlignRight
+                        text: Math.round(root.health) + "% health"
+                        textFormat: Text.PlainText
+                        color: Theme.mutedStrong
+                        font.family: Theme.font
+                        font.pixelSize: Theme.textSmall
+                    }
                 }
 
             }

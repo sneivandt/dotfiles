@@ -87,6 +87,7 @@ PanelWindow {
                 icon: root.hasError ? "\uf071" : "\uf00c"
                 accentColor: root.hasError ? Theme.red : Theme.green
                 accentBackground: root.hasError ? Theme.redSoft : Theme.greenSoft
+                showDivider: root.hasError
 
                 trailingItem: MenuIconButton {
                     glyph: "\uf00d"

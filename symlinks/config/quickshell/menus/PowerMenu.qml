@@ -8,6 +8,7 @@ import "../lib/Theme.js" as Theme
 ShellPopup {
     id: root
     panelWidth: 336
+    dismissOnEscape: confirmation.length === 0
     property string confirmation: ""
     property string error: ""
     property bool _actionActive: false
@@ -25,6 +26,23 @@ ShellPopup {
                 command: ["systemctl", "poweroff"]
             }
         })
+    readonly property var confirmationCopy: ({
+            logout: {
+                icon: "\uf2f5",
+                title: "Log out of this session?",
+                detail: "Open applications will close and return you to login."
+            },
+            reboot: {
+                icon: "\uf2f1",
+                title: "Restart this computer?",
+                detail: "Unsaved work in open applications may be lost."
+            },
+            shutdown: {
+                icon: "\uf011",
+                title: "Shut down this computer?",
+                detail: "Unsaved work in open applications may be lost."
+            }
+        })
 
     function run(command) {
         if (_actionActive || actionProcess.running)
@@ -32,6 +50,11 @@ ShellPopup {
         error = "";
         _actionActive = true;
         actionProcess.exec(command);
+    }
+
+    onEscapePressed: {
+        if (!_actionActive)
+            confirmation = "";
     }
 
     onVisibleChanged: {
@@ -70,7 +93,6 @@ ShellPopup {
 
         MenuHeader {
             Layout.fillWidth: true
-            Layout.bottomMargin: 8
             icon: "\uf011"
             title: "Power"
             subtitle: "Session and system"
@@ -127,38 +149,109 @@ ShellPopup {
                 }
             }
         }
-        RowLayout {
+        ColumnLayout {
             visible: root.confirmation.length > 0
             Layout.fillWidth: true
-            spacing: 8
-            MenuButton {
-                id: cancelButton
+            spacing: Theme.spacing
+
+            Rectangle {
                 Layout.fillWidth: true
-                label: "Cancel"
-                showChevron: false
-                enabled: !root._actionActive
-                onTriggered: root.confirmation = ""
+                implicitHeight: confirmCard.implicitHeight + 20
+                radius: Theme.itemRadius
+                color: Theme.raised
+                border.width: 1
+                border.color: Theme.borderSubtle
+
+                RowLayout {
+                    id: confirmCard
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 12
+
+                    Rectangle {
+                        Layout.preferredWidth: 32
+                        Layout.preferredHeight: 32
+                        Layout.alignment: Qt.AlignTop
+                        radius: Theme.controlRadius
+                        color: root.confirmation === "shutdown" ? Theme.redSoft : Theme.yellowSoft
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: root.confirmation ? root.confirmationCopy[root.confirmation].icon : ""
+                            color: root.confirmation === "shutdown" ? Theme.red : Theme.yellow
+                            font.family: Theme.iconFont
+                            font.pixelSize: 14
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        Text {
+                            objectName: "powerConfirmationTitle"
+                            Layout.fillWidth: true
+                            text: root.confirmation ? root.confirmationCopy[root.confirmation].title : ""
+                            textFormat: Text.PlainText
+                            color: Theme.foreground
+                            font.family: Theme.font
+                            font.pixelSize: Theme.textBody
+                            font.weight: Font.DemiBold
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Text {
+                            objectName: "powerConfirmationDetail"
+                            Layout.fillWidth: true
+                            text: root.confirmation ? root.confirmationCopy[root.confirmation].detail : ""
+                            textFormat: Text.PlainText
+                            color: Theme.mutedStrong
+                            font.family: Theme.font
+                            font.pixelSize: Theme.textSmall
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
             }
-            MenuButton {
+
+            RowLayout {
                 Layout.fillWidth: true
-                label: root._actionActive ? "Working..." : (root.confirmation ? root.actions[root.confirmation].label : "")
-                danger: true
-                selected: true
-                showSelectionIndicator: false
-                showChevron: false
-                enabled: !root._actionActive
-                onTriggered: root.run(root.actions[root.confirmation].command)
+                spacing: Theme.spacing
+                MenuButton {
+                    id: cancelButton
+                    objectName: "powerCancelButton"
+                    Layout.fillWidth: true
+                    implicitHeight: 40
+                    label: "Cancel"
+                    centerLabel: true
+                    showChevron: false
+                    enabled: !root._actionActive
+                    onTriggered: root.confirmation = ""
+                }
+                MenuButton {
+                    objectName: "powerConfirmButton"
+                    Layout.fillWidth: true
+                    implicitHeight: 40
+                    label: root._actionActive ? "Working..." : (root.confirmation ? root.actions[root.confirmation].label : "")
+                    danger: true
+                    selected: true
+                    centerLabel: true
+                    showSelectionIndicator: false
+                    showChevron: false
+                    enabled: !root._actionActive
+                    onTriggered: root.run(root.actions[root.confirmation].command)
+                }
             }
         }
-        Text {
+        MenuBanner {
             visible: root.error.length > 0
             Layout.fillWidth: true
+            tone: "error"
             text: root.error
-            textFormat: Text.PlainText
-            wrapMode: Text.Wrap
-            color: Theme.red
-            font.family: Theme.font
-            font.pixelSize: Theme.textSmall
         }
     }
 }

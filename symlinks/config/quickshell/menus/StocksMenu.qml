@@ -55,9 +55,10 @@ ShellPopup {
             accentColor: Theme.blue
             accentBackground: Theme.blueSoft
             trailingItem: MenuIconButton {
-                glyph: "\uf2f1"
+                glyph: "\uf021"
                 tooltip: "Refresh quotes"
                 enabled: !root.loading
+                spinning: root.loading
                 onTriggered: root.refreshRequested()
             }
         }
@@ -99,19 +100,13 @@ ShellPopup {
                 width: scroll.width
                 spacing: Theme.spacing
 
-                Text {
+                MenuBanner {
                     width: parent.width
-                    topPadding: Theme.spacing
-                    bottomPadding: Theme.spacing
                     visible: root.statusText.length > 0
-                    text: root.statusText
-                    color: !root.loading && (root.error.length > 0 || root.stale || root.missingSymbols.length > 0) ? Theme.yellow : Theme.mutedStrong
-                    font.family: Theme.font
-                    font.pixelSize: Theme.textSmall
-                    wrapMode: Text.Wrap
+                    tone: !root.loading && (root.error.length > 0 || root.stale || root.missingSymbols.length > 0) ? "warning" : "info"
+                    spinning: root.loading
                     maximumLineCount: 4
-                    elide: Text.ElideRight
-                    textFormat: Text.PlainText
+                    text: root.statusText
                 }
 
                 Repeater {

@@ -539,5 +539,43 @@ Item {
             compare(menu.visible, true);
             compare(menu.closing, false);
         }
+
+        function test_power_confirmation_shows_copy_and_unwinds_on_escape() {
+            const menu = make(powerComponent);
+            menu.visible = true;
+            tryCompare(menu, "reveal", 1);
+            menu.confirmation = "reboot";
+            const title = findChild(menu, "powerConfirmationTitle");
+            const detail = findChild(menu, "powerConfirmationDetail");
+            verify(title !== null && detail !== null);
+            compare(title.text, "Restart this computer?");
+            verify(detail.text.length > 0);
+            compare(menu.dismissOnEscape, false);
+
+            keyClick(Qt.Key_Escape);
+            compare(menu.confirmation, "");
+            compare(menu.visible, true);
+            compare(menu.closing, false);
+
+            keyClick(Qt.Key_Escape);
+            tryCompare(menu, "visible", false);
+        }
+
+        function test_network_disconnect_sends_device_operation_and_refreshes() {
+            const network = readyNetwork();
+            const query = process(network, "networkStatusProcess");
+            const action = process(network, "networkActionProcess");
+            network.disconnectNetwork({ name: "Fixture Wi-Fi", device: "wlan-test" });
+            compare(network.working, true);
+            compare(network.operation, "disconnect");
+            verify(network.pendingRequest.includes('"operation":"disconnect"'));
+            verify(network.pendingRequest.includes('"device":"wlan-test"'));
+            action.started();
+            action.finish(0, JSON.stringify({ ok: true }));
+            compare(network.working, false);
+            compare(network.error, "");
+            tryCompare(query, "attempts", 3);
+            query.finish(0, statusResult());
+        }
     }
 }

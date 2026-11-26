@@ -593,6 +593,35 @@ class NetworkTests(unittest.TestCase):
                     self.assertFalse(self.cache_path.exists())
 
     @patch("network_helper.nmcli")
+    def test_disconnect_validates_device_and_invalidates_cache(self, run):
+        for payload in (
+            {"operation": "disconnect"},
+            {"operation": "disconnect", "network": "wlan0"},
+            {"operation": "disconnect", "network": {"device": ""}},
+            {"operation": "disconnect", "network": {"device": "wlan0\0"}},
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(network.NetworkError):
+                    network.action(payload)
+        run.assert_not_called()
+
+        for code in (0, 10):
+            with self.subTest(code=code):
+                self.cache_path.write_text("previous cache")
+                def disconnect(*args, code=code, **kwargs):
+                    self.assertFalse(self.cache_path.exists())
+                    self.cache_path.write_text("status polled during disconnect")
+                    return subprocess.CompletedProcess([], code, "private-value", "private-value")
+                run.reset_mock()
+                run.side_effect = disconnect
+                result = network.action({"operation": "disconnect", "network": {"device": "wlan0"}})
+                run.assert_called_once_with(["--wait", "15", "device", "disconnect", "wlan0"], timeout=25)
+                self.assertEqual(result["ok"], code == 0)
+                self.assertEqual(bool(result["error"]), code != 0)
+                self.assertNotIn("private-value", repr(result))
+                self.assertFalse(self.cache_path.exists())
+
+    @patch("network_helper.nmcli")
     @patch("network_helper.query")
     def test_rescan_without_usable_adapter_is_not_success(self, query, run):
         for devices in ([], [["eth0", "ethernet", "connected"]],

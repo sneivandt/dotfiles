@@ -11,14 +11,22 @@ ShellPopup {
 
     required property var network
     property var selectedNetwork: null
+    property bool passwordVisible: false
     readonly property bool enteringCredentials: selectedNetwork !== null
+    readonly property var extraConnections: root.network.connections.filter(connection => {
+        return connection.type !== "wifi" || root.enteringCredentials || !root.network.wifiEnabled || !root.network.networks.some(accessPoint => {
+            return accessPoint.active && accessPoint.uuid === connection.uuid && accessPoint.device === connection.device;
+        });
+    })
 
     signal openEditorRequested
+
+    dismissOnEscape: !enteringCredentials
 
     function clearCredentials() {
         passwordField.text = "";
         ssidField.text = "";
-        revealPassword.checked = false;
+        passwordVisible = false;
         selectedNetwork = null;
     }
 
@@ -62,6 +70,7 @@ ShellPopup {
         network.connectNetwork(accessPoint, password, ssid);
     }
 
+    onEscapePressed: clearCredentials()
     onVisibleChanged: clearCredentials()
     onClosingChanged: {
         if (closing)
@@ -94,6 +103,7 @@ ShellPopup {
                 glyph: "\uf021"
                 tooltip: root.network.wifiAvailable && root.network.wifiEnabled ? "Rescan Wi-Fi networks" : "Refresh network status"
                 enabled: !root.network.working && !root.network.loading
+                spinning: root.network.scanning || root.network.loading
                 onTriggered: root.network.rescan()
             }
         }
@@ -117,12 +127,14 @@ ShellPopup {
                 width: scroll.availableWidth
                 spacing: Theme.spacing
 
+                MenuSectionLabel {
+                    Layout.fillWidth: true
+                    visible: root.extraConnections.length > 0
+                    text: "Active"
+                }
+
                 Repeater {
-                    model: root.network.connections.filter(connection => {
-                        return connection.type !== "wifi" || root.enteringCredentials || !root.network.wifiEnabled || !root.network.networks.some(accessPoint => {
-                            return accessPoint.active && accessPoint.uuid === connection.uuid && accessPoint.device === connection.device;
-                        });
-                    })
+                    model: root.extraConnections
 
                     delegate: MenuButton {
                         required property var modelData
@@ -144,8 +156,8 @@ ShellPopup {
                     detail: !root.network.wifiHardwareEnabled ? "Blocked by hardware or airplane mode" : root.network.adapters.filter(adapter => {
                         return adapter.managed;
                     }).length === 0 ? "Adapters are unmanaged · use Advanced" : ""
-                    trailing: root.network.wifiEnabled ? "On" : "Off"
                     selected: root.network.wifiEnabled
+                    showSelectionIndicator: false
                     enabled: root.network.detailsAvailable && root.network.wifiAvailable && !root.network.working
                     showChevron: false
                     Accessible.role: Accessible.CheckBox
@@ -154,51 +166,34 @@ ShellPopup {
                         root.clearCredentials();
                         root.network.setWifiEnabled(!root.network.wifiEnabled);
                     }
+
+                    trailingItem: MenuSwitch {
+                        checked: root.network.wifiEnabled
+                        enabled: root.network.detailsAvailable && root.network.wifiAvailable && !root.network.working
+                    }
                 }
 
-                RowLayout {
+                MenuBanner {
                     Layout.fillWidth: true
                     visible: root.network.working || (root.network.loading && !root.network.detailsAvailable)
-                    spacing: Theme.spacing
-
-                    Text {
-                        text: "\uf110"
-                        font.family: Theme.iconFont
-                        font.pixelSize: Theme.textBody
-                        color: Theme.blue
-
-                        NumberAnimation on rotation {
-                            from: 0
-                            to: 360
-                            duration: 1200
-                            loops: Animation.Infinite
-                            running: root.visible && (root.network.working || root.network.loading)
-                        }
-                    }
-
-                    Text {
-                        objectName: "networkActionLabel"
-                        Layout.fillWidth: true
-                        text: root.network.actionLabel || "Refreshing network status…"
-                        textFormat: Text.PlainText
-                        font.family: Theme.font
-                        font.pixelSize: Theme.textSmall
-                        color: Theme.mutedStrong
-                        wrapMode: Text.Wrap
-                    }
+                    tone: "info"
+                    spinning: true
+                    labelObjectName: "networkActionLabel"
+                    text: root.network.actionLabel || "Refreshing network status…"
                 }
 
-                Text {
-                    objectName: "networkError"
+                MenuBanner {
                     Layout.fillWidth: true
                     visible: root.network.error.length > 0
+                    tone: "error"
+                    labelObjectName: "networkError"
                     text: root.network.error
-                    textFormat: Text.PlainText
-                    font.family: Theme.font
-                    font.pixelSize: Theme.textSmall
-                    color: Theme.red
-                    wrapMode: Text.Wrap
-                    Accessible.role: Accessible.AlertMessage
+                }
+
+                MenuSectionLabel {
+                    Layout.fillWidth: true
+                    visible: !root.enteringCredentials && root.network.wifiAvailable && root.network.wifiEnabled
+                    text: "Wi-Fi networks"
                 }
 
                 Text {
@@ -236,7 +231,10 @@ ShellPopup {
                         }
                         trailing: modelData.active ? (root.network.detailsAvailable ? "Connected" : "Last known") : modelData.available ? modelData.signal + "%" : "Saved"
                         trailingDetail: !modelData.available && !modelData.active ? (modelData.hidden ? "Hidden" : "Not in range") : ""
-                        glyph: modelData.protected || modelData.advanced ? "\uf023" : "\uf1eb"
+                        glyph: "\uf1eb"
+                        glyphColor: modelData.active ? Theme.blue : (!modelData.available ? Theme.muted : (modelData.signal >= 70 ? Theme.foreground : (modelData.signal >= 40 ? Theme.mutedStrong : Theme.yellow)))
+                        badgeGlyph: modelData.protected || modelData.advanced ? "\uf023" : ""
+                        badgeColor: modelData.active ? Theme.blue : Theme.mutedStrong
                         selected: modelData.active
                         enabled: root.network.detailsAvailable && !root.network.working
                         clickable: !modelData.active
@@ -256,6 +254,19 @@ ShellPopup {
                                 viewport.contentY = networkButton.y + height - viewport.height;
                         }
 
+                        trailingItem: MenuIconButton {
+                            objectName: "networkDisconnectButton"
+                            visible: Boolean(networkButton.modelData.active && networkButton.modelData.device)
+                            implicitWidth: 28
+                            implicitHeight: 28
+                            glyph: "\uf127"
+                            tooltip: "Disconnect"
+                            accentColor: Theme.red
+                            accentBackground: Theme.redSoft
+                            enabled: root.network.detailsAvailable && !root.network.working
+                            onTriggered: root.network.disconnectNetwork(networkButton.modelData)
+                        }
+
                         ShellToolTip {
                             text: networkButton.detail
                             visible: !!networkButton.modelData.profileLabel && (networkButton.hovered || networkButton.visualFocus)
@@ -263,142 +274,159 @@ ShellPopup {
                     }
                 }
 
-                ColumnLayout {
+                Rectangle {
                     Layout.fillWidth: true
                     visible: root.enteringCredentials
-                    spacing: Theme.spacing
+                    implicitHeight: credentialsColumn.implicitHeight + 24
+                    radius: Theme.itemRadius
+                    color: Theme.raised
+                    border.width: 1
+                    border.color: Theme.borderSubtle
 
-                    Text {
-                        objectName: "networkCredentialsTitle"
-                        Layout.fillWidth: true
-                        text: root.selectedNetwork ? "Connect to " + root.selectedNetwork.name : ""
-                        textFormat: Text.PlainText
-                        font.family: Theme.font
-                        font.pixelSize: Theme.textBody
-                        color: Theme.foreground
-                        wrapMode: Text.Wrap
-                    }
+                    ColumnLayout {
+                        id: credentialsColumn
 
-                    Label {
-                        visible: ssidField.visible
-                        text: "Hidden network name (SSID)"
-                        font.family: Theme.font
-                        font.pixelSize: Theme.textSmall
-                        color: Theme.mutedStrong
-                    }
-
-                    TextField {
-                        id: ssidField
-
-                        Layout.fillWidth: true
-                        visible: root.selectedNetwork !== null && root.selectedNetwork.requiresSsid
-                        font.family: Theme.font
-                        font.pixelSize: Theme.textBody
-                        color: Theme.foreground
-                        selectionColor: Theme.selected
-                        selectedTextColor: Theme.foreground
-                        placeholderText: "Exact network name"
-                        placeholderTextColor: Theme.mutedStrong
-                        padding: 10
-                        Accessible.name: "Hidden network name, SSID"
-
-                        background: Rectangle {
-                            color: Theme.raised
-                            radius: Theme.controlRadius
-                            border.color: ssidField.activeFocus ? Theme.blue : Theme.border
-                        }
-                    }
-
-                    Label {
-                        visible: passwordField.visible
-                        text: "Wi-Fi password"
-                        font.family: Theme.font
-                        font.pixelSize: Theme.textSmall
-                        color: Theme.mutedStrong
-                    }
-
-                    TextField {
-                        id: passwordField
-
-                        Layout.fillWidth: true
-                        visible: root.selectedNetwork !== null && root.selectedNetwork.protected
-                        font.family: Theme.font
-                        font.pixelSize: Theme.textBody
-                        color: Theme.foreground
-                        selectionColor: Theme.selected
-                        selectedTextColor: Theme.foreground
-                        echoMode: revealPassword.checked ? TextInput.Normal : TextInput.Password
-                        inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
-                        placeholderText: "Password"
-                        placeholderTextColor: Theme.mutedStrong
-                        padding: 10
-                        Accessible.name: "Wi-Fi password"
-                        onAccepted: {
-                            if (connectButton.enabled)
-                                root.submitCredentials();
-                        }
-
-                        background: Rectangle {
-                            color: Theme.raised
-                            radius: Theme.controlRadius
-                            border.color: passwordField.activeFocus ? Theme.blue : Theme.border
-                        }
-                    }
-
-                    CheckBox {
-                        id: revealPassword
-
-                        visible: passwordField.visible
-                        text: "Show password"
-                        font.family: Theme.font
-                        font.pixelSize: Theme.textSmall
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
                         spacing: Theme.spacing
-                        padding: 6
-                        Accessible.name: text
 
-                        indicator: Rectangle {
-                            x: revealPassword.leftPadding
-                            y: (revealPassword.height - height) / 2
-                            implicitWidth: 18
-                            implicitHeight: 18
-                            radius: 4
-                            color: revealPassword.checked ? Theme.blue : Theme.raised
-                            border.color: revealPassword.activeFocus ? Theme.blue : Theme.border
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing
+
+                            MenuIconButton {
+                                objectName: "networkCredentialsBack"
+                                implicitWidth: 28
+                                implicitHeight: 28
+                                glyph: "\uf104"
+                                tooltip: "Back to networks"
+                                onTriggered: root.clearCredentials()
+                            }
 
                             Text {
-                                anchors.centerIn: parent
-                                text: revealPassword.checked ? "\uf00c" : ""
-                                font.family: Theme.iconFont
-                                font.pixelSize: Theme.textSmall
-                                color: Theme.backgroundSolid
+                                objectName: "networkCredentialsTitle"
+                                Layout.fillWidth: true
+                                text: root.selectedNetwork ? "Connect to " + root.selectedNetwork.name : ""
+                                textFormat: Text.PlainText
+                                font.family: Theme.font
+                                font.pixelSize: Theme.textBody
+                                font.weight: Font.DemiBold
+                                color: Theme.foreground
+                                wrapMode: Text.Wrap
                             }
                         }
 
-                        contentItem: Text {
-                            leftPadding: revealPassword.indicator.width + revealPassword.spacing
-                            text: revealPassword.text
-                            font: revealPassword.font
-                            color: Theme.foreground
-                            verticalAlignment: Text.AlignVCenter
+                        Label {
+                            visible: ssidField.visible
+                            text: "Hidden network name (SSID)"
+                            font.family: Theme.font
+                            font.pixelSize: Theme.textSmall
+                            color: Theme.mutedStrong
                         }
-                    }
 
-                    MenuButton {
-                        id: connectButton
+                        TextField {
+                            id: ssidField
 
-                        Layout.fillWidth: true
-                        glyph: "\uf1eb"
-                        label: "Connect"
-                        selected: true
-                        enabled: root.network.detailsAvailable && root.network.wifiEnabled && !root.network.working && (!ssidField.visible || ssidField.text.length > 0) && (!passwordField.visible || passwordField.text.length > 0)
-                        onTriggered: root.submitCredentials()
-                    }
+                            Layout.fillWidth: true
+                            visible: root.selectedNetwork !== null && Boolean(root.selectedNetwork.requiresSsid)
+                            font.family: Theme.font
+                            font.pixelSize: Theme.textBody
+                            color: Theme.foreground
+                            selectionColor: Theme.selected
+                            selectedTextColor: Theme.foreground
+                            placeholderText: "Exact network name"
+                            placeholderTextColor: Theme.mutedStrong
+                            padding: 10
+                            Accessible.name: "Hidden network name, SSID"
 
-                    MenuButton {
-                        Layout.fillWidth: true
-                        label: "Cancel"
-                        showChevron: false
-                        onTriggered: root.clearCredentials()
+                            background: Rectangle {
+                                color: Theme.menuBackground
+                                radius: Theme.controlRadius
+                                border.color: ssidField.activeFocus ? Theme.blue : Theme.border
+                            }
+                        }
+
+                        Label {
+                            visible: passwordField.visible
+                            text: "Wi-Fi password"
+                            font.family: Theme.font
+                            font.pixelSize: Theme.textSmall
+                            color: Theme.mutedStrong
+                        }
+
+                        TextField {
+                            id: passwordField
+
+                            Layout.fillWidth: true
+                            visible: root.selectedNetwork !== null && root.selectedNetwork.protected
+                            font.family: Theme.font
+                            font.pixelSize: Theme.textBody
+                            color: Theme.foreground
+                            selectionColor: Theme.selected
+                            selectedTextColor: Theme.foreground
+                            echoMode: root.passwordVisible ? TextInput.Normal : TextInput.Password
+                            inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+                            placeholderText: "Password"
+                            placeholderTextColor: Theme.mutedStrong
+                            padding: 10
+                            rightPadding: 38
+                            Accessible.name: "Wi-Fi password"
+                            onAccepted: {
+                                if (connectButton.enabled)
+                                    root.submitCredentials();
+                            }
+
+                            background: Rectangle {
+                                color: Theme.menuBackground
+                                radius: Theme.controlRadius
+                                border.color: passwordField.activeFocus ? Theme.blue : Theme.border
+                            }
+
+                            MenuIconButton {
+                                objectName: "networkRevealPassword"
+                                anchors.right: parent.right
+                                anchors.rightMargin: 4
+                                anchors.verticalCenter: parent.verticalCenter
+                                implicitWidth: 28
+                                implicitHeight: 28
+                                glyph: root.passwordVisible ? "\uf070" : "\uf06e"
+                                tooltip: root.passwordVisible ? "Hide password" : "Show password"
+                                selected: root.passwordVisible
+                                onTriggered: root.passwordVisible = !root.passwordVisible
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.topMargin: 2
+                            spacing: Theme.spacing
+
+                            MenuButton {
+                                Layout.fillWidth: true
+                                implicitHeight: 40
+                                label: "Cancel"
+                                centerLabel: true
+                                showChevron: false
+                                onTriggered: root.clearCredentials()
+                            }
+
+                            MenuButton {
+                                id: connectButton
+
+                                Layout.fillWidth: true
+                                implicitHeight: 40
+                                label: "Connect"
+                                selected: true
+                                centerLabel: true
+                                showSelectionIndicator: false
+                                showChevron: false
+                                enabled: root.network.detailsAvailable && root.network.wifiEnabled && !root.network.working && (!ssidField.visible || ssidField.text.length > 0) && (!passwordField.visible || passwordField.text.length > 0)
+                                onTriggered: root.submitCredentials()
+                            }
+                        }
                     }
                 }
             }

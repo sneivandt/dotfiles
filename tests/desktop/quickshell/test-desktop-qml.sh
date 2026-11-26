@@ -13,42 +13,63 @@ else
   linter=qmllint
 fi
 
-if [ -x "$linter" ] || command -v "$linter" >/dev/null 2>&1; then
-  "$linter" --only-explicit-categories \
-    --syntax=error \
-    --duplicate-property-binding=error \
-    --duplicated-name=error \
-    --duplicate-import=error \
-    --alias-cycle=error \
-    --inheritance-cycle=error \
-    --invalid-lint-directive=error \
-    --read-only-property=error \
-    --assignment-in-condition=error \
-    --unintentional-empty-block=error \
-    --unreachable-code=error \
-    --var-used-before-declaration=error \
-    --eval=error \
-    --with=error \
+run_qmllint() {
+  mode=$1
+  shift
+  if [ "$mode" = production ]; then
+    set -- --read-only-property=error "$@"
+  fi
+  if "$linter" --help 2>&1 | grep -q -- --only-explicit-categories; then
+    set -- \
+      --only-explicit-categories \
+      --syntax=error \
+      --duplicate-property-binding=error \
+      --duplicated-name=error \
+      --duplicate-import=error \
+      --alias-cycle=error \
+      --inheritance-cycle=error \
+      --invalid-lint-directive=error \
+      --assignment-in-condition=error \
+      --unintentional-empty-block=error \
+      --unreachable-code=error \
+      --var-used-before-declaration=error \
+      --eval=error \
+      --with=error \
+      "$@"
+  else
+    # Qt 6.8 lacks --only-explicit-categories and several 6.9+ categories.
+    # -W -1 ignores unresolvable Quickshell metatype warnings while still
+    # failing on syntax errors and every explicit =error category.
+    set -- \
+      -W -1 \
+      --ignore-settings \
+      --import=disable \
+      --missing-property=disable \
+      --missing-type=disable \
+      --unqualified=disable \
+      --incompatible-type=disable \
+      --signal-handler-parameters=disable \
+      --unused-imports=disable \
+      --duplicate-property-binding=error \
+      --duplicated-name=error \
+      --alias-cycle=error \
+      --inheritance-cycle=error \
+      --invalid-lint-directive=error \
+      --var-used-before-declaration=error \
+      --with=error \
+      "$@"
+  fi
+  "$linter" \
     -I "$REPO_ROOT/tests/desktop/quickshell/qml/mocks" \
     -I "$REPO_ROOT/symlinks/config/quickshell" \
+    "$@"
+}
+
+if [ -x "$linter" ] || command -v "$linter" >/dev/null 2>&1; then
+  run_qmllint production \
     "$REPO_ROOT"/symlinks/config/quickshell/*.qml \
     "$REPO_ROOT"/symlinks/config/quickshell/*.js
-  "$linter" --only-explicit-categories \
-    --syntax=error \
-    --duplicate-property-binding=error \
-    --duplicated-name=error \
-    --duplicate-import=error \
-    --alias-cycle=error \
-    --inheritance-cycle=error \
-    --invalid-lint-directive=error \
-    --assignment-in-condition=error \
-    --unintentional-empty-block=error \
-    --unreachable-code=error \
-    --var-used-before-declaration=error \
-    --eval=error \
-    --with=error \
-    -I "$REPO_ROOT/tests/desktop/quickshell/qml/mocks" \
-    -I "$REPO_ROOT/symlinks/config/quickshell" \
+  run_qmllint test \
     "$REPO_ROOT"/tests/desktop/quickshell/qml/tst_*.qml
 fi
 

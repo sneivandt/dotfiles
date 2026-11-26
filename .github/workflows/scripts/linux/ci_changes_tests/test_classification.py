@@ -50,6 +50,7 @@ class ClassificationTests(unittest.TestCase):
             (".github/linters/ruff.toml", {"lint"}),
             (".github/linters/luacheckrc", {"lint"}),
             (LINUX + "install-ruff.sh", {"lint"}),
+            (LINUX + "install-luacheck.sh", {"lint"}),
             ("conf/packages.toml", profiles | {"app_tests", "app_windows"}),
             ("packages/apm/PKGBUILD", config | {"rust_checks", "lint", "apm"}),
             ("packages/apm/release.json", config | {"rust_checks", "lint", "apm"}),

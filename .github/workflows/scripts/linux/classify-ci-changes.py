@@ -44,7 +44,7 @@ LINTERS = {
     },
     "lua": {
         "name": "Lua (Luacheck)",
-        "setup": f"sh {LINUX}install-apt-packages.sh luacheck",
+        "setup": f"sh {LINUX}install-luacheck.sh",
         "test_function": "test_luacheck",
     },
 }
@@ -153,7 +153,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             linters.add("powershell")
         if path.endswith(".py") or path in {".github/linters/ruff.toml", LINUX + "install-ruff.sh"}:
             linters.add("python")
-        if path.endswith(".lua") or path == ".github/linters/luacheckrc":
+        if path.endswith(".lua") or path in {".github/linters/luacheckrc", LINUX + "install-luacheck.sh"}:
             linters.add("lua")
 
         if path == ".github/workflows/ci.yml" or path in {
@@ -174,7 +174,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             pass  # Publishing builds are selected independently of CI builds.
         elif path in {".github/linters/ruff.toml", LINUX + "install-ruff.sh"}:
             linters.add("python")
-        elif path == ".github/linters/luacheckrc":
+        elif path in {".github/linters/luacheckrc", LINUX + "install-luacheck.sh"}:
             linters.add("lua")
         elif path in {"tests/desktop/quickshell/test-desktop-qml.sh",
                       "tests/desktop/quickshell/test-desktop-session.sh",
@@ -232,7 +232,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             apps.add("zsh")
         elif path == LINUX + "install-apt-packages.sh":
             apps.update(APPS)
-            linters.update(("shell", "lua"))
+            linters.add("shell")
         elif path == "cli/deny.toml":
             enable("deny")
         elif path in {"cli/rustfmt.toml", "rustfmt.toml", ".rustfmt.toml"}:

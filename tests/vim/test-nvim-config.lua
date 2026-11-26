@@ -1,12 +1,5 @@
-local specs, lazy_opts
-package.preload["lazy"] = function()
-  return {
-    setup = function(plugins, opts)
-      specs = plugins
-      lazy_opts = opts
-    end,
-  }
-end
+local config = dofile(vim.env.DIR .. "/symlinks/vim/lua/lazy-config.lua")
+local specs, lazy_opts = config.plugins, config.options
 
 local installed
 package.preload["nvim-treesitter"] = function()
@@ -21,19 +14,6 @@ package.preload["nvim-treesitter"] = function()
     end,
   }
 end
-
-local uv = vim.uv or vim.loop
-local fs_stat = uv.fs_stat
-local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
-uv.fs_stat = function(path)
-  if path == lazypath .. "/lua/lazy/init.lua"
-    or path == lazypath .. "/lua/lazy/core/config.lua" then
-    return { type = "file" }
-  end
-  return fs_stat(path)
-end
-dofile(vim.env.DIR .. "/symlinks/vim/lua/lazy-bootstrap.lua")
-uv.fs_stat = fs_stat
 
 assert(lazy_opts and lazy_opts.defaults and lazy_opts.defaults.lazy == true,
   "lazy.nvim should default to lazy-loading plugins")

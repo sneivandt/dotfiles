@@ -31,7 +31,7 @@ noremap <leader>t :terminal<cr>
 " Plugin loading: lazy.nvim for Neovim
 lua << EOF
   -- Bootstrap and configure lazy.nvim
-  -- All plugin configurations are in lua/lazy-bootstrap.lua
+  -- Plugin configurations are in lua/lazy-config.lua
   require('lazy-bootstrap')
 EOF
 

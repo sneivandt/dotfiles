@@ -2,40 +2,113 @@
 
 # Extract archives
 
-if [ $# -ne 1 ] || [ -z "$1" ]; then
-  echo "Usage: extract <file>"
+local archive="" destination="" keep=false argument
+while (( $# > 0 )); do
+  case "$1" in
+    --keep) keep=true ;;
+    --destination)
+      if (( $# < 2 )) || [[ -z "$2" ]]; then
+        echo "extract: --destination requires a directory" >&2
+        return 1
+      fi
+      destination="$2"
+      shift
+      ;;
+    --destination=*)
+      destination="${1#*=}"
+      if [[ -z "$destination" ]]; then
+        echo "extract: --destination requires a directory" >&2
+        return 1
+      fi
+      ;;
+    --)
+      shift
+      break
+      ;;
+    --*)
+      printf 'extract: unknown option: %s\n' "$1" >&2
+      return 1
+      ;;
+    *)
+      if [[ -n "$archive" ]]; then
+        echo "Usage: extract [--keep] [--destination DIR] [--] <file>" >&2
+        return 1
+      fi
+      archive="$1"
+      ;;
+  esac
+  shift
+done
+for argument in "$@"; do
+  if [[ -n "$archive" ]]; then
+    echo "Usage: extract [--keep] [--destination DIR] [--] <file>" >&2
+    return 1
+  fi
+  archive="$argument"
+done
+
+if [[ -z "$archive" ]]; then
+  echo "Usage: extract [--keep] [--destination DIR] [--] <file>" >&2
   return 1
 fi
 
-if [ ! -f "$1" ]; then
-  echo "'$1' is not a valid file" 1>&2
+if [[ ! -f "$archive" ]]; then
+  printf "'%s' is not a valid file\n" "$archive" >&2
   return 1
 fi
 
 # A relative filename can start with '-' even when quoted. Prefix it so every
 # extractor treats it as a path without relying on tool-specific '--' support.
-local archive="$1"
 [[ "$archive" == /* ]] || archive="./$archive"
 
 local -a extractor
+local single_file=false
 case "$archive" in
   *.tar.bz2|*.tbz2|*.tar.gz|*.tgz|*.tar.xz|*.txz|*.tar.Z|*.tar|*.tar.zst|*.tzst) extractor=(tar xf) ;;
-  *.bz2)            extractor=(bunzip2) ;;
-  *.gz)             extractor=(gunzip) ;;
+  *.bz2)            extractor=(bunzip2); single_file=true ;;
+  *.gz)             extractor=(gunzip); single_file=true ;;
   *.rar)            extractor=(unrar x) ;;
   *.zip)            extractor=(unzip) ;;
   *.7z)             extractor=(7z x) ;;
-  *.Z)              extractor=(uncompress) ;;
-  *.xz)             extractor=(unxz) ;;
-  *.zst)            extractor=(unzstd --rm) ;;
+  *.Z)              extractor=(uncompress); single_file=true ;;
+  *.xz)             extractor=(unxz); single_file=true ;;
+  *.zst)            extractor=(unzstd --rm); single_file=true ;;
   *.deb)            extractor=(ar x) ;;
   *.rpm)            extractor=(bsdtar -xf) ;;
-  *)                echo "'$1' cannot be extracted via extract()" 1>&2; return 1 ;;
+  *)                printf "'%s' cannot be extracted via extract()\n" "$archive" >&2; return 1 ;;
 esac
 
 if ! command -v "${extractor[1]}" >/dev/null 2>&1; then
-  printf 'extract: %s is required to extract %s\n' "${extractor[1]}" "$1" >&2
+  printf 'extract: %s is required to extract %s\n' "${extractor[1]}" "${archive#./}" >&2
   return 127
 fi
 
-"${extractor[@]}" "$archive"
+if [[ -n "$destination" ]]; then
+  archive="${archive:a}"
+  destination="${destination:a}"
+  mkdir -p -- "$destination" || return $?
+fi
+
+if [[ "$single_file" == true && ( "$keep" == true || -n "$destination" ) ]]; then
+  (
+    local directory="${destination:-${archive:h}}" temporary=""
+    trap '[[ -z "$temporary" ]] || rm -f -- "$temporary"' EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    temporary=$(mktemp -- "$directory/.extract.XXXXXXXX") || exit $?
+    "${extractor[1]}" -c "$archive" >| "$temporary" || exit $?
+    # Hard-link publication refuses existing files and exposes only complete output.
+    ln -T -- "$temporary" "$directory/${archive:t:r}" || exit $?
+    if [[ "$keep" != true ]]; then
+      rm -- "$archive" || exit $?
+    fi
+  )
+elif [[ -n "$destination" ]]; then
+  (
+    cd -- "$destination" || exit $?
+    "${extractor[@]}" "$archive"
+  )
+else
+  "${extractor[@]}" "$archive"
+fi

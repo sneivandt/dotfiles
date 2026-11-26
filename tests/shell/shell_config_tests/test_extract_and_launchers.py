@@ -1,11 +1,16 @@
 """Archive extraction, wget, Windows git editor, and launcher tests."""
 
+import bz2
 import gzip
 import hashlib
 import http.server
+import io
+import lzma
+import shlex
 import shutil
 import struct
 import subprocess
+import tarfile
 import threading
 import time
 
@@ -36,15 +41,145 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
         archive.write_bytes(lead + header + header + gzip.compress(payload))
         return archive
 
-    def run_extract(self, archive, expected=0):
+    def run_extract(self, archive, expected=0, options=()):
         self.env["ARCHIVE"] = str(archive)
         return self.run_shell(
             'cd "$HOME"\n'
             'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
             'autoload -Uz extract\n'
-            'extract "$ARCHIVE"\n',
+            f'extract {shlex.join(options)} "$ARCHIVE"\n'
+            'local result=$?\n'
+            '[[ "$PWD" == "$HOME" ]] || exit 99\n'
+            'exit "$result"\n',
             expected=expected,
         )
+
+    def test_extract_keep_preserves_standalone_inputs(self):
+        compressors = {
+            ".gz": gzip.compress,
+            ".bz2": bz2.compress,
+            ".xz": lzma.compress,
+            ".zst": lambda data: subprocess.run(
+                ["zstd", "-q", "-c"], input=data, capture_output=True, check=True,
+            ).stdout,
+        }
+        for suffix, compress in compressors.items():
+            with self.subTest(suffix=suffix):
+                archive = self.fixture / "inputs" / ("sample with spaces" + suffix)
+                archive.parent.mkdir(exist_ok=True)
+                payload = compress(b"fixture\n")
+                archive.write_bytes(payload)
+                self.run_extract(archive, options=("--keep",))
+                self.assertEqual(archive.read_bytes(), payload)
+                self.assertEqual(archive.with_suffix("").read_bytes(), b"fixture\n")
+                archive.with_suffix("").unlink()
+                archive.unlink()
+                self.assertEqual(list(archive.parent.iterdir()), [])
+                self.assertEqual(list(self.home.iterdir()), [])
+
+    def test_extract_standalone_destination_preserves_default_removal_and_keep(self):
+        for keep in (False, True):
+            with self.subTest(keep=keep):
+                archive = self.home / f"-sample {keep}.gz"
+                payload = gzip.compress(b"fixture\n")
+                archive.write_bytes(payload)
+                destination = f"output {keep}/nested directory"
+                options = ("--destination", destination) + (("--keep",) if keep else ())
+                self.run_extract(archive.name, options=options)
+                directory = self.home / destination
+                self.assertEqual((directory / archive.stem).read_bytes(), b"fixture\n")
+                self.assertEqual(list(directory.iterdir()), [directory / archive.stem])
+                self.assertEqual(archive.exists(), keep)
+                if keep:
+                    self.assertEqual(archive.read_bytes(), payload)
+                self.assertFalse((self.home / archive.stem).exists())
+
+    def test_extract_container_destination_preserves_archive_and_handles_option_names(self):
+        archive = self.home / "--sample with spaces.tar.gz"
+        with tarfile.open(archive, "w:gz") as output:
+            member = tarfile.TarInfo("nested/file with spaces")
+            member.size = len(b"fixture\n")
+            output.addfile(member, io.BytesIO(b"fixture\n"))
+        original = archive.read_bytes()
+        destination = self.home / "output with spaces"
+        self.run_extract(
+            archive.name, options=("--keep", f"--destination={destination}", "--"),
+        )
+        self.assertEqual((destination / "nested/file with spaces").read_bytes(), b"fixture\n")
+        self.assertEqual(archive.read_bytes(), original)
+        self.assertFalse((self.home / "nested").exists())
+
+    def test_extract_streaming_refuses_existing_output_paths(self):
+        original = gzip.compress(b"replacement\n")
+        archive = self.home / "sample.gz"
+        archive.write_bytes(original)
+        outside = self.write(self.fixture / "outside", "preserve\n")
+        for kind in ("file", "directory", "symlink", "dangling-link"):
+            with self.subTest(kind=kind):
+                destination = self.home / kind
+                destination.mkdir()
+                target = destination / "sample"
+                if kind == "file":
+                    target.write_text("preserve\n")
+                elif kind == "directory":
+                    target.mkdir()
+                else:
+                    target.symlink_to(outside if kind == "symlink" else outside.with_name("missing"))
+                result = self.run_extract(archive, expected=1, options=("--destination", str(destination)))
+                self.assertTrue(result.stderr)
+                self.assertEqual(archive.read_bytes(), original)
+                self.assertEqual(list(destination.iterdir()), [target])
+                self.assertEqual(outside.read_text(), "preserve\n")
+                if kind == "file":
+                    self.assertEqual(target.read_text(), "preserve\n")
+                elif kind == "directory":
+                    self.assertEqual(list(target.iterdir()), [])
+                else:
+                    self.assertTrue(target.is_symlink())
+
+    def test_extract_failed_stream_preserves_input_and_cleans_partial_output(self):
+        tools = self.fixture / "tools"
+        self.write(tools / "gunzip", '#!/bin/sh\nprintf partial\nexit 23\n', executable=True)
+        self.env["PATH"] = str(tools) + ":/usr/bin:/bin"
+        archive = self.write(self.home / "sample.gz", "preserve\n")
+        destination = self.home / "output"
+        self.run_extract(archive, expected=23, options=("--keep", "--destination", str(destination)))
+        self.assertEqual(archive.read_text(), "preserve\n")
+        self.assertEqual(list(destination.iterdir()), [])
+
+    def test_extract_keep_preserves_caller_noclobber_option(self):
+        archive = self.home / "sample.gz"
+        original = gzip.compress(b"fixture\n")
+        archive.write_bytes(original)
+        self.run_shell(
+            'cd "$HOME"\n'
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz extract\n'
+            'setopt noclobber\n'
+            'extract --keep sample.gz || exit $?\n'
+            '[[ -o noclobber ]]\n',
+        )
+        self.assertEqual(archive.read_bytes(), original)
+        self.assertEqual((self.home / "sample").read_bytes(), b"fixture\n")
+
+    def test_extract_invalid_options_and_destination_leave_inputs_unchanged(self):
+        archive = self.home / "sample.gz"
+        original = gzip.compress(b"fixture\n")
+        archive.write_bytes(original)
+        blocked = self.write(self.home / "not a directory", "preserve\n")
+        for options in (
+            ("--destination",),
+            ("--destination=",),
+            ("--destination", ""),
+            ("--unknown",),
+            ("--destination", str(blocked)),
+        ):
+            with self.subTest(options=options):
+                result = self.run_extract(archive, expected=1, options=options)
+                self.assertTrue(result.stderr)
+                self.assertEqual(archive.read_bytes(), original)
+                self.assertEqual(blocked.read_text(), "preserve\n")
+                self.assertEqual(set(self.home.iterdir()), {archive, blocked})
 
     def test_extract_rpm_reads_payload(self):
         archive = self.write_rpm([("nested/file with spaces", b"fixture\n")])
@@ -73,16 +208,20 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
 
     def test_extract_optional_tools_receive_literal_arguments_and_propagate_failure(self):
         tools = self.fixture / "tools"
-        for suffix, tool in ((".rar", "unrar"), (".7z", "7z")):
+        for suffix, tool, options, operation in (
+            (".rar", "unrar", (), "x"),
+            (".7z", "7z", (), "x"),
+            (".Z", "uncompress", ("--keep",), "-c"),
+        ):
             with self.subTest(suffix=suffix):
                 self.write(tools / tool,
                            '#!/bin/sh\nprintf "%s\\n" "$@" > "$HOME/arguments"\nexit 23\n',
                            executable=True)
                 self.env["PATH"] = str(tools) + ":/usr/bin:/bin"
                 archive = self.write(self.home / ("-archive $(false)" + suffix), "keep\n")
-                self.run_extract(archive.name, expected=23)
+                self.run_extract(archive.name, expected=23, options=options)
                 self.assertEqual((self.home / "arguments").read_text(),
-                                 f"x\n./{archive.name}\n")
+                                 f"{operation}\n./{archive.name}\n")
                 self.assertEqual(archive.read_bytes(), b"keep\n")
 
     def test_extract_option_like_relative_archive_name(self):
@@ -113,7 +252,7 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
             'autoload -Uz extract\n'
             'extract first.gz second.gz\n', expected=1,
         )
-        self.assertIn("Usage: extract", result.stdout)
+        self.assertIn("Usage: extract", result.stderr)
         self.assertEqual(sorted(path.name for path in self.home.iterdir()),
                          ["first.gz", "second.gz"])
         for archive in archives:

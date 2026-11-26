@@ -16,7 +16,15 @@ TESTS = Path(__file__).resolve().parent
 CONFIG = Path(__file__).resolve().parents[2] / "symlinks/vim"
 
 MANAGER = """\
-return { setup = function() vim.g.bootstrap_test_ready = true end }
+return { setup = function(plugins, options)
+  assert(options.defaults.lazy == true, "Bootstrap must pass lazy.nvim options")
+  local configured = false
+  for _, plugin in ipairs(plugins) do
+    if plugin[1] == "nvim-tree/nvim-tree.lua" and plugin.cmd then configured = true end
+  end
+  assert(configured, "Bootstrap must pass plugin declarations")
+  vim.g.bootstrap_test_ready = true
+end }
 """
 
 
@@ -87,6 +95,7 @@ class NeovimBootstrapTests(unittest.TestCase):
                 executable, "--headless", "-u", "NONE", "-i", "NONE", "-n", "--noplugin",
                 "-c", """lua
 local ok, failure = pcall(function()
+  vim.opt.rtp:prepend(vim.fn.fnamemodify(vim.env.BOOTSTRAP_SOURCE, ":h:h"))
   local mode = vim.env.BOOTSTRAP_MODE
   if mode == "publish-failure" or mode == "crash-after-lock" or mode == "crash-after-backup" then
     local uv = vim.uv or vim.loop
@@ -184,6 +193,23 @@ end
             self.assertEqual(calls[1], ["-C", calls[0][-1], "checkout", pin])
             self.assertEqual((self.manager / "checked-out").read_text(), pin)
             self.assert_no_staging()
+
+    def test_plugin_configuration_loads_without_bootstrapping(self):
+        with self.bootstrap_fixture():
+            self.env["DIR"] = str(CONFIG.parents[1])
+            command = self.command[:self.command.index("-c")] + [
+                "-c", 'lua local ok, failure = pcall(dofile, vim.env.DIR .. "/tests/vim/test-nvim-config.lua"); '
+                'if not ok then vim.api.nvim_err_writeln(tostring(failure)); vim.cmd("cquit") end',
+                "-c", "qa!",
+            ]
+            result = subprocess.run(
+                command, cwd=self.root, env=self.env,
+                text=True, capture_output=True, timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("Gitsigns mappings passed", result.stdout + result.stderr)
+            self.assertEqual(self.git_calls(), [])
+            self.assertFalse(self.manager.exists())
 
     def test_existing_manager_and_symlink_are_not_reset(self):
         for symlink in (False, True):

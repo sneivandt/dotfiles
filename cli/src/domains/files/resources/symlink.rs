@@ -200,32 +200,26 @@ impl SymlinkResource {
     }
 
     fn display_target(&self) -> String {
-        self.display_home
-            .as_deref()
-            .and_then(|home| self.target.strip_prefix(home).ok())
-            .map_or_else(
-                || display_path(&self.target),
-                |relative| {
-                    let relative = display_path(relative);
-                    if relative.is_empty() {
-                        "~".to_string()
-                    } else {
-                        format!("~/{relative}")
-                    }
-                },
-            )
+        self.display_home.as_deref().map_or_else(
+            || crate::infra::logging::display_path(&self.target),
+            |home| {
+                self.target.strip_prefix(home).map_or_else(
+                    |_| crate::infra::logging::display_path(&self.target),
+                    |_| crate::infra::logging::abbreviate_home(&self.target, home),
+                )
+            },
+        )
     }
 
     fn display_source(&self) -> String {
         self.source_root
             .as_deref()
             .and_then(|root| self.source.strip_prefix(root).ok())
-            .map_or_else(|| display_path(&self.source), display_path)
+            .map_or_else(
+                || crate::infra::logging::display_path(&self.source),
+                crate::infra::logging::display_path,
+            )
     }
-}
-
-fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
 }
 
 impl Resource for SymlinkResource {
@@ -235,7 +229,10 @@ impl Resource for SymlinkResource {
         let target = self.display_target();
         let source = self.display_source();
         if let Ok((resolved, true)) = self.resolved_target() {
-            return format!("{target} ({}) \u{2192} {source}", display_path(&resolved));
+            return format!(
+                "{target} ({}) \u{2192} {source}",
+                crate::infra::logging::display_path(&resolved)
+            );
         }
         format!("{target} \u{2192} {source}")
     }

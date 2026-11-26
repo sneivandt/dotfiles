@@ -1,9 +1,49 @@
 //! Utility functions for path resolution, ANSI stripping, and time formatting.
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::infra::env::{Env, SystemEnv};
 use crate::infra::platform::Platform;
+
+/// Normalize path separators for concise user-facing display.
+pub(crate) fn display_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// Abbreviate `path` relative to `home` using `~` when inside `home`.
+///
+/// Paths outside `home` keep their native display form.
+pub(crate) fn abbreviate_home(path: &Path, home: &Path) -> String {
+    path.strip_prefix(home).map_or_else(
+        |_| path.display().to_string(),
+        |relative| {
+            let relative = display_path(relative);
+            if relative.is_empty() {
+                "~".to_string()
+            } else {
+                format!("~/{relative}")
+            }
+        },
+    )
+}
+
+/// Abbreviate `path` relative to a repository `root` first, then `home`.
+///
+/// Relative repo paths and `~/` paths use `/` separators so output stays
+/// consistent across Unix and Windows; paths outside both roots keep their
+/// native display form.
+pub(crate) fn abbreviate_path(path: &Path, home: Option<&Path>, root: Option<&Path>) -> String {
+    if let Some(relative) = root.and_then(|root| path.strip_prefix(root).ok()) {
+        let relative = display_path(relative);
+        if !relative.is_empty() {
+            return relative;
+        }
+    }
+    if let Some(home) = home {
+        return abbreviate_home(path, home);
+    }
+    path.display().to_string()
+}
 
 /// Format a duration as a human-readable string (e.g., "1.2s", "2m 5s").
 pub(crate) fn format_elapsed(d: std::time::Duration) -> String {
@@ -103,7 +143,7 @@ pub(super) fn dotfiles_log_dir() -> Option<PathBuf> {
 
 // Set permissions at creation time, including newly created parents. Existing
 // directories (including explicit overrides) retain their owner's permissions.
-fn create_log_directory(dir: &std::path::Path) -> std::io::Result<()> {
+fn create_log_directory(dir: &Path) -> std::io::Result<()> {
     let mut builder = fs::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
@@ -169,7 +209,7 @@ fn log_dir_from(env: &dyn Env, windows: bool) -> PathBuf {
 ///
 /// Mirrors the layout produced by [`dotfiles_log_dir`] under an explicit base
 /// path so tests can isolate the run log without touching the environment.
-pub(super) fn dotfiles_log_subdir(base: &std::path::Path) -> Option<PathBuf> {
+pub(super) fn dotfiles_log_subdir(base: &Path) -> Option<PathBuf> {
     let dir = base.join("dotfiles").join("logs");
     create_log_directory(&dir).ok()?;
     Some(dir)
@@ -263,6 +303,50 @@ mod tests {
         assert_eq!(
             strip_ansi("\x1b[1;34m==>\x1b[0m \x1b[1mstage\x1b[0m"),
             "==> stage"
+        );
+    }
+
+    #[test]
+    fn abbreviate_path_prefers_repo_root_then_home_and_falls_back_to_native() {
+        let home = Path::new("/home/user");
+        let root = Path::new("/home/user/src/dotfiles");
+
+        assert_eq!(abbreviate_home(home, home), "~");
+        assert_eq!(
+            abbreviate_home(&home.join(".local").join("bin"), home),
+            "~/.local/bin"
+        );
+        assert_eq!(
+            abbreviate_home(Path::new("/etc/hosts"), home),
+            Path::new("/etc/hosts").display().to_string()
+        );
+        assert_eq!(
+            abbreviate_path(
+                &root.join("symlinks").join("config").join("zsh"),
+                Some(home),
+                Some(root)
+            ),
+            "symlinks/config/zsh"
+        );
+        assert_eq!(
+            abbreviate_path(root, Some(home), Some(root)),
+            "~/src/dotfiles"
+        );
+        assert_eq!(
+            abbreviate_path(
+                &home.join(".config").join("powershell"),
+                Some(home),
+                Some(root)
+            ),
+            "~/.config/powershell"
+        );
+        assert_eq!(
+            abbreviate_path(Path::new("/opt/tool"), Some(home), Some(root)),
+            Path::new("/opt/tool").display().to_string()
+        );
+        assert_eq!(
+            abbreviate_path(Path::new("/opt/tool"), None, None),
+            Path::new("/opt/tool").display().to_string()
         );
     }
 

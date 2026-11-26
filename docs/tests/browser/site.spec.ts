@@ -176,7 +176,7 @@ test('the terminal illustration preserves the completed transcript with reduced 
   await expect(page.locator('.synced tspan').first()).toHaveCSS('font-weight', '700');
   await expect(page.locator('.synced text')).toHaveText('Repository synced · restarting to load configuration');
   await expect(page.locator('.synced tspan').last()).toHaveCSS('fill', 'rgb(126, 133, 161)');
-  await expect(page.locator('.completions text').last()).toHaveText(/write +\/.*\/completions\/_dotfiles$/);
+  await expect(page.locator('.completions text').last()).toHaveText(/write +symlinks\/config\/zsh\/completions\/_dotfiles$/);
   for (const label of await page.locator('.startup text:first-child tspan:first-child, .links text:first-child tspan:nth-child(2), .completions text:first-child tspan:nth-child(2), .packages text:first-child tspan:nth-child(2)').all()) {
     await expect(label).toHaveCSS('font-weight', '700');
   }

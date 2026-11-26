@@ -15,24 +15,15 @@ fn make_pwsh_resource(root: &Path, home: &Path) -> WrapperResource {
 #[test]
 fn sh_description_includes_target_path() {
     let r = make_sh_resource(Path::new("/repo"), Path::new("/home/user"));
-    let expected = Path::new(".local").join("bin").join("dotfiles");
-    assert!(
-        r.description()
-            .contains(expected.to_string_lossy().as_ref()),
-        "got: {}",
-        r.description()
-    );
+    assert_eq!(r.description(), "wrapper \u{2192} ~/.local/bin/dotfiles");
 }
 
 #[test]
 fn pwsh_description_includes_target_path() {
     let r = make_pwsh_resource(Path::new("/repo"), Path::new("/home/user"));
-    let expected = Path::new(".local").join("bin").join("dotfiles");
-    assert!(
-        r.description()
-            .contains(expected.to_string_lossy().as_ref()),
-        "got: {}",
-        r.description()
+    assert_eq!(
+        r.description(),
+        "wrapper \u{2192} ~/.local/bin/dotfiles.cmd"
     );
 }
 

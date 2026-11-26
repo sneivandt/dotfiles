@@ -34,13 +34,7 @@ fn make_path_entry(home: &Path, on_path: bool) -> PathEntryResource {
 #[test]
 fn description_includes_dir() {
     let r = make_path_entry(Path::new("/home/user"), false);
-    let expected = Path::new(".local").join("bin");
-    assert!(
-        r.description()
-            .contains(expected.to_string_lossy().as_ref()),
-        "got: {}",
-        r.description()
-    );
+    assert_eq!(r.description(), "PATH \u{2192} ~/.local/bin");
 }
 
 #[test]

@@ -69,9 +69,10 @@ fn elevated_child_scope_result(command_args: &[&str], marker: bool) -> anyhow::R
             .chain(["--root".to_string(), root.display().to_string()]),
     )
     .unwrap();
+    let color = parsed.color.into_color_mode();
     let command = match parsed.command {
         Command::Update(opts) => {
-            let (global, opts, verbose) = opts.into_engine_parts();
+            let (global, opts, verbose) = opts.into_engine_parts(color);
             EngineCommand::Update {
                 global,
                 opts,
@@ -79,7 +80,7 @@ fn elevated_child_scope_result(command_args: &[&str], marker: bool) -> anyhow::R
             }
         }
         Command::Remove(opts) => {
-            let (global, opts, verbose) = opts.into_engine_parts();
+            let (global, opts, verbose) = opts.into_engine_parts(color);
             EngineCommand::Remove {
                 global,
                 opts,
@@ -87,7 +88,7 @@ fn elevated_child_scope_result(command_args: &[&str], marker: bool) -> anyhow::R
             }
         }
         Command::Check(opts) => {
-            let (global, opts, verbose) = opts.into_engine_parts();
+            let (global, opts, verbose) = opts.into_engine_parts(color);
             EngineCommand::Check {
                 global,
                 opts,
@@ -231,7 +232,8 @@ fn elevated_child_scope_requires_resolved_absolute_paths() {
         else {
             panic!("path fixture must use update")
         };
-        let (global, opts, verbose) = opts.into_engine_parts();
+        let (global, opts, verbose) =
+            opts.into_engine_parts(crate::infra::logging::ColorMode::Auto);
         let command = EngineCommand::Update {
             global,
             opts,

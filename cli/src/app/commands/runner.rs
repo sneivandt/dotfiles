@@ -57,7 +57,8 @@ impl CommandStartup {
     }
 
     pub(super) fn for_mutation(runtime: &RuntimePolicy<'_>, log: &Logger) -> Result<Self> {
-        Self::for_mutation_with_profile_prompt(runtime, log, profiles::prompt_interactive)
+        let color = runtime.global.color;
+        Self::for_mutation_with_profile_prompt(runtime, log, || profiles::prompt_interactive(color))
     }
 
     fn for_mutation_with_profile_prompt(
@@ -262,7 +263,10 @@ impl CommandRunner {
         token: &crate::engine::CancellationToken,
         startup: CommandStartup,
     ) -> Result<Self> {
-        Self::new_with_profile_prompt(runtime, log, token, startup, profiles::prompt_interactive)
+        let color = runtime.global.color;
+        Self::new_with_profile_prompt(runtime, log, token, startup, || {
+            profiles::prompt_interactive(color)
+        })
     }
 
     fn new_with_profile_prompt(
@@ -292,15 +296,14 @@ impl CommandRunner {
             if runtime.execution.elevated_child {
                 selection.0
             } else {
-                save_explicit_overlay(&root, selection)
+                save_explicit_overlay(&root, selection, log)
             }
         });
-        #[expect(clippy::print_stderr, reason = "intentional user-facing warning")]
         if !runtime.execution.elevated_child
             && source == profiles::ProfileSource::Prompt
             && let Err(e) = profiles::persist(&root, &profile.name)
         {
-            eprintln!("warning: could not persist profile to git config: {e}");
+            log.warn(format!("could not persist profile to git config: {e}"));
         }
         let store = ConfigStore::from_config(config);
         let ctx = Self::context(runtime, log, token, root, overlay, platform)?;
@@ -327,7 +330,7 @@ impl CommandRunner {
             profile: _,
         } = startup;
         // Repository-only startup does not load aggregate configuration.
-        let overlay = overlay.map(|selection| save_explicit_overlay(&root, selection));
+        let overlay = overlay.map(|selection| save_explicit_overlay(&root, selection, log));
         let ctx = Self::context(runtime, log, token, root, overlay, platform)?;
         RunCoordinator::new(&ctx, log).execute(ExecutionPlan::single([task]))
     }
@@ -519,12 +522,15 @@ fn root_from_executable(exe: &Path) -> Result<Option<PathBuf>> {
     Ok(None)
 }
 
-#[expect(clippy::print_stderr, reason = "intentional user-facing warning")]
-fn save_explicit_overlay(root: &Path, (path, source): (PathBuf, OverlaySource)) -> PathBuf {
+fn save_explicit_overlay(
+    root: &Path,
+    (path, source): (PathBuf, OverlaySource),
+    log: &Logger,
+) -> PathBuf {
     if source == OverlaySource::Argument
         && let Err(e) = overlay_resolution::persist(root, &path)
     {
-        eprintln!("warning: could not persist overlay path to git config: {e}");
+        log.warn(format!("could not persist overlay path to git config: {e}"));
     }
     path
 }
@@ -625,16 +631,7 @@ pub(super) fn startup_context_line(
     }
     let dry_run = if dry_run { " \u{00b7} dry run" } else { "" };
     let overlay = overlay.map_or_else(String::new, |path| {
-        let display = path.strip_prefix(home).map_or_else(
-            |_| path.display().to_string(),
-            |relative| {
-                if relative.as_os_str().is_empty() {
-                    "~".into()
-                } else {
-                    format!("~/{}", relative.to_string_lossy().replace('\\', "/"))
-                }
-            },
-        );
+        let display = crate::infra::logging::abbreviate_home(path, home);
         format!(" \u{00b7} overlay {display}")
     });
     format!(

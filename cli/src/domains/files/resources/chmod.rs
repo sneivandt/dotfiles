@@ -189,19 +189,25 @@ impl ChmodResource {
 
 impl Resource for ChmodResource {
     fn description(&self) -> String {
+        let format_path = |path: &std::path::Path| {
+            self.home.as_deref().map_or_else(
+                || path.display().to_string(),
+                |home| crate::infra::logging::abbreviate_home(path, home),
+            )
+        };
         match &self.mode {
             Ok(mode) => {
-                let target = self.target.display();
+                let target = format_path(&self.target);
                 match std::fs::canonicalize(&self.target) {
                     Ok(resolved) if resolved != self.target && self.home.is_some() => {
-                        format!("{mode} {target} (resolved {})", resolved.display())
+                        format!("{mode} {target} (resolved {})", format_path(&resolved))
                     }
                     _ => format!("{mode} {target}"),
                 }
             }
             Err(reason) => format!(
                 "invalid chmod mode ({reason}) for {}",
-                self.target.display()
+                format_path(&self.target)
             ),
         }
     }

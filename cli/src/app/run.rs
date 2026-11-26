@@ -26,6 +26,7 @@ pub(crate) fn run() -> ExitCode {
     #[cfg(windows)]
     logging::enable_console_ansi();
     let args = cli::Cli::parse();
+    let color = args.color.into_color_mode();
 
     // Meta commands run standalone and exit before the logging subsystem,
     // elevation, and task engine are initialised. Narrowing to `EngineCommand`
@@ -43,25 +44,29 @@ pub(crate) fn run() -> ExitCode {
                 .and_then(|result| {
                     writeln!(std::io::stdout().lock(), "{result}").map_err(Into::into)
                 }),
+                color,
             );
         }
         cli::Command::Completions(opts) => {
-            return standalone(write_completions(opts.shell, &mut std::io::stdout().lock()));
+            return standalone(
+                write_completions(opts.shell, &mut std::io::stdout().lock()),
+                color,
+            );
         }
         // Log viewing is read-only: do not initialize the tracing subscriber or
         // create a new log file just to display an existing log.
         cli::Command::Log(opts) => {
-            return standalone(commands::log::run(&opts, opts.verbose));
+            return standalone(commands::log::run(&opts, opts.verbose, color), color);
         }
         cli::Command::List(opts) => {
-            return standalone(commands::list::run(&opts));
+            return standalone(commands::list::run(&opts, color), color);
         }
         cli::Command::Explain(opts) => {
-            return standalone(commands::explain::run(&opts));
+            return standalone(commands::explain::run(&opts, color), color);
         }
-        cli::Command::Update(opts) => update_command(opts),
+        cli::Command::Update(opts) => update_command(opts, color),
         cli::Command::Remove(opts) => {
-            let (global, opts, verbose) = opts.into_engine_parts();
+            let (global, opts, verbose) = opts.into_engine_parts(color);
             cli::EngineCommand::Remove {
                 global,
                 opts,
@@ -69,7 +74,7 @@ pub(crate) fn run() -> ExitCode {
             }
         }
         cli::Command::Check(opts) => {
-            let (global, opts, verbose) = opts.into_engine_parts();
+            let (global, opts, verbose) = opts.into_engine_parts(color);
             cli::EngineCommand::Check {
                 global,
                 opts,
@@ -81,8 +86,8 @@ pub(crate) fn run() -> ExitCode {
     run_engine(&command, args.parent_run_id.as_deref())
 }
 
-fn update_command(opts: cli::UpdateCommandOpts) -> cli::EngineCommand {
-    let (global, opts, verbose) = opts.into_engine_parts();
+fn update_command(opts: cli::UpdateCommandOpts, color: logging::ColorMode) -> cli::EngineCommand {
+    let (global, opts, verbose) = opts.into_engine_parts(color);
     cli::EngineCommand::Update {
         global,
         opts,
@@ -102,7 +107,7 @@ fn write_completions(
     out.flush().context("flushing shell completions")
 }
 
-fn standalone(result: anyhow::Result<()>) -> ExitCode {
+fn standalone(result: anyhow::Result<()>, color: logging::ColorMode) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error)
@@ -120,7 +125,7 @@ fn standalone(result: anyhow::Result<()>) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(error) => {
-            let style = logging::stderr_style();
+            let style = logging::stderr_style_for(color);
             drop(writeln!(
                 std::io::stderr().lock(),
                 "{} {error:#}",
@@ -136,7 +141,7 @@ fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> Exit
     let global = command.global();
     let runtime = commands::RuntimePolicy::detect(global, command.verbose());
     if let Err(error) = commands::validate_elevated_child_command(command, &runtime) {
-        return standalone(Err(error));
+        return standalone(Err(error), global.color);
     }
     if runtime.execution.elevated_child {
         elevation::mark_elevated_child();
@@ -146,6 +151,7 @@ fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> Exit
         !runtime.global.no_symbols,
         command.name(),
         runtime.global.output_mode,
+        runtime.global.color,
     );
     raw_log.set_dry_run(runtime.execution.dry_run);
     raw_log.start_run(parent_run_id.map(str::to_string));
@@ -230,7 +236,10 @@ mod tests {
         let mut output = Vec::new();
         let result = write_completions(clap_complete::Shell::Zsh, &mut output);
 
-        assert_eq!(standalone(result), ExitCode::SUCCESS);
+        assert_eq!(
+            standalone(result, logging::ColorMode::Auto),
+            ExitCode::SUCCESS
+        );
         assert_eq!(
             String::from_utf8(output).unwrap(),
             super::super::completion::registration(clap_complete::Shell::Zsh)
@@ -267,7 +276,11 @@ mod tests {
                     clap_complete::Shell::Zsh,
                     &mut BrokenOutput { fail_write, kind },
                 );
-                assert_eq!(standalone(result), expected, "{kind:?}, write={fail_write}");
+                assert_eq!(
+                    standalone(result, logging::ColorMode::Auto),
+                    expected,
+                    "{kind:?}, write={fail_write}"
+                );
             }
         }
     }
@@ -284,7 +297,7 @@ mod tests {
                 "--no-repo-update",
             ]);
             let command = match cli::Cli::parse_from(invocation).command {
-                cli::Command::Update(opts) => update_command(opts),
+                cli::Command::Update(opts) => update_command(opts, logging::ColorMode::Auto),
                 cli::Command::Remove(_)
                 | cli::Command::Check(_)
                 | cli::Command::List(_)

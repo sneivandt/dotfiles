@@ -14,6 +14,29 @@ fn cli_styles() -> Styles {
         .error(AnsiColor::Red.on_default().effects(Effects::BOLD))
 }
 
+/// When to emit ANSI color sequences.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ColorChoice {
+    /// Emit ANSI on terminals or when `CLICOLOR_FORCE` is set, unless `NO_COLOR` is set.
+    #[default]
+    Auto,
+    /// Always emit ANSI styling.
+    Always,
+    /// Never emit ANSI styling.
+    Never,
+}
+
+impl ColorChoice {
+    #[must_use]
+    pub(crate) const fn into_color_mode(self) -> crate::infra::logging::ColorMode {
+        match self {
+            Self::Auto => crate::infra::logging::ColorMode::Auto,
+            Self::Always => crate::infra::logging::ColorMode::Always,
+            Self::Never => crate::infra::logging::ColorMode::Never,
+        }
+    }
+}
+
 /// Top-level CLI entry point for the dotfiles management engine.
 #[derive(Parser, Debug)]
 #[command(
@@ -49,6 +72,11 @@ pub(crate) struct Cli {
     /// Internal linkage for restarted and elevated processes.
     #[arg(long, hide = true, global = true)]
     pub parent_run_id: Option<String>,
+
+    /// Control colored console output
+    #[arg(long, global = true, value_enum, default_value_t, value_name = "WHEN")]
+    pub color: ColorChoice,
+
     /// Subcommand to execute.
     #[command(subcommand)]
     pub command: Command,
@@ -456,6 +484,8 @@ pub struct GlobalOpts {
     pub no_symbols: bool,
     /// Console output policy.
     pub output_mode: crate::infra::logging::OutputMode,
+    /// Console ANSI color policy.
+    pub color: crate::infra::logging::ColorMode,
     /// Whether self-update attestation verification is disabled.
     pub skip_attestation: bool,
     /// Whether this process is an elevated child.
@@ -463,7 +493,11 @@ pub struct GlobalOpts {
 }
 
 impl GlobalOpts {
-    fn from_execution(repository: RepositoryOpts, execution: &ExecutionOpts) -> Self {
+    fn from_execution(
+        repository: RepositoryOpts,
+        execution: &ExecutionOpts,
+        color: crate::infra::logging::ColorMode,
+    ) -> Self {
         Self {
             profile: repository.profile,
             dry_run: false,
@@ -481,6 +515,7 @@ impl GlobalOpts {
             } else {
                 crate::infra::logging::OutputMode::Human
             },
+            color,
             skip_attestation: false,
             elevated_child: false,
         }
@@ -490,14 +525,17 @@ impl GlobalOpts {
 impl UpdateCommandOpts {
     /// Split parsed options into engine context, task filters, and output policy.
     #[must_use]
-    pub(crate) fn into_engine_parts(self) -> (GlobalOpts, UpdateOpts, bool) {
+    pub(crate) fn into_engine_parts(
+        self,
+        color: crate::infra::logging::ColorMode,
+    ) -> (GlobalOpts, UpdateOpts, bool) {
         let verbose = self.execution.verbose;
         let global = GlobalOpts {
             dry_run: self.dry_run,
             no_repo_update: self.no_repo_update,
             skip_attestation: self.skip_attestation,
             elevated_child: self.elevated_child,
-            ..GlobalOpts::from_execution(self.repository, &self.execution)
+            ..GlobalOpts::from_execution(self.repository, &self.execution, color)
         };
         (global, self.tasks, verbose)
     }
@@ -506,9 +544,12 @@ impl UpdateCommandOpts {
 impl CheckCommandOpts {
     /// Split parsed options into engine context, task filters, and output policy.
     #[must_use]
-    pub(crate) fn into_engine_parts(self) -> (GlobalOpts, CheckOpts, bool) {
+    pub(crate) fn into_engine_parts(
+        self,
+        color: crate::infra::logging::ColorMode,
+    ) -> (GlobalOpts, CheckOpts, bool) {
         let verbose = self.execution.verbose;
-        let global = GlobalOpts::from_execution(self.repository, &self.execution);
+        let global = GlobalOpts::from_execution(self.repository, &self.execution, color);
         (global, self.tasks, verbose)
     }
 }
@@ -516,13 +557,16 @@ impl CheckCommandOpts {
 impl RemoveCommandOpts {
     /// Split parsed options into engine context and output policy.
     #[must_use]
-    pub(crate) fn into_engine_parts(self) -> (GlobalOpts, RemoveOpts, bool) {
+    pub(crate) fn into_engine_parts(
+        self,
+        color: crate::infra::logging::ColorMode,
+    ) -> (GlobalOpts, RemoveOpts, bool) {
         let verbose = self.execution.verbose;
         let global = GlobalOpts {
             dry_run: self.dry_run,
             skip_attestation: self.skip_attestation,
             elevated_child: self.elevated_child,
-            ..GlobalOpts::from_execution(self.repository, &self.execution)
+            ..GlobalOpts::from_execution(self.repository, &self.execution, color)
         };
         (global, self.tasks, verbose)
     }

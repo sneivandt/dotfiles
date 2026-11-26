@@ -39,6 +39,13 @@ use super::runlog::RunLog;
 use super::types::{LogEvent, MsgKind, Output, TaskEntry, TaskRecorder, TaskStatus};
 use super::utils::dotfiles_log_subdir;
 
+/// A currently executing parallel task and the instant it started.
+#[derive(Debug, Clone)]
+pub(super) struct ActiveTask {
+    pub(super) name: String,
+    pub(super) started: Instant,
+}
+
 /// Structured logger with dry-run awareness and summary collection.
 ///
 /// All messages are always written to a persistent per-run log file in the
@@ -53,8 +60,8 @@ pub struct Logger {
     pub(super) tasks: Mutex<Vec<TaskEntry>>,
     /// Serializes console output from parallel task flushes.
     pub(super) flush_lock: Mutex<()>,
-    /// Names of tasks currently executing in parallel.
-    pub(super) active_tasks: Mutex<Vec<String>>,
+    /// Tasks currently executing in parallel, oldest first.
+    pub(super) active_tasks: Mutex<Vec<ActiveTask>>,
     /// Number of tasks scheduled for this run, used as the progress denominator.
     pub(super) task_total: AtomicUsize,
     /// Animation frame, independent of task completion counts.
@@ -80,7 +87,7 @@ pub struct Logger {
 }
 
 impl Logger {
-    /// Create a new logger.
+    /// Create a new logger with explicit color selection.
     ///
     /// Opens the run log for `command` in the dotfiles log directory.  If
     /// the file cannot be created the run continues without a file log.
@@ -90,7 +97,7 @@ impl Logger {
         clippy::missing_panics_doc,
         reason = "unit-test builds deliberately reject the production log sink before resolving host paths"
     )]
-    pub fn new(command: &str) -> Self {
+    pub fn new_with_color(command: &str, color: super::ColorMode) -> Self {
         assert!(
             !cfg!(test),
             "unit tests must use Logger::test or an explicitly isolated logger"
@@ -100,7 +107,14 @@ impl Logger {
         if run_log.is_none() {
             super::runlog::warn_degraded("the log directory or file could not be created");
         }
-        Self::build(command, run_log, start, true)
+        Self::build_with_color(command, run_log, start, true, color)
+    }
+
+    /// Create a new logger with automatic color selection.
+    #[cfg(test)]
+    #[must_use]
+    pub fn new(command: &str) -> Self {
+        Self::new_with_color(command, super::ColorMode::Auto)
     }
 
     /// Create a silent, nonpersistent logger for unit tests.
@@ -111,7 +125,7 @@ impl Logger {
 
     /// Create a new logger using an explicit base directory.
     ///
-    /// Like [`new`](Self::new) but resolves the run log under `base_dir`
+    /// Like [`new_with_color`](Self::new_with_color) but resolves the run log under `base_dir`
     /// instead of reading the log directory from the environment.  Intended
     /// for tests that need an isolated logger without mutating process-global
     /// state.
@@ -133,8 +147,24 @@ impl Logger {
         start: Instant,
         console_output: bool,
     ) -> Self {
+        Self::build_with_color(
+            command,
+            run_log,
+            start,
+            console_output,
+            super::ColorMode::Auto,
+        )
+    }
+
+    fn build_with_color(
+        command: &str,
+        run_log: Option<Arc<RunLog>>,
+        start: Instant,
+        console_output: bool,
+        color: super::ColorMode,
+    ) -> Self {
         Self {
-            console: Arc::new(super::console::Console::new(console_output)),
+            console: Arc::new(super::console::Console::new(console_output, color)),
             command: command.to_string(),
             tasks: Mutex::new(Vec::new()),
             flush_lock: Mutex::new(()),
@@ -286,7 +316,7 @@ impl Logger {
     )]
     pub(in crate::infra::logging) fn lock_flush(&self) -> std::sync::MutexGuard<'_, ()> {
         self.flush_lock.lock().unwrap_or_else(|e| {
-            eprintln!("warning: flush lock was poisoned, recovering");
+            eprintln!("warn  flush lock was poisoned, recovering");
             e.into_inner()
         })
     }
@@ -313,7 +343,7 @@ impl Logger {
     /// Same reasoning as [`Logger::lock_tasks`].
     pub(in crate::infra::logging) fn lock_active_tasks(
         &self,
-    ) -> std::sync::MutexGuard<'_, Vec<String>> {
+    ) -> std::sync::MutexGuard<'_, Vec<ActiveTask>> {
         self.active_tasks
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

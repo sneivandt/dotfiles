@@ -19,7 +19,8 @@ use serde::Deserialize;
 
 use crate::app::cli::{DiscoveryFormat, LogOpts};
 use crate::infra::logging::{
-    StyleChoice, TaskStatus, TextStyle, parse_run_log_file_name, run_log_sort_stamp, stdout_style,
+    ColorMode, StyleChoice, TaskStatus, TextStyle, parse_run_log_file_name, run_log_sort_stamp,
+    stdout_style_for,
 };
 
 const NO_LOG_FOUND: &str = "No dotfiles log found yet.";
@@ -72,11 +73,11 @@ impl RunEntry {
 /// # Errors
 ///
 /// Returns an error if the log directory or selected log file cannot be read.
-pub fn run(opts: &LogOpts, verbose: bool) -> Result<()> {
+pub fn run(opts: &LogOpts, verbose: bool, color: ColorMode) -> Result<()> {
     let log_dir = crate::infra::logging::dotfiles_log_dir_readonly();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
-    run_in_dir(&log_dir, opts, verbose, stdout_style(), &mut out)
+    run_in_dir(&log_dir, opts, verbose, stdout_style_for(color), &mut out)
 }
 
 fn run_in_dir(

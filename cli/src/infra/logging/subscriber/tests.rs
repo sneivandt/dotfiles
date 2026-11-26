@@ -33,7 +33,10 @@ fn build_subscriber_routes_info_to_console_and_debug_to_run_log() {
     let dir = super::super::utils::dotfiles_log_subdir(tmp.path()).unwrap();
     let run_log = Arc::new(RunLog::new("test", &dir, std::time::Instant::now()).unwrap());
     let path = run_log.path().to_path_buf();
-    let console = Arc::new(super::super::console::Console::new(false));
+    let console = Arc::new(super::super::console::Console::new(
+        false,
+        super::super::ColorMode::Auto,
+    ));
     let subscriber = super::build_subscriber(Arc::clone(&console), Some(run_log));
     let dispatch = tracing::Dispatch::new(subscriber);
     let _guard = super::super::test_dispatch_guard(&dispatch);

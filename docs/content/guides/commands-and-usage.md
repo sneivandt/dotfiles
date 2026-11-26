@@ -198,9 +198,13 @@ status: one task can change many files or packages.
 | `⊗` / `INTERRUPTED` | Work stopped during cancellation |
 | `✗` / `FAILED` | An operation failed |
 
-Use `--verbose` for unchanged tasks, decisions, and timings, `--no-symbols`
-for text labels, or a nonempty `NO_COLOR` to turn off ANSI styling. Even in
-`--quiet` mode, task warnings still print to stderr.
+Long-running steps show elapsed time on the live spinner and on completed task
+rows once they reach 2 seconds. Use `--verbose` for unchanged tasks, decisions,
+and every task duration, `--no-symbols` for text labels, or `--color
+auto|always|never` to override terminal color detection (in `auto` mode, a
+nonempty `NO_COLOR` disables ANSI styling and a nonempty `CLICOLOR_FORCE` other
+than `0` forces it). In `--quiet` mode, warnings, incomplete task rows,
+explanatory failure details, and the recovery hint print to stderr.
 
 The summary counts tasks, not individual actions. **Unchanged** means the task
 already matched its declaration. Inapplicable and internal tasks stay out of

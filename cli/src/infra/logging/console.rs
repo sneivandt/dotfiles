@@ -2,7 +2,7 @@
 use std::io::Write as _;
 use std::sync::{Mutex, MutexGuard};
 
-use super::style::{StyleChoice, TextStyle, stderr_style, stdout_style};
+use super::style::{ColorMode, StyleChoice, TextStyle, stderr_style_for, stdout_style_for};
 use super::types::MsgKind;
 use super::utils::strip_ansi;
 
@@ -26,7 +26,7 @@ pub(super) struct ConsoleState {
     pub(super) progress_rows: u16,
     /// A live task footer is separate from a pre-graph custom transient.
     pub(super) active_progress: bool,
-    pub(super) custom_progress: Option<String>,
+    pub(super) custom_progress: Option<(String, std::time::Instant)>,
     pub(super) task_output_emitted: bool,
     pub(super) last_task_block_had_details: bool,
     pub(super) ends_with_blank_line: bool,
@@ -38,7 +38,7 @@ pub(super) struct ConsoleState {
 }
 
 impl Console {
-    pub(super) fn new(enabled: bool) -> Self {
+    pub(super) fn new(enabled: bool, color: ColorMode) -> Self {
         let plain = StyleChoice::auto(false, true);
         Self {
             state: Mutex::new(ConsoleState {
@@ -46,8 +46,16 @@ impl Console {
                 verbose: true,
                 ..ConsoleState::default()
             }),
-            stdout_style: if enabled { stdout_style() } else { plain },
-            stderr_style: if enabled { stderr_style() } else { plain },
+            stdout_style: if enabled {
+                stdout_style_for(color)
+            } else {
+                plain
+            },
+            stderr_style: if enabled {
+                stderr_style_for(color)
+            } else {
+                plain
+            },
         }
     }
 
@@ -58,16 +66,11 @@ impl Console {
     }
 
     pub(super) fn emit(&self, kind: MsgKind, message: &str, symbols: bool) {
-        let error = matches!(
+        let diagnostic = matches!(
             kind.log_event(),
             super::types::LogEvent::Warn | super::types::LogEvent::Error
         );
-        let style = if error {
-            self.stderr_style
-        } else {
-            self.stdout_style
-        };
-        if error {
+        if diagnostic {
             self.record(
                 &super::log_thread_name(),
                 super::records::Record::Message {
@@ -77,6 +80,13 @@ impl Console {
             );
         }
         let mut state = self.lock();
+        let error =
+            diagnostic || (kind == MsgKind::RecoveryHint && state.mode == super::OutputMode::Quiet);
+        let style = if error {
+            self.stderr_style
+        } else {
+            self.stdout_style
+        };
         if let Some(line) = ui_line_with_style(kind, message, style, state.verbose, symbols) {
             if kind == MsgKind::Transition {
                 if !state.last_was_transition {
@@ -118,7 +128,11 @@ impl Console {
 
     /// Report a broken output sink through stderr even in structured mode.
     pub(super) fn report_output_error(&self, message: &str) {
-        self.lock().write_raw(true, &format!("ERROR {message}\n"));
+        let line = format!(
+            "{} {message}\n",
+            self.stderr_style.paint(TextStyle::Red, "error")
+        );
+        self.lock().write_raw(true, &line);
     }
 
     pub(super) fn output_error(&self) -> Option<String> {
@@ -127,6 +141,11 @@ impl Console {
 
     pub(super) fn task_result(&self, message: &str) {
         self.lock().line(false, &self.stdout_style.clean(message));
+    }
+
+    /// Emit a preformatted failure or warning task row directly to stderr.
+    pub(super) fn task_result_stderr(&self, message: &str) {
+        self.lock().line(true, &self.stderr_style.clean(message));
     }
 
     /// Render a buffered detail without persisting its presentation.
@@ -570,9 +589,9 @@ mod tests {
 
     #[test]
     fn sync_progress_and_notice_share_the_row_below_the_upgrade_notice() {
-        use super::{Console, MsgKind};
+        use super::{ColorMode, Console, MsgKind};
 
-        let console = Console::new(false);
+        let console = Console::new(false, ColorMode::Auto);
         console.emit(MsgKind::Startup, "Update", false);
         console.emit(MsgKind::Transition, "CLI upgraded", false);
         console.lock().active_status("Syncing repository");
@@ -594,7 +613,7 @@ mod tests {
     fn post_sync_progress_reuses_the_final_separator_after_a_silent_sync() {
         use super::{Console, MsgKind};
 
-        let console = Console::new(false);
+        let console = Console::new(false, super::ColorMode::Auto);
         console.emit(MsgKind::Startup, "Update", false);
         console.emit(MsgKind::Transition, "CLI upgraded", false);
         let mut state = console.lock();
@@ -625,7 +644,7 @@ mod tests {
     fn custom_status_below_header_adds_transient_spacer_and_replaces_in_place() {
         use super::{Console, MsgKind};
 
-        let console = Console::new(false);
+        let console = Console::new(false, super::ColorMode::Auto);
         console.emit(MsgKind::Startup, "Update · desktop profile", false);
         {
             let mut state = console.lock();
@@ -685,7 +704,7 @@ mod tests {
     fn restored_startup_transition_groups_sync_and_separates_non_transition_messages() {
         use super::{Console, MsgKind};
 
-        let synced = Console::new(false);
+        let synced = Console::new(false, super::ColorMode::Auto);
         synced.lock().mark_startup_transition_emitted();
         synced.lock().active_status("Syncing repository");
         synced.emit(MsgKind::Transition, "Repository synced", false);
@@ -700,7 +719,7 @@ mod tests {
             "\r\x1b[KSyncing repository\r\x1b[KRepository synced\n"
         );
 
-        let warned = Console::new(false);
+        let warned = Console::new(false, super::ColorMode::Auto);
         warned.lock().mark_startup_transition_emitted();
         warned.emit(MsgKind::Warn, "config warning", true);
         let warned_out: String = warned
@@ -715,7 +734,7 @@ mod tests {
             (MsgKind::Always, "plain line", "plain line\n"),
             (MsgKind::RecoveryHint, "hint", "  hint\n"),
         ] {
-            let unseparated = Console::new(false);
+            let unseparated = Console::new(false, super::ColorMode::Auto);
             unseparated.lock().mark_startup_transition_emitted();
             unseparated.emit(kind, message, false);
             let out: String = unseparated
@@ -730,11 +749,11 @@ mod tests {
 
     #[test]
     fn report_output_error_writes_formatted_error_to_stderr() {
-        let console = super::Console::new(false);
+        let console = super::Console::new(false, super::ColorMode::Auto);
         console.report_output_error("disk full");
         assert_eq!(
             console.lock().captured,
-            vec![(true, "ERROR disk full\n".into())]
+            vec![(true, "error disk full\n".into())]
         );
     }
 

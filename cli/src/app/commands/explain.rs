@@ -10,10 +10,10 @@ use crate::engine::plan::{ApplyOperation, RemoveOperation};
 use crate::engine::{IntrinsicState as _, ProcessOpts, RemovableResource as _};
 use crate::infra::exec::{Executor, ProcessExecutor};
 use crate::infra::fs::resolve_target_entry;
-use crate::infra::logging::{StyleChoice, TextStyle, stdout_style};
+use crate::infra::logging::{ColorMode, StyleChoice, TextStyle, stdout_style_for};
 use crate::infra::platform::Platform;
 
-pub(crate) fn run(opts: &ExplainOpts) -> Result<()> {
+pub(crate) fn run(opts: &ExplainOpts, color: ColorMode) -> Result<()> {
     let env = crate::infra::env::system();
     let platform = Platform::detect();
     let config = super::list::load_discovery_config(&opts.repository, env.as_ref(), platform)?;
@@ -87,7 +87,7 @@ pub(crate) fn run(opts: &ExplainOpts) -> Result<()> {
         },
         Err(error) => (format!("blocked ({error:#})"), TextStyle::Yellow),
     };
-    let style = stdout_style();
+    let style = stdout_style_for(color);
     let mut rows: Vec<(&str, String)> = Vec::with_capacity(8);
     rows.push(("Profile:", style.bold(&config.profile.name)));
     if let Some(overlay) = config.overlay.as_deref() {

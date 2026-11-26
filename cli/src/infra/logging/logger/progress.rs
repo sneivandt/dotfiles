@@ -1,12 +1,29 @@
 //! In-progress status line rendering for [`Logger`].
 
+use std::time::{Duration, Instant};
+
 use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 
-use super::Logger;
+use super::{ActiveTask, Logger};
 use crate::infra::logging::style::{StyleChoice, TextStyle};
 use crate::infra::logging::utils::{strip_ansi, terminal_columns};
 
 const PROGRESS_ELLIPSIS: &str = " …";
+/// Live progress rows show elapsed seconds once an operation has been running this long.
+const LIVE_ELAPSED_THRESHOLD: Duration = Duration::from_secs(2);
+
+/// Format live spinner elapsed time in whole seconds to avoid tick flicker.
+fn format_live_elapsed(elapsed: Duration) -> Option<String> {
+    if elapsed < LIVE_ELAPSED_THRESHOLD {
+        return None;
+    }
+    let secs = elapsed.as_secs();
+    if secs < 60 {
+        Some(format!("{secs}s"))
+    } else {
+        Some(format!("{}m {}s", secs / 60, secs % 60))
+    }
+}
 
 /// Fit a transient row to the terminal, then apply its presentation.
 /// Applying styles last keeps ANSI escapes out of terminal-width calculations.
@@ -71,17 +88,23 @@ fn active_names(active: &[String], limit: usize, cols: usize) -> (String, usize)
     (names, hidden)
 }
 
-fn active_display_line(
-    active: &[String],
-    progress: Option<(usize, usize)>,
+#[derive(Clone, Copy)]
+struct ActiveLineOpts {
     frame: usize,
     symbols: bool,
     verbose: bool,
     cols: usize,
     appearance: ProgressStyle,
+}
+
+fn active_display_line(
+    active: &[String],
+    progress: Option<(usize, usize)>,
+    elapsed: Option<Duration>,
+    opts: ActiveLineOpts,
 ) -> String {
     let active: Vec<String> = active.iter().map(|name| strip_ansi(name)).collect();
-    let spinner = spinner(frame, symbols);
+    let spinner = spinner(opts.frame, opts.symbols);
     let count = progress.map_or_else(String::new, |(done, total)| {
         let count = total.saturating_sub(done);
         let width = total.to_string().len();
@@ -89,14 +112,29 @@ fn active_display_line(
     });
     let separator = if progress.is_some() { " · " } else { "" };
     let prefix = format!("{spinner} {count}{separator}");
+    let timer = elapsed
+        .and_then(format_live_elapsed)
+        .map_or_else(String::new, |text| format!(" \u{00b7} {text}"));
     // Very narrow terminals still get a bounded line, even without room for names.
-    let line = if prefix.width() >= cols || active.is_empty() {
+    let line = if prefix.width() >= opts.cols || active.is_empty() {
         prefix
+    } else if !timer.is_empty() && prefix.width() + timer.width() < opts.cols {
+        let (names, hidden) = active_names(
+            &active,
+            if opts.verbose { active.len() } else { 3 },
+            opts.cols - prefix.width() - timer.width(),
+        );
+        let suffix = if hidden > 0 {
+            format!(" +{hidden}")
+        } else {
+            String::new()
+        };
+        format!("{prefix}{names}{suffix}{timer}")
     } else {
         let (names, hidden) = active_names(
             &active,
-            if verbose { active.len() } else { 3 },
-            cols - prefix.width(),
+            if opts.verbose { active.len() } else { 3 },
+            opts.cols - prefix.width(),
         );
         let suffix = if hidden > 0 {
             format!(" +{hidden}")
@@ -105,7 +143,7 @@ fn active_display_line(
         };
         format!("{prefix}{names}{suffix}")
     };
-    styled_progress_line(&line, cols, appearance)
+    styled_progress_line(&line, opts.cols, opts.appearance)
 }
 
 #[derive(Clone, Copy)]
@@ -178,21 +216,29 @@ impl Logger {
         if state.mode != crate::infra::logging::OutputMode::Human {
             return;
         }
-        let display = self.custom_display_line(line);
+        let plain = strip_ansi(line);
+        let started = match &state.custom_progress {
+            Some((existing, started)) if existing == &plain => *started,
+            _ => Instant::now(),
+        };
+        let display = self.custom_display_line(&plain, Some(started.elapsed()));
         state.custom_status(&display);
-        state.custom_progress = Some(strip_ansi(line));
+        state.custom_progress = Some((plain, started));
     }
 
-    fn custom_display_line(&self, line: &str) -> String {
+    fn custom_display_line(&self, line: &str, elapsed: Option<Duration>) -> String {
+        let plain = strip_ansi(line);
+        let timer = elapsed
+            .and_then(format_live_elapsed)
+            .map_or_else(String::new, |text| format!(" \u{00b7} {text}"));
         styled_progress_line(
             &format!(
-                "{} {}",
+                "{} {plain}{timer}",
                 spinner(
                     self.progress_frame
                         .load(std::sync::atomic::Ordering::Relaxed),
                     self.symbols
                 ),
-                strip_ansi(line)
             ),
             transient_budget(terminal_columns()),
             ProgressStyle {
@@ -202,23 +248,29 @@ impl Logger {
         )
     }
 
-    pub(in crate::infra::logging) fn draw_active_status(&self, active: &[String]) {
+    pub(in crate::infra::logging) fn draw_active_status(&self, active: &[ActiveTask]) {
         let line = self.active_display_line(active, self.is_verbose());
         self.console.lock().active_status(&line);
     }
 
-    fn active_display_line(&self, active: &[String], verbose: bool) -> String {
+    fn active_display_line(&self, active: &[ActiveTask], verbose: bool) -> String {
+        let names: Vec<String> = active.iter().map(|task| task.name.clone()).collect();
+        let elapsed = active.first().map(|task| task.started.elapsed());
         active_display_line(
-            active,
+            &names,
             self.task_progress(),
-            self.progress_frame
-                .load(std::sync::atomic::Ordering::Relaxed),
-            self.symbols,
-            verbose,
-            transient_budget(terminal_columns()),
-            ProgressStyle {
-                style: self.console.stdout_style,
-                dry_run: self.dry_run,
+            elapsed,
+            ActiveLineOpts {
+                frame: self
+                    .progress_frame
+                    .load(std::sync::atomic::Ordering::Relaxed),
+                symbols: self.symbols,
+                verbose,
+                cols: transient_budget(terminal_columns()),
+                appearance: ProgressStyle {
+                    style: self.console.stdout_style,
+                    dry_run: self.dry_run,
+                },
             },
         )
     }
@@ -233,8 +285,8 @@ impl Logger {
         }
         self.progress_frame
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if let Some(custom) = state.custom_progress.clone() {
-            state.replace_status(&self.custom_display_line(&custom));
+        if let Some((custom, started)) = state.custom_progress.clone() {
+            state.replace_status(&self.custom_display_line(&custom, Some(started.elapsed())));
         } else if active.is_empty() {
             state.clear_progress();
         } else {
@@ -257,7 +309,7 @@ impl Logger {
                     .name("cli-progress".into())
                     .spawn(move || {
                         while matches!(
-                            receiver.recv_timeout(std::time::Duration::from_millis(100)),
+                            receiver.recv_timeout(Duration::from_millis(100)),
                             Err(std::sync::mpsc::RecvTimeoutError::Timeout)
                         ) {
                             let Some(log) = worker_log.upgrade() else {
@@ -315,13 +367,16 @@ mod tests {
         super::active_display_line(
             active,
             remaining.map(|total| (0, total)),
-            frame,
-            symbols,
-            verbose,
-            cols,
-            super::ProgressStyle {
-                style,
-                dry_run: false,
+            None,
+            super::ActiveLineOpts {
+                frame,
+                symbols,
+                verbose,
+                cols,
+                appearance: super::ProgressStyle {
+                    style,
+                    dry_run: false,
+                },
             },
         )
     }
@@ -343,13 +398,16 @@ mod tests {
                     let line = super::active_display_line(
                         &names,
                         Some((96, 100)),
-                        0,
-                        symbols,
-                        false,
-                        budget,
-                        super::ProgressStyle {
-                            style: StyleChoice::colored(),
-                            dry_run,
+                        None,
+                        super::ActiveLineOpts {
+                            frame: 0,
+                            symbols,
+                            verbose: false,
+                            cols: budget,
+                            appearance: super::ProgressStyle {
+                                style: StyleChoice::colored(),
+                                dry_run,
+                            },
                         },
                     );
                     let clean = crate::infra::logging::utils::strip_ansi(&line);
@@ -371,14 +429,17 @@ mod tests {
             super::active_display_line(
                 &["Packages".into()],
                 Some((96, 100)),
-                0,
-                true,
-                false,
-                79,
-                super::ProgressStyle {
-                    style: StyleChoice::plain(),
-                    dry_run: false
-                }
+                None,
+                super::ActiveLineOpts {
+                    frame: 0,
+                    symbols: true,
+                    verbose: false,
+                    cols: 79,
+                    appearance: super::ProgressStyle {
+                        style: StyleChoice::plain(),
+                        dry_run: false,
+                    },
+                },
             ),
             "⠋   4 left · Packages",
         );
@@ -602,6 +663,86 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn live_elapsed_appears_at_threshold_and_fits_narrow_terminals() {
+        use std::time::Duration;
+
+        assert_eq!(
+            super::format_live_elapsed(Duration::from_millis(1999)),
+            None
+        );
+        assert_eq!(
+            super::format_live_elapsed(Duration::from_secs(2)),
+            Some("2s".into())
+        );
+        assert_eq!(
+            super::format_live_elapsed(Duration::from_secs(65)),
+            Some("1m 5s".into())
+        );
+
+        let names = ["Packages".to_string(), "Fonts".to_string()];
+        let opts = |cols| super::ActiveLineOpts {
+            frame: 0,
+            symbols: true,
+            verbose: false,
+            cols,
+            appearance: super::ProgressStyle {
+                style: StyleChoice::plain(),
+                dry_run: false,
+            },
+        };
+        assert_eq!(
+            super::active_display_line(
+                &names,
+                Some((1, 4)),
+                Some(Duration::from_millis(1500)),
+                opts(80),
+            ),
+            "⠋ 3 left · Packages, Fonts"
+        );
+        assert_eq!(
+            super::active_display_line(
+                &names,
+                Some((1, 4)),
+                Some(Duration::from_secs(7)),
+                opts(80),
+            ),
+            "⠋ 3 left · Packages, Fonts · 7s"
+        );
+        for cols in 0..45 {
+            let line = super::active_display_line(
+                &names,
+                Some((1, 4)),
+                Some(Duration::from_secs(125)),
+                opts(cols),
+            );
+            assert!(
+                unicode_width::UnicodeWidthStr::width(line.as_str()) <= cols,
+                "width {cols}: {line}"
+            );
+        }
+        // When prefix + timer leave no room for names, drop the timer so the name shows.
+        assert_eq!(
+            super::active_display_line(
+                &["Packages".to_string()],
+                Some((1, 4)),
+                Some(Duration::from_secs(7)),
+                opts(16),
+            ),
+            "⠋ 3 left · Pac …"
+        );
+
+        let (log, _tmp, _guard) = isolated_logger();
+        assert_eq!(
+            log.custom_display_line("Syncing repository", Some(Duration::from_secs(4))),
+            "⠋ Syncing repository · 4s"
+        );
+        assert_eq!(
+            log.custom_display_line("Syncing repository", Some(Duration::from_secs(1))),
+            "⠋ Syncing repository"
+        );
     }
 
     #[test]

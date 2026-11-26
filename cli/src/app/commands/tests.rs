@@ -6,10 +6,11 @@ pub(super) fn global(args: &[&str]) -> crate::app::cli::GlobalOpts {
             .into_iter()
             .chain(args.iter().copied()),
     );
+    let color = cli.color.into_color_mode();
     let crate::app::cli::Command::Update(opts) = cli.command else {
         panic!("expected update command");
     };
-    opts.into_engine_parts().0
+    opts.into_engine_parts(color).0
 }
 
 #[cfg(test)]

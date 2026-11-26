@@ -28,7 +28,7 @@ pub use logger::Logger;
 #[cfg(test)]
 pub(crate) use runlog::RunLog;
 pub(crate) use runlog::{log_task_context, log_thread_name, set_log_thread_name};
-pub(crate) use style::{StyleChoice, TextStyle, stderr_style, stdout_style};
+pub(crate) use style::{ColorMode, StyleChoice, TextStyle, stderr_style_for, stdout_style_for};
 #[cfg(windows)]
 pub(crate) use terminal::enable_console_ansi;
 pub(crate) use types::TaskEntry;
@@ -42,7 +42,9 @@ pub use types::{Log, TaskStatus};
 pub(crate) use runlog::{parse_run_log_file_name, run_log_sort_stamp};
 #[cfg(test)]
 pub(crate) use types::{MsgKind, TaskRecorder};
-pub(crate) use utils::{dotfiles_log_dir_readonly, format_elapsed};
+pub(crate) use utils::{
+    abbreviate_home, abbreviate_path, display_path, dotfiles_log_dir_readonly, format_elapsed,
+};
 
 /// Console protocol, independent of durable run logging.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -62,8 +64,14 @@ pub enum OutputMode {
 /// plus the run-log bridge), and returns the [`Logger`] that shares the same
 /// run log. Must be called once at program startup, before any logging.
 #[must_use]
-pub(crate) fn init(verbose: bool, symbols: bool, command: &str, mode: OutputMode) -> Logger {
-    let mut log = Logger::new(command);
+pub(crate) fn init(
+    verbose: bool,
+    symbols: bool,
+    command: &str,
+    mode: OutputMode,
+    color: ColorMode,
+) -> Logger {
+    let mut log = Logger::new_with_color(command, color);
     log.set_verbose(verbose);
     log.set_symbols(symbols);
     log.set_output_mode(mode);

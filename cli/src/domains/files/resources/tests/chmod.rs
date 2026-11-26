@@ -22,19 +22,12 @@ fn permission_descriptions_show_redirections_without_repeating_ordinary_paths() 
     std::fs::write(&ordinary, "fixture").unwrap();
     std::fs::write(&outside, "fixture").unwrap();
     let ordinary_resource = ChmodResource::from_entry(&ChmodEntry::new("600", "ordinary"), &home);
-    assert_eq!(
-        ordinary_resource.description(),
-        format!("600 {}", ordinary.display())
-    );
+    assert_eq!(ordinary_resource.description(), "600 ~/.ordinary");
     std::os::unix::fs::symlink(&outside, home.join(".linked")).unwrap();
     let redirected_resource = ChmodResource::from_entry(&ChmodEntry::new("600", "linked"), &home);
     assert_eq!(
         redirected_resource.description(),
-        format!(
-            "600 {} (resolved {})",
-            home.join(".linked").display(),
-            outside.display()
-        )
+        format!("600 ~/.linked (resolved {})", outside.display())
     );
 }
 

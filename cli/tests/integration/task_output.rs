@@ -154,8 +154,111 @@ fn completions_report_changes_then_current() {
                 usize::from(expected.starts_with("CHANGED")),
                 "{stdout}"
             );
+            if expected.starts_with("CHANGED") {
+                let expected_write = if cfg!(windows) {
+                    "  write ~/.config/powershell/profile.d/dotfiles-completions.ps1"
+                } else {
+                    "  write symlinks/config/zsh/completions/_dotfiles"
+                };
+                assert!(
+                    stdout.lines().any(|line| line == expected_write),
+                    "{mode:?}: expected {expected_write:?} in:\n{stdout}"
+                );
+            }
         }
     }
+}
+
+#[test]
+fn color_flag_and_clicolor_force_control_ansi_in_non_tty_output() {
+    let repo = common::TestContextBuilder::new().build();
+    let home = tempfile::tempdir().unwrap();
+
+    let default_output = common::cli_command(
+        repo.root_path(),
+        home.path(),
+        None,
+        "check",
+        "config-diagnostics",
+    )
+    .env_remove("NO_COLOR")
+    .env_remove("CLICOLOR_FORCE")
+    .output()
+    .unwrap();
+    assert!(default_output.status.success(), "{default_output:?}");
+    let default_stdout = String::from_utf8(default_output.stdout).unwrap();
+    assert!(
+        !default_stdout.contains('\x1b'),
+        "non-TTY auto should stay plain: {default_stdout:?}"
+    );
+
+    let always_output = common::cli_command(
+        repo.root_path(),
+        home.path(),
+        None,
+        "check",
+        "config-diagnostics",
+    )
+    .arg("--color")
+    .arg("always")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+    assert!(always_output.status.success(), "{always_output:?}");
+    let always_stdout = String::from_utf8(always_output.stdout).unwrap();
+    assert!(
+        always_stdout.contains('\x1b'),
+        "--color always must override NO_COLOR and non-TTY: {always_stdout:?}"
+    );
+
+    let list_always = common::cli_command(repo.root_path(), home.path(), None, "list", "symlinks")
+        .args(["--graph", "update", "--color", "always"])
+        .env("NO_COLOR", "1")
+        .output()
+        .unwrap();
+    assert!(list_always.status.success(), "{list_always:?}");
+    let list_stdout = String::from_utf8(list_always.stdout).unwrap();
+    assert!(
+        list_stdout.contains('\x1b'),
+        "list --color always must emit ANSI even on non-TTY: {list_stdout:?}"
+    );
+
+    let force_output = common::cli_command(
+        repo.root_path(),
+        home.path(),
+        None,
+        "check",
+        "config-diagnostics",
+    )
+    .env_remove("NO_COLOR")
+    .env("CLICOLOR_FORCE", "1")
+    .output()
+    .unwrap();
+    assert!(force_output.status.success(), "{force_output:?}");
+    let force_stdout = String::from_utf8(force_output.stdout).unwrap();
+    assert!(
+        force_stdout.contains('\x1b'),
+        "CLICOLOR_FORCE=1 should enable color in auto mode: {force_stdout:?}"
+    );
+
+    let never_output = common::cli_command(
+        repo.root_path(),
+        home.path(),
+        None,
+        "check",
+        "config-diagnostics",
+    )
+    .arg("--color")
+    .arg("never")
+    .env("CLICOLOR_FORCE", "1")
+    .output()
+    .unwrap();
+    assert!(never_output.status.success(), "{never_output:?}");
+    let never_stdout = String::from_utf8(never_output.stdout).unwrap();
+    assert!(
+        !never_stdout.contains('\x1b'),
+        "--color never must override CLICOLOR_FORCE: {never_stdout:?}"
+    );
 }
 
 #[cfg(unix)]
@@ -469,7 +572,7 @@ fn execution_output_errors_fail_the_run_and_are_recorded() {
         }
         let output = command.stdout(full).output().unwrap();
         assert_eq!(output.status.code(), Some(1));
-        assert!(String::from_utf8_lossy(&output.stderr).contains("writing command output"));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("error writing command output"));
         let logs = common::retained_logs(&home.path().join("logs"));
         assert_eq!(logs.len(), 1);
         let contents = std::fs::read_to_string(logs.first().unwrap()).unwrap();
@@ -512,7 +615,16 @@ fn quiet_and_structured_modes_preserve_real_task_failures() {
         assert_eq!(output.status.code(), Some(1));
         if quiet {
             assert!(output.stdout.is_empty());
-            assert!(String::from_utf8_lossy(&output.stderr).contains("fixture-check-error"));
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(stderr.contains("fixture-check-error"), "{stderr}");
+            assert!(
+                !stderr.contains("error ✗"),
+                "quiet failure row must not double-prefix: {stderr}"
+            );
+            assert!(
+                stderr.contains("dotfiles log --id "),
+                "quiet failure should retain recovery hint: {stderr}"
+            );
         } else {
             let records: Vec<serde_json::Value> = String::from_utf8(output.stdout)
                 .unwrap()
@@ -546,7 +658,12 @@ fn quiet_mode_keeps_skipped_work_visible_without_changing_exit_policy() {
         let output = command.output().unwrap();
         assert_eq!(output.status.success(), !strict);
         assert!(output.stdout.is_empty());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("shellcheck not found in PATH"));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("shellcheck not found in PATH"), "{stderr}");
+        assert!(
+            !stderr.contains("warn  ⊘"),
+            "quiet skipped row must not double-prefix: {stderr}"
+        );
     }
 }
 

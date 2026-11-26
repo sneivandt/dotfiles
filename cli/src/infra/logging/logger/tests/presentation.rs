@@ -151,7 +151,7 @@ fn task_output_and_transition_use_one_separator_between_blocks() {
 }
 
 #[test]
-fn transition_and_recovery_intents_remain_human_only_and_persist_once() {
+fn transition_and_recovery_intents_respect_output_mode_and_persist_once() {
     for mode in [
         super::super::super::OutputMode::Human,
         super::super::super::OutputMode::Quiet,
@@ -162,15 +162,22 @@ fn transition_and_recovery_intents_remain_human_only_and_persist_once() {
         log.set_output_mode(mode);
         log.transition("Repository synced · restarting");
         log.recovery_hint("dotfiles log --id fixture -v");
-        let expected = if mode == super::super::super::OutputMode::Human {
-            vec![
-                "Repository synced · restarting",
-                "  Run 'dotfiles log --id fixture -v' for details.",
-            ]
-        } else {
-            vec![]
+        let expected: Vec<(bool, &str)> = match mode {
+            super::super::super::OutputMode::Human => vec![
+                (false, "Repository synced · restarting\n"),
+                (false, "  Run 'dotfiles log --id fixture -v' for details.\n"),
+            ],
+            super::super::super::OutputMode::Quiet => {
+                vec![(true, "  Run 'dotfiles log --id fixture -v' for details.\n")]
+            }
+            super::super::super::OutputMode::Jsonl => vec![],
         };
-        assert_eq!(log.captured_lines(), expected);
+        let captured: Vec<(bool, String)> = log.captured_output();
+        let actual: Vec<(bool, &str)> = captured
+            .iter()
+            .map(|(err, line)| (*err, line.as_str()))
+            .collect();
+        assert_eq!(actual, expected, "{mode:?}");
         let stored = fs::read_to_string(log.log_path().unwrap()).unwrap();
         assert_eq!(
             stored
@@ -185,6 +192,74 @@ fn transition_and_recovery_intents_remain_human_only_and_persist_once() {
             1
         );
         assert!(!stored.contains('\x1b'));
+    }
+}
+
+#[test]
+fn quiet_mode_emits_failure_and_warning_rows_without_double_prefixes_and_keeps_error_details() {
+    use crate::infra::logging::buffered::entry::LogEntry;
+    use crate::infra::logging::types::{
+        ActionCounts, MsgKind, TaskEntry, TaskStatus, TaskVisibility,
+    };
+
+    for (verbose, expected_error_detail) in [
+        (false, "  pacman exited with status 1\n"),
+        (true, "  error pacman exited with status 1\n"),
+    ] {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.set_verbose(verbose);
+        log.set_output_mode(super::super::super::OutputMode::Quiet);
+        log.record_task(TaskEntry::new(
+            "ok-task",
+            "Home symlinks",
+            TaskStatus::Changed,
+            None,
+            ActionCounts::default(),
+            TaskVisibility::Visible,
+        ));
+        log.emit_recorded_task_result("ok-task", &[]);
+
+        log.record_task(TaskEntry::new(
+            "skip-task",
+            "Dotfiles repository",
+            TaskStatus::Skipped,
+            Some("local changes present"),
+            ActionCounts::default(),
+            TaskVisibility::Visible,
+        ));
+        log.emit_recorded_task_result("skip-task", &[]);
+
+        log.record_task(TaskEntry::new(
+            "fail-task",
+            "System packages",
+            TaskStatus::Failed,
+            None,
+            ActionCounts::default(),
+            TaskVisibility::Visible,
+        ));
+        log.emit_recorded_task_result(
+            "fail-task",
+            &[LogEntry::Message {
+                kind: MsgKind::Error,
+                msg: "pacman exited with status 1".into(),
+            }],
+        );
+
+        let captured = log.captured_output();
+        assert!(
+            captured.iter().all(|(err, _)| *err),
+            "quiet mode must never write to stdout (verbose={verbose}): {captured:?}"
+        );
+        let lines: Vec<&str> = captured.iter().map(|(_, line)| line.as_str()).collect();
+        assert_eq!(
+            lines,
+            [
+                "⊘ Dotfiles repository · skipped · local changes present\n",
+                "✗ System packages\n",
+                expected_error_detail,
+            ],
+            "verbose={verbose}"
+        );
     }
 }
 

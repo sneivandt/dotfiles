@@ -34,6 +34,12 @@ Flags can appear before or after the command name (omitting a command runs
 `update`). Run `dotfiles <command> --help` for full syntax, and
 `dotfiles --version` or `-V` for the CLI version.
 
+`--color auto|always|never` is accepted by all commands. In the default `auto`
+mode, a nonempty `NO_COLOR` disables ANSI styling, a nonempty `CLICOLOR_FORCE`
+other than `0` enables it even when piped, and otherwise styling follows
+whether the target stream is a terminal. Explicit `--color always` and
+`--color never` override both environment variables.
+
 ### Configuration selection
 
 Available on `update`, `remove`, `check`, `list`, and `explain`:
@@ -65,7 +71,7 @@ Available on `update`, `remove`, and `check`:
 | Option | Purpose |
 |---|---|
 | `-v`, `--verbose` | Include unchanged tasks, decisions, and timings (also accepted by `log`) |
-| `-q`, `--quiet` | Show only warnings and incomplete outcomes |
+| `-q`, `--quiet` | Send only warnings, incomplete outcomes, failure details, and recovery hints to stderr |
 | `--format human\|jsonl` | Choose human-readable or JSON Lines output |
 | `--no-parallel` | Run selected work sequentially |
 | `--non-interactive` | Disable CLI prompts; does not by itself make skipped work fail |
@@ -246,9 +252,9 @@ private paths, config values, and tool output before sharing them.**
 
 ## Execution output for scripts
 
-Quiet mode (`-q`) preserves logs and exit codes while sending warnings and
-failed, blocked, skipped, or interrupted rows to stderr (conflicts with
-`--verbose` and `--format`).
+Quiet mode (`-q`) preserves logs and exit codes while sending warnings, failed,
+blocked, skipped, or interrupted rows, explanatory failure details, and the
+recovery hint to stderr (conflicts with `--verbose` and `--format`).
 
 For scripted automation, use JSON Lines (`--format jsonl`):
 

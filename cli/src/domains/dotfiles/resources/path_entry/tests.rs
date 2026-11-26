@@ -178,6 +178,7 @@ fn persisted_path_read_and_write_errors_cannot_report_success() {
         .returning(|_| anyhow::bail!("fixture registry write failure"));
     let resource = PathEntryResource {
         dir: home.path().join(".local/bin"),
+        display_home: home.path().to_path_buf(),
         strategy: PathStrategy::WindowsRegistry {
             dir: "fixture".into(),
             store: Arc::new(store),
@@ -200,6 +201,7 @@ fn registry_preview_only_reads_persisted_state() {
     store.expect_contains().once().returning(|_| Ok(false));
     let resource = PathEntryResource {
         dir: home.path().join(".local/bin"),
+        display_home: home.path().to_path_buf(),
         strategy: PathStrategy::WindowsRegistry {
             dir: "fixture".into(),
             store: Arc::new(store),
@@ -339,6 +341,7 @@ fn profile_discovery_propagates_non_missing_read_errors() {
     );
     let resource = PathEntryResource {
         dir: home.path().join(".local").join("bin"),
+        display_home: home.path().to_path_buf(),
         strategy: PathStrategy::ShellProfile { path },
     };
 

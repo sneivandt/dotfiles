@@ -17,6 +17,7 @@ const POWERSHELL_COMPLETION_FILENAME: &str = "dotfiles-completions.ps1";
 struct CompletionOperation<'a> {
     content: &'a str,
     destination: std::path::PathBuf,
+    display_path: String,
 }
 
 #[derive(PartialEq, Eq)]
@@ -27,9 +28,12 @@ struct CompletionSnapshot {
 
 impl CompletionOperation<'_> {
     fn report_write(&self, ctx: &Context, planned: bool) {
-        let subject = self.destination.display().to_string();
-        ctx.log()
-            .action("write", &subject, planned, &format!("write {subject}"));
+        ctx.log().action(
+            "write",
+            &self.display_path,
+            planned,
+            &format!("write {}", self.display_path),
+        );
     }
 
     fn snapshot(&self) -> Result<CompletionSnapshot> {
@@ -136,11 +140,17 @@ impl Task for GenerateCompletions {
                     .join(ZSH_COMPLETION_FILENAME),
             )
         };
+        let display_path = crate::infra::logging::abbreviate_path(
+            &destination,
+            Some(ctx.home()),
+            Some(ctx.root()),
+        );
         process_operation(
             ctx,
             &CompletionOperation {
                 content: &content,
                 destination,
+                display_path,
             },
         )
     }
@@ -293,6 +303,11 @@ mod tests {
             let op = CompletionOperation {
                 content: expected,
                 destination: destination.clone(),
+                display_path: crate::infra::logging::abbreviate_path(
+                    &destination,
+                    Some(ctx.home()),
+                    Some(ctx.root()),
+                ),
             };
             let OperationState::NeedsRun { plan } = op.current_state(&ctx).unwrap() else {
                 panic!("expected a completion update");
@@ -340,7 +355,12 @@ mod tests {
 
         for os in [Os::Linux, Os::Windows] {
             for dry_run in [false, true] {
-                let (_dir, ctx, destination, _) = completion_fixture(os);
+                let (_dir, ctx, _destination, _) = completion_fixture(os);
+                let expected_subject = if os == Os::Windows {
+                    "~/.config/powershell/profile.d/dotfiles-completions.ps1"
+                } else {
+                    "symlinks/config/zsh/completions/_dotfiles"
+                };
                 let output = Arc::new(CapturingOutput::default());
                 let ctx = ctx
                     .with_dry_run(dry_run)
@@ -352,8 +372,8 @@ mod tests {
                 let action = &actions[0];
                 assert_eq!(action.verb, "write");
                 assert_eq!(action.planned, dry_run);
-                assert_eq!(action.subject, destination.display().to_string());
-                assert_eq!(action.message, format!("write {}", action.subject));
+                assert_eq!(action.subject, expected_subject);
+                assert_eq!(action.message, format!("write {expected_subject}"));
             }
         }
     }

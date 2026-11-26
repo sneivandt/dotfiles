@@ -29,10 +29,12 @@ fn output_modes_validate_conflicts_and_convert_to_runtime_policy() {
         ] {
             let mut args = vec!["dotfiles", name, flag];
             args.extend(value);
-            let global = match Cli::parse_from(args).command {
-                Command::Update(opts) => opts.into_engine_parts().0,
-                Command::Remove(opts) => opts.into_engine_parts().0,
-                Command::Check(opts) => opts.into_engine_parts().0,
+            let parsed = Cli::parse_from(args);
+            let color = parsed.color.into_color_mode();
+            let global = match parsed.command {
+                Command::Update(opts) => opts.into_engine_parts(color).0,
+                Command::Remove(opts) => opts.into_engine_parts(color).0,
+                Command::Check(opts) => opts.into_engine_parts(color).0,
                 Command::List(_)
                 | Command::Explain(_)
                 | Command::Log(_)
@@ -152,19 +154,21 @@ fn engine_option_conversion_preserves_command_and_output_flags() {
         if matches!(name, "update") {
             args.push("--no-repo-update");
         }
-        let (global, verbose) = match Cli::parse_from(args).command {
+        let parsed = Cli::parse_from(args);
+        let color = parsed.color.into_color_mode();
+        let (global, verbose) = match parsed.command {
             Command::Update(opts) => {
-                let (global, _, verbose) = opts.into_engine_parts();
+                let (global, _, verbose) = opts.into_engine_parts(color);
                 assert!(global.no_repo_update);
                 (global, verbose)
             }
             Command::Remove(opts) => {
-                let (global, _, verbose) = opts.into_engine_parts();
+                let (global, _, verbose) = opts.into_engine_parts(color);
                 assert!(!global.no_repo_update);
                 (global, verbose)
             }
             Command::Check(opts) => {
-                let (global, _, verbose) = opts.into_engine_parts();
+                let (global, _, verbose) = opts.into_engine_parts(color);
                 assert!(!global.no_repo_update);
                 (global, verbose)
             }
@@ -197,5 +201,34 @@ fn engine_option_conversion_preserves_command_and_output_flags() {
         assert_eq!(runtime.execution.dry_run, mutating);
         assert_eq!(global.skip_attestation, mutating);
         assert_eq!(runtime.execution.elevated_child, mutating);
+    }
+}
+
+#[test]
+fn color_flag_applies_globally_before_or_after_subcommands() {
+    use crate::infra::logging::ColorMode;
+
+    for (args, expected) in [
+        (&["dotfiles", "update"][..], ColorMode::Auto),
+        (&["dotfiles", "--color", "always"][..], ColorMode::Always),
+        (
+            &["dotfiles", "--color", "never", "list"][..],
+            ColorMode::Never,
+        ),
+        (
+            &["dotfiles", "log", "--color", "always"][..],
+            ColorMode::Always,
+        ),
+        (
+            &["dotfiles", "check", "--color", "never"][..],
+            ColorMode::Never,
+        ),
+        (
+            &["dotfiles", "explain", "~/.zshrc", "--color", "always"][..],
+            ColorMode::Always,
+        ),
+    ] {
+        let parsed = Cli::parse_from(args);
+        assert_eq!(parsed.color.into_color_mode(), expected, "{args:?}");
     }
 }

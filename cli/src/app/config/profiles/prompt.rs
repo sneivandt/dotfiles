@@ -5,21 +5,21 @@ use std::io::{self, BufRead, Write};
 use anyhow::{Context as _, Result};
 
 use super::{ProfileInfo, available};
-use crate::infra::logging::{StyleChoice, stdout_style};
+use crate::infra::logging::{ColorMode, StyleChoice, stdout_style_for};
 
 /// Interactively prompt the user to select a profile.
 ///
 /// # Errors
 ///
 /// Returns an error if user input cannot be read.
-pub fn prompt_interactive() -> Result<String> {
+pub fn prompt_interactive(color: ColorMode) -> Result<String> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     prompt_interactive_with_io(
         available(),
         &mut stdin.lock(),
         &mut stdout.lock(),
-        stdout_style(),
+        stdout_style_for(color),
     )
 }
 

@@ -10,6 +10,9 @@ use crate::infra::logging::style::{StyleChoice, TextStyle};
 use crate::infra::logging::types::{MsgKind, TaskEntry, TaskResultDisplay, TaskStatus};
 use crate::infra::logging::utils::{duplicates_task_message, format_elapsed};
 
+/// Completed tasks at or above this duration display elapsed time even outside `-v`.
+const SLOW_TASK_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// Rendering options for a single task row.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct RowOpts {
@@ -20,6 +23,8 @@ pub(super) struct RowOpts {
     pub(super) columns: Option<usize>,
     /// Verbose rows show every applicable task, per-task timing, and uncapped details.
     pub(super) verbose: bool,
+    /// Quiet mode suppresses stdout and routes failure details to stderr.
+    pub(super) quiet: bool,
 }
 
 /// A completed task's status and ordered details, ready for console output.
@@ -110,7 +115,7 @@ pub(super) fn task_block(task: &TaskEntry, entries: &[LogEntry], opts: RowOpts) 
                 kind: entry.kind(),
                 message: entry.message().into(),
                 line,
-                error_stream: diagnostic && !explanatory_error,
+                error_stream: diagnostic && (!explanatory_error || opts.quiet),
             });
         }
     }
@@ -280,9 +285,9 @@ fn format_task_line_with_reason(task: &TaskEntry, opts: RowOpts, show_reason: bo
     // A not-applicable task never ran, so its timing is either absent or a
     // meaningless `0.0s`. Suppressing it keeps `⁃` rows uniform whether the
     // task bailed out in `should_run()` or after being configured.
-    if opts.verbose
-        && task.status != TaskStatus::NotApplicable
+    if task.status != TaskStatus::NotApplicable
         && let Some(duration) = task.duration
+        && (opts.verbose || duration >= SLOW_TASK_THRESHOLD)
     {
         line.push_str(&opts.style.paint(
             TextStyle::Dim,

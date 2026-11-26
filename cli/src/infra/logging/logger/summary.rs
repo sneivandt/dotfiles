@@ -59,9 +59,10 @@ impl Logger {
 
     /// Rendering options for task rows emitted by this logger.
     fn row_opts(&self) -> RowOpts {
+        let quiet = self.is_quiet();
         RowOpts {
             mode: SummaryMode::for_command(&self.command),
-            style: if self.is_quiet() {
+            style: if quiet {
                 self.console.stderr_style
             } else {
                 self.console.stdout_style
@@ -70,6 +71,7 @@ impl Logger {
             symbols: self.symbols,
             columns: std::io::stdout().is_terminal().then(terminal_columns),
             verbose: self.is_verbose(),
+            quiet,
         }
     }
 
@@ -87,30 +89,27 @@ impl Logger {
         let Some(task) = task else {
             return;
         };
-        let block = task_block(&task, entries, self.row_opts());
-        if self.is_quiet() {
-            use crate::infra::logging::TaskStatus;
-            if let Some(row) = &block.status {
-                match task.status {
-                    TaskStatus::Failed => self.emit_console(MsgKind::Error, row),
-                    TaskStatus::Skipped | TaskStatus::Blocked | TaskStatus::Interrupted => {
-                        self.emit_console(MsgKind::Warn, row);
-                    }
-                    TaskStatus::Changed
-                    | TaskStatus::Ok
-                    | TaskStatus::Passed
-                    | TaskStatus::NotApplicable
-                    | TaskStatus::DryRun => {}
-                }
-            }
-        }
+        let opts = self.row_opts();
+        let block = task_block(&task, entries, opts);
+        let quiet_stderr_row = opts.quiet
+            && matches!(
+                task.status,
+                crate::infra::logging::TaskStatus::Failed
+                    | crate::infra::logging::TaskStatus::Skipped
+                    | crate::infra::logging::TaskStatus::Blocked
+                    | crate::infra::logging::TaskStatus::Interrupted
+            );
         let visible = block.status.is_some()
             || (task.status == crate::infra::logging::TaskStatus::Ok && block.expanded);
         if visible {
             self.begin_task_block(block.expanded);
         }
         if let Some(row) = &block.status {
-            self.console.task_result(row);
+            if quiet_stderr_row {
+                self.console.task_result_stderr(row);
+            } else {
+                self.console.task_result(row);
+            }
         }
         for detail in block.details {
             self.console.detail(

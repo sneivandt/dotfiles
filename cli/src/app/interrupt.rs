@@ -35,9 +35,9 @@ static HANDLER_STATE: std::sync::OnceLock<Arc<Escalation>> = std::sync::OnceLock
 
 /// Reported once, when cancellation is first requested.
 const CANCEL_MESSAGE: &str =
-    "interrupt received - finishing in-flight operations (press Ctrl-C again to force quit)";
+    "interrupt received \u{00b7} finishing in-flight operations (press Ctrl-C again to force quit)";
 /// Reported when the user confirms, or when nothing can be asked.
-const FORCE_QUIT_MESSAGE: &str = "force quit - in-flight operations abandoned";
+const FORCE_QUIT_MESSAGE: &str = "force quit \u{00b7} in-flight operations abandoned";
 /// Reported when the user declines the force quit.
 const DECLINED_MESSAGE: &str = "still finishing in-flight operations";
 /// The confirmation question, written without a trailing newline.

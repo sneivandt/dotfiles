@@ -56,6 +56,7 @@ fn plain_opts() -> RowOpts {
         symbols: true,
         columns: None,
         verbose: false,
+        quiet: false,
     }
 }
 

@@ -14,7 +14,7 @@ use crate::domains::repository::update::RepositoryUpdateSignal;
 use crate::domains::system::{system_files::ConfigureSystemFiles, systemd_units::ConfigureSystemd};
 use crate::engine::graph::ResolvedTaskGraph;
 use crate::engine::{Task, TaskId, TaskVisibility};
-use crate::infra::logging::{StyleChoice, TextStyle, stdout_style};
+use crate::infra::logging::{ColorMode, StyleChoice, TextStyle, stdout_style_for};
 use crate::infra::platform::Platform;
 
 #[derive(Debug, Default, PartialEq, Eq, Serialize)]
@@ -60,14 +60,14 @@ impl TaskListing {
 ///
 /// Returns an error if configuration cannot be loaded, task metadata
 /// conflicts, or output cannot be written.
-pub(crate) fn run(opts: &ListOpts) -> Result<()> {
+pub(crate) fn run(opts: &ListOpts, color: ColorMode) -> Result<()> {
     let env = crate::infra::env::system();
     let platform = Platform::detect();
     let config = load_discovery_config(&opts.repository, env.as_ref(), platform)?;
     let overlay = config.overlay.clone();
     let store = ConfigStore::from_config(config);
     let stdout = std::io::stdout();
-    let style = stdout_style();
+    let style = stdout_style_for(color);
     if let Some(command) = opts.graph {
         if opts.with_deps && !matches!(command, TaskGraphCommand::Update) {
             bail!("--with-deps is only available for update graphs");

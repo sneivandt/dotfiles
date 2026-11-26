@@ -3,7 +3,9 @@
 //! These methods coordinate the in-progress status line as parallel tasks start
 //! and complete, ensuring active-task updates never overlap other console output.
 
-use super::Logger;
+use std::time::Instant;
+
+use super::{ActiveTask, Logger};
 
 impl Logger {
     /// Record that a parallel task has started.
@@ -21,7 +23,10 @@ impl Logger {
         show_progress: bool,
     ) {
         let _guard = self.lock_flush();
-        self.lock_active_tasks().push(name.to_string());
+        self.lock_active_tasks().push(ActiveTask {
+            name: name.to_string(),
+            started: Instant::now(),
+        });
         self.redraw_active_status_locked(show_progress);
     }
 
@@ -56,7 +61,7 @@ impl Logger {
     pub(in crate::infra::logging) fn remove_active_task_locked(&self, name: &str) {
         let mut active = self.lock_active_tasks();
         // Dynamic task instances can share a display name.
-        if let Some(index) = active.iter().position(|active_name| active_name == name) {
+        if let Some(index) = active.iter().position(|task| task.name == name) {
             active.remove(index);
         }
     }
@@ -206,7 +211,12 @@ mod tests {
                 let (log, _tmp, _guard) = isolated_logger();
                 let assert_active = |expected: &[&str]| {
                     let visible = interactive && !expected.is_empty();
-                    assert_eq!(&*log.lock_active_tasks(), expected, "{names:?}");
+                    let active_names: Vec<String> = log
+                        .lock_active_tasks()
+                        .iter()
+                        .map(|task| task.name.clone())
+                        .collect();
+                    assert_eq!(active_names, expected, "{names:?}");
                     assert_eq!(
                         log.status_row_visible(),
                         visible,

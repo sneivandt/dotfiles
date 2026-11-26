@@ -103,6 +103,27 @@ fn verbose_task_line_reports_elapsed_time() {
 }
 
 #[test]
+fn non_verbose_task_line_reports_elapsed_time_only_for_slow_tasks() {
+    let mut fast = task_entry("Home symlinks", TaskStatus::Changed, None);
+    fast.duration = Some(Duration::from_millis(1999));
+    assert_eq!(format_task_line(&fast, plain_opts()), "✓ Home symlinks");
+
+    let mut slow = task_entry("System packages", TaskStatus::Changed, None);
+    slow.duration = Some(Duration::from_secs(2));
+    assert_eq!(
+        format_task_line(&slow, plain_opts()),
+        "✓ System packages \u{b7} 2.0s"
+    );
+
+    let mut not_applicable = task_entry("Windows registry", TaskStatus::NotApplicable, None);
+    not_applicable.duration = Some(Duration::from_secs(5));
+    assert_eq!(
+        format_task_line(&not_applicable, plain_opts()),
+        "⁃ Windows registry"
+    );
+}
+
+#[test]
 fn task_block_drops_the_recorded_summary_not_summary_shaped_text() {
     let task = task_entry(
         "symlinks",
@@ -308,6 +329,7 @@ fn task_row_golden_matrix() {
                                     symbols,
                                     columns: None,
                                     verbose,
+                                    quiet: false,
                                     style: StyleChoice::auto(ansi, false),
                                     diagnostic_style: StyleChoice::auto(ansi, false),
                                 }

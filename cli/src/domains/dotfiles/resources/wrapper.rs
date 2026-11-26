@@ -36,6 +36,8 @@ impl WrapperType {
 pub(crate) struct WrapperResource {
     /// Where the wrapper script will be installed.
     target: PathBuf,
+    /// Home directory used to abbreviate user-facing target paths.
+    display_home: PathBuf,
     /// Expected file content.
     content: String,
 }
@@ -93,7 +95,11 @@ impl WrapperResource {
             }
         };
 
-        Self { target, content }
+        Self {
+            target,
+            display_home: home.to_path_buf(),
+            content,
+        }
     }
 
     fn target_metadata(&self) -> Result<Option<std::fs::Metadata>> {
@@ -342,7 +348,10 @@ fn cmd_set_value_escape(value: &str) -> String {
 
 impl Resource for WrapperResource {
     fn description(&self) -> String {
-        format!("wrapper \u{2192} {}", self.target.display())
+        format!(
+            "wrapper \u{2192} {}",
+            crate::infra::logging::abbreviate_home(&self.target, &self.display_home)
+        )
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {

@@ -70,6 +70,8 @@ enum PathStrategy {
 pub(crate) struct PathEntryResource {
     /// The directory that should be on `PATH`.
     dir: PathBuf,
+    /// Home directory used to abbreviate user-facing target paths.
+    display_home: PathBuf,
     /// How to persist the `PATH` change.
     strategy: PathStrategy,
 }
@@ -100,7 +102,11 @@ impl PathEntryResource {
             }
         };
 
-        Self { dir, strategy }
+        Self {
+            dir,
+            display_home: home.to_path_buf(),
+            strategy,
+        }
     }
 
     #[expect(
@@ -140,7 +146,10 @@ impl PathEntryResource {
 
 impl Resource for PathEntryResource {
     fn description(&self) -> String {
-        format!("PATH \u{2192} {}", self.dir.display())
+        format!(
+            "PATH \u{2192} {}",
+            crate::infra::logging::abbreviate_home(&self.dir, &self.display_home)
+        )
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {

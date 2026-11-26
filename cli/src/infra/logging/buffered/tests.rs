@@ -344,7 +344,7 @@ fn buffered_flush_and_complete_with_remaining_task() {
     buf.flush_and_complete("task-a", "task-a");
     let active = log.active_tasks.lock().unwrap();
     assert!(
-        active.contains(&"task-b".to_string()),
+        active.iter().any(|task| task.name == "task-b"),
         "task-b should still be in active tasks"
     );
 }

@@ -46,7 +46,7 @@ static DEGRADATION_WARNING_EMITTED: AtomicBool = AtomicBool::new(false);
 )]
 pub(super) fn warn_degraded(reason: &str) {
     if !DEGRADATION_WARNING_EMITTED.swap(true, Ordering::Relaxed) {
-        eprintln!("warning: persistent run logging is unavailable: {reason}");
+        eprintln!("warn  persistent run logging is unavailable: {reason}");
     }
 }
 

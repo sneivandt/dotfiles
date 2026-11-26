@@ -73,11 +73,11 @@ def compute_next_cron(expression, now_local):
     month_days = parse_cron_field(month_day_text, 1, 31)
     months = parse_cron_field(
         month_text, 1, 12,
-        names=dict(zip("JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split(), range(1, 13))),
+        names=dict(zip("JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split(), range(1, 13), strict=True)),
     )
     week_days = parse_cron_field(
         week_day_text, 0, 7,
-        names=dict(zip("SUN MON TUE WED THU FRI SAT".split(), range(7))),
+        names=dict(zip("SUN MON TUE WED THU FRI SAT".split(), range(7), strict=True)),
         sunday_alias=True,
     )
     # Cron uses OR only when both day fields start with an explicit range/value.

@@ -52,7 +52,7 @@ class GitRangeTests(unittest.TestCase):
         self.git("init", "-q", "--template=", "--initial-branch=fixture")
         self.git("config", "core.hooksPath", os.devnull)
         self.git("config", "core.autocrlf", "false")
-        for name in ("classify-release.sh", "classify-ci-changes.sh", "classify-ci-changes.py"):
+        for name in ("ci_metadata.py", "classify-release.sh", "classify-ci-changes.sh", "classify-ci-changes.py"):
             target = self.repo / LINUX / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(SCRIPTS / name, target)
@@ -72,7 +72,7 @@ class GitRangeTests(unittest.TestCase):
         }
         result = subprocess.run(
             ["git", *args], cwd=self.repo, env=env,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            capture_output=True, text=True,
         )
         self.assertEqual(result.returncode, 0, f"git {args!r}: {result.stderr}")
         return result.stdout.strip()
@@ -106,7 +106,7 @@ class GitRangeTests(unittest.TestCase):
         output.write_text("", encoding="utf-8")
         result = subprocess.run(
             ["sh", str(SCRIPTS / name)], env=self.env, cwd=self.repo,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            capture_output=True, text=True,
         )
         if not success:
             self.assertNotEqual(result.returncode, 0, result.stdout)
@@ -305,21 +305,24 @@ class GitRangeTests(unittest.TestCase):
         base = self.commit()
         self.write("cli/src/main.rs", "invalid rust\n")
         head = self.commit()
-        policy = self.repo / LINUX / "classify-ci-changes.py"
-        for content in ("raise RuntimeError('dirty policy executed')\n", None):
-            with self.subTest(content=content):
-                if content is None:
-                    policy.unlink()
-                else:
-                    policy.write_text(content, encoding="utf-8")
-                result = subprocess.run(
-                    ["python3", "-B", str(self.repo / LINUX / "pre-push.py"),
-                     "--plan", "--base", base, "--head", head],
-                    env=self.env, capture_output=True, text=True,
-                )
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertIn("clippy", result.stdout)
-                self.assertIn("x86_64-pc-windows-gnu", result.stdout)
+        for target_name in ("classify-ci-changes.py", "ci_metadata.py"):
+            target = self.repo / LINUX / target_name
+            original = target.read_text(encoding="utf-8")
+            for content in ("raise RuntimeError('dirty policy executed')\n", None):
+                with self.subTest(target=target_name, content=content):
+                    if content is None:
+                        target.unlink()
+                    else:
+                        target.write_text(content, encoding="utf-8")
+                    result = subprocess.run(
+                        ["python3", "-B", str(self.repo / LINUX / "pre-push.py"),
+                         "--plan", "--base", base, "--head", head],
+                        env=self.env, capture_output=True, text=True,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("clippy", result.stdout)
+                    self.assertIn("x86_64-pc-windows-gnu", result.stdout)
+            target.write_text(original, encoding="utf-8")
 
     def test_doc_links_preserve_paths_and_validate_angle_destinations(self):
         helper = runpy.run_path(str(SCRIPTS / "check-doc-links.py"))

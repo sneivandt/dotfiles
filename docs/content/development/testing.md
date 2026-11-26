@@ -312,14 +312,16 @@ and both sides of renames):
 | `conf/*.toml`, `symlinks/`, `system/`, or `packages/` | Fast typed configuration validation | `config_drift` integration test |
 | Cargo inputs or deny policy | Wildcard dependency guard | Available `cargo-deny` checks |
 | Shell, hook, or package recipe paths (`packages/*/PKGBUILD`, `packages/*/*.install`) | Available ShellCheck on affected inputs | — |
-| Python (`*.py`) or Lua (`*.lua`) paths | Available Ruff and Luacheck on affected inputs | — |
-| POSIX wrapper or its tests | — | Linux wrapper tests |
-| Release workflow | Staged publishing invariants, including provenance and permissions | — |
+| PowerShell (`*.ps1`, `*.psm1`, `*.psd1`) paths | Available PSScriptAnalyzer on affected inputs | — |
+| Python (`*.py`, `symlinks/local/bin/code-insiders`) or Lua (`*.lua`) paths | Available Ruff and Luacheck on affected inputs | — |
+| Wrappers or their tests | Wrapper parity contract (`tests/wrapper/test-parity.py`) | Linux wrapper tests |
+| GitHub Actions workflows or CI policy scripts | Available `actionlint`, CI workflow contract checks, and release publishing invariants | — |
+| Markdown (`*.md`) or skill (`.agents/skills/`, `AGENTS.md`) paths | Staged doc link checks and skill metadata validation | — |
 
-Rust and CI guards inspect an isolated index snapshot (ignoring unstaged edits
-and untracked files), release guards read the staged workflow directly, and
-builds reuse the Cargo cache. The verifier and pattern files themselves load
-from the working tree, so review edits to them separately.
+Rust and CI guards share a single lazily exported index snapshot per commit
+(ignoring unstaged edits and untracked files), release guards read the staged
+workflow directly, and builds reuse the Cargo cache. The verifier and pattern
+files themselves load from the working tree, so review edits to them separately.
 
 Running `sh hooks/check-ci-guards.sh` runs the fast targeted guards directly
 (omitting `config_drift`, `cargo-deny`, and wrapper tests without full mode).

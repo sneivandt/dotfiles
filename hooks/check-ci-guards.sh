@@ -26,18 +26,30 @@ fi
 REPO_ROOT=$(git rev-parse --show-toplevel)
 WORKTREE_ROOT="$REPO_ROOT"
 MANIFEST="$REPO_ROOT/cli/Cargo.toml"
+OWN_CHECK_STAGE_DIR=""
+CHECK_STAGE_DIR=""
 CHECK_ROOT=""
-trap '[ -z "$CHECK_ROOT" ] || rm -rf "$CHECK_ROOT"' EXIT
+trap '[ -z "$OWN_CHECK_STAGE_DIR" ] || rm -rf "$OWN_CHECK_STAGE_DIR"' EXIT
 trap 'exit 1' HUP INT TERM
 
 prepare_staged_tree() {
   [ -z "$CHECK_ROOT" ] || return 0
-  CHECK_ROOT=$(mktemp -d)
-  git -C "$REPO_ROOT" checkout-index --all --prefix="$CHECK_ROOT/"
-  HOOK_CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-"$REPO_ROOT/cli/target/hooks"}
+  if [ -n "${DOTFILES_HOOK_CHECK_ROOT:-}" ]; then
+    CHECK_STAGE_DIR="$DOTFILES_HOOK_CHECK_ROOT"
+  else
+    OWN_CHECK_STAGE_DIR=$(mktemp -d)
+    CHECK_STAGE_DIR="$OWN_CHECK_STAGE_DIR"
+  fi
+  CHECK_ROOT="$CHECK_STAGE_DIR/tree"
+  if [ ! -f "$CHECK_STAGE_DIR/.exported" ]; then
+    mkdir -p "$CHECK_ROOT"
+    git -C "$WORKTREE_ROOT" checkout-index --all --prefix="$CHECK_ROOT/"
+    : > "$CHECK_STAGE_DIR/.exported"
+  fi
+  HOOK_CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-"$WORKTREE_ROOT/cli/target/hooks"}
   case "$HOOK_CARGO_TARGET_DIR" in
     /*|?:/*|?:\\*) ;;
-    *) HOOK_CARGO_TARGET_DIR="$REPO_ROOT/cli/$HOOK_CARGO_TARGET_DIR" ;;
+    *) HOOK_CARGO_TARGET_DIR="$WORKTREE_ROOT/cli/$HOOK_CARGO_TARGET_DIR" ;;
   esac
   REPO_ROOT="$CHECK_ROOT"
   MANIFEST="$REPO_ROOT/cli/Cargo.toml"
@@ -139,8 +151,8 @@ run_shell_guards() {
     git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- \
       '*.sh' '*.bash' hooks/pre-commit symlinks/bashrc symlinks/bash_profile \
       'symlinks/config/git/templates/hooks/*' 'symlinks/config/git/templates/hooks.local/*' \
-      'packages/*/PKGBUILD' 'packages/*/*.install' > "$CHECK_ROOT/.shell-inputs"
-    if [ ! -s "$CHECK_ROOT/.shell-inputs" ]; then
+      'packages/*/PKGBUILD' 'packages/*/*.install' > "$CHECK_STAGE_DIR/.shell-inputs"
+    if [ ! -s "$CHECK_STAGE_DIR/.shell-inputs" ]; then
       return 0
     fi
     analyzer="$(CDPATH='' cd -- "$(dirname -- "$0")/../cli/src/app/validation/scripts" && pwd)/shellcheck.sh"
@@ -152,7 +164,7 @@ run_shell_guards() {
         shift
       done
       exec sh "$analyzer" "$@"
-    ' sh "$analyzer" < .shell-inputs); then
+    ' sh "$analyzer" < "$CHECK_STAGE_DIR/.shell-inputs"); then
       abort_with_hint \
         "ShellCheck reported issues." \
         "sh cli/src/app/validation/scripts/shellcheck.sh <staged shell files>"
@@ -162,13 +174,43 @@ run_shell_guards() {
   fi
 }
 
+run_powershell_guards() {
+  if command -v pwsh >/dev/null 2>&1; then
+    prepare_staged_tree
+    printf "Running PSScriptAnalyzer...\n"
+    # Keep NUL delimiters through argv construction, including tabs/newlines.
+    # Prefix with ./ so a tracked filename cannot become an analyzer option.
+    git diff --cached --name-only --diff-filter=d -z "$against" -- \
+      '*.ps1' '*.psm1' '*.psd1' > "$CHECK_STAGE_DIR/.powershell-inputs"
+    if [ ! -s "$CHECK_STAGE_DIR/.powershell-inputs" ]; then
+      return 0
+    fi
+    analyzer="$(CDPATH='' cd -- "$(dirname -- "$0")/../cli/src/app/validation/scripts" && pwd)/psscriptanalyzer.ps1"
+    if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
+      analyzer=$1
+      shift
+      for file do
+        set -- "$@" "./$file"
+        shift
+      done
+      exec pwsh -NoProfile -File "$analyzer" "$@"
+    ' sh "$analyzer" < "$CHECK_STAGE_DIR/.powershell-inputs") 2>&1; then
+      abort_with_hint \
+        "PSScriptAnalyzer reported issues." \
+        "pwsh -NoProfile -File cli/src/app/validation/scripts/psscriptanalyzer.ps1 <staged PowerShell files>"
+    fi
+  else
+    printf '%sSkipping PSScriptAnalyzer: pwsh not installed.%s\n' "$DIM" "$NC"
+  fi
+}
+
 run_python_guards() {
   if command -v ruff >/dev/null 2>&1; then
     prepare_staged_tree
     printf "Running Ruff...\n"
     git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- \
-      '*.py' > "$CHECK_ROOT/.python-inputs"
-    if [ ! -s "$CHECK_ROOT/.python-inputs" ]; then
+      '*.py' symlinks/local/bin/code-insiders > "$CHECK_STAGE_DIR/.python-inputs"
+    if [ ! -s "$CHECK_STAGE_DIR/.python-inputs" ]; then
       return 0
     fi
     ruff_config=""
@@ -191,7 +233,7 @@ run_python_guards() {
         exec ruff check --config "$config" -- "$@"
       fi
       exec ruff check -- "$@"
-    ' sh "$ruff_config" < .python-inputs); then
+    ' sh "$ruff_config" < "$CHECK_STAGE_DIR/.python-inputs"); then
       abort_with_hint \
         "Ruff reported Python lint issues." \
         "ruff check --config .github/linters/ruff.toml <staged python files>"
@@ -206,8 +248,8 @@ run_lua_guards() {
     prepare_staged_tree
     printf "Running Luacheck...\n"
     git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- \
-      '*.lua' > "$CHECK_ROOT/.lua-inputs"
-    if [ ! -s "$CHECK_ROOT/.lua-inputs" ]; then
+      '*.lua' > "$CHECK_STAGE_DIR/.lua-inputs"
+    if [ ! -s "$CHECK_STAGE_DIR/.lua-inputs" ]; then
       return 0
     fi
     luacheck_config=""
@@ -230,13 +272,117 @@ run_lua_guards() {
         exec luacheck --config "$config" -- "$@"
       fi
       exec luacheck -- "$@"
-    ' sh "$luacheck_config" < .lua-inputs); then
+    ' sh "$luacheck_config" < "$CHECK_STAGE_DIR/.lua-inputs"); then
       abort_with_hint \
         "Luacheck reported Lua lint issues." \
         "luacheck --config .github/linters/luacheckrc <staged lua files>"
     fi
   else
     printf '%sSkipping Luacheck: luacheck not installed.%s\n' "$DIM" "$NC"
+  fi
+}
+
+run_workflow_lint_guards() {
+  if command -v actionlint >/dev/null 2>&1; then
+    prepare_staged_tree
+    git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- \
+      '.github/workflows/*.yml' '.github/workflows/*.yaml' > "$CHECK_STAGE_DIR/.workflow-inputs"
+    if [ ! -s "$CHECK_STAGE_DIR/.workflow-inputs" ]; then
+      return 0
+    fi
+    printf "Running actionlint...\n"
+    if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
+      for file do
+        case "$file" in
+          -*) file="./$file" ;;
+        esac
+        set -- "$@" "$file"
+        shift
+      done
+      exec actionlint "$@"
+    ' sh < "$CHECK_STAGE_DIR/.workflow-inputs"); then
+      abort_with_hint \
+        "actionlint reported GitHub Actions workflow issues." \
+        "actionlint .github/workflows/*.yml"
+    fi
+  else
+    printf '%sSkipping actionlint: actionlint not installed.%s\n' "$DIM" "$NC"
+  fi
+}
+
+run_ci_contract_guards() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '%sSkipping CI contract guards: python3 not installed.%s\n' "$DIM" "$NC"
+    return
+  fi
+
+  prepare_staged_tree
+  contract="$REPO_ROOT/.github/workflows/scripts/linux/check-ci-contract.py"
+  if [ ! -f "$REPO_ROOT/.github/workflows/ci.yml" ] || [ ! -f "$contract" ]; then
+    return 0
+  fi
+  printf "Running CI contract guards...\n"
+  if ! python3 -B "$contract" 2>&1; then
+    abort_with_hint \
+      "CI workflow contract check failed." \
+      "python3 -B .github/workflows/scripts/linux/check-ci-contract.py"
+  fi
+}
+
+run_doc_links_guards() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '%sSkipping doc link guards: python3 not installed.%s\n' "$DIM" "$NC"
+    return
+  fi
+
+  prepare_staged_tree
+  checker="$REPO_ROOT/.github/workflows/scripts/linux/check-doc-links.py"
+  if [ ! -f "$checker" ]; then
+    return 0
+  fi
+  printf "Running documentation link checks...\n"
+  if ! python3 -B "$checker" "$REPO_ROOT" 2>&1; then
+    abort_with_hint \
+      "documentation link check failed." \
+      "python3 -B .github/workflows/scripts/linux/check-doc-links.py ."
+  fi
+}
+
+run_skills_guards() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '%sSkipping skill metadata guards: python3 not installed.%s\n' "$DIM" "$NC"
+    return
+  fi
+
+  prepare_staged_tree
+  checker="$REPO_ROOT/.agents/skills/skill-maintenance/scripts/check-skills.py"
+  if [ ! -f "$checker" ]; then
+    return 0
+  fi
+  printf "Running agent skill metadata checks...\n"
+  if ! python3 -B "$checker" "$REPO_ROOT" 2>&1; then
+    abort_with_hint \
+      "agent skill metadata check failed." \
+      "python3 -B .agents/skills/skill-maintenance/scripts/check-skills.py ."
+  fi
+}
+
+run_wrapper_parity_guards() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '%sSkipping wrapper parity guards: python3 not installed.%s\n' "$DIM" "$NC"
+    return
+  fi
+
+  prepare_staged_tree
+  checker="$REPO_ROOT/tests/wrapper/test-parity.py"
+  if [ ! -f "$checker" ]; then
+    return 0
+  fi
+  printf "Running wrapper parity checks...\n"
+  if ! python3 -B "$checker" 2>&1; then
+    abort_with_hint \
+      "wrapper parity check failed." \
+      "python3 -B tests/wrapper/test-parity.py"
   fi
 }
 
@@ -297,7 +443,11 @@ if has_staged_match '*.sh' '*.bash' hooks/pre-commit symlinks/bashrc symlinks/ba
   run_shell_guards
 fi
 
-if has_staged_match '*.py'; then
+if has_staged_match '*.ps1' '*.psm1' '*.psd1'; then
+  run_powershell_guards
+fi
+
+if has_staged_match '*.py' symlinks/local/bin/code-insiders; then
   run_python_guards
 fi
 
@@ -305,14 +455,42 @@ if has_staged_match '*.lua'; then
   run_lua_guards
 fi
 
-if full_checks_enabled && has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh 'tests/wrapper/linux/*'; then
+if has_staged_match dotfiles.sh dotfiles.ps1 'tests/wrapper/*'; then
+  run_wrapper_parity_guards
+fi
+
+if full_checks_enabled && has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh 'tests/wrapper/linux/*' tests/wrapper/parity-contract.json tests/wrapper/test-parity.py; then
   run_wrapper_guards
-elif has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh 'tests/wrapper/linux/*'; then
+elif has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh 'tests/wrapper/linux/*' tests/wrapper/parity-contract.json tests/wrapper/test-parity.py; then
   printf '%sSkipping Linux shell wrapper tests: set DOTFILES_HOOKS_FULL=1 to run them.%s\n' "$DIM" "$NC"
+fi
+
+if has_staged_match '.github/workflows/*.yml' '.github/workflows/*.yaml'; then
+  run_workflow_lint_guards
 fi
 
 if has_staged_match .github/workflows/release.yml; then
   run_release_workflow_guards
+fi
+
+if has_staged_match \
+  .github/workflows/ci.yml \
+  .github/workflows/pages.yml \
+  .github/workflows/mutation.yml \
+  .github/workflows/dependency-security.yml \
+  .github/workflows/scripts/linux/ci_metadata.py \
+  .github/workflows/scripts/linux/workflow_yaml.py \
+  .github/workflows/scripts/linux/classify-ci-changes.py \
+  .github/workflows/scripts/linux/check-ci-contract.py; then
+  run_ci_contract_guards
+fi
+
+if has_staged_match '*.md' .github/workflows/scripts/linux/check-doc-links.py; then
+  run_doc_links_guards
+fi
+
+if has_staged_match '.agents/skills/*' AGENTS.md; then
+  run_skills_guards
 fi
 
 exit 0

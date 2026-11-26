@@ -235,6 +235,40 @@ class GateTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         CONTRACT["check_checkout_steps"](make_workflow(uses, with_block), "fixture.yml")
 
+    def test_workflow_yaml_handles_varied_indentation_and_rejects_duplicates(self):
+        sha = "de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+        four_space = (
+            "name: FourSpace\n"
+            "jobs:\n"
+            "    first:\n"
+            "        runs-on: ubuntu-latest\n"
+            "        needs:\n"
+            "            - dep-a\n"
+            "            - dep-b\n"
+            "        steps:\n"
+            f"            - uses: actions/checkout@{sha}\n"
+            "              with:\n"
+            "                  persist-credentials: false\n"
+            "    second:\n"
+            "        runs-on: ubuntu-latest\n"
+            "        needs: [first]\n"
+            "        steps:\n"
+            "            - run: echo ok\n"
+        )
+        parsed = CONTRACT["parse_workflow"](four_space, "four-space.yml")
+        self.assertEqual(CONTRACT["normalize_needs"](parsed["jobs"]["first"].get("needs")), {"dep-a", "dep-b"})
+        self.assertEqual(CONTRACT["normalize_needs"](parsed["jobs"]["second"].get("needs")), {"first"})
+        CONTRACT["check_checkout_steps"](four_space, "four-space.yml")
+        duplicate_key = (
+            "name: Duplicate\n"
+            "jobs:\n"
+            "  sample:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    runs-on: windows-latest\n"
+        )
+        with self.assertRaises(ValueError):
+            CONTRACT["parse_workflow"](duplicate_key, "duplicate.yml")
+
     def test_linux_mutation_excludes_only_native_backends_and_equivalent_guard(self):
         workflow = CONTRACT["WORKFLOW"].with_name("mutation.yml").read_text(encoding="utf-8")
         mutation = CONTRACT["job_blocks"](workflow)["mutation"]
@@ -323,7 +357,7 @@ class GateTests(unittest.TestCase):
             ("src/domains/system/config/registry.rs", "uppercase_native_registry_name"),
             ("src/infra/exec/process.rs", "take_stdout_windows"),
         ):
-            self.assertIn(("--file", path), tuple(zip(options, options[1:])))
+            self.assertIn(("--file", path), tuple(zip(options, options[1:], strict=False)))
             self.assertRegex(f"{path}:306:5: replace {function}", options[options.index("--re") + 1])
         self.assertEqual(target, ["--cargo-arg=--lib"])
 
@@ -338,8 +372,8 @@ class GateTests(unittest.TestCase):
             ("src/infra/run_lock/coordination/windows.rs", "acquire"),
             ("src/infra/run_lock/windows.rs", "legacy_owner"),
         ):
-            self.assertIn(("--exclude", file), list(zip(linux, linux[1:])))
-            self.assertIn(("--file", file), list(zip(windows, windows[1:])))
+            self.assertIn(("--exclude", file), list(zip(linux, linux[1:], strict=False)))
+            self.assertIn(("--file", file), list(zip(windows, windows[1:], strict=False)))
             self.assertRegex(f"{file}:43:5: replace {function} with ()", native_pattern)
         self.assertNotRegex("src/infra/fs/place.rs:65:5: replace wide_path with ()", native_pattern)
 
@@ -567,7 +601,7 @@ class GateTests(unittest.TestCase):
         ):
             focused, target = MUTATION_RUN["suite_options"](suite)
             pattern = focused[focused.index("--re") + 1]
-            self.assertIn(("--exclude-re", pattern), tuple(zip(options, options[1:])))
+            self.assertIn(("--exclude-re", pattern), tuple(zip(options, options[1:], strict=False)))
             self.assertRegex(example, pattern)
             self.assertEqual(target, ["--cargo-arg=--lib", "--", expected_target])
             _, nextest_target = MUTATION_RUN["suite_options"](suite, test_tool="nextest")

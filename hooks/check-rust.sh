@@ -1,16 +1,14 @@
 #!/bin/sh
 #
-# Runs code quality checks on staged files:
+# Runs Rust code quality checks on staged files:
 #   1. cargo fmt --check                       (formatting, on .rs changes)
 #   2. cargo clippy (host target)              (linting, on .rs changes)
 #   3. cargo clippy --target x86_64-pc-windows-gnu
 #                                              (cross-platform linting, full mode)
 #   4. cargo test                              (unit/integration tests, full mode)
-#   5. PSScriptAnalyzer                        (PowerShell linting, on .ps1/.psm1/.psd1)
 #
 # Full-mode checks run only when DOTFILES_HOOKS_FULL=1 so ordinary commits stay
-# fast. PSScriptAnalyzer is skipped when pwsh is unavailable, but a missing or
-# broken analyzer module fails rather than reporting a clean check.
+# fast. Non-Rust linters (including PSScriptAnalyzer) live in check-ci-guards.sh.
 #
 # Can be run standalone or called from the pre-commit hook.
 # Usage: sh check-rust.sh
@@ -47,8 +45,6 @@ else
 fi
 
 # Filter in Git so quoted display filenames never affect extension detection.
-POWERSHELL_CHANGED=$(git diff --cached --name-only --diff-filter=d "$against" -- \
-  '*.ps1' '*.psm1' '*.psd1')
 # Deletions and renames away from .rs can also break the crate.
 RUST_CHANGED=$(git diff --cached --name-only --no-renames "$against" -- \
   '*.rs' cli/Cargo.toml cli/Cargo.lock \
@@ -56,14 +52,25 @@ RUST_CHANGED=$(git diff --cached --name-only --no-renames "$against" -- \
   cli/.cargo/config.toml cli/.cargo/config .cargo/config.toml .cargo/config)
 
 # Check an exported index rather than temporarily replacing the working tree.
-if [ -z "$RUST_CHANGED" ] && [ -z "$POWERSHELL_CHANGED" ]; then
+if [ -z "$RUST_CHANGED" ]; then
   exit 0
 fi
 REPO_ROOT=$(git rev-parse --show-toplevel)
-CHECK_ROOT=$(mktemp -d)
-trap 'rm -rf "$CHECK_ROOT"' EXIT
+OWN_CHECK_STAGE_DIR=""
+trap '[ -z "$OWN_CHECK_STAGE_DIR" ] || rm -rf "$OWN_CHECK_STAGE_DIR"' EXIT
 trap 'exit 1' HUP INT TERM
-git -C "$REPO_ROOT" checkout-index --all --prefix="$CHECK_ROOT/"
+if [ -n "${DOTFILES_HOOK_CHECK_ROOT:-}" ]; then
+  CHECK_STAGE_DIR="$DOTFILES_HOOK_CHECK_ROOT"
+else
+  OWN_CHECK_STAGE_DIR=$(mktemp -d)
+  CHECK_STAGE_DIR="$OWN_CHECK_STAGE_DIR"
+fi
+CHECK_ROOT="$CHECK_STAGE_DIR/tree"
+if [ ! -f "$CHECK_STAGE_DIR/.exported" ]; then
+  mkdir -p "$CHECK_ROOT"
+  git -C "$REPO_ROOT" checkout-index --all --prefix="$CHECK_ROOT/"
+  : > "$CHECK_STAGE_DIR/.exported"
+fi
 case "${CARGO_TARGET_DIR:-}" in
   '') CARGO_TARGET_DIR="$REPO_ROOT/cli/target/hooks" ;;
   /*|?:/*|?:\\*) ;;
@@ -73,89 +80,58 @@ DOTFILES_VERSION="${DOTFILES_VERSION:-dev-hook}"
 export CARGO_TARGET_DIR DOTFILES_VERSION
 
 # ── Rust checks ────────────────────────────────────────
-if [ -n "$RUST_CHANGED" ]; then
-  CLI_ROOT="$CHECK_ROOT/cli"
-  MANIFEST="$CLI_ROOT/Cargo.toml"
-  sh "$(dirname -- "$0")/check-toolchain.sh" "$CLI_ROOT"
+CLI_ROOT="$CHECK_ROOT/cli"
+MANIFEST="$CLI_ROOT/Cargo.toml"
+sh "$(dirname -- "$0")/check-toolchain.sh" "$CLI_ROOT"
 
-  printf "Running cargo fmt --check...\n"
-  if ! run_cargo fmt --manifest-path "$MANIFEST" --check 2>&1; then
-    printf '\n%s======================================================%s\n' "$RED" "$NC"
-    printf '%sCommit aborted: Rust files are not formatted.%s\n' "$RED" "$NC"
-    printf '%sRun the following to fix:%s\n' "$YELLOW" "$NC"
-    printf "  cd cli && cargo fmt\n"
-    printf '%sor bypass with:%s\n' "$YELLOW" "$NC"
-    printf "  git commit --no-verify\n\n"
-    exit 1
+printf "Running cargo fmt --check...\n"
+if ! run_cargo fmt --manifest-path "$MANIFEST" --check 2>&1; then
+  printf '\n%s======================================================%s\n' "$RED" "$NC"
+  printf '%sCommit aborted: Rust files are not formatted.%s\n' "$RED" "$NC"
+  printf '%sRun the following to fix:%s\n' "$YELLOW" "$NC"
+  printf "  cd cli && cargo fmt\n"
+  printf '%sor bypass with:%s\n' "$YELLOW" "$NC"
+  printf "  git commit --no-verify\n\n"
+  exit 1
+fi
+
+printf "Running cargo clippy (host)...\n"
+if ! run_cargo clippy --locked --profile ci --manifest-path "$MANIFEST" --all-targets -- -D warnings 2>&1; then
+  printf '\n%s======================================================%s\n' "$RED" "$NC"
+  printf '%sCommit aborted: cargo clippy reported warnings.%s\n' "$RED" "$NC"
+  printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"
+  printf "  git commit --no-verify\n\n"
+  exit 1
+fi
+
+if full_checks_enabled; then
+  # Cross-target clippy: catches Windows-only cfg arms, missing imports under
+  # #[cfg(windows)], winreg type errors, etc. Skipped when toolchain absent.
+  if run_rustc --print target-list 2>/dev/null | grep -qx "$WIN_TARGET" \
+     && run_rustc --print sysroot 2>/dev/null | xargs -I{} test -d "{}/lib/rustlib/$WIN_TARGET"; then
+    printf "Running cargo clippy (%s)...\n" "$WIN_TARGET"
+    if ! run_cargo clippy --locked --profile ci --manifest-path "$MANIFEST" --target "$WIN_TARGET" --all-targets -- -D warnings 2>&1; then
+      printf '\n%s======================================================%s\n' "$RED" "$NC"
+      printf '%sCommit aborted: cargo clippy reported warnings on %s.%s\n' "$RED" "$WIN_TARGET" "$NC"
+      printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"
+      printf "  git commit --no-verify\n\n"
+      exit 1
+    fi
+  else
+    printf '%sSkipping cross-target clippy (%s): toolchain not installed.%s\n' "$DIM" "$WIN_TARGET" "$NC"
+    printf '%s  Install: cd cli && rustup target add %s && pacman -S mingw-w64-gcc%s\n' "$DIM" "$WIN_TARGET" "$NC"
   fi
 
-  printf "Running cargo clippy (host)...\n"
-  if ! run_cargo clippy --locked --profile ci --manifest-path "$MANIFEST" --all-targets -- -D warnings 2>&1; then
+  printf "Running cargo test...\n"
+  if ! run_cargo test --locked --profile ci --manifest-path "$MANIFEST" 2>&1; then
     printf '\n%s======================================================%s\n' "$RED" "$NC"
-    printf '%sCommit aborted: cargo clippy reported warnings.%s\n' "$RED" "$NC"
+    printf '%sCommit aborted: cargo test failed.%s\n' "$RED" "$NC"
     printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"
     printf "  git commit --no-verify\n\n"
     exit 1
   fi
-
-  if full_checks_enabled; then
-    # Cross-target clippy: catches Windows-only cfg arms, missing imports under
-    # #[cfg(windows)], winreg type errors, etc. Skipped when toolchain absent.
-    if run_rustc --print target-list 2>/dev/null | grep -qx "$WIN_TARGET" \
-       && run_rustc --print sysroot 2>/dev/null | xargs -I{} test -d "{}/lib/rustlib/$WIN_TARGET"; then
-      printf "Running cargo clippy (%s)...\n" "$WIN_TARGET"
-      if ! run_cargo clippy --locked --profile ci --manifest-path "$MANIFEST" --target "$WIN_TARGET" --all-targets -- -D warnings 2>&1; then
-        printf '\n%s======================================================%s\n' "$RED" "$NC"
-        printf '%sCommit aborted: cargo clippy reported warnings on %s.%s\n' "$RED" "$WIN_TARGET" "$NC"
-        printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"
-        printf "  git commit --no-verify\n\n"
-        exit 1
-      fi
-    else
-      printf '%sSkipping cross-target clippy (%s): toolchain not installed.%s\n' "$DIM" "$WIN_TARGET" "$NC"
-      printf '%s  Install: cd cli && rustup target add %s && pacman -S mingw-w64-gcc%s\n' "$DIM" "$WIN_TARGET" "$NC"
-    fi
-
-    printf "Running cargo test...\n"
-    if ! run_cargo test --locked --profile ci --manifest-path "$MANIFEST" 2>&1; then
-      printf '\n%s======================================================%s\n' "$RED" "$NC"
-      printf '%sCommit aborted: cargo test failed.%s\n' "$RED" "$NC"
-      printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"
-      printf "  git commit --no-verify\n\n"
-      exit 1
-    fi
-  else
-    printf '%sSkipping full Rust hook checks: set DOTFILES_HOOKS_FULL=1 to run Windows clippy and cargo test.%s\n' "$DIM" "$NC"
-  fi
-fi
-
-# ── PowerShell checks ─────────────────────────────────
-if [ -n "$POWERSHELL_CHANGED" ]; then
-  if command -v pwsh >/dev/null 2>&1; then
-    printf "Running PSScriptAnalyzer...\n"
-    analyzer="$(CDPATH='' cd -- "$(dirname -- "$0")/../cli/src/app/validation/scripts" && pwd)/psscriptanalyzer.ps1"
-    # Keep NUL delimiters through argv construction, including tabs/newlines.
-    # Prefix with ./ so a tracked filename cannot become an analyzer option.
-    git diff --cached --name-only --diff-filter=d -z "$against" -- \
-      '*.ps1' '*.psm1' '*.psd1' > "$CHECK_ROOT/.powershell-inputs"
-    if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
-      analyzer=$1
-      shift
-      for file do
-        set -- "$@" "./$file"
-        shift
-      done
-      exec pwsh -NoProfile -File "$analyzer" "$@"
-    ' sh "$analyzer" < .powershell-inputs) 2>&1; then
-      printf '\n%s======================================================%s\n' "$RED" "$NC"
-      printf '%sCommit aborted: PSScriptAnalyzer reported issues.%s\n' "$RED" "$NC"
-      printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"
-      printf "  git commit --no-verify\n\n"
-      exit 1
-    fi
-  else
-    printf '%sSkipping PSScriptAnalyzer: pwsh not installed.%s\n' "$DIM" "$NC"
-  fi
+else
+  printf '%sSkipping full Rust hook checks: set DOTFILES_HOOKS_FULL=1 to run Windows clippy and cargo test.%s\n' "$DIM" "$NC"
 fi
 
 exit 0

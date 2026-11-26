@@ -22,8 +22,7 @@ def gh_api(*args, attempts=API_ATTEMPTS, sleep=time.sleep):
     for attempt in range(1, attempts + 1):
         result = subprocess.run(
             ["gh", "api", *args],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             check=False,
         )

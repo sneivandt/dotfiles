@@ -104,7 +104,7 @@ def parse_quote(payload, symbol, fallback_name, prefix, now):
     timestamps = result.get("timestamp", [])
     history = [value for value in closes if number(value)] or [price]
     history_start = next(
-        (stamp for value, stamp in zip(closes, timestamps) if number(value) and number(stamp)),
+        (stamp for value, stamp in zip(closes, timestamps, strict=False) if number(value) and number(stamp)),
         meta.get("firstTradeDate", now),
     )
     if not number(history_start):

@@ -73,10 +73,11 @@ class HookBehaviorTests(unittest.TestCase):
             (repo / "hooks").mkdir()
             (repo / ".github" / "workflows" / "scripts" / "linux").mkdir(parents=True)
             shutil.copy2(REPO_ROOT / "hooks" / "check-ci-guards.sh", repo / "hooks" / "check-ci-guards.sh")
-            shutil.copy2(
-                REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / "check-ci-contract.py",
-                repo / ".github" / "workflows" / "scripts" / "linux" / "check-ci-contract.py",
-            )
+            for helper in ("check-ci-contract.py", "ci_metadata.py", "workflow_yaml.py"):
+                shutil.copy2(
+                    REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / helper,
+                    repo / ".github" / "workflows" / "scripts" / "linux" / helper,
+                )
             release_path = repo / ".github" / "workflows" / "release.yml"
 
             release_path.write_text(original_release, encoding="utf-8")

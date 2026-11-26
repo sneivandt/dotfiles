@@ -1,73 +1,35 @@
 #!/usr/bin/env python3
 """Select CI work from repository inputs, without third-party dependencies."""
 
+import importlib.util
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 
-SCRIPTS = ".github/workflows/scripts/"
-LINUX = SCRIPTS + "linux/"
-WINDOWS = SCRIPTS + "windows/"
-FLAGS = (
-    "run_docs_checks", "run_docs_site", "run_docs_contracts", "run_rust_checks",
-    "run_rust_fmt", "run_audit", "run_deny",
-    "run_build_linux", "run_build_windows", "run_validate_config",
-    "run_config_drift", "run_apm", "run_profile_linux", "run_profile_windows",
-    "run_roundtrip_linux", "run_roundtrip_windows", "run_app_tests",
-    "run_app_windows", "run_git_hooks", "run_hook_inputs", "run_wrapper_linux",
-    "run_wrapper_windows", "run_lint", "run_desktop_scripts", "run_prompt",
-    "run_lock", "run_desktop_qml", "run_desktop_python", "run_release",
-)
-APPS = {
-    "git": {
-        "application": "git",
-        "script": "tests/git/test-git.py",
-        "packages": "git",
-        "tests": "config aliases behavior clean",
-    },
-    "zsh": {
-        "application": "zsh",
-        "script": "tests/shell/test-zsh.py",
-        "packages": "zsh fzf wget libarchive-tools bat zstd",
-        "tests": "completion history configuration",
-    },
-    "vim": {
-        "application": "vim",
-        "script": "tests/vim/test-vim.py",
-        "packages": "vim",
-        "tests": "opens configuration",
-    },
-    "nvim": {
-        "application": "nvim",
-        "script": "tests/vim/test-nvim.py",
-        "packages": "neovim",
-        "tests": "opens plugins configuration",
-    },
-}
-LINTERS = {
-    "shell": {
-        "name": "ShellCheck",
-        "setup": f"sh {LINUX}install-apt-packages.sh shellcheck",
-        "test_function": "test_shellcheck",
-    },
-    "powershell": {
-        "name": "PSScriptAnalyzer",
-        "setup": 'pwsh -NoProfile -Command "Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser"',
-        "test_function": "test_psscriptanalyzer",
-    },
-    "python": {
-        "name": "Python (Ruff)",
-        "setup": f"sh {LINUX}install-ruff.sh",
-        "test_function": "test_ruff",
-    },
-    "lua": {
-        "name": "Lua (Luacheck)",
-        "setup": f"sh {LINUX}install-luacheck.sh",
-        "test_function": "test_luacheck",
-    },
-}
+def _load_sibling(name: str):
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).resolve().with_name(f"{name}.py")
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load sibling module {name} from {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_META = _load_sibling("ci_metadata")
+SCRIPTS = _META.SCRIPTS
+LINUX = _META.LINUX
+WINDOWS = _META.WINDOWS
+FLAGS = _META.FLAGS
+APPS = _META.APPS
+LINTERS = _META.LINTERS
+LINTER_STAGES = _META.LINTER_STAGES
+EXTENSIONLESS_PYTHON_SCRIPTS = _META.EXTENSIONLESS_PYTHON_SCRIPTS
 
 
 def documentation(path: str) -> bool:
@@ -103,10 +65,14 @@ def binary_input(path: str) -> bool:
         return False
     return path.startswith(("cli/", ".cargo/")) or path in {
         "Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain", "rust-toolchain.toml",
-        ".github/workflows/release.yml", LINUX + "classify-ci-changes.py",
-        LINUX + "classify-ci-changes.sh", LINUX + "classify-release.sh",
-        LINUX + "release-tag.sh",
+        ".github/workflows/release.yml", LINUX + "ci_metadata.py",
+        LINUX + "classify-ci-changes.py", LINUX + "classify-ci-changes.sh",
+        LINUX + "classify-release.sh", LINUX + "release-tag.sh",
     }
+
+
+def python_script(path: str) -> bool:
+    return path.endswith(".py") or path in EXTENSIONLESS_PYTHON_SCRIPTS
 
 
 def shell_script(path: str) -> bool:
@@ -171,22 +137,22 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             linters.add("shell")
         if path.endswith((".ps1", ".psm1", ".psd1")):
             linters.add("powershell")
-        if path.endswith(".py") or path in {".github/linters/ruff.toml", LINUX + "install-ruff.sh"}:
+        if python_script(path) or path in {".github/linters/ruff.toml", LINUX + "install-ruff.sh"}:
             linters.add("python")
         if path.endswith(".lua") or path in {".github/linters/luacheckrc", LINUX + "install-luacheck.sh"}:
             linters.add("lua")
 
         if path == ".github/workflows/ci.yml" or path in {
-            LINUX + "classify-ci-changes.py", LINUX + "classify-ci-changes.sh",
-            LINUX + "ci-comparison-range.sh", LINUX + "ci-fixture-home.sh",
-            "tests/lib/test-helpers.sh", LINUX + "check.sh", WINDOWS + "Check.ps1",
-            LINUX + "pre-push.py",
+            LINUX + "ci_metadata.py", LINUX + "classify-ci-changes.py",
+            LINUX + "classify-ci-changes.sh", LINUX + "ci-comparison-range.sh",
+            LINUX + "ci-fixture-home.sh", "tests/lib/test-helpers.sh",
+            LINUX + "check.sh", WINDOWS + "Check.ps1", LINUX + "pre-push.py",
         }:
             full = True
         elif path in {
-            LINUX + "check-ci-contract.py", LINUX + "test-ci-changes.py",
-            LINUX + "select-mutations.py", LINUX + "run-mutations.py",
-            LINUX + "report-mutations.py",
+            LINUX + "check-ci-contract.py", LINUX + "workflow_yaml.py",
+            LINUX + "test-ci-changes.py", LINUX + "select-mutations.py",
+            LINUX + "run-mutations.py", LINUX + "report-mutations.py",
             ".github/workflows/mutation.yml",
         } or path.startswith(LINUX + "ci_changes_tests/"):
             pass  # Always executed by classify-changes.
@@ -229,6 +195,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             ("tests/hooks/git_hook_tests/", "hooks/")
         ):
             enable("git_hooks", "hook_inputs")
+        elif path in {"tests/wrapper/parity-contract.json", "tests/wrapper/test-parity.py"}:
+            enable("wrapper_linux", "wrapper_windows")
         elif path in {"dotfiles.sh", "tests/wrapper/test-shell-wrapper.sh"} or path.startswith(
             "tests/wrapper/linux/"
         ):

@@ -249,6 +249,7 @@ class StagedGuardTests(unittest.TestCase):
                 "-option.ps1",
                 "glob[name].ps1",
             )
+            check_guards = str(REPO_ROOT / "hooks" / "check-ci-guards.sh")
             check_rust = str(REPO_ROOT / "hooks" / "check-rust.sh")
             for filename in filenames:
                 if sys.platform == "win32" and any(ch in filename for ch in ('"', "\t", "\n")):
@@ -262,12 +263,15 @@ class StagedGuardTests(unittest.TestCase):
                     log_file.write_text("", encoding="utf-8")
                     res = run(["sh", check_rust], cwd=repo, env=env)
                     self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+                    self.assertEqual(log_file.read_text(encoding="utf-8"), "")
+                    res = run(["sh", check_guards], cwd=repo, env=env)
+                    self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
                     self.assertEqual(log_file.read_text(encoding="utf-8").strip(), "powershell")
 
                     target.write_text("invalid-staged\n", encoding="utf-8")
                     self.assertEqual(run(["git", "add", "--", filename], cwd=repo, env=env).returncode, 0)
                     target.write_text("valid-staged\n", encoding="utf-8")
-                    res = run(["sh", check_rust], cwd=repo, env=env)
+                    res = run(["sh", check_guards], cwd=repo, env=env)
                     self.assertNotEqual(res.returncode, 0)
                     self.assertIn("PSScriptAnalyzer reported issues", res.stdout + res.stderr)
 
@@ -284,7 +288,7 @@ class StagedGuardTests(unittest.TestCase):
                     self.assertEqual(run(["git", "mv", "--", filename, renamed], cwd=repo, env=env).returncode, 0)
                     env["HOOK_EXPECTED_FILE"] = renamed
                     log_file.write_text("", encoding="utf-8")
-                    res = run(["sh", check_rust], cwd=repo, env=env)
+                    res = run(["sh", check_guards], cwd=repo, env=env)
                     self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
                     self.assertEqual(log_file.read_text(encoding="utf-8").strip(), "powershell")
 
@@ -298,7 +302,7 @@ class StagedGuardTests(unittest.TestCase):
                     )
                     self.assertEqual(run(["git", "rm", "-q", "--", renamed], cwd=repo, env=env).returncode, 0)
                     log_file.write_text("", encoding="utf-8")
-                    res = run(["sh", check_rust], cwd=repo, env=env)
+                    res = run(["sh", check_guards], cwd=repo, env=env)
                     self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
                     self.assertEqual(log_file.read_text(encoding="utf-8"), "")
 
@@ -310,7 +314,7 @@ class StagedGuardTests(unittest.TestCase):
                         ).returncode,
                         0,
                     )
-                    res = run(["sh", check_rust], cwd=repo, env=env)
+                    res = run(["sh", check_guards], cwd=repo, env=env)
                     self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
                     self.assertEqual(log_file.read_text(encoding="utf-8"), "")
 
@@ -331,13 +335,13 @@ class StagedGuardTests(unittest.TestCase):
             (repo / "second file.psd1").write_text("valid-staged\n", encoding="utf-8")
             self.assertEqual(run(["git", "add", "--", "first.ps1", "second file.psd1"], cwd=repo, env=env).returncode, 0)
             log_file.write_text("", encoding="utf-8")
-            res = run(["sh", check_rust], cwd=repo, env=env)
+            res = run(["sh", check_guards], cwd=repo, env=env)
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
             self.assertEqual(log_file.read_text(encoding="utf-8").strip(), "powershell-batch")
 
             (repo / "second file.psd1").write_text("invalid-staged\n", encoding="utf-8")
             self.assertEqual(run(["git", "add", "--", "second file.psd1"], cwd=repo, env=env).returncode, 0)
-            res = run(["sh", check_rust], cwd=repo, env=env)
+            res = run(["sh", check_guards], cwd=repo, env=env)
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("PSScriptAnalyzer reported issues", res.stdout + res.stderr)
 
@@ -594,14 +598,20 @@ class StagedGuardTests(unittest.TestCase):
             full_env = dict(env, EXPECT_HOOK_CARGO_ENV="1", DOTFILES_HOOKS_FULL="1")
             full_env.pop("CARGO_TARGET_DIR", None)
             full_env.pop("DOTFILES_VERSION", None)
+            check_guards = str(REPO_ROOT / "hooks" / "check-ci-guards.sh")
             res = run(["sh", check_rust], cwd=index_repo, env=full_env)
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-            self.assertEqual(log_file.read_text(encoding="utf-8").splitlines(), ["fmt", "clippy", "test", "powershell"])
+            self.assertEqual(log_file.read_text(encoding="utf-8").splitlines(), ["fmt", "clippy", "test"])
+
+            log_file.write_text("", encoding="utf-8")
+            res = run(["sh", check_guards], cwd=index_repo, env=env)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertEqual(log_file.read_text(encoding="utf-8").splitlines(), ["run", "powershell"])
 
             (index_repo / "script with spaces.ps1").write_text("invalid-staged\n", encoding="utf-8")
             self.assertEqual(run(["git", "add", "script with spaces.ps1"], cwd=index_repo, env=env).returncode, 0)
             (index_repo / "script with spaces.ps1").write_text("valid-staged\n", encoding="utf-8")
-            res = run(["sh", check_rust], cwd=index_repo, env=env)
+            res = run(["sh", check_guards], cwd=index_repo, env=env)
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("PSScriptAnalyzer reported issues", res.stdout + res.stderr)
 
@@ -749,3 +759,158 @@ class StagedGuardTests(unittest.TestCase):
                 env=dict(shell_env, DIR=str(shell_repo), SHELLCHECK_EXIT="1"),
             )
             self.assertNotEqual(res.returncode, 0)
+
+    def test_pre_commit_shares_single_staged_export_and_fast_guards(self) -> None:
+        with tempfile.TemporaryDirectory() as fixture_str:
+            fixture = Path(fixture_str)
+            mock_bin = fixture / "mock-bin"
+            repo = fixture / "repo"
+            for sub in (
+                "hooks",
+                "cli/src",
+                "symlinks/local/bin",
+                ".github/workflows/scripts/linux",
+                ".github/linters",
+                ".agents/skills/skill-maintenance/scripts",
+                ".agents/skills/sample-skill",
+            ):
+                (repo / sub).mkdir(parents=True)
+
+            real_git = shutil.which("git")
+            self.assertIsNotNone(real_git)
+            checkout_log = fixture / "checkout-index.log"
+            guard_log = fixture / "guards.log"
+
+            # Wrap git to count checkout-index calls while forwarding all git commands.
+            write_executable(
+                mock_bin / "git",
+                "#!/bin/sh\n"
+                "for arg do\n"
+                '  if [ "$arg" = "checkout-index" ]; then\n'
+                '    printf "checkout-index\\n" >> "$CHECKOUT_LOG"\n'
+                "    break\n"
+                "  fi\n"
+                "done\n"
+                f'exec "{real_git}" "$@"\n',
+            )
+            write_executable(
+                mock_bin / "rustc",
+                "#!/bin/sh\n"
+                'if [ "${1:-}" = "--version" ]; then printf "rustc 1.95.0 (fixture)\\n"; exit 0; fi\n'
+                "exit 0\n",
+            )
+            write_executable(
+                mock_bin / "cargo",
+                "#!/bin/sh\n"
+                'printf "cargo:%s\\n" "$1" >> "$GUARD_LOG"\n'
+                "exit 0\n",
+            )
+            write_executable(
+                mock_bin / "ruff",
+                "#!/bin/sh\n"
+                'printf "ruff:%s\\n" "$*" >> "$GUARD_LOG"\n'
+                "exit 0\n",
+            )
+            write_executable(
+                mock_bin / "actionlint",
+                "#!/bin/sh\n"
+                'printf "actionlint:%s\\n" "$*" >> "$GUARD_LOG"\n'
+                "for file do\n"
+                '  grep -q "valid-workflow" "$file" || exit 1\n'
+                "done\n",
+            )
+
+            for hook_file in (
+                "pre-commit",
+                "check-sensitive.sh",
+                "check-rust.sh",
+                "check-ci-guards.sh",
+                "check-toolchain.sh",
+                "sensitive-patterns.ini",
+                "sensitive-allowlist.ini",
+            ):
+                shutil.copy2(REPO_ROOT / "hooks" / hook_file, repo / "hooks" / hook_file)
+            shutil.copy2(
+                REPO_ROOT / ".github" / "linters" / "ruff.toml",
+                repo / ".github" / "linters" / "ruff.toml",
+            )
+            shutil.copy2(
+                REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / "check-doc-links.py",
+                repo / ".github" / "workflows" / "scripts" / "linux" / "check-doc-links.py",
+            )
+            shutil.copy2(
+                REPO_ROOT / ".agents" / "skills" / "skill-maintenance" / "scripts" / "check-skills.py",
+                repo / ".agents" / "skills" / "skill-maintenance" / "scripts" / "check-skills.py",
+            )
+
+            env = init_fixture_repository(repo)
+            env["PATH"] = f"{mock_bin}{os.pathsep}{env.get('PATH', '')}"
+            env["CHECKOUT_LOG"] = str(checkout_log)
+            env["GUARD_LOG"] = str(guard_log)
+
+            (repo / "cli" / "Cargo.toml").write_text('[package]\nname = "fixture"\nversion = "0.1.0"\n', encoding="utf-8")
+            (repo / "cli" / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.95.0"\n', encoding="utf-8")
+            (repo / "cli" / "src" / "lib.rs").write_text("pub fn ok() {}\n", encoding="utf-8")
+            (repo / "symlinks" / "local" / "bin" / "code-insiders").write_text(
+                "#!/usr/bin/env python3\nprint('ok')\n", encoding="utf-8"
+            )
+            (repo / ".github" / "workflows" / "sample.yml").write_text("name: valid-workflow\n", encoding="utf-8")
+            (repo / "README.md").write_text("# Doc\n[self](README.md)\n", encoding="utf-8")
+            (repo / ".agents" / "skills" / "sample-skill" / "SKILL.md").write_text(
+                "---\nname: sample-skill\ndescription: >-\n  Fixture skill.\n---\n", encoding="utf-8"
+            )
+            self.assertEqual(
+                run(
+                    [
+                        "git", "add",
+                        "cli", "symlinks", ".github", "README.md", ".agents",
+                    ],
+                    cwd=repo,
+                    env=env,
+                ).returncode,
+                0,
+            )
+
+            checkout_log.write_text("", encoding="utf-8")
+            guard_log.write_text("", encoding="utf-8")
+            res = run(["sh", "hooks/pre-commit"], cwd=repo, env=env)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertEqual(
+                len(checkout_log.read_text(encoding="utf-8").splitlines()),
+                1,
+                "pre-commit should export the staged tree once across check-rust.sh and check-ci-guards.sh",
+            )
+            logged = guard_log.read_text(encoding="utf-8")
+            self.assertIn("symlinks/local/bin/code-insiders", logged)
+            self.assertIn("actionlint:.github/workflows/sample.yml", logged)
+
+            # Staged broken doc link fails even when working tree is fixed.
+            (repo / "README.md").write_text("# Doc\n[broken](missing.md)\n", encoding="utf-8")
+            self.assertEqual(run(["git", "add", "README.md"], cwd=repo, env=env).returncode, 0)
+            (repo / "README.md").write_text("# Doc\n[self](README.md)\n", encoding="utf-8")
+            res = run(["sh", "hooks/check-ci-guards.sh"], cwd=repo, env=env)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("documentation link check failed", res.stdout + res.stderr)
+            self.assertEqual(run(["git", "add", "README.md"], cwd=repo, env=env).returncode, 0)
+
+            # Staged broken skill frontmatter fails even when working tree is fixed.
+            skill = repo / ".agents" / "skills" / "sample-skill" / "SKILL.md"
+            skill.write_text("---\nname: wrong-name\ndescription: >-\n  Bad.\n---\n", encoding="utf-8")
+            self.assertEqual(run(["git", "add", ".agents/skills/sample-skill/SKILL.md"], cwd=repo, env=env).returncode, 0)
+            skill.write_text("---\nname: sample-skill\ndescription: >-\n  Fixture skill.\n---\n", encoding="utf-8")
+            res = run(["sh", "hooks/check-ci-guards.sh"], cwd=repo, env=env)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("agent skill metadata check failed", res.stdout + res.stderr)
+
+            # test-static-analysis.sh must fail loudly when pwsh is absent.
+            no_pwsh_bin = fixture / "no-pwsh-bin"
+            no_pwsh_bin.mkdir()
+            for tool in ("sh", "env", "dirname", "basename", "mkdir", "find", "grep", "mktemp", "rm", "sed", "tr", "xargs", "sort"):
+                resolved = shutil.which(tool)
+                if resolved:
+                    os.symlink(resolved, no_pwsh_bin / tool)
+            static_analysis = str(REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / "test-static-analysis.sh")
+            no_pwsh_env = dict(env, PATH=str(no_pwsh_bin), DIR=str(REPO_ROOT))
+            res = run(["sh", static_analysis, "test_psscriptanalyzer"], cwd=REPO_ROOT, env=no_pwsh_env)
+            self.assertNotEqual(res.returncode, 0, "test_psscriptanalyzer should fail when pwsh is unavailable")
+            self.assertIn("pwsh is not installed", res.stdout + res.stderr)

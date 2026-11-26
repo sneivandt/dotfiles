@@ -224,7 +224,7 @@ class PrePushCoordinatorTests(unittest.TestCase):
                     if conclusion != "success":
                         outputs.append(json.dumps({"workflow_runs": [{"head_sha": "original-sha"}]}))
                     with patch.dict(PRE_PUSH["comparison_base"].__globals__, {
-                        "git": lambda root, *args: remote if args[0] == "remote" else "tip-sha",
+                        "git": lambda root, *args, remote=remote: remote if args[0] == "remote" else "tip-sha",
                     }), patch("subprocess.check_output", side_effect=outputs) as output, patch("subprocess.run") as run:
                         run.return_value.returncode = 0
                         expected = ("tip-sha", False) if conclusion == "success" else ("original-sha", True)
@@ -247,12 +247,12 @@ class PrePushCoordinatorTests(unittest.TestCase):
         for failure in (False, True):
             events = []
 
-            def execute(*args):
+            def execute(*args, events=events, failure=failure):
                 events.append("native")
                 if failure:
                     raise subprocess.CalledProcessError(17, ["fixture-native"])
 
-            def run(command, **kwargs):
+            def run(command, events=events, **kwargs):
                 if command == worker:
                     events.append("linux")
 
@@ -267,7 +267,7 @@ class PrePushCoordinatorTests(unittest.TestCase):
             }
             # main reads only the committed Cargo rust-version after selection.
             real_git = replacements["git"]
-            replacements["git"] = lambda root, *args: (
+            replacements["git"] = lambda root, *args, real_git=real_git: (
                 '[package]\nrust-version = "1.91"\n' if args[0] == "show" else real_git(root, *args)
             )
             with patch.dict(PRE_PUSH["main"].__globals__, replacements), patch.object(sys, "platform", "win32"), patch.object(

@@ -243,7 +243,7 @@ class SshPromptAndSystemTests(ShellConfigTestCase):
         sigil = "#" if os.geteuid() == 0 else "$"
         self.assertEqual(lines[1::2], [f"{sigil} {status}" for status in (1, 1, 1, 0)])
         for line, branch in zip(lines[::2], (" main", " topic%F{red}-$HOME",
-                                              " topic%F{red}-$HOME", "")):
+                                              " topic%F{red}-$HOME", ""), strict=True):
             self.assertTrue(line.endswith("~/repo" + branch), line)
         self.assertEqual(result.stderr, "")
         # Only the branch segment and its Git lookup need command substitution.

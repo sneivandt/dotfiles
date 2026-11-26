@@ -462,7 +462,7 @@ class ProfileAndEnvTests(ShellConfigTestCase):
                     for variable in variables:
                         self.env.pop(variable, None)
                     if values is supplied:
-                        self.env.update(zip(variables, supplied))
+                        self.env.update(zip(variables, supplied, strict=True))
                     result = self.run_shell(
                         '. "$ROOT/symlinks/config/shell/profile.sh"\n'
                         'printf "%s\\n" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" '

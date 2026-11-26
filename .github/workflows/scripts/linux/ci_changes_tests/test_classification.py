@@ -76,7 +76,7 @@ class ClassificationTests(unittest.TestCase):
             ("symlinks/config/bash/prompt.bash", config | {"app_tests", "lint"}),
             ("symlinks/bash_profile", config | {"app_tests", "lint"}),
             ("symlinks/bashrc", config | {"app_tests", "lint"}),
-            ("symlinks/local/bin/code-insiders", config | desktop_scripts | {"rust_checks", "app_tests"}),
+            ("symlinks/local/bin/code-insiders", config | desktop_scripts | {"rust_checks", "app_tests", "lint"}),
             ("symlinks/config/powershell/Module.psd1",
              config | {"lint", "prompt"}),
             ("symlinks/config/wgetrc", config | {"app_tests"}),
@@ -162,7 +162,10 @@ class ClassificationTests(unittest.TestCase):
             ("tests/shell/test-shell-config.py", {"app_tests", "build_linux", "lint"}),
             ("tests/shell/shell_config_tests/test_profile_and_env.py", {"app_tests", "build_linux", "lint"}),
             ("tests/hooks/test-hook-inputs.py", {"hook_inputs", "build_linux", "lint"}),
+            ("tests/wrapper/parity-contract.json", {"wrapper_linux", "wrapper_windows", "build_linux", "build_windows"}),
+            ("tests/wrapper/test-parity.py", {"wrapper_linux", "wrapper_windows", "build_linux", "build_windows", "lint"}),
             (LINUX + "check-ci-contract.py", {"lint"}),
+            (LINUX + "workflow_yaml.py", {"lint"}),
             (LINUX + "test-ci-changes.py", {"lint"}),
             (LINUX + "ci_changes_tests/test_classification.py", {"lint"}),
             (LINUX + "select-mutations.py", {"lint"}),
@@ -202,7 +205,8 @@ class ClassificationTests(unittest.TestCase):
 
     def test_full_ci_and_empty_diff(self):
         for path in (".github/workflows/ci.yml", "tests/lib/test-helpers.sh",
-                     LINUX + "classify-ci-changes.py", "unknown-build-input"):
+                     LINUX + "ci_metadata.py", LINUX + "classify-ci-changes.py",
+                     "unknown-build-input"):
             with self.subTest(path=path):
                 outputs = classify([path])
                 self.assertTrue(all(
@@ -234,6 +238,7 @@ class ClassificationTests(unittest.TestCase):
             (["tests/vim/test-nvim-config.lua"], ["Lua (Luacheck)"], ["nvim"]),
             (["tests/shell/test-shell-config.py"], ["Python (Ruff)"], ["zsh"]),
             ([".github/linters/ruff.toml"], ["Python (Ruff)"], []),
+            (["symlinks/local/bin/code-insiders"], ["Python (Ruff)"], ["zsh"]),
             ([".github/linters/luacheckrc"], ["Lua (Luacheck)"], []),
             (["symlinks/bashrc", "symlinks/config/wgetrc"], ["ShellCheck"], ["zsh"]),
             (["symlinks/config/bash/prompt.bash"], ["ShellCheck"], ["zsh"]),

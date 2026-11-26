@@ -4,6 +4,7 @@
 import argparse
 from contextlib import ExitStack, contextmanager
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -15,15 +16,32 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+import types
 
 
 SCRIPTS = Path(__file__).resolve().parent
+
+
+def _load_sibling(name: str):
+    if name in sys.modules:
+        return sys.modules[name]
+    path = SCRIPTS / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load sibling module {name} from {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 GIB = 1024 ** 3
 MIN_CACHE_FREE = 10 * GIB
 
 
-def plan(selection, msrv, docs_checked=False, windows_checked=False):
+def plan(selection, msrv, docs_checked=False, windows_checked=False, linter_stages=None):
     """Return safe local commands and selected coverage reserved for CI."""
+    if linter_stages is None:
+        linter_stages = _load_sibling("ci_metadata").LINTER_STAGES
     stages = ["ci"] if docs_checked else ["docs", "ci"]
     for flag, stage in (
         ("rust_fmt", "fmt"), ("rust_checks", "clippy"),
@@ -34,15 +52,12 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False):
         if selection["run_" + flag]:
             stages.append(stage)
     for item in selection["lint_matrix"]["include"]:
-        if item["name"] == "ShellCheck":
-            stages.append("shell")
-        elif item["name"] == "PSScriptAnalyzer":
-            if not windows_checked:
-                stages.append("powershell")
-        elif item["name"] == "Python (Ruff)":
-            stages.append("python")
-        elif item["name"] == "Lua (Luacheck)":
-            stages.append("lua")
+        stage = linter_stages.get(item["name"])
+        if stage is None:
+            continue
+        if stage == "powershell" and windows_checked:
+            continue
+        stages.append(stage)
     commands = []
     if not docs_checked:
         commands.append(("documentation dependencies", "docs", ["npm", "ci", "--no-audit", "--no-fund"]))
@@ -149,10 +164,27 @@ def comparison_base(root, explicit, head):
 
 def committed_policy(root, head):
     """Load selection rules from the commit being validated, never local edits."""
-    path = ".github/workflows/scripts/linux/classify-ci-changes.py"
-    namespace = {"__name__": "committed_ci_policy"}
-    exec(compile(git(root, "show", head + ":" + path), path, "exec"), namespace)
-    return namespace
+    meta_path = ".github/workflows/scripts/linux/ci_metadata.py"
+    policy_path = ".github/workflows/scripts/linux/classify-ci-changes.py"
+    sentinel = object()
+    previous = sys.modules.get("ci_metadata", sentinel)
+    try:
+        try:
+            meta_source = git(root, "show", head + ":" + meta_path)
+        except subprocess.CalledProcessError:
+            meta_source = None
+        if meta_source is not None:
+            meta_module = types.ModuleType("ci_metadata")
+            exec(compile(meta_source, meta_path, "exec"), meta_module.__dict__)
+            sys.modules["ci_metadata"] = meta_module
+        namespace = {"__name__": "committed_ci_policy"}
+        exec(compile(git(root, "show", head + ":" + policy_path), policy_path, "exec"), namespace)
+        return namespace
+    finally:
+        if previous is sentinel:
+            sys.modules.pop("ci_metadata", None)
+        else:
+            sys.modules["ci_metadata"] = previous
 
 
 def snapshot(root, head, destination):
@@ -322,7 +354,13 @@ def main():
     full = args.full or recovery
     selection = policy["classify"](paths, full=full)
     omit_docs = bool(args.docs_checked or args.npm_tls_unavailable)
-    commands, deferred = plan(selection, manifest["package"]["rust-version"], omit_docs, bool(args.windows_checked))
+    commands, deferred = plan(
+        selection,
+        manifest["package"]["rust-version"],
+        omit_docs,
+        bool(args.windows_checked),
+        linter_stages=policy.get("LINTER_STAGES"),
+    )
     linux = None
     if sys.platform == "win32":
         commands = windows_plan(selection, omit_docs)

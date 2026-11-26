@@ -47,8 +47,7 @@ def nmcli(args, timeout=15, stdin=None):
             ["nmcli", "--colors", "no", "--terse", "--escape", "yes", *args],
             input=stdin,
             stdin=subprocess.DEVNULL if stdin is None else None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             encoding="utf-8",
             errors="replace",
             env={**os.environ, "LC_ALL": "C.UTF-8"},
@@ -200,7 +199,7 @@ def label_saved_choices(networks, profiles_by_id):
         for field in ("name", "bssid", "uuid"):
             labels = [profiles_by_id[row["uuid"]][field] for row in choices]
             if all(labels) and len(set(labels)) == len(choices):
-                for row, label in zip(choices, labels):
+                for row, label in zip(choices, labels, strict=True):
                     row["profileLabel"] = label
                 break
 

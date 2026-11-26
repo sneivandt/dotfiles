@@ -198,8 +198,7 @@ class NetworkTests(unittest.TestCase):
                     ["nmcli", "--colors", "no", "--terse", "--escape", "yes", *args],
                     input=stdin,
                     stdin=subprocess.DEVNULL if stdin is None else None,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+                    capture_output=True,
                     encoding="utf-8",
                     errors="replace",
                     env={"LC_ALL": "C.UTF-8", "FIXTURE": "preserved"},
@@ -565,7 +564,7 @@ class NetworkTests(unittest.TestCase):
         for code in (0, 4):
             with self.subTest(code=code):
                 self.cache_path.write_text("before connection")
-                def connect(*args, **kwargs):
+                def connect(*args, code=code, **kwargs):
                     self.assertFalse(self.cache_path.exists())
                     self.cache_path.write_text("status polled during connection")
                     return subprocess.CompletedProcess([], code, "", "")

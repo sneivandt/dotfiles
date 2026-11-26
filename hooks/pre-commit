@@ -16,6 +16,18 @@ set -o nounset
 # directory. Use the git repo root instead.
 HOOKS_DIR="$(git rev-parse --show-toplevel)/hooks"
 
+# Share one lazily populated staged-tree staging directory across helpers so
+# multi-domain commits export the Git index at most once. Guard against minimal
+# environments (such as unit-test PATHs with only git and sh).
+if [ -z "${DOTFILES_HOOK_CHECK_ROOT:-}" ] \
+  && command -v mktemp >/dev/null 2>&1 \
+  && command -v rm >/dev/null 2>&1; then
+  DOTFILES_HOOK_CHECK_ROOT=$(mktemp -d)
+  export DOTFILES_HOOK_CHECK_ROOT
+  trap 'rm -rf "$DOTFILES_HOOK_CHECK_ROOT"' EXIT
+  trap 'exit 1' HUP INT TERM
+fi
+
 sh "$HOOKS_DIR/check-sensitive.sh"
 sh "$HOOKS_DIR/check-rust.sh"
 sh "$HOOKS_DIR/check-ci-guards.sh"

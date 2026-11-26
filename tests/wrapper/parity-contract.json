@@ -1,0 +1,117 @@
+{
+  "constants": {
+    "connect_timeout_seconds": 10,
+    "transfer_timeout_seconds": 120,
+    "cargo_profile": "dev-opt",
+    "cargo_bin": "dotfiles",
+    "cargo_message_format": "json-render-diagnostics",
+    "github_api_accept": "application/vnd.github+json",
+    "checksum_asset": "checksums.sha256",
+    "linux_assets": [
+      "dotfiles-linux-x86_64",
+      "dotfiles-linux-aarch64"
+    ],
+    "windows_assets": [
+      "dotfiles-windows-x86_64.exe"
+    ],
+    "wrapper_env_vars": [
+      "DOTFILES_ROOT",
+      "DOTFILES_WRAPPER",
+      "DOTFILES_RELEASE_REPO",
+      "DOTFILES_SKIP_ATTESTATION",
+      "DOTFILES_COMPLETE"
+    ],
+    "wrapper_identifiers": {
+      "sh": "sh",
+      "ps1": "pwsh"
+    },
+    "attestation_env_vars": [
+      "GH_PROMPT_DISABLED",
+      "DBUS_SESSION_BUS_ADDRESS"
+    ],
+    "remote_prefixes": [
+      "https://github.com/",
+      "git@github.com:",
+      "ssh://git@github.com/"
+    ]
+  },
+  "scenarios": {
+    "build_mode": {
+      "linux": [
+        "test_wrapper_build_mode",
+        "test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args"
+      ],
+      "windows": [
+        "Test-BuildMode"
+      ]
+    },
+    "cargo_artifact_resolution": {
+      "linux": [
+        "test_wrapper_uses_cargo_artifact"
+      ],
+      "windows": [
+        "Test-CargoArtifactPath",
+        "Test-CargoArtifactFailure"
+      ]
+    },
+    "argument_forwarding": {
+      "linux": [
+        "test_wrapper_forwarded_args",
+        "test_wrapper_forwards_advanced_flags"
+      ],
+      "windows": [
+        "Test-ArgumentForwarding",
+        "Test-UpdateArgumentForwarding",
+        "Test-AdvancedFlagForwarding"
+      ]
+    },
+    "bootstrap_and_checksum": {
+      "linux": [
+        "test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args",
+        "test_wrapper_chmod_after_checksum",
+        "test_wrapper_failed_bootstrap_preserves_cached_binary",
+        "test_wrapper_recovers_truncated_cli"
+      ],
+      "windows": [
+        "Test-VersionDetection",
+        "Test-ChecksumVerification",
+        "Test-CliStartupCompletionEnv"
+      ]
+    },
+    "release_pinned_urls": {
+      "linux": [
+        "test_wrapper_release_pinned_urls"
+      ],
+      "windows": [
+        "Test-VersionPinnedBootstrapUrl"
+      ]
+    },
+    "attestation_verification": {
+      "linux": [
+        "test_wrapper_attestation_verification"
+      ],
+      "windows": [
+        "Test-AttestationVerification"
+      ]
+    },
+    "release_repository_resolution": {
+      "linux": [
+        "test_wrapper_release_repository"
+      ],
+      "windows": [
+        "Test-ReleaseRepository"
+      ]
+    },
+    "runtime_context_and_errors": {
+      "linux": [
+        "test_wrapper_preserves_runtime_context",
+        "test_wrapper_api_headers_and_error_diagnostics"
+      ],
+      "windows": [
+        "Test-IsolatedWrapperPath",
+        "Test-ErrorHandling",
+        "Test-NativeExitCode"
+      ]
+    }
+  }
+}

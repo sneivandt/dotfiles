@@ -521,9 +521,9 @@ crate, and do not defer a known safety-test gap to the nightly run (for native
 Windows paths unavailable locally, report the gap or trigger a focused manual
 remote run).
 
-Follow [Mutation testing](mutation-testing.md) to run in a disposable worktree,
-keep the original source range, inspect survivors, and preserve reports before
-cleanup (a zero-mutant run proves nothing).
+Follow [Mutation testing](mutation-testing.md) to keep the original source
+range, inspect survivors, and clean up generated mutation artifacts (a
+zero-mutant run proves nothing).
 
 ## Platform coverage parity
 

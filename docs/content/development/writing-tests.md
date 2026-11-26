@@ -242,7 +242,7 @@ focused on meaningful output contracts.
 When fixing a mutation survivor, ask what a user would actually observe if that
 fault shipped and assert that outcome directly (a timeout is not a caught
 mutant). Replay the original source range even for a test-only fix; see
-[Mutation testing](mutation-testing.md) for the disposable-worktree workflow.
+[Mutation testing](mutation-testing.md) for the replay workflow.
 
 Finally, keep simulated platform checks distinct from native runtime coverage:
 cross-compilation never tests Windows registry, elevation, or symlinks, and

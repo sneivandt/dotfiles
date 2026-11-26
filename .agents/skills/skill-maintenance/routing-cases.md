@@ -32,7 +32,10 @@ Companions are needed only when the request changes their contract.
 | Preserve JSON numeric precision when merging `agent-settings` keys | `agent-tooling` | Add resource-implementation only if resource lifecycle contracts change |
 | Add a new field to `conf/agent-settings.toml` with semantic diagnostics | `agent-tooling` | Add toml-configuration for schema parsing and config-validation for diagnostics |
 | Change an optional overlay section's generic TOML loader | `toml-configuration` | Add overlay-scripts only for resolution or execution changes |
-| “The mutation test run failed” | `ci-cd-patterns` | Find the failed dedicated GitHub Actions run in `mutation.yml`, inspect its shards, and replay its comparison range for fixes |
+| “The mutation test run failed” | `mutation-testing` | Download `mutation-summary` from the failed `mutation.yml` run, triage survivors/timeouts/exclusions, verify locally against the original base, and replay `mutation_base` when needed |
+| Fix a surviving mutant or add an equivalent-mutant exclusion | `mutation-testing` | Add `testing-patterns` only when restructuring test harnesses |
+| Run focused local mutations for a risky dry-run fix | `mutation-testing` | Check the decision table in [Testing](../../../docs/content/development/testing.md#focused-mutation-testing) |
+| Change `mutation.yml` workflow permissions or action pins | `ci-cd-patterns` | Add `mutation-testing` only when selection, sharding, or exclusion semantics change |
 | Monitor checks after pushing a skill wording change | `ci-cd-patterns` | Follow exact-SHA CI and Pages; do not rerun local suites while waiting |
 | Select tests before committing an isolated Rust resource change | [Testing guide](../../../docs/content/development/testing.md#choosing-coverage) | Affected targets and host checks; no separate verification skill |
 | Choose Windows coverage after a Rust path-handling change | [Testing guide](../../../docs/content/development/testing.md#platform-coverage-parity) | Platform coverage parity; windows-specific-patterns only for implementation choices |
@@ -88,7 +91,7 @@ suites. The result should explain why a check can exercise the change.
 | Shared path helper or platform gates | Owning tests plus affected-target compilation; focused native mutations for preservation/elevation risks | Native Windows path behavior; no waiting for unrelated nightly runs |
 | Shared scheduler or loader | Broader Rust suite and affected command contracts | Full selected platform/integration matrix |
 | One integration-test assertion | Its target; verify the filter ran tests | Selected CI tests, retaining pending source range after a failed push |
-| Mutation survivor fixed only in tests | Original source range or reported function in a disposable native checkout; verify the mutant is caught, not zero selected | Follow manual mutation replay only when selected for the task |
+| Mutation survivor fixed only in tests | Original source range or reported function on the native platform; verify the mutant is caught, not zero selected | Follow manual mutation replay only when selected for the task |
 | Prose, routine refactor, or directly asserted low-risk behavior | No local mutation run by default; explain ordinary coverage | Normal CI, not a blocking nightly mutation run |
 
 A passing focused check need not be repeated merely because a commit was

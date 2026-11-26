@@ -1,6 +1,6 @@
 ---
 title: Mutation testing
-description: Check whether tests detect incorrect Rust behavior using a committed source range and a disposable worktree.
+description: Check whether tests detect incorrect Rust behavior using a committed source range.
 ---
 
 # Mutation testing
@@ -11,15 +11,14 @@ locally when it adds meaningful confidence for safety-critical or failure-path
 changes, or when fixing a surviving mutant; see the
 [decision table](testing.md#focused-mutation-testing) for when to use it.
 
-Always run `cargo-mutants` inside a disposable Git worktree rather than your
-main working tree. When a mutant reports `MISSED`, add a test assertion that
-passes on the real code and fails on the mutation (or verify the mutant is
-equivalent). Survivors, timeouts, and tooling errors all fail the run. Neither
-normal `cargo test` nor `check.sh --all` runs mutations, and the
+When a mutant reports `MISSED`, add a test assertion that passes on the real
+code and fails on the mutation (or verify the mutant is equivalent). Survivors,
+timeouts, and tooling errors all fail the run. Neither normal `cargo test` nor
+`check.sh --all` runs mutations, and the
 [nightly workflow](ci-and-releases.md#scheduled-mutation-testing) runs
 independently of push CI and releases.
 
-## Prepare an isolated source snapshot
+## Prerequisites and baseline
 
 Install `cargo-mutants` 27.1.0 to match CI. Installing `cargo-nextest` (0.9.152
 in CI) is optional locally and enables fail-fast test runs automatically when
@@ -30,31 +29,25 @@ Linux and Windows mutations exercise different runtime contracts.
 The runner compiles under the incremental `[profile.mutants]` profile so
 repeated in-place edits reuse unchanged crates.
 
-For a hosted nightly failure, open the **Mutation: Results** summary, note its
-base and tested SHAs, and copy the focused replay command. Reproduce the
-survivor at the tested commit first; after committing your fix, rerun the full
-selection from the same base SHA against your new commit (even if you only
-edited tests).
+For a hosted nightly failure, open the **Mutation: Results** summary (or
+download its `mutation-summary` artifact), note its base and tested SHAs, and
+copy the focused replay commands. After fixing a survivor, rerun against the
+same `ORIGINAL_BASE_SHA` even if you only edited tests.
 
 For a local change not yet in CI, commit your source and tests and use the
 base SHA from `pre-push.py --plan` (see
 [Implementation and mixed patches](testing.md#implementation-and-mixed-patches)).
 
-Create a detached disposable worktree from the repository root (substituting
-the tested SHA for `HEAD` when reproducing a hosted failure):
-
-```sh
-git worktree add --detach .mutation-review HEAD
-```
-
-Only committed files appear in the worktree; keep it and its reports outside
-your patch.
+Start from a clean working tree so any leftover edit from an interrupted
+in-place run is easy to spot with `git diff`. If you need to reproduce an older
+tested commit without switching your current checkout, you can optionally run
+these commands in a separate detached Git checkout.
 
 ## Select and run the mutations
 
-From the root of `.mutation-review`, select the affected mutants using the
-recorded full `ORIGINAL_BASE_SHA` (or `--all-source` if the hosted report noted
-no passing baseline):
+From the repository root, select the affected mutants using the recorded full
+`ORIGINAL_BASE_SHA` (or `--all-source` if the hosted report noted no passing
+baseline):
 
 ```sh
 python3 -B .github/workflows/scripts/linux/select-mutations.py --base ORIGINAL_BASE_SHA
@@ -81,29 +74,20 @@ python -B .github/workflows/scripts/linux/run-mutations.py run windows
 Because replay commands mutate files in place, inspect `cli/mutants.out` for
 survivors, timeouts, and tool errors and copy out anything you want to keep
 before starting another run (which rotates that directory). If a focused replay
-says the mutation description changed, rerun the broader slice or reproduce at
-the original tested commit.
+says the mutation description changed, re-select from the same
+`ORIGINAL_BASE_SHA` and rerun the broader slice.
 
-## Preserve evidence and remove the worktree
+## Clean up generated artifacts
 
-Copy any reports you need out of `.mutation-review` along with the tested and
-base SHAs, then return to your primary checkout and inspect the worktree before
-deleting it:
-
-```sh
-git -C .mutation-review status --short
-git -C .mutation-review diff
-```
-
-Confirm no unique fix or leftover mutation needs rescuing, then remove only the
-disposable worktree:
+Selection and replay write untracked files under `cli/` (`cli/mutants.diff`,
+`cli/mutation-plan.json`, and `cli/mutants.out*`). Before committing, check
+that no interrupted mutation edit remains and remove the generated artifacts:
 
 ```sh
-git worktree remove --force .mutation-review
+git status --short
+git diff
+rm -rf cli/mutants.diff cli/mutation-plan.json cli/mutants.out cli/mutants.out.old
 ```
-
-`--force` clears the worktree's untracked reports and build artifacts too; only
-ever pass it for this disposable worktree, never your main checkout.
 
 For how scheduled runs accumulate diffs, shard work, and exclude native code,
 continue to [CI and releases](ci-and-releases.md#scheduled-mutation-testing).

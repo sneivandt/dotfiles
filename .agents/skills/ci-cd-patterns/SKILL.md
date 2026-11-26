@@ -2,8 +2,9 @@
 name: ci-cd-patterns
 description: >
   Use for .github/workflows/, CI guard scripts, release tags/assets, action
-  pinning, ci-success gating, monitoring CI after a push, or investigating a
-  failed mutation test run. Not for ordinary local test selection.
+  pinning, ci-success gating, or monitoring CI after a push. Not for ordinary
+  local test selection or investigating/fixing mutation test runs (use
+  mutation-testing).
 ---
 
 # CI/CD Patterns
@@ -42,17 +43,6 @@ action-version inventories in guidance.
   unavailable, not passed. Other failures remain blocking, TLS validation stays
   enabled, and the exact commit's CI documentation job must still pass.
 
-## Dedicated mutation workflow
-
-A request about a “mutation test run” refers to the dedicated GitHub Actions
-workflow [Mutation Testing](../../../.github/workflows/mutation.yml). If no run
-is given, find the latest failed run of that workflow with `gh run list -w
-mutation.yml`. Inspect the selection job for the tested SHA and comparison base,
-then read the results and logs for every selected shard. For a fix, dispatch
-the same workflow for the shipped revision with the original `mutation_base`
-and monitor it through completion. Local checks can reproduce individual
-failures and validate fixes before pushing.
-
 ## After pushing
 
 - Treat a user request to push as including CI monitoring unless they explicitly
@@ -74,14 +64,9 @@ failures and validate fixes before pushing.
   If it does, follow that SHA's checks and any applicable publication, and
   report those results under the newer SHA.
 - Do not launch or wait for nightly mutations merely because a push changed
-  Rust. For task-selected local mutations, use the risk-based decision in
-  [Testing](../../../docs/content/development/testing.md#focused-mutation-testing);
-  safety-test rewrites and known survivors deserve focused evidence before push.
-- When changing mutation automation or investigating a mutation failure,
-  follow the selected run and inspect every shard report for survivors,
-  timeouts, and tooling errors before claiming success. Keep the exact matrix
-  and narrowly justified equivalent/platform-only exclusions. Replay the
-  original ancestor through `mutation_base` on `mutation.yml`, not `ci.yml`.
+  Rust. Use [mutation-testing](../mutation-testing/SKILL.md) when investigating
+  failures, changing mutation selection/exclusions, or replaying `mutation_base`
+  on `mutation.yml`.
 
 ## Release rules
 

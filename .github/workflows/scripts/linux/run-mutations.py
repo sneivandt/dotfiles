@@ -79,7 +79,7 @@ LINUX_EXCLUSIONS = (
     ("--exclude-re", r"^src/infra/logging/runlog/naming\.rs:[0-9]+:[0-9]+: replace \| with \^$"),
     ("--exclude-re", r"^src/infra/logging/subscriber\.rs:.*\binit_subscriber\b"),
     ("--exclude-re", r"^src/infra/logging/terminal\.rs:.*\b(columns|stream_columns_windows|enable_console_ansi)\b"),
-    ("--exclude-re", r"^src/infra/logging/style\.rs:.*\bno_color_enabled\b"),
+    ("--exclude-re", r"^src/infra/logging/style\.rs:.*\b(no_color_enabled|clicolor_force_enabled)\b"),
     ("--exclude-re", r"^src/infra/logging/utils\.rs:.*\bdotfiles_log_dir\b"),
     ("--exclude-re", r"^src/app/commands/execution/elevation\.rs:.*\b(prepare_windows_elevation|prepare_elevation_fallback)\b"),
     ("--exclude-re", r"^src/app/interrupt\.rs:.*\bend_prompt_line\b"),

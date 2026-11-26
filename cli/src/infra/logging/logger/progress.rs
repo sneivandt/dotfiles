@@ -118,30 +118,23 @@ fn active_display_line(
     // Very narrow terminals still get a bounded line, even without room for names.
     let line = if prefix.width() >= opts.cols || active.is_empty() {
         prefix
-    } else if !timer.is_empty() && prefix.width() + timer.width() < opts.cols {
-        let (names, hidden) = active_names(
-            &active,
-            if opts.verbose { active.len() } else { 3 },
-            opts.cols - prefix.width() - timer.width(),
-        );
-        let suffix = if hidden > 0 {
-            format!(" +{hidden}")
-        } else {
-            String::new()
-        };
-        format!("{prefix}{names}{suffix}{timer}")
     } else {
+        let shown_timer = if prefix.width() + timer.width() < opts.cols {
+            timer.as_str()
+        } else {
+            ""
+        };
         let (names, hidden) = active_names(
             &active,
             if opts.verbose { active.len() } else { 3 },
-            opts.cols - prefix.width(),
+            opts.cols - prefix.width() - shown_timer.width(),
         );
         let suffix = if hidden > 0 {
             format!(" +{hidden}")
         } else {
             String::new()
         };
-        format!("{prefix}{names}{suffix}")
+        format!("{prefix}{names}{suffix}{shown_timer}")
     };
     styled_progress_line(&line, opts.cols, opts.appearance)
 }
@@ -678,6 +671,10 @@ mod tests {
             Some("2s".into())
         );
         assert_eq!(
+            super::format_live_elapsed(Duration::from_secs(60)),
+            Some("1m 0s".into())
+        );
+        assert_eq!(
             super::format_live_elapsed(Duration::from_secs(65)),
             Some("1m 5s".into())
         );
@@ -733,6 +730,26 @@ mod tests {
             ),
             "⠋ 3 left · Pac …"
         );
+        // When prefix + timer still leave room for a truncated name, keep the timer and
+        // reserve its width before fitting names or overflow counts.
+        assert_eq!(
+            super::active_display_line(
+                &["Packages".to_string()],
+                Some((1, 4)),
+                Some(Duration::from_secs(7)),
+                opts(19),
+            ),
+            "⠋ 3 left · P … · 7s"
+        );
+        assert_eq!(
+            super::active_display_line(
+                &["Packages", "Fonts", "Git", "Shell"].map(String::from),
+                Some((1, 4)),
+                Some(Duration::from_secs(7)),
+                opts(40),
+            ),
+            "⠋ 3 left · Packages, Fonts, Git +1 · 7s"
+        );
 
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(
@@ -742,6 +759,30 @@ mod tests {
         assert_eq!(
             log.custom_display_line("Syncing repository", Some(Duration::from_secs(1))),
             "⠋ Syncing repository"
+        );
+    }
+
+    #[test]
+    fn replace_status_line_preserves_elapsed_only_while_message_is_unchanged() {
+        use std::time::{Duration, Instant};
+
+        let (log, _tmp, _guard) = isolated_logger();
+        log.console.lock().custom_progress = Some((
+            "Checking for updates".into(),
+            Instant::now().checked_sub(Duration::from_secs(5)).unwrap(),
+        ));
+        log.replace_status_line("Checking for updates");
+        let same_message = log.console.lock().captured.last().unwrap().1.clone();
+        assert!(
+            same_message.contains("Checking for updates · "),
+            "expected preserved elapsed timer: {same_message:?}"
+        );
+
+        log.replace_status_line("Downloading update");
+        let changed_message = log.console.lock().captured.last().unwrap().1.clone();
+        assert!(
+            changed_message.contains("Downloading update") && !changed_message.contains(" · "),
+            "expected reset timer for new status message: {changed_message:?}"
         );
     }
 

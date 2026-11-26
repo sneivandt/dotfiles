@@ -20,6 +20,23 @@ fn separate_after_transition_inserts_blank_line_before_following_output() {
 }
 
 #[test]
+fn mark_startup_transition_emitted_groups_transitions_and_separates_other_output() {
+    let log = Logger::build("update", None, Instant::now(), false);
+    log.mark_startup_transition_emitted();
+    log.transition("Repository synced · restarting");
+    log.warn("config warning");
+    assert_eq!(
+        log.captured_lines(),
+        vec!["Repository synced · restarting", "", "warn  config warning",]
+    );
+
+    let restored = Logger::build("update", None, Instant::now(), false);
+    restored.mark_startup_transition_emitted();
+    restored.warn("config warning");
+    assert_eq!(restored.captured_lines(), vec!["", "warn  config warning"]);
+}
+
+#[test]
 fn foreground_blocks_have_one_separator_and_respect_output_mode() {
     for mode in [
         super::super::super::OutputMode::Human,

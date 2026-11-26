@@ -271,7 +271,8 @@ fn self_update_child_reuses_handed_off_prompt_profile_without_repeating_header()
 #[test]
 fn self_update_profile_handoff_respects_guard_elevation_and_prompt_flag() {
     use super::super::reexec::{
-        SELF_UPDATE_PROFILE_PROMPTED_VAR, SELF_UPDATE_PROFILE_VAR, SELF_UPDATE_REEXEC_GUARD_VAR,
+        REEXEC_GUARD_VAR, SELF_UPDATE_PROFILE_PROMPTED_VAR, SELF_UPDATE_PROFILE_VAR,
+        SELF_UPDATE_REEXEC_GUARD_VAR,
     };
 
     let root = tempfile::tempdir().unwrap();
@@ -289,11 +290,12 @@ fn self_update_profile_handoff_respects_guard_elevation_and_prompt_flag() {
     // Non-prompted handoff reuses the profile without treating it as a prompt.
     let non_prompt_env = base_env
         .clone()
+        .with(REEXEC_GUARD_VAR, "1")
         .with(SELF_UPDATE_REEXEC_GUARD_VAR, "1")
         .with(SELF_UPDATE_PROFILE_VAR, "base");
     let non_prompt_runtime =
         RuntimePolicy::new(&global, false, non_prompt_env.into_handle(), false, true);
-    let (_, non_prompt_source) = resolve_profile(
+    let (non_prompt_profile, non_prompt_source) = resolve_profile(
         &non_prompt_runtime,
         root.path(),
         Platform::detect(),
@@ -302,12 +304,14 @@ fn self_update_profile_handoff_respects_guard_elevation_and_prompt_flag() {
         || panic!("handed-off profile should not prompt"),
     )
     .unwrap();
-    assert_eq!(non_prompt_source, profiles::ProfileSource::Repository);
+    assert_eq!(non_prompt_profile.name, "base");
+    assert_eq!(non_prompt_source, profiles::ProfileSource::Argument);
 
     // Prompt flag without a handed-off profile does not rewrite an explicit --profile source.
     let arg_global = super::super::tests::global(&["--profile", "base"]);
     let orphan_prompt_env = base_env
         .clone()
+        .with(REEXEC_GUARD_VAR, "1")
         .with(SELF_UPDATE_REEXEC_GUARD_VAR, "1")
         .with(SELF_UPDATE_PROFILE_PROMPTED_VAR, "1");
     let orphan_runtime = RuntimePolicy::new(
@@ -337,7 +341,8 @@ fn self_update_profile_handoff_respects_guard_elevation_and_prompt_flag() {
             .with(SELF_UPDATE_PROFILE_VAR, "base")
             .with(SELF_UPDATE_PROFILE_PROMPTED_VAR, "1");
         let env = if guard {
-            env.with(SELF_UPDATE_REEXEC_GUARD_VAR, "1")
+            env.with(REEXEC_GUARD_VAR, "1")
+                .with(SELF_UPDATE_REEXEC_GUARD_VAR, "1")
         } else {
             env
         };

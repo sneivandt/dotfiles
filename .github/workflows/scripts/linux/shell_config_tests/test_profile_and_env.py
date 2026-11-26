@@ -588,7 +588,8 @@ class ProfileAndEnvTests(ShellConfigTestCase):
                         'source "$ROOT/symlinks/config/zsh/key-bindings.zsh"\n'
                         'bindkey -lL main\n'
                         'bindkey "^A"; bindkey "^E"\n'
-                        'for capability in khome kend kdch1; do\n'
+                        'bindkey "^[[A"; bindkey "^[[B"; bindkey "^[OA"; bindkey "^[OB"\n'
+                        'for capability in khome kend kdch1 kcuu1 kcud1; do\n'
                         '  [[ -z ${terminfo[$capability]} ]] || bindkey "${terminfo[$capability]}"\n'
                         'done\n', interactive=True,
                     )
@@ -596,16 +597,23 @@ class ProfileAndEnvTests(ShellConfigTestCase):
                     self.assertEqual(lines[0], "bindkey -A emacs main")
                     self.assertEqual([line.split()[-1] for line in lines[1:3]],
                                      ["beginning-of-line", "end-of-line"])
+                    self.assertEqual([line.split()[-1] for line in lines[3:7]],
+                                     ["up-line-or-beginning-search", "down-line-or-beginning-search",
+                                      "up-line-or-beginning-search", "down-line-or-beginning-search"])
                     self.assertTrue(all(line.split()[-1] in
-                                        ("beginning-of-line", "end-of-line", "delete-char")
-                                        for line in lines[3:]))
+                                        ("beginning-of-line", "end-of-line", "delete-char",
+                                         "up-line-or-beginning-search", "down-line-or-beginning-search")
+                                        for line in lines[7:]))
         result = self.run_shell(
             'zmodload() { return 1; }\n'
             'source "$ROOT/symlinks/config/zsh/key-bindings.zsh"\n'
-            'bindkey "\\e[H"; bindkey "\\e[F"; bindkey "\\e[3~"\n',
+            'bindkey "\\e[H"; bindkey "\\e[F"; bindkey "\\e[3~"; '
+            'bindkey "^[[A"; bindkey "^[[B"; bindkey "^[OA"; bindkey "^[OB"\n',
         )
         self.assertEqual([line.split()[-1] for line in result.stdout.splitlines()],
-                         ["beginning-of-line", "end-of-line", "delete-char"])
+                         ["beginning-of-line", "end-of-line", "delete-char",
+                          "up-line-or-beginning-search", "down-line-or-beginning-search",
+                          "up-line-or-beginning-search", "down-line-or-beginning-search"])
 
     def test_readline_keeps_character_navigation_and_word_deletion_distinct(self):
         result = self.run_shell(
@@ -617,6 +625,10 @@ class ProfileAndEnvTests(ShellConfigTestCase):
                         if line.startswith('"') and ": " in line)
         self.assertEqual(bindings[r'"\C-b"'], "backward-char")
         self.assertEqual(bindings[r'"\e\C-?"'], "backward-kill-word")
+        self.assertEqual(bindings[r'"\e[A"'], "history-search-backward")
+        self.assertEqual(bindings[r'"\e[B"'], "history-search-forward")
+        self.assertEqual(bindings[r'"\eOA"'], "history-search-backward")
+        self.assertEqual(bindings[r'"\eOB"'], "history-search-forward")
 
     def test_desktop_profile_paths_and_overrides(self):
         config = self.home / "custom config"

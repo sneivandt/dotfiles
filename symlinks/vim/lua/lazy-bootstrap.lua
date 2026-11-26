@@ -164,7 +164,6 @@ end
 
 lazy.setup({
   -- Core plugins
-  { "tpope/vim-commentary" },
   { "tpope/vim-surround" },
   { "tpope/vim-fugitive" },
   { "tpope/vim-dispatch" },

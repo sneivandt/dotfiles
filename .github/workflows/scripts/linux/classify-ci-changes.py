@@ -272,7 +272,6 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 "symlinks/config/uwsm/env-hyprland.d/session.sh",
                 "symlinks/config/tmux/tmux.conf",
                 "symlinks/config/readline/inputrc",
-                "symlinks/config/pacman.conf",
             }:
                 apps.add("zsh")
             if path.startswith("symlinks/vim/"):

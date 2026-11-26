@@ -10,7 +10,7 @@ if ($parseErrors.Count -gt 0)
     throw "Profile parse errors: $parseErrors"
 }
 $definitions = @{}
-foreach ($name in @('Prompt', 'Format-PromptPath', 'Test-PromptRoot', 'dot', 'Add-PathEntry', 'Resolve-ExecutablePath'))
+foreach ($name in @('Prompt', 'Format-PromptPath', 'Test-PromptRoot', 'dot', 'Add-PathEntry', 'Resolve-ExecutablePath', 'Test-CodeInsidersAvailable'))
 {
     $definition = $ast.Find({
             param($node)
@@ -263,8 +263,38 @@ foreach ($case in $cases)
             {
                 throw "Symlinked pwsh executables must resolve identically: '$resolvedA' vs '$resolvedB'"
             }
+
+            $shimHome = Join-Path $pathFixture 'shim-home'
+            $shimBin = Join-Path $shimHome '.local/bin'
+            [IO.Directory]::CreateDirectory($shimBin) | Out-Null
+            $shimPath = Join-Path $shimBin 'code-insiders'
+            [IO.File]::WriteAllText($shimPath, "#!/bin/sh`n# dotfiles-managed-shim: code-insiders`nexit 0`n")
+            [IO.File]::SetUnixFileMode($shimPath,
+                [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite -bor [IO.UnixFileMode]::UserExecute)
+            $realBinary = Join-Path $pathFixture 'real-code-insiders'
+            $env:PATH = $shimBin
+            if (Test-CodeInsidersAvailable -HomeDirectory $shimHome -RealBinary $realBinary -WindowsPlatform $false)
+            {
+                throw 'Managed code-insiders shim must not count as installed when the real binary is missing.'
+            }
+            [IO.File]::WriteAllText($realBinary, "#!/bin/sh`nexit 0`n")
+            [IO.File]::SetUnixFileMode($realBinary, [IO.UnixFileMode]::UserRead)
+            if (Test-CodeInsidersAvailable -HomeDirectory $shimHome -RealBinary $realBinary -WindowsPlatform $false)
+            {
+                throw 'Managed code-insiders shim must not count as installed when the real binary is not executable.'
+            }
+            [IO.File]::SetUnixFileMode($realBinary,
+                [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite -bor [IO.UnixFileMode]::UserExecute)
+            if (-not (Test-CodeInsidersAvailable -HomeDirectory $shimHome -RealBinary $realBinary -WindowsPlatform $false))
+            {
+                throw 'Managed code-insiders shim must count as installed when the real binary is executable.'
+            }
+            if (-not (Test-CodeInsidersAvailable -HomeDirectory $shimHome -RealBinary (Join-Path $pathFixture 'absent') -WindowsPlatform $true))
+            {
+                throw 'Windows code-insiders detection must not apply the Linux shim check.'
+            }
         }
-        Write-Output 'PASS: literal PATH directories, prepending, symlink resolution, file rejection and idempotency'
+        Write-Output 'PASS: literal PATH directories, prepending, symlink resolution, file rejection, shim guard and idempotency'
     }
     finally
     {

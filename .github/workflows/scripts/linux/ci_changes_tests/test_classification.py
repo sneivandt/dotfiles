@@ -66,7 +66,6 @@ class ClassificationTests(unittest.TestCase):
             ("symlinks/config/git/windows-desktop", config | {"app_tests", "app_windows", "build_windows"}),
             ("symlinks/config/tmux/tmux.conf", config | {"app_tests"}),
             ("symlinks/config/readline/inputrc", config | {"app_tests"}),
-            ("symlinks/config/pacman.conf", config | {"app_tests"}),
             ("symlinks/vim/init.vim", config | {"app_tests"}),
             ("symlinks/config/zsh/prompt.zsh", config | {"app_tests"}),
             ("symlinks/config/bash/prompt.bash", config | {"app_tests", "lint"}),

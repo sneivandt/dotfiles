@@ -369,10 +369,7 @@ class SshPromptAndSystemTests(ShellConfigTestCase):
         self.assertEqual(conflict.read_text(), "user file\n")
 
     def test_pacman_alias_does_not_override_host_configuration(self):
-        self.assertEqual(
-            (ROOT / "symlinks/config/pacman.conf").read_text().splitlines()[-1],
-            "Include = /etc/pacman.conf",
-        )
+        self.assertFalse((ROOT / "symlinks/config/pacman.conf").exists())
         self.assertNotIn(
             '"config/pacman.conf"', (ROOT / "conf/symlinks.toml").read_text(),
         )

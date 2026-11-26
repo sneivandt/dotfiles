@@ -97,6 +97,11 @@ if (Get-Module PSReadLine)
     Set-PSReadLineOption -BellStyle None
     Set-PSReadLineOption -HistorySearchCursorMovesToEnd
     Set-PSReadLineOption -MaximumHistoryCount 100000
+    # Terminals emit ESC DEL (Alt+Backspace) for Ctrl+Backspace so word deletion survives tmux.
+    if (Get-Command Set-PSReadLineKeyHandler -ErrorAction SilentlyContinue)
+    {
+        Set-PSReadLineKeyHandler -Chord 'Alt+Backspace' -Function BackwardKillWord
+    }
     # Older bundled PSReadLine versions lack some display options.
     $psReadLineParameters = (Get-Command Set-PSReadLineOption).Parameters
     if ($psReadLineParameters.ContainsKey('PredictionSource'))
@@ -138,7 +143,90 @@ function Test-DotfilesAliasWritable
     return $null -eq $existing -or -not ($existing.Options -band $protected)
 }
 
-if ((Get-Command "code-insiders" -ErrorAction SilentlyContinue) -and (Test-DotfilesAliasWritable 'code'))
+function Resolve-ExecutablePath
+{
+    param (
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path))
+    {
+        return $Path
+    }
+
+    try
+    {
+        $info = [System.IO.FileInfo]::new($Path)
+        if ($info.Exists -and ($info | Get-Member -Name 'ResolveLinkTarget' -MemberType Method))
+        {
+            $target = $info.ResolveLinkTarget($true)
+            if ($null -ne $target)
+            {
+                return $target.FullName
+            }
+            if ($null -ne $info.Directory)
+            {
+                $dirTarget = $info.Directory.ResolveLinkTarget($true)
+                if ($null -ne $dirTarget)
+                {
+                    return Join-Path $dirTarget.FullName $info.Name
+                }
+            }
+        }
+        return $info.FullName
+    }
+    catch
+    {
+        return $Path
+    }
+}
+
+function Test-CodeInsidersAvailable
+{
+    param(
+        [string] $HomeDirectory = $HOME,
+        [string] $RealBinary = '/usr/bin/code-insiders',
+        [bool] $WindowsPlatform = ([IO.Path]::DirectorySeparatorChar -eq '\')
+    )
+
+    $command = Get-Command "code-insiders" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $command)
+    {
+        return $false
+    }
+    if ($WindowsPlatform -or $command.CommandType -ne 'Application')
+    {
+        return $true
+    }
+
+    $managedShim = Join-Path (Join-Path (Join-Path $HomeDirectory ".local") "bin") "code-insiders"
+    if (-not (Test-Path -LiteralPath $managedShim -PathType Leaf))
+    {
+        return $true
+    }
+    if ((Resolve-ExecutablePath -Path $command.Source) -cne (Resolve-ExecutablePath -Path $managedShim))
+    {
+        return $true
+    }
+
+    $lines = @(Get-Content -LiteralPath $managedShim -TotalCount 2 -ErrorAction SilentlyContinue)
+    if ($lines.Count -ge 2 -and $lines[1] -ceq '# dotfiles-managed-shim: code-insiders')
+    {
+        if (-not (Test-Path -LiteralPath $RealBinary -PathType Leaf))
+        {
+            return $false
+        }
+        $mode = [System.IO.File]::GetUnixFileMode($RealBinary)
+        $execBits = [System.IO.UnixFileMode]::UserExecute -bor
+            [System.IO.UnixFileMode]::GroupExecute -bor
+            [System.IO.UnixFileMode]::OtherExecute
+        return [bool]($mode -band $execBits)
+    }
+
+    return $true
+}
+
+if ((Test-CodeInsidersAvailable) -and (Test-DotfilesAliasWritable 'code'))
 {
     Set-Alias -Name code -Value code-insiders
 }
@@ -191,44 +279,6 @@ function Test-PromptRoot
     )
 
     return -not $WindowsPlatform -and $UserName -ceq 'root'
-}
-
-function Resolve-ExecutablePath
-{
-    param (
-        [string]$Path
-    )
-
-    if ([string]::IsNullOrWhiteSpace($Path))
-    {
-        return $Path
-    }
-
-    try
-    {
-        $info = [System.IO.FileInfo]::new($Path)
-        if ($info.Exists -and ($info | Get-Member -Name 'ResolveLinkTarget' -MemberType Method))
-        {
-            $target = $info.ResolveLinkTarget($true)
-            if ($null -ne $target)
-            {
-                return $target.FullName
-            }
-            if ($null -ne $info.Directory)
-            {
-                $dirTarget = $info.Directory.ResolveLinkTarget($true)
-                if ($null -ne $dirTarget)
-                {
-                    return Join-Path $dirTarget.FullName $info.Name
-                }
-            }
-        }
-        return $info.FullName
-    }
-    catch
-    {
-        return $Path
-    }
 }
 
 $Global:IsNestedPwsh = $false

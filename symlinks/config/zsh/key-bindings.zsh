@@ -70,3 +70,9 @@ zle -N up-line-or-beginning-search
 zle -N down-line-or-beginning-search
 bindkey "^[[A" up-line-or-beginning-search # Up
 bindkey "^[[B" down-line-or-beginning-search # Down
+bindkey "^[OA" up-line-or-beginning-search # Up (application cursor mode)
+bindkey "^[OB" down-line-or-beginning-search # Down (application cursor mode)
+if zmodload zsh/terminfo 2>/dev/null; then
+  [[ -z ${terminfo[kcuu1]:-} ]] || bindkey "${terminfo[kcuu1]}" up-line-or-beginning-search
+  [[ -z ${terminfo[kcud1]:-} ]] || bindkey "${terminfo[kcud1]}" down-line-or-beginning-search
+fi

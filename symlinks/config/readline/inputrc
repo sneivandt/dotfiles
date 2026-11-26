@@ -14,6 +14,8 @@ set visible-stats on
 # History
 "\e[A": history-search-backward
 "\e[B": history-search-forward
+"\eOA": history-search-backward
+"\eOB": history-search-forward
 
 # Ctrl + Backspace. Terminals are configured to emit ESC DEL rather than ^H so
 # the binding survives tmux, which claims C-h for pane navigation.

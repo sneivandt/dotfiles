@@ -1,7 +1,17 @@
 {
     "$help": "https://aka.ms/terminal-documentation",
     "$schema": "https://aka.ms/terminal-profiles-schema",
-    "actions": [],
+    "actions":
+    [
+        {
+            "command":
+            {
+                "action": "sendInput",
+                "input": "\u001b\u007f"
+            },
+            "id": "User.sendInput.CtrlBackspace"
+        }
+    ],
     "copyFormatting": "none",
     "copyOnSelect": false,
     "defaultProfile": "{505ae8ff-4b0a-4666-8d59-1c476f7ffe0d}",
@@ -26,6 +36,10 @@
         {
             "id": "Terminal.DuplicateTab",
             "keys": "ctrl+shift+d"
+        },
+        {
+            "id": "User.sendInput.CtrlBackspace",
+            "keys": "ctrl+backspace"
         }
     ],
     "launchMode": "maximized",

@@ -78,29 +78,38 @@ class PrePushPlanTests(unittest.TestCase):
         self.assertIn("roundtrip_windows", deferred)
 
     def test_checker_changes_request_full_ci_without_binary_release(self):
-        selected = classify([LINUX + "pre-push.py"])
-        self.assertTrue(selected["run_rust_checks"])
-        self.assertTrue(selected["run_hook_inputs"])
-        self.assertTrue(selected["run_desktop_qml"])
-        self.assertFalse(selected["run_release"])
+        for path in (LINUX + "pre-push.py", LINUX + "check.py", LINUX + "check.sh", WINDOWS + "Check.ps1"):
+            with self.subTest(path=path):
+                selected = classify([path])
+                self.assertTrue(selected["run_rust_checks"])
+                self.assertTrue(selected["run_hook_inputs"])
+                self.assertTrue(selected["run_desktop_qml"])
+                self.assertFalse(selected["run_release"])
 
     @unittest.skipUnless(sys.platform == "linux", "requires POSIX fixture executables")
     def test_missing_tools_fail_strict_checker(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            script = root / ".github/workflows/scripts/linux/check.sh"
-            script.parent.mkdir(parents=True)
+            scripts = root / ".github/workflows/scripts/linux"
+            scripts.mkdir(parents=True)
             (root / "cli").mkdir()
-            shutil.copyfile(SCRIPTS / "check.sh", script)
+            shutil.copyfile(SCRIPTS / "check.py", scripts / "check.py")
+            shutil.copyfile(SCRIPTS / "check.sh", scripts / "check.sh")
             (root / "dirname").symlink_to(shutil.which("dirname"))
-            for strict, expected in ((False, 0), (True, 1)):
-                result = subprocess.run(
-                    ["/bin/sh", str(script), *(["--strict"] if strict else []), "shell"],
-                    env={"PATH": str(root)}, text=True, capture_output=True,
-                )
-                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
-                self.assertIn("SKIP", result.stdout)
-                self.assertNotIn("All requested checks passed", result.stdout)
+            (root / "python3").symlink_to(sys.executable)
+            for cmd in (
+                [sys.executable, "-B", str(scripts / "check.py")],
+                ["/bin/sh", str(scripts / "check.sh")],
+            ):
+                for strict, expected in ((False, 0), (True, 1)):
+                    with self.subTest(cmd=cmd[-1], strict=strict):
+                        result = subprocess.run(
+                            [*cmd, *(["--strict"] if strict else []), "shell"],
+                            env={"PATH": str(root)}, text=True, capture_output=True,
+                        )
+                        self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                        self.assertIn("SKIP", result.stdout)
+                        self.assertNotIn("All requested checks passed", result.stdout)
 
 
 class PrePushCoordinatorTests(unittest.TestCase):
@@ -115,7 +124,7 @@ class PrePushCoordinatorTests(unittest.TestCase):
         selection = classify(["cli/src/main.rs", "dotfiles.ps1"])
         commands = PRE_PUSH["windows_plan"](selection)
         stages = next(command for label, _, command in commands if label == "native Windows checks")
-        self.assertEqual(stages[stages.index("-Strict") + 1:], ["clippy", "test", "config", "powershell"])
+        self.assertEqual(stages[stages.index("--strict") + 1:], ["clippy", "test", "config", "powershell"])
         flattened = [arg for _, _, command in commands for arg in command]
         for unnecessary in ("fmt", "rustdoc", "audit", "deny", "x86_64-pc-windows-gnu"):
             self.assertNotIn(unnecessary, flattened)
@@ -349,33 +358,66 @@ class LocalCheckTests(unittest.TestCase):
     def test_tool_failures_are_not_optional_tool_skips(self):
         stages = (
             "fmt", "clippy", "test", "rustdoc", "config", "docs", "ci",
-            "shell", "powershell", "python", "lua", "audit", "deny", "msrv", "qml",
+            "shell", "powershell", "python", "lua", "audit", "deny",
+            "msrv", "qml", "hooks", "wrapper", "desktop",
         )
         with tempfile.TemporaryDirectory(prefix="dotfiles-check-status-") as temporary:
             root = Path(temporary)
             scripts = root / LINUX
             scripts.mkdir(parents=True)
-            qml_script = root / "tests/desktop/quickshell/test-desktop-qml.sh"
-            qml_script.parent.mkdir(parents=True)
+            for rel in (
+                "tests/desktop/quickshell/test-desktop-qml.sh",
+                "tests/hooks/test-hook-inputs.py",
+                "tests/hooks/test-maintenance.py",
+                "tests/hooks/test-git-hooks.py",
+                "tests/wrapper/test-parity.py",
+                "tests/wrapper/test-shell-wrapper.sh",
+                LINUX + "check-ci-contract.py",
+                LINUX + "test-ci-changes.py",
+            ):
+                target = root / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if rel.endswith(".sh"):
+                    target.write_text('#!/bin/sh\nexit "$CHECK_STATUS"\n', encoding="utf-8", newline="\n")
+                else:
+                    target.write_text(
+                        'import os, sys\nsys.exit(int(os.environ["CHECK_STATUS"]))\n',
+                        encoding="utf-8", newline="\n",
+                    )
+            for rel in (
+                "tests/desktop/hypr/test_fixture.py",
+                "tests/desktop/quickshell/python/test_fixture.py",
+            ):
+                target = root / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(
+                    "import os, unittest\n"
+                    "class FixtureTest(unittest.TestCase):\n"
+                    "    def test_status(self):\n"
+                    "        self.assertEqual(os.environ['CHECK_STATUS'], '0')\n",
+                    encoding="utf-8", newline="\n",
+                )
             (root / "cli").mkdir()
             (root / "cli/Cargo.toml").write_text(
                 '[package]\nrust-version = "1.91"\n', encoding="utf-8", newline="\n",
             )
-            (root / "hooks").mkdir()
-            (root / "hooks/check-toolchain.sh").write_text(
-                "#!/bin/sh\nexit 0\n", encoding="utf-8", newline="\n",
+            (root / "cli/rust-toolchain.toml").write_text(
+                '[toolchain]\nchannel = "1.95.0"\n', encoding="utf-8", newline="\n",
             )
-            shutil.copyfile(SCRIPTS / "check.sh", scripts / "check.sh")
+            for script_name in ("check.py", "check.sh"):
+                shutil.copyfile(SCRIPTS / script_name, scripts / script_name)
             for name in ("test-docs.sh", "test-static-analysis.sh", "test-workflows.sh"):
                 (scripts / name).write_text(
                     '#!/bin/sh\nexit "$CHECK_STATUS"\n', encoding="utf-8", newline="\n",
                 )
-            qml_script.write_text(
-                '#!/bin/sh\nexit "$CHECK_STATUS"\n', encoding="utf-8", newline="\n",
-            )
             tools = root / "tools"
             tools.mkdir()
-            for name in ("cargo", "rustup", "python3", "shellcheck", "pwsh",
+            rustc = tools / "rustc"
+            rustc.write_text(
+                '#!/bin/sh\necho "rustc 1.95.0 (fixture)"\n', encoding="utf-8", newline="\n",
+            )
+            rustc.chmod(0o755)
+            for name in ("cargo", "rustup", "shellcheck", "pwsh",
                          "ruff", "luacheck", "actionlint", "qmltestrunner"):
                 tool = tools / name
                 tool.write_text(
@@ -405,30 +447,16 @@ class LocalCheckTests(unittest.TestCase):
                             rf"(?m)^\s+{'PASS' if status == 0 else 'FAIL'} {stage}$",
                         )
 
-    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is unavailable")
-    def test_windows_command_start_failures_do_not_pass(self):
-        command = r"""
-$ErrorActionPreference = 'Continue'
-$source = [System.Management.Automation.Language.Parser]::ParseFile(
-    $env:CHECK_SCRIPT, [ref]$null, [ref]$null)
-foreach ($name in @('Write-Note', 'Invoke-Tool')) {
-    $function = $source.Find({
-        param($node)
-        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-            $node.Name -eq $name
-    }, $true)
-    Invoke-Expression $function.Extent.Text
-}
-$global:LASTEXITCODE = 0
-$status = Invoke-Tool -FilePath 'dotfiles-fixture-command-that-does-not-exist' -ToolArguments @('--version')
-if ($status -ne 'FAIL') { throw "Expected FAIL, got $status" }
-"""
-        result = subprocess.run(
-            [shutil.which("pwsh"), "-NoProfile", "-NonInteractive", "-Command", command],
-            env=os.environ | {"CHECK_SCRIPT": str(SCRIPTS.parent / "windows/Check.ps1")},
-            capture_output=True, text=True, timeout=120,
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+    def test_command_start_failures_do_not_pass(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("check_runner", SCRIPTS / "check.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        runner = module.Runner(SCRIPTS.parents[3], module.Console())
+        with contextlib.redirect_stdout(io.StringIO()):
+            status = runner.run_cmd(["dotfiles-fixture-command-that-does-not-exist", "--version"])
+        self.assertEqual(status, "FAIL")
 
     @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is unavailable")
     def test_windows_skips_are_reported_and_strict_mode_fails(self):
@@ -436,9 +464,14 @@ if ($status -ne 'FAIL') { throw "Expected FAIL, got $status" }
             root = Path(temporary)
             script = root / WINDOWS / "Check.ps1"
             script.parent.mkdir(parents=True)
+            (root / LINUX).mkdir(parents=True)
             (root / "cli").mkdir()
             shutil.copyfile(SCRIPTS.parent / "windows/Check.ps1", script)
-            env = os.environ | {"PATH": "", "DOTFILES_CHECK_STRICT": "0"}
+            shutil.copyfile(SCRIPTS / "check.py", root / LINUX / "check.py")
+            py_dir = root / "pybin"
+            py_dir.mkdir()
+            (py_dir / "python3").symlink_to(sys.executable)
+            env = os.environ | {"PATH": str(py_dir), "DOTFILES_CHECK_STRICT": "0"}
             for strict, inherited in ((False, False), (True, False), (False, True)):
                 with self.subTest(strict=strict, inherited=inherited):
                     result = subprocess.run(
@@ -452,6 +485,6 @@ if ($status -ne 'FAIL') { throw "Expected FAIL, got $status" }
                         result.stdout + result.stderr,
                     )
                     self.assertIn("SKIP fmt", result.stdout)
-                    self.assertNotIn("All checks passed", result.stdout)
+                    self.assertNotIn("All requested checks passed", result.stdout)
                     if not (strict or inherited):
-                        self.assertIn("Some requested checks were skipped", result.stdout)
+                        self.assertIn("Checks completed with skips; coverage is incomplete.", result.stdout)

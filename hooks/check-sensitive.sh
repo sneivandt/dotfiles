@@ -50,7 +50,8 @@ if ! load_hook_config "hooks/sensitive-patterns.ini" "$FALLBACK_PATTERNS_FILE" "
   exit 1
 fi
 
-PATTERNS=$(cat "$PATTERNS_FILE")
+COMPILED_PATTERNS="$tmpdir/patterns.ere"
+awk '/^$/ || /^#/ || /^\[.*\]$/ { next } { print }' "$PATTERNS_FILE" > "$COMPILED_PATTERNS"
 
 # Combine allowlist entries into a single alternation. Matching spans are
 # structurally safe (see sensitive-allowlist.ini) and are redacted before
@@ -74,13 +75,10 @@ if load_hook_config "hooks/sensitive-allowlist.ini" "$FALLBACK_ALLOWLIST_FILE" "
   ' "$ALLOWLIST_FILE")
 fi
 
-# Validate every detection rule even when the staged diff is empty. grep's
-# status 1 means no match; any other failure means the scan cannot be trusted.
-while IFS= read -r pattern; do
-  case "$pattern" in
-    ''|'#'*|'['*']') continue ;;
-  esac
-  if grep -iE -- "$pattern" /dev/null >/dev/null 2>&1; then
+# Validate every detection rule in one pass even when the staged diff is empty.
+# grep's status 1 means no match; any other failure means the scan cannot be trusted.
+if [ -s "$COMPILED_PATTERNS" ]; then
+  if grep -iE -f "$COMPILED_PATTERNS" /dev/null >/dev/null 2>&1; then
     :
   else
     status=$?
@@ -89,9 +87,7 @@ while IFS= read -r pattern; do
       exit 1
     fi
   fi
-done <<PATTERNS_EOF
-$PATTERNS
-PATTERNS_EOF
+fi
 
 if git rev-parse --verify HEAD >/dev/null 2>&1; then
   against=HEAD
@@ -105,6 +101,7 @@ diff_file="$tmpdir/diff"
 content="$tmpdir/content"
 linenos="$tmpdir/linenos"
 filenames="$tmpdir/filenames"
+matches_file="$tmpdir/matches"
 : > "$content"
 : > "$linenos"
 : > "$filenames"
@@ -165,24 +162,22 @@ if [ -n "$ALLOWLIST_RE" ]; then
   mv "$content.redacted" "$content"
 fi
 
-while IFS= read -r pattern; do
-  case "$pattern" in
-    ''|'#'*|'['*']') continue ;;
-  esac
-
-  if matches=$(grep -inE -- "$pattern" "$content" 2>/dev/null); then
-    if [ "$found_secrets" -eq 0 ]; then
-      printf '%sERROR: Potential sensitive information detected!%s\n' "$RED" "$NC"
-      printf '%s======================================================%s\n\n' "$RED" "$NC"
-      found_secrets=1
-    fi
-
-    printf '%s\n' "$matches" | while IFS=: read -r index _text; do
-      file=$(sed -n "${index}p" "$filenames")
-      lineno=$(sed -n "${index}p" "$linenos")
-      printf '%sIn file: %s%s\n' "$YELLOW" "$file" "$NC"
-      printf '%s  Line %s: <redacted>%s\n' "$YELLOW" "$lineno" "$NC"
-    done
+if [ -s "$COMPILED_PATTERNS" ]; then
+  if grep -inE -f "$COMPILED_PATTERNS" "$content" > "$matches_file" 2>/dev/null; then
+    found_secrets=1
+    printf '%sERROR: Potential sensitive information detected!%s\n' "$RED" "$NC"
+    printf '%s======================================================%s\n\n' "$RED" "$NC"
+    awk -v yellow="$YELLOW" -v nc="$NC" -v fn="$filenames" -v ln="$linenos" '
+      FILENAME == fn { files[FNR] = $0; next }
+      FILENAME == ln { lines[FNR] = $0; next }
+      {
+        idx = $0
+        sub(/:.*/, "", idx)
+        idx += 0
+        printf "%sIn file: %s%s\n", yellow, files[idx], nc
+        printf "%s  Line %s: <redacted>%s\n", yellow, lines[idx], nc
+      }
+    ' "$filenames" "$linenos" "$matches_file"
     printf '\n'
   else
     status=$?
@@ -191,9 +186,7 @@ while IFS= read -r pattern; do
       exit 1
     fi
   fi
-done <<PATTERNS_EOF
-$PATTERNS
-PATTERNS_EOF
+fi
 
 if [ "$found_secrets" -eq 1 ]; then
   printf '%s======================================================%s\n' "$RED" "$NC"

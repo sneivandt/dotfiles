@@ -195,6 +195,83 @@ LINTER_MATCHERS = {
     "workflows": workflow_file,
 }
 
+WRAPPER_PARITY_PATHS = frozenset({
+    "tests/wrapper/parity-contract.json",
+    "tests/wrapper/test-parity.py",
+})
+
+WRAPPER_LINUX_EXACT = frozenset({
+    "dotfiles.sh",
+    "tests/wrapper/test-shell-wrapper.sh",
+})
+
+WRAPPER_WINDOWS_EXACT = frozenset({
+    "dotfiles.ps1",
+    "tests/wrapper/Test-ShellWrapper.ps1",
+})
+
+CI_CONTRACT_GUARD_PATHS = frozenset({
+    ".github/workflows/ci.yml",
+    ".github/workflows/pages.yml",
+    ".github/workflows/mutation.yml",
+    ".github/workflows/dependency-security.yml",
+    LINUX + "ci_metadata.py",
+    LINUX + "workflow_yaml.py",
+    LINUX + "classify-ci-changes.py",
+    LINUX + "check-ci-contract.py",
+})
+
+
+def config_guard_path(path: str) -> bool:
+    return (
+        (path.startswith("conf/") and path.endswith(".toml"))
+        or path.startswith(("symlinks/", "system/", "packages/"))
+    )
+
+
+def dependency_guard_path(path: str) -> bool:
+    return path in {"cli/Cargo.toml", "cli/Cargo.lock", "cli/deny.toml"}
+
+
+def wrapper_parity_guard_path(path: str) -> bool:
+    return path in {"dotfiles.sh", "dotfiles.ps1"} or path.startswith("tests/wrapper/")
+
+
+def wrapper_linux_guard_path(path: str) -> bool:
+    return (
+        path in WRAPPER_LINUX_EXACT
+        or path in WRAPPER_PARITY_PATHS
+        or path.startswith("tests/wrapper/linux/")
+    )
+
+
+def release_workflow_guard_path(path: str) -> bool:
+    return path == ".github/workflows/release.yml"
+
+
+def ci_contract_guard_path(path: str) -> bool:
+    return path in CI_CONTRACT_GUARD_PATHS
+
+
+def doc_links_guard_path(path: str) -> bool:
+    return path.endswith(".md") or path == LINUX + "check-doc-links.py"
+
+
+def skills_guard_path(path: str) -> bool:
+    return path.startswith(".agents/skills/") or path == "AGENTS.md"
+
+
+GUARD_MATCHERS = {
+    "config": config_guard_path,
+    "dependency": dependency_guard_path,
+    "wrapper-parity": wrapper_parity_guard_path,
+    "wrapper-linux": wrapper_linux_guard_path,
+    "release-workflow": release_workflow_guard_path,
+    "ci-contract": ci_contract_guard_path,
+    "doc-links": doc_links_guard_path,
+    "skills": skills_guard_path,
+}
+
 
 def is_python_shebang(path: Path) -> bool:
     """Return whether a file starts with a Python interpreter shebang."""
@@ -261,17 +338,19 @@ def snapshot_commit(
 
 
 def _cli(argv: list[str]) -> int:
-    if len(argv) == 2 and argv[0] in {"filter-linter", "has-linter"}:
-        matcher = LINTER_MATCHERS.get(argv[1])
+    if len(argv) == 2 and argv[0] in {"filter-linter", "has-linter", "has-guard"}:
+        matchers = GUARD_MATCHERS if argv[0] == "has-guard" else LINTER_MATCHERS
+        matcher = matchers.get(argv[1])
         if matcher is None:
-            print(f"Unknown linter category: {argv[1]}", file=sys.stderr)
+            kind = "guard" if argv[0] == "has-guard" else "linter"
+            print(f"Unknown {kind} category: {argv[1]}", file=sys.stderr)
             return 2
         raw = sys.stdin.buffer.read()
         matched = [
             entry for entry in raw.split(b"\0")
             if entry and matcher(entry.decode("utf-8", errors="surrogateescape"))
         ]
-        if argv[0] == "has-linter":
+        if argv[0] in {"has-linter", "has-guard"}:
             return 0 if matched else 1
         if matched:
             sys.stdout.buffer.write(b"\0".join(matched) + b"\0")
@@ -280,7 +359,10 @@ def _cli(argv: list[str]) -> int:
         targets = ruff_inputs(Path(argv[1]))
         sys.stdout.buffer.write(b"\0".join(item.encode("utf-8", errors="surrogateescape") for item in targets) + b"\0")
         return 0
-    print("Usage: ci_metadata.py <filter-linter|has-linter <category>|ruff-inputs <dir>>", file=sys.stderr)
+    print(
+        "Usage: ci_metadata.py <filter-linter|has-linter|has-guard <category>|ruff-inputs <dir>>",
+        file=sys.stderr,
+    )
     return 2
 
 

@@ -83,8 +83,8 @@ domain rather than by CI runner:
 | `tests/integration/` | Cross-platform install/uninstall round-trip (`test-install-uninstall.py`), Arch container acceptance, and APM deployment |
 | `tests/lib/` | Shared POSIX test assertion helpers |
 
-Keep CI-only orchestration (`check.sh`, `Check.ps1`, `pre-push.py`, path/release
-classification, docs checks, and mutation runners) under
+Keep CI-only orchestration (`check.py`, `check.sh`, `Check.ps1`, `pre-push.py`,
+path/release classification, docs checks, and mutation runners) under
 `.github/workflows/scripts/`. When adding a new file under `tests/`, wire its
 path into
 [classify-ci-changes.py](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/classify-ci-changes.py)

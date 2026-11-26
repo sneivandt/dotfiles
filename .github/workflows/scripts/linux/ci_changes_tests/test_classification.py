@@ -379,6 +379,29 @@ class ClassificationTests(unittest.TestCase):
                 )
                 self.assertEqual(no_match.returncode, 1)
 
+        guard_samples = {
+            "config": b"conf/packages.toml\0",
+            "dependency": b"cli/Cargo.lock\0",
+            "wrapper-parity": b"dotfiles.ps1\0",
+            "wrapper-linux": b"dotfiles.sh\0",
+            "release-workflow": b".github/workflows/release.yml\0",
+            "ci-contract": b".github/workflows/ci.yml\0",
+            "doc-links": b"README.md\0",
+            "skills": b".agents/skills/example/SKILL.md\0",
+        }
+        for category, guard_input in guard_samples.items():
+            with self.subTest(guard=category):
+                hit = subprocess.run(
+                    [sys.executable, "-B", str(meta), "has-guard", category],
+                    input=guard_input, check=False,
+                )
+                self.assertEqual(hit.returncode, 0)
+                miss = subprocess.run(
+                    [sys.executable, "-B", str(meta), "has-guard", category],
+                    input=b"unrelated/file.txt\0", check=False,
+                )
+                self.assertEqual(miss.returncode, 1)
+
         ruff_result = subprocess.run(
             [sys.executable, "-B", str(meta), "ruff-inputs", str(repo)],
             stdout=subprocess.PIPE, check=True,

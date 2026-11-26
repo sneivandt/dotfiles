@@ -14,11 +14,12 @@ from .helpers import REPO_ROOT, clean_git_env, run
 class HookBehaviorTests(unittest.TestCase):
     def test_hook_wiring(self) -> None:
         pre_commit = (REPO_ROOT / "hooks" / "pre-commit").read_text(encoding="utf-8")
-        for script in ("check-sensitive.sh", "check-rust.sh", "check-ci-guards.sh"):
+        for script in ("check-sensitive.sh", "check-rust.sh", "check-ci-guards.sh", "staged-tree.sh"):
             with self.subTest(script=script):
                 script_path = REPO_ROOT / "hooks" / script
                 self.assertTrue(script_path.is_file(), f"Missing hook helper {script}")
-                self.assertIn(script, pre_commit, f"pre-commit does not call {script}")
+                if script != "staged-tree.sh":
+                    self.assertIn(script, pre_commit, f"pre-commit does not call {script}")
                 syntax = run(["sh", "-n", str(script_path)], cwd=REPO_ROOT)
                 self.assertEqual(syntax.returncode, 0, f"{script} has invalid POSIX shell syntax:\n{syntax.stderr}")
 
@@ -73,6 +74,7 @@ class HookBehaviorTests(unittest.TestCase):
             (repo / "hooks").mkdir()
             (repo / ".github" / "workflows" / "scripts" / "linux").mkdir(parents=True)
             shutil.copy2(REPO_ROOT / "hooks" / "check-ci-guards.sh", repo / "hooks" / "check-ci-guards.sh")
+            shutil.copy2(REPO_ROOT / "hooks" / "staged-tree.sh", repo / "hooks" / "staged-tree.sh")
             for helper in ("check-ci-contract.py", "ci_metadata.py", "workflow_yaml.py"):
                 shutil.copy2(
                     REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / helper,

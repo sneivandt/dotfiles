@@ -94,20 +94,29 @@ or [Debugging](debugging.md) to trace a failure.
 
 ### Stage-based checks
 
-The repository's canonical check runners are
+The repository's unified cross-platform check runner is
+[check.py](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/check.py),
+with thin convenience shims at
 [check.sh](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/check.sh)
 and
 [Check.ps1](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/windows/Check.ps1).
 Pick only the stages relevant to your patch.
 
-Linux:
+Cross-platform (Python):
+
+```sh
+python3 -B .github/workflows/scripts/linux/check.py --list
+python3 -B .github/workflows/scripts/linux/check.py --strict fmt clippy test config
+```
+
+Linux shim:
 
 ```sh
 sh .github/workflows/scripts/linux/check.sh --list
 sh .github/workflows/scripts/linux/check.sh --strict fmt clippy test config
 ```
 
-Windows:
+Windows shim:
 
 ```powershell
 pwsh -File .github\workflows\scripts\windows\Check.ps1 -List
@@ -139,10 +148,12 @@ failures, and any installed tool's nonzero exit (including exit code `2`) fails
 immediately. See [Analyzer prerequisites](#analyzer-prerequisites) for required
 tools.
 
-Two stages are opt-in: `msrv` installs and builds with the MSRV from
-`Cargo.toml`, and Linux `qml` runs Qt `qmllint` and Qt Quick Test (`--all` on
-Linux enables both; `-All` on Windows adds `msrv`). Neither runs mutation
-testing or live host integration.
+Five stages are opt-in: `msrv` installs and builds with the MSRV from
+`Cargo.toml`, `wrapper` runs the platform bootstrap wrapper tests, and Linux
+`qml` (Qt `qmllint` and Qt Quick Test), `hooks` (staged-input and maintenance
+suites), and `desktop` (Hyprland and Quickshell Python tests). `--all` on Linux
+enables all opt-in stages; `--all` / `-All` on Windows adds `msrv` and
+`wrapper`. None of them run mutation testing or live host integration.
 
 The Linux `docs` stage requires Python, Cargo, the Node version in
 `docs/.node-version`, and the

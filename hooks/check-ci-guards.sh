@@ -17,21 +17,11 @@ YELLOW=$(printf '\033[1;33m')
 DIM=$(printf '\033[2m')
 NC=$(printf '\033[0m')
 
-if git rev-parse --verify HEAD >/dev/null 2>&1; then
-  against=HEAD
-else
-  against=$(git hash-object -t tree /dev/null)
-fi
-
-REPO_ROOT=$(git rev-parse --show-toplevel)
-WORKTREE_ROOT="$REPO_ROOT"
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-MANIFEST="$REPO_ROOT/cli/Cargo.toml"
-OWN_CHECK_STAGE_DIR=""
-CHECK_STAGE_DIR=""
-CHECK_ROOT=""
-trap '[ -z "$OWN_CHECK_STAGE_DIR" ] || rm -rf "$OWN_CHECK_STAGE_DIR"' EXIT
-trap 'exit 1' HUP INT TERM
+# shellcheck source=hooks/staged-tree.sh
+. "$SCRIPT_DIR/staged-tree.sh"
+
+init_staged_tree_context
 
 resolve_repo_file() {
   rel_path="$1"
@@ -56,29 +46,6 @@ find_ci_metadata() {
   fi
 }
 
-prepare_staged_tree() {
-  [ -z "$CHECK_ROOT" ] || return 0
-  if [ -n "${DOTFILES_HOOK_CHECK_ROOT:-}" ]; then
-    CHECK_STAGE_DIR="$DOTFILES_HOOK_CHECK_ROOT"
-  else
-    OWN_CHECK_STAGE_DIR=$(mktemp -d)
-    CHECK_STAGE_DIR="$OWN_CHECK_STAGE_DIR"
-  fi
-  CHECK_ROOT="$CHECK_STAGE_DIR/tree"
-  if [ ! -f "$CHECK_STAGE_DIR/.exported" ]; then
-    mkdir -p "$CHECK_ROOT"
-    git -C "$WORKTREE_ROOT" checkout-index --all --prefix="$CHECK_ROOT/"
-    : > "$CHECK_STAGE_DIR/.exported"
-  fi
-  HOOK_CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-"$WORKTREE_ROOT/cli/target/hooks"}
-  case "$HOOK_CARGO_TARGET_DIR" in
-    /*|?:/*|?:\\*) ;;
-    *) HOOK_CARGO_TARGET_DIR="$WORKTREE_ROOT/cli/$HOOK_CARGO_TARGET_DIR" ;;
-  esac
-  REPO_ROOT="$CHECK_ROOT"
-  MANIFEST="$REPO_ROOT/cli/Cargo.toml"
-}
-
 run_cargo() {
   (
     cd "$REPO_ROOT/cli" &&
@@ -88,13 +55,6 @@ run_cargo() {
   )
 }
 
-full_checks_enabled() {
-  case "${DOTFILES_HOOKS_FULL:-0}" in
-    1 | true | yes) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 has_staged_match() {
   # Filter before Git quotes display filenames. Include deletions and both
   # sides of renames when deciding which checks a commit needs.
@@ -102,9 +62,10 @@ has_staged_match() {
   [ -n "$changed" ]
 }
 
-has_staged_linter() {
-  category="$1"
-  shift
+has_staged_category() {
+  subcmd="$1"
+  category="$2"
+  shift 2
   if command -v python3 >/dev/null 2>&1 && meta=$(find_ci_metadata); then
     tmp_list=$(mktemp)
     if ! git diff --cached --name-only --no-renames -z "$against" -- > "$tmp_list"; then
@@ -112,7 +73,7 @@ has_staged_linter() {
       exit 1
     fi
     status=0
-    python3 -B "$meta" has-linter "$category" < "$tmp_list" || status=$?
+    python3 -B "$meta" "$subcmd" "$category" < "$tmp_list" || status=$?
     rm -f "$tmp_list"
     if [ "$status" -eq 0 ]; then
       return 0
@@ -121,6 +82,14 @@ has_staged_linter() {
     return 1
   fi
   has_staged_match "$@"
+}
+
+has_staged_linter() {
+  has_staged_category has-linter "$@"
+}
+
+has_staged_guard() {
+  has_staged_category has-guard "$@"
 }
 
 staged_linter_inputs() {
@@ -494,11 +463,11 @@ if has_staged_match .github/workflows/scripts/linux/ci_metadata.py; then
   prepare_staged_tree
 fi
 
-if has_staged_match 'conf/*.toml' 'symlinks/*' 'system/*' 'packages/*'; then
+if has_staged_guard config 'conf/*.toml' 'symlinks/*' 'system/*' 'packages/*'; then
   run_config_validation
 fi
 
-if has_staged_match cli/Cargo.toml cli/Cargo.lock cli/deny.toml; then
+if has_staged_guard dependency cli/Cargo.toml cli/Cargo.lock cli/deny.toml; then
   run_dependency_guards
 fi
 
@@ -520,25 +489,27 @@ if has_staged_linter lua '*.lua'; then
   run_lua_guards
 fi
 
-if has_staged_match dotfiles.sh dotfiles.ps1 'tests/wrapper/*'; then
+if has_staged_guard wrapper-parity dotfiles.sh dotfiles.ps1 'tests/wrapper/*'; then
   run_wrapper_parity_guards
 fi
 
-if full_checks_enabled && has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh 'tests/wrapper/linux/*' tests/wrapper/parity-contract.json tests/wrapper/test-parity.py; then
-  run_wrapper_guards
-elif has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh 'tests/wrapper/linux/*' tests/wrapper/parity-contract.json tests/wrapper/test-parity.py; then
-  printf '%sSkipping Linux shell wrapper tests: set DOTFILES_HOOKS_FULL=1 to run them.%s\n' "$DIM" "$NC"
+if has_staged_guard wrapper-linux dotfiles.sh tests/wrapper/test-shell-wrapper.sh 'tests/wrapper/linux/*' tests/wrapper/parity-contract.json tests/wrapper/test-parity.py; then
+  if full_checks_enabled; then
+    run_wrapper_guards
+  else
+    printf '%sSkipping Linux shell wrapper tests: set DOTFILES_HOOKS_FULL=1 to run them.%s\n' "$DIM" "$NC"
+  fi
 fi
 
 if has_staged_linter workflows '.github/workflows/*.yml' '.github/workflows/*.yaml'; then
   run_workflow_lint_guards
 fi
 
-if has_staged_match .github/workflows/release.yml; then
+if has_staged_guard release-workflow .github/workflows/release.yml; then
   run_release_workflow_guards
 fi
 
-if has_staged_match \
+if has_staged_guard ci-contract \
   .github/workflows/ci.yml \
   .github/workflows/pages.yml \
   .github/workflows/mutation.yml \
@@ -550,11 +521,11 @@ if has_staged_match \
   run_ci_contract_guards
 fi
 
-if has_staged_match '*.md' .github/workflows/scripts/linux/check-doc-links.py; then
+if has_staged_guard doc-links '*.md' .github/workflows/scripts/linux/check-doc-links.py; then
   run_doc_links_guards
 fi
 
-if has_staged_match '.agents/skills/*' AGENTS.md; then
+if has_staged_guard skills '.agents/skills/*' AGENTS.md; then
   run_skills_guards
 fi
 

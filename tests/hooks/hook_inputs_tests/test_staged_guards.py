@@ -130,6 +130,7 @@ class StagedGuardTests(unittest.TestCase):
             (repo / "hooks").mkdir(parents=True)
             (repo / "cli" / "src" / "app" / "validation" / "scripts").mkdir(parents=True)
             shutil.copy2(REPO_ROOT / "hooks" / "check-ci-guards.sh", repo / "hooks" / "check-ci-guards.sh")
+            shutil.copy2(REPO_ROOT / "hooks" / "staged-tree.sh", repo / "hooks" / "staged-tree.sh")
             # Isolate the hook's selection and forwarding from the analyzer itself.
             (repo / "cli" / "src" / "app" / "validation" / "scripts" / "shellcheck.sh").write_text(
                 "#!/bin/sh\n"
@@ -528,6 +529,7 @@ class StagedGuardTests(unittest.TestCase):
             (repo / "cli" / "src" / "app" / "validation" / "scripts").mkdir(parents=True)
             (repo / ".github" / "workflows" / "scripts" / "linux").mkdir(parents=True)
             shutil.copy2(REPO_ROOT / "hooks" / "check-ci-guards.sh", repo / "hooks" / "check-ci-guards.sh")
+            shutil.copy2(REPO_ROOT / "hooks" / "staged-tree.sh", repo / "hooks" / "staged-tree.sh")
 
             write_executable(mock_bin / "shellcheck", "#!/bin/sh\nexit 0\n")
             write_executable(mock_bin / "actionlint", "#!/bin/sh\nexit 0\n")
@@ -762,10 +764,11 @@ class StagedGuardTests(unittest.TestCase):
             # Exercise canonical local stages using the same mock compiler and Cargo.
             (index_repo / ".github" / "workflows" / "scripts" / "linux").mkdir(parents=True)
             (index_repo / "hooks").mkdir(parents=True, exist_ok=True)
-            shutil.copy2(
-                REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / "check.sh",
-                index_repo / ".github" / "workflows" / "scripts" / "linux" / "check.sh",
-            )
+            for script_name in ("check.py", "check.sh"):
+                shutil.copy2(
+                    REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / script_name,
+                    index_repo / ".github" / "workflows" / "scripts" / "linux" / script_name,
+                )
             shutil.copy2(REPO_ROOT / "hooks" / "check-toolchain.sh", index_repo / "hooks" / "check-toolchain.sh")
             log_file.write_text("", encoding="utf-8")
             res = run(["sh", ".github/workflows/scripts/linux/check.sh", "fmt", "rustdoc"], cwd=index_repo, env=env)
@@ -893,6 +896,7 @@ class StagedGuardTests(unittest.TestCase):
 
             for hook_file in (
                 "pre-commit",
+                "staged-tree.sh",
                 "check-sensitive.sh",
                 "check-rust.sh",
                 "check-ci-guards.sh",

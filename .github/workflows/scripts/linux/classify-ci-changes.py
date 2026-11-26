@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Select CI work from repository inputs, without third-party dependencies."""
 
+from collections.abc import Callable
+from dataclasses import dataclass
 import importlib.util
 import json
 import os
@@ -37,6 +39,290 @@ powershell_script = _META.powershell_script
 lua_script = _META.lua_script
 
 
+@dataclass(frozen=True)
+class PathRule:
+    """Declarative path-to-CI-effect rule."""
+
+    exact: frozenset[str] = frozenset()
+    prefixes: tuple[str, ...] = ()
+    predicate: Callable[[str], bool] | None = None
+    flags: tuple[str, ...] = ()
+    apps: tuple[str, ...] = ()
+    linters: tuple[str, ...] = ()
+    profiles: tuple[str, ...] = ()
+    rust: bool = False
+
+    def matches(self, path: str) -> bool:
+        if path in self.exact:
+            return True
+        if self.prefixes and path.startswith(self.prefixes):
+            return True
+        return self.predicate is not None and self.predicate(path)
+
+
+SITE_EXACT_INPUTS = frozenset({
+    ".github/workflows/pages.yml",
+    LINUX + "test-docs.sh",
+    LINUX + "check-doc-site.py",
+    LINUX + "docs-publication-base.py",
+})
+
+CONTRACT_EXACT_INPUTS = frozenset({
+    "Cargo.toml",
+    "Cargo.lock",
+    "build.rs",
+    "rust-toolchain",
+    "rust-toolchain.toml",
+    LINUX + "test-docs.sh",
+})
+
+BINARY_EXCLUDED_EXACT = frozenset({
+    "cli/deny.toml",
+    "cli/rustfmt.toml",
+    "cli/.gitignore",
+})
+
+BINARY_EXTRA_EXACT = frozenset({
+    "Cargo.toml",
+    "Cargo.lock",
+    "build.rs",
+    "rust-toolchain",
+    "rust-toolchain.toml",
+    ".github/workflows/release.yml",
+    LINUX + "ci_metadata.py",
+    LINUX + "classify-ci-changes.py",
+    LINUX + "classify-ci-changes.sh",
+    LINUX + "classify-release.sh",
+    LINUX + "release-tag.sh",
+})
+
+APM_EXACT_INPUTS = frozenset({
+    "cli/src/domains/ai/apm.rs",
+    "conf/symlinks.toml",
+})
+APM_PREFIX_INPUTS = ("symlinks/apm/", "cli/src/domains/ai/apm/", "packages/apm/")
+
+FULL_CI_EXACT = frozenset({
+    ".github/workflows/ci.yml",
+    LINUX + "ci_metadata.py",
+    LINUX + "classify-ci-changes.py",
+    LINUX + "classify-ci-changes.sh",
+    LINUX + "ci-comparison-range.sh",
+    LINUX + "ci-fixture-home.sh",
+    "tests/lib/test-helpers.sh",
+    LINUX + "check.py",
+    LINUX + "check.sh",
+    WINDOWS + "Check.ps1",
+    LINUX + "pre-push.py",
+})
+
+NOOP_EXACT = frozenset({
+    # Always executed by classify-changes.
+    LINUX + "check-ci-contract.py",
+    LINUX + "workflow_yaml.py",
+    LINUX + "test-ci-changes.py",
+    LINUX + "select-mutations.py",
+    LINUX + "run-mutations.py",
+    LINUX + "report-mutations.py",
+    ".github/workflows/mutation.yml",
+    LINUX + "test-workflows.sh",
+    LINUX + "install-actionlint.sh",
+    # Publishing builds are selected independently of CI builds.
+    ".github/workflows/release.yml",
+    LINUX + "classify-release.sh",
+    LINUX + "release-tag.sh",
+    # Docs runners are covered via site_input / contract_input / always-on docs links.
+    LINUX + "test-docs.sh",
+    LINUX + "check-doc-links.py",
+    LINUX + "check-doc-site.py",
+    LINUX + "docs-publication-base.py",
+    # Known repository/editor metadata does not ship in the binary.
+    ".github/CODEOWNERS",
+    ".github/dependabot.yml",
+    ".github/lsp.json",
+    ".github/github-app.yml",
+    ".gitignore",
+    ".editorconfig",
+    "LICENSE",
+    "cli/.gitignore",
+})
+
+NOOP_PREFIXES = (LINUX + "ci_changes_tests/", ".vscode/")
+
+ALL_LINTER_CONFIG_FILES = frozenset().union(*LINTER_CONFIG_FILES.values())
+
+# First-match classification rules for targeted test/script/config inputs.
+DISPATCH_RULES: tuple[PathRule, ...] = (
+    PathRule(
+        exact=frozenset({
+            "tests/desktop/quickshell/test-desktop-qml.sh",
+            "tests/desktop/quickshell/test-desktop-session.sh",
+            "tests/desktop/quickshell/test-desktop-session.py",
+        }),
+        prefixes=("tests/desktop/quickshell/qml/",),
+        flags=("desktop_qml",),
+    ),
+    PathRule(prefixes=("tests/desktop/quickshell/python/",), flags=("desktop_python",)),
+    PathRule(prefixes=("tests/desktop/hypr/",), flags=("lock",)),
+    PathRule(
+        exact=frozenset({
+            "tests/vim/test-nvim.py",
+            "tests/vim/test-nvim-config.lua",
+            "tests/vim/test-nvim-lock.lua",
+        }),
+        apps=("nvim",),
+    ),
+    PathRule(exact=frozenset({"tests/vim/test-vim.py"}), apps=("vim",)),
+    PathRule(prefixes=("tests/vim/",), apps=("vim", "nvim")),
+    PathRule(exact=frozenset({"tests/shell/Test-Prompt.ps1"}), flags=("prompt",)),
+    PathRule(exact=frozenset({"tests/integration/test-apm.py"}), flags=("apm",)),
+    PathRule(exact=frozenset({LINUX + "test-static-analysis.sh"}), linters=tuple(LINTERS)),
+    PathRule(
+        exact=frozenset({"tests/hooks/test-hook-inputs.py"}),
+        prefixes=("tests/hooks/hook_inputs_tests/",),
+        flags=("hook_inputs", "build_linux"),
+    ),
+    PathRule(
+        exact=frozenset({"tests/hooks/test-git-hooks.py", "tests/hooks/test-maintenance.py"}),
+        prefixes=("tests/hooks/git_hook_tests/", "hooks/"),
+        flags=("git_hooks", "hook_inputs"),
+    ),
+    PathRule(exact=_META.WRAPPER_PARITY_PATHS, flags=("wrapper_linux", "wrapper_windows")),
+    PathRule(
+        exact=_META.WRAPPER_LINUX_EXACT,
+        prefixes=("tests/wrapper/linux/",),
+        flags=("wrapper_linux",),
+    ),
+    # The Windows PowerShell 5.1 smoke uses the installed fixture CLI.
+    PathRule(exact=frozenset({"dotfiles.ps1"}), flags=("wrapper_windows", "roundtrip_windows")),
+    PathRule(
+        exact=frozenset({"tests/wrapper/Test-ShellWrapper.ps1"}),
+        prefixes=("tests/wrapper/windows/",),
+        flags=("wrapper_windows",),
+    ),
+    PathRule(
+        exact=frozenset({"tests/integration/test-install-uninstall.py"}),
+        flags=("roundtrip_linux", "roundtrip_windows"),
+    ),
+    PathRule(
+        exact=frozenset({"tests/integration/test-arch-acceptance.sh"}),
+        flags=("roundtrip_linux",),
+    ),
+    PathRule(exact=frozenset({"tests/git/test-git.py"}), apps=("git",), flags=("app_windows",)),
+    PathRule(
+        exact=frozenset({"tests/shell/test-zsh.py", "tests/shell/test-shell-config.py"}),
+        prefixes=("tests/shell/shell_config_tests/",),
+        apps=("zsh",),
+    ),
+    PathRule(
+        exact=frozenset({LINUX + "install-apt-packages.sh"}),
+        apps=tuple(APPS),
+        linters=("shell",),
+    ),
+    PathRule(exact=frozenset({"cli/deny.toml"}), flags=("deny",)),
+    PathRule(
+        exact=frozenset({"cli/rustfmt.toml", "rustfmt.toml", ".rustfmt.toml"}),
+        flags=("rust_fmt",),
+    ),
+    PathRule(prefixes=("cli/tests/", "cli/benches/"), rust=True),
+)
+
+# Additive sub-rules for conf/ entries (applied in addition to both platform profiles).
+CONF_RULES: tuple[PathRule, ...] = (
+    PathRule(exact=frozenset({"conf/system-files.toml", "conf/chmod.toml"}), flags=("rust_checks",)),
+    # GraphicalUnitTests reads the declarations.
+    PathRule(exact=frozenset({"conf/systemd-units.toml"}), flags=("lock",)),
+    PathRule(
+        exact=frozenset({"conf/symlinks.toml", "conf/git-config.toml", "conf/packages.toml"}),
+        apps=tuple(APPS),
+        flags=("app_windows",),
+    ),
+)
+
+# Additive sub-rules for symlinks/ entries (all matching rules apply).
+SYMLINK_RULES: tuple[PathRule, ...] = (
+    PathRule(prefixes=("symlinks/config/git/templates/",), flags=("rust_checks",)),
+    # Exercised by Rust config tests, test-shell-config.py (zsh),
+    # and tests/desktop/hypr/test_launchers.py (lock).
+    PathRule(
+        exact=frozenset({"symlinks/local/bin/code-insiders"}),
+        flags=("rust_checks", "lock"),
+        apps=("zsh",),
+    ),
+    PathRule(
+        exact=frozenset({
+            "symlinks/config/git/aliases",
+            "symlinks/config/systemd/user/clean-home-tmp.service",
+            "symlinks/config/systemd/user/clean-screenshots.service",
+        }),
+        prefixes=("symlinks/config/git/templates/",),
+        flags=("git_hooks",),
+    ),
+    PathRule(prefixes=("symlinks/config/git/",), apps=("git",), flags=("app_windows",)),
+    PathRule(
+        exact=frozenset({
+            "symlinks/zshrc",
+            "symlinks/zprofile",
+            "symlinks/bashrc",
+            "symlinks/bash_profile",
+            "symlinks/config/wgetrc",
+            "symlinks/config/git/windows",
+            "symlinks/config/git/windows-desktop",
+            "symlinks/config/git/ignore",
+            "symlinks/config/git/aliases",
+            "symlinks/config/user-dirs.dirs",
+            "symlinks/config/systemd/user/xdg-user-directories.service",
+            "symlinks/config/uwsm/env-hyprland.d/session.sh",
+            "symlinks/config/tmux/tmux.conf",
+            "symlinks/config/readline/inputrc",
+        }),
+        prefixes=("symlinks/config/zsh/", "symlinks/config/bash/", "symlinks/config/shell/"),
+        apps=("zsh",),
+    ),
+    PathRule(prefixes=("symlinks/vim/",), apps=("vim", "nvim")),
+    PathRule(prefixes=("symlinks/config/powershell/",), flags=("prompt",)),
+    PathRule(
+        exact=frozenset({"symlinks/config/powershell/Microsoft.PowerShell_profile.ps1"}),
+        predicate=lambda p: (
+            p.startswith("symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_")
+            and p.endswith("/LocalState/settings.json")
+        ),
+        flags=("roundtrip_windows",),
+    ),
+    PathRule(
+        exact=frozenset({"symlinks/config/systemd/user/dotfiles-first-login.service"}),
+        flags=("rust_checks", "roundtrip_linux"),
+    ),
+    PathRule(
+        exact=frozenset({"symlinks/config/hypr/hypridle.conf"}),
+        prefixes=("symlinks/config/hypr/scripts/", "symlinks/config/hypr/conf/"),
+        flags=("lock",),
+    ),
+    PathRule(
+        exact=frozenset({"symlinks/config/hypr/hyprland.lua", "symlinks/config/hypr/hyprlock.conf"}),
+        prefixes=("symlinks/config/hypr/conf/",),
+        flags=("desktop_qml",),
+    ),
+    PathRule(
+        predicate=lambda p: (
+            p.rpartition("/")[0] == "symlinks/config/systemd/user"
+            and p.endswith((".service", ".timer"))
+        ),
+        flags=("desktop_qml",),
+    ),
+    # The Hypr script suite follows graphical declarations to shipped
+    # service files and exercises the first-login queue commands.
+    PathRule(
+        predicate=lambda p: (
+            p.rpartition("/")[0] == "symlinks/config/systemd/user"
+            and p.endswith(".service")
+        ),
+        flags=("lock",),
+    ),
+    PathRule(prefixes=("symlinks/config/quickshell/",), flags=("desktop_python", "desktop_qml")),
+)
+
+
 def documentation(path: str) -> bool:
     # Markdown can be compiled into the CLI or deployed as an APM skill.
     return not path.startswith(("cli/src/", "symlinks/apm/")) and (
@@ -46,34 +332,23 @@ def documentation(path: str) -> bool:
 
 
 def site_input(path: str) -> bool:
-    return path.startswith("docs/") or path in {
-        ".github/workflows/pages.yml", LINUX + "test-docs.sh",
-        LINUX + "check-doc-site.py", LINUX + "docs-publication-base.py",
-    }
+    return path.startswith("docs/") or path in SITE_EXACT_INPUTS
 
 
 def contract_input(path: str) -> bool:
-    return (path.startswith("cli/") and not documentation(path)) or path.startswith((
-        ".cargo/", "docs/content/",
-    )) or path in {
-        "Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain", "rust-toolchain.toml",
-        LINUX + "test-docs.sh",
-    }
+    return (
+        (path.startswith("cli/") and not documentation(path))
+        or path.startswith((".cargo/", "docs/content/"))
+        or path in CONTRACT_EXACT_INPUTS
+    )
 
 
 def binary_input(path: str) -> bool:
     if documentation(path):
         return False
-    if path.startswith(("cli/tests/", "cli/benches/")) or path in {
-        "cli/deny.toml", "cli/rustfmt.toml", "cli/.gitignore",
-    }:
+    if path.startswith(("cli/tests/", "cli/benches/")) or path in BINARY_EXCLUDED_EXACT:
         return False
-    return path.startswith(("cli/", ".cargo/")) or path in {
-        "Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain", "rust-toolchain.toml",
-        ".github/workflows/release.yml", LINUX + "ci_metadata.py",
-        LINUX + "classify-ci-changes.py", LINUX + "classify-ci-changes.sh",
-        LINUX + "classify-release.sh", LINUX + "release-tag.sh",
-    }
+    return path.startswith(("cli/", ".cargo/")) or path in BINARY_EXTRA_EXACT
 
 
 def changed_paths(root: str, base: str, head: str) -> list[str]:
@@ -104,6 +379,18 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
     def rust() -> None:
         enable("rust_checks", "rust_fmt", "build_linux", "build_windows")
 
+    def apply_rule(rule: PathRule) -> None:
+        if rule.flags:
+            enable(*rule.flags)
+        if rule.apps:
+            apps.update(rule.apps)
+        if rule.linters:
+            linters.update(rule.linters)
+        if rule.profiles:
+            profiles(*rule.profiles)
+        if rule.rust:
+            rust()
+
     for path in paths:
         if site_input(path):
             enable("docs_site")
@@ -111,9 +398,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("docs_contracts")
         if documentation(path):
             continue
-        if path.startswith(("symlinks/apm/", "cli/src/domains/ai/apm/", "packages/apm/")) or path in {
-            "cli/src/domains/ai/apm.rs", "conf/symlinks.toml",
-        }:
+        if path.startswith(APM_PREFIX_INPUTS) or path in APM_EXACT_INPUTS:
             enable("apm")
         if binary_input(path):
             enable("release")
@@ -126,90 +411,19 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
         if lua_script(path) or path in LINTER_CONFIG_FILES["lua"]:
             linters.add("lua")
 
-        if path == ".github/workflows/ci.yml" or path in {
-            LINUX + "ci_metadata.py", LINUX + "classify-ci-changes.py",
-            LINUX + "classify-ci-changes.sh", LINUX + "ci-comparison-range.sh",
-            LINUX + "ci-fixture-home.sh", "tests/lib/test-helpers.sh",
-            LINUX + "check.sh", WINDOWS + "Check.ps1", LINUX + "pre-push.py",
-        }:
+        if path in FULL_CI_EXACT:
             full = True
-        elif path in {
-            LINUX + "check-ci-contract.py", LINUX + "workflow_yaml.py",
-            LINUX + "test-ci-changes.py", LINUX + "select-mutations.py",
-            LINUX + "run-mutations.py", LINUX + "report-mutations.py",
-            ".github/workflows/mutation.yml",
-        } or path.startswith(LINUX + "ci_changes_tests/"):
-            pass  # Always executed by classify-changes.
-        elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh", LINUX + "release-tag.sh"}:
-            pass  # Publishing builds are selected independently of CI builds.
-        elif any(path in files for files in LINTER_CONFIG_FILES.values()):
-            pass  # Linter selection handled above.
-        elif path in {"tests/desktop/quickshell/test-desktop-qml.sh",
-                      "tests/desktop/quickshell/test-desktop-session.sh",
-                      "tests/desktop/quickshell/test-desktop-session.py"} or path.startswith(
-            "tests/desktop/quickshell/qml/"
+            continue
+        if (
+            path in NOOP_EXACT
+            or path.startswith(NOOP_PREFIXES)
+            or path in ALL_LINTER_CONFIG_FILES
         ):
-            enable("desktop_qml")
-        elif path.startswith("tests/desktop/quickshell/python/"):
-            enable("desktop_python")
-        elif path.startswith("tests/desktop/hypr/"):
-            enable("lock")
-        elif path in {"tests/vim/test-nvim.py", "tests/vim/test-nvim-config.lua", "tests/vim/test-nvim-lock.lua"}:
-            apps.add("nvim")
-        elif path == "tests/vim/test-vim.py":
-            apps.add("vim")
-        elif path.startswith("tests/vim/"):
-            apps.update(("vim", "nvim"))
-        elif path == "tests/shell/Test-Prompt.ps1":
-            enable("prompt")
-        elif path in {LINUX + "test-workflows.sh", LINUX + "install-actionlint.sh"}:
-            pass  # Always executed by classify-changes.
-        elif path == "tests/integration/test-apm.py":
-            enable("apm")
-        elif path in {LINUX + "test-docs.sh", LINUX + "check-doc-links.py", LINUX + "check-doc-site.py",
-                      LINUX + "docs-publication-base.py"}:
-            pass
-        elif path == LINUX + "test-static-analysis.sh":
-            linters.update(LINTERS)
-        elif path == "tests/hooks/test-hook-inputs.py" or path.startswith("tests/hooks/hook_inputs_tests/"):
-            enable("hook_inputs", "build_linux")
-        elif path in {"tests/hooks/test-git-hooks.py", "tests/hooks/test-maintenance.py"} or path.startswith(
-            ("tests/hooks/git_hook_tests/", "hooks/")
-        ):
-            enable("git_hooks", "hook_inputs")
-        elif path in {"tests/wrapper/parity-contract.json", "tests/wrapper/test-parity.py"}:
-            enable("wrapper_linux", "wrapper_windows")
-        elif path in {"dotfiles.sh", "tests/wrapper/test-shell-wrapper.sh"} or path.startswith(
-            "tests/wrapper/linux/"
-        ):
-            enable("wrapper_linux")
-        elif path in {"dotfiles.ps1", "tests/wrapper/Test-ShellWrapper.ps1"} or path.startswith(
-            "tests/wrapper/windows/"
-        ):
-            enable("wrapper_windows")
-            if path == "dotfiles.ps1":
-                # The Windows PowerShell 5.1 smoke uses the installed fixture CLI.
-                enable("roundtrip_windows")
-        elif path == "tests/integration/test-install-uninstall.py":
-            enable("roundtrip_linux", "roundtrip_windows")
-        elif path == "tests/integration/test-arch-acceptance.sh":
-            enable("roundtrip_linux")
-        elif path == "tests/git/test-git.py":
-            apps.add("git")
-            enable("app_windows")
-        elif path in {"tests/shell/test-zsh.py", "tests/shell/test-shell-config.py"} or path.startswith(
-            "tests/shell/shell_config_tests/"
-        ):
-            apps.add("zsh")
-        elif path == LINUX + "install-apt-packages.sh":
-            apps.update(APPS)
-            linters.add("shell")
-        elif path == "cli/deny.toml":
-            enable("deny")
-        elif path in {"cli/rustfmt.toml", "rustfmt.toml", ".rustfmt.toml"}:
-            enable("rust_fmt")
-        elif path.startswith(("cli/tests/", "cli/benches/")):
-            rust()
+            continue
+
+        matched = next((rule for rule in DISPATCH_RULES if rule.matches(path)), None)
+        if matched is not None:
+            apply_rule(matched)
         elif binary_input(path):
             rust()
             profiles("linux", "windows")
@@ -224,85 +438,20 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             linters.add("shell")
         elif path.startswith("conf/"):
             profiles("linux", "windows")
-            if path in {"conf/system-files.toml", "conf/chmod.toml"}:
-                enable("rust_checks")
-            if path == "conf/systemd-units.toml":
-                enable("lock")  # GraphicalUnitTests reads the declarations.
-            if path in {"conf/symlinks.toml", "conf/git-config.toml", "conf/packages.toml"}:
-                apps.update(APPS)
-                enable("app_windows")
+            for rule in CONF_RULES:
+                if rule.matches(path):
+                    apply_rule(rule)
         elif path.startswith("system/"):
             profiles("linux")
             enable("rust_checks")
         elif path.startswith("symlinks/"):
             # Config-drift tests inspect managed content as well as source paths.
             enable("validate_config", "config_drift")
-            if path.startswith("symlinks/config/git/templates/"):
-                enable("rust_checks")
-            if path == "symlinks/local/bin/code-insiders":
-                # Exercised by Rust config tests, test-shell-config.py (zsh),
-                # and tests/desktop/hypr/test_launchers.py (lock).
-                enable("rust_checks", "lock")
-                apps.add("zsh")
-            if path.startswith("symlinks/config/git/templates/") or path in {
-                "symlinks/config/git/aliases",
-                "symlinks/config/systemd/user/clean-home-tmp.service",
-                "symlinks/config/systemd/user/clean-screenshots.service",
-            }:
-                enable("git_hooks")
-            if path.startswith("symlinks/config/git/"):
-                apps.add("git")
-                enable("app_windows")
-            if path.startswith(("symlinks/config/zsh/", "symlinks/config/bash/", "symlinks/config/shell/")) or path in {
-                "symlinks/zshrc", "symlinks/zprofile", "symlinks/bashrc",
-                "symlinks/bash_profile", "symlinks/config/wgetrc", "symlinks/config/git/windows",
-                "symlinks/config/git/windows-desktop", "symlinks/config/git/ignore",
-                "symlinks/config/git/aliases", "symlinks/config/user-dirs.dirs",
-                "symlinks/config/systemd/user/xdg-user-directories.service",
-                "symlinks/config/uwsm/env-hyprland.d/session.sh",
-                "symlinks/config/tmux/tmux.conf",
-                "symlinks/config/readline/inputrc",
-            }:
-                apps.add("zsh")
-            if path.startswith("symlinks/vim/"):
-                apps.update(("vim", "nvim"))
-            if path.startswith("symlinks/config/powershell/"):
-                enable("prompt")
-            if path == "symlinks/config/powershell/Microsoft.PowerShell_profile.ps1" or (
-                path.startswith("symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_")
-                and path.endswith("/LocalState/settings.json")
-            ):
-                enable("roundtrip_windows")
-            if path == "symlinks/config/systemd/user/dotfiles-first-login.service":
-                enable("rust_checks", "roundtrip_linux")
-            if (
-                path.startswith(("symlinks/config/hypr/scripts/", "symlinks/config/hypr/conf/"))
-                or path == "symlinks/config/hypr/hypridle.conf"
-            ):
-                enable("lock")
-            if path.startswith("symlinks/config/hypr/conf/") or path in {
-                "symlinks/config/hypr/hyprland.lua", "symlinks/config/hypr/hyprlock.conf",
-            }:
-                enable("desktop_qml")
-            if path.rpartition("/")[0] == "symlinks/config/systemd/user":
-                if path.endswith((".service", ".timer")):
-                    enable("desktop_qml")
-                # The Hypr script suite follows graphical declarations to shipped
-                # service files and exercises the first-login queue commands.
-                if path.endswith(".service"):
-                    enable("lock")
-            if path.startswith("symlinks/config/quickshell/"):
-                enable("desktop_python", "desktop_qml")
+            for rule in SYMLINK_RULES:
+                if rule.matches(path):
+                    apply_rule(rule)
         elif path.startswith(".github/workflows/") and not path.startswith(SCRIPTS):
             full = True
-        elif path.startswith(".vscode/") or path in {
-            ".github/CODEOWNERS", ".github/dependabot.yml", ".github/lsp.json",
-            ".github/github-app.yml",
-        }:
-            # Known repository/editor metadata does not ship in the binary.
-            pass
-        elif path in {".gitignore", ".editorconfig", "LICENSE", "cli/.gitignore"}:
-            pass
         else:
             # Unrecognized inputs may introduce a new build or test dependency.
             full = True

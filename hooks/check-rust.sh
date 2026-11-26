@@ -22,13 +22,9 @@ DIM=$(printf '\033[2m')
 NC=$(printf '\033[0m')
 
 WIN_TARGET="x86_64-pc-windows-gnu"
-
-full_checks_enabled() {
-  case "${DOTFILES_HOOKS_FULL:-0}" in
-    1 | true | yes) return 0 ;;
-    *) return 1 ;;
-  esac
-}
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck source=hooks/staged-tree.sh
+. "$SCRIPT_DIR/staged-tree.sh"
 
 run_cargo() {
   (cd "$CLI_ROOT" && cargo "$@")
@@ -38,11 +34,7 @@ run_rustc() {
   (cd "$CLI_ROOT" && rustc "$@")
 }
 
-if git rev-parse --verify HEAD >/dev/null 2>&1; then
-  against=HEAD
-else
-  against=$(git hash-object -t tree /dev/null)
-fi
+init_staged_tree_context
 
 # Filter in Git so quoted display filenames never affect extension detection.
 # Deletions and renames away from .rs can also break the crate.
@@ -55,34 +47,14 @@ RUST_CHANGED=$(git diff --cached --name-only --no-renames "$against" -- \
 if [ -z "$RUST_CHANGED" ]; then
   exit 0
 fi
-REPO_ROOT=$(git rev-parse --show-toplevel)
-OWN_CHECK_STAGE_DIR=""
-trap '[ -z "$OWN_CHECK_STAGE_DIR" ] || rm -rf "$OWN_CHECK_STAGE_DIR"' EXIT
-trap 'exit 1' HUP INT TERM
-if [ -n "${DOTFILES_HOOK_CHECK_ROOT:-}" ]; then
-  CHECK_STAGE_DIR="$DOTFILES_HOOK_CHECK_ROOT"
-else
-  OWN_CHECK_STAGE_DIR=$(mktemp -d)
-  CHECK_STAGE_DIR="$OWN_CHECK_STAGE_DIR"
-fi
-CHECK_ROOT="$CHECK_STAGE_DIR/tree"
-if [ ! -f "$CHECK_STAGE_DIR/.exported" ]; then
-  mkdir -p "$CHECK_ROOT"
-  git -C "$REPO_ROOT" checkout-index --all --prefix="$CHECK_ROOT/"
-  : > "$CHECK_STAGE_DIR/.exported"
-fi
-case "${CARGO_TARGET_DIR:-}" in
-  '') CARGO_TARGET_DIR="$REPO_ROOT/cli/target/hooks" ;;
-  /*|?:/*|?:\\*) ;;
-  *) CARGO_TARGET_DIR="$REPO_ROOT/cli/$CARGO_TARGET_DIR" ;;
-esac
+prepare_staged_tree
+CARGO_TARGET_DIR="$HOOK_CARGO_TARGET_DIR"
 DOTFILES_VERSION="${DOTFILES_VERSION:-dev-hook}"
 export CARGO_TARGET_DIR DOTFILES_VERSION
 
 # ── Rust checks ────────────────────────────────────────
 CLI_ROOT="$CHECK_ROOT/cli"
-MANIFEST="$CLI_ROOT/Cargo.toml"
-sh "$(dirname -- "$0")/check-toolchain.sh" "$CLI_ROOT"
+sh "$SCRIPT_DIR/check-toolchain.sh" "$CLI_ROOT"
 
 printf "Running cargo fmt --check...\n"
 if ! run_cargo fmt --manifest-path "$MANIFEST" --check 2>&1; then

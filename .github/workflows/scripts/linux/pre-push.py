@@ -61,7 +61,7 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False, linter_stag
     commands = []
     if not docs_checked:
         commands.append(("documentation dependencies", "docs", ["npm", "ci", "--no-audit", "--no-fund"]))
-    commands.append(("core checks", ".", ["sh", ".github/workflows/scripts/linux/check.sh", "--strict", *stages]))
+    commands.append(("core checks", ".", ["python3", "-B", ".github/workflows/scripts/linux/check.py", "--strict", *stages]))
     if selection["run_config_drift"] and not selection["run_rust_checks"]:
         commands.append(("configuration drift", "cli", ["cargo", "test", "--locked", "--profile", "ci", "--test", "config_drift"]))
     if selection["run_rust_checks"]:
@@ -112,7 +112,7 @@ def windows_plan(selection, docs_checked=False):
     if any(item["name"] == "PSScriptAnalyzer" for item in selection["lint_matrix"]["include"]):
         stages.append("powershell")
     if stages:
-        commands.append(("native Windows checks", ".", ["pwsh", "-NoProfile", "-File", ".github/workflows/scripts/windows/Check.ps1", "-Strict", *stages]))
+        commands.append(("native Windows checks", ".", [sys.executable, "-B", ".github/workflows/scripts/linux/check.py", "--strict", *stages]))
     if selection["run_config_drift"] and not selection["run_rust_checks"]:
         commands.append(("native configuration drift", "cli", ["cargo", "test", "--locked", "--profile", "ci", "--test", "config_drift"]))
     if selection["run_wrapper_windows"]:

@@ -463,7 +463,7 @@ fn copied_hook_with_owner_execute_removed_runs_helpers_after_repair() {
     let root = fixture.path().canonicalize().unwrap();
     let helpers = root.join("hooks");
     std::fs::create_dir(&helpers).unwrap();
-    for check in ["check-sensitive.sh", "check-rust.sh"] {
+    for check in ["check-sensitive.sh", "check-rust.sh", "check-ci-guards.sh"] {
         std::fs::write(helpers.join(check), format!("echo {check} >> ran\n")).unwrap();
     }
     std::fs::write(
@@ -508,7 +508,7 @@ fn copied_hook_with_owner_execute_removed_runs_helpers_after_repair() {
     assert!(run().unwrap().success());
     assert_eq!(
         std::fs::read_to_string(root.join("ran")).unwrap(),
-        "check-sensitive.sh\ncheck-rust.sh\n"
+        "check-sensitive.sh\ncheck-rust.sh\ncheck-ci-guards.sh\n"
     );
     assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
 }

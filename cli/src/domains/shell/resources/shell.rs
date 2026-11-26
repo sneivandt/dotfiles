@@ -92,7 +92,7 @@ impl DefaultShellResource {
         Ok(user)
     }
 
-    fn account_shell(&self, user: &str) -> ResourceResult<ResourceState> {
+    fn login_shell_state(&self, user: &str) -> ResourceResult<ResourceState> {
         let result = self.executor.execute(
             CommandSpec::new("getent")
                 .args(&["passwd", user])
@@ -110,7 +110,7 @@ impl DefaultShellResource {
         let Some(shell) = result
             .stdout
             .lines()
-            .find_map(|line| passwd_shell(line, user))
+            .find_map(|line| parse_login_shell(line, user))
         else {
             return Ok(ResourceState::Unknown {
                 reason: format!("getent returned no passwd entry for {user}"),
@@ -169,7 +169,7 @@ fn shell_is_listed(allowed: &str, shell: &str) -> bool {
     allowed.lines().any(|line| line.trim() == shell)
 }
 
-fn passwd_shell<'a>(line: &'a str, expected_user: &str) -> Option<&'a str> {
+fn parse_login_shell<'a>(line: &'a str, expected_user: &str) -> Option<&'a str> {
     let fields = line.split(':').collect::<Vec<_>>();
     (fields.len() == 7 && fields.first().copied() == Some(expected_user))
         .then(|| fields.get(6).copied())
@@ -234,7 +234,7 @@ impl Resource for DefaultShellResource {
 impl IntrinsicState for DefaultShellResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
         let user = self.target_user()?;
-        self.account_shell(&user)
+        self.login_shell_state(&user)
     }
 }
 

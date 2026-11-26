@@ -8,12 +8,10 @@
 
 <p align="center">
   <a href="https://dotfiles.stuartneivandt.com/">Documentation</a>
-  &nbsp;·&nbsp;
+  &nbsp;&nbsp;
   <a href="https://dotfiles.stuartneivandt.com/getting-started">Getting started</a>
-  &nbsp;·&nbsp;
+  &nbsp;&nbsp;
   <a href="https://dotfiles.stuartneivandt.com/commands-and-usage">Commands</a>
-  &nbsp;·&nbsp;
-  <a href="https://dotfiles.stuartneivandt.com/task-reference">Task reference</a>
 </p>
 
 <p align="center">

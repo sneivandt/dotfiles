@@ -177,6 +177,7 @@ DISPATCH_RULES: tuple[PathRule, ...] = (
     PathRule(prefixes=("tests/vim/",), apps=("vim", "nvim")),
     PathRule(exact=frozenset({"tests/shell/Test-Prompt.ps1"}), flags=("prompt",)),
     PathRule(exact=frozenset({"tests/integration/test-apm.py"}), flags=("apm", "apm_windows")),
+    PathRule(exact=frozenset({WINDOWS + "Install-Apm.ps1"}), flags=("apm_windows",)),
     PathRule(exact=frozenset({LINUX + "test-static-analysis.sh"}), linters=tuple(LINTERS)),
     PathRule(
         exact=frozenset({"tests/hooks/test-hook-inputs.py"}),

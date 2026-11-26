@@ -5,7 +5,7 @@ import subprocess
 import sys
 import unittest
 
-from ci_changes_tests.helpers import LINUX, POLICY, SCRIPTS, classify
+from ci_changes_tests.helpers import LINUX, POLICY, SCRIPTS, WINDOWS, classify
 
 
 class ClassificationTests(unittest.TestCase):
@@ -61,6 +61,7 @@ class ClassificationTests(unittest.TestCase):
             ("symlinks/apm/config/base.yml", config | {"apm", "apm_windows", "build_windows"}),
             ("symlinks/apm/plugins/dot-skill/.apm/skills/example/SKILL.md", config | {"apm", "apm_windows", "build_windows"}),
             ("tests/integration/test-apm.py", {"apm", "apm_windows", "validate_config", "build_linux", "build_windows", "lint"}),
+            (WINDOWS + "Install-Apm.ps1", {"apm_windows", "build_windows", "lint"}),
             (".gitignore", set()),
             ("conf/agent-settings.toml", profiles),
             ("conf/chmod.toml", profiles | {"rust_checks"}),

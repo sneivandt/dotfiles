@@ -49,6 +49,7 @@ def test_deployment(binary: Path, fixture: Path) -> None:
         env["USERPROFILE"] = str(home)
         env["APPDATA"] = str(appdata)
         env["LOCALAPPDATA"] = str(local_appdata)
+        env["PYTHONUTF8"] = "1"
         if home.drive:
             env["HOMEDRIVE"] = home.drive
             env["HOMEPATH"] = str(home)[len(home.drive):]

@@ -61,13 +61,36 @@ class QuoteTests(unittest.TestCase):
             with self.subTest(price=price), self.assertRaises(ValueError):
                 self.parse(payload)
 
-    def test_fetch_uses_argv_and_bounded_process(self):
-        with patch.object(stocks.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(PAYLOAD))) as run:
+    def test_fetch_uses_bounded_https_request(self):
+        class FakeResponse:
+            def __init__(self, body):
+                self._body = body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self, size=-1):
+                return self._body[:size] if size >= 0 else self._body
+
+        encoded = json.dumps(PAYLOAD).encode("utf-8")
+        with patch.object(stocks.urllib.request, "urlopen", return_value=FakeResponse(encoded)) as urlopen:
             quote = stocks.fetch_quote("TEST", "TEST", "Fallback", "$", 5000)
         self.assertEqual(quote["price"], 110)
-        self.assertEqual(run.call_args.args[0][0], "curl")
-        self.assertEqual(run.call_args.kwargs["timeout"], 6)
-        self.assertTrue(run.call_args.kwargs["check"])
+        request = urlopen.call_args.args[0]
+        self.assertEqual(
+            request.full_url,
+            "https://query1.finance.yahoo.com/v8/finance/chart/TEST?interval=1wk&range=1y",
+        )
+        self.assertEqual(request.get_header("User-agent"), "Mozilla/5.0")
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], stocks.FETCH_TIMEOUT)
+
+        oversized = b"x" * (stocks.MAX_RESPONSE_BYTES + 10)
+        with patch.object(stocks.urllib.request, "urlopen", return_value=FakeResponse(oversized)):
+            with self.assertRaises(ValueError):
+                stocks.fetch_quote("TEST", "TEST", "Fallback", "$", 5000)
 
 
 @unittest.skipUnless(sys.platform == "linux", "Linux desktop cache uses flock")
@@ -239,7 +262,10 @@ class StocksCacheTests(unittest.TestCase):
             if symbol == "MSFT":
                 raise OSError("offline")
             return stocks.parse_quote(PAYLOAD, symbol, name, prefix, now)
-        result = stocks.quotes(self.cache, fetch)
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            result = stocks.quotes(self.cache, fetch)
+        self.assertIn("Failed to fetch quote for MSFT: offline", stderr.getvalue())
         self.assertEqual([q["symbol"] for q in result["quotes"]], [q[1] for q in stocks.QUOTES])
         self.assertEqual(result["quotes"][0], self.cached["quotes"][0])
         self.assertTrue(all(q["updated"] > 1 for q in result["quotes"][1:]))
@@ -414,37 +440,34 @@ class StocksCacheTests(unittest.TestCase):
     def test_concurrent_subprocesses_single_refresh_ignores_legacy_lock_dirs(self):
         with tempfile.TemporaryDirectory() as root_str:
             root = Path(root_str)
-            bin_dir = root / "bin"
+            site_dir = root / "site"
             cache_dir = root / "home" / ".cache" / "quickshell-stocks"
             (cache_dir / "quotes-prices.lock").mkdir(parents=True)
             (cache_dir / "quotes-prices.lock.reap").mkdir(parents=True)
-            bin_dir.mkdir(parents=True)
+            site_dir.mkdir(parents=True)
             # Orphaned directories from the old protocol must not block the kernel lock.
             (cache_dir / "quotes-prices.lock" / "pid").write_text("99999999\n", encoding="utf-8")
 
-            curl_calls = root / "curl-calls"
-            fake_curl = bin_dir / "curl"
-            fake_curl.write_text(
-                "#!/bin/sh\n"
-                f'printf x >> "{curl_calls}"\n'
-                "# Hold the owner until every contender has observed the busy lock and exited.\n"
-                "attempt=0\n"
-                'while [ "$attempt" -lt 100 ]; do\n'
-                "  completed=0\n"
-                f'  for result in "{root}"/result-*; do\n'
-                '    if [ -s "$result" ]; then completed=$((completed + 1)); fi\n'
-                "  done\n"
-                '  if [ "$completed" -ge 19 ]; then exit 1; fi\n'
-                "  attempt=$((attempt + 1))\n"
-                "  sleep 0.05\n"
-                "done\n"
-                "exit 2\n",
+            fetch_calls = root / "fetch-calls"
+            (site_dir / "sitecustomize.py").write_text(
+                "import pathlib, time, urllib.error, urllib.request\n"
+                f"ROOT = pathlib.Path({str(root)!r})\n"
+                f"CALLS = pathlib.Path({str(fetch_calls)!r})\n"
+                "def fake_urlopen(request, timeout=None):\n"
+                "    with CALLS.open('ab') as handle:\n"
+                "        handle.write(b'x')\n"
+                "    for _ in range(100):\n"
+                "        completed = sum(1 for p in ROOT.glob('result-*') if p.stat().st_size > 0)\n"
+                "        if completed >= 19:\n"
+                "            raise urllib.error.URLError('offline')\n"
+                "        time.sleep(0.05)\n"
+                "    raise urllib.error.URLError('timeout')\n"
+                "urllib.request.urlopen = fake_urlopen\n",
                 encoding="utf-8",
             )
-            fake_curl.chmod(0o755)
 
             env = os.environ.copy()
-            env["PATH"] = f"{bin_dir}:/usr/bin:/bin"
+            env["PYTHONPATH"] = str(site_dir)
             env["HOME"] = str(root / "home")
             env["XDG_CACHE_HOME"] = str(root / "home" / ".cache")
             env.pop("DOTFILES_STOCKS_CONFIG", None)
@@ -469,7 +492,7 @@ class StocksCacheTests(unittest.TestCase):
                 for handle in handles:
                     handle.close()
 
-            calls = len(curl_calls.read_bytes()) if curl_calls.exists() else 0
+            calls = len(fetch_calls.read_bytes()) if fetch_calls.exists() else 0
             self.assertEqual(calls, 5, f"expected one stock refresh (5 calls), observed {calls}")
 
     def test_subprocess_end_to_end_json_schema(self):
@@ -493,14 +516,21 @@ class StocksCacheTests(unittest.TestCase):
         })
         with tempfile.TemporaryDirectory() as root_str:
             root = Path(root_str)
-            bin_dir = root / "bin"
-            bin_dir.mkdir(parents=True)
-            fake_curl = bin_dir / "curl"
-            fake_curl.write_text(f"#!/bin/sh\nprintf '%s\\n' '{sample_chart}'\n", encoding="utf-8")
-            fake_curl.chmod(0o755)
+            site_dir = root / "site"
+            site_dir.mkdir(parents=True)
+            (site_dir / "sitecustomize.py").write_text(
+                "import urllib.request\n"
+                f"BODY = {sample_chart.encode('utf-8')!r}\n"
+                "class FakeResponse:\n"
+                "    def __enter__(self): return self\n"
+                "    def __exit__(self, *args): return False\n"
+                "    def read(self, size=-1): return BODY[:size] if size >= 0 else BODY\n"
+                "urllib.request.urlopen = lambda request, timeout=None: FakeResponse()\n",
+                encoding="utf-8",
+            )
 
             env = os.environ.copy()
-            env["PATH"] = f"{bin_dir}:/usr/bin:/bin"
+            env["PYTHONPATH"] = str(site_dir)
             env["HOME"] = str(root / "home")
             env["XDG_CACHE_HOME"] = str(root / "home" / ".cache")
             env.pop("DOTFILES_STOCKS_CONFIG", None)

@@ -81,10 +81,11 @@ typeset -gaU hosts
 
 () {
   # Track readable inputs so removal invalidates the cache as well as edits.
-  local inputs='# Inputs '
+  local inputs='# Inputs v2 '
   local newer=false
-  local source_file cached_inputs line field tmp_hosts_cache host
-  local -a known_hosts etc_hosts ssh_config
+  local loaded_cache=false
+  local source_file line field tmp_hosts_cache
+  local -a cached_lines known_hosts etc_hosts ssh_config
 
   for source_file in /etc/hosts /etc/ssh/ssh_known_hosts ~/.ssh/known_hosts ~/.ssh/config; do
     if [[ -r "$source_file" ]]; then
@@ -98,11 +99,16 @@ typeset -gaU hosts
   done
 
   if [[ $newer == false && -f "$_ZSH_HOSTS_CACHE" &&
-        -n ${_ZSH_HOSTS_CACHE}(#qNmh-24) ]] &&
-     IFS= read -r cached_inputs < "$_ZSH_HOSTS_CACHE" &&
-     [[ $cached_inputs == "$inputs" ]]; then
-    source "$_ZSH_HOSTS_CACHE"
-  else
+        -n ${_ZSH_HOSTS_CACHE}(#qNmh-24) ]]; then
+    cached_lines=("${(@f)$(<"$_ZSH_HOSTS_CACHE")}")
+    if [[ ${cached_lines[1]-} == "$inputs" ]]; then
+      hosts=("${(@)cached_lines[2,-1]}")
+      hosts=(${hosts:#})
+      loaded_cache=true
+    fi
+  fi
+
+  if [[ $loaded_cache == false ]]; then
     known_hosts=()
     for source_file in /etc/ssh/ssh_known_hosts ~/.ssh/known_hosts; do
       [[ -r "$source_file" ]] || continue
@@ -143,11 +149,9 @@ typeset -gaU hosts
        tmp_hosts_cache="$(mktemp "${_ZSH_HOSTS_CACHE}.XXXXXX" 2>/dev/null)"; then
       {
         print -r -- "$inputs"
-        print -r -- "typeset -gaU hosts=("
-        for host in "${hosts[@]}"; do
-          print -r -- "  ${(qqq)host}"
-        done
-        print -r -- ")"
+        if (( ${#hosts} > 0 )); then
+          print -rl -- "${hosts[@]}"
+        fi
       } > "$tmp_hosts_cache" && mv "$tmp_hosts_cache" "$_ZSH_HOSTS_CACHE" || rm -f "$tmp_hosts_cache"
     fi
   fi

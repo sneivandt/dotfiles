@@ -2,16 +2,17 @@
 """Fetch desktop market quotes with a shared, atomically replaced JSON cache."""
 
 import argparse
-import json
 from concurrent.futures import ThreadPoolExecutor
+import json
 import math
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
 
 # The desktop is Linux-only; importing this module remains safe for parser tests.
 if sys.platform == "linux":
@@ -30,6 +31,8 @@ _TICKER_RE = re.compile(r"^[A-Za-z0-9.^=-]{1,20}$")
 CACHE_VERSION = 4
 CACHE_TTL = 300
 FETCH_WORKERS = 3
+FETCH_TIMEOUT = 4
+MAX_RESPONSE_BYTES = 1024 * 1024
 
 
 def config_path():
@@ -126,14 +129,15 @@ def parse_quote(payload, symbol, fallback_name, prefix, now):
 
 
 def fetch_quote(query, symbol, fallback_name, prefix, now):
-    # Keep curl's bounded HTTP behavior and use Python for JSON and arithmetic.
-    result = subprocess.run(
-        ["curl", "-fsS", "--max-time", "4", "-H", "User-Agent: Mozilla/5.0",
-         f"https://query1.finance.yahoo.com/v8/finance/chart/{query}?interval=1wk&range=1y"],
-        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-        text=True, encoding="utf-8", errors="replace", timeout=6, check=True,
+    request = urllib.request.Request(
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{query}?interval=1wk&range=1y",
+        headers={"User-Agent": "Mozilla/5.0"},
     )
-    return parse_quote(json.loads(result.stdout), symbol, fallback_name, prefix, now)
+    with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT) as response:
+        body = response.read(MAX_RESPONSE_BYTES + 1)
+    if len(body) > MAX_RESPONSE_BYTES:
+        raise ValueError("Upstream market response exceeded size limit")
+    return parse_quote(json.loads(body.decode("utf-8", errors="replace")), symbol, fallback_name, prefix, now)
 
 
 def read_cache(path):
@@ -232,19 +236,21 @@ def quotes(cache_dir, fetch=None, force=False, configured=None):
             query, symbol, name, prefix = item
             cached_quote = previous.get(symbol)
             if not force and cached_quote is not None and fresh_quote(cached_quote, now):
-                return cached_quote, False
+                return cached_quote, False, None
             try:
                 quote = {**fetch(query, symbol, name, prefix, now), "updated": now}
                 if valid_quote(quote):
-                    return quote, True
-            except (OSError, subprocess.SubprocessError, ValueError, KeyError, IndexError, TypeError, AttributeError):
-                pass
-            return cached_quote, False
+                    return quote, True, None
+                reason = "invalid quote payload"
+            except (OSError, urllib.error.URLError, ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
+                reason = str(error) or type(error).__name__
+            return cached_quote, False, f"Failed to fetch quote for {symbol}: {reason}"
 
         # map preserves configured display order even when requests finish out of order.
         with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
             refreshed = list(pool.map(refresh, quote_specs))
-        if not any(success for _, success in refreshed):
+        failures = [failure for _, _, failure in refreshed if failure]
+        if not any(success for _, success, _ in refreshed):
             cached = read_cache(path)
             if force:
                 error = (
@@ -252,8 +258,12 @@ def quotes(cache_dir, fetch=None, force=False, configured=None):
                     if cached["quotes"] else "Could not refresh market data."
                 )
                 return {**cached, "error": error}
+            for failure in failures:
+                print(failure, file=sys.stderr)
             return cached
-        results = [quote for quote, _ in refreshed if quote is not None]
+        for failure in failures:
+            print(failure, file=sys.stderr)
+        results = [quote for quote, _, _ in refreshed if quote is not None]
         payload = {"version": CACHE_VERSION, "quotes": results,
                    "updated": min(quote["updated"] for quote in results)}
         try:

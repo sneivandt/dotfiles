@@ -141,6 +141,31 @@ class CompletionAndToolsTests(ShellConfigTestCase):
                 for hostname in hostnames:
                     self.assertNotIn(hostname, candidates)
 
+    def test_hostname_cache_is_parsed_as_plain_data_not_executed(self):
+        self.prepare_completion()
+        cache = self.home / ".cache/zsh/hosts.cache"
+        marker = self.home / "pwned"
+        script = (
+            'setopt extendedglob\n'
+            'source "$ROOT/symlinks/config/zsh/completion.zsh" || exit $?\n'
+            'print -rl -- "__HOSTS_START__" "INJECTED=${INJECTED:-unset}" "${hosts[@]}"\n'
+        )
+        self.run_shell(script)
+        header = cache.read_text(encoding="utf-8").splitlines()[0]
+        self.assertTrue(header.startswith("# Inputs v2 "), header)
+        payload = f'$(touch "{marker}")'
+        cache.write_text(f"{header}\nsafe.example\n{payload}\ntypeset -g INJECTED=1\n", encoding="utf-8")
+        stamp = cache.stat().st_mtime_ns
+        result = self.run_shell(script)
+        self.assertEqual(cache.stat().st_mtime_ns, stamp, "plain-data cache should be reused without regenerating")
+        self.assertFalse(marker.exists(), "hosts.cache contents must never be executed as shell code")
+        output = result.stdout.splitlines()
+        self.assertIn("__HOSTS_START__", output)
+        lines = output[output.index("__HOSTS_START__") + 1:]
+        self.assertEqual(lines[0], "INJECTED=unset")
+        self.assertIn("safe.example", lines[1:])
+        self.assertIn(payload, lines[1:])
+
     def test_docker_clean_preserves_each_failure(self):
         for failed in ("container", "network", "image", "none"):
             with self.subTest(failed=failed):

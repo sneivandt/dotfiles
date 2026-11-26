@@ -23,35 +23,12 @@ test_shellcheck()
 test_ruff()
 {
   inputs=$(mktemp)
-  printf '%s\0' "$DIR" > "$inputs"
-  for dir in symlinks hooks tests .github; do
-    [ -d "$DIR/$dir" ] || continue
-    find "$DIR/$dir" -type f ! -name '*.py' ! -name '*.pyi' -exec sh -c '
-      for file do
-        if LC_ALL=C awk '\''
-          NR == 1 {
-            if (substr($0, 1, 2) != "#!") exit 1
-            sub(/^#![ \t]*/, "")
-            count = split($0, words, /[ \t]+/)
-            name = words[1]
-            sub(/^.*\//, "", name)
-            if (name == "env") {
-              name = ""
-              for (i = 2; i <= count; i++) {
-                if (words[i] !~ /^-/) { name = words[i]; break }
-              }
-            }
-            exit !(name ~ /^python([0-9]+(\.[0-9]+)*)?$/)
-          }
-          END { if (NR == 0) exit 1 }
-        '\'' "$file"; then
-          printf "%s\0" "$file"
-        fi
-      done
-    ' sh {} + >> "$inputs"
-  done
   status=0
-  xargs -0 ruff check --config "$DIR/.github/linters/ruff.toml" -- < "$inputs" || status=$?
+  if python3 -B "$SCRIPT_DIR/ci_metadata.py" ruff-inputs "$DIR" > "$inputs"; then
+    xargs -0 ruff check --config "$DIR/.github/linters/ruff.toml" -- < "$inputs" || status=$?
+  else
+    status=$?
+  fi
   rm -f "$inputs"
   return "$status"
 }

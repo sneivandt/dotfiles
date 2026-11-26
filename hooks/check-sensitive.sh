@@ -14,13 +14,38 @@ YELLOW=$(printf '\033[1;33m')
 NC=$(printf '\033[0m')
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PATTERNS_FILE="$SCRIPT_DIR/sensitive-patterns.ini"
-ALLOWLIST_FILE="$SCRIPT_DIR/sensitive-allowlist.ini"
+FALLBACK_PATTERNS_FILE="$SCRIPT_DIR/sensitive-patterns.ini"
+FALLBACK_ALLOWLIST_FILE="$SCRIPT_DIR/sensitive-allowlist.ini"
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+load_hook_config() {
+  rel_path="$1"
+  fallback="$2"
+  dest="$3"
+  if git cat-file -e ":$rel_path" 2>/dev/null; then
+    git show ":$rel_path" > "$dest"
+    return 0
+  fi
+  if git cat-file -e "HEAD:$rel_path" 2>/dev/null; then
+    # Tracked in HEAD and removed from the index: honor the staged deletion.
+    return 1
+  fi
+  if [ -f "$fallback" ]; then
+    cp "$fallback" "$dest"
+    return 0
+  fi
+  return 1
+}
+
+PATTERNS_FILE="$tmpdir/sensitive-patterns.ini"
+ALLOWLIST_FILE="$tmpdir/sensitive-allowlist.ini"
 
 printf "Running sensitive content scan...\n"
 
-if [ ! -f "$PATTERNS_FILE" ]; then
-  printf '%sERROR: Patterns file not found: %s%s\n' "$RED" "$PATTERNS_FILE" "$NC"
+if ! load_hook_config "hooks/sensitive-patterns.ini" "$FALLBACK_PATTERNS_FILE" "$PATTERNS_FILE"; then
+  printf '%sERROR: Patterns file not found: %s%s\n' "$RED" "$FALLBACK_PATTERNS_FILE" "$NC"
   printf '%sCannot perform credential scanning without patterns file.%s\n' "$YELLOW" "$NC"
   exit 1
 fi
@@ -32,7 +57,7 @@ PATTERNS=$(cat "$PATTERNS_FILE")
 # scanning, so contributors are not pushed toward --no-verify. Redacting the
 # span rather than dropping the line keeps the rest of the line scanned.
 ALLOWLIST_RE=""
-if [ -f "$ALLOWLIST_FILE" ]; then
+if load_hook_config "hooks/sensitive-allowlist.ini" "$FALLBACK_ALLOWLIST_FILE" "$ALLOWLIST_FILE"; then
   ALLOWLIST_RE=$(awk '
     /^$/ || /^#/ || /^\[.*\]$/ { next }
     {
@@ -75,9 +100,6 @@ else
 fi
 
 found_secrets=0
-
-tmpdir=$(mktemp -d)
-trap 'rm -rf "$tmpdir"' EXIT
 
 diff_file="$tmpdir/diff"
 content="$tmpdir/content"

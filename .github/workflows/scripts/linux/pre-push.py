@@ -190,13 +190,7 @@ def committed_policy(root, head):
 def snapshot(root, head, destination):
     # A clone preserves executable bits, excludes untracked/unstaged inputs,
     # and supplies real Git metadata needed by configuration/build fixtures.
-    subprocess.run(["git", "clone", "--quiet", "--template=", "--shared", "--no-checkout", str(root), str(destination)], check=True)
-    hooks = destination.parent / "empty-hooks"
-    hooks.mkdir(exist_ok=True)
-    options = ["-c", "core.hooksPath=" + str(hooks)]
-    if sys.platform == "win32":
-        options.extend(["-c", "core.symlinks=false"])
-    subprocess.run(["git", "-C", str(destination), *options, "checkout", "--quiet", "--detach", head], check=True)
+    _load_sibling("ci_metadata").snapshot_commit(root, head, destination)
 
 
 def target_cache(root):

@@ -25,12 +25,36 @@ fi
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 WORKTREE_ROOT="$REPO_ROOT"
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 MANIFEST="$REPO_ROOT/cli/Cargo.toml"
 OWN_CHECK_STAGE_DIR=""
 CHECK_STAGE_DIR=""
 CHECK_ROOT=""
 trap '[ -z "$OWN_CHECK_STAGE_DIR" ] || rm -rf "$OWN_CHECK_STAGE_DIR"' EXIT
 trap 'exit 1' HUP INT TERM
+
+resolve_repo_file() {
+  rel_path="$1"
+  if [ -n "$CHECK_ROOT" ] && [ -f "$CHECK_ROOT/$rel_path" ]; then
+    printf '%s\n' "$CHECK_ROOT/$rel_path"
+  elif [ -f "$SCRIPT_DIR/../$rel_path" ]; then
+    printf '%s\n' "$SCRIPT_DIR/../$rel_path"
+  else
+    return 1
+  fi
+}
+
+find_ci_metadata() {
+  if [ -n "$CHECK_ROOT" ] && [ -f "$CHECK_ROOT/.github/workflows/scripts/linux/ci_metadata.py" ]; then
+    printf '%s\n' "$CHECK_ROOT/.github/workflows/scripts/linux/ci_metadata.py"
+  elif [ -f "$WORKTREE_ROOT/.github/workflows/scripts/linux/ci_metadata.py" ]; then
+    printf '%s\n' "$WORKTREE_ROOT/.github/workflows/scripts/linux/ci_metadata.py"
+  elif [ -f "$SCRIPT_DIR/../.github/workflows/scripts/linux/ci_metadata.py" ]; then
+    printf '%s\n' "$SCRIPT_DIR/../.github/workflows/scripts/linux/ci_metadata.py"
+  else
+    return 1
+  fi
+}
 
 prepare_staged_tree() {
   [ -z "$CHECK_ROOT" ] || return 0
@@ -78,6 +102,42 @@ has_staged_match() {
   [ -n "$changed" ]
 }
 
+has_staged_linter() {
+  category="$1"
+  shift
+  if command -v python3 >/dev/null 2>&1 && meta=$(find_ci_metadata); then
+    tmp_list=$(mktemp)
+    if ! git diff --cached --name-only --no-renames -z "$against" -- > "$tmp_list"; then
+      rm -f "$tmp_list"
+      exit 1
+    fi
+    status=0
+    python3 -B "$meta" has-linter "$category" < "$tmp_list" || status=$?
+    rm -f "$tmp_list"
+    if [ "$status" -eq 0 ]; then
+      return 0
+    fi
+    [ "$status" -eq 1 ] || exit "$status"
+    return 1
+  fi
+  has_staged_match "$@"
+}
+
+staged_linter_inputs() {
+  category="$1"
+  output="$2"
+  shift 2
+  if command -v python3 >/dev/null 2>&1 && meta=$(find_ci_metadata); then
+    all_staged="$CHECK_STAGE_DIR/.all-staged"
+    if [ ! -f "$all_staged" ]; then
+      git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- > "$all_staged"
+    fi
+    python3 -B "$meta" filter-linter "$category" < "$all_staged" > "$output"
+  else
+    git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- "$@" > "$output"
+  fi
+}
+
 abort_with_hint() {
   message="$1"
   hint="$2"
@@ -98,7 +158,8 @@ run_config_validation() {
 
   prepare_staged_tree
   if [ -f "$REPO_ROOT/cli/rust-toolchain.toml" ]; then
-    sh "$(dirname -- "$0")/check-toolchain.sh" "$REPO_ROOT/cli"
+    toolchain_check=$(resolve_repo_file "hooks/check-toolchain.sh")
+    sh "$toolchain_check" "$REPO_ROOT/cli"
   fi
   printf "Running typed config validation...\n"
   if ! run_cargo run --locked --quiet --profile ci --manifest-path "$MANIFEST" -- \
@@ -148,14 +209,14 @@ run_shell_guards() {
   if command -v shellcheck >/dev/null 2>&1; then
     prepare_staged_tree
     printf "Running ShellCheck...\n"
-    git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- \
+    staged_linter_inputs shell "$CHECK_STAGE_DIR/.shell-inputs" \
       '*.sh' '*.bash' hooks/pre-commit symlinks/bashrc symlinks/bash_profile \
       'symlinks/config/git/templates/hooks/*' 'symlinks/config/git/templates/hooks.local/*' \
-      'packages/*/PKGBUILD' 'packages/*/*.install' > "$CHECK_STAGE_DIR/.shell-inputs"
+      'packages/*/PKGBUILD' 'packages/*/*.install'
     if [ ! -s "$CHECK_STAGE_DIR/.shell-inputs" ]; then
       return 0
     fi
-    analyzer="$(CDPATH='' cd -- "$(dirname -- "$0")/../cli/src/app/validation/scripts" && pwd)/shellcheck.sh"
+    analyzer=$(resolve_repo_file "cli/src/app/validation/scripts/shellcheck.sh")
     if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
       analyzer=$1
       shift
@@ -180,12 +241,12 @@ run_powershell_guards() {
     printf "Running PSScriptAnalyzer...\n"
     # Keep NUL delimiters through argv construction, including tabs/newlines.
     # Prefix with ./ so a tracked filename cannot become an analyzer option.
-    git diff --cached --name-only --diff-filter=d -z "$against" -- \
-      '*.ps1' '*.psm1' '*.psd1' > "$CHECK_STAGE_DIR/.powershell-inputs"
+    staged_linter_inputs powershell "$CHECK_STAGE_DIR/.powershell-inputs" \
+      '*.ps1' '*.psm1' '*.psd1'
     if [ ! -s "$CHECK_STAGE_DIR/.powershell-inputs" ]; then
       return 0
     fi
-    analyzer="$(CDPATH='' cd -- "$(dirname -- "$0")/../cli/src/app/validation/scripts" && pwd)/psscriptanalyzer.ps1"
+    analyzer=$(resolve_repo_file "cli/src/app/validation/scripts/psscriptanalyzer.ps1")
     if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
       analyzer=$1
       shift
@@ -208,8 +269,8 @@ run_python_guards() {
   if command -v ruff >/dev/null 2>&1; then
     prepare_staged_tree
     printf "Running Ruff...\n"
-    git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- \
-      '*.py' symlinks/local/bin/code-insiders > "$CHECK_STAGE_DIR/.python-inputs"
+    staged_linter_inputs python "$CHECK_STAGE_DIR/.python-inputs" \
+      '*.py' symlinks/local/bin/code-insiders
     if [ ! -s "$CHECK_STAGE_DIR/.python-inputs" ]; then
       return 0
     fi
@@ -247,8 +308,7 @@ run_lua_guards() {
   if command -v luacheck >/dev/null 2>&1; then
     prepare_staged_tree
     printf "Running Luacheck...\n"
-    git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- \
-      '*.lua' > "$CHECK_STAGE_DIR/.lua-inputs"
+    staged_linter_inputs lua "$CHECK_STAGE_DIR/.lua-inputs" '*.lua'
     if [ ! -s "$CHECK_STAGE_DIR/.lua-inputs" ]; then
       return 0
     fi
@@ -285,8 +345,8 @@ run_lua_guards() {
 run_workflow_lint_guards() {
   if command -v actionlint >/dev/null 2>&1; then
     prepare_staged_tree
-    git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- \
-      '.github/workflows/*.yml' '.github/workflows/*.yaml' > "$CHECK_STAGE_DIR/.workflow-inputs"
+    staged_linter_inputs workflows "$CHECK_STAGE_DIR/.workflow-inputs" \
+      '.github/workflows/*.yml' '.github/workflows/*.yaml'
     if [ ! -s "$CHECK_STAGE_DIR/.workflow-inputs" ]; then
       return 0
     fi
@@ -413,6 +473,7 @@ run_release_workflow_guards() {
     return
   fi
 
+  prepare_staged_tree
   printf "Running release workflow guards...\n"
 
   if ! workflow_contents=$(git show ":.github/workflows/release.yml"); then
@@ -421,13 +482,17 @@ run_release_workflow_guards() {
       "stage .github/workflows/release.yml before running the publishing guards"
   fi
 
-  contract="$(CDPATH='' cd -- "$(dirname -- "$0")/../.github/workflows/scripts/linux" && pwd)/check-ci-contract.py"
+  contract=$(resolve_repo_file ".github/workflows/scripts/linux/check-ci-contract.py")
   if ! printf '%s\n' "$workflow_contents" | python3 -B "$contract" --release - 2>&1; then
     abort_with_hint \
       "release workflow contract check failed." \
       "python3 -B .github/workflows/scripts/linux/check-ci-contract.py"
   fi
 }
+
+if has_staged_match .github/workflows/scripts/linux/ci_metadata.py; then
+  prepare_staged_tree
+fi
 
 if has_staged_match 'conf/*.toml' 'symlinks/*' 'system/*' 'packages/*'; then
   run_config_validation
@@ -437,21 +502,21 @@ if has_staged_match cli/Cargo.toml cli/Cargo.lock cli/deny.toml; then
   run_dependency_guards
 fi
 
-if has_staged_match '*.sh' '*.bash' hooks/pre-commit symlinks/bashrc symlinks/bash_profile \
+if has_staged_linter shell '*.sh' '*.bash' hooks/pre-commit symlinks/bashrc symlinks/bash_profile \
   'symlinks/config/git/templates/hooks/*' 'symlinks/config/git/templates/hooks.local/*' \
   'packages/*/PKGBUILD' 'packages/*/*.install'; then
   run_shell_guards
 fi
 
-if has_staged_match '*.ps1' '*.psm1' '*.psd1'; then
+if has_staged_linter powershell '*.ps1' '*.psm1' '*.psd1'; then
   run_powershell_guards
 fi
 
-if has_staged_match '*.py' symlinks/local/bin/code-insiders; then
+if has_staged_linter python '*.py' symlinks/local/bin/code-insiders; then
   run_python_guards
 fi
 
-if has_staged_match '*.lua'; then
+if has_staged_linter lua '*.lua'; then
   run_lua_guards
 fi
 
@@ -465,7 +530,7 @@ elif has_staged_match dotfiles.sh tests/wrapper/test-shell-wrapper.sh 'tests/wra
   printf '%sSkipping Linux shell wrapper tests: set DOTFILES_HOOKS_FULL=1 to run them.%s\n' "$DIM" "$NC"
 fi
 
-if has_staged_match '.github/workflows/*.yml' '.github/workflows/*.yaml'; then
+if has_staged_linter workflows '.github/workflows/*.yml' '.github/workflows/*.yaml'; then
   run_workflow_lint_guards
 fi
 

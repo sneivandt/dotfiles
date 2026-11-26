@@ -519,6 +519,77 @@ class StagedGuardTests(unittest.TestCase):
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
             self.assertEqual(log_file.read_text(encoding="utf-8"), "")
 
+    def test_staged_analyzer_and_contract_scripts_override_worktree(self) -> None:
+        with tempfile.TemporaryDirectory() as fixture_str:
+            fixture = Path(fixture_str)
+            mock_bin = fixture / "mock-bin"
+            repo = fixture / "repo"
+            (repo / "hooks").mkdir(parents=True)
+            (repo / "cli" / "src" / "app" / "validation" / "scripts").mkdir(parents=True)
+            (repo / ".github" / "workflows" / "scripts" / "linux").mkdir(parents=True)
+            shutil.copy2(REPO_ROOT / "hooks" / "check-ci-guards.sh", repo / "hooks" / "check-ci-guards.sh")
+
+            write_executable(mock_bin / "shellcheck", "#!/bin/sh\nexit 0\n")
+            write_executable(mock_bin / "actionlint", "#!/bin/sh\nexit 0\n")
+            write_executable(mock_bin / "ruff", "#!/bin/sh\nexit 0\n")
+            write_executable(
+                mock_bin / "pwsh",
+                "#!/bin/sh\n"
+                "set -eu\n"
+                '[ "$1" = -NoProfile ] && [ "$2" = -File ]\n'
+                'grep -q "STAGED-PS-ANALYZER" "$3"\n'
+                'printf "ps-staged\\n" >> "$HOOK_INPUT_LOG"\n',
+            )
+
+            log_file = fixture / "checks.log"
+            env = init_fixture_repository(repo)
+            env["PATH"] = f"{mock_bin}{os.pathsep}{env.get('PATH', '')}"
+            env["HOOK_INPUT_LOG"] = str(log_file)
+
+            sc = repo / "cli" / "src" / "app" / "validation" / "scripts" / "shellcheck.sh"
+            ps = repo / "cli" / "src" / "app" / "validation" / "scripts" / "psscriptanalyzer.ps1"
+            contract = repo / ".github" / "workflows" / "scripts" / "linux" / "check-ci-contract.py"
+            release = repo / ".github" / "workflows" / "release.yml"
+
+            sc.write_text('#!/bin/sh\nprintf "sh-staged\\n" >> "$HOOK_INPUT_LOG"\n', encoding="utf-8")
+            ps.write_text("# STAGED-PS-ANALYZER\n", encoding="utf-8")
+            contract.write_text(
+                "import os, pathlib, sys\n"
+                "pathlib.Path(os.environ['HOOK_INPUT_LOG']).open('a', encoding='utf-8').write('contract-staged\\n')\n"
+                "sys.exit(0)\n",
+                encoding="utf-8",
+            )
+            release.write_text("name: Release\n", encoding="utf-8")
+            (repo / "sample.sh").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            (repo / "sample.ps1").write_text("Write-Output 'ok'\n", encoding="utf-8")
+
+            self.assertEqual(
+                run(
+                    [
+                        "git", "add", "--",
+                        "cli/src/app/validation/scripts/shellcheck.sh",
+                        "cli/src/app/validation/scripts/psscriptanalyzer.ps1",
+                        ".github/workflows/scripts/linux/check-ci-contract.py",
+                        ".github/workflows/release.yml",
+                        "sample.sh", "sample.ps1",
+                    ],
+                    cwd=repo, env=env,
+                ).returncode,
+                0,
+            )
+
+            # Mutate the worktree copies to fail loudly if the hook reads them instead of the staged tree.
+            sc.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+            ps.write_text("# WORKTREE-MUTATED\n", encoding="utf-8")
+            contract.write_text("import sys; sys.exit(99)\n", encoding="utf-8")
+
+            res = run(["sh", "hooks/check-ci-guards.sh"], cwd=repo, env=env)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertEqual(
+                log_file.read_text(encoding="utf-8").splitlines(),
+                ["sh-staged", "ps-staged", "contract-staged"],
+            )
+
     def test_rust_and_shellcheck_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as fixture_str:
             fixture = Path(fixture_str)

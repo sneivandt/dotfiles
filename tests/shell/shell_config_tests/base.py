@@ -59,7 +59,7 @@ class ShellConfigTestCase(unittest.TestCase):
 
     def prepare_completion(self):
         cache = self.home / ".cache/zsh"
-        self.write(cache / "hosts.cache", "typeset -ga hosts=(localhost)\n")
+        self.write(cache / "hosts.cache", "# Inputs v2 0000\nlocalhost\n")
         self.env["ZSH_COMPDUMP"] = str(cache / "zcompdump-fixture")
         # Keep compaudit's trust checks enabled even with a permissive CI umask.
         completion_dir = self.home / ".config/zsh/completions"

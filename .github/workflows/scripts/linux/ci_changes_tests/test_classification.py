@@ -1,8 +1,11 @@
 """Change-classification regression tests."""
 
+from pathlib import Path
+import subprocess
+import sys
 import unittest
 
-from ci_changes_tests.helpers import LINUX, POLICY, classify
+from ci_changes_tests.helpers import LINUX, POLICY, SCRIPTS, classify
 
 
 class ClassificationTests(unittest.TestCase):
@@ -337,6 +340,56 @@ class ClassificationTests(unittest.TestCase):
             ["ShellCheck", "PSScriptAnalyzer"],
         )
         self.assertFalse(expected["docs_only"])
+
+    def test_ci_metadata_cli_and_ruff_inputs(self):
+        repo = SCRIPTS.parents[3]
+        meta = SCRIPTS / "ci_metadata.py"
+        sample = b"\0".join([
+            b"hooks/pre-commit",
+            b"packages/demo/PKGBUILD",
+            b"symlinks/local/bin/code-insiders",
+            b"scripts/tool.py",
+            b"scripts/check.ps1",
+            b"symlinks/config/hypr/hyprland.lua",
+            b".github/workflows/ci.yml",
+            b"README.md",
+        ]) + b"\0"
+        expected = {
+            "shell": [b"hooks/pre-commit", b"packages/demo/PKGBUILD"],
+            "powershell": [b"scripts/check.ps1"],
+            "python": [b"symlinks/local/bin/code-insiders", b"scripts/tool.py"],
+            "lua": [b"symlinks/config/hypr/hyprland.lua"],
+            "workflows": [b".github/workflows/ci.yml"],
+        }
+        for category, want in expected.items():
+            with self.subTest(category=category):
+                filtered = subprocess.run(
+                    [sys.executable, "-B", str(meta), "filter-linter", category],
+                    input=sample, stdout=subprocess.PIPE, check=True,
+                )
+                self.assertEqual([item for item in filtered.stdout.split(b"\0") if item], want)
+                has_match = subprocess.run(
+                    [sys.executable, "-B", str(meta), "has-linter", category],
+                    input=sample, check=False,
+                )
+                self.assertEqual(has_match.returncode, 0)
+                no_match = subprocess.run(
+                    [sys.executable, "-B", str(meta), "has-linter", category],
+                    input=b"README.md\0", check=False,
+                )
+                self.assertEqual(no_match.returncode, 1)
+
+        ruff_result = subprocess.run(
+            [sys.executable, "-B", str(meta), "ruff-inputs", str(repo)],
+            stdout=subprocess.PIPE, check=True,
+        )
+        entries = [item.decode("utf-8") for item in ruff_result.stdout.split(b"\0") if item]
+        self.assertEqual(entries[0], str(repo))
+        rel_extensionless = {
+            str(Path(entry).relative_to(repo).as_posix())
+            for entry in entries[1:]
+        }
+        self.assertEqual(rel_extensionless, set(POLICY["EXTENSIONLESS_PYTHON_SCRIPTS"]))
 
     def test_embedded_documentation_and_similar_prefixes_are_not_docs_only(self):
         for path in ("cli/src/README.md", "cli/src/docs/guide.md", "docs-build/input",

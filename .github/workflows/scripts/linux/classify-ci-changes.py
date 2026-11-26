@@ -29,7 +29,12 @@ FLAGS = _META.FLAGS
 APPS = _META.APPS
 LINTERS = _META.LINTERS
 LINTER_STAGES = _META.LINTER_STAGES
+LINTER_CONFIG_FILES = _META.LINTER_CONFIG_FILES
 EXTENSIONLESS_PYTHON_SCRIPTS = _META.EXTENSIONLESS_PYTHON_SCRIPTS
+python_script = _META.python_script
+shell_script = _META.shell_script
+powershell_script = _META.powershell_script
+lua_script = _META.lua_script
 
 
 def documentation(path: str) -> bool:
@@ -69,27 +74,6 @@ def binary_input(path: str) -> bool:
         LINUX + "classify-ci-changes.py", LINUX + "classify-ci-changes.sh",
         LINUX + "classify-release.sh", LINUX + "release-tag.sh",
     }
-
-
-def python_script(path: str) -> bool:
-    return path.endswith(".py") or path in EXTENSIONLESS_PYTHON_SCRIPTS
-
-
-def shell_script(path: str) -> bool:
-    parts = path.split("/")
-    return (
-        path.endswith((".sh", ".bash"))
-        or path in {"hooks/pre-commit", "symlinks/bashrc", "symlinks/bash_profile"}
-        or path.startswith((
-            "symlinks/config/git/templates/hooks/",
-            "symlinks/config/git/templates/hooks.local/",
-        ))
-        or (
-            len(parts) == 3
-            and parts[0] == "packages"
-            and (parts[2] == "PKGBUILD" or parts[2].endswith(".install"))
-        )
-    )
 
 
 def changed_paths(root: str, base: str, head: str) -> list[str]:
@@ -135,11 +119,11 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("release")
         if shell_script(path):
             linters.add("shell")
-        if path.endswith((".ps1", ".psm1", ".psd1")):
+        if powershell_script(path):
             linters.add("powershell")
-        if python_script(path) or path in {".github/linters/ruff.toml", LINUX + "install-ruff.sh"}:
+        if python_script(path) or path in LINTER_CONFIG_FILES["python"]:
             linters.add("python")
-        if path.endswith(".lua") or path in {".github/linters/luacheckrc", LINUX + "install-luacheck.sh"}:
+        if lua_script(path) or path in LINTER_CONFIG_FILES["lua"]:
             linters.add("lua")
 
         if path == ".github/workflows/ci.yml" or path in {
@@ -158,10 +142,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             pass  # Always executed by classify-changes.
         elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh", LINUX + "release-tag.sh"}:
             pass  # Publishing builds are selected independently of CI builds.
-        elif path in {".github/linters/ruff.toml", LINUX + "install-ruff.sh"}:
-            linters.add("python")
-        elif path in {".github/linters/luacheckrc", LINUX + "install-luacheck.sh"}:
-            linters.add("lua")
+        elif any(path in files for files in LINTER_CONFIG_FILES.values()):
+            pass  # Linter selection handled above.
         elif path in {"tests/desktop/quickshell/test-desktop-qml.sh",
                       "tests/desktop/quickshell/test-desktop-session.sh",
                       "tests/desktop/quickshell/test-desktop-session.py"} or path.startswith(

@@ -176,6 +176,58 @@ class SensitiveScanTests(unittest.TestCase):
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=grep_env)
             self.assertNotEqual(res.returncode, 0)
 
+    def test_sensitive_scan_reads_staged_patterns_and_allowlist(self) -> None:
+        with tempfile.TemporaryDirectory() as repo_str:
+            repo = Path(repo_str)
+            env = clean_git_env(repo)
+            self.assertEqual(run(["git", "init", "-q", "--template=", str(repo)], cwd=repo, env=env).returncode, 0)
+            (repo / "hooks").mkdir()
+            shutil.copy2(REPO_ROOT / "hooks" / "check-sensitive.sh", repo / "hooks" / "check-sensitive.sh")
+            patterns = repo / "hooks" / "sensitive-patterns.ini"
+            allowlist = repo / "hooks" / "sensitive-allowlist.ini"
+            patterns.write_text("STAGED_ONLY_SECRET\n", encoding="utf-8")
+            allowlist.write_text("ALLOW_STAGED_MARKER\n", encoding="utf-8")
+            self.assertEqual(
+                run(["git", "add", "hooks/sensitive-patterns.ini", "hooks/sensitive-allowlist.ini"], cwd=repo, env=env).returncode,
+                0,
+            )
+            self.assertEqual(
+                run(
+                    [
+                        "git",
+                        "-c", "user.name=Fixture",
+                        "-c", "user.email=fixture@test.local",
+                        "-c", "core.hooksPath=/dev/null",
+                        "commit", "-qm", "baseline",
+                    ],
+                    cwd=repo, env=env,
+                ).returncode,
+                0,
+            )
+
+            # Unstaged worktree edits to patterns/allowlist must not affect the staged scan.
+            patterns.write_text("WORKTREE_ONLY_SECRET\n", encoding="utf-8")
+            allowlist.write_text("STAGED_ONLY_SECRET\n", encoding="utf-8")
+
+            sample = repo / "note.txt"
+            sample.write_text("STAGED_ONLY_SECRET\n", encoding="utf-8")
+            self.assertEqual(run(["git", "add", "note.txt"], cwd=repo, env=env).returncode, 0)
+            res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
+            self.assertNotEqual(res.returncode, 0, "Worktree allowlist leaked into staged scan")
+
+            # Staged allowlist update takes effect even when worktree drops it.
+            allowlist.write_text("STAGED_ONLY_SECRET\n", encoding="utf-8")
+            self.assertEqual(run(["git", "add", "hooks/sensitive-allowlist.ini"], cwd=repo, env=env).returncode, 0)
+            allowlist.write_text("UNRELATED\n", encoding="utf-8")
+            res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
+            self.assertEqual(res.returncode, 0, f"Staged allowlist was ignored:\n{res.stdout}{res.stderr}")
+
+            # Staging removal of the allowlist must not fall back to the worktree copy.
+            self.assertEqual(run(["git", "rm", "-fq", "hooks/sensitive-allowlist.ini"], cwd=repo, env=env).returncode, 0)
+            allowlist.write_text("STAGED_ONLY_SECRET\n", encoding="utf-8")
+            res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
+            self.assertNotEqual(res.returncode, 0, "Deleted allowlist fell back to worktree file")
+
     def test_sensitive_patterns_and_clean_commits(self) -> None:
         # Construct synthetic test fixtures dynamically so this file stays
         # clean under the repository's pre-commit sensitive-content scanner.

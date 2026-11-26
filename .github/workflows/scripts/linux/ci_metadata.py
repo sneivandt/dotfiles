@@ -1,5 +1,10 @@
 """Shared CI workflow metadata consumed by classification, contract, and pre-push scripts."""
 
+from pathlib import Path
+import re
+import subprocess
+import sys
+
 SCRIPTS = ".github/workflows/scripts/"
 LINUX = SCRIPTS + "linux/"
 WINDOWS = SCRIPTS + "windows/"
@@ -121,3 +126,163 @@ LINTER_STAGES = {spec["name"]: stage for stage, spec in LINTERS.items()}
 EXTENSIONLESS_PYTHON_SCRIPTS = frozenset({
     "symlinks/local/bin/code-insiders",
 })
+
+SHELL_SCRIPT_EXACT = frozenset({
+    "hooks/pre-commit",
+    "symlinks/bashrc",
+    "symlinks/bash_profile",
+})
+
+SHELL_SCRIPT_PREFIXES = (
+    "symlinks/config/git/templates/hooks/",
+    "symlinks/config/git/templates/hooks.local/",
+)
+
+SHELL_SCRIPT_EXTENSIONS = (".sh", ".bash")
+POWERSHELL_EXTENSIONS = (".ps1", ".psm1", ".psd1")
+LUA_EXTENSIONS = (".lua",)
+
+LINTER_CONFIG_FILES = {
+    "python": frozenset({".github/linters/ruff.toml", LINUX + "install-ruff.sh"}),
+    "lua": frozenset({".github/linters/luacheckrc", LINUX + "install-luacheck.sh"}),
+}
+
+_PYTHON_SHEBANG_RE = re.compile(r"^python([0-9]+(\.[0-9]+)*)?$")
+_SHEBANG_SCAN_DIRS = ("symlinks", "hooks", "tests", ".github")
+
+
+def python_script(path: str) -> bool:
+    return path.endswith(".py") or path in EXTENSIONLESS_PYTHON_SCRIPTS
+
+
+def shell_script(path: str) -> bool:
+    parts = path.split("/")
+    return (
+        path.endswith(SHELL_SCRIPT_EXTENSIONS)
+        or path in SHELL_SCRIPT_EXACT
+        or path.startswith(SHELL_SCRIPT_PREFIXES)
+        or (
+            len(parts) == 3
+            and parts[0] == "packages"
+            and (parts[2] == "PKGBUILD" or parts[2].endswith(".install"))
+        )
+    )
+
+
+def powershell_script(path: str) -> bool:
+    return path.endswith(POWERSHELL_EXTENSIONS)
+
+
+def lua_script(path: str) -> bool:
+    return path.endswith(LUA_EXTENSIONS)
+
+
+def workflow_file(path: str) -> bool:
+    parts = path.split("/")
+    return (
+        len(parts) == 3
+        and parts[0] == ".github"
+        and parts[1] == "workflows"
+        and parts[2].endswith((".yml", ".yaml"))
+    )
+
+
+LINTER_MATCHERS = {
+    "shell": shell_script,
+    "powershell": powershell_script,
+    "python": python_script,
+    "lua": lua_script,
+    "workflows": workflow_file,
+}
+
+
+def is_python_shebang(path: Path) -> bool:
+    """Return whether a file starts with a Python interpreter shebang."""
+    try:
+        with path.open("rb") as stream:
+            first_line = stream.readline(256)
+    except OSError:
+        return False
+    if not first_line.startswith(b"#!"):
+        return False
+    words = first_line[2:].decode("latin-1").split()
+    if not words:
+        return False
+    name = words[0].rsplit("/", 1)[-1]
+    if name == "env":
+        name = next((word for word in words[1:] if not word.startswith("-")), "")
+    return bool(_PYTHON_SHEBANG_RE.match(name))
+
+
+def ruff_inputs(root: Path) -> list[str]:
+    """Return Ruff target paths: the repository root plus extensionless Python scripts."""
+    inputs = [str(root)]
+    for dirname in _SHEBANG_SCAN_DIRS:
+        base = root / dirname
+        if not base.is_dir():
+            continue
+        for candidate in sorted(base.rglob("*")):
+            if candidate.is_symlink() or not candidate.is_file():
+                continue
+            if candidate.suffix in {".py", ".pyi"}:
+                continue
+            if is_python_shebang(candidate):
+                inputs.append(str(candidate))
+    return inputs
+
+
+def snapshot_commit(
+    root: Path,
+    head: str,
+    destination: Path,
+    *,
+    symlinks: bool | None = None,
+    env: dict[str, str] | None = None,
+) -> None:
+    """Create a detached isolated checkout of a commit with hooks disabled."""
+    subprocess.run(
+        ["git", "clone", "--quiet", "--template=", "--shared", "--no-checkout", str(root), str(destination)],
+        cwd=root,
+        env=env,
+        check=True,
+    )
+    hooks = destination.parent / "empty-hooks"
+    hooks.mkdir(exist_ok=True)
+    options = ["-c", f"core.hooksPath={hooks}"]
+    use_symlinks = (sys.platform != "win32") if symlinks is None else symlinks
+    if not use_symlinks:
+        options.extend(["-c", "core.symlinks=false"])
+    subprocess.run(
+        ["git", "-C", str(destination), *options, "checkout", "--quiet", "--detach", head],
+        cwd=destination,
+        env=env,
+        check=True,
+    )
+
+
+def _cli(argv: list[str]) -> int:
+    if len(argv) == 2 and argv[0] in {"filter-linter", "has-linter"}:
+        matcher = LINTER_MATCHERS.get(argv[1])
+        if matcher is None:
+            print(f"Unknown linter category: {argv[1]}", file=sys.stderr)
+            return 2
+        raw = sys.stdin.buffer.read()
+        matched = [
+            entry for entry in raw.split(b"\0")
+            if entry and matcher(entry.decode("utf-8", errors="surrogateescape"))
+        ]
+        if argv[0] == "has-linter":
+            return 0 if matched else 1
+        if matched:
+            sys.stdout.buffer.write(b"\0".join(matched) + b"\0")
+        return 0
+    if len(argv) == 2 and argv[0] == "ruff-inputs":
+        targets = ruff_inputs(Path(argv[1]))
+        sys.stdout.buffer.write(b"\0".join(item.encode("utf-8", errors="surrogateescape") for item in targets) + b"\0")
+        return 0
+    print("Usage: ci_metadata.py <filter-linter|has-linter <category>|ruff-inputs <dir>>", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(_cli(sys.argv[1:]))

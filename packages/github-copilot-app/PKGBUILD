@@ -38,6 +38,14 @@ noextract=("copilot-app-${pkgver}-${CARCH}.deb")
 
 package() (
   set -o pipefail
-  bsdtar -xOf "${srcdir}/copilot-app-${pkgver}-${CARCH}.deb" data.tar.zst |
+  deb="${srcdir}/copilot-app-${pkgver}-${CARCH}.deb"
+  data_member=$(
+    bsdtar -tf "$deb" |
+      awk '/^data\.tar(\.[A-Za-z0-9]+)?$/ { if (!found) { print; found = 1 } } END { if (!found) exit 1 }'
+  ) || {
+    printf 'ERROR: %s does not contain a data.tar.* member\n' "$deb" >&2
+    exit 1
+  }
+  bsdtar -xOf "$deb" "$data_member" |
     bsdtar --no-same-owner -xf - -C "${pkgdir}"
 )

@@ -12,20 +12,18 @@ import sys
 import tempfile
 
 
-def _load_ci_classifier():
-    classifier_path = (
-        Path(__file__).resolve().parents[1]
-        / ".github/workflows/scripts/linux/classify-ci-changes.py"
-    )
-    spec = importlib.util.spec_from_file_location("classify_ci_changes", classifier_path)
+def _load_ci_module(name, filename):
+    module_path = Path(__file__).resolve().parents[1] / ".github/workflows/scripts/linux" / filename
+    spec = importlib.util.spec_from_file_location(name, module_path)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load CI path classifier: {classifier_path}")
+        raise RuntimeError(f"Unable to load CI helper: {module_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-_CI_CLASSIFIER = _load_ci_classifier()
+_CI_METADATA = _load_ci_module("ci_metadata", "ci_metadata.py")
+_CI_CLASSIFIER = _load_ci_module("classify_ci_changes", "classify-ci-changes.py")
 
 
 def npm_command():
@@ -83,16 +81,7 @@ def check_committed(root, base, env):
     print(f"Checking committed documentation: {base_sha}..{head}", flush=True)
     with tempfile.TemporaryDirectory(prefix="dotfiles-docs-") as temporary:
         checkout = Path(temporary) / "source"
-        hooks = Path(temporary) / "empty-hooks"
-        hooks.mkdir()
-        run([
-            "git", "clone", "--quiet", "--template=", "--shared", "--no-checkout",
-            str(root), str(checkout),
-        ], root, env)
-        run([
-            "git", "-c", f"core.hooksPath={hooks}", "-c", "core.symlinks=false",
-            "checkout", "--quiet", "--detach", head,
-        ], checkout, env)
+        _CI_METADATA.snapshot_commit(root, head, checkout, symlinks=False, env=env)
         run([npm_command(), "ci", "--no-audit", "--no-fund"], checkout / "docs", env)
         run([sys.executable, "-B", str(checkout / "docs/check.py")], checkout, env)
     print(f"Committed documentation checks passed for {head}.", flush=True)

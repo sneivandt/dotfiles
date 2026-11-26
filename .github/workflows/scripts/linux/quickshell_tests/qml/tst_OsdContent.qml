@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
-import "../.." as Shell
-import "../../Theme.js" as Theme
+import "../../../../../../symlinks/config/quickshell" as Shell
+import "../../../../../../symlinks/config/quickshell/Theme.js" as Theme
 
 Item {
     width: 400

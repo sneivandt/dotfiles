@@ -2,7 +2,7 @@ import QtQuick
 import QtTest
 import Quickshell
 import Quickshell.Services.Pipewire
-import "../.." as Shell
+import "../../../../../../symlinks/config/quickshell" as Shell
 
 Item {
     Component {

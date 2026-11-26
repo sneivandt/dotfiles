@@ -12,14 +12,19 @@ do
     if [ "$editor" = code-insiders ] &&
        [ "$launcher" = "${HOME:-}/.local/bin/code-insiders" ] &&
        [ ! -x /usr/bin/code-insiders ] &&
-       [ -f "$launcher" ] &&
-       digest=$(sha256sum 2>/dev/null < "$launcher"); then
-      case "${digest%% *}" in
-        d07a47ed11a9b15b283df8d89264df3539749273178898db2efc3f42485fe332 | \
-        abbafb0e03fa9c8534a5a74a46cbfc4357e73a34497da0966f96cddd6017eec9)
-          continue
-          ;;
-      esac
+       [ -f "$launcher" ]; then
+      if { IFS= read -r line && IFS= read -r line; } < "$launcher" 2>/dev/null &&
+         [ "$line" = "# dotfiles-managed-shim: code-insiders" ]; then
+        continue
+      fi
+      if digest=$(sha256sum 2>/dev/null < "$launcher"); then
+        case "${digest%% *}" in
+          d07a47ed11a9b15b283df8d89264df3539749273178898db2efc3f42485fe332 | \
+          abbafb0e03fa9c8534a5a74a46cbfc4357e73a34497da0966f96cddd6017eec9)
+            continue
+            ;;
+        esac
+      fi
     fi
     exec "$editor" "$@"
   fi

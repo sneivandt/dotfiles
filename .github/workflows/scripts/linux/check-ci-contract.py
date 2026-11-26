@@ -16,7 +16,8 @@ INFORMATIONAL_JOBS = {"coverage"}
 JOB_CONDITIONS = {
     "rust-fmt": "run_rust_fmt",
     "lint": "run_lint",
-    "managed-script-regressions": "run_managed_scripts",
+    "powershell-prompt": "run_prompt",
+    "desktop-script-regressions": "run_desktop_scripts",
     "docs": "run_docs_site",
     "docs-links": "run_docs_checks",
     "docs-contracts": "run_docs_contracts",

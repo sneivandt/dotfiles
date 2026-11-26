@@ -43,7 +43,7 @@ another Hyprland configuration format.
 
 ## Verify without disrupting the session
 
-Use the affected [helper tests](../../../symlinks/config/hypr/scripts/tests/)
+Use the affected [helper tests](../../../.github/workflows/scripts/linux/hypr_script_tests/)
 and the commands in [Application configuration](../../../docs/content/development/testing.md#application-configuration).
 Inspect affected unit dependencies and conditions for service changes.
 Fixture tests cannot prove native rendering, focus, locking, portals, or suspend.

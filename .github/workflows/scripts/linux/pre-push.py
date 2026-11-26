@@ -56,20 +56,20 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False):
     if selection["run_wrapper_linux"]:
         commands.append(("isolated wrapper fixtures", ".", ["sh", scripts + "test-shell-wrapper.sh", "test_wrapper_preserves_runtime_context", "test_wrapper_uses_cargo_artifact"]))
     for flag, directory in (
-        ("lock", "symlinks/config/hypr/scripts/tests"),
-        ("desktop_python", "symlinks/config/quickshell/tests/python"),
+        ("lock", scripts + "hypr_script_tests"),
+        ("desktop_python", scripts + "quickshell_tests/python"),
     ):
         if selection["run_" + flag]:
             commands.append((flag + " fixtures", ".", ["python3", "-B", "-m", "unittest", "discover", "-s", directory, "-p", "test_*.py"]))
     if selection["run_prompt"]:
-        commands.append(("PowerShell prompt fixtures", ".", ["pwsh", "-NoProfile", "-File", "symlinks/config/powershell/tests/Test-Prompt.ps1"]))
+        commands.append(("PowerShell prompt fixtures", ".", ["pwsh", "-NoProfile", "-File", ".github/workflows/scripts/windows/Test-Prompt.ps1"]))
     if selection["run_stocks"]:
         commands.append(("stock concurrency fixtures", ".", ["sh", scripts + "test-stocks.sh"]))
     apps = {item["application"] for item in selection["app_matrix"]["include"]}
     if "zsh" in apps:
         commands.append(("isolated shell configuration", ".", ["python3", "-B", scripts + "test-shell-config.py"]))
     if apps & {"vim", "nvim"}:
-        commands.append(("isolated editor configuration", ".", ["python3", "-B", "-m", "unittest", "discover", "-s", "symlinks/vim/tests", "-p", "test_*.py"]))
+        commands.append(("isolated editor configuration", ".", ["python3", "-B", "-m", "unittest", "discover", "-s", scripts + "vim_tests", "-p", "test_*.py"]))
     deferred = [name.removeprefix("run_") for name in (
         "run_build_windows", "run_profile_linux", "run_profile_windows",
         "run_roundtrip_linux", "run_roundtrip_windows", "run_app_tests",
@@ -104,14 +104,8 @@ def windows_plan(selection, docs_checked=False):
             ". ./.github/workflows/scripts/windows/Test-ShellWrapper.ps1; "
             "if (-not (Test-IsolatedWrapperPath)) { exit 1 }; "
             "if (-not (Test-CargoArtifactPath)) { exit 1 }"]))
-    for flag, directory in (
-        ("lock", "symlinks/config/hypr/scripts/tests"),
-        ("desktop_python", "symlinks/config/quickshell/tests/python"),
-    ):
-        if selection["run_" + flag]:
-            commands.append(("native " + flag + " fixtures", ".", [sys.executable, "-B", "-m", "unittest", "discover", "-s", directory, "-p", "test_*.py"]))
     if selection["run_prompt"]:
-        commands.append(("native PowerShell prompt", ".", ["pwsh", "-NoProfile", "-File", "symlinks/config/powershell/tests/Test-Prompt.ps1"]))
+        commands.append(("native PowerShell prompt", ".", ["pwsh", "-NoProfile", "-File", ".github/workflows/scripts/windows/Test-Prompt.ps1"]))
     return commands
 
 

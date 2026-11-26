@@ -286,7 +286,7 @@ lazy.setup({
       vim.api.nvim_create_autocmd("FileType", {
         group = group,
         pattern = {
-          "python", "javascript", "typescript", "lua", "vim", "vimdoc",
+          "python", "javascript", "typescript", "lua", "vim", "vimdoc", "help",
           "rust", "go", "c", "cpp", "java", "haskell", "sh",
           "json", "yaml", "toml", "markdown",
         },
@@ -324,15 +324,8 @@ lazy.setup({
         exclude = {
           filetypes = {
             "help",
-            "alpha",
-            "dashboard",
-            "neo-tree",
-            "Trouble",
             "lazy",
-            "mason",
-            "notify",
-            "toggleterm",
-            "lazyterm",
+            "NvimTree",
           },
         },
       })

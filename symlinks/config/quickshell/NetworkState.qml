@@ -140,7 +140,7 @@ Scope {
         onReady: {
             root._statusActive = true;
             root._detailQuery = root.menuOpen;
-            statusQuery.exec(["python3", root.helperPath, root.menuOpen ? "status" : "summary"]);
+            statusQuery.exec(["python3", "-B", root.helperPath, root.menuOpen ? "status" : "summary"]);
         }
     }
 
@@ -203,7 +203,7 @@ Scope {
         id: actionProcess
         objectName: "networkActionProcess"
 
-        command: ["python3", root.helperPath, "action"]
+        command: ["python3", "-B", root.helperPath, "action"]
         onRunningChanged: {
             if (!running && root._actionActive) {
                 root._actionActive = false;

@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 import Quickshell
-import "../.." as Shell
+import "../../../../../../symlinks/config/quickshell" as Shell
 
 Item {
     width: 500

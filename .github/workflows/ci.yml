@@ -52,7 +52,7 @@ jobs:
       run_hook_inputs: ${{ steps.classify.outputs.run_hook_inputs }}
       run_wrapper_linux: ${{ steps.classify.outputs.run_wrapper_linux }}
       run_wrapper_windows: ${{ steps.classify.outputs.run_wrapper_windows }}
-      run_managed_scripts: ${{ steps.classify.outputs.run_managed_scripts }}
+      run_desktop_scripts: ${{ steps.classify.outputs.run_desktop_scripts }}
       run_prompt: ${{ steps.classify.outputs.run_prompt }}
       run_lock: ${{ steps.classify.outputs.run_lock }}
       run_desktop_qml: ${{ steps.classify.outputs.run_desktop_qml }}
@@ -145,12 +145,12 @@ jobs:
           DIR: ${{ github.workspace }}
         run: sh .github/workflows/scripts/linux/test-static-analysis.sh ${{ matrix.test_function }}
 
-  managed-script-regressions:
-    name: "Regression: Managed scripts (${{ matrix.name }})"
+  powershell-prompt:
+    name: "Regression: PowerShell prompt (${{ matrix.name }})"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     needs: [classify-changes]
-    if: needs.classify-changes.outputs.run_managed_scripts == 'true'
+    if: needs.classify-changes.outputs.run_prompt == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -164,18 +164,28 @@ jobs:
         with:
           persist-credentials: false
       - name: Check PowerShell profile behavior
-        if: needs.classify-changes.outputs.run_prompt == 'true'
         shell: pwsh
-        run: ./symlinks/config/powershell/tests/Test-Prompt.ps1
+        run: ./.github/workflows/scripts/windows/Test-Prompt.ps1
+
+  desktop-script-regressions:
+    name: "Regression: Desktop scripts"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_desktop_scripts == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install desktop-script regression tools
-        if: runner.os == 'Linux' && needs.classify-changes.outputs.run_lock == 'true'
+        if: needs.classify-changes.outputs.run_lock == 'true'
         run: sh .github/workflows/scripts/linux/install-apt-packages.sh lua5.4 jq
       - name: Check desktop script behavior
         if: needs.classify-changes.outputs.run_lock == 'true'
-        run: python -B -m unittest discover -s symlinks/config/hypr/scripts/tests -p 'test_*.py'
+        run: python3 -B -m unittest discover -s .github/workflows/scripts/linux/hypr_script_tests -p 'test_*.py'
       - name: Check desktop network and power actions
         if: needs.classify-changes.outputs.run_desktop_python == 'true'
-        run: python -B -m unittest discover -s symlinks/config/quickshell/tests/python -p 'test_*.py'
+        run: python3 -B -m unittest discover -s .github/workflows/scripts/linux/quickshell_tests/python -p 'test_*.py'
 
   desktop-qml:
     name: "Regression: Quickshell QML"
@@ -752,13 +762,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install and test pre-commit hook
-        run: |
-          git config user.name "CI Test"
-          git config user.email "ci@test.local"
-          ln -sf "$(pwd)/hooks/pre-commit" .git/hooks/pre-commit
-          chmod +x .git/hooks/pre-commit
-          .github/workflows/scripts/linux/test-git-hooks.sh
+      - name: Test pre-commit hook
+        env:
+          DIR: ${{ github.workspace }}
+        run: sh .github/workflows/scripts/linux/test-git-hooks.sh
 
   test-shell-wrapper-linux:
     name: "Shell Wrapper: Linux (dotfiles.sh)"
@@ -815,7 +822,8 @@ jobs:
       - classify-changes
       - rust-fmt
       - lint
-      - managed-script-regressions
+      - powershell-prompt
+      - desktop-script-regressions
       - desktop-qml
       - docs
       - docs-links

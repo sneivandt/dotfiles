@@ -48,10 +48,10 @@ renames, deletions, and empty diffs when changing discovery or filtering.
 - Test both directions: the false positive clears and a real secret on the same
   line remains detected.
 
-The full hook integration script creates commits. Run it only in a fresh
-disposable repository, never the user's checkout even when clean. Follow the
-scratch-repository procedure in
-[Wrapper and hook tests](../../../docs/content/development/testing.md#wrapper-and-hook-tests).
+The full hook integration script (`test-git-hooks.sh`) creates commits inside
+its own disposable temporary repository, leaving the caller's checkout
+untouched. See [Wrapper and hook tests](../../../docs/content/development/testing.md#wrapper-and-hook-tests)
+for both the fast staged-input fixtures and the full commit-hook suite.
 
 Use `shell-patterns` for POSIX conventions and `ci-cd-patterns` when changing CI
 parity scope.

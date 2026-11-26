@@ -11,5 +11,5 @@ else
 fi
 
 export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QML_DISABLE_DISK_CACHE=1
-exec "$runner" -import "$REPO_ROOT/symlinks/config/quickshell/tests/qml/mocks" \
-  -input "$REPO_ROOT/symlinks/config/quickshell/tests/qml"
+exec "$runner" -import "$REPO_ROOT/.github/workflows/scripts/linux/quickshell_tests/qml/mocks" \
+  -input "$REPO_ROOT/.github/workflows/scripts/linux/quickshell_tests/qml"

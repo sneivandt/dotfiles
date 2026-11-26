@@ -63,7 +63,7 @@ test_zsh_history()
 test_vim_configuration()
 {(
   log_stage "Testing isolated Vim configuration"
-  python3 -B -m unittest discover -s "$DIR/symlinks/vim/tests" -p 'test_*.py'
+  python3 -B -m unittest discover -s "$DIR/.github/workflows/scripts/linux/vim_tests" -p 'test_*.py'
 )}
 
 test_vim_opens()

@@ -20,7 +20,7 @@ do
         exec "$browser" --app="https://amazon.com/video"
         ;;
       "chatgpt")
-        exec "$browser" --app="https://chat.openai.com"
+        exec "$browser" --app="https://chatgpt.com"
         ;;
       "lichess")
         exec "$browser" --app="https://lichess.org"

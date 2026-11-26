@@ -17,7 +17,7 @@ FLAGS = (
     "run_config_drift", "run_apm", "run_profile_linux", "run_profile_windows",
     "run_roundtrip_linux", "run_roundtrip_windows", "run_app_tests",
     "run_app_windows", "run_git_hooks", "run_hook_inputs", "run_wrapper_linux",
-    "run_wrapper_windows", "run_lint", "run_managed_scripts", "run_prompt",
+    "run_wrapper_windows", "run_lint", "run_desktop_scripts", "run_prompt",
     "run_lock", "run_desktop_qml", "run_desktop_python", "run_stocks", "run_release",
 )
 APPS = {
@@ -159,8 +159,20 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
         elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh", LINUX + "release-tag.sh"}:
             pass  # Publishing builds are selected independently of CI builds.
         elif path in {LINUX + "test-desktop-qml.sh", LINUX + "test-desktop-session.sh",
-                      LINUX + "test-desktop-session.py"}:
+                      LINUX + "test-desktop-session.py"} or path.startswith(
+            LINUX + "quickshell_tests/qml/"
+        ):
             enable("desktop_qml")
+        elif path.startswith(LINUX + "quickshell_tests/python/"):
+            enable("desktop_python")
+        elif path.startswith(LINUX + "hypr_script_tests/"):
+            enable("lock")
+            if path == LINUX + "hypr_script_tests/test_stocks.py":
+                enable("stocks")
+        elif path.startswith(LINUX + "vim_tests/"):
+            apps.update(("vim", "nvim"))
+        elif path == WINDOWS + "Test-Prompt.ps1":
+            enable("prompt")
         elif path == LINUX + "test-workflows.sh":
             pass  # Always executed by classify-changes.
         elif path == LINUX + "test-apm.py":
@@ -239,7 +251,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 enable("rust_checks")
             if path == "symlinks/local/bin/code-insiders":
                 # Exercised by Rust config tests, test-shell-config.py (zsh),
-                # and hypr/scripts/tests/test_launchers.py (lock).
+                # and hypr_script_tests/test_launchers.py (lock).
                 enable("rust_checks", "lock")
                 apps.add("zsh")
             if path.startswith("symlinks/config/git/templates/") or path in {
@@ -292,10 +304,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                     enable("lock")
             if path.startswith("symlinks/config/quickshell/"):
                 enable("desktop_python", "desktop_qml")
-            if path in {
-                "symlinks/config/hypr/scripts/stocks.py",
-                "symlinks/config/hypr/scripts/tests/test_stocks.py",
-            }:
+            if path == "symlinks/config/hypr/scripts/stocks.py":
                 enable("stocks")
         elif path.startswith(".github/workflows/") and not path.startswith(SCRIPTS):
             full = True
@@ -322,9 +331,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
 
     flags["run_app_tests"] = bool(apps)
     flags["run_lint"] = bool(linters)
-    flags["run_managed_scripts"] = any(flags["run_" + name] for name in (
-        "prompt", "lock", "desktop_python",
-    ))
+    flags["run_desktop_scripts"] = flags["run_lock"] or flags["run_desktop_python"]
     for platform in ("linux", "windows"):
         if any(flags["run_" + name + "_" + platform] for name in (
             "profile", "roundtrip", "wrapper",

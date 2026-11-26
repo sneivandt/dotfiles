@@ -12,7 +12,8 @@ import unittest
 import uuid
 
 
-CONFIG = Path(__file__).resolve().parents[1]
+TESTS = Path(__file__).resolve().parent
+CONFIG = Path(__file__).resolve().parents[5] / "symlinks/vim"
 
 MANAGER = """\
 return { setup = function() vim.g.bootstrap_test_ready = true end }
@@ -417,7 +418,7 @@ class VimConfigTests(unittest.TestCase):
             env["DOTFILES_VIM_CONFIG"] = str(CONFIG / "vimrc")
             command = [executable, "-u", "NONE", "-i", "NONE", "-n", "--noplugin"]
             command += ["--headless"] if editor == "nvim" else ["-N", "-es", "-V1"]
-            command += ["-S", str(CONFIG / "tests/test_filetype_options.vim")]
+            command += ["-S", str(TESTS / "test_filetype_options.vim")]
             result = subprocess.run(
                 command, env=env, text=True, capture_output=True, timeout=30
             )
@@ -448,7 +449,7 @@ class VimConfigTests(unittest.TestCase):
             for key in ("VIMINIT", "EXINIT", "NVIM_APPNAME"):
                 env.pop(key, None)
             env["NVIM_LOG_FILE"] = str(fixture / "nvim.log")
-            env["DOTFILES_NVIM_STARTUP_TEST"] = str(CONFIG / "tests/test_startup.lua")
+            env["DOTFILES_NVIM_STARTUP_TEST"] = str(TESTS / "test_startup.lua")
             (home / ".vim").symlink_to(CONFIG, target_is_directory=True)
             (Path(env["XDG_CONFIG_HOME"]) / "nvim").symlink_to(CONFIG, target_is_directory=True)
             # Exercise the actual entry points without installing or loading plugins.

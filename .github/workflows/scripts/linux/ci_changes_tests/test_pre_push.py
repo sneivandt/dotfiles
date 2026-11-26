@@ -44,14 +44,14 @@ class PrePushPlanTests(unittest.TestCase):
     def test_config_and_desktop_select_their_regressions(self):
         commands, _ = PRE_PUSH["plan"](classify(["symlinks/config/quickshell/Bar.qml"]), "1.91")
         flattened = [argument for _, _, command in commands for argument in command]
-        for argument in ("config_drift", "qml", "symlinks/config/quickshell/tests/python"):
+        for argument in ("config_drift", "qml", LINUX + "quickshell_tests/python"):
             self.assertIn(argument, flattened)
         self.assertNotIn("clippy", flattened)
 
     def test_application_fixtures_follow_selected_applications(self):
         for path, expected, absent in (
-            ("symlinks/zshrc", "test-shell-config.py", "symlinks/vim/tests"),
-            ("symlinks/vim/vimrc", "symlinks/vim/tests", "test-shell-config.py"),
+            ("symlinks/zshrc", "test-shell-config.py", LINUX + "vim_tests"),
+            ("symlinks/vim/vimrc", LINUX + "vim_tests", "test-shell-config.py"),
         ):
             commands, _ = PRE_PUSH["plan"](classify([path]), "1.91")
             flattened = " ".join(arg for _, _, command in commands for arg in command)
@@ -59,7 +59,7 @@ class PrePushPlanTests(unittest.TestCase):
             self.assertNotIn(absent, flattened)
 
     def test_local_plan_tracks_fixture_inputs_without_running_installations(self):
-        desktop = "symlinks/config/hypr/scripts/tests"
+        desktop = LINUX + "hypr_script_tests"
         maintenance = LINUX + "test-maintenance.py"
         shell = LINUX + "test-shell-config.py"
         for path, fixtures in (
@@ -122,6 +122,22 @@ class PrePushCoordinatorTests(unittest.TestCase):
         wrapper = next(command for label, _, command in commands if label == "isolated PowerShell wrapper")
         self.assertIn("if (-not (Test-IsolatedWrapperPath)) { exit 1 }", wrapper[-1])
         self.assertIn("if (-not (Test-CargoArtifactPath)) { exit 1 }", wrapper[-1])
+
+    def test_windows_plan_runs_prompt_without_linux_desktop_script_suites(self):
+        desktop_commands = PRE_PUSH["windows_plan"](
+            classify(["symlinks/config/hypr/scripts/lock-screen.sh", "symlinks/config/quickshell/network_helper.py"]),
+            docs_checked=True,
+        )
+        flattened = [arg for _, _, command in desktop_commands for arg in command]
+        self.assertNotIn(LINUX + "hypr_script_tests", flattened)
+        self.assertNotIn(LINUX + "quickshell_tests/python", flattened)
+
+        prompt_commands = PRE_PUSH["windows_plan"](
+            classify(["symlinks/config/powershell/Microsoft.PowerShell_profile.ps1"]),
+            docs_checked=True,
+        )
+        prompt_args = [arg for _, _, command in prompt_commands for arg in command]
+        self.assertIn(WINDOWS + "Test-Prompt.ps1", prompt_args)
 
     def test_windows_receipt_omits_only_redundant_compilation_and_analyzer(self):
         selection = classify(["cli/src/main.rs", "dotfiles.ps1"])

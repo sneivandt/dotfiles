@@ -196,11 +196,10 @@ python3 -B .github/workflows/scripts/linux/pre-push.py
 ```
 
 Despite living under `scripts/linux/`, this entrypoint supports both OSes. On
-Windows it runs docs plus selected native Rust, config, PowerShell wrapper,
-prompt, and Python fixtures in a temporary native checkout, then delegates the
-Linux worker to your default WSL distro (storing Linux snapshots in `/tmp` and
-WSL Cargo artifacts in a separate Linux cache so fixtures run on a real Linux
-filesystem).
+Windows it runs docs plus selected native Rust, config, PowerShell wrapper, and
+prompt fixtures in a temporary native checkout, then delegates the Linux worker
+to your default WSL distro (storing Linux snapshots in `/tmp` and WSL Cargo
+artifacts in a separate Linux cache so fixtures run on a real Linux filesystem).
 
 The Windows coordinator runs docs once and forwards that exact commit's pass
 to WSL, avoiding duplicate PSScriptAnalyzer and Windows cross-target Clippy
@@ -428,13 +427,15 @@ their setup before running every case.
 
 ### Full commit-hook suite
 
-**Never run `test-git-hooks.sh` in your developer checkout.** It creates real
-commits; a clean working tree does not make it safe, and you should never use
-its force override.
+Run the full pre-commit integration suite from the repository root:
 
-CI runs the full suite in a disposable checkout. Locally, prefer the isolated
-fixtures above, or create a fresh disposable repo and home (never reuse a
-failed fixture whose earlier commits could leave an empty diff).
+```sh
+sh .github/workflows/scripts/linux/test-git-hooks.sh
+```
+
+The script initializes a disposable temporary Git repository, copies `hooks/`
+into it, and creates its test commits there so the caller's checkout is never
+modified.
 
 ### Cleanup retention and Git templates
 
@@ -459,14 +460,14 @@ Run the Python helper, lock-script, and stock-cache suites in isolation:
 
 ```sh
 python3 -B -m unittest discover \
-  -s symlinks/config/quickshell/tests/python -p 'test_*.py'
+  -s .github/workflows/scripts/linux/quickshell_tests/python -p 'test_*.py'
 python3 -B -m unittest discover \
-  -s symlinks/config/hypr/scripts/tests -p 'test_*.py'
+  -s .github/workflows/scripts/linux/hypr_script_tests -p 'test_*.py'
 sh .github/workflows/scripts/linux/test-stocks.sh
 ```
 
 Offscreen suites verify logic and layout rather than live rendering, focus, or
-networking (use `python -B` on Windows, where Linux-only cases skip).
+networking.
 
 CI also launches the real Quickshell config under headless software-rendered
 Sway in a disposable Arch container to verify bar space reservation, workspace
@@ -481,8 +482,8 @@ Run the isolated shell, Vim/Neovim, and PowerShell prompt fixtures:
 
 ```sh
 python3 -B .github/workflows/scripts/linux/test-shell-config.py
-python3 -B -m unittest discover -s symlinks/vim/tests -p 'test_*.py'
-pwsh -NoProfile -File symlinks/config/powershell/tests/Test-Prompt.ps1
+python3 -B -m unittest discover -s .github/workflows/scripts/linux/vim_tests -p 'test_*.py'
+pwsh -NoProfile -File .github/workflows/scripts/windows/Test-Prompt.ps1
 ```
 
 The PowerShell suite checks first-start discovery, custom Cargo paths, literal

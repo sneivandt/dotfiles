@@ -10,24 +10,39 @@
 set -o errexit
 set -o nounset
 
-# This suite creates real commits in the current repository to exercise the
-# pre-commit hook. Refuse to run against a dirty checkout so in-progress work
-# can never be swept into a test commit if a detection case fails to block.
-# CI runs this on a fresh checkout, so the guard is inert there.
-if [ "${DOTFILES_HOOK_TEST_FORCE:-0}" != "1" ]; then
-  if ! git diff --cached --quiet || ! git diff --quiet; then
-    printf 'ERROR: refusing to run against a repository with uncommitted changes.\n' >&2
-    printf 'This suite creates commits in the current repository, so a detection\n' >&2
-    printf 'failure would commit your staged work.\n\n' >&2
-    printf 'Run it on a clean checkout, or in a scratch repository:\n' >&2
-    printf '  mkdir -p /tmp/hooktest/hooks && cp -a hooks/. /tmp/hooktest/hooks/\n' >&2
-    printf '  cd /tmp/hooktest && git init -q\n' >&2
-    printf '  ln -sf /tmp/hooktest/hooks/pre-commit .git/hooks/pre-commit\n' >&2
-    printf '  DIR=<repo> %s\n\n' "$0" >&2
-    printf 'Set DOTFILES_HOOK_TEST_FORCE=1 to override.\n' >&2
-    exit 1
-  fi
-fi
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=${DIR:-$(CDPATH='' cd -- "$SCRIPT_DIR/../../../.." && pwd)}
+
+# Run commit-creating hook tests inside a disposable temporary repository so
+# this suite never mutates the caller's checkout or sweeps up uncommitted work.
+HOOK_TEST_REPO=$(mktemp -d)
+trap 'rm -rf "$HOOK_TEST_REPO"' EXIT
+
+init_hook_test_repo() {
+  unset GIT_DIR GIT_COMMON_DIR GIT_WORK_TREE GIT_INDEX_FILE \
+    GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES \
+    GIT_CONFIG GIT_CONFIG_PARAMETERS
+  GIT_CONFIG_NOSYSTEM=1
+  GIT_CONFIG_COUNT=0
+  GIT_CONFIG_GLOBAL="$HOOK_TEST_REPO/.empty-gitconfig"
+  : > "$GIT_CONFIG_GLOBAL"
+  export GIT_CONFIG_NOSYSTEM GIT_CONFIG_COUNT GIT_CONFIG_GLOBAL
+
+  git init -q --template= "$HOOK_TEST_REPO"
+  git -C "$HOOK_TEST_REPO" config user.name "Hook Test"
+  git -C "$HOOK_TEST_REPO" config user.email "ci@test.local"
+  mkdir -p "$HOOK_TEST_REPO/hooks" "$HOOK_TEST_REPO/.git/hooks"
+  cp -a "$REPO_ROOT/hooks/." "$HOOK_TEST_REPO/hooks/"
+  ln -sf "$HOOK_TEST_REPO/hooks/pre-commit" "$HOOK_TEST_REPO/.git/hooks/pre-commit"
+  chmod +x "$HOOK_TEST_REPO/hooks/pre-commit"
+
+  # Establish a parent commit so test_hook_allows can safely reset HEAD~1.
+  printf 'baseline\n' > "$HOOK_TEST_REPO/baseline.txt"
+  git -C "$HOOK_TEST_REPO" add baseline.txt
+  git -C "$HOOK_TEST_REPO" -c core.hooksPath=/dev/null commit -qm "Baseline"
+}
+
+init_hook_test_repo
 
 # Test counter
 tests_passed=0
@@ -49,13 +64,13 @@ test_hook_blocks() {
   pattern_type="$1"
   sensitive_content="$2"
 
-  # Create a test file with sensitive content
-  echo "$sensitive_content" > test-file.txt
-  git add test-file.txt
+  # Create a test file with sensitive content in the disposable repository
+  printf '%s\n' "$sensitive_content" > "$HOOK_TEST_REPO/test-file.txt"
+  git -C "$HOOK_TEST_REPO" add test-file.txt
 
   # Try to commit (should fail) without echoing the detected value.
   result=1
-  if commit_output=$(git commit -m "Test commit with $pattern_type" 2>&1); then
+  if commit_output=$(git -C "$HOOK_TEST_REPO" commit -m "Test commit with $pattern_type" 2>&1); then
     fail "Hook allowed commit with $pattern_type"
   elif ! printf '%s\n' "$commit_output" | grep -q "Potential sensitive information detected"; then
     fail "Hook failed to report $pattern_type"
@@ -66,25 +81,25 @@ test_hook_blocks() {
     result=0
   fi
 
-  git reset HEAD test-file.txt > /dev/null 2>&1 || true
-  rm -f test-file.txt
+  git -C "$HOOK_TEST_REPO" reset -q HEAD test-file.txt > /dev/null 2>&1 || true
+  rm -f "$HOOK_TEST_REPO/test-file.txt"
   return "$result"
 }
 
 test_hook_blocks_staged_file_deleted_from_worktree() {
   printf 'secret_%s: "%s%s%s%s"\n' \
-    'key' 'abcdef12345' '67890abcdef' '12345' '67890' > staged-only-secret.txt
-  git add staged-only-secret.txt
-  rm -f staged-only-secret.txt
+    'key' 'abcdef12345' '67890abcdef' '12345' '67890' > "$HOOK_TEST_REPO/staged-only-secret.txt"
+  git -C "$HOOK_TEST_REPO" add staged-only-secret.txt
+  rm -f "$HOOK_TEST_REPO/staged-only-secret.txt"
 
-  if git commit -m "Test staged-only sensitive file" 2>&1 | grep -q "Potential sensitive information detected"; then
+  if git -C "$HOOK_TEST_REPO" commit -m "Test staged-only sensitive file" 2>&1 | grep -q "Potential sensitive information detected"; then
     pass "Hook scanned a staged file deleted from the worktree"
-    git reset HEAD staged-only-secret.txt > /dev/null 2>&1 || true
+    git -C "$HOOK_TEST_REPO" reset -q HEAD staged-only-secret.txt > /dev/null 2>&1 || true
     return 0
   fi
 
   fail "Hook skipped a staged file deleted from the worktree"
-  git reset HEAD staged-only-secret.txt > /dev/null 2>&1 || true
+  git -C "$HOOK_TEST_REPO" reset -q HEAD staged-only-secret.txt > /dev/null 2>&1 || true
   return 1
 }
 
@@ -92,27 +107,27 @@ test_hook_blocks_staged_file_deleted_from_worktree() {
 test_hook_allows() {
   clean_content="$1"
 
-  # Create a test file with clean content
-  echo "$clean_content" > test-file.txt
-  git add test-file.txt
+  # Create a test file with clean content in the disposable repository
+  printf '%s\n' "$clean_content" > "$HOOK_TEST_REPO/test-file.txt"
+  git -C "$HOOK_TEST_REPO" add test-file.txt
 
   # Try to commit (should succeed)
-  if git commit -m "Test clean commit" > /dev/null 2>&1; then
+  if git -C "$HOOK_TEST_REPO" commit -m "Test clean commit" > /dev/null 2>&1; then
     pass "Hook allowed clean commit"
-    git reset --soft HEAD~1 > /dev/null 2>&1 || true
-    git reset HEAD test-file.txt > /dev/null 2>&1 || true
-    rm -f test-file.txt
+    git -C "$HOOK_TEST_REPO" reset --soft HEAD~1 > /dev/null 2>&1 || true
+    git -C "$HOOK_TEST_REPO" reset -q HEAD test-file.txt > /dev/null 2>&1 || true
+    rm -f "$HOOK_TEST_REPO/test-file.txt"
     return 0
   else
     fail "Hook incorrectly blocked clean commit"
-    git reset HEAD test-file.txt > /dev/null 2>&1 || true
-    rm -f test-file.txt
+    git -C "$HOOK_TEST_REPO" reset -q HEAD test-file.txt > /dev/null 2>&1 || true
+    rm -f "$HOOK_TEST_REPO/test-file.txt"
     return 1
   fi
 }
 
 test_hook_wiring() {
-  repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
+  repo_root="$REPO_ROOT"
 
   for script in check-sensitive.sh check-rust.sh check-ci-guards.sh; do
     if [ ! -f "$repo_root/hooks/$script" ]; then
@@ -521,12 +536,16 @@ test_hook_blocks "GitHub fine-grained PAT" "GITHUB_TOKEN=$fine_grained_pat"
 # Test API keys
 printf "\nTesting API key patterns...\n"
 test_hook_blocks "API key" 'apikey = "1234567890abcdef1234567890abcdef"'
+single_quoted_api_key=$(printf "apikey = '%s%s'" '1234567890abcdef' '1234567890abcdef')
+test_hook_blocks "API key (single-quoted)" "$single_quoted_api_key"
 test_hook_blocks "Secret key" 'secret_key: "abcdef1234567890abcdef1234567890"'
 test_hook_blocks_staged_file_deleted_from_worktree
 
 # Test passwords
 printf "\nTesting password patterns...\n"
 test_hook_blocks "Password" 'password = "MySecretPass123"'
+single_quoted_password=$(printf "password = '%s%s'" 'MySecret' 'Pass123')
+test_hook_blocks "Password (single-quoted)" "$single_quoted_password"
 test_hook_blocks "Passwd" 'passwd: "AnotherPassword456"'
 
 # Test bearer and authorization tokens
@@ -587,12 +606,16 @@ test_hook_blocks "Email address" "user_email = john.doe@example.com"
 test_hook_blocks "Phone number (formatted)" "phone = (555) 123-4567"
 test_hook_blocks "Phone number (dashes)" "contact = 555-123-4567"
 test_hook_blocks "Phone number (plain)" "phone_number = 5551234567"
+sample_phone=$(printf '+1-%s-%s-%s' '555' '123' '4567')
+test_hook_blocks "Phone number (+1 country code)" "phone = $sample_phone"
 test_hook_blocks "SSN (formatted)" "ssn = 123-45-6789"
 test_hook_blocks "SSN (plain)" "social_security_number = 123456789"
 test_hook_blocks "Credit card (spaces)" "cc = 4532 1234 5678 9010"
 test_hook_blocks "Credit card (dashes)" "card_number = 4532-1234-5678-9010"
 test_hook_blocks "IPv4 address" "server_ip = 192.168.1.100"
 test_hook_blocks "IPv6 address" "ipv6 = 2001:0db8:85a3:0000:0000:8a2e:0370:7334"
+sample_ssn=$(printf '%s-%s-%s' '123' '45' '6789')
+test_hook_blocks "Commit SHA alongside real PII" "\"commit\": \"64a654ef4a20db1727938338310209b6a63f60c9\", \"ssn\": \"$sample_ssn\""
 
 # Test clean commits (should be allowed)
 printf "\nTesting clean commits...\n"
@@ -600,6 +623,7 @@ test_hook_allows "# This is a clean comment"
 test_hook_allows "const API_URL = 'https://api.example.com'"
 test_hook_allows "password_field = 'password'  # Field name, not actual password"
 test_hook_allows "const SECRET_LENGTH = 32  # Configuration constant"
+test_hook_allows '"commit": "64a654ef4a20db1727938338310209b6a63f60c9"'
 
 # Summary
 printf "\n==================================================\n"

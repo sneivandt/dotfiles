@@ -15,17 +15,19 @@ Keep user-facing bar, menu, appearance, and reload guidance in
 
 ## Find the owner
 
-Paths below are relative to
-[`symlinks/config/quickshell/`](../../../symlinks/config/quickshell/).
+Source paths below are relative to
+[`symlinks/config/quickshell/`](../../../symlinks/config/quickshell/), and test
+paths are relative to
+[`.github/workflows/scripts/linux/quickshell_tests/`](../../../.github/workflows/scripts/linux/quickshell_tests/).
 
 | Change | Start with |
 |---|---|
-| screen instances, shared services, open-menu coordination | `shell.qml`, `tests/qml/tst_ServiceLifecycle.qml` |
-| per-monitor bar and active media player | `Bar.qml`, `MediaPlayer.js`, `tests/qml/tst_MediaPlayer.qml` |
-| workspaces and system tray | `WorkspaceGroup.qml`, `TrayGroup.qml`, `tests/qml/tst_WorkspaceGroup.qml`, `tests/qml/tst_TrayGroup.qml` |
-| calendar, volume, and power menus | `CalendarContent.qml`, `VolumeSlider.qml`, `PowerMenu.qml`, `tests/qml/tst_CalendarContent.qml`, `tests/python/test_power_menu.py` |
-| network menu, state, queued refreshes, and helper | `NetworkMenu.qml`, `NetworkState.qml`, `RefreshQueue.qml`, `network_helper.py`, `tests/qml/tst_NetworkMenu.qml`, `tests/qml/tst_RefreshQueue.qml`, `tests/python/test_network_helper.py` |
-| shared audio and market state | `AudioState.qml`, `MarketState.qml`, `tests/qml/tst_AudioState.qml` |
+| screen instances, shared services, open-menu coordination | `shell.qml`, `qml/tst_ServiceLifecycle.qml` |
+| per-monitor bar and active media player | `Bar.qml`, `MediaPlayer.js`, `qml/tst_MediaPlayer.qml` |
+| workspaces and system tray | `WorkspaceGroup.qml`, `TrayGroup.qml`, `qml/tst_WorkspaceGroup.qml`, `qml/tst_TrayGroup.qml` |
+| calendar, volume, and power menus | `CalendarContent.qml`, `VolumeSlider.qml`, `PowerMenu.qml`, `qml/tst_CalendarContent.qml`, `python/test_power_menu.py` |
+| network menu, state, queued refreshes, and helper | `NetworkMenu.qml`, `NetworkState.qml`, `RefreshQueue.qml`, `network_helper.py`, `qml/tst_NetworkMenu.qml`, `qml/tst_RefreshQueue.qml`, `python/test_network_helper.py` |
+| shared audio and market state | `AudioState.qml`, `MarketState.qml`, `qml/tst_AudioState.qml` |
 | popup lifecycle, reload notice, theme, and shared controls | `ShellPopup.qml`, `ReloadNotice.qml`, `Theme.js`, `BarBlock.qml`, `MenuButton.qml`, `MenuIconButton.qml` |
 
 ## Preserve reactive behavior
@@ -34,7 +36,7 @@ Paths below are relative to
   popup. Keep service logic out of presentation delegates.
 - Keep expensive detail queries on-demand (for example, fetch Wi-Fi details
   only while `NetworkMenu` is open) rather than polling in the background while
-  menus are closed; cover lifecycle guards in `tests/qml/tst_ServiceLifecycle.qml`.
+  menus are closed; cover lifecycle guards in `qml/tst_ServiceLifecycle.qml`.
 - Keep media controls tracking the actively playing player (`MediaPlayer.js`)
   rather than pinning the first registered player.
 - Calendar and bar clocks receive the shared date from `shell.qml`. Keep

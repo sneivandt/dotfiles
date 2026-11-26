@@ -16,7 +16,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-SCRIPT = Path(__file__).resolve().parents[1] / "stocks.py"
+SCRIPT = Path(__file__).resolve().parents[5] / "symlinks/config/hypr/scripts/stocks.py"
 spec = importlib.util.spec_from_file_location("stocks", SCRIPT)
 stocks = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stocks)

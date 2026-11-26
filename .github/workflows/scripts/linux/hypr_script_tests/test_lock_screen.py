@@ -8,7 +8,7 @@ import subprocess
 import unittest
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "lock-screen.sh"
+SCRIPT = Path(__file__).resolve().parents[5] / "symlinks/config/hypr/scripts/lock-screen.sh"
 BASH = shutil.which("bash")
 MOCKS = r"""
 exec 3>&2

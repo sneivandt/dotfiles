@@ -8,7 +8,8 @@ import unittest
 import uuid
 
 
-SCRIPTS = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[5]
+SCRIPTS = REPO_ROOT / "symlinks/config/hypr/scripts"
 BASH = shutil.which("bash")
 
 

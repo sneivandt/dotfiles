@@ -10,12 +10,13 @@ import tomllib
 import unittest
 
 
-UNIT = Path(__file__).resolve().parents[3] / "systemd/user/dotfiles-first-login.service"
+REPO_ROOT = Path(__file__).resolve().parents[5]
+UNIT = REPO_ROOT / "symlinks/config/systemd/user/dotfiles-first-login.service"
 
 
 class GraphicalUnitTests(unittest.TestCase):
     def test_graphical_declarations_also_follow_the_session_on_next_login(self):
-        declarations = UNIT.parents[4] / "conf/systemd-units.toml"
+        declarations = REPO_ROOT / "conf/systemd-units.toml"
         groups = tomllib.loads(declarations.read_text()).values()
         for group in groups:
             for entry in group["units"]:

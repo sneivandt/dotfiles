@@ -319,6 +319,7 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
             ("missing", None, False, False),
             ("shim-link-no-backend", "link", False, False),
             ("shim-copy-no-backend", "copy", False, False),
+            ("modified-marked-shim-no-backend", "modified-marked", False, False),
             ("legacy-shim-copy-no-backend", "legacy-copy", False, False),
             ("shim-with-backend", "link", True, True),
             ("custom-at-shim-path-no-backend", "custom", False, True),
@@ -337,6 +338,13 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
                 shim_target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(shim_source, shim_target)
                 shim_target.chmod(0o755)
+            elif mode == "modified-marked":
+                shim_target.parent.mkdir(parents=True, exist_ok=True)
+                shim_target.write_text(
+                    shim_source.read_text(encoding="utf-8") + "\n# future shim edit\n",
+                    encoding="utf-8",
+                )
+                shim_target.chmod(0o755)
             elif mode == "legacy-copy":
                 shim_target.parent.mkdir(parents=True, exist_ok=True)
                 shim_target.write_bytes(legacy_shim)
@@ -349,7 +357,11 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
 
             self.env["PATH"] = ":".join(path_parts)
             backend_rc = "0" if backend_exists else "1"
-            guard_hash = "sha256sum() { exit 99; }\n" if backend_exists else ""
+            guard_hash = (
+                "sha256sum() { exit 99; }\n"
+                if backend_exists or mode in ("link", "copy", "modified-marked")
+                else ""
+            )
             for shell in ("bash", "zsh"):
                 with self.subTest(case=label, shell=shell):
                     script = (

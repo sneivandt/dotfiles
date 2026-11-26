@@ -16,7 +16,7 @@ Scope {
         if (loading)
             return;
         _queryActive = true;
-        const command = ["python3", Quickshell.env("HOME") + "/.config/hypr/scripts/stocks.py"];
+        const command = ["python3", "-B", Quickshell.env("HOME") + "/.config/hypr/scripts/stocks.py"];
         if (force === true)
             command.push("--force");
         query.exec(command);

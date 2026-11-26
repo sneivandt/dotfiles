@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# dotfiles-managed-shim: code-insiders
 
 import os
 import sys

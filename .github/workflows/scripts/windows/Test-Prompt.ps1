@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
-$profilePath = Join-Path (Split-Path $PSScriptRoot) 'Microsoft.PowerShell_profile.ps1'
 $repositoryRoot = [IO.Path]::GetFullPath([IO.Path]::Combine($PSScriptRoot, '..', '..', '..', '..'))
+$profilePath = [IO.Path]::Combine($repositoryRoot, 'symlinks', 'config', 'powershell', 'Microsoft.PowerShell_profile.ps1')
 $tokens = $null
 $parseErrors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($profilePath, [ref]$tokens, [ref]$parseErrors)

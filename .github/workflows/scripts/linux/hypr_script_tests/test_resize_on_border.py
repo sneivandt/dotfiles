@@ -7,7 +7,7 @@ import unittest
 
 
 LUA = shutil.which("lua") or shutil.which("lua5.4")
-MODULE = Path(__file__).resolve().parents[2] / "conf" / "resize-on-border.lua"
+MODULE = Path(__file__).resolve().parents[5] / "symlinks/config/hypr/conf/resize-on-border.lua"
 
 
 @unittest.skipUnless(LUA, "Requires a Lua interpreter")

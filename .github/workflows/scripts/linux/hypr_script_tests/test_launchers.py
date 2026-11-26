@@ -405,8 +405,9 @@ class LauncherTests(ScriptFixture):
         launcher = self.work / ".local/bin/code-insiders"
         launcher.parent.mkdir(parents=True)
         args = ["report 1.txt", "--wait", ""]
-        for install, expected in [("copy", "code"), ("legacy-copy", "code"),
-                                  ("link", "code"), ("custom", "code-insiders")]:
+        for install, expected in [("copy", "code"), ("modified-marked-copy", "code"),
+                                  ("legacy-copy", "code"), ("link", "code"),
+                                  ("custom", "code-insiders")]:
             with self.subTest(install=install):
                 if install == "link":
                     if os.name == "nt":
@@ -414,6 +415,11 @@ class LauncherTests(ScriptFixture):
                     launcher.symlink_to(source)
                 elif install == "copy":
                     shutil.copyfile(source, launcher)
+                elif install == "modified-marked-copy":
+                    launcher.write_text(
+                        source.read_text(encoding="utf-8") + "\n# future shim edit\n",
+                        encoding="utf-8",
+                    )
                 elif install == "legacy-copy":
                     launcher.write_bytes(LEGACY_CODE_INSIDERS_SHIM)
                 else:
@@ -430,7 +436,7 @@ class LauncherTests(ScriptFixture):
         cases = [
             (["Prime", "Video"], "https://amazon.com/video"),
             (["PRIME VIDEO"], "https://amazon.com/video"),
-            (["ChatGPT"], "https://chat.openai.com"),
+            (["ChatGPT"], "https://chatgpt.com"),
             (["lichess"], "https://lichess.org"),
             (["netflix"], "https://netflix.com"),
             (["youtube"], "https://youtube.com/"),

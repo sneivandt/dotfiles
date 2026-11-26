@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 import Quickshell
-import "../.." as Shell
+import "../../../../../../symlinks/config/quickshell" as Shell
 
 Item {
     width: 500
@@ -91,7 +91,9 @@ Item {
             const network = make(networkComponent);
             const query = process(network, "networkStatusProcess");
             const action = process(network, "networkActionProcess");
-            compare(query.command[2], "summary");
+            compare(query.command.slice(0, 2), ["python3", "-B"]);
+            compare(action.command.slice(0, 2), ["python3", "-B"]);
+            compare(query.command[3], "summary");
             network.menuOpen = true;
             network.refresh();
             if (data.failed) {
@@ -105,7 +107,7 @@ Item {
             compare(network.detailsAvailable, false);
             compare(action.attempts, 0);
             tryCompare(query, "attempts", 2);
-            compare(query.command[2], "status");
+            compare(query.command[3], "status");
             query.finish(0, statusResult());
             compare(network.detailsAvailable, true);
             compare(network.scanning, true);
@@ -116,7 +118,7 @@ Item {
             action.started();
             action.finish(0, JSON.stringify({ ok: true }));
             tryCompare(query, "attempts", 3);
-            compare(query.command[2], "summary");
+            compare(query.command[3], "summary");
             compare(network.detailsAvailable, false);
         }
 
@@ -124,7 +126,7 @@ Item {
             const network = readyNetwork();
             const query = process(network, "networkStatusProcess");
             network.refresh();
-            compare(query.command[2], "status");
+            compare(query.command[3], "status");
             network.menuOpen = false;
             network.menuOpen = true;
             query.finish(0, statusResult());
@@ -133,7 +135,7 @@ Item {
             network.connectNetwork({ name: "Fixture", advanced: false }, "", "");
             compare(process(network, "networkActionProcess").attempts, 0);
             tryCompare(query, "attempts", 4);
-            compare(query.command[2], "status");
+            compare(query.command[3], "status");
             query.finish(0, statusResult());
             compare(network.detailsAvailable, true);
         }
@@ -416,7 +418,7 @@ Item {
         function test_market_partial_refresh_reports_stale_quotes() {
             const market = make(marketComponent);
             const query = process(market, "marketQueryProcess");
-            compare(query.command, ["python3", "/fixture-home/.config/hypr/scripts/stocks.py"]);
+            compare(query.command, ["python3", "-B", "/fixture-home/.config/hypr/scripts/stocks.py"]);
             query.finish(0,
                 JSON.stringify({ quotes: [{ symbol: "OLD", updated: 1 }], updated: 1 }));
             verify(market.error.includes("stale"));
@@ -425,7 +427,7 @@ Item {
             // Manual refresh passes --force; a 300s-old quote is below the 900s stale threshold.
             const now = Math.floor(Date.now() / 1000);
             market.refresh(true);
-            compare(query.command, ["python3", "/fixture-home/.config/hypr/scripts/stocks.py", "--force"]);
+            compare(query.command, ["python3", "-B", "/fixture-home/.config/hypr/scripts/stocks.py", "--force"]);
             query.finish(0, JSON.stringify({ quotes: [{ symbol: "FRESH", updated: now - 300 }], updated: now - 300 }));
             compare(market.error, "");
         }

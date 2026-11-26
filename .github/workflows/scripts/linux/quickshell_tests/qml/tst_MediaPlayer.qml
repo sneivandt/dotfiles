@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import "../../MediaPlayer.js" as MediaPlayer
+import "../../../../../../symlinks/config/quickshell/MediaPlayer.js" as MediaPlayer
 
 TestCase {
     name: "MediaPlayer"

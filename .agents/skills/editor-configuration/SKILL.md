@@ -42,7 +42,7 @@ changing Escape or navigation mappings.
 
 ## Verify the affected behavior
 
-Start with the [plugin-free tests](../../../symlinks/vim/tests/), which use
+Start with the [plugin-free tests](../../../.github/workflows/scripts/linux/vim_tests/), which use
 isolated homes and stub plugin loading. Use
 [Application configuration](../../../docs/content/development/testing.md#application-configuration)
 for commands and the separate CI plugin-restore checks. Headless/stubbed tests

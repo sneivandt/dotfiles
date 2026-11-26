@@ -50,6 +50,31 @@ assert(installed and #installed == 18, "Explicit setup must install the configur
 assert(vim.tbl_contains(installed, "rust"), "Configured parsers must include Rust")
 assert(vim.tbl_contains(installed, "markdown_inline"), "Configured parsers must include Markdown injections")
 
+local ts_patterns = {}
+for _, autocmd in ipairs(vim.api.nvim_get_autocmds({ group = "TreesitterConfig", event = "FileType" })) do
+  ts_patterns[autocmd.pattern] = true
+end
+assert(ts_patterns["help"], "Tree-sitter FileType autocmd must match Neovim's help filetype")
+
+local ibl_spec
+for _, spec in ipairs(specs) do
+  if spec[1] == "lukas-reineke/indent-blankline.nvim" then
+    ibl_spec = spec
+    break
+  end
+end
+assert(ibl_spec, "indent-blankline.nvim must be configured")
+local ibl_options
+package.loaded.ibl = {
+  setup = function(opts) ibl_options = opts end,
+}
+ibl_spec.config()
+assert(ibl_options and ibl_options.exclude and ibl_options.exclude.filetypes, "ibl must configure excluded filetypes")
+assert(vim.tbl_contains(ibl_options.exclude.filetypes, "NvimTree"), "ibl must exclude NvimTree")
+assert(vim.tbl_contains(ibl_options.exclude.filetypes, "help"), "ibl must exclude help")
+assert(vim.tbl_contains(ibl_options.exclude.filetypes, "lazy"), "ibl must exclude lazy")
+assert(not vim.tbl_contains(ibl_options.exclude.filetypes, "neo-tree"), "ibl should not list unused neo-tree")
+
 -- Exercise the actual buffer mappings without installing plugins or touching Git.
 local gitsigns
 for _, spec in ipairs(specs) do

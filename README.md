@@ -7,38 +7,40 @@
 </p>
 
 <p align="center">
+  <a href="https://dotfiles.stuartneivandt.com/">Documentation</a>
+  &nbsp;·&nbsp;
+  <a href="https://dotfiles.stuartneivandt.com/getting-started">Getting started</a>
+  &nbsp;·&nbsp;
+  <a href="https://dotfiles.stuartneivandt.com/commands-and-usage">Commands</a>
+  &nbsp;·&nbsp;
+  <a href="https://dotfiles.stuartneivandt.com/task-reference">Task reference</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/sneivandt/dotfiles/ci.yml?branch=main&style=flat-square&label=CI"></a>
   <a href="https://github.com/sneivandt/dotfiles/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/sneivandt/dotfiles?style=flat-square&label=release"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-9ece6a?style=flat-square"></a>
 </p>
 
-I keep my shell, editor, desktop, and system settings here so I can manage them
-together. The CLI checks what's already in place and applies the changes I select,
-with a dry-run option to preview them first. This is my personal setup rather than
-a general-purpose tool, so read the [documentation](https://dotfiles.stuartneivandt.com/)
-and review the settings before using it on your own machine.
-
 <p align="center">
   <img src="docs/public/assets/terminal-screenshot.svg" width="760" alt="Animated terminal session: one dotfiles update groups CLI upgrade and repository sync notices beneath its header, then links configuration, refreshes shell completions, and installs missing packages">
 </p>
 
-## What it manages
+This is a personal setup built around the tools I actually use, not a
+general-purpose dotfiles manager. Profiles keep shared terminal basics separate
+from my Arch desktop, and a private overlay holds work and machine-specific
+settings outside this repository. Feel free to borrow ideas from the configs, or
+review the settings and preview changes with a dry run before trying it on your
+own machine.
 
-| Area | Examples from this setup |
+## What's inside
+
+| Area | Included |
 |---|---|
-| Shells and terminals | Zsh, Bash, and PowerShell startup files, dotfiles completions, tmux, Alacritty, and Windows Terminal |
+| Shells and terminals | Zsh, Bash, and PowerShell setups, plus tmux, Alacritty, and Windows Terminal |
 | Editors | Shared Vim and Neovim configuration, plus VS Code settings, keybindings, and extensions |
-| Git, SSH, and GPG | Git aliases and global settings, hooks for this checkout, SSH client settings, and GPG agent settings |
-| Coding agents | Copilot and Codex preferences, plus skills and plugins installed through Agent Package Manager |
+| Arch desktop | Hyprland window management, a custom Quickshell bar and menus, fuzzel, mako notifications, and screen locking |
+| Coding agents | Copilot and Codex preferences, plus skills and plugins managed through Agent Package Manager |
 | Packages | Arch packages through pacman, AUR packages through paru, custom Arch recipes, and Windows packages through winget |
-| Arch desktop | Hyprland window management, the Quickshell bar and menus, mako notifications, and screen locking |
-| Linux system | systemd services and cleanup timers, plus pacman and PAM settings under `/etc` on Arch |
-| Windows | Developer Mode and per-user File Explorer and taskbar preferences |
-| WSL | Networking on the Windows host, plus systemd startup and Windows PATH handling inside the Linux distribution |
-
-## Guides and reference
-
-- [Getting started](https://dotfiles.stuartneivandt.com/getting-started): Back up existing settings and preview your first setup.
-- [Commands and usage](https://dotfiles.stuartneivandt.com/commands-and-usage): Select tasks, apply changes, and inspect the results.
-- [Task reference](https://dotfiles.stuartneivandt.com/task-reference): Look up what a task changes, how to configure it, and what it leaves behind.
-- [Contributing](https://dotfiles.stuartneivandt.com/contributing): Find where to make a change and which checks to run.
+| Git | Shared Git settings, aliases, delta diffs, and lazygit |
+| System settings | Arch systemd services and `/etc` config merges, plus Windows registry preferences for File Explorer, the taskbar, and the console |

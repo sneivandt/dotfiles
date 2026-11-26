@@ -363,11 +363,16 @@ core.editor = "code"
     rejects_toml! {
         "test.toml", |path| load(path, &[Category::Base]);
         load_returns_error_on_malformed_toml: "[base\ncore.editor = \"vim\"";
-        load_returns_error_on_integer_value: "[base]\ncore.editor = 123\n";
-        load_returns_error_on_boolean_value: "[base]\ncore.symlinks = true\n";
+        load_returns_error_on_integer_value: "[base]\ncore.editor = 123\n"
+            => "a string value or nested table of git settings";
+        load_returns_error_on_boolean_value: "[base]\ncore.symlinks = true\n"
+            => "a string value or nested table of git settings";
         load_returns_error_on_legacy_settings_array:
-            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n";
-        load_returns_error_on_empty_nested_table: "[base.core]\n";
-        load_returns_error_on_empty_inline_table: "[base]\ncore = {}\n";
+            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n"
+            => "a string value or nested table of git settings";
+        load_returns_error_on_empty_nested_table: "[base.core]\n"
+            => "nested git config table must contain at least one setting";
+        load_returns_error_on_empty_inline_table: "[base]\ncore = {}\n"
+            => "nested git config table must contain at least one setting";
     }
 }

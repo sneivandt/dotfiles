@@ -179,7 +179,7 @@ impl Logger {
             return;
         }
         let display = self.custom_display_line(line);
-        state.replace_status(&display);
+        state.custom_status(&display);
         state.custom_progress = Some(strip_ansi(line));
     }
 

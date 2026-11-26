@@ -7,7 +7,10 @@ use crate::app::cli::GlobalOpts;
 use crate::engine::context::ExecutionPolicy;
 use crate::infra::env::Env;
 
-use super::reexec::{REEXEC_GUARD_VAR, REPOSITORY_REEXEC_GUARD_VAR, SELF_UPDATE_REEXEC_GUARD_VAR};
+use super::reexec::{
+    REEXEC_GUARD_VAR, REPOSITORY_REEXEC_GUARD_VAR, SELF_UPDATE_HEADER_EMITTED_VAR,
+    SELF_UPDATE_REEXEC_GUARD_VAR,
+};
 
 /// Immutable startup decisions and the environment shared with task execution.
 #[derive(Debug)]
@@ -19,6 +22,7 @@ pub struct RuntimePolicy<'a> {
     pub(crate) reexec_guarded: bool,
     pub(crate) repository_child: bool,
     pub(crate) self_update_child: bool,
+    pub(crate) self_update_header_emitted: bool,
 }
 
 impl<'a> RuntimePolicy<'a> {
@@ -46,6 +50,14 @@ impl<'a> RuntimePolicy<'a> {
         // CI uses presence. Restart markers require a value and are verified by the runner.
         let is_ci = env.var_os("CI").is_some();
         let reexec_guarded = env.is_set(REEXEC_GUARD_VAR);
+        let elevated_child =
+            global.elevated_child || env.is_set(crate::infra::elevation::ELEVATED_CHILD_VAR);
+        let repository_child = reexec_guarded && env.is_set(REPOSITORY_REEXEC_GUARD_VAR);
+        let self_update_child = reexec_guarded && env.is_set(SELF_UPDATE_REEXEC_GUARD_VAR);
+        let self_update_header_emitted = !repository_child
+            && self_update_child
+            && !elevated_child
+            && env.is_set(SELF_UPDATE_HEADER_EMITTED_VAR);
         Self {
             global,
             execution: ExecutionPolicy {
@@ -58,15 +70,20 @@ impl<'a> RuntimePolicy<'a> {
                     || !stdin_terminal
                     || global.output_mode == crate::infra::logging::OutputMode::Jsonl,
                 stdout_terminal,
-                elevated_child: global.elevated_child
-                    || env.is_set(crate::infra::elevation::ELEVATED_CHILD_VAR),
+                elevated_child,
             },
             verbose,
             reexec_guarded,
-            repository_child: reexec_guarded && env.is_set(REPOSITORY_REEXEC_GUARD_VAR),
-            self_update_child: reexec_guarded && env.is_set(SELF_UPDATE_REEXEC_GUARD_VAR),
+            repository_child,
+            self_update_child,
+            self_update_header_emitted,
             env,
         }
+    }
+
+    /// Whether an earlier process already emitted the console startup header.
+    pub(super) const fn suppress_startup_header(&self) -> bool {
+        self.repository_child || self.self_update_header_emitted
     }
 
     /// Restart only changed checkouts owned by the unelevated parent command.
@@ -85,7 +102,9 @@ impl<'a> RuntimePolicy<'a> {
         if !self.reexec_guarded || self.execution.elevated_child {
             return Ok(());
         }
-        if let Some(notice) = self.env.var_os(STARTUP_TRANSITION_VAR) {
+        if self.self_update_header_emitted {
+            log.mark_startup_transition_emitted();
+        } else if let Some(notice) = self.env.var_os(STARTUP_TRANSITION_VAR) {
             log.queue_startup_transition(
                 notice
                     .into_string()
@@ -153,6 +172,68 @@ mod tests {
                     .count(),
                 usize::from(restored)
             );
+        }
+    }
+
+    #[test]
+    fn self_update_header_handoff_restores_transition_spacing_and_suppresses_duplicate_header() {
+        use super::super::reexec::{
+            REPOSITORY_REEXEC_GUARD_VAR, SELF_UPDATE_HEADER_EMITTED_VAR,
+            SELF_UPDATE_REEXEC_GUARD_VAR, STARTUP_TRANSITION_VAR,
+        };
+        use crate::infra::logging::{Logger, OutputExt as _};
+
+        let global = super::super::tests::global(&[]);
+        let env = MapEnv::new()
+            .with(REEXEC_GUARD_VAR, "1")
+            .with(SELF_UPDATE_REEXEC_GUARD_VAR, "1")
+            .with(SELF_UPDATE_HEADER_EMITTED_VAR, "1")
+            .with(STARTUP_TRANSITION_VAR, "stale notice");
+        let runtime = RuntimePolicy::new(&global, false, env.clone().into_handle(), false, false);
+        assert!(runtime.self_update_header_emitted);
+        assert!(runtime.suppress_startup_header());
+
+        let mut log = Logger::test();
+        runtime.restore_output(&mut log).unwrap();
+        assert!(log.startup_transition().is_none());
+        log.transition("Repository synced · restarting to load configuration");
+        let output: String = log
+            .captured_output()
+            .into_iter()
+            .map(|(_, text)| text)
+            .collect();
+        assert_eq!(
+            output,
+            "Repository synced · restarting to load configuration\n"
+        );
+
+        let repo_child = RuntimePolicy::new(
+            &global,
+            false,
+            env.clone()
+                .with(REPOSITORY_REEXEC_GUARD_VAR, "1")
+                .into_handle(),
+            false,
+            false,
+        );
+        assert!(!repo_child.self_update_header_emitted);
+        assert!(repo_child.suppress_startup_header());
+
+        let elevated_global = super::super::tests::global(&["--elevated-child"]);
+        let elevated = RuntimePolicy::new(&elevated_global, false, env.into_handle(), false, false);
+        assert!(!elevated.self_update_header_emitted);
+        assert!(!elevated.suppress_startup_header());
+
+        for partial_env in [
+            MapEnv::new().with(SELF_UPDATE_HEADER_EMITTED_VAR, "1"),
+            MapEnv::new()
+                .with(REEXEC_GUARD_VAR, "1")
+                .with(SELF_UPDATE_REEXEC_GUARD_VAR, "1"),
+        ] {
+            let partial =
+                RuntimePolicy::new(&global, false, partial_env.into_handle(), false, false);
+            assert!(!partial.self_update_header_emitted);
+            assert!(!partial.suppress_startup_header());
         }
     }
 

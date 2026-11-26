@@ -202,9 +202,10 @@ fn with_status<T>(log: &dyn Output, status: &str, work: impl FnOnce() -> T) -> T
 /// The caller should then re-exec the new binary so that all tasks run
 /// with the updated code.
 ///
-/// Progress is reported through a transient status line, so a run that was
-/// already current leaves no console output at all; only an update that
-/// actually happened returns a lifecycle transition for the restarted process.
+/// Progress is reported through a transient status line below the startup
+/// header, so a run that was already current leaves no console output at all;
+/// only an update that actually happened returns a lifecycle transition for
+/// the caller to print before restarting.
 ///
 /// Returns `Ok(None)` when no update is needed or when running from a
 /// cargo build directory. Setting `DOTFILES_SKIP_SELF_UPDATE=1` also skips the

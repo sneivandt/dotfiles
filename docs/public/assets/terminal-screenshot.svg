@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="760" height="548" viewBox="0 0 760 548" role="img" aria-labelledby="title desc">
   <title id="title">One dotfiles update with CLI and repository updates on an Arch Linux desktop</title>
-  <desc id="desc">An illustrative update on an Arch desktop checks for CLI updates, upgrades the CLI from v2026.01.01-1 to v2026.01.01-2, syncs the repository on the row beneath the upgrade notice, and restarts to load configuration. Both notices have bold labels; the new version appears in normal foreground. Three tasks do work: Home symlinks restores Git and Zsh configuration, Shell completions writes the _dotfiles completion file, and System packages installs fd and ripgrep. The transient spinner gives way to the summary: 3 tasks changed, 14 unchanged, 8.3 seconds. Reduced motion shows the completed transcript.</desc>
+  <desc id="desc">An illustrative update on an Arch desktop shows the update header, checks for CLI updates, upgrades the CLI in place from v2026.01.01-1 to v2026.01.01-2, syncs the repository on the row beneath the upgrade notice, and restarts to load configuration. Both notices have bold labels; the new version appears in normal foreground. Three tasks do work: Home symlinks restores Git and Zsh configuration, Shell completions writes the _dotfiles completion file, and System packages installs fd and ripgrep. The transient spinner gives way to the summary: 3 tasks changed, 14 unchanged, 8.3 seconds. Reduced motion shows the completed transcript.</desc>
   <style>
     /* Alacritty colors, Source Code Pro, a 10px cell and 24px terminal rows.
        Default dim foreground: #c0caf5 * 0.66 = #7e85a1.
-       One invocation: start at 2.2s, header at 4.4s, summary at 10.5s.
+       One invocation: header at 2.2s, CLI upgraded at 4.2s, summary at 10.5s.
        System packages completes at 8.6s; hold the completed output to 20s.
        Step timing replaces terminal rows atomically, without crossfades. */
     @keyframes char-0 { 0% { opacity: 0; } 3.425%, 100% { opacity: 1; }  }
@@ -42,14 +42,14 @@
     .typing { animation: typing 20s step-end infinite; }
     @keyframes caret { 0% { transform: translateX(0px); } 3.425% { transform: translateX(10px); } 3.85% { transform: translateX(20px); } 4.275% { transform: translateX(30px); } 4.7% { transform: translateX(40px); } 5.125% { transform: translateX(50px); } 5.55% { transform: translateX(60px); } 5.975% { transform: translateX(70px); } 6.4% { transform: translateX(80px); } 6.825% { transform: translateX(90px); } 7.25% { transform: translateX(100px); } 7.675% { transform: translateX(110px); } 8.1% { transform: translateX(120px); } 8.525% { transform: translateX(130px); } 8.95% { transform: translateX(140px); } 9.375% { transform: translateX(150px); } 9.8% { transform: translateX(150px); } }
     .caret { animation: caret 20s step-end infinite; }
+    @keyframes startup { 0% { opacity: 0; } 11% { opacity: 1; }  }
+    .startup { animation: startup 20s step-end infinite; }
     @keyframes checking { 0% { opacity: 0; } 12% { opacity: 1; } 15%, 100% { opacity: 0; } }
     .checking { animation: checking 20s step-end infinite; }
     @keyframes updating { 0% { opacity: 0; } 15% { opacity: 1; } 21%, 100% { opacity: 0; } }
     .updating { animation: updating 20s step-end infinite; }
-    @keyframes upgraded { 0% { opacity: 0; } 22% { opacity: 1; } }
+    @keyframes upgraded { 0% { opacity: 0; } 21% { opacity: 1; } }
     .upgraded { animation: upgraded 20s step-end infinite; }
-    @keyframes startup { 0% { opacity: 0; } 22% { opacity: 1; }  }
-    .startup { animation: startup 20s step-end infinite; }
     @keyframes live-sync { 0% { opacity: 0; } 22% { opacity: 1; } 25%, 100% { opacity: 0; } }
     .live-sync { animation: live-sync 20s step-end infinite; }
     @keyframes synced { 0% { opacity: 0; } 25% { opacity: 1; } }
@@ -118,9 +118,9 @@
 <text x="26" y="65">$</text>
 <text class="char-0" x="46" y="65" fill="#9ece6a">d</text><text class="char-1" x="56" y="65" fill="#9ece6a">o</text><text class="char-2" x="66" y="65" fill="#9ece6a">t</text><text class="char-3" x="76" y="65" fill="#9ece6a">f</text><text class="char-4" x="86" y="65" fill="#9ece6a">i</text><text class="char-5" x="96" y="65" fill="#9ece6a">l</text><text class="char-6" x="106" y="65" fill="#9ece6a">e</text><text class="char-7" x="116" y="65" fill="#9ece6a">s</text><text class="char-8" x="126" y="65" fill="#c0caf5"> </text><text class="char-9" x="136" y="65" fill="#c0caf5">u</text><text class="char-10" x="146" y="65" fill="#c0caf5">p</text><text class="char-11" x="156" y="65" fill="#c0caf5">d</text><text class="char-12" x="166" y="65" fill="#c0caf5">a</text><text class="char-13" x="176" y="65" fill="#c0caf5">t</text><text class="char-14" x="186" y="65" fill="#c0caf5">e</text>
     <g class="typing transient"><g class="caret"><path class="blink" d="M46 49v20" stroke="#c0caf5" stroke-width="2"/></g></g>
-    <g class="checking transient"><text x="26" y="89" fill="#7dcfff"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="89" fill="#7e85a1">Checking for CLI updates</text></g>
-    <g class="updating transient"><text x="26" y="89" fill="#7dcfff"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="89" fill="#7e85a1">Updating CLI to v2026.01.01-2</text></g>
     <g class="startup"><text x="26" y="89"><tspan font-weight="700">Update</tspan><tspan fill="#7e85a1"> · desktop profile · Arch Linux</tspan></text></g>
+    <g class="checking transient"><text x="26" y="137" fill="#7dcfff"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="137" fill="#7e85a1">Checking for CLI updates</text></g>
+    <g class="updating transient"><text x="26" y="137" fill="#7dcfff"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="137" fill="#7e85a1">Updating CLI to v2026.01.01-2</text></g>
     <g class="upgraded"><text x="26" y="137"><tspan font-weight="700">CLI upgraded</tspan><tspan fill="#7e85a1"> · v2026.01.01-1 → </tspan><tspan>v2026.01.01-2</tspan></text></g>
     <g class="live-sync"><text x="26" y="161" fill="#7dcfff"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="161">18 left · Dotfiles repository</text></g>
     <g class="synced"><text x="26" y="161"><tspan font-weight="700">Repository synced</tspan><tspan fill="#7e85a1"> · restarting to load configuration</tspan></text></g>

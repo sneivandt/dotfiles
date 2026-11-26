@@ -208,6 +208,24 @@ impl ExecutionFixture {
     }
 }
 
+#[test]
+fn single_phase_run_separates_task_output_from_a_prior_startup_transition() {
+    let fixture = ExecutionFixture::with_parallel(false);
+    fixture.log.mark_startup_transition_emitted();
+    let task = fixture.task("Check", 1);
+    fixture.run(&[&task]).unwrap();
+    let output: String = fixture
+        .log
+        .captured_output()
+        .into_iter()
+        .map(|(_, text)| text)
+        .collect();
+    assert!(
+        output.starts_with('\n'),
+        "single-phase task execution must leave a blank line after a startup transition: {output:?}"
+    );
+}
+
 mod completion;
 mod elevation;
 mod planning;

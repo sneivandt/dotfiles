@@ -35,13 +35,7 @@ pub fn run(
     let repository_update = RepositoryUpdateSignal::new();
     let repository_only = UpdateRepository::standalone();
     let repository_task = repository_only.task_id();
-    let repository_only_selected = !opts.filters.only.is_empty()
-        && opts.filters.skip.is_empty()
-        && opts
-            .filters
-            .only
-            .iter()
-            .all(|selector| task_matches_filter(&repository_only, selector));
+    let repository_only_selected = is_repository_only_selected(opts, &repository_only);
     if runtime.global.no_repo_update {
         reject_disabled_repository_selection(
             opts.filters
@@ -50,10 +44,11 @@ pub fn run(
                 .any(|selector| task_matches_filter(&repository_only, selector)),
         )?;
     }
-    let startup = super::runner::CommandStartup::for_mutation(runtime, log)?;
     if !runtime.repository_child && repository_only_selected {
+        let startup = super::runner::CommandStartup::for_repository_mutation(runtime, log)?;
         return CommandRunner::run_repository(runtime, log, token, &repository_only, startup);
     }
+    let startup = super::runner::CommandStartup::for_mutation(runtime, log)?;
 
     let checkout_snapshot = startup.checkout_snapshot()?;
     let runner = CommandRunner::from_startup(runtime, log, token, startup)?;
@@ -129,6 +124,16 @@ pub fn run(
             )
         },
     )
+}
+
+fn is_repository_only_selected(opts: &UpdateOpts, repository_only: &UpdateRepository) -> bool {
+    !opts.filters.only.is_empty()
+        && opts.filters.skip.is_empty()
+        && opts
+            .filters
+            .only
+            .iter()
+            .all(|selector| task_matches_filter(repository_only, selector))
 }
 
 fn reject_disabled_repository_selection(selected: bool) -> Result<()> {

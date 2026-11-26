@@ -180,6 +180,254 @@ fn startup_saves_selections_only_after_configuration_loads() {
 }
 
 #[test]
+fn self_update_child_reuses_handed_off_prompt_profile_without_repeating_header() {
+    use super::super::reexec::{
+        REEXEC_GUARD_VAR, SELF_UPDATE_HEADER_EMITTED_VAR, SELF_UPDATE_PROFILE_PROMPTED_VAR,
+        SELF_UPDATE_PROFILE_VAR, SELF_UPDATE_REEXEC_GUARD_VAR,
+    };
+
+    let root = tempfile::tempdir().unwrap();
+    git2::Repository::init(root.path()).unwrap();
+    let conf = root.path().join("conf");
+    std::fs::create_dir(&conf).unwrap();
+    for file in crate::app::config::REQUIRED_CONFIG_FILES {
+        std::fs::write(conf.join(file), "").unwrap();
+    }
+    let home = tempfile::tempdir().unwrap();
+
+    // Parent resolves profile and emits the header before self-update, without persisting early.
+    let mut global = super::super::tests::global(&["--dry-run"]);
+    global.root = Some(root.path().to_path_buf());
+    let base_env = MapEnv::new()
+        .with("HOME", home.path())
+        .with("USERPROFILE", home.path());
+    let parent_runtime =
+        RuntimePolicy::new(&global, false, base_env.clone().into_handle(), true, true);
+    let parent_log = Arc::new(Logger::test());
+    let parent_startup =
+        CommandStartup::for_mutation_with_profile_prompt(&parent_runtime, &parent_log, || {
+            Ok("desktop".into())
+        })
+        .unwrap();
+    let expected_header = format!(
+        "{} · dry run · desktop profile · ",
+        parent_log.command_title()
+    );
+    assert_eq!(
+        parent_log
+            .captured_lines()
+            .iter()
+            .filter(|line| line.starts_with(&expected_header))
+            .count(),
+        1,
+        "{:?}",
+        parent_log.captured_lines()
+    );
+    assert_eq!(profiles::read_persisted(root.path()).unwrap(), None);
+
+    // Restarted child reuses the handed-off profile without prompting or repeating the header,
+    // while inheriting the parent's run lock, and persists it only after config loads.
+    let (_continuation, mode) = parent_startup
+        .run_lock
+        .as_ref()
+        .unwrap()
+        .prepare_restart()
+        .unwrap();
+    let lease =
+        crate::infra::run_lock::RestartLease::new(root.path(), &base_env, Platform::detect(), mode)
+            .unwrap();
+    let child_env = base_env
+        .with(REEXEC_GUARD_VAR, lease.marker().unwrap())
+        .with(SELF_UPDATE_REEXEC_GUARD_VAR, "1")
+        .with(SELF_UPDATE_HEADER_EMITTED_VAR, "1")
+        .with(SELF_UPDATE_PROFILE_VAR, "desktop")
+        .with(SELF_UPDATE_PROFILE_PROMPTED_VAR, "1");
+    let child_runtime = RuntimePolicy::new(&global, false, child_env.into_handle(), true, true);
+    let child_log = Arc::new(Logger::test());
+    let token = crate::engine::CancellationToken::new();
+    let child_startup =
+        CommandStartup::for_mutation_with_profile_prompt(&child_runtime, &child_log, || {
+            panic!("self-update child must reuse the parent's prompted profile")
+        })
+        .unwrap();
+    let runner =
+        CommandRunner::from_startup(&child_runtime, &child_log, &token, child_startup).unwrap();
+    drop(parent_startup);
+    assert_eq!(runner.config_handle().get().profile.name, "desktop");
+    assert!(
+        child_log
+            .captured_lines()
+            .iter()
+            .all(|line| !line.starts_with(&expected_header)),
+        "{:?}",
+        child_log.captured_lines()
+    );
+    assert_eq!(
+        profiles::read_persisted(root.path()).unwrap().as_deref(),
+        Some("desktop")
+    );
+}
+
+#[test]
+fn self_update_profile_handoff_respects_guard_elevation_and_prompt_flag() {
+    use super::super::reexec::{
+        SELF_UPDATE_PROFILE_PROMPTED_VAR, SELF_UPDATE_PROFILE_VAR, SELF_UPDATE_REEXEC_GUARD_VAR,
+    };
+
+    let root = tempfile::tempdir().unwrap();
+    let repo = git2::Repository::init(root.path()).unwrap();
+    repo.config()
+        .unwrap()
+        .set_str("dotfiles.profile", "desktop")
+        .unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let base_env = MapEnv::new()
+        .with("HOME", home.path())
+        .with("USERPROFILE", home.path());
+    let global = super::super::tests::global(&[]);
+
+    // Non-prompted handoff reuses the profile without treating it as a prompt.
+    let non_prompt_env = base_env
+        .clone()
+        .with(SELF_UPDATE_REEXEC_GUARD_VAR, "1")
+        .with(SELF_UPDATE_PROFILE_VAR, "base");
+    let non_prompt_runtime =
+        RuntimePolicy::new(&global, false, non_prompt_env.into_handle(), false, true);
+    let (_, non_prompt_source) = resolve_profile(
+        &non_prompt_runtime,
+        root.path(),
+        Platform::detect(),
+        None,
+        &Logger::test(),
+        || panic!("handed-off profile should not prompt"),
+    )
+    .unwrap();
+    assert_eq!(non_prompt_source, profiles::ProfileSource::Repository);
+
+    // Prompt flag without a handed-off profile does not rewrite an explicit --profile source.
+    let arg_global = super::super::tests::global(&["--profile", "base"]);
+    let orphan_prompt_env = base_env
+        .clone()
+        .with(SELF_UPDATE_REEXEC_GUARD_VAR, "1")
+        .with(SELF_UPDATE_PROFILE_PROMPTED_VAR, "1");
+    let orphan_runtime = RuntimePolicy::new(
+        &arg_global,
+        false,
+        orphan_prompt_env.into_handle(),
+        false,
+        true,
+    );
+    let (arg_profile, arg_source) = resolve_profile(
+        &orphan_runtime,
+        root.path(),
+        Platform::detect(),
+        None,
+        &Logger::test(),
+        || panic!("explicit profile should not prompt"),
+    )
+    .unwrap();
+    assert_eq!(arg_profile.name, "base");
+    assert_eq!(arg_source, profiles::ProfileSource::Argument);
+
+    // Self-update profile handoff is ignored outside a non-elevated self-update child.
+    for (flags, guard) in [(vec![], false), (vec!["--elevated-child"], true)] {
+        let g = super::super::tests::global(&flags);
+        let env = base_env
+            .clone()
+            .with(SELF_UPDATE_PROFILE_VAR, "base")
+            .with(SELF_UPDATE_PROFILE_PROMPTED_VAR, "1");
+        let env = if guard {
+            env.with(SELF_UPDATE_REEXEC_GUARD_VAR, "1")
+        } else {
+            env
+        };
+        let rt = RuntimePolicy::new(&g, false, env.into_handle(), false, true);
+        let (fallback_profile, fallback_source) = resolve_profile(
+            &rt,
+            root.path(),
+            Platform::detect(),
+            None,
+            &Logger::test(),
+            || panic!("persisted profile should resolve without prompting"),
+        )
+        .unwrap();
+        assert_eq!(fallback_profile.name, "desktop", "{flags:?} guard={guard}");
+        assert_eq!(
+            fallback_source,
+            profiles::ProfileSource::Repository,
+            "{flags:?} guard={guard}"
+        );
+    }
+}
+
+#[test]
+fn repository_mutation_startup_emits_or_suppresses_profileless_header() {
+    use super::super::reexec::{
+        REEXEC_GUARD_VAR, SELF_UPDATE_HEADER_EMITTED_VAR, SELF_UPDATE_REEXEC_GUARD_VAR,
+    };
+
+    let root = tempfile::tempdir().unwrap();
+    git2::Repository::init(root.path()).unwrap();
+    let conf = root.path().join("conf");
+    std::fs::create_dir(&conf).unwrap();
+    for file in crate::app::config::REQUIRED_CONFIG_FILES {
+        std::fs::write(conf.join(file), "").unwrap();
+    }
+    let home = tempfile::tempdir().unwrap();
+    let base_env = MapEnv::new()
+        .with("HOME", home.path())
+        .with("USERPROFILE", home.path());
+
+    for (dry_run, expected_dry_run) in [(false, false), (true, true)] {
+        let mut global = super::super::tests::global(if dry_run { &["--dry-run"] } else { &[] });
+        global.root = Some(root.path().to_path_buf());
+        let runtime =
+            RuntimePolicy::new(&global, false, base_env.clone().into_handle(), false, true);
+        let log = Arc::new(Logger::test());
+        let startup = CommandStartup::for_repository_mutation(&runtime, &log).unwrap();
+        let lines = log.captured_lines();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(
+            lines[0].contains(" · dry run · "),
+            expected_dry_run,
+            "{lines:?}"
+        );
+        assert!(!lines[0].contains(" profile "), "{lines:?}");
+        if dry_run {
+            let (_continuation, mode) = startup
+                .run_lock
+                .as_ref()
+                .unwrap()
+                .prepare_restart()
+                .unwrap();
+            let lease = crate::infra::run_lock::RestartLease::new(
+                root.path(),
+                &base_env,
+                Platform::detect(),
+                mode,
+            )
+            .unwrap();
+            let child_env = base_env
+                .clone()
+                .with(REEXEC_GUARD_VAR, lease.marker().unwrap())
+                .with(SELF_UPDATE_REEXEC_GUARD_VAR, "1")
+                .with(SELF_UPDATE_HEADER_EMITTED_VAR, "1");
+            let child_runtime =
+                RuntimePolicy::new(&global, false, child_env.into_handle(), false, true);
+            let child_log = Arc::new(Logger::test());
+            let _child_startup =
+                CommandStartup::for_repository_mutation(&child_runtime, &child_log).unwrap();
+            assert!(
+                child_log.captured_lines().is_empty(),
+                "{:?}",
+                child_log.captured_lines()
+            );
+        }
+        drop(startup);
+    }
+}
+
+#[test]
 fn overlay_tasks_use_the_context_overlay_and_startup_script_snapshot() {
     for overlay in [None, Some(PathBuf::from("/fixture-overlay"))] {
         let mut config = crate::test_helpers::empty_config("/fixture-repo".into());

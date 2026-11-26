@@ -16,6 +16,9 @@ pub(super) const SELF_UPDATE_REEXEC_GUARD_VAR: &str = "DOTFILES_SELF_UPDATE_REEX
 pub(super) const REPOSITORY_REEXEC_GUARD_VAR: &str = "DOTFILES_REPOSITORY_REEXEC_GUARD";
 pub(super) const INVOCATION_START_VAR: &str = "DOTFILES_INVOCATION_START_US";
 pub(super) const STARTUP_TRANSITION_VAR: &str = "DOTFILES_STARTUP_TRANSITION";
+pub(super) const SELF_UPDATE_HEADER_EMITTED_VAR: &str = "DOTFILES_SELF_UPDATE_HEADER_EMITTED";
+pub(super) const SELF_UPDATE_PROFILE_VAR: &str = "DOTFILES_SELF_UPDATE_PROFILE";
+pub(super) const SELF_UPDATE_PROFILE_PROMPTED_VAR: &str = "DOTFILES_SELF_UPDATE_PROFILE_PROMPTED";
 
 /// Replace the current process with a fresh invocation of the same binary.
 ///
@@ -24,15 +27,29 @@ pub(super) const STARTUP_TRANSITION_VAR: &str = "DOTFILES_STARTUP_TRANSITION";
 /// process finishes.
 fn re_exec(
     root: &std::path::Path,
+    profile: Option<(&str, crate::app::config::profiles::ProfileSource)>,
     locks: Option<&CommandLocks>,
     log: &crate::infra::logging::Logger,
 ) -> ! {
-    let command = build_reexec_command(
-        &re_exec_path(root),
-        &reexec_args(log),
-        SELF_UPDATE_REEXEC_GUARD_VAR,
-    );
+    let command = build_self_update_command(&re_exec_path(root), &reexec_args(log), profile);
     run_reexec(command, root, locks, log)
+}
+
+/// Build the replacement command for a self-update restart, including header and profile handoff.
+pub(super) fn build_self_update_command(
+    exe: &std::path::Path,
+    args: &[std::ffi::OsString],
+    profile: Option<(&str, crate::app::config::profiles::ProfileSource)>,
+) -> std::process::Command {
+    let mut command = build_reexec_command(exe, args, SELF_UPDATE_REEXEC_GUARD_VAR);
+    command.env(SELF_UPDATE_HEADER_EMITTED_VAR, "1");
+    if let Some((name, source)) = profile {
+        command.env(SELF_UPDATE_PROFILE_VAR, name);
+        if source == crate::app::config::profiles::ProfileSource::Prompt {
+            command.env(SELF_UPDATE_PROFILE_PROMPTED_VAR, "1");
+        }
+    }
+    command
 }
 
 fn reexec_args(log: &dyn Output) -> Vec<std::ffi::OsString> {
@@ -124,6 +141,9 @@ pub(super) fn build_reexec_command(
         .args(args)
         .env(REEXEC_GUARD_VAR, "1")
         .env_remove(REPOSITORY_OVERLAY_LOCK_VAR)
+        .env_remove(SELF_UPDATE_HEADER_EMITTED_VAR)
+        .env_remove(SELF_UPDATE_PROFILE_VAR)
+        .env_remove(SELF_UPDATE_PROFILE_PROMPTED_VAR)
         .env(guard, "1");
     command
 }
@@ -179,6 +199,7 @@ pub(super) const fn should_check_self_update(runtime: &RuntimePolicy<'_>) -> boo
 pub(super) fn prepare_self_update(
     runtime: &RuntimePolicy<'_>,
     root: &std::path::Path,
+    profile: Option<(&str, crate::app::config::profiles::ProfileSource)>,
     locks: Option<&CommandLocks>,
     log: &crate::infra::logging::Logger,
 ) -> Result<()> {
@@ -188,8 +209,8 @@ pub(super) fn prepare_self_update(
         runtime.execution.dry_run,
         runtime.global.skip_attestation,
     )? {
-        log.queue_startup_transition(notice);
-        re_exec(root, locks, log);
+        log.transition(&notice);
+        re_exec(root, profile, locks, log);
     }
     Ok(())
 }

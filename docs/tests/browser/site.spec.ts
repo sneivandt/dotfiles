@@ -132,8 +132,10 @@ test('the terminal illustration matches the CLI progress and action styling', as
   const rowY = async (selector: string) => page.locator(selector).first().evaluate((element) =>
     element.getBoundingClientRect().y);
   const headerY = await rowY('.startup text');
-  expect(await rowY('.checking text')).toBe(headerY);
-  expect(await rowY('.updating text')).toBe(headerY);
+  const upgradedY = await rowY('.upgraded text');
+  expect(upgradedY).toBeGreaterThan(headerY);
+  expect(await rowY('.checking text')).toBe(upgradedY);
+  expect(await rowY('.updating text')).toBe(upgradedY);
   expect(await rowY('.live-sync text')).toBe(await rowY('.synced text'));
   const counts = await page.locator('g[class^="live-"] text:last-child').allTextContents();
   for (const count of counts) {

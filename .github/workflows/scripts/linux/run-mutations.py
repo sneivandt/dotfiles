@@ -88,6 +88,7 @@ LINUX_EXCLUSIONS = (
     ("--exclude-re", r"^src/engine/task/mod\.rs:.*\b(dependencies|ordering_dependencies)\b"),
     ("--exclude-re", r"^src/domains/system/config/registry\.rs:.*\buppercase_native_registry_name\b"),
     ("--exclude-re", r"^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|encode_reg_string|append_user_path|user_path_contains|broadcast_environment_change)\b"),
+    ("--exclude-re", r"^src/app/commands/reexec\.rs:.*\bprepare_self_update\b"),
     ("--exclude-re", r"^src/domains/dotfiles/self_update\.rs:.*\bpre_update\b"),
     ("--exclude-re", r"^src/domains/dotfiles/self_update/attestation\.rs:.*\b(available|retry_delay)\b"),
     ("--exclude-re", r"^src/domains/dotfiles/self_update/http\.rs:.*\bretry_delay\b"),

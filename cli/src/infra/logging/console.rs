@@ -78,13 +78,20 @@ impl Console {
         }
         let mut state = self.lock();
         if let Some(line) = ui_line_with_style(kind, message, style, state.verbose, symbols) {
-            if kind == MsgKind::Transition && !state.last_was_transition {
-                if state.startup_header_emitted {
-                    state.separate_from_startup();
+            if kind == MsgKind::Transition {
+                if !state.last_was_transition {
+                    if state.startup_header_emitted {
+                        state.separate_from_startup();
+                    }
+                    if state.startup_separator_emitted {
+                        state.separate_block();
+                    }
                 }
-                if state.startup_separator_emitted {
-                    state.separate_block();
-                }
+            } else if !matches!(
+                kind,
+                MsgKind::Always | MsgKind::RecoveryHint | MsgKind::Startup
+            ) {
+                state.separate_after_transition();
             }
             state.line(error, &line);
             state.last_was_transition = kind == MsgKind::Transition;
@@ -229,6 +236,31 @@ impl ConsoleState {
         }
         self.progress_rows = self.progress_rows.max(1);
         self.write(false, &format!("\r\x1b[K{line}"));
+    }
+
+    /// Render a pre-graph custom status row, adding a transient spacer below the startup header.
+    pub(super) fn custom_status(&mut self, line: &str) {
+        self.active_progress = false;
+        if self.mode != super::OutputMode::Human {
+            return;
+        }
+        if self.progress_rows == 0
+            && self.startup_header_emitted
+            && !self.ends_with_blank_line
+            && !self.last_was_transition
+        {
+            self.progress_rows = 2;
+            self.write(false, &format!("\n{line}"));
+        } else {
+            self.replace_status(line);
+        }
+    }
+
+    /// Restore console spacing state after a parent process emitted the header and transition.
+    pub(super) const fn mark_startup_transition_emitted(&mut self) {
+        self.startup_header_emitted = true;
+        self.startup_separator_emitted = true;
+        self.last_was_transition = true;
     }
 
     /// Leave a spacer after ordinary output, but keep lifecycle notices together.
@@ -587,6 +619,113 @@ mod tests {
                 "Checking files\r\x1b[KChecking packages\r\x1b[KTask result\n"
             )
         );
+    }
+
+    #[test]
+    fn custom_status_below_header_adds_transient_spacer_and_replaces_in_place() {
+        use super::{Console, MsgKind};
+
+        let console = Console::new(false);
+        console.emit(MsgKind::Startup, "Update · desktop profile", false);
+        {
+            let mut state = console.lock();
+            state.custom_status("Checking for CLI updates");
+            state.custom_status("Updating CLI to v2");
+        }
+        console.emit(MsgKind::Transition, "CLI upgraded · v1 → v2", false);
+
+        let output: String = console
+            .lock()
+            .captured
+            .iter()
+            .map(|(_, text)| text.as_str())
+            .collect();
+        assert_eq!(
+            output,
+            concat!(
+                "Update · desktop profile\n",
+                "\nChecking for CLI updates",
+                "\r\x1b[KUpdating CLI to v2",
+                "\r\x1b[K\x1b[1A\r\x1b[K\nCLI upgraded · v1 → v2\n",
+            )
+        );
+
+        for mode in [
+            super::super::OutputMode::Quiet,
+            super::super::OutputMode::Jsonl,
+        ] {
+            let mut state = super::ConsoleState {
+                mode,
+                startup_header_emitted: true,
+                ..super::ConsoleState::default()
+            };
+            state.custom_status("Checking for CLI updates");
+            assert!(state.captured.is_empty(), "{mode:?}");
+            assert_eq!(state.progress_rows, 0, "{mode:?}");
+        }
+
+        for (ends_with_blank_line, last_was_transition) in [(true, false), (false, true)] {
+            let mut state = super::ConsoleState {
+                startup_header_emitted: true,
+                ends_with_blank_line,
+                last_was_transition,
+                ..super::ConsoleState::default()
+            };
+            state.custom_status("Checking for CLI updates");
+            assert_eq!(
+                state.captured,
+                vec![(false, "\r\x1b[KChecking for CLI updates".into())],
+                "ends_with_blank_line={ends_with_blank_line}, last_was_transition={last_was_transition}"
+            );
+            assert_eq!(state.progress_rows, 1);
+        }
+    }
+
+    #[test]
+    fn restored_startup_transition_groups_sync_and_separates_non_transition_messages() {
+        use super::{Console, MsgKind};
+
+        let synced = Console::new(false);
+        synced.lock().mark_startup_transition_emitted();
+        synced.lock().active_status("Syncing repository");
+        synced.emit(MsgKind::Transition, "Repository synced", false);
+        let synced_out: String = synced
+            .lock()
+            .captured
+            .iter()
+            .map(|(_, text)| text.as_str())
+            .collect();
+        assert_eq!(
+            synced_out,
+            "\r\x1b[KSyncing repository\r\x1b[KRepository synced\n"
+        );
+
+        let warned = Console::new(false);
+        warned.lock().mark_startup_transition_emitted();
+        warned.emit(MsgKind::Warn, "config warning", true);
+        let warned_out: String = warned
+            .lock()
+            .captured
+            .iter()
+            .map(|(_, text)| text.as_str())
+            .collect();
+        assert_eq!(warned_out, "\nwarn  config warning\n");
+
+        for (kind, message, expected) in [
+            (MsgKind::Always, "plain line", "plain line\n"),
+            (MsgKind::RecoveryHint, "hint", "  hint\n"),
+        ] {
+            let unseparated = Console::new(false);
+            unseparated.lock().mark_startup_transition_emitted();
+            unseparated.emit(kind, message, false);
+            let out: String = unseparated
+                .lock()
+                .captured
+                .iter()
+                .map(|(_, text)| text.as_str())
+                .collect();
+            assert_eq!(out, expected, "{kind:?}");
+        }
     }
 
     #[test]

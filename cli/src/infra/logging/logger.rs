@@ -178,6 +178,11 @@ impl Logger {
             .saturating_add(self.start.elapsed())
     }
 
+    /// Record that an earlier process already rendered the startup header and a transition.
+    pub(crate) fn mark_startup_transition_emitted(&self) {
+        self.console.lock().mark_startup_transition_emitted();
+    }
+
     /// Keep a completed upgrade beneath the next process's startup header.
     pub(crate) fn queue_startup_transition(&self, message: String) {
         if let Some(run) = &self.run_log {

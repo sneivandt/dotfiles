@@ -30,7 +30,10 @@ mod reexec_tests {
 
     #[test]
     fn re_exec_preserves_arguments_and_sets_only_its_own_restart_guards() {
-        use crate::app::commands::reexec::REPOSITORY_OVERLAY_LOCK_VAR;
+        use crate::app::commands::reexec::{
+            REPOSITORY_OVERLAY_LOCK_VAR, SELF_UPDATE_HEADER_EMITTED_VAR,
+            SELF_UPDATE_PROFILE_PROMPTED_VAR, SELF_UPDATE_PROFILE_VAR,
+        };
         use crate::infra::env::MapEnv;
 
         for (guard, args) in [
@@ -64,6 +67,9 @@ mod reexec_tests {
                     (REEXEC_GUARD_VAR, Some("1")),
                     (guard, Some("1")),
                     (REPOSITORY_OVERLAY_LOCK_VAR, None),
+                    (SELF_UPDATE_HEADER_EMITTED_VAR, None),
+                    (SELF_UPDATE_PROFILE_VAR, None),
+                    (SELF_UPDATE_PROFILE_PROMPTED_VAR, None),
                 ]),
                 "{guard}: repository restart must not claim that the binary was replaced"
             );
@@ -134,6 +140,48 @@ mod startup_log_tests {
             output.messages().is_empty(),
             "the restarted child must keep context in the run log without repeating it on the console"
         );
+    }
+
+    #[test]
+    fn self_update_command_sets_header_and_profile_handoff_environment() {
+        use crate::app::config::profiles::ProfileSource;
+        use std::ffi::{OsStr, OsString};
+
+        let exe = Path::new("/tmp/dotfiles");
+        let args = vec![OsString::from("update")];
+        for (profile, expected_name, expected_prompted) in [
+            (None, None, None),
+            (
+                Some(("desktop", ProfileSource::Argument)),
+                Some(Some(OsStr::new("desktop"))),
+                None,
+            ),
+            (
+                Some(("desktop", ProfileSource::Prompt)),
+                Some(Some(OsStr::new("desktop"))),
+                Some(Some(OsStr::new("1"))),
+            ),
+        ] {
+            let command = super::reexec::build_self_update_command(exe, &args, profile);
+            let envs: std::collections::HashMap<&OsStr, Option<&OsStr>> =
+                command.get_envs().collect();
+            assert_eq!(
+                envs.get(OsStr::new(super::reexec::SELF_UPDATE_REEXEC_GUARD_VAR)),
+                Some(&Some(OsStr::new("1")))
+            );
+            assert_eq!(
+                envs.get(OsStr::new(super::reexec::SELF_UPDATE_HEADER_EMITTED_VAR)),
+                Some(&Some(OsStr::new("1")))
+            );
+            assert_eq!(
+                envs.get(OsStr::new(super::reexec::SELF_UPDATE_PROFILE_VAR)),
+                expected_name.as_ref().or(Some(&None))
+            );
+            assert_eq!(
+                envs.get(OsStr::new(super::reexec::SELF_UPDATE_PROFILE_PROMPTED_VAR)),
+                expected_prompted.as_ref().or(Some(&None))
+            );
+        }
     }
 
     #[test]

@@ -25,6 +25,7 @@ pub(super) struct CommandStartup {
     root: PathBuf,
     overlay: Option<(PathBuf, OverlaySource)>,
     run_lock: Option<crate::infra::run_lock::CommandLocks>,
+    profile: Option<(profiles::Profile, profiles::ProfileSource)>,
 }
 
 impl CommandStartup {
@@ -51,20 +52,72 @@ impl CommandStartup {
             root,
             overlay,
             run_lock,
+            profile: None,
         })
     }
 
     pub(super) fn for_mutation(runtime: &RuntimePolicy<'_>, log: &Logger) -> Result<Self> {
+        Self::for_mutation_with_profile_prompt(runtime, log, profiles::prompt_interactive)
+    }
+
+    fn for_mutation_with_profile_prompt(
+        runtime: &RuntimePolicy<'_>,
+        log: &Logger,
+        prompt: impl FnOnce() -> Result<String>,
+    ) -> Result<Self> {
         let mut startup = Self::resolve(runtime, log)?;
         // Task filters control synchronization, not permission to consume a partial checkout.
         ensure_recovery_clear(&startup.root)?;
         // The preflight can restart before the overlay is needed. Keep the
-        // recovery check before that restart, then check again with the lock.
+        // recovery check before any prompt, startup header, or restart, then
+        // check again with the overlay lock held.
+        startup.ensure_overlay_recovery_clear()?;
+        let platform = Platform::detect();
+        let overlay_path = startup.overlay.as_ref().map(|(path, _)| path.as_path());
+        let (profile, source) =
+            resolve_profile(runtime, &startup.root, platform, overlay_path, log, prompt)?;
         if super::reexec::should_check_self_update(runtime) {
-            startup.ensure_overlay_recovery_clear()?;
             super::reexec::prepare_self_update(
                 runtime,
                 &startup.root,
+                Some((profile.name.as_str(), source)),
+                startup.run_lock.as_ref(),
+                log,
+            )?;
+        }
+        startup.profile = Some((profile, source));
+        startup.protect_overlay(runtime, log)?;
+        startup.ensure_overlay_recovery_clear()?;
+        Ok(startup)
+    }
+
+    pub(super) fn for_repository_mutation(
+        runtime: &RuntimePolicy<'_>,
+        log: &Logger,
+    ) -> Result<Self> {
+        let mut startup = Self::resolve(runtime, log)?;
+        ensure_recovery_clear(&startup.root)?;
+        startup.ensure_overlay_recovery_clear()?;
+        let platform = Platform::detect();
+        let preview = if runtime.execution.dry_run {
+            " · dry run"
+        } else {
+            ""
+        };
+        emit_startup_context(
+            log,
+            &format!(
+                "{}{preview} · {}",
+                log.command_title(),
+                platform.description()
+            ),
+            runtime.suppress_startup_header(),
+        );
+        if super::reexec::should_check_self_update(runtime) {
+            super::reexec::prepare_self_update(
+                runtime,
+                &startup.root,
+                None,
                 startup.run_lock.as_ref(),
                 log,
             )?;
@@ -224,10 +277,13 @@ impl CommandRunner {
             root,
             overlay,
             run_lock,
+            profile,
         } = startup;
         let overlay_path = overlay.as_ref().map(|(path, _)| path.as_path());
-        let (profile, source) =
-            resolve_profile(runtime, &root, platform, overlay_path, log, prompt)?;
+        let (profile, source) = match profile {
+            Some(resolved) => resolved,
+            None => resolve_profile(runtime, &root, platform, overlay_path, log, prompt)?,
+        };
         let config = load_config(&root, &profile, platform, overlay_path, log)?;
 
         // UAC forwards the parent's resolved overlay as --overlay even when it
@@ -268,23 +324,10 @@ impl CommandRunner {
             root,
             overlay,
             run_lock: _run_lock,
+            profile: _,
         } = startup;
         // Repository-only startup does not load aggregate configuration.
         let overlay = overlay.map(|selection| save_explicit_overlay(&root, selection));
-        let preview = if runtime.execution.dry_run {
-            " · dry run"
-        } else {
-            ""
-        };
-        emit_startup_context(
-            log.as_ref(),
-            &format!(
-                "{}{preview} · {}",
-                log.command_title(),
-                platform.description()
-            ),
-            runtime.repository_child,
-        );
         let ctx = Self::context(runtime, log, token, root, overlay, platform)?;
         RunCoordinator::new(&ctx, log).execute(ExecutionPlan::single([task]))
     }
@@ -496,19 +539,32 @@ fn resolve_profile(
 ) -> Result<(profiles::Profile, profiles::ProfileSource)> {
     // Run-log only: the startup header must be the first console line.
     log.run_event(LogEvent::Stage, "resolving profile");
-    let restart_profile = if runtime.repository_child && !runtime.execution.elevated_child {
-        Some(
-            runtime
-                .env
-                .var(super::reexec::REPOSITORY_PROFILE_VAR)
-                .ok_or_else(|| {
-                    anyhow::anyhow!("repository restart is missing accepted profile; retry update")
-                })?,
-        )
-    } else {
-        None
-    };
-    let (profile, source) = profiles::resolve_from_args(
+    let (restart_profile, prompted_before_restart) =
+        if runtime.repository_child && !runtime.execution.elevated_child {
+            (
+                Some(
+                    runtime
+                        .env
+                        .var(super::reexec::REPOSITORY_PROFILE_VAR)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "repository restart is missing accepted profile; retry update"
+                            )
+                        })?,
+                ),
+                false,
+            )
+        } else if runtime.self_update_child && !runtime.execution.elevated_child {
+            (
+                runtime.env.var(super::reexec::SELF_UPDATE_PROFILE_VAR),
+                runtime
+                    .env
+                    .is_set(super::reexec::SELF_UPDATE_PROFILE_PROMPTED_VAR),
+            )
+        } else {
+            (None, false)
+        };
+    let (profile, mut source) = profiles::resolve_from_args(
         restart_profile
             .as_deref()
             .or(runtime.global.profile.as_deref()),
@@ -518,6 +574,9 @@ fn resolve_profile(
         runtime.execution.non_interactive,
         prompt,
     )?;
+    if prompted_before_restart && restart_profile.is_some() {
+        source = profiles::ProfileSource::Prompt;
+    }
     let context = startup_context_line(
         &log.command_title(),
         &profile.name,
@@ -531,17 +590,17 @@ fn resolve_profile(
         platform: platform.description().into(),
         dry_run: runtime.execution.dry_run,
     });
-    emit_startup_context(log, &context, runtime.repository_child);
+    emit_startup_context(log, &context, runtime.suppress_startup_header());
     Ok((profile, source))
 }
 
-/// Emit startup context once across a repository-update restart.
+/// Emit startup context once across self-update and repository-update restarts.
 pub(super) fn emit_startup_context(
     log: &dyn crate::infra::logging::Output,
     context: &str,
-    repository_child: bool,
+    suppress_console_header: bool,
 ) {
-    if repository_child {
+    if suppress_console_header {
         log.run_event(LogEvent::Startup, context);
     } else {
         log.startup(context);

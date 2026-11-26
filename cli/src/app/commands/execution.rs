@@ -110,6 +110,7 @@ impl<'a> RunCoordinator<'a> {
         let summary = if let Some(restart) = plan.restart.take() {
             self.execute_with_restart(plan.tasks, restart)?
         } else {
+            self.log.separate_after_transition();
             Some(run_task_graph(
                 plan.tasks,
                 self.ctx,

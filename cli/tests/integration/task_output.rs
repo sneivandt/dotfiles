@@ -16,9 +16,113 @@ fn explicitly_selected_inapplicable_work_is_not_reported_as_unchanged() {
     assert!(!stdout.contains("unchanged"), "{stdout}");
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RestartMode {
+    Fresh,
+    RepositoryChild,
+    SelfUpdateChild,
+    LegacySelfUpdateChild,
+}
+
+fn configure_restart_mode(
+    mode: RestartMode,
+    repo_root: &std::path::Path,
+    overlay: &std::path::Path,
+    command: &mut std::process::Command,
+) -> Option<std::fs::File> {
+    use std::io::Write as _;
+
+    if mode == RestartMode::Fresh {
+        return None;
+    }
+
+    let mut lock = std::fs::OpenOptions::new()
+        .create_new(true)
+        .read(true)
+        .write(true)
+        .open(repo_root.join(".git/dotfiles-run.lock"))
+        .unwrap();
+    lock.try_lock().unwrap();
+    write!(lock, "{{\"pid\":{}}}", std::process::id()).unwrap();
+    lock.sync_all().unwrap();
+    command.env("DOTFILES_REEXEC_GUARD", "1").env(
+        if mode == RestartMode::RepositoryChild {
+            "DOTFILES_REPOSITORY_REEXEC_GUARD"
+        } else {
+            "DOTFILES_SELF_UPDATE_REEXEC_GUARD"
+        },
+        "1",
+    );
+    let start = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+    let start_us = start
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_micros()
+        .to_string();
+    match mode {
+        RestartMode::Fresh => {}
+        RestartMode::RepositoryChild => {
+            command
+                .env("DOTFILES_RESTART_PROFILE", "base")
+                .env("DOTFILES_RESTART_OVERLAY", overlay)
+                .env("DOTFILES_RESTART_EXCLUSIONS", "[]");
+        }
+        RestartMode::SelfUpdateChild => {
+            command
+                .env("DOTFILES_SELF_UPDATE_HEADER_EMITTED", "1")
+                .env("DOTFILES_SELF_UPDATE_PROFILE", "base")
+                .env("DOTFILES_INVOCATION_START_US", &start_us);
+        }
+        RestartMode::LegacySelfUpdateChild => {
+            command
+                .env("DOTFILES_STARTUP_TRANSITION", "CLI upgraded · old → new")
+                .env("DOTFILES_INVOCATION_START_US", &start_us);
+        }
+    }
+    Some(lock)
+}
+
+fn assert_restart_output(mode: RestartMode, stdout: &str) {
+    match mode {
+        RestartMode::SelfUpdateChild => {
+            assert!(
+                stdout.starts_with('\n') && !stdout.starts_with("\n\n"),
+                "{mode:?}: expected single separator after parent transition: {stdout:?}"
+            );
+            assert!(
+                !stdout.contains("Update · base profile · "),
+                "{mode:?}: must not repeat startup header: {stdout}"
+            );
+            assert!(
+                stdout.trim().ends_with('s') && stdout.contains(" · 1m "),
+                "{stdout}"
+            );
+        }
+        RestartMode::LegacySelfUpdateChild => {
+            let blocks: Vec<_> = stdout.trim().split("\n\n").collect();
+            assert!(
+                blocks
+                    .first()
+                    .unwrap()
+                    .starts_with("Update · base profile · "),
+                "{stdout}"
+            );
+            assert_eq!(blocks.get(1), Some(&"CLI upgraded · old → new"), "{stdout}");
+            assert_eq!(stdout.matches("CLI upgraded").count(), 1, "{stdout}");
+            assert!(blocks.last().unwrap().contains(" · 1m "), "{stdout}");
+        }
+        RestartMode::Fresh | RestartMode::RepositoryChild => {}
+    }
+}
+
 #[test]
 fn completions_report_changes_then_current() {
-    for (repository_child, self_update_child) in [(false, false), (true, false), (false, true)] {
+    for mode in [
+        RestartMode::Fresh,
+        RestartMode::RepositoryChild,
+        RestartMode::SelfUpdateChild,
+        RestartMode::LegacySelfUpdateChild,
+    ] {
         let repo = common::TestContextBuilder::new().build();
         let home = tempfile::tempdir().unwrap();
         let overlay = tempfile::tempdir().unwrap();
@@ -30,68 +134,18 @@ fn completions_report_changes_then_current() {
             "completions",
         );
         command.arg("--no-symbols");
-        let _legacy_lock = (repository_child || self_update_child).then(|| {
-            use std::io::Write as _;
-
-            let mut lock = std::fs::OpenOptions::new()
-                .create_new(true)
-                .read(true)
-                .write(true)
-                .open(repo.root_path().join(".git/dotfiles-run.lock"))
-                .unwrap();
-            lock.try_lock().unwrap();
-            write!(lock, "{{\"pid\":{}}}", std::process::id()).unwrap();
-            lock.sync_all().unwrap();
-            command.env("DOTFILES_REEXEC_GUARD", "1").env(
-                if repository_child {
-                    "DOTFILES_REPOSITORY_REEXEC_GUARD"
-                } else {
-                    "DOTFILES_SELF_UPDATE_REEXEC_GUARD"
-                },
-                "1",
-            );
-            if repository_child {
-                command
-                    .env("DOTFILES_RESTART_PROFILE", "base")
-                    .env("DOTFILES_RESTART_OVERLAY", overlay.path())
-                    .env("DOTFILES_RESTART_EXCLUSIONS", "[]");
-            } else if self_update_child {
-                let start = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
-                command
-                    .env("DOTFILES_STARTUP_TRANSITION", "CLI upgraded · old → new")
-                    .env(
-                        "DOTFILES_INVOCATION_START_US",
-                        start
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_micros()
-                            .to_string(),
-                    );
-            }
-            lock
-        });
+        let _legacy_lock =
+            configure_restart_mode(mode, repo.root_path(), overlay.path(), &mut command);
         for expected in ["CHANGED Shell completions", "Tasks · 1 unchanged"] {
             let output = command.output().unwrap();
             let stdout = String::from_utf8(output.stdout).unwrap();
             assert!(
                 output.status.success(),
-                "{repository_child}: {stdout}\n{}",
+                "{mode:?}: {stdout}\n{}",
                 String::from_utf8_lossy(&output.stderr)
             );
-            assert!(stdout.contains(expected), "{repository_child}: {stdout}");
-            if self_update_child {
-                let blocks: Vec<_> = stdout.trim().split("\n\n").collect();
-                assert!(
-                    blocks
-                        .first()
-                        .unwrap()
-                        .starts_with("Update · base profile · "),
-                    "{stdout}"
-                );
-                assert_eq!(blocks.get(1), Some(&"CLI upgraded · old → new"), "{stdout}");
-                assert_eq!(stdout.matches("CLI upgraded").count(), 1, "{stdout}");
-                assert!(blocks.last().unwrap().contains(" · 1m "), "{stdout}");
-            }
+            assert!(stdout.contains(expected), "{mode:?}: {stdout}");
+            assert_restart_output(mode, &stdout);
             assert_eq!(
                 stdout
                     .lines()

@@ -1,134 +1,91 @@
 ---
 name: engine-orchestration
 description: >
-  Use for task graph and execution changes in cli/src/engine/, command task
-  membership, dependencies, access claims, Requirement probes, startup runtime
-  policy, task discovery, restart boundaries, Operation plans,
-  ProcessMode, or task/resource parallelism. Not for a standalone Resource.
+  Use for task graph, scheduling, and concrete Resource/Operation work in
+  cli/src/engine/ and cli/src/domains/: Task/Resource/RemovableResource/Operation
+  contracts, Requirement probes, resource-task adapters, dependencies,
+  AccessClaim exclusion, RuntimePolicy, restart boundaries, ProcessMode, or
+  parallelism.
 ---
 
-# Engine Orchestration
+# Engine Orchestration and Resources
 
-Read the nearest implementation and tests first. Domain tasks live in
-`domains/<domain>/<feature>.rs`, with shared `config/`, `resources/`, and `tests/`
-directories. A feature support directory needs its matching root entry point,
-not a generic `tasks/` folder. Avoid directories containing only a single `.rs`
-file unless a platform or test split genuinely calls for it; split oversized
-modules by responsibility into cohesive sibling files. Preserve the layer
-boundaries enforced by [domain_boundaries](../../../cli/tests/domain_boundaries.rs); use
-[Architecture](../../../docs/content/development/architecture.md#repository-layout)
-when the owning layer is unclear.
-
-## Choose the boundary
-
-| Need | Owner |
-|---|---|
-| identity, eligibility, elevation, dependencies | `Task` |
-| independent items with separate state | `Resource` |
-| one idempotent multi-step workflow | `Operation` |
-| read-only prerequisites and their resolved inputs | `Requirement` |
-| exclusive access to shared state | `AccessClaim` |
-| pure parsing or transformation | plain module/function |
-
-Use `resource-implementation` for a concrete resource that does not alter
-scheduling.
+Preserve layer rules enforced by [domain_boundaries](../../../cli/tests/domain_boundaries.rs)
+and see [Architecture](../../../docs/content/development/architecture.md#repository-layout).
+Key engine files: [resource contracts](../../../cli/src/engine/resource/contract.rs),
+[orchestrate](../../../cli/src/engine/orchestrate.rs),
+[plan](../../../cli/src/engine/plan.rs),
+[requirement](../../../cli/src/engine/requirement.rs),
+[operation](../../../cli/src/engine/operation.rs),
+[mode](../../../cli/src/engine/mode.rs), and
+[task macros](../../../cli/src/engine/task/macros.rs).
 
 ## Runtime policy
 
-Resolve engine-command flags and environment/terminal decisions once through
-`app/commands/runtime.rs::RuntimePolicy`. Pass its `ExecutionPolicy` into
-`Context::new_with_policy`; do not re-read CI or recompute prompt/child guards in
-profile, re-exec, or elevation callers. Use injected `RuntimePolicy::new` in
-fixtures. Preserve CI presence semantics and the distinct nonempty elevated
-marker rule. Interrupt confirmation and elevated-window exit pauses must respect
-the resolved non-interactive policy; window detection remains in elevation.
+- Resolve engine-command flags and environment/terminal decisions once through
+  `app/commands/runtime.rs::RuntimePolicy` and pass `ExecutionPolicy` into
+  `Context::new_with_policy`. Do not re-read `CI` or recompute prompt/child
+  guards in profile, re-exec, or elevation callers.
+- In fixtures, inject `RuntimePolicy::new` with explicit stdin/stdout
+  capabilities; keep elevated-window exit-pause tests separate from task prompt
+  policy. Preserve `CI`-presence semantics and the distinct nonempty elevated
+  marker rule.
 
-## Task graph rules
+## Task graph and execution
 
-- `Task::meta()` owns selector, display name, visibility, and update-only status;
-  `Task::task_id()` owns scheduler identity. Prefer `task_metadata!` for metadata.
-- Keep identity, CLI selector, and display label distinct. A label change must
-  not silently rename a selector or change a dependency identity.
-- Dependencies are the only ordering policy; catalog order is irrelevant.
-- Declare same-domain edges in the task and cross-domain edges in the
-  [application catalog](../../../cli/src/app/catalog.rs), not through sibling
-  domain imports.
-- `dependencies()` block on predecessor failure.
-  `ordering_dependencies()` wait without propagating failure.
-- Conditional ordering belongs in `TaskWithExtraDeps`: a nonempty set of
-  `Task::ordering_requirements()` plus an application-selected provider-stability
-  requirement must all hold to populate `TaskAssessment` once per phase.
-  Execution uses `ResolvedTaskGraph::resolve_assessed`; static discovery and
-  selection retain all declared edges. Never waive blocking edges or perform
-  mutations in readiness probes. Unknown state retains the wait.
-- `Task::log_key()` owns persistent identity; it uses the implementation type
-  name and any dynamic instance key. Decorators forward it. Keep `TaskId` for
-  dependency edges and use `log_key()` consistently for logger lookups.
-- Dynamic instances use `TaskId::dynamic::<Self>(stable_key)` and are created
-  once from the immutable startup configuration.
-- A repository update that changes task/config inputs must use the guarded
-  process restart boundary. Do not mutate config handles or discover tasks late.
-- In the restarted child, remove repository synchronization only after target
-  selection, then run the remaining selected tasks from the fresh configuration
-  snapshot.
-- Applicability and elevation are assessed once per execution phase. Keep
-  `should_run()` and `needs_elevation()` read-only and use phase-stable state;
-  avoid unnecessary expensive probes. Check state produced by a prerequisite
-  in `run()` after it finishes. The executor owns task-start records; tasks
-  return `NotApplicable` when they have no configured work.
-- Removing unmet work before graph execution must also skip its transitive
-  dependents; an absent node does not propagate failure.
-
-## Convergence rules
-
-- Use `config_task!` in [task macros](../../../cli/src/engine/task/macros.rs) for
-  task structs holding only one configuration slice. It generates the struct
-  and constructor; keep `impl Task` explicit. Tasks with additional fields need
-  handwritten declarations.
-- Use `process_resources*()` for item-shaped work.
-- Use `Operation` plus `process_operation()` for workflow-shaped work.
-- Use `Requirement` plus `process_requirement()` inside `run()` for execution
-  prerequisites. Probes are read-only and stage-aware (`Ordering`, `Preview`,
-  `Apply`); consume their typed evidence instead of querying again. Missing
-  inputs are unmet work; unknown inspection errors retain their typed cause.
-  Never reuse ordering evidence during execution or provision hidden tasks.
-- An operation computes one immutable plan in `current_state()` and passes that
+- Keep `Task::task_id()` (scheduler edges), `Task::meta()` selector (CLI),
+  display label, and `Task::log_key()` (persistent log identity) distinct;
+  decorators must forward `log_key()`. Dynamic tasks use
+  `TaskId::dynamic::<Self>(stable_key)` from the immutable startup snapshot.
+- `dependencies()` block on predecessor failure; `ordering_dependencies()` wait
+  without propagating failure. Conditional ordering lives in `TaskWithExtraDeps`
+  (`Task::ordering_requirements()` + application-selected provider-stability
+  requirement) and populates `TaskAssessment` once per phase; `resolve_assessed`
+  uses it while static discovery/selection keeps all declared edges. Never waive
+  blocking edges or mutate in readiness probes; unknown state retains the wait.
+- `should_run()` and `needs_elevation()` are evaluated once per phase from
+  phase-stable state—check prerequisite-produced state in `run()` after the
+  prerequisite finishes. Removing unmet work before execution skips its
+  transitive dependents without propagating failure.
+- Guarded process restart owns config/task reloads after a repository update:
+  in the restarted child, strip repository sync only after target selection.
+  Never mutate `ConfigHandle` or discover tasks mid-run.
+- `Operation` computes one immutable plan in `current_state()` and passes that
   exact plan to `preview()` or `apply()`; never recompute it.
-- `ConfigHandle::get()` borrows the immutable snapshot; clone the handle when
-  sharing ownership. Give domain tasks only their typed slice; do not introduce
-  mutable shared configuration or unnecessary deep config copies.
-- One ready-queue scheduler dispatches tasks to bounded scoped workers, with one
-  worker in sequential mode. Resource parallelism uses a separate Rayon pool.
-  `ctx.parallel()` gates both. Use `AccessClaim` for shared-state exclusion.
-  Task claims cover the body after
-  dependency waits; resource claims cover discovery through mutation. Declare a
-  claimed task's full nested claim set up front; nested resources must be subsets.
-  Claim waits stay on the caller, never Rayon workers. `.sequential()` remains
-  batch-local and does not coordinate separate tasks.
+- `Requirement` probes (`process_requirement()`) are read-only and stage-aware
+  (`Ordering`, `Preview`, `Apply`); consume their typed evidence rather than
+  re-querying, and never reuse `Ordering` evidence during execution.
+- Task scheduling uses a bounded worker pool; resource parallelism uses a
+  separate Rayon pool (`ctx.parallel()` gates both). Declare a claimed task's
+  full nested `AccessClaim` set up front (nested resources must be subsets), and
+  keep claim waits on the caller thread—never inside Rayon workers. `.sequential()`
+  is batch-local only and does not synchronize across tasks.
 
-## Process modes
+## Resources
 
-| Mode | Behavior |
-|---|---|
-| `Strict` | fix missing/incorrect; stop on error |
-| `Lenient` | fix missing/incorrect; continue independent work |
-| `InstallMissing` | install missing only; count errors and continue |
-| `FixExisting` | fix incorrect existing state only; stop on error |
+- Use `config_task!` for single-slice task structs, `run_resource_task()` /
+  `run_batch_resource_task()` (or `process_resources*()` /
+  `process_resources_with_cache()`) for item-shaped work, and `Operation` +
+  `process_operation()` for single-unit workflows.
+- Implement `remove()` only via `RemovableResource`, never as a stub on
+  `Resource`. Removal normally touches only `Correct` resources;
+  `remove_when_missing()` is an explicit opt-in (e.g., symlinks materializing
+  content during uninstall).
+- Use `pre_apply_warning()` only for actionable warnings (symlink replacement
+  intentionally emits only the normal link action).
+- Declare `Resource::access_claims()` whenever items share a document or
+  exclusive state so discovery through mutation is protected across tasks. Never
+  populate a batch cache from mutable claimed state before acquiring access.
+- Adapters return `NotApplicable` for empty item lists; the executor owns task
+  stage records.
 
-Use the matching `ProcessOpts` constructor and an existing canonical verb.
-Lenient continuation never erases failed-item accounting.
+## Verification
 
-Read [requirement lifecycle](../../../cli/src/engine/requirement.rs),
-[operation lifecycle](../../../cli/src/engine/operation.rs) and
-[processing modes](../../../cli/src/engine/mode.rs) when changing convergence.
-Cover selection (`--only`, `--skip`, update-only membership), dependency failure,
-ordering-only continuation, internal visibility, and sequential/parallel parity
-as applicable. Add shared scheduler contracts to
-[`conformance.rs`](../../../cli/src/engine/tests/scheduler/conformance.rs);
-its harness runs both modes and compares outcomes and records. Keep
-concurrency-only synchronization in `parallel.rs` and start/result ordering in
-`output.rs`. Use `task_execution` for filesystem-backed task behavior and the
-affected command suites listed under
-[Integration test suites](../../../docs/content/development/writing-tests.md#integration-test-suites).
-Update [Task reference](../../../docs/content/reference/task-reference.md) when public task metadata or
-command membership changes.
+Add shared scheduler parity cases to
+[`conformance.rs`](../../../cli/src/engine/tests/scheduler/conformance.rs)
+(runs sequential and parallel modes and compares outcomes/records); keep
+concurrency synchronization in `parallel.rs` and start/result ordering in
+`output.rs`. See [Writing tests](../../../docs/content/development/writing-tests.md)
+for harness conventions and update
+[Task reference](../../../docs/content/reference/task-reference.md) when public
+task metadata or command membership changes.

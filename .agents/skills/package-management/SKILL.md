@@ -3,68 +3,38 @@ name: package-management
 description: >
   Use for conf/packages.toml or package providers/resources under
   cli/src/domains/packages/, including pacman, AUR helpers, and winget. Not for
-  generic subprocess or task orchestration changes, or dotfiles-managed PKGBUILD recipe
-  and snapshot work (use arch-package-recipes).
+  generic subprocess or task orchestration changes, or dotfiles-managed PKGBUILD
+  recipe and snapshot work (use arch-package-recipes).
 ---
 
 # Package Management
 
-Use [Package management](../../../docs/content/guides/package-management.md) for the
-human workflow and provider/upgrade distinctions.
+See [Package management](../../../docs/content/guides/package-management.md)
+for human workflows, [planning.rs](../../../cli/src/domains/packages/install/planning.rs)
+for install planning, and [resources/](../../../cli/src/domains/packages/resources/)
+for providers.
 
-## Architecture
+## Non-obvious invariants
 
-- Config owns exact package identifiers and explicit metadata such as `aur`.
-- `PackageManager` selects a provider.
-- Provider modules own query/install commands.
-- Package resources own state and mutation.
-- The install task/operation owns applicability and batching.
-
-Add a provider rather than branching manager-specific commands through tasks.
-For dotfiles-managed recipes, release pins, Paru Path repositories, and cache
-cleanup, use [arch-package-recipes](../arch-package-recipes/SKILL.md).
-
-## Convergence
-
-1. Select entries and provider from platform capabilities.
-2. Verify the executable exists.
-3. Query installed state once per provider.
-4. Plan missing entries from that cached state.
-5. Batch installs where the provider supports it.
-
-Route every command through the executor and preserve provider-specific exact,
-noninteractive, and already-present behavior. A missing native manager for
-selected packages is unmet work (`TaskResult::unmet`), not a benign skip. Query
-failure is not an empty installed set: propagating it prevents accidental
-reinstallation of everything.
-
-## Platform rules
-
-- When selecting or proposing packages in `conf/packages.toml`, check their
-  transitive dependency footprint and prefer lean tools that fit the existing
-  Hyprland/Wayland stack over pulling in heavy unrelated desktop ecosystems for
-  one utility.
-- Pacman handles ordinary Arch packages; AUR bootstrap and AUR packages stay
-  separate. Its missing-package install uses `-Syu`, so it can also synchronize
-  databases and upgrade installed packages; it is not an add-only operation.
-- Do not wrap AUR helpers in an extra sudo layer.
-- Check the PATH-selected `paru` executable's health, not just its existence.
-  Keep bootstrap/rebuild planning separate from AUR package installation and
-  preserve the blocking AUR-to-Paru prerequisite edge. Paru waits for native
-  packages without inheriting unrelated package failures. AUR dry-run queries
-  pacman's database without requiring a helper that bootstrap only previewed.
-- Consumer tasks can waive application-selected package ordering edges only
-  after their ordering requirements and `package_stability_requirement` prove
-  no package install or Paru rebuild is needed. Failed inventory is unknown
-  readiness with its cause retained, not proof of no work.
-  Preserve ordinary waits on unsupported managers and fresh provisioning.
-- Winget uses exact IDs, prefers user scope, and retries unscoped only when no
-  user-scope installer exists. Privilege and policy refusals return
-  `ResourceChange::unusable`: they count as failed items, not benign skips.
-
-Read [installation planning](../../../cli/src/domains/packages/install/planning.rs)
-and the affected [provider](../../../cli/src/domains/packages/resources/).
-Test provider commands, state mapping, batching, missing-manager behavior,
-query failures, and dry-run planning using mocks, not real package installs.
-Use `toml-configuration` if entry syntax changes and
-[Testing](../../../docs/content/development/testing.md) for commands.
+- When choosing new packages in `conf/packages.toml`, check transitive
+  dependencies and prefer lean tools that fit the existing Hyprland/Wayland
+  stack over pulling in heavy unrelated desktop ecosystems.
+- A missing native package manager for selected packages is `TaskResult::unmet`,
+  not a benign skip. A failed installed-state query must propagate rather than
+  returning an empty set (which would attempt to reinstall everything).
+- `pacman` installs missing packages with `-Syu`, which also synchronizes
+  databases and upgrades installed packages—do not treat or document it as
+  add-only.
+- Never wrap AUR helpers in an extra `sudo` layer. Check the PATH-selected
+  `paru` binary's health, not just existence. Keep bootstrap/rebuild planning
+  separate from AUR installs with a blocking AUR-to-Paru edge, and let Paru
+  wait on native packages without inheriting unrelated package failures.
+- AUR dry-run queries `pacman`'s database without requiring a `paru` binary that
+  bootstrap only previewed.
+- Consumer tasks may waive application-selected package ordering edges only
+  after their `ordering_requirements()` and `package_stability_requirement`
+  prove no package install or Paru rebuild is needed. Failed inventory is
+  unknown readiness (retaining its cause), never proof of no work.
+- Winget uses exact IDs, tries user scope first, and retries unscoped only when
+  no user-scope installer exists. Privilege and policy refusals return
+  `ResourceChange::unusable` (counted as failed items, not benign skips).

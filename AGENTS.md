@@ -47,20 +47,11 @@ and what would be lost by changing it.
 
 ## Human documentation
 
-- For each change, decide whether readers need to know or do something
-  differently. Update the owning guide when it helps them. Use
-  [docs-writing](.agents/skills/docs-writing/SKILL.md) for clear, accurate,
-  natural prose at the right level of detail. Use
-  [docs-publishing](.agents/skills/docs-publishing/SKILL.md) for documentation
-  organization, README/site links, navigation, and publishing.
-- Keep one clear explanation per topic, short commands using real defaults, and
-  matching page titles, filenames, and URLs. Update references when moving content;
-  do not add rename-compatibility routes.
-- Review consequential procedures from their actual starting state, including
-  already-installed configuration and partial failure. Use
-  [Writing documentation](docs/content/development/writing-documentation.md) for content
-  conventions and acceptance scenarios; skills route work rather than carrying
-  a second copy of human procedures.
+- Update the owning guide when a change affects what readers need to know or do.
+  Follow [Writing documentation](docs/content/development/writing-documentation.md)
+  for prose conventions and acceptance scenarios, and use
+  [docs-writing](.agents/skills/docs-writing/SKILL.md) or
+  [docs-publishing](.agents/skills/docs-publishing/SKILL.md) as needed.
 
 ## Before pushing
 
@@ -69,46 +60,18 @@ and what would be lost by changing it.
   Preserve unrelated working-tree changes in a shared checkout by staging
   explicit task paths, refresh the destination, and verify that every outgoing
   commit belongs to the task before pushing.
-- Inspect the full intended diff, including renames/deletions and pending changes
-  from failed pushes. Choose local checks by affected behavior and test inputs
-  using [Testing](docs/content/development/testing.md#choosing-coverage). The agent owns this
-  decision; briefly explain the selected coverage and what remains for CI.
-- Run the smallest useful checks with the pinned toolchain. Broaden for shared
-  behavior, uncertain impact, or failures. Do not run unrelated suites or repeat
-  passing checks unless relevant inputs changed. Keep commit hooks lightweight.
-- Before full validation or a large Rust build in a worktree, use the
-  [validation cache preview](docs/content/development/testing.md#validation-cache).
-  Use the coordinator's scoped cleanup for its own cache and report any eviction.
+- Choose the smallest useful local checks for the committed diff using
+  [Testing](docs/content/development/testing.md#choosing-coverage) (and
+  [docs/README.md](docs/README.md#checks) for docs/skills, plus
+  [focused local mutations](docs/content/development/testing.md#focused-mutation-testing)
+  for risky safety/dry-run/elevation changes). Explain what ran locally and what
+  is deferred to CI; never treat deferred or skipped checks as local passes.
+- Before full validation or a large Rust build in a worktree, check the
+  [validation cache](docs/content/development/testing.md#validation-cache).
   Get explicit authorization before deleting a worktree, toolchain, or saved
   agent artifact.
-- For skills and prose, check metadata and links as affected. Use
-  [docs/README.md](docs/README.md#checks) to decide whether a site build or browser
-  review adds evidence; neither is automatic for Markdown or mixed patches.
-- Validate the committed patch. Focused checks are sufficient when they cover
-  the affected behavior; the [pre-push coordinator](docs/content/development/testing.md#before-pushing)
-  is an optional conservative tool, not a mandatory second gate. Add cross-target
-  CLI compilation only when the diff can affect that target. Native runtime
-  checks cover behavior that cross-compilation cannot; remote CI can supply them.
-- Fix selected local failures. Distinguish intentionally deferred CI coverage
-  from checks that could not run; neither is a local pass. Do not provision a
-  second OS or build the docs site solely to duplicate remote CI.
-- Decide whether [focused local mutations](docs/content/development/testing.md#focused-mutation-testing)
-  add evidence before pushing. Use them for high-consequence preservation,
-  permissions/elevation, dry-run, or failure-propagation changes when ordinary
-  assertions leave doubt; for weakened/reworked safety tests; and for survivor
-  fixes. Target the relevant file/function on its native platform, not the whole
-  crate. Skip routine prose/configuration, mechanical refactors, and low-risk
-  changes whose behavior is already directly asserted. Explain the decision
-  briefly with the selected coverage; nightly testing is not a substitute for
-  resolving a known local gap. Preserve a survivor's original source range even
-  for a test-only fix; never count a zero-mutant run as evidence.
-- A request to push includes monitoring CI by default, without a separate
-  request. After an authorized push, monitor the exact commit's aggregate CI.
-  Mutation testing runs separately on a nightly
-  schedule or manual dispatch; do not wait for or launch it on every push.
-  When mutation work is selected for the task, inspect its reports and resolve
-  survivors, timeouts, and tool failures before claiming that check passed.
-  Follow the [CI monitoring guidance](.agents/skills/ci-cd-patterns/SKILL.md#after-pushing)
-  and verify publication when reporting a release. Do not report the push task
-  complete while its checks are pending. If monitoring is blocked, report the
-  exact SHA, run, and blocker instead of claiming success.
+- A request to push includes monitoring the exact commit's aggregate CI to
+  completion (see [CI monitoring](.agents/skills/ci-cd-patterns/SKILL.md#after-pushing),
+  and verify publication when reporting a release). Do not launch or wait for
+  nightly mutation testing on ordinary pushes. If monitoring is blocked, report
+  the exact SHA, run, and blocker instead of claiming success.

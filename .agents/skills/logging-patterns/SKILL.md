@@ -10,131 +10,66 @@ description: >
 
 # Logging Patterns
 
-## Ownership
+User-facing console and JSON Lines contracts live in
+[Console output](../../../docs/content/guides/commands-and-usage.md#console-output)
+and [Execution output for scripts](../../../docs/content/reference/cli-reference.md#execution-output-for-scripts);
+exact `MsgKind` helpers live in `output_methods!` in
+[types.rs](../../../cli/src/infra/logging/types.rs).
 
-- Startup initializes one shared `Logger`; task code uses `ctx.log()`.
-- Named `OutputExt` helpers are declared through the module-local
-  `output_methods!` in [logging types](../../../cli/src/infra/logging/types.rs).
-  Keep their docs and `MsgKind` mappings together; rendering and persistence
-  policy belong in the sinks.
-- `engine::execute()` records task results. Tasks do not call
-  `record_task()` directly.
-- Records are keyed by `Task::log_key()`, never display name.
-- `ExecutionSummary` controls success and later phases. Logger counters are
+## Ownership and shared rendering
+
+- `engine::execute()` calls `record_task()` keyed by `Task::log_key()` (never
+  display name); tasks do not record themselves or build task-local buffering.
+- `ExecutionSummary` controls run success and later phases; logger counters are
   presentation only.
-- Keep status labels/styles together in `logger/summary/status.rs::presentation`.
-  Raw tracing and UI messages share formatting through `ui_line_with_style`;
-  raw DEBUG/TRACE remain hidden even when UI debug details are verbose-visible.
-- Reuse `duplicates_task_message` for buffered replay and completed rows, and
-  `progress_clear_sequence` for cursor clearing. Do not duplicate these pure
-  decisions across sinks.
+- Keep status styles in `logger/summary/status.rs::presentation`, raw/UI line
+  formatting in `ui_line_with_style` (raw `DEBUG`/`TRACE` stay hidden even when
+  UI debug details are visible), replay deduplication in
+  `duplicates_task_message`, and cursor clearing in `progress_clear_sequence`.
 
-## Output contract
+## Console and action invariants
 
-Use [Console output](../../../docs/content/guides/commands-and-usage.md#console-output) for status words,
-styles, spacing, visibility, and summary order. Use
-[Execution output for scripts](../../../docs/content/reference/cli-reference.md#execution-output-for-scripts)
-for quiet/JSON Lines behavior. The summary and subscriber test matrices specify
-exact plain/ANSI rendering. Preserve these implementation constraints:
-
-- Visible task rows stay in natural completion order.
-- Not-applicable tasks stay out of console rows and final totals, but remain in
-  persistent records and progress accounting. Task reasons belong on status
-  rows; details must not restate them.
-- Emit resource actions with `Output::action(verb, subject, planned, message)`.
-  Supply the imperative console form in `message`, including contextual suffixes.
-  Typed actions persist once before buffering. Sort only consecutive typed action
-  runs and preserve warning/context barriers; never classify or rephrase messages
-  by their text.
-  Preserve typed verb/subject spans through replay and completed rows. Subjects
-  remain opaque for parentheticals and current-state text (dimming only the
-  structural ` → ` arrow separator); only an identifiable suffix outside the
-  complete subject may be dimmed.
-- Emit generated counters with `summary`, and mark generated task-result reasons
-  with `with_summary_message`. Custom reasons remain visible even if they resemble
-  counter text.
-- Resource descriptions read `subject -> value`; symlinks are `target -> source`.
-- Keep task and action counts independent; never derive totals from detail
-  lines or parsed display text. Progress counts unfinished scheduled visible
-  tasks within a phase; non-applicable tasks reduce it when they finish.
-- Keep skipped, blocked, and interrupted outcomes distinct in rows and totals.
-  Typed cancellation is interrupted; dependency prevention is blocked.
-- Transient status lines are always cleared and never replace durable logging.
-  Live custom preflight status is separate from task progress. Hold the shared
-  console lock through redraw so clearing, durable output, and ticker shutdown
-  cannot resurrect it. Fit clean text before styling and reserve the autowrap
-  column; `NO_COLOR` disables styling, not cursor control.
-  Task-block spacing depends on actual visible details in both verbosity modes.
-  Timings, count badges, and hidden entries do not expand a block.
-  Final disposition comes from scheduler failure/cancellation checks, not
-  presentation counts.
-
-- Console filtering must preserve persistent records. JSON Lines must work
-  when the persistent sink is unavailable and contain no human progress.
-- A closed output pipe is benign and does not cancel convergence. Other write
-  failures affect the exit code and retained outcome. Keep restart/force-quit
-  completion on the same `Output::finish_run` path.
-
-## Message intent
-
-| Intent | Use |
-|---|---|
-| `trace` | plumbing that never reaches the console |
-| `debug` / `context` | verbose diagnostic item detail / contextual block |
-| `action` | applied or planned item detail with explicit verb and subject |
-| `info` | informational detail, not an inferred action |
-| `summary` | aggregate counters retained only in the run log |
-| `warn` / `error` | visible problems; task-owned presentation is indented without changing severity or stream |
-| `warn_continuation` | warning item under a shared diagnostic heading, retaining raw warning records |
-| `dry_run` | planned mutation |
-| `always` | output that must be visible |
-| `startup` | bold run-command header |
-| `transition` | bold lifecycle label, dim metadata, normal-contrast destination version, no glyph. The next output block owns its separator |
-| `recovery_hint` | copyable command for a healthy retained log, with dim surrounding instructions |
+- Visible task rows appear in natural completion order. `NotApplicable` tasks
+  stay out of console rows and final totals, but remain in persistent records
+  and reduce the progress denominator when they finish. Task reasons belong on
+  status rows, never restated as detail lines.
+- Emit resource actions via `Output::action(verb, subject, planned, message)`
+  (persisted once before buffering). Sort only consecutive typed action runs
+  across warning/context barriers; never classify or rephrase by text. Keep
+  `subject` opaque for parentheticals/current-state text (dimming only the
+  structural ` → ` arrow and identifiable trailing suffixes outside the subject).
+- Mark generated counter reasons with `with_summary_message` so custom reasons
+  stay visible even if they resemble counters.
+- Hold the shared console lock through transient status/progress redraw and
+  ticker shutdown. Fit plain text before styling and reserve the autowrap
+  column; `NO_COLOR` disables styling, not cursor control. Task-block spacing
+  depends only on actual visible details in the active verbosity mode.
+- Keep skipped, blocked (dependency prevention), and interrupted (typed
+  cancellation) distinct. Console filtering must not drop persistent records;
+  JSON Lines must work when the persistent sink is unavailable.
+- A closed output pipe is benign and does not cancel convergence; other write
+  failures affect exit code and retained outcome. Keep restart/force-quit
+  completion on `Output::finish_run`.
 
 ## Persistent records
 
-- Extend `records.rs::Record` for facts that consumers need to query. Keep schema
-  versions explicit; preserve unknown records and legacy text in the viewer.
-- Use stable task keys, not labels or `TypeId` debug text. Task decorators must
-  forward `log_key()` and worker threads must inherit the owning task's context.
-- Record run start, requested scope, resolved context, and finish independently of
-  console totals. Each executed task has one readable start entry and one
-  structured result/duration; do not add a task-stage header or text duplicates.
-  Retain full error chains as debug diagnostics alongside the concise outcome.
-  Restarted and elevated children receive the parent ID through `child_args`.
-  A missing finish record means unfinished, not necessarily crashed.
-- Failure hints select the exact run with `--id` and diagnostics with `-v`.
-  Do not offer a hint when the persistent sink is unavailable or degraded.
-- Preserve multiline messages and command streams in storage. Normal log viewing
-  emphasizes actions/outcomes and includes checked command failures and nonempty
-  stderr. Starts, resource checks, timings and debug details require `-v`.
-  Unchecked nonzero exits use `nonzero_exit`, not a failure classification; retain
-  their streams for verbose/raw diagnostics. `--raw` reads stored
-  records; `--task` filters by stable public selector or exact stored identity.
-- Test lifecycle and parent linkage, stable selection after newer runs,
-  task filtering, legacy/unknown records, output retention, and multiline parity.
+- Extend `records.rs::Record` with explicit schema versions and preserve
+  unknown/legacy records in the viewer. Worker threads must inherit task log
+  context; restarted/elevated children receive parent ID via `child_args`.
+- Retain full error chains as debug diagnostics alongside concise outcomes.
+  Unchecked nonzero exits use `nonzero_exit` (not failure classification) with
+  streams retained for verbose/raw viewing. A missing finish record means
+  unfinished, not necessarily crashed.
+- Failure recovery hints must target the exact run (`--id`) and `-v`, and must
+  be omitted when the persistent sink is unavailable or degraded.
 
-Do not hardcode indentation, duplicate task recording, rephrase a task reason as
-detail, or build task-local buffering.
+## Coupled assets and test matrices
 
-For command argument redaction and stream-retention policy, use the
-[subprocess boundary](../error-handling-patterns/SKILL.md#subprocess-boundary).
-Avoid exposing sensitive data in resource descriptions, errors, and rendering;
-use synthetic values in log fixtures and snapshots.
-
-When user-visible `dotfiles update` output changes (headers, transition
-notices, status styles, spacing, progress lines, or summary layout), check
-whether [the README terminal SVG](../../../docs/public/assets/terminal-screenshot.svg)
-and its assertions in [site.spec.ts](../../../docs/tests/browser/site.spec.ts)
-need updating to match actual CLI output.
-
-When summary semantics change, test statuses, visibility, details, progress
-denominator, totals, both verbose modes, and `--no-symbols`. Preserve durable run
-logs when changing console filtering or transient output. Start with
-[summary rendering](../../../cli/src/infra/logging/logger/summary/) and
-[subscriber tests](../../../cli/src/infra/logging/subscriber/tests.rs).
-The summary and subscriber matrices own exact plain/ANSI presentation across
-statuses, modes, verbosity, and symbols. [Buffered tests](../../../cli/src/infra/logging/buffered/tests.rs)
-own direct/buffered persistence parity, completion order, and action barriers.
-Wrapper style belongs in `shell-patterns`.
+When user-visible `dotfiles update` output changes, check whether
+[terminal-screenshot.svg](../../../docs/public/assets/terminal-screenshot.svg)
+and [site.spec.ts](../../../docs/tests/browser/site.spec.ts) need updating.
+Exact plain/ANSI matrices live in
+[summary](../../../cli/src/infra/logging/logger/summary/),
+[subscriber/tests.rs](../../../cli/src/infra/logging/subscriber/tests.rs), and
+[buffered/tests.rs](../../../cli/src/infra/logging/buffered/tests.rs).
+Wrapper output style belongs in [self-update](../self-update/SKILL.md#wrapper-bootstrap).

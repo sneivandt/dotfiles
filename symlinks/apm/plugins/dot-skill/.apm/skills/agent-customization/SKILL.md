@@ -11,45 +11,26 @@ description: >
 
 - Keep guidance tied to a codebase in that repository's `.agents/skills/`.
 - Put host-specific, employer-specific, or private guidance in a private overlay.
-- Package reusable public content with APM. Group related skills, hooks,
-  prompts, and instructions by purpose. Use configuration fragments to select
-  packages and declare external dependencies.
-- Put reusable task workflows in `dot-workflow` and skill authoring and
-  maintenance guidance in `dot-skill`.
+- Package reusable public content with APM (`dot-workflow` for task workflows,
+  `dot-skill` for skill authoring/maintenance). Use configuration fragments to
+  select packages and declare external dependencies.
 - Set model, reasoning, and UI defaults in `conf/agent-settings.toml`.
-- Give each skill one recurring job. Extend an existing skill when it already
-  covers the same intent.
 
 ## APM package rules
 
-- Use native layout: `apm.yml`, `includes: auto`, and `.apm/<primitive>/`.
-- Use short `dot-*` names for local plugins. Match each skill's directory to
-  its frontmatter name.
-- Reference local packages with forward slashes.
-- Public files contain no secrets, private URLs, or employer-confidential data.
-- Private overlays add fragments/plugins through overlay symlink config and
-  reference credentials through environment variables.
+- Use native layout (`apm.yml`, `includes: auto`, `.apm/<primitive>/`), short
+  `dot-*` local plugin names, forward-slash local package references, and skill
+  directory names matching frontmatter `name`.
+- Keep public files free of secrets, private URLs, and employer-confidential
+  data; add private fragments/plugins via overlay symlinks and reference
+  credentials through environment variables.
 - Keep self-defined MCP servers direct unless transitive trust is intentional.
 
 ## Target compatibility
 
-- Top-level `targets` selects default harnesses.
-- A dependency-level `targets` list narrows the entire package.
-- Split packages when primitives need different target sets.
-- Cowork remains an experimental, skills-only target. A Cowork-targeted
-  package's skills must work without its MCP servers, hooks, prompts, agents,
-  commands, or instructions.
-- Dotfiles enables Cowork's APM feature and honors APM's configured path, then
-  follows lockfile target subsets during ACL-safe file reconciliation.
-  Dependency filters are authoritative.
-
-## Verify
-
-Use the dotfiles checkout's `docs/content/development/testing.md` for scoped
-checks and previews. For skill-text-only edits, review frontmatter, links, and
-trigger descriptions.
-For behavior changes, prefer current-source checks with isolated homes and
-synthetic overlays; a wrapper may bootstrap or run an older installed binary.
-An authorized preview with a real overlay can execute its cooperative
-`--check`/`--dryrun` scripts. Inspect trusted scripts first and keep private paths
-and output out of public reports.
+- Top-level `targets` selects default harnesses; a dependency-level `targets`
+  list narrows the entire package (split packages when primitives need
+  different target sets).
+- Cowork is an experimental, skills-only target: any Cowork-targeted package's
+  skills must work without its MCP servers, hooks, prompts, agents, commands,
+  or instructions.

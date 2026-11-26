@@ -2,56 +2,37 @@
 name: git-hooks-patterns
 description: >
   Use for hooks/, InstallGitHooks, staged check orchestration, or sensitive
-  pattern/allowlist behavior. Not for general CI workflow changes.
+  pattern/allowlist behavior. Not for general CI workflow changes or
+  dotfiles.sh/.ps1 bootstrap wrappers (use self-update).
 ---
 
 # Git Hooks Patterns
 
-## Installation
+## Installation and ownership
 
-`InstallGitHooks` discovers extensionless files under `hooks/` and resolves the
-destination through Git's common directory or `core.hooksPath`. A linked worktree
-has a `.git` file, not a hooks directory. Test discovery with isolated temporary
-repositories. Keep directory enumeration in execution; applicability uses only
-cheap path-existence checks.
-Cross-domain dependency wiring belongs in the app catalog.
+- `InstallGitHooks` installs extensionless files from `hooks/` via Git's common
+  dir or `core.hooksPath` (a linked worktree has a `.git` file, not a hooks
+  directory). Keep directory enumeration in `run()`, not `should_run()`.
+- By default the installed `pre-commit` entry point is a copy, while it resolves
+  `hooks/check-*.sh` helpers from the checkout root at runtime (`DOTFILES_HOOKS_FULL=1`
+  adds `check-ci-guards.sh`). Entry-point edits need redeployment; helper-only
+  edits take effect immediately.
+- If `core.hooksPath` already points at the tracked `hooks/` sources, preserve
+  them rather than copying over or removing them.
 
-## Pre-commit contract
+## Staged-content and sensitive-pattern rules
 
-`hooks/pre-commit` is a POSIX `sh` orchestrator:
+- All scripts under `hooks/` are POSIX `sh` (`#!/bin/sh`).
+- Scan staged Git blobs, not working-tree files—a partially staged file's
+  working-tree content may differ from what is being committed. Cover spaces in
+  filenames, renames, deletions, and empty diffs.
+- `hooks/sensitive-patterns.ini` and `hooks/sensitive-allowlist.ini` use
+  extended regexes. Allowlist rules strip only the matched safe span so the
+  remainder of the line is still scanned; test both that the false positive
+  clears and that a real secret on the same line still trips detection.
 
-- `check-sensitive.sh` scans staged diffs.
-- `check-rust.sh` runs staged Rust/script checks.
-- `check-ci-guards.sh` adds targeted CI parity when
-  `DOTFILES_HOOKS_FULL=1`.
+## Verification
 
-Keep the hook and its integration test synchronized when adding a helper.
-By default the installed entry point is a copy, but it resolves `.sh` helpers
-from the checkout at runtime. A copied entry-point change needs explicit
-redeployment; helper-only changes do not. If `core.hooksPath` already points at
-the tracked sources, preserve them rather than copying over or removing them.
-Do not run the whole installer to test a hook.
-
-Preserve staged-content semantics: a partially staged file's working-tree
-contents are not necessarily what will be committed. Cover spaces in filenames,
-renames, deletions, and empty diffs when changing discovery or filtering.
-
-## Sensitive patterns
-
-- Detection rules live in `hooks/sensitive-patterns.ini`; safe-span exceptions
-  live in `hooks/sensitive-allowlist.ini`.
-- Patterns and allowlists are extended regular expressions.
-- Match contextual indicators, not generic secret-like strings.
-- Allowlist only the safe span; the remainder of the line must still be scanned.
-- Prefer a narrow allowlist entry to weakening detection or recommending
-  `--no-verify`.
-- Test both directions: the false positive clears and a real secret on the same
-  line remains detected.
-
-The full hook integration script (`test-git-hooks.sh`) creates commits inside
-its own disposable temporary repository, leaving the caller's checkout
-untouched. See [Wrapper and hook tests](../../../docs/content/development/testing.md#wrapper-and-hook-tests)
-for both the fast staged-input fixtures and the full commit-hook suite.
-
-Use `shell-patterns` for POSIX conventions and `ci-cd-patterns` when changing CI
-parity scope.
+See [Wrapper and hook tests](../../../docs/content/development/testing.md#wrapper-and-hook-tests).
+`test-git-hooks.sh` runs commits in its own disposable temp repository without
+touching the caller's checkout. Use `ci-cd-patterns` when changing CI parity scope.

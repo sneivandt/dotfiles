@@ -8,39 +8,22 @@ description: >
 
 # System Files
 
-## Ownership
+Implementation lives in
+[config/system_files.rs](../../../cli/src/domains/system/config/system_files.rs),
+[resources/system_file.rs](../../../cli/src/domains/system/resources/system_file.rs),
+and [system_file/install.rs](../../../cli/src/domains/system/resources/system_file/install.rs).
 
-| Concern | Owner |
-|---|---|
-| desired target, source, merge strategy, and selectors | `conf/system-files.toml` |
-| public fragments | `system/` |
-| parsing and path safety | `cli/src/domains/system/config/system_files.rs` |
-| merge, state, metadata, and privileged install | `cli/src/domains/system/resources/system_file.rs` and `system_file/` |
-| task applicability and elevation planning | `cli/src/domains/system/system_files.rs` |
-| install catalog membership | `cli/src/app/catalog.rs` |
+## Non-obvious invariants
 
-## Contracts
-
-- Use category sections for role and environment selection. `base` and `desktop`
-  come from profiles; `linux`, `windows`, `arch`, and `wsl` come from platform
-  detection. Compound sections require every category; custom tags are rejected.
-- Sources are relative to the declaring repository's `system/` directory;
-  targets must be absolute paths below `/etc`.
-- `toml` recursively merges tables, `ini` converges assigned keys and bare flags
-  within their sections, `pam` places module rules after the matching facility
-  stack, and `create-only` writes the tracked fragment only when the target does
-  not exist (accepting an identical file and leaving differing existing files
-  untouched). All strategies preserve unrelated target content.
-- Refuse malformed content, non-regular targets, differing `create-only`
-  targets, missing PAM service files, and PAM fragments whose facilities do not
-  exist.
-- Install through the executor from a unique staged file. Preserve existing
-  owner, group, and permissions. New files use `root:root` and mode `0644`.
-  Constructors, state discovery, and dry runs stay read-only.
-- Keep package ownership in `conf/packages.toml`; selection may align a fragment
-  with a package profile, but system-file entries do not probe package state.
-
-Cover selector filtering, unsafe and duplicate paths, every merge strategy,
-missing/correct/incorrect/invalid state, staging arguments, dry-run safety, and
-convergence. Use [Testing](../../../docs/content/development/testing.md#choosing-coverage) for the
-validation sequence.
+- Sources are relative to the declaring repo's `system/` directory; targets must
+  be absolute paths below `/etc`. Entries do not probe package state.
+- Merge strategies (`toml`, `ini`, `pam`, `create-only`) all preserve unrelated
+  target content. Refuse malformed content, non-regular targets, differing
+  `create-only` targets, missing PAM service files, and PAM fragments whose
+  facilities do not exist.
+- Privileged installation (`ATOMIC_INSTALL` + `system-file-helper`) must
+  preserve symlink-component traversal checks, directory ownership/mode checks,
+  same-filesystem private staging, `stat`/SHA-256 race verification before
+  atomic `mv -fT` (and `ln -T` for new files so a concurrently created target
+  cannot be clobbered), existing owner/group/mode/xattr preservation, and
+  `root:root` `0644` defaults for new files.

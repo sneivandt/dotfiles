@@ -4,58 +4,43 @@ description: >
   Use when drafting, auditing, or editing human-facing prose in README.md,
   docs/content/, or application READMEs: clarity, factual accuracy, natural
   language, examples, task reference pages, search metadata, and the right level
-  of detail. Not for site navigation,
-  rendering, or publishing alone (docs-publishing), or internal agent
-  instructions (skill-maintenance).
+  of detail. Not for site navigation, rendering, or publishing alone
+  (docs-publishing), or internal agent instructions (skill-maintenance).
 ---
 
 # Documentation Writing
 
-The human-facing convention lives in
-[Writing documentation](../../../docs/content/development/writing-documentation.md).
-Read the relevant sections rather than carrying a separate style policy here.
-Use [docs-publishing](../docs-publishing/SKILL.md) for organization or site
-behavior. For task reference pages, use the supporting
-[implementation checklist](task-reference.md).
+[Writing documentation](../../../docs/content/development/writing-documentation.md)
+owns prose, example, findability, and task-page conventions; use
+[docs-publishing](../docs-publishing/SKILL.md) for site organization or
+publishing.
 
-## Follow the reader's task
+## Repo-specific rules
 
-1. Identify the reader, their starting state, and the decision or action they
-   need next. Update the owning explanation when the task has not changed.
-2. Verify changed claims against the owning configuration, implementation,
-   and focused tests. Existing prose and upstream capabilities are not proof.
-3. Review a procedure as a state transition, especially on an already-installed
-   machine or after partial failure. Check preserved content, prerequisites,
-   source availability, saved selections, and how the reader recognizes success.
-4. Draft using the guide's example, language, punctuation, link, and emphasis
-   conventions. Describe the current setup directly and concisely: skip past
-   migration narration and exhaustive default shortcut lists for third-party
-   GUI apps. Link directly to the target page rather than naming a sidebar
-   section, and never link to `.agents/skills/` as human documentation. Keep
-   consequential warnings beside the action. Do not replace a safety explanation
-   with a link or remove it merely to shorten a page.
-   Review its [findability guidance](../../../docs/content/development/writing-documentation.md#help-readers-find-the-topic)
-   when changing titles, descriptions, headings, or topic terminology.
-5. For a multi-page edit, follow one reader's path across the changed pages.
-   Check handoffs, shared terms, and where warnings affect a decision; use the
-   guide's [page review](../../../docs/content/development/writing-documentation.md#write-and-review-the-page)
-   to choose prose, a table, or a diagram that also reads well on a phone.
-6. Keep the root `README.md` concise and stable; avoid rewriting it unless a
-   fact, managed-area entry, link, or `terminal-screenshot.svg` output has
-   drifted. Read each edited guide as a direct shared link so its links supply
-   depth rather than a missing essential step, and prefer the common workflow
-   before internals and recovery cases.
+- Never link to `.agents/skills/` from human documentation (checked by
+  `check-doc-site.py`). Link directly to target pages rather than naming sidebar
+  sections, and keep consequential warnings beside the action rather than behind
+  a link.
+- Keep `README.md` concise and stable—only edit it when a fact, managed-area
+  entry, link, or `terminal-screenshot.svg` output has drifted.
+- Describe the current setup directly (skip past migration narration and
+  exhaustive default third-party GUI shortcut lists).
+- Review procedures as state transitions from both fresh and already-managed
+  states, including partial-failure recovery and materialized-copy/conflict
+  limits.
+- For task reference pages ([index](../../../docs/content/reference/task-reference.md)),
+  verify membership and edges in [app/catalog.rs](../../../cli/src/app/catalog.rs)
+  (and [commands/check.rs](../../../cli/src/app/commands/check.rs) /
+  [app/validation](../../../cli/src/app/validation/) for check tasks). Keep
+  these distinctions explicit where relevant: applicability vs runtime tools/privileges,
+  blocking vs ordering-only/conditional edges, `--with-deps` expansion,
+  separate `update` vs `remove` graphs, load errors vs post-load diagnostics,
+  and upstream capabilities exceeding dotfiles' supported subset.
 
-## Verify the result safely
+## Verification
 
-- For consequential examples, reuse or extend the isolated
-  [documentation contracts](../../../cli/tests/docs_contracts.rs).
-  Distinguish decoder, transition, serialization, and rendered-site evidence.
-- Select checks from [docs/README.md](../../../docs/README.md#checks).
-  Run example contracts when their inputs or claims change.
-- Inspect rendered content when layout, Markdown syntax, tables, diagrams, or
-  interaction can change. Use desktop and narrow widths where relevant. Plain
-  wording can be reviewed in source; structural checks never prove accuracy.
-- Apply the [documentation acceptance scenarios](../../../docs/content/development/writing-documentation.md#acceptance-scenarios)
-  when changing authoring guidance. They are manual acceptance cases, not a
-  model-effectiveness benchmark.
+Reuse or extend [cli/tests/docs_contracts.rs](../../../cli/tests/docs_contracts.rs)
+for consequential config examples or state transitions, and select checks from
+[docs/README.md](../../../docs/README.md#checks). Apply the guide's
+[acceptance scenarios](../../../docs/content/development/writing-documentation.md#acceptance-scenarios)
+when changing authoring guidance.

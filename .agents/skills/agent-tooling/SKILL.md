@@ -9,54 +9,34 @@ description: >
 
 # Agent Tooling
 
-Start with [Agent configuration](../../../docs/content/guides/agent-configuration.md)
-for sources, fragment merging, targets, and preview limits. For implementation
-changes, read [apm.rs](../../../cli/src/domains/ai/apm.rs),
-[agent_settings.rs](../../../cli/src/domains/ai/agent_settings.rs), and their
-[modules and tests](../../../cli/src/domains/ai/).
+See [Agent configuration](../../../docs/content/guides/agent-configuration.md)
+for sources, fragment merging, targets, and preview limits.
 
-## Choose the owner
+## Non-obvious invariants
 
-| Change | Location |
-|---|---|
-| repo-specific coding skill | `.agents/skills/` |
-| reusable personal skill, hook, prompt, or instruction | `symlinks/apm/plugins/dot-*` |
-| external plugin or MCP dependency | `symlinks/apm/config/*.yml` |
-| stable Copilot/Codex preference | `conf/agent-settings.toml` |
-| agent-settings parsing and JSON/TOML key merging | `cli/src/domains/ai/agent_settings.rs` and `cli/src/domains/ai/resources/agent_settings/` |
-| install and pin-update behavior | `cli/src/domains/ai/apm.rs` and `cli/src/domains/ai/apm/` |
-
-## Decisions and pitfalls
-
-- Edit source fragments/plugins, not generated manifests, deployed content, or
-  lock data in the live home. Keep secrets and private content out of public files.
-- Keep explicit base targets; dependency-level filters restrict whole packages.
-  Split packages when primitive compatibility differs. Cowork receives skills
-  only, so its skills must work without MCP, hooks, prompts, or agents.
-- A new fragment needs its `conf/symlinks.toml` entry. Keep self-defined MCP
-  dependencies direct unless transitive trust is deliberate. Local plugins use
-  `apm.yml`, `includes: auto`, `.apm/<primitive>/`, and forward-slash references.
+- Adding a new `symlinks/apm/config/*.yml` fragment requires a matching
+  `conf/symlinks.toml` entry.
+- Keep explicit base `targets`; dependency-level filters narrow whole packages,
+  so split packages when primitives need different harnesses. Cowork receives
+  skills only, so Cowork-targeted skills must work without MCP, hooks, prompts,
+  or agents.
+- Local plugins under `symlinks/apm/plugins/dot-*` use `apm.yml`,
+  `includes: auto`, `.apm/<primitive>/`, and forward-slash references. Keep
+  self-defined MCP dependencies direct unless transitive trust is deliberate.
 - `agent-settings` manages harness keys independently while preserving unmanaged
-  keys and exact JSON/TOML numeric fidelity; `agent-packages` owns APM
-  convergence (`apm` is a compatibility selector). Ref advancement belongs to
-  the update pipeline, not an ordinary install.
-- Preserve native update followed by install before target adapters, including
-  failure classification and workflow-policy restoration. Do not reintroduce
-  separate prune, fingerprints, or outdated-output parsing.
-- Before removing either compatibility adapter, inspect current upstream code
-  and prove the replacement preserves
+  keys and exact JSON/TOML numeric fidelity (`cli/src/domains/ai/resources/agent_settings/`).
+- `agent-packages` owns APM convergence (`apm` is a compatibility selector).
+  Ref advancement belongs to the update pipeline, not ordinary install.
+- Preserve native `update` followed by `install` before target adapters,
+  including failure classification and workflow-policy restoration. Do not
+  reintroduce separate prune, fingerprints, or outdated-output parsing.
+- Before removing either compatibility adapter, inspect current upstream APM
+  code and prove in isolated platform fixtures that the replacement preserves
   [Copilot workflow ownership](../../../cli/src/domains/ai/apm/autopilot/) and
-  [Cowork file ownership](../../../cli/src/domains/ai/apm/cowork.rs)
-  in isolated fixtures on the relevant platforms. A version bump is insufficient.
+  [Cowork file ownership](../../../cli/src/domains/ai/apm/cowork.rs). A version
+  bump alone is insufficient.
 - Native APM owns syntax/schema validation; dotfiles owns cross-file local
-  source relationships. Extend
-  [validation.rs](../../../cli/src/domains/ai/apm/validation.rs) and the
-  [fixture](../../../cli/src/domains/ai/apm/test_fixture.rs) accordingly.
-
-## Validate the changed contract
-
-Use [CLI validation](../../../docs/content/development/testing.md#cli-validation) and
-[Choosing coverage](../../../docs/content/development/testing.md#choosing-coverage).
-Preview reconciliation follows [Dry-run testing](../../../docs/content/development/writing-tests.md#dry-run-testing).
-Packing is not deployment proof. Do not deploy to the live home to test content
-or an adapter; use synthetic fragments, lockfiles, and target directories.
+  source relationships in [validation.rs](../../../cli/src/domains/ai/apm/validation.rs)
+  and [test_fixture.rs](../../../cli/src/domains/ai/apm/test_fixture.rs).
+- Packing is not deployment proof; validate adapters with synthetic fragments,
+  lockfiles, and target directories rather than deploying to the live home.

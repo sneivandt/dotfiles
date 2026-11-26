@@ -2,73 +2,64 @@
 name: toml-configuration
 description: >
   Use when editing conf/*.toml data, typed models, loaders, category sections,
-  or public/overlay section merging. Prefer the owning domain skill for
-  data-only changes when one exists. Not for overlay path selection, script
-  execution, or validator implementation alone.
+  public/overlay section merging, profile resolution/categories (profiles.rs),
+  Config::validate diagnostics, check-command validation tasks, or
+  cli/tests/config_drift.rs. Prefer the owning domain skill for data-only
+  changes when one exists. Not for overlay path selection or script execution
+  (use overlay-scripts).
 ---
 
-# TOML Configuration
+# TOML Configuration, Profiles, and Validation
 
-## Parsing rules
+## Parsing and section merging
 
-- Model config with typed Serde structures.
-- Add `#[serde(deny_unknown_fields)]` to every deserialized struct.
-- Do not use `#[serde(untagged)]`; use
-  `crate::infra::config::StringOrTable<T>` for string-or-table entries.
-- Structural mistakes fail deserialization. Domain-invalid values that need
-  aggregated diagnostics should deserialize to an explicit parsed/invalid form
-  and fail semantic validation instead.
-- Preserve the two-layer absence policy: the app loader requires the main config
-  inventory, while reusable section loaders accept missing optional overlay
-  files. `ConfigLoader` owns this policy through `read_config`; domain decoders
-  consume its already parsed `ConfigDocument` and never reopen a file.
-- Keep deterministic order where output or diagnostics expose it.
+- Add `#[serde(deny_unknown_fields)]` to deserialized structs; use
+  `crate::infra::config::StringOrTable<T>` instead of `#[serde(untagged)]`.
+- Preserve the two-layer absence policy: `ConfigLoader::read_config` requires
+  the main config inventory while reusable section loaders allow absent optional
+  overlay files. Domain decoders consume the parsed `ConfigDocument` with
+  preserved spans and never reopen files.
+- Section headers are hyphen-separated category conjunctions (`[arch-desktop]`,
+  never dotted). Built-in tags (`base`, `desktop`, `linux`, `windows`, `arch`,
+  `wsl`) are owned by `KNOWN_CATEGORIES` in
+  [profiles.rs](../../../cli/src/app/config/profiles.rs) and enforced by
+  [preflight.rs](../../../cli/src/app/config/preflight.rs).
+- Use `config_section!`, `SectionLoader`, and
+  [`merge::OverlayEntry`](../../../cli/src/app/config/merge.rs) rather than
+  hand-written merges: active overlay entries replace matching base identities
+  (preserving base order, except system files where replacements keep their
+  original position) and stamp source `origin`. Use `collect_views` when both
+  active and unfiltered validation views are needed.
 
-## Category sections
+## Profile resolution
 
-Section names are hyphen-separated category conjunctions:
+- Precedence: `--profile > DOTFILES_PROFILE > repository dotfiles.profile > interactive prompt`.
+- Never silently default to `base` when no profile is configured. Non-interactive
+  runs without a selection fail with guidance.
+- `resolve_read_only()` must not prompt or write repository config; only an
+  explicit `--profile` or interactive prompt selection persists. Keep profile
+  definitions and active-category computation in
+  [profiles.rs](../../../cli/src/app/config/profiles.rs) and `profiles/`.
 
-```toml
-[arch-desktop]
-items = ["example"]
-```
+## Semantic validation and drift checks
 
-Every category must be active. Do not use dotted names; TOML interprets them as
-nested tables. The built-in tags are `base`, `desktop`, `linux`, `windows`,
-`arch`, and `wsl`; preflight rejects unknown, empty, and repeated tags. Add a
-new tag to the profile resolver's known categories before using it in TOML.
+- Distinguish startup vs check semantics: loader/structural errors can abort
+  startup, whereas semantic diagnostics from `Config::validate` fail
+  `dotfiles check` even at warning severity without aborting ordinary mutation.
+- Domain `validate()` functions belong in `cli/src/domains/*/config/` and are
+  aggregated by `Config::validate`. Keep them read-only, deterministic, and
+  focused on schema/data integrity (never run external tools or mutate host
+  state).
+- `Validator` helpers (`check`, `check_with_hint`, `require_non_empty`,
+  `require_relative_path`, `require_within_root`) take an **invalid** predicate
+  (`true` records a diagnostic). `reject_conflicts` checks key/name collisions
+  only; validate individual items before deduplicating.
+- Validate unfiltered cross-platform views (including inactive categories and
+  both base and overlay sources) so disabled profiles cannot hide broken data.
+- Keep real `conf/*.toml` and `symlinks/` aligned with
+  [cli/tests/config_drift.rs](../../../cli/tests/config_drift.rs).
 
-Prefer `config_section!` and `SectionLoader` for ordinary category-filtered,
-overlay-aware lists. Loaders return typed desired state and contain no task
-behavior.
-
-## Extend the schema completely
-
-Follow the [aggregate loader](../../../cli/src/app/config/mod.rs) and
-[category validation](../../../cli/src/app/config/preflight.rs). For a new
-section, update the typed model and required inventory where applicable,
-`SectionLoader` collection, config/handle inventory, semantic validation, real
-data, fixtures, and owning task. Do not copy a hand-written public/overlay merge.
-
-Preserve resource-aware precedence through
-[`merge::OverlayEntry`](../../../cli/src/app/config/merge.rs): active overlay
-entries replace matching base identities, with unmatched base entries first
-except for system files, whose replacements retain their original positions.
-Retain complete entries and source origins; this is not whole-file merging.
-Validate within-source conflicts before replacement, and retain both sources
-in unfiltered validation views. See
-[Private overlays](../../../docs/content/guides/private-overlays.md#merge-rules).
-Use `SectionLoader::collect_views` when both active and unfiltered validation
-inputs are needed. It decodes each source once and stamps origins before deriving
-the views. Use `collect_filtered` for active-only lists and `collect` for registry
-values. Preserve source spans when decoding; do not reparse to recover diagnostics.
-
-Cover unknown fields, malformed types, optional overlay absence, required main
-absence, category inclusion/exclusion, and merged data. Use the TOML checks in
-[Testing](../../../docs/content/development/testing.md#choosing-coverage).
-
-Use `config-validation` for diagnostic and drift-test details, `profile-system`
-for profile resolution, and `overlay-scripts` for overlay path selection and
-script execution. Section loading and merge mechanics belong here. The complete
-contributor checklist lives in
-[Contributing](../../../docs/content/development/contributing.md#change-checklists).
+See [Testing](../../../docs/content/development/testing.md#choosing-coverage)
+for TOML/validation test targets and
+[Contributing](../../../docs/content/development/contributing.md#change-checklists)
+for the full new-section checklist.

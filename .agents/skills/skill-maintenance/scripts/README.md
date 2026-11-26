@@ -1,7 +1,8 @@
 # Skill metadata validator
 
-[check-skills.py](check-skills.py) validates the repository's deliberately small
-frontmatter convention. The native checker and Linux docs stage run it and
+[check-skills.py](check-skills.py) validates repository-local skills under
+`.agents/skills/*/SKILL.md` only (not APM plugin skills under `symlinks/apm/`).
+The native checker and Linux docs stage run it alongside
 [test-check-skills.py](test-check-skills.py).
 
 Frontmatter accepts only a plain lowercase hyphenated `name` and a
@@ -11,6 +12,4 @@ rejects unsupported forms, missing or duplicate keys, and empty descriptions;
 it is not a general YAML parser.
 
 Extend the convention and regression fixtures together when new metadata is
-needed. Run the fixtures when changing the validator or its convention. Select
-commands from [docs/README.md](../../../../docs/README.md#checks). Metadata
-validation does not establish instruction accuracy or routing effectiveness.
+needed. Select commands from [docs/README.md](../../../../docs/README.md#checks).

@@ -1,55 +1,53 @@
 ---
 name: self-update
 description: >
-  Use for Rust binary self-update under cli/src/domains/dotfiles/self_update*,
-  release selection/cache, download verification, binary replacement, smoke
-  tests, and update restart integration. Not for Git repository synchronization,
-  package upgrades, or release publishing alone.
+  Use for Rust binary self-update under cli/src/domains/dotfiles/self_update*
+  (release selection/cache, download verification, binary replacement, smoke
+  tests, restart integration) and for dotfiles.sh / dotfiles.ps1 wrapper
+  bootstrap, verification, --build handling, and argument forwarding. Not for
+  Git repository synchronization, package upgrades, managed shell startup
+  (use shell-configuration), or Git hooks (use git-hooks-patterns).
 ---
 
-# Self Update
+# Self Update and Wrapper Bootstrap
 
-## Find the boundary
+Wrappers (`dotfiles.sh`, `dotfiles.ps1`) own bootstrap before a binary exists;
+Rust (`cli/src/domains/dotfiles/self_update.rs` and `self_update/`) owns normal
+binary self-update. Git checkout sync is separate (`cli/src/domains/repository/`).
 
-| Concern | Start with |
-|---|---|
-| update applicability and orchestration | `cli/src/domains/dotfiles/self_update.rs` |
-| release ordering and cache | `self_update/version.rs`, `self_update/cache.rs` |
-| streaming download and checksum | `self_update/http.rs` |
-| provenance policy and verification | `self_update/attestation.rs` |
-| staged replacement, smoke test, recovery | `self_update/install.rs` |
-| process restart | `cli/src/app/commands/` |
+## Rust binary self-update
 
-The abbreviated paths are relative to `cli/src/domains/dotfiles/`.
-Wrappers own bootstrap before a binary exists; Rust owns normal binary
-self-update. Git checkout synchronization is a separate workflow under
-`cli/src/domains/repository/`.
+- Preserve dev-build/installed-path applicability, explicit skip policy, release
+  ordering (do not treat arbitrary tags as newer), and offline-discovery vs
+  failed-install distinction.
+- Trust and recovery sequence (`self_update/install.rs`):
+  1. Verify SHA-256 checksum and required provenance on the staged download
+     before touching the working binary—never silently weaken attestation policy.
+  2. Smoke-test **both** the staged binary before swap and the installed binary
+     after swap against the exact expected release string (`dotfiles <tag>`),
+     not merely exit code 0, so a runnable wrong release cannot become eligible
+     for launcher recovery.
+  3. Install from the same verified staged bytes, keep the old binary for
+     rollback, and preserve both the original failure and any rollback failure.
+- Preserve guarded restart and forwarded arguments so execution never loops or
+  continues with stale process-generation inputs.
 
-## Preserve the trust and recovery sequence
+## Wrapper bootstrap
 
-- Preserve development-build/installed-path applicability, explicit skip policy,
-  release ordering, and the distinction between offline discovery and failed
-  installation. Do not treat arbitrary tags as newer releases.
-- Verify the checksum and required provenance against the staged download
-  before replacing the working binary. Preserve explicit attestation policy;
-  do not silently weaken verification after a network or verification failure.
-- Use the same staged bytes for verification and installation. Preserve unique
-  staging, cleanup, executable permissions, and platform-specific replacement.
-- Retain the old binary for recovery, smoke-test the installed binary with the
-  supported version flag, and preserve both the original failure and any
-  rollback failure. Do not report success merely because replacement succeeded.
-- Preserve guarded restart and forwarded arguments; avoid restart loops or
-  continuing with configuration/task inputs from the wrong process generation.
+- Wrappers own only production download/bootstrap, checksum/provenance
+  verification, `--build` source mode, pre-binary flags, and verbatim
+  forwarding of all other arguments—domain behavior belongs in Rust.
+- Keep `dotfiles.sh` (POSIX `#!/bin/sh`, no Bashisms) and `dotfiles.ps1`
+  (explicit native exit-code checks—`$ErrorActionPreference = 'Stop'` does not
+  catch every non-zero native exit) in parity.
+- Never reconstruct forwarded arguments via `eval` or string interpolation;
+  verify downloads before execution or cache replacement and preserve the
+  working binary on failure. Cover consumed `--build`, empty arguments, spaces,
+  arguments after `--`, stdout/stderr routing, and child exit code.
+- Wrapper progress uses the CLI's compact ` · `-separated style; keep warnings
+  and errors on stderr with their existing prefixes.
 
-## Validate the changed boundary
-
-Use the existing injected HTTP/provenance fixtures and temporary binary paths
-in the owning modules. Cover failed download/checksum/provenance before
-replacement, replacement failure, smoke-test failure, rollback, and successful
-installation as relevant. Never replace the live `bin/dotfiles` to test a patch.
-Use [Testing](../../../docs/content/development/testing.md#choosing-coverage) for commands and native
-Windows coverage limits.
-
-Add `shell-patterns` when changing wrapper parity, `ci-cd-patterns` when changing
-release asset/tag/provenance production, and `engine-orchestration` only when
-the restart or execution contract changes.
+Use injected HTTP/provenance fixtures and wrapper tests from
+[Testing](../../../docs/content/development/testing.md#choosing-coverage); never
+replace the live `bin/dotfiles` to test a patch. Use `ci-cd-patterns` when
+changing release asset/tag/provenance production.

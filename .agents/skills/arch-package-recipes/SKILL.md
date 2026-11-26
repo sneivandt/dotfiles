@@ -2,64 +2,45 @@
 name: arch-package-recipes
 description: >
   Use for packages/*/PKGBUILD and release.json, custom-package-versions,
-  custom-package-repository, disposable PKGBUILD snapshots, or Paru local repository cleanup.
-  Not for ordinary conf/packages.toml entries or package providers alone, or
-  APM agent dependency/deployment manifests.
+  custom-package-repository, disposable PKGBUILD snapshots, or Paru local
+  repository cleanup. Not for ordinary conf/packages.toml entries, package
+  providers alone, or APM manifests.
 ---
 
 # Arch Package Recipes
 
-Read [Custom package versions](../../../docs/content/reference/custom-package-versions.md)
-for release discovery and descriptors, and
-[Custom package repository](../../../docs/content/reference/custom-package-repository.md)
-for snapshots, cache ownership, and Paru configuration.
+See [Custom package versions](../../../docs/content/reference/custom-package-versions.md)
+and [Custom package repository](../../../docs/content/reference/custom-package-repository.md)
+for release descriptors, snapshots, and generated Paru config; implementation
+lives in [arch_recipes.rs](../../../cli/src/domains/packages/arch_recipes.rs) and
+[snapshots.rs](../../../cli/src/domains/packages/arch_recipes/snapshots.rs).
 
-## Find the owner
+## Non-obvious invariants
 
-| Change | Start with |
-|---|---|
-| names, dependencies, URLs, packaging | `packages/<recipe>/PKGBUILD` |
-| release source, architecture assets, ownership | `packages/<recipe>/release.json` |
-| discovery, pins, generated Paru config | [arch_recipes.rs](../../../cli/src/domains/packages/arch_recipes.rs) |
-| cached snapshots and cleanup safety | [snapshots.rs](../../../cli/src/domains/packages/arch_recipes/snapshots.rs) |
-| shared Paru options | `symlinks/config/paru/paru.conf.base` |
-| automatic installation selection | `conf/packages.toml`; use `package-management` for providers |
-
-## Preserve these contracts
-
-- Track recipes/descriptors, not generated version/checksum pins or build output.
-  Do not add source-checkout ignore rules to accommodate building in the wrong
-  location. Review tracked license/notice changes separately from version refresh.
+- Track recipes and descriptors only—never generated version/checksum pins or
+  build output, and do not add source-checkout ignore rules for misplaced builds.
 - Validate all configured asset digests before publishing a recipe's pins;
-  preserve failed recipes' pins and failure counts while independent work proceeds.
-  Use the shared GitHub client and preserve cache revalidation and quota handling.
-- Preview may inspect/query but never writes pins, caches, snapshots, or config,
-  and never evaluates PKGBUILDs. Metadata validation executes reviewed recipes
-  on disposable copies; those copies are not a sandbox.
+  preserve failed recipes' existing pins and failure counts while independent
+  work proceeds. Use the shared GitHub client (ETag revalidation and quota handling).
+- Preview may query releases but never writes pins, caches, snapshots, or config,
+  and never evaluates `PKGBUILD`s. Metadata validation executes recipes on
+  disposable copies; those copies are not a sandbox.
 - Cache successful validation against exact inputs, descriptor, and a versioned
-  protocol. Check ownership, working files, and committed inputs before reuse.
-  Repair stale/legacy metadata even when recipe inputs and pins are unchanged.
-- Keep standalone owned snapshots aligned with `CloneDir`, repository `Path`,
-  and actual `package_base`. Reject foreign repositories, worktrees, and unsafe
-  links. Commit supported inputs and validated `.SRCINFO` so Paru cleanup retains
-  them. Extend the documented format before adding patches or other inputs.
+  protocol; verify ownership, working files, and committed inputs before reuse,
+  and repair stale/legacy metadata even when inputs and pins are unchanged.
+- Keep owned snapshots aligned with `CloneDir`, repository `Path`, and actual
+  `package_base`. Reject foreign repos, worktrees, and unsafe links. Commit
+  supported inputs and validated `.SRCINFO` so Paru cleanup retains them; extend
+  the documented format before adding new input types.
 - Preserve ordering-only preparation edges and the blocking Paru-health edge.
-  Retained pins can remain useful after discovery failure. Omit unavailable custom
-  recipes from publication/installation, count failures, and never fall back to
-  the AUR. Verify current inputs and published sections before direct install.
-- Keep bounded validation workers conditional on `ctx.parallel()`, ordered
-  publication, task log context, and cancellation propagation. Agent deployment
-  must stay independent of the APM installation method.
+  Omit unavailable custom recipes from publication/installation, count failures,
+  and never fall back to the AUR.
+- Keep bounded validation workers conditional on `ctx.parallel()`, with ordered
+  publication, task log context, and cancellation propagation.
 
-## Verify the changed contract
+## Verification
 
-Use [Choosing coverage](../../../docs/content/development/testing.md#choosing-coverage) and focused
-[regressions](../../../cli/src/domains/packages/arch_recipes/tests.rs).
-Recipe-only changes must select offline Linux checks and PKGBUILD ShellCheck
-without releasing the CLI solely because a recipe changed; use `ci-cd-patterns`
-for routing changes.
-
-For cleanup changes, exercise build-only Paru cleanup in an isolated home/cache
-with installation blocked, and confirm source edits and cached pins survive.
-A successful build/listing alone does not prove cleanup safety; offline checks
-cannot establish native installation or upstream availability.
+Recipe-only changes must trigger offline Linux checks and PKGBUILD ShellCheck
+without releasing the CLI. For cleanup changes, run build-only Paru cleanup in
+an isolated home/cache with installation blocked and confirm source edits and
+cached pins survive (a successful build/listing alone does not prove cleanup safety).

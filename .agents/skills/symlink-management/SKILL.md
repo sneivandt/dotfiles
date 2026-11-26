@@ -8,53 +8,37 @@ description: >
 
 # Symlink Management
 
-Sources are relative to their owning repository's `symlinks/` tree and cannot
-escape it. Explicit targets are home-relative. Validate empty/absolute paths,
-`..`, source containment, source existence, duplicate targets, and overlapping
-parent/child targets using the existing cross-platform helpers.
+Sources live in [symlinks.rs](../../../cli/src/domains/files/config/symlinks.rs),
+[glob_expansion.rs](../../../cli/src/domains/files/config/symlinks/glob_expansion.rs),
+[state.rs](../../../cli/src/domains/files/resources/symlink/state.rs), and
+[materialize.rs](../../../cli/src/domains/files/resources/symlink/materialize.rs).
 
-## Target rules
+## Targets and globs
 
-- A string source receives the normal leading-dot target mapping: `config/foo`
-  becomes `~/.config/foo`, not `~/.config/.foo`.
-- Use `{ source, target }` for paths that must not receive a dot prefix.
-- One canonical source may feed multiple explicit targets.
-- Do not create links inside another managed directory link.
-- Resolve overlay entries from their recorded `origin`, not the public root.
+- Sources are relative to their declaring repo's `symlinks/` tree (resolved
+  from the entry's recorded `origin` for overlays); explicit targets are
+  home-relative.
+- Bare string entries receive a leading dot on the first segment (`config/foo`
+  -> `~/.config/foo`, not `~/.config/.foo`). Use `{ source, target }` to omit
+  the leading dot; one source may feed multiple targets. Never link inside
+  another managed directory link.
+- Source globs support only a complete `*` path segment (single-segment capture,
+  no general shell globbing or `**`). Expansion runs deterministically before
+  conflict checks; malformed/unmatched globs fail, and explicit target `*`
+  count must match source captures.
 
-## Source globs
+## Install and removal invariants
 
-Only a complete `*` path segment is supported; it captures one segment.
-Expansion is deterministic and happens before active-target conflict checks.
-Malformed or unmatched globs fail. Explicit target `*` captures must match
-source captures in number; do not assume general shell glob syntax or recursive
-`**` support. See [glob expansion](../../../cli/src/domains/files/config/symlinks/glob_expansion.rs).
-
-## Resource behavior
-
-- The task uses strict resource processing.
-- `SymlinkResource` owns platform-specific creation.
-- Correct links are already converged. Install creates links at vacant targets
-  and reports conflicts. Preserve existing files,
-  directories, and unrelated links.
-- Check where existing target parents resolve. External destinations require
-  the entry's `allow_external_target` opt-in for installation and removal.
+- `SymlinkResource` uses strict processing. Existing non-link files/dirs and
+  unrelated symlinks are preserved as conflicts (`Invalid`). The **only**
+  permitted occupied-target replacement is a recognized historical managed link
+  (`legacy_link`), rechecked immediately before replacing.
+- Check where existing target parents resolve: external destinations require
+  `allow_external_target` for both install and removal.
 - Uninstall materializes managed links into real files/directories rather than
-  deleting their content. Missing targets stay absent unless `--restore-missing`
-  is selected. Preserve incorrect and user-replaced targets.
-- Never overwrite an existing non-link target during removal.
-- Stage copies before unlinking the target; preserve temporary cleanup and
-  cross-filesystem handling. Cover copy/rename failures rather than assuming
-  the whole materialization is atomic.
+  deleting content (stage copy before unlink, handle cross-filesystem errors
+  without assuming atomicity). Missing targets stay absent unless
+  `--restore-missing` is passed; never overwrite an existing non-link target.
 
-## Add a symlink
-
-1. Add the real source under `symlinks/`.
-2. Add it to the correct `conf/symlinks.toml` section.
-3. Check both built-in profiles and add config-drift coverage where needed; do
-   not enable a platform-specific config in an incompatible profile.
-
-Read [source and target validation](../../../cli/src/domains/files/config/symlinks.rs)
-and [materialization](../../../cli/src/domains/files/resources/symlink/materialize.rs).
-Use `windows-specific-patterns` for capability/junction behavior. Use the TOML
-and dry-run coverage in [Testing](../../../docs/content/development/testing.md#choosing-coverage).
+Use `windows-specific-patterns` for Windows symlink capability and junction
+fallback.

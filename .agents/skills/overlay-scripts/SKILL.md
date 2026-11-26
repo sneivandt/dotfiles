@@ -2,63 +2,39 @@
 name: overlay-scripts
 description: >
   Use for private overlay path resolution, overlay script resources, or dynamic
-  OverlayScriptTask discovery. Not for generic TOML section loading/merging,
-  ordinary repository scripts, or public config alone.
+  OverlayScriptTask discovery. Not for generic TOML section loading/merging
+  (use toml-configuration), ordinary repository scripts, or public config alone.
 ---
 
 # Overlay Scripts
 
-Never copy private overlay content into this repository or its skills.
-The user-facing setup, precedence, and protocol live in
-[Private overlays](../../../docs/content/guides/private-overlays.md).
+User-facing setup and protocol live in
+[Private overlays](../../../docs/content/guides/private-overlays.md);
+implementation lives in [resolution.rs](../../../cli/src/domains/overlay/resolution.rs),
+[script.rs](../../../cli/src/domains/overlay/resources/script.rs), and
+[scripts.rs](../../../cli/src/domains/overlay/scripts.rs).
 
-## Overlay resolution
+## Resolution and persistence
 
-Resolve once at startup:
+- Precedence: `--overlay > DOTFILES_OVERLAY > repository dotfiles.overlay`.
+- An explicit linked worktree (`.git` is a file) requires interactive `[y/N]`
+  confirmation before use or persistence; empty input and non-interactive runs
+  decline it.
+- `resolution::resolve_from_args` and `resolution::resolve_read_only` are both
+  read-only; [app/commands/runner.rs](../../../cli/src/app/commands/runner.rs)
+  owns persisting an explicit `--overlay` selection.
 
-```text
---overlay > DOTFILES_OVERLAY > repository dotfiles.overlay
-```
+## Script execution and dynamic discovery
 
-An explicit linked worktree (`.git` is a file) requires interactive `[y/N]`
-confirmation before use or persistence. Empty input and non-interactive runs
-decline it.
-
-The normal resolver persists an explicit `--overlay` path; the read-only resolver
-does not. Do not invoke the normal resolver against the real checkout merely to
-test selection. Use temporary repositories and synthetic overlay fixtures.
-
-## Config and scripts
-
-- `SectionLoader` applies category filtering and resource-aware overlay precedence.
-  Matching active identities replace base entries; unmatched base entries remain.
-  Use `toml-configuration` for generic section loading and merge mechanics;
-  add this skill when overlay selection or script execution also changes.
-- Script paths are overlay-relative. Reject absolute paths and `..`, and preserve
-  canonical containment checks for symlink escapes.
-- Scripts implement apply, `--check`, `--dryrun`, and `--remove`.
-- Check exits 0 when correct, 1 when apply is needed, and another non-zero on
-  failure. Every mode propagates failures.
-- Shell scripts are POSIX `sh`; PowerShell runs non-interactively.
-- All subprocesses use the executor.
-- Dry-run is cooperative: `--check` and `--dryrun` execute overlay code, and the
-  engine cannot stop a misbehaving script from mutating. Inspect trusted scripts
-  or use fixtures before treating a preview as safe.
-
-## Dynamic task discovery
-
-Build one `OverlayScriptTask` per active entry from the immutable startup
-configuration. Dynamic tasks are not catalog entries. Preserve config order and
-stable `script-<normalized-name>` selectors.
-
-When repository synchronization changes the checkout, the guarded child process
-reloads configuration and rebuilds the entire task set. Do not add mid-run
-configuration reload or late task discovery.
-
-Test merge order, categories, path rejection, all exit mappings, dry-run
-failure, startup discovery, and restart selection.
-
-Use [resolution](../../../cli/src/domains/overlay/resolution.rs),
-[script execution](../../../cli/src/domains/overlay/resources/script.rs), and
-[dynamic tasks](../../../cli/src/domains/overlay/scripts.rs) as the source of
-truth; keep private paths and script output out of public reports and fixtures.
+- Script paths are overlay-relative: reject absolute paths and `..`, and
+  preserve canonical containment checks against symlink escapes.
+- Scripts implement apply, `--check`, `--dryrun`, and `--remove`. `--check`
+  exits `0` (correct), `1` (apply needed), or other non-zero (error); every
+  mode propagates failures. Shell scripts use POSIX `sh`; PowerShell runs
+  non-interactively.
+- Dry-run is cooperative: `--check` and `--dryrun` execute overlay code and
+  cannot sandbox a misbehaving script.
+- Build one `OverlayScriptTask` per active entry from the immutable startup
+  snapshot (not catalog entries), preserving config order and stable
+  `script-<normalized-name>` selectors. Repository updates rebuild dynamic tasks
+  only across the guarded restart boundary.

@@ -132,12 +132,12 @@ Omitting stage names runs the default set:
 | `test` | Full Rust test suite (excluding shell/PowerShell integration scripts) |
 | `rustdoc` | Private-item docs and configured rustdoc lints |
 | `config` | CLI configuration, source paths, and required config files |
-| `docs` | Markdown links, skill metadata/fixtures, Rust doc contracts/selectors, VitePress build, built links, and browser regressions (Linux only) |
-| `ci` | Workflow contracts, path/release classification, aggregate gating, and actionlint (Linux only) |
-| `shell` | Shared ShellCheck discovery and rules |
+| `docs` | Markdown links, skill metadata/fixtures, VitePress build, built links, and browser regressions (plus Rust doc contracts/selectors on Linux) |
+| `ci` | Workflow contracts, path/release classification, aggregate gating, and actionlint (pure-Python contract/classification/gate tests plus native `actionlint` on Windows) |
+| `shell` | Shared ShellCheck discovery and rules (default on Linux, opt-in on Windows) |
 | `powershell` | PSScriptAnalyzer at Warning/Error severity |
 | `python` | Ruff linting across repository Python scripts and tests |
-| `lua` | Luacheck linting across Hyprland and Neovim Lua files |
+| `lua` | Luacheck linting across Hyprland and Neovim Lua files (Linux only) |
 | `audit` / `deny` | Dependency advisories and dependency policy |
 
 Cargo stages use `--locked` and `--profile ci` where applicable, resolving
@@ -148,11 +148,11 @@ failures, and any installed tool's nonzero exit (including exit code `2`) fails
 immediately. See [Analyzer prerequisites](#analyzer-prerequisites) for required
 tools.
 
-Five stages are opt-in: `msrv` installs and builds with the MSRV from
+Five stages are opt-in on Linux: `msrv` installs and builds with the MSRV from
 `Cargo.toml`, `wrapper` runs the platform bootstrap wrapper tests, and Linux
 `qml` (Qt `qmllint` and Qt Quick Test), `hooks` (staged-input and maintenance
 suites), and `desktop` (Hyprland and Quickshell Python tests). `--all` on Linux
-enables all opt-in stages; `--all` / `-All` on Windows adds `msrv` and
+enables all opt-in stages; `--all` / `-All` on Windows adds `shell`, `msrv`, and
 `wrapper`. None of them run mutation testing or live host integration.
 
 The Linux `docs` stage requires Python, Cargo, the Node version in

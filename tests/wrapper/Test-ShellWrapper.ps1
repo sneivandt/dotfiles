@@ -50,6 +50,7 @@ function Invoke-TestSuite {
     $results += Test-VersionPinnedBootstrapUrl
     $results += Test-AttestationVerification
     $results += Test-CliStartupCompletionEnv
+    $results += Test-UpdateRecovery
     $results += Test-ErrorHandling
     $results += Test-IsolatedWrapperPath
     $results += Test-NativeExitCode

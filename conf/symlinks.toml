@@ -109,16 +109,12 @@ symlinks = [
   "local/share/icons/Tokyo-Night",
 ]
 
-[desktop]
-symlinks = [
-  { source = "config/Code/User/settings.json", target = ".vscode-server/data/Machine/settings.json" },
-  { source = "config/Code/User/settings.json", target = ".vscode-server-insiders/data/Machine/settings.json" },
-]
-
 [linux-desktop]
 symlinks = [
   { source = "config/Code/User/keybindings.json", target = ".config/Code - Insiders/User/keybindings.json" },
   { source = "config/Code/User/settings.json", target = ".config/Code - Insiders/User/settings.json" },
+  { source = "config/Code/User/settings.json", target = ".vscode-server/data/Machine/settings.json" },
+  { source = "config/Code/User/settings.json", target = ".vscode-server-insiders/data/Machine/settings.json" },
   "config/Code/User/keybindings.json",
   "config/Code/User/settings.json",
   "config/shell/aliases-desktop.sh",

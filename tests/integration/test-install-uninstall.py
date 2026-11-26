@@ -336,6 +336,9 @@ def test_windows_round_trip(binary: Path) -> None:
         description="Desktop symlink install",
     )
     assert_symlink(terminal, terminal_source)
+    for remote_dir in (".vscode-server", ".vscode-server-insiders"):
+        if os.path.lexists(home / remote_dir):
+            raise AssertionError(f"Windows desktop install linked Linux-only {remote_dir}")
     terminal_hash = sha256(terminal)
 
     print("Running uninstall...")

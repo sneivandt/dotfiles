@@ -55,12 +55,13 @@ path = 'HKCU:\Software\Microsoft\TabletTip\1.7'
 [tabletip.values]
 TipbandDesiredVisibility = 0           # Hide touch keyboard button from taskbar
 
-# File Explorer settings
-[explorer]
-path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer'
+# Windows theme preferences
+[personalize]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
 
-[explorer.values]
-EnableAutoTray = 0                     # Disable auto-hide inactive tray icons
+[personalize.values]
+AppsUseLightTheme = 0                  # Use dark mode for apps
+SystemUsesLightTheme = 0               # Use dark mode for Windows UI
 
 # Taskbar settings
 # Existing-user pins are intentionally excluded because Windows stores them in
@@ -74,10 +75,8 @@ TaskbarDa = 0                          # Hide Widgets button
 ShowTaskViewButton = 0                 # Hide Task View button
 ShowCopilotButton = 0                  # Hide Copilot button
 TaskbarAnimations = 0                  # Disable taskbar animations
-TaskbarSizeMove = 0                    # Lock taskbar size and position
 TaskbarGlomLevel = 0                   # Always combine taskbar buttons
 MMTaskbarGlomLevel = 0                 # Always combine on other monitors
-TaskbarSmallIcons = 0                  # Use normal-sized icons where supported
 DisablePreviewDesktop = 1              # Disable desktop preview
 ShowSecondsInSystemClock = 1           # Show seconds in system clock
 
@@ -137,13 +136,6 @@ MultiTaskingAltTabFilter = 3             # Show windows, not Edge tabs, in Alt+T
 SnapAssist = 0                           # Disable Snap Assist suggestions
 EnableSnapAssistFlyout = 0               # Disable Snap Assist layout flyout
 SnapFill = 0                             # Don't resize windows to fill snap gaps
-
-# People/contacts taskbar button
-[explorer_people]
-path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People'
-
-[explorer_people.values]
-PeopleBand = 0                         # Hide People button from taskbar
 
 # File Explorer address bar
 [cabinet_state]

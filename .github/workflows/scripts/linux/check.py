@@ -13,6 +13,7 @@ Usage:
 """
 
 from collections.abc import Callable
+import importlib.util
 import os
 from pathlib import Path
 import shutil
@@ -29,10 +30,10 @@ LINUX_DEFAULT_STAGES = (
 LINUX_OPTIONAL_STAGES = ("msrv", "qml", "hooks", "wrapper", "desktop")
 
 WINDOWS_DEFAULT_STAGES = (
-    "fmt", "clippy", "test", "rustdoc", "config",
-    "shell", "powershell", "audit", "deny",
+    "fmt", "clippy", "test", "rustdoc", "config", "docs", "ci",
+    "powershell", "python", "audit", "deny",
 )
-WINDOWS_OPTIONAL_STAGES = ("msrv", "wrapper")
+WINDOWS_OPTIONAL_STAGES = ("shell", "msrv", "wrapper")
 
 
 def platform_stages() -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -186,6 +187,9 @@ class Runner:
 
     def stage_docs(self) -> str:
         if sys.platform == "win32":
+            if not self.have("npm.cmd"):
+                self.console.note("npm.cmd not installed; skipping")
+                return "skip"
             return self.run_cmd(
                 [sys.executable, "-B", str(self.repo_root / "docs/check.py")],
                 cwd=self.repo_root,
@@ -200,6 +204,29 @@ class Runner:
         )
 
     def stage_ci(self) -> str:
+        if sys.platform == "win32":
+            ci_tests = self.scripts_linux / "ci_changes_tests"
+            status = self.run_sequence([
+                ([sys.executable, "-B", str(self.scripts_linux / "check-ci-contract.py")], self.cli_root),
+                (
+                    [sys.executable, "-B", "-m", "unittest", "discover", "-s", str(ci_tests), "-p", "test_classification.py"],
+                    self.scripts_linux,
+                ),
+                (
+                    [sys.executable, "-B", "-m", "unittest", "discover", "-s", str(ci_tests), "-p", "test_gate.py"],
+                    self.scripts_linux,
+                ),
+            ])
+            if status != "pass":
+                return "FAIL"
+            if not self.have("actionlint"):
+                self.console.note("actionlint not installed; workflow lint skipped")
+                return "skip"
+            workflows = sorted(str(p) for p in (self.repo_root / ".github/workflows").glob("*.yml"))
+            return self.run_cmd(
+                ["actionlint", "-shellcheck=", "-pyflakes=", *workflows],
+                cwd=self.repo_root,
+            )
         status = self.run_sequence([
             ([sys.executable, "-B", str(self.scripts_linux / "check-ci-contract.py")], self.cli_root),
             ([sys.executable, "-B", str(self.scripts_linux / "test-ci-changes.py")], self.cli_root),
@@ -259,6 +286,26 @@ class Runner:
         return self._static_analysis("pwsh", "test_psscriptanalyzer")
 
     def stage_python(self) -> str:
+        if sys.platform == "win32":
+            if not self.have("ruff"):
+                self.console.note("ruff not installed; skipping")
+                return "skip"
+            meta_path = self.scripts_linux / "ci_metadata.py"
+            spec = importlib.util.spec_from_file_location("ci_metadata", meta_path)
+            if spec is None or spec.loader is None:
+                self.console.note(f"Cannot load {meta_path}")
+                return "FAIL"
+            meta = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(meta)
+            targets = meta.ruff_inputs(self.repo_root)
+            return self.run_cmd(
+                [
+                    "ruff", "check", "--config",
+                    str(self.repo_root / ".github/linters/ruff.toml"),
+                    "--", *targets,
+                ],
+                cwd=self.repo_root,
+            )
         return self._static_analysis("ruff", "test_ruff")
 
     def stage_lua(self) -> str:

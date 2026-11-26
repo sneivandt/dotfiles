@@ -232,12 +232,14 @@ fn vscode_remote_settings_cover_stable_and_insiders_servers() {
         toml::from_str(&content).expect("parse symlinks.toml");
     let source = "config/Code/User/settings.json";
     let targets: HashSet<&str> = sections
-        .get("desktop")
-        .expect("desktop symlink section")
+        .get("linux-desktop")
+        .expect("linux-desktop symlink section")
         .symlinks
         .iter()
         .filter_map(|entry| match entry {
-            SymlinkEntry::WithTarget(entry) if entry.source == source => {
+            SymlinkEntry::WithTarget(entry)
+                if entry.source == source && entry.target.starts_with(".vscode-server") =>
+            {
                 Some(entry.target.as_str())
             }
             SymlinkEntry::Simple(_) | SymlinkEntry::WithTarget(_) => None,
@@ -250,8 +252,20 @@ fn vscode_remote_settings_cover_stable_and_insiders_servers() {
             ".vscode-server/data/Machine/settings.json",
             ".vscode-server-insiders/data/Machine/settings.json",
         ]),
-        "remote settings must target both current VS Code server directories"
+        "remote settings must target both current VS Code server directories on Linux"
     );
+    for section_name in ["desktop", "windows", "windows-desktop"] {
+        let has_remote_server = sections.get(section_name).is_some_and(|section| {
+            section.symlinks.iter().any(|entry| match entry {
+                SymlinkEntry::WithTarget(entry) => entry.target.starts_with(".vscode-server"),
+                SymlinkEntry::Simple(path) => path.starts_with("vscode-server"),
+            })
+        });
+        assert!(
+            !has_remote_server,
+            "Linux-only VS Code remote server settings must not appear in [{section_name}]"
+        );
+    }
     assert!(
         root.join("symlinks").join(source).is_file(),
         "remote settings source must exist"

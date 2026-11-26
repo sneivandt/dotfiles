@@ -34,6 +34,7 @@ jobs:
       lint_matrix: ${{ steps.classify.outputs.lint_matrix }}
       run_validate_config: ${{ steps.classify.outputs.run_validate_config }}
       run_apm: ${{ steps.classify.outputs.run_apm }}
+      run_apm_windows: ${{ steps.classify.outputs.run_apm_windows }}
       run_config_drift: ${{ steps.classify.outputs.run_config_drift }}
       run_rust_checks: ${{ steps.classify.outputs.run_rust_checks }}
       run_rust_fmt: ${{ steps.classify.outputs.run_rust_fmt }}
@@ -656,6 +657,29 @@ jobs:
           BINARY_PATH: ${{ github.workspace }}/bin/dotfiles.exe
         run: python -B tests/integration/test-install-uninstall.py
 
+  test-apm-windows:
+    name: "Integration: APM (Windows)"
+    runs-on: windows-latest
+    timeout-minutes: 30
+    needs: [classify-changes, build-windows]
+    if: needs.classify-changes.outputs.run_apm_windows == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dotfiles-windows
+          path: bin/
+      - name: Set up APM
+        uses: microsoft/apm-action@64544310be26812256300543071bfbaa8bc93aad # v1.12.0
+        with:
+          setup-only: 'true'
+          apm-version: '0.37.0'
+      - name: Verify public agent package deployment
+        shell: pwsh
+        run: python -B tests/integration/test-apm.py bin/dotfiles.exe
+
   # ── Application Tests ─────────────────────────────────
   test-applications:
     name: "App: ${{ matrix.application }}"
@@ -701,7 +725,7 @@ jobs:
       matrix:
         include:
           - application: Git
-            tests: config aliases behavior
+            tests: config aliases behavior clean hooks
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -812,6 +836,7 @@ jobs:
       - integration-windows
       - test-install-uninstall
       - test-install-uninstall-windows
+      - test-apm-windows
       - test-applications
       - test-applications-windows
       - test-git-hooks

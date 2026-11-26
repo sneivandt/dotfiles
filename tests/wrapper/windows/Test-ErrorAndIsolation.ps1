@@ -47,8 +47,9 @@ function Test-IsolatedWrapperPath {
     $caller = Join-Path $fixture 'caller directory'
     $isWindowsPlatform = ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
     $binaryName = if ($isWindowsPlatform) { 'dotfiles.exe' } else { 'dotfiles' }
+    $backupName = if ($isWindowsPlatform) { '.dotfiles-old.exe' } else { '.dotfiles.old' }
     $binary = Join-Path $repo "bin/$binaryName"
-    $backup = Join-Path $repo 'bin/.dotfiles.old'
+    $backup = Join-Path $repo "bin/$backupName"
     $buildBinary = Join-Path $repo "cli/target/dev-opt/$binaryName"
     $wrapper = Join-Path $repo 'dotfiles.ps1'
     $originalLocation = Get-Location

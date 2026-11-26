@@ -488,3 +488,42 @@ class LocalCheckTests(unittest.TestCase):
                     self.assertNotIn("All requested checks passed", result.stdout)
                     if not (strict or inherited):
                         self.assertIn("Checks completed with skips; coverage is incomplete.", result.stdout)
+
+    def test_windows_stage_selection_and_native_stages(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("check_runner_win", SCRIPTS / "check.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with patch.object(sys, "platform", "win32"):
+            default_stages, optional_stages = module.platform_stages()
+            self.assertIn("docs", default_stages)
+            self.assertIn("ci", default_stages)
+            self.assertIn("python", default_stages)
+            self.assertNotIn("shell", default_stages)
+            self.assertIn("shell", optional_stages)
+
+            runner = module.Runner(SCRIPTS.parents[3], module.Console())
+            with patch.object(runner, "have", return_value=False), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(runner.stage_docs(), "skip")
+                self.assertEqual(runner.stage_python(), "skip")
+
+            captured = []
+
+            def fake_run_cmd(argv, *, cwd=None, env=None):
+                captured.append((argv, cwd))
+                return "pass"
+
+            with patch.object(runner, "have", return_value=True), patch.object(
+                runner, "run_cmd", side_effect=fake_run_cmd,
+            ):
+                self.assertEqual(runner.stage_python(), "pass")
+            self.assertEqual(len(captured), 1)
+            argv, cwd = captured[0]
+            self.assertEqual(argv[:4], [
+                "ruff", "check", "--config", str(SCRIPTS.parents[3] / ".github/linters/ruff.toml"),
+            ])
+            self.assertEqual(argv[4], "--")
+            self.assertIn(str(SCRIPTS.parents[3]), argv[5:])
+            self.assertIn(str(SCRIPTS.parents[3] / "symlinks/local/bin/code-insiders"), argv[5:])
+            self.assertEqual(cwd, SCRIPTS.parents[3])

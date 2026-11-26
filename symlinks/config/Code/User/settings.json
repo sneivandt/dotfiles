@@ -73,7 +73,7 @@
     "docker.extension.enableComposeLanguageServer": false,
     "dotnetAcquisitionExtension.enableTelemetry": false,
     "editor.accessibilitySupport": "off",
-    "editor.fontFamily": "'Source Code Pro', 'Droid Sans Mono', 'Consolas', 'monospace'",
+    "editor.fontFamily": "'Source Code Pro', 'Cascadia Mono', 'Droid Sans Mono', 'Consolas', 'monospace'",
     "editor.fontLigatures": true,
     "editor.inlineSuggest.enabled": true,
     "editor.minimap.enabled": false,

@@ -100,7 +100,8 @@ APM_EXACT_INPUTS = frozenset({
     "cli/src/domains/ai/apm.rs",
     "conf/symlinks.toml",
 })
-APM_PREFIX_INPUTS = ("symlinks/apm/", "cli/src/domains/ai/apm/", "packages/apm/")
+APM_WINDOWS_PREFIX_INPUTS = ("symlinks/apm/", "cli/src/domains/ai/apm/")
+APM_PREFIX_INPUTS = (*APM_WINDOWS_PREFIX_INPUTS, "packages/apm/")
 
 FULL_CI_EXACT = frozenset({
     ".github/workflows/ci.yml",
@@ -175,7 +176,7 @@ DISPATCH_RULES: tuple[PathRule, ...] = (
     PathRule(exact=frozenset({"tests/vim/test-vim.py"}), apps=("vim",)),
     PathRule(prefixes=("tests/vim/",), apps=("vim", "nvim")),
     PathRule(exact=frozenset({"tests/shell/Test-Prompt.ps1"}), flags=("prompt",)),
-    PathRule(exact=frozenset({"tests/integration/test-apm.py"}), flags=("apm",)),
+    PathRule(exact=frozenset({"tests/integration/test-apm.py"}), flags=("apm", "apm_windows")),
     PathRule(exact=frozenset({LINUX + "test-static-analysis.sh"}), linters=tuple(LINTERS)),
     PathRule(
         exact=frozenset({"tests/hooks/test-hook-inputs.py"}),
@@ -400,6 +401,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             continue
         if path.startswith(APM_PREFIX_INPUTS) or path in APM_EXACT_INPUTS:
             enable("apm")
+        if path.startswith(APM_WINDOWS_PREFIX_INPUTS) or path in APM_EXACT_INPUTS:
+            enable("apm_windows")
         if binary_input(path):
             enable("release")
         if shell_script(path):
@@ -477,7 +480,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
         enable("validate_config")
     if flags["run_validate_config"] or flags["run_config_drift"] or apps:
         enable("build_linux")
-    if flags["run_app_windows"]:
+    if flags["run_app_windows"] or flags["run_apm_windows"]:
         enable("build_windows")
 
     return {

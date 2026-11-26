@@ -263,3 +263,146 @@ function Test-CliStartupCompletionEnv {
         Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
+
+function Test-UpdateRecovery {
+    Write-TestStage 'Testing interrupted-update rollback, double-failure rejection, and legacy backup recovery'
+    $isWindowsPlatform = ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
+    $binaryName = if ($isWindowsPlatform) { 'dotfiles.exe' } else { 'dotfiles' }
+    $backupName = if ($isWindowsPlatform) { '.dotfiles-old.exe' } else { '.dotfiles.old' }
+    $fixture = [System.IO.Path]::GetFullPath(
+        (Join-Path (Get-RepoRoot) ".wrapper-recovery-$([guid]::NewGuid())"))
+    $pwshExecutable = (Get-Process -Id $PID).Path
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+
+    $invokeWrapper = {
+        param([string]$WrapperPath, [string[]]$WrapperArgs)
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new($pwshExecutable)
+        $startInfo.UseShellExecute = $false
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $startInfo.ArgumentList.Add('-NoProfile')
+        $startInfo.ArgumentList.Add('-File')
+        $startInfo.ArgumentList.Add($WrapperPath)
+        foreach ($arg in $WrapperArgs) {
+            $startInfo.ArgumentList.Add($arg)
+        }
+        $process = [System.Diagnostics.Process]::Start($startInfo)
+        try {
+            $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+            $stderrTask = $process.StandardError.ReadToEndAsync()
+            $process.WaitForExit()
+            return @{
+                ExitCode = $process.ExitCode
+                Stdout = $stdoutTask.GetAwaiter().GetResult()
+                Stderr = $stderrTask.GetAwaiter().GetResult()
+            }
+        } finally {
+            $process.Dispose()
+        }
+    }
+
+    $writeBrokenBinary = {
+        param([string]$TargetPath)
+        if ($isWindowsPlatform) {
+            [System.IO.File]::WriteAllText($TargetPath, 'corrupt-binary', $utf8NoBom)
+        } else {
+            [System.IO.File]::WriteAllText($TargetPath, "#!/bin/sh`nexit 1`n", $utf8NoBom)
+            & chmod +x $TargetPath
+            if ($LASTEXITCODE -ne 0) { throw "Failed to mark broken fixture executable: $TargetPath" }
+        }
+    }
+
+    try {
+        $binDir = Join-Path $fixture 'bin'
+        [void][System.IO.Directory]::CreateDirectory($binDir)
+        $wrapper = Join-Path $fixture 'dotfiles.ps1'
+        Copy-Item -LiteralPath (Get-WrapperPath) -Destination $wrapper
+        $binary = Join-Path $binDir $binaryName
+        $backup = Join-Path $binDir $backupName
+        $journal = Join-Path $binDir ".$binaryName.update-state"
+        $healthySource = Join-Path $fixture "healthy-$binaryName"
+
+        if ($env:BINARY_PATH -and (Test-Path -LiteralPath $env:BINARY_PATH -PathType Leaf)) {
+            Copy-Item -LiteralPath $env:BINARY_PATH -Destination $healthySource
+        } elseif (-not $isWindowsPlatform) {
+            $fakeCli = @(
+                '#!/bin/sh'
+                'if [ "${1:-}" = "--version" ]; then'
+                '  printf "dotfiles v2026.09.17-1\n"'
+                '  exit 0'
+                'fi'
+                'exit 1'
+            ) -join "`n"
+            [System.IO.File]::WriteAllText($healthySource, "$fakeCli`n", $utf8NoBom)
+            & chmod +x $healthySource
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to mark healthy recovery fixture executable' }
+        } else {
+            Write-Information 'Skipping native update recovery test on Windows without BINARY_PATH' -InformationAction Continue
+            return $true
+        }
+
+        # Case 1: Journal present, installed binary broken, backup healthy -> restore backup and clear journal.
+        & $writeBrokenBinary $binary
+        Copy-Item -LiteralPath $healthySource -Destination $backup -Force
+        [System.IO.File]::WriteAllText($journal, 'pending', $utf8NoBom)
+        $result = & $invokeWrapper $wrapper @('--version')
+        if ($result.ExitCode -ne 0) {
+            throw "Rollback failed (exit $($result.ExitCode)): $($result.Stderr)"
+        }
+        if ($result.Stdout -notmatch 'dotfiles\s+\S+') {
+            throw "Rollback produced unexpected version output: $($result.Stdout)"
+        }
+        if ($result.Stderr -notmatch 'Restored previous CLI after interrupted update\.') {
+            throw "Rollback did not emit recovery notice: $($result.Stderr)"
+        }
+        if ((Get-Item -Force -LiteralPath $journal).Length -ne 0) {
+            throw 'Rollback did not clear the update journal'
+        }
+        if (-not (Test-Path -LiteralPath $binary -PathType Leaf) -or (Test-Path -LiteralPath $backup)) {
+            throw 'Rollback did not move backup into the installed binary path'
+        }
+
+        # Case 2: Journal present, both installed binary and backup broken -> fail and preserve journal/backup.
+        & $writeBrokenBinary $binary
+        & $writeBrokenBinary $backup
+        [System.IO.File]::WriteAllText($journal, 'pending', $utf8NoBom)
+        $failed = & $invokeWrapper $wrapper @('--version')
+        if ($failed.ExitCode -eq 0) {
+            throw 'Double-broken recovery unexpectedly succeeded'
+        }
+        if ($failed.Stderr -notmatch 'Neither the installed CLI nor its backup starts') {
+            throw "Double-broken recovery error unexpected: $($failed.Stderr)"
+        }
+        if ((Get-Item -Force -LiteralPath $journal).Length -eq 0) {
+            throw 'Double-broken recovery cleared the update journal'
+        }
+        if (-not (Test-Path -LiteralPath $backup -PathType Leaf)) {
+            throw 'Double-broken recovery removed the backup binary'
+        }
+
+        # Case 3: Legacy backup without journal (binary absent, healthy backup present) -> run backup in place.
+        Remove-Item -LiteralPath $journal, $binary -Force -ErrorAction SilentlyContinue
+        Copy-Item -LiteralPath $healthySource -Destination $backup -Force
+        $legacy = & $invokeWrapper $wrapper @('--version')
+        if ($legacy.ExitCode -ne 0) {
+            throw "Legacy backup execution failed (exit $($legacy.ExitCode)): $($legacy.Stderr)"
+        }
+        if ($legacy.Stdout -notmatch 'dotfiles\s+\S+') {
+            throw "Legacy backup produced unexpected version output: $($legacy.Stdout)"
+        }
+        if ($legacy.Stderr -notmatch 'Using previous CLI;') {
+            throw "Legacy backup did not emit warning: $($legacy.Stderr)"
+        }
+        if ((Test-Path -LiteralPath $binary) -or -not (Test-Path -LiteralPath $backup -PathType Leaf)) {
+            throw 'Legacy backup recovery moved or removed the backup binary'
+        }
+
+        Write-TestPass 'Update recovery restores broken CLI, rejects double failures, and preserves legacy backups'
+        return $true
+    } catch {
+        Write-TestFail "Update recovery test failed: $_"
+        return $false
+    } finally {
+        Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}

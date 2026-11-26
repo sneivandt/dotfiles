@@ -29,26 +29,46 @@ function Test-BuildMode {
 }
 
 function Test-VersionDetection {
-    Write-TestStage "Testing version detection"
+    Write-TestStage "Testing version detection through wrapper"
 
-    if (-not $env:BINARY_PATH -or -not (Test-Path $env:BINARY_PATH)) {
+    if (-not $env:BINARY_PATH -or -not (Test-Path -LiteralPath $env:BINARY_PATH -PathType Leaf)) {
         Write-Information "Skipping: BINARY_PATH not set or binary not found" -InformationAction Continue
         return $true
     }
 
+    $isWindowsPlatform = ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
+    $binaryName = if ($isWindowsPlatform) { 'dotfiles.exe' } else { 'dotfiles' }
+    $fixture = [System.IO.Path]::GetFullPath(
+        (Join-Path (Get-RepoRoot) ".wrapper-version-$([guid]::NewGuid())"))
+    $savedEnvironment = @{}
+    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER')) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    }
     try {
-        $output = & $env:BINARY_PATH --version 2>&1
-        if ($output -match 'dotfiles\s+(.+)') {
+        $binDir = Join-Path $fixture 'bin'
+        [void][System.IO.Directory]::CreateDirectory($binDir)
+        $wrapper = Join-Path $fixture 'dotfiles.ps1'
+        Copy-Item -LiteralPath (Get-WrapperPath) -Destination $wrapper
+        Copy-Item -LiteralPath $env:BINARY_PATH -Destination (Join-Path $binDir $binaryName)
+
+        $output = & $wrapper --version 2>&1
+        $text = ($output | Out-String)
+        if ($LASTEXITCODE -eq 0 -and $text -match 'dotfiles\s+(\S+)') {
             $version = $Matches[1]
-            Write-TestPass "Version detected: $version"
+            Write-TestPass "Version detected via wrapper: $version"
             return $true
         } else {
-            Write-TestFail "Version detection failed: $output"
+            Write-TestFail "Version detection via wrapper failed (exit $LASTEXITCODE): $text"
             return $false
         }
     } catch {
-        Write-TestFail "Version command failed: $_"
+        Write-TestFail "Version command via wrapper failed: $_"
         return $false
+    } finally {
+        foreach ($name in $savedEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+        }
+        Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -88,25 +108,45 @@ function Test-ChecksumVerification {
 }
 
 function Test-ArgumentForwarding {
-    Write-TestStage "Testing argument forwarding"
+    Write-TestStage "Testing argument forwarding through wrapper"
 
-    if (-not $env:BINARY_PATH -or -not (Test-Path $env:BINARY_PATH)) {
+    if (-not $env:BINARY_PATH -or -not (Test-Path -LiteralPath $env:BINARY_PATH -PathType Leaf)) {
         Write-Information "Skipping: BINARY_PATH not set or binary not found" -InformationAction Continue
         return $true
     }
 
+    $isWindowsPlatform = ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
+    $binaryName = if ($isWindowsPlatform) { 'dotfiles.exe' } else { 'dotfiles' }
+    $fixture = [System.IO.Path]::GetFullPath(
+        (Join-Path (Get-RepoRoot) ".wrapper-help-$([guid]::NewGuid())"))
+    $savedEnvironment = @{}
+    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER')) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    }
     try {
-        $output = & $env:BINARY_PATH --help 2>&1
-        if ($output) {
-            Write-TestPass "Arguments forwarded correctly"
+        $binDir = Join-Path $fixture 'bin'
+        [void][System.IO.Directory]::CreateDirectory($binDir)
+        $wrapper = Join-Path $fixture 'dotfiles.ps1'
+        Copy-Item -LiteralPath (Get-WrapperPath) -Destination $wrapper
+        Copy-Item -LiteralPath $env:BINARY_PATH -Destination (Join-Path $binDir $binaryName)
+
+        $output = & $wrapper --help 2>&1
+        $text = ($output | Out-String)
+        if ($LASTEXITCODE -eq 0 -and $text -match 'Usage:') {
+            Write-TestPass "Arguments forwarded correctly through wrapper"
             return $true
         } else {
-            Write-TestFail "Argument forwarding failed"
+            Write-TestFail "Argument forwarding via wrapper failed (exit $LASTEXITCODE): $text"
             return $false
         }
     } catch {
         Write-TestFail "Argument forwarding test failed: $_"
         return $false
+    } finally {
+        foreach ($name in $savedEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+        }
+        Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 

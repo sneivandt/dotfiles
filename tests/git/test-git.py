@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Cross-platform Git configuration, aliases, behavior, and cleanup tests.
+"""Cross-platform Git configuration, aliases, behavior, cleanup, and hook tests.
 
-Usage: python3 -B tests/git/test-git.py [config] [aliases] [behavior] [clean]
+Usage: python3 -B tests/git/test-git.py [config] [aliases] [behavior] [clean] [hooks]
 """
 
 from __future__ import annotations
@@ -40,9 +40,11 @@ def run_git(
     cwd: Path,
     stdin_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    env = {k: v for k, v in os.environ.items() if k != "GIT_TEMPLATE_DIR"}
     return subprocess.run(
         ["git", *args],
         cwd=cwd,
+        env=env,
         input=stdin_text,
         text=True,
         capture_output=True,
@@ -229,22 +231,98 @@ def test_clean() -> None:
         print("PASS: cleanup preserves files until explicitly confirmed")
 
 
+def test_hooks() -> None:
+    if not require_git():
+        return
+    print("=== Testing git template hooks")
+
+    templates = home_dir() / ".config" / "git" / "templates"
+    for rel in ("hooks/pre-push", "hooks/post-merge", "hooks.local/pre-push", "hooks.local/post-merge"):
+        if not (templates / rel).is_file():
+            fail(f"missing installed git template hook: {templates / rel}")
+
+    def checked_git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+        result = run_git(*args, cwd=cwd)
+        if result.returncode != 0:
+            fail(f"git {' '.join(args)} failed: {result.stderr.strip()}")
+        return result
+
+    with tempfile.TemporaryDirectory() as base_str:
+        base = Path(base_str)
+        remote = base / "remote.git"
+        repo = base / "work"
+        other = base / "other"
+        remote.mkdir()
+        repo.mkdir()
+
+        checked_git("-c", "init.templateDir=", "init", "-q", "--bare", "-b", "main", str(remote), cwd=remote)
+        checked_git("init", "-q", "-b", "main", str(repo), cwd=repo)
+        if not (repo / ".git" / "hooks" / "pre-push").is_file():
+            fail("git init did not copy pre-push hook from init.templateDir")
+        checked_git("config", "user.name", "CI Test", cwd=repo)
+        checked_git("config", "user.email", "ci@test.local", cwd=repo)
+        checked_git("remote", "add", "origin", str(remote), cwd=repo)
+
+        (repo / "README.md").write_text("initial\n", encoding="utf-8")
+        checked_git("add", "README.md", cwd=repo)
+        checked_git("commit", "-q", "-m", "Initial commit", cwd=repo)
+
+        blocked = run_git("push", "origin", "main", cwd=repo)
+        if blocked.returncode == 0:
+            fail("pre-push hook allowed pushing directly to main")
+        if "protected branch main" not in blocked.stderr:
+            fail(f"pre-push hook rejection missing expected message: {blocked.stderr.strip()}")
+
+        checked_git("push", "--no-verify", "-q", "origin", "main", cwd=repo)
+
+        checked_git("checkout", "-q", "-b", "feature", cwd=repo)
+        (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+        checked_git("add", "feature.txt", cwd=repo)
+        checked_git("commit", "-q", "-m", "Feature commit", cwd=repo)
+        checked_git("push", "-q", "origin", "feature", cwd=repo)
+
+        checked_git("checkout", "-q", "main", cwd=repo)
+        checked_git("branch", "merged-topic", cwd=repo)
+        checked_git("checkout", "-q", "-b", "unmerged-topic", cwd=repo)
+        (repo / "wip.txt").write_text("wip\n", encoding="utf-8")
+        checked_git("add", "wip.txt", cwd=repo)
+        checked_git("commit", "-q", "-m", "Unmerged commit", cwd=repo)
+        checked_git("checkout", "-q", "main", cwd=repo)
+
+        checked_git("-c", "init.templateDir=", "clone", "-q", str(remote), str(other), cwd=base)
+        checked_git("config", "user.name", "CI Test", cwd=other)
+        checked_git("config", "user.email", "ci@test.local", cwd=other)
+        (other / "upstream.txt").write_text("upstream\n", encoding="utf-8")
+        checked_git("add", "upstream.txt", cwd=other)
+        checked_git("commit", "-q", "-m", "Upstream commit", cwd=other)
+        checked_git("push", "--no-verify", "-q", "origin", "main", cwd=other)
+
+        checked_git("fetch", "-q", "origin", cwd=repo)
+        checked_git("remote", "set-head", "origin", "main", cwd=repo)
+        checked_git("merge", "-q", "--ff-only", "origin/main", cwd=repo)
+
+        if run_git("show-ref", "--verify", "--quiet", "refs/heads/merged-topic", cwd=repo).returncode == 0:
+            fail("post-merge hook did not clean up merged-topic branch")
+        if run_git("show-ref", "--verify", "--quiet", "refs/heads/unmerged-topic", cwd=repo).returncode != 0:
+            fail("post-merge hook unexpectedly deleted unmerged-topic branch")
+        print("PASS: template hooks block protected pushes and clean merged branches")
+
+
 TESTS = {
     "config": test_config,
     "alias": test_aliases,
     "aliases": test_aliases,
     "behavior": test_behavior,
     "clean": test_clean,
+    "hooks": test_hooks,
 }
 
 
 def main(argv: list[str]) -> int:
     if argv:
         selected = [name.lower() for name in argv]
-    elif sys.platform == "win32":
-        selected = ["config", "aliases", "behavior"]
     else:
-        selected = ["config", "aliases", "behavior", "clean"]
+        selected = ["config", "aliases", "behavior", "clean", "hooks"]
 
     for name in selected:
         fn = TESTS.get(name)

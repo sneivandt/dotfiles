@@ -22,7 +22,7 @@ for commands and coverage matrix.
 - Pin external actions to full commit SHAs with the release tag in a comment.
   Keep recurring cross-platform CI/orchestration Python scripts under
   `.github/workflows/scripts/` (with OS-specific helpers under `linux/` and
-  `windows/`), the unified local runner at `check.py`, and
+  `windows/`), the unified local runner at `tests/check.py`, and
   application/component/integration tests under `tests/`; extend existing jobs
   before adding new ones.
 - Concurrency: let active `main` CI runs finish and keep only the newest

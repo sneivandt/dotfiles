@@ -7,12 +7,12 @@ not installed it is reported as SKIP rather than failing (unless --strict or
 DOTFILES_CHECK_STRICT=1 is set).
 
 Usage:
-  python3 -B check.py                 # run default core checks
-  python3 -B check.py --tests         # run all host-safe isolated test suites
-  python3 -B check.py --lint          # run all static-analysis checks
-  python3 -B check.py fmt clippy      # run named stages
-  python3 -B check.py --all           # include all opt-in stages
-  python3 -B check.py --list          # list available stages
+  python3 -B tests/check.py                 # run default core checks
+  python3 -B tests/check.py --tests         # run all host-safe isolated test suites
+  python3 -B tests/check.py --lint          # run all static-analysis checks
+  python3 -B tests/check.py fmt clippy      # run named stages
+  python3 -B tests/check.py --all           # include all opt-in stages
+  python3 -B tests/check.py --list          # list available stages
 """
 
 from collections.abc import Callable
@@ -671,7 +671,7 @@ class Runner:
 def usage(default_stages: tuple[str, ...], optional_stages: tuple[str, ...]) -> str:
     groups = platform_groups()
     return (
-        "Usage: python3 -B check.py [--strict] [--tests | --lint | --all | --list | STAGE...]\n\n"
+        "Usage: python3 -B tests/check.py [--strict] [--tests | --lint | --all | --list | STAGE...]\n\n"
         f"Stages (default): {' '.join(default_stages)}\n"
         f"Stages (opt-in):  {' '.join(optional_stages)}\n\n"
         "Groups:\n"
@@ -722,7 +722,7 @@ def main(argv: list[str] | None = None) -> int:
             print(usage(default_stages, optional_stages), end="", file=sys.stderr)
             return 2
 
-    repo_root = Path(__file__).resolve().parent
+    repo_root = Path(__file__).resolve().parents[1]
     runner = Runner(repo_root, console)
     actions = runner.stage_map()
 

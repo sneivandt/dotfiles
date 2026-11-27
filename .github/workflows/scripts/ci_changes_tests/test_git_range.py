@@ -353,7 +353,7 @@ class GitRangeTests(unittest.TestCase):
         shutil.copyfile(SCRIPTS / "pre-push.py", self.repo / SCRIPTS_PREFIX / "pre-push.py")
         self.write("cli/Cargo.toml", '[package]\nrust-version = "1.91"\n')
         self.write("docs/package.json", '{"private":true}\n')
-        self.write("check.py", "import sys\nsys.exit(17)\n")
+        self.write("tests/check.py", "import sys\nsys.exit(17)\n")
         tools = self.root / "tools"
         tools.mkdir()
         npm = tools / "npm"
@@ -364,7 +364,7 @@ class GitRangeTests(unittest.TestCase):
         self.write("README.md", "changed\n")
         head = self.commit()
         # The index is empty and the working-tree fix must not hide failure.
-        self.write("check.py", "import sys\nsys.exit(0)\n")
+        self.write("tests/check.py", "import sys\nsys.exit(0)\n")
         command = ["python3", "-B", str(self.repo / SCRIPTS_PREFIX / "pre-push.py")]
         for arguments, expected, message in (
             (["--base", base, "--head", head], 1, "exit status 17"),

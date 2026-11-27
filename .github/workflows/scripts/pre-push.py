@@ -71,7 +71,7 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False, linter_stag
         (
             "core checks",
             ".",
-            ["python3", "-B", "check.py", "--strict", *stages],
+            ["python3", "-B", "tests/check.py", "--strict", *stages],
         )
     )
     if selection["run_config_drift"] and not selection["run_rust_checks"]:
@@ -247,7 +247,7 @@ def windows_plan(selection, docs_checked=False):
                 [
                     sys.executable,
                     "-B",
-                    "check.py",
+                    "tests/check.py",
                     "--strict",
                     *stages,
                 ],

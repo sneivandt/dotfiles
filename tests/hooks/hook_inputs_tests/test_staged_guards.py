@@ -1115,14 +1115,15 @@ class StagedGuardTests(unittest.TestCase):
 
             # Exercise canonical local stages using the same mock compiler and Cargo.
             (index_repo / "hooks").mkdir(parents=True, exist_ok=True)
-            shutil.copy2(REPO_ROOT / "check.py", index_repo / "check.py")
+            (index_repo / "tests").mkdir(exist_ok=True)
+            shutil.copy2(REPO_ROOT / "tests/check.py", index_repo / "tests/check.py")
             shutil.copy2(
                 REPO_ROOT / "hooks" / "check-toolchain.sh",
                 index_repo / "hooks" / "check-toolchain.sh",
             )
             log_file.write_text("", encoding="utf-8")
             res = run(
-                [sys.executable, "-B", "check.py", "fmt", "rustdoc"],
+                [sys.executable, "-B", "tests/check.py", "fmt", "rustdoc"],
                 cwd=index_repo,
                 env=env,
             )
@@ -1131,7 +1132,7 @@ class StagedGuardTests(unittest.TestCase):
 
             log_file.write_text("", encoding="utf-8")
             res = run(
-                [sys.executable, "-B", "check.py", "rustdoc"],
+                [sys.executable, "-B", "tests/check.py", "rustdoc"],
                 cwd=index_repo,
                 env=dict(env, MOCK_RUST_VERSION="1.99.0"),
             )
@@ -1139,7 +1140,7 @@ class StagedGuardTests(unittest.TestCase):
             self.assertEqual(log_file.read_text(encoding="utf-8"), "")
 
             res = run(
-                [sys.executable, "-B", "check.py", "rustdoc"],
+                [sys.executable, "-B", "tests/check.py", "rustdoc"],
                 cwd=index_repo,
                 env=dict(env, MOCK_CARGO_EXIT="1"),
             )

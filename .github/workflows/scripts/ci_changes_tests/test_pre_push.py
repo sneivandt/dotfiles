@@ -93,7 +93,7 @@ class PrePushPlanTests(unittest.TestCase):
     def test_checker_changes_request_full_ci_without_binary_release(self):
         for path in (
             SCRIPTS_PREFIX + "pre-push.py",
-            "check.py",
+            "tests/check.py",
         ):
             with self.subTest(path=path):
                 selected = classify([path])
@@ -107,7 +107,8 @@ class PrePushPlanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "cli").mkdir()
-            shutil.copyfile(REPO_ROOT / "check.py", root / "check.py")
+            (root / "tests").mkdir()
+            shutil.copyfile(REPO_ROOT / "tests/check.py", root / "tests/check.py")
             (root / "python3").symlink_to(sys.executable)
             for strict, expected in ((False, 0), (True, 1)):
                 with self.subTest(strict=strict):
@@ -115,7 +116,7 @@ class PrePushPlanTests(unittest.TestCase):
                         [
                             sys.executable,
                             "-B",
-                            str(root / "check.py"),
+                            str(root / "tests/check.py"),
                             *(["--strict"] if strict else []),
                             "shell",
                         ],
@@ -141,7 +142,17 @@ class PrePushCoordinatorTests(unittest.TestCase):
         commands = PRE_PUSH["windows_plan"](selection)
         stages = next(command for label, _, command in commands if label == "native Windows checks")
         self.assertEqual(
-            stages[stages.index("--strict") + 1 :], ["clippy", "test", "config", "powershell"]
+            stages,
+            [
+                sys.executable,
+                "-B",
+                "tests/check.py",
+                "--strict",
+                "clippy",
+                "test",
+                "config",
+                "powershell",
+            ],
         )
         flattened = [arg for _, _, command in commands for arg in command]
         for unnecessary in ("fmt", "rustdoc", "audit", "deny", "x86_64-pc-windows-gnu"):
@@ -582,7 +593,7 @@ class LocalCheckTests(unittest.TestCase):
                 encoding="utf-8",
                 newline="\n",
             )
-            shutil.copyfile(REPO_ROOT / "check.py", root / "check.py")
+            shutil.copyfile(REPO_ROOT / "tests/check.py", root / "tests/check.py")
             tools = root / "tools"
             tools.mkdir()
             rustc = tools / "rustc"
@@ -622,7 +633,7 @@ class LocalCheckTests(unittest.TestCase):
             for status in (0, 1, 2, 17):
                 with self.subTest(status=status):
                     result = subprocess.run(
-                        [sys.executable, "-B", str(root / "check.py"), *stages],
+                        [sys.executable, "-B", str(root / "tests/check.py"), *stages],
                         env=env | {"CHECK_STATUS": str(status)},
                         capture_output=True,
                         text=True,
@@ -641,7 +652,7 @@ class LocalCheckTests(unittest.TestCase):
     def test_command_start_failures_do_not_pass(self):
         import importlib.util
 
-        spec = importlib.util.spec_from_file_location("check_runner", REPO_ROOT / "check.py")
+        spec = importlib.util.spec_from_file_location("check_runner", REPO_ROOT / "tests/check.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         runner = module.Runner(REPO_ROOT, module.Console())
@@ -653,7 +664,8 @@ class LocalCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="dotfiles-check-strict-") as temporary:
             root = Path(temporary)
             (root / "cli").mkdir()
-            shutil.copyfile(REPO_ROOT / "check.py", root / "check.py")
+            (root / "tests").mkdir()
+            shutil.copyfile(REPO_ROOT / "tests/check.py", root / "tests/check.py")
             empty_path = root / "empty-bin"
             empty_path.mkdir()
             env = os.environ | {"PATH": str(empty_path), "DOTFILES_CHECK_STRICT": "0"}
@@ -663,7 +675,7 @@ class LocalCheckTests(unittest.TestCase):
                         [
                             sys.executable,
                             "-B",
-                            str(root / "check.py"),
+                            str(root / "tests/check.py"),
                             *(["--strict"] if strict else []),
                             "fmt",
                         ],
@@ -687,7 +699,9 @@ class LocalCheckTests(unittest.TestCase):
     def test_stage_groups_and_windows_native_stages(self):
         import importlib.util
 
-        spec = importlib.util.spec_from_file_location("check_runner_win", REPO_ROOT / "check.py")
+        spec = importlib.util.spec_from_file_location(
+            "check_runner_win", REPO_ROOT / "tests/check.py"
+        )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 

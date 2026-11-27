@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform static-analysis and workflow lint runners used by CI and check.py."""
+"""Cross-platform static-analysis and workflow lint runners used by CI and tests/check.py."""
 
 from __future__ import annotations
 

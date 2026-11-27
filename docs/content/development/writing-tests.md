@@ -82,8 +82,8 @@ domain rather than by CI runner:
 | `tests/wrapper/` | POSIX (`test_shell_wrapper_linux.py`, `linux/`), PowerShell (`Test-ShellWrapper.ps1`, `windows/`), and parity (`test_parity.py`) bootstrap wrapper suites |
 | `tests/integration/` | Cross-platform install/uninstall round-trip (`test_install_uninstall.py`), Arch container acceptance, and APM deployment (`test_apm.py`) |
 
-The unified cross-platform local check/test runner lives at repository root
-([check.py](https://github.com/sneivandt/dotfiles/blob/main/check.py)), while
+The unified cross-platform local runner is
+[tests/check.py](https://github.com/sneivandt/dotfiles/blob/main/tests/check.py).
 CI orchestration (`pre-push.py`, `check_lint.py`, `check_docs.py`,
 `ci_fixture_home.py`, path/release classification, docs checks, and mutation
 runners) lives under `.github/workflows/scripts/` (with OS-specific helpers

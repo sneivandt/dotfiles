@@ -14,7 +14,7 @@ changes, or when fixing a surviving mutant; see the
 When a mutant reports `MISSED`, add a test assertion that passes on the real
 code and fails on the mutation (or verify the mutant is equivalent). Survivors,
 timeouts, and tooling errors all fail the run. Neither normal `cargo test` nor
-`check.py --all` runs mutations, and the
+`tests/check.py --all` runs mutations, and the
 [nightly workflow](ci-and-releases.md#scheduled-mutation-testing) runs
 independently of push CI and releases.
 

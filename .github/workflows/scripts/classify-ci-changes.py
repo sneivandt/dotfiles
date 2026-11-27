@@ -120,7 +120,7 @@ FULL_CI_EXACT = frozenset(
         SCRIPTS + "classify-ci-changes.py",
         LINUX + "ci-comparison-range.sh",
         SCRIPTS + "ci_fixture_home.py",
-        "check.py",
+        "tests/check.py",
         SCRIPTS + "pre-push.py",
     }
 )

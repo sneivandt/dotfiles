@@ -95,23 +95,23 @@ or [Debugging](debugging.md) to trace a failure.
 ### Stage-based checks
 
 The repository's unified cross-platform check and test runner is
-[check.py](https://github.com/sneivandt/dotfiles/blob/main/check.py) at the
-repository root. Pick the stages relevant to your patch, or use `--tests` /
-`--lint` / `--all` to run stage groups.
+[tests/check.py](https://github.com/sneivandt/dotfiles/blob/main/tests/check.py).
+From the repository root, pick the stages relevant to your patch or use
+`--tests`, `--lint`, or `--all` to run stage groups.
 
 ```sh
-python3 -B check.py --list
-python3 -B check.py --strict fmt clippy test config
-python3 -B check.py --tests
-python3 -B check.py --lint
+python3 -B tests/check.py --list
+python3 -B tests/check.py --strict fmt clippy test config
+python3 -B tests/check.py --tests
+python3 -B tests/check.py --lint
 ```
 
 On Windows, use `python` instead of `python3`:
 
 ```powershell
-python -B check.py --list
-python -B check.py --strict fmt clippy test config
-python -B check.py --tests
+python -B tests/check.py --list
+python -B tests/check.py --strict fmt clippy test config
+python -B tests/check.py --tests
 ```
 
 Omitting stage names runs the default set:
@@ -411,7 +411,7 @@ Missing tools cause the affected CLI check to skip (turning into failures under
 PSScriptAnalyzer.
 
 If `pwsh` is installed but the PSScriptAnalyzer module is missing or broken,
-CLI checks, `check.py`, and the pre-commit hook fail (on Windows, `check.py`
+CLI checks, `tests/check.py`, and the pre-commit hook fail (on Windows, `tests/check.py`
 skips `powershell` if PSScriptAnalyzer is missing unless `--strict` is passed).
 
 ### Wrapper and hook tests
@@ -469,7 +469,7 @@ QML checks require Qt 6.8+ (`qmllint` and `qmltestrunner`) and replace
 Quickshell components with test doubles so your live desktop stays untouched:
 
 ```sh
-python3 -B check.py --strict qml
+python3 -B tests/check.py --strict qml
 ```
 
 Run the Python helper, stock-cache, and lock-script suites in isolation:

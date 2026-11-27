@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
   <title id="title">Dotfiles: abstract geometric home tilde, slash, and leading dot</title>
-  <polygon points="7,19 19,19 22,27.5 31,27.5 28,36 16,36 13,27.5 4,27.5" fill="#4a6cc9"/>
-  <polygon points="41.5,10 52.5,10 36.5,54 25.5,54" fill="#7aa2f7"/>
-  <circle cx="52" cy="46" r="8" fill="#9ece6a"/>
+  <polygon points="5,18 17,18 20,26.5 29,26.5 26,35 14,35 11,26.5 2,26.5" fill="#4a6cc9"/>
+  <polygon points="39.5,9 50.5,9 34.5,53 23.5,53" fill="#7aa2f7"/>
+  <circle cx="50" cy="45" r="8" fill="#9ece6a"/>
 </svg>

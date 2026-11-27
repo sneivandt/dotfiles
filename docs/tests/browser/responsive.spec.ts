@@ -89,11 +89,16 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
   const heroImage = page.locator('.VPHome .VPHero .image-src');
   await expect(heroImage).toHaveAttribute('src', '/assets/logo-hero.png');
   await expect(heroImage).toHaveAttribute('alt', 'Dotfiles by Stuart Neivandt logo');
-  expect(await heroImage.evaluate((element: HTMLImageElement) => ({
-    complete: element.complete,
-    width: element.naturalWidth,
-    height: element.naturalHeight,
-  }))).toEqual({ complete: true, width: 512, height: 512 });
+  expect(await heroImage.evaluate((element: HTMLImageElement) => {
+    const style = getComputedStyle(element);
+    return {
+      complete: element.complete,
+      width: element.naturalWidth,
+      height: element.naturalHeight,
+      borderStyle: style.borderStyle,
+      boxShadow: style.boxShadow,
+    };
+  })).toEqual({ complete: true, width: 512, height: 512, borderStyle: 'none', boxShadow: 'none' });
   const heroWordmark = await page.locator('.VPHome .VPHero .heading .name.clip').evaluate((element) => {
     const style = getComputedStyle(element);
     const rect = element.getBoundingClientRect();

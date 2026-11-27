@@ -210,10 +210,12 @@ def collect_files(root: Path) -> list[tuple[Path, str]]:
             if candidate.is_symlink() or not candidate.is_file():
                 continue
             rel = candidate.relative_to(root).as_posix()
-            if (
-                candidate.suffix.lower() not in {".json", ".toml", ".yml", ".yaml"}
-                and not is_xml_path(rel)
-            ):
+            if candidate.suffix.lower() not in {
+                ".json",
+                ".toml",
+                ".yml",
+                ".yaml",
+            } and not is_xml_path(rel):
                 continue
             files.append((candidate, rel))
     return files

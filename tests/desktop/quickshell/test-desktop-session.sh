@@ -8,9 +8,12 @@ test -e /etc/arch-release
 pacman -Syu --noconfirm --needed sway swaylock quickshell qt6-wayland mesa dbus python hyprland hyprlock \
   systemd gammastep glib2 hypridle hyprpaper mako network-manager-applet xfconf \
   fuzzel alacritty lazygit btop
-# The headless parent needs no real-time scheduling capability.
-sway_binary=$(command -v sway)
-if [ -n "$(getcap "$sway_binary")" ]; then setcap -r "$sway_binary"; fi
+# Unprivileged containers cannot execute binaries carrying file capabilities
+# outside the container bounding set (e.g. sway cap_sys_nice, btop cap_perfmon).
+for cap_tool in sway btop; do
+  cap_binary=$(command -v "$cap_tool")
+  if [ -n "$(getcap "$cap_binary")" ]; then setcap -r "$cap_binary"; fi
+done
 useradd -m smoke
 # The workflow verifies the first-login unit without launching Dotfiles.
 install -d -o smoke -g smoke /home/smoke/.local/bin

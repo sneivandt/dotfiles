@@ -196,8 +196,7 @@ def check_desktop_app_configurations(env):
     btop_default = subprocess.run(
         ["btop", "--default-config"],
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
         check=True,
         timeout=25,
@@ -214,8 +213,7 @@ def check_desktop_app_configurations(env):
     lg_default = subprocess.run(
         ["lazygit", "--config"],
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
         check=True,
         timeout=25,

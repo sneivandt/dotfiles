@@ -108,8 +108,7 @@ class BashTests(unittest.TestCase):
                     "bash",
                     "-i",
                     "-c",
-                    'printf "BRANCH=<%s>\\n" "$(__bash_git_prompt)"\n'
-                    'printf "PS1=%s\\n" "$PS1"\n',
+                    'printf "BRANCH=<%s>\\n" "$(__bash_git_prompt)"\nprintf "PS1=%s\\n" "$PS1"\n',
                 ],
                 cwd=repo,
                 env=env,

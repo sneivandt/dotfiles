@@ -12,7 +12,7 @@ the website without cutting a new binary release.
 
 For local validation commands, see [Testing](testing.md). When modifying
 automation, treat the workflow files and
-[path classifier](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/classify-ci-changes.py)
+[path classifier](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/classify-ci-changes.py)
 as the source of truth.
 
 ## Reading a run
@@ -67,7 +67,7 @@ falls back to full coverage so earlier changes don't slip through untested.
 | `system/` | Linux Rust checks, configuration validation/drift, and profile/round-trip checks |
 | `packages/` recipes | Linux build/Rust checks, config validation/drift, and ShellCheck |
 | Managed application files | Configuration checks and the affected application/script fixtures; Rust-tested files (Git templates, the VS Code wrapper, and the first-login systemd unit) also select Rust checks |
-| Quickshell | Python fixtures on both platforms, Linux `qmllint`, and offscreen QML/session checks |
+| Quickshell | Linux Python fixtures, `qmllint`, and offscreen QML/session checks |
 | Wrappers | The affected platform's build and wrapper integration |
 | Hooks | Hook and staged-input fixtures; hook-only edits do not request CLI builds |
 | Shell, PowerShell, Python, Lua, or structured (`*.json`, `*.toml`, `*.yml`, `*.yaml`) files | The matching linter (`ShellCheck`, `PSScriptAnalyzer`, `Ruff`, `Luacheck`, or `Structured files`) in addition to other selected work |
@@ -91,11 +91,12 @@ Each row runs only when the classifier selects that job:
 |---|---|---|
 | Rust build, Clippy, tests | Native | Native |
 | Profile previews and config checks | Both roles | Both roles |
-| Public APM packages | Pack checks, local skill redeployment, frozen install, and audit in a disposable home | No native APM run |
+| Public APM packages | Pack checks, local skill redeployment, frozen install, and audit in a disposable home | Pack checks, local skill redeployment, frozen install, and audit in a disposable home |
 | Update/remove round-trip | Yes | Yes |
 | Wrappers | POSIX | PowerShell |
 | Application integration | Git, Zsh, Vim, Neovim | Git |
-| Managed script fixtures | Yes | Yes |
+| PowerShell prompt fixtures | Yes | Yes |
+| Desktop helper script fixtures | Hyprland and Quickshell Python suites | No (Linux-only desktop scripts) |
 | Quickshell | Offscreen QML tests and startup under headless Sway | No |
 | Arch package, system-file, and offline systemd acceptance | Disposable Arch container | No |
 | Full commit-hook suite | Yes | No |
@@ -106,8 +107,9 @@ system-file merge, denied elevation, offline user-unit drop-ins, redirected
 directory rejection, and repeat runs, while Quickshell startup runs under
 headless Sway rather than native Hyprland. There is no Git-for-Windows full
 hook suite, profile previews skip VS Code, profile `check` omits external APM
-and script analyzers, and Windows app integration skips APM, packages, and VS
-Code. Coverage uploads are informational only.
+and script analyzers, and the Windows app-integration job skips APM (covered by
+its own Windows APM job), packages, and VS Code. Coverage uploads are
+informational only.
 
 ## Scheduled mutation testing
 

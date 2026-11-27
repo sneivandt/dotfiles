@@ -15,4 +15,4 @@ useradd -m smoke
 install -d -o smoke -g smoke /home/smoke/.local/bin
 ln -s /usr/bin/true /home/smoke/.local/bin/dotfiles
 exec runuser -u smoke -- env HOME=/home/smoke \
-  dbus-run-session -- python /workspace/tests/desktop/quickshell/test-desktop-session.py "$@"
+  dbus-run-session -- python /workspace/tests/desktop/quickshell/test_desktop_session.py "$@"

@@ -19,10 +19,10 @@ function Test-WrapperParity {
     $python = Get-Command python3 -ErrorAction SilentlyContinue
     if (-not $python) { $python = Get-Command python -ErrorAction SilentlyContinue }
     if (-not $python) {
-        Write-TestFail 'python is required to run tests/wrapper/test-parity.py'
+        Write-TestFail 'python is required to run tests/wrapper/test_parity.py'
         return $false
     }
-    $parityScript = Join-Path $PSScriptRoot 'test-parity.py'
+    $parityScript = Join-Path $PSScriptRoot 'test_parity.py'
     $prevPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'

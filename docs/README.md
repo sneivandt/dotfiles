@@ -98,7 +98,7 @@ and `python3` where required. Node commands need the locked dependencies above.
 
 | Edit | Directory | Focused command |
 |---|---|---|
-| Markdown links or destinations | Root | `python -B .github/workflows/scripts/linux/check-doc-links.py .` |
+| Markdown links or destinations | Root | `python -B .github/workflows/scripts/check-doc-links.py .` |
 | Skill metadata | Root | `python -B .agents/skills/skill-maintenance/scripts/check-skills.py .` |
 | Skill validator or metadata convention | Root | `python -B .agents/skills/skill-maintenance/scripts/test-check-skills.py` |
 | Link, frontmatter, or rendered metadata checker | Root | `python -B docs/tests/test_content.py` |

@@ -50,7 +50,7 @@ From the repository root, select the affected mutants using the recorded full
 baseline):
 
 ```sh
-python3 -B .github/workflows/scripts/linux/select-mutations.py --base ORIGINAL_BASE_SHA
+python3 -B .github/workflows/scripts/select-mutations.py --base ORIGINAL_BASE_SHA
 ```
 
 On Linux, paste the focused replay command from the report to check one mutant,
@@ -58,7 +58,7 @@ or drop `--exact` and its argument to replay the whole slice. For example, to
 replay process-execution mutants with their bounded test target:
 
 ```sh
-python3 -B .github/workflows/scripts/linux/run-mutations.py run process
+python3 -B .github/workflows/scripts/run-mutations.py run process
 ```
 
 Use `run linux` for the full Linux slice, or `run linux-lib` / `run linux-app`
@@ -68,7 +68,7 @@ On Windows, use `python` for selection and run the native Windows suite on a
 Windows filesystem:
 
 ```powershell
-python -B .github/workflows/scripts/linux/run-mutations.py run windows
+python -B .github/workflows/scripts/run-mutations.py run windows
 ```
 
 Because replay commands mutate files in place, inspect `cli/mutants.out` for

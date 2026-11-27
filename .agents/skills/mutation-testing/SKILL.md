@@ -32,7 +32,7 @@ the risk-based selection table for ordinary Rust work lives in
   lowest layer (result plus side effect or preserved state).
 - **`MISSED` equivalent mutant**: prefer simplifying redundant code; otherwise
   add a justified narrow regex to `LINUX_EXCLUSIONS` or `WINDOWS_EXCLUSIONS` in
-  [run-mutations.py](../../../.github/workflows/scripts/linux/run-mutations.py).
+  [run-mutations.py](../../../.github/workflows/scripts/run-mutations.py).
 - **Cross-platform alignment**: keep `NATIVE_MODULES`, `LINUX_EXCLUSIONS`,
   `WINDOWS_FILES`, and `WINDOWS_PATTERN` aligned in `run-mutations.py` so Linux
   exclusions never silently drop Windows coverage.
@@ -45,7 +45,7 @@ the risk-based selection table for ordinary Rust work lives in
   filesystem; keep the working tree clean before invoking it because an
   interrupted run can leave mutant edits in `git diff`, and copy any report you
   want to keep out of `cli/mutants.out` before starting another run.
-- [select-mutations.py](../../../.github/workflows/scripts/linux/select-mutations.py)
+- [select-mutations.py](../../../.github/workflows/scripts/select-mutations.py)
   selects inputs against committed `HEAD` (not uncommitted source edits). Pass
   the run's `ORIGINAL_BASE_SHA` (or `--all-source` when no passing baseline
   existed). Never replace `ORIGINAL_BASE_SHA` with a later commit for a

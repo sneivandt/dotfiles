@@ -94,33 +94,24 @@ or [Debugging](debugging.md) to trace a failure.
 
 ### Stage-based checks
 
-The repository's unified cross-platform check runner is
-[check.py](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/check.py),
-with thin convenience shims at
-[check.sh](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/check.sh)
-and
-[Check.ps1](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/windows/Check.ps1).
-Pick only the stages relevant to your patch.
-
-Cross-platform (Python):
+The repository's unified cross-platform check and test runner is
+[check.py](https://github.com/sneivandt/dotfiles/blob/main/check.py) at the
+repository root. Pick the stages relevant to your patch, or use `--tests` /
+`--lint` / `--all` to run stage groups.
 
 ```sh
-python3 -B .github/workflows/scripts/linux/check.py --list
-python3 -B .github/workflows/scripts/linux/check.py --strict fmt clippy test config
+python3 -B check.py --list
+python3 -B check.py --strict fmt clippy test config
+python3 -B check.py --tests
+python3 -B check.py --lint
 ```
 
-Linux shim:
-
-```sh
-sh .github/workflows/scripts/linux/check.sh --list
-sh .github/workflows/scripts/linux/check.sh --strict fmt clippy test config
-```
-
-Windows shim:
+On Windows, use `python` instead of `python3`:
 
 ```powershell
-pwsh -File .github\workflows\scripts\windows\Check.ps1 -List
-pwsh -File .github\workflows\scripts\windows\Check.ps1 -Strict fmt clippy test config
+python -B check.py --list
+python -B check.py --strict fmt clippy test config
+python -B check.py --tests
 ```
 
 Omitting stage names runs the default set:
@@ -144,17 +135,21 @@ Omitting stage names runs the default set:
 Cargo stages use `--locked` and `--profile ci` where applicable, resolving
 tools from `PATH` and failing on a mismatched Rust version rather than
 switching toolchains automatically. Missing tools normally print `SKIP`;
-passing `--strict`, `-Strict`, or `DOTFILES_CHECK_STRICT=1` turns skips into
-failures, and any installed tool's nonzero exit (including exit code `2`) fails
-immediately. See [Analyzer prerequisites](#analyzer-prerequisites) for required
-tools.
+passing `--strict` or `DOTFILES_CHECK_STRICT=1` turns skips into failures, and
+any installed tool's nonzero exit (including exit code `2`) fails immediately.
+See [Analyzer prerequisites](#analyzer-prerequisites) for required tools.
 
-Five stages are opt-in on Linux: `msrv` installs and builds with the MSRV from
-`Cargo.toml`, `wrapper` runs the platform bootstrap wrapper tests, and Linux
-`qml` (Qt `qmllint` and Qt Quick Test), `hooks` (staged-input and maintenance
-suites), and `desktop` (Hyprland and Quickshell Python tests). `--all` on Linux
-enables all opt-in stages; `--all` / `-All` on Windows adds `shell`, `msrv`, and
-`wrapper`. None of them run mutation testing or live host integration.
+Opt-in stages cover isolated host-safe test suites and MSRV checks: `msrv`
+installs and builds with the MSRV from `Cargo.toml`, `wrapper` runs the
+platform bootstrap wrapper tests in isolated mode plus parity checks, `prompt`
+runs the PowerShell prompt suite, and Linux also provides `qml` (Qt `qmllint`
+and Qt Quick Test), `hooks` (staged-input, maintenance, and full commit-hook
+suites), `desktop` (Hyprland and Quickshell Python tests), `shell-config`
+(isolated Bash/Zsh fixtures), and `vim-config` (isolated Vim/Neovim config
+fixtures). `--tests` runs every host-safe test stage for the current platform,
+`--lint` runs every static-analysis and formatting stage, and `--all` runs
+default plus all opt-in stages. None of them run mutation testing or live host
+integration.
 
 The Linux `docs` stage requires Python, Cargo, the Node version in
 `docs/.node-version`, and the
@@ -172,7 +167,7 @@ against the checkout (it does not fetch external URLs). For a quick link-only
 run:
 
 ```sh
-python3 -B .github/workflows/scripts/linux/check-doc-links.py .
+python3 -B .github/workflows/scripts/check-doc-links.py .
 ```
 
 ## Before pushing
@@ -198,18 +193,18 @@ commands when your coverage is already clear. With Python 3.11+, run on
 Windows:
 
 ```powershell
-python .github\workflows\scripts\linux\pre-push.py --plan
-python .github\workflows\scripts\linux\pre-push.py
+python .github\workflows\scripts\pre-push.py --plan
+python .github\workflows\scripts\pre-push.py
 ```
 
 Or on Linux:
 
 ```sh
-python3 -B .github/workflows/scripts/linux/pre-push.py --plan
-python3 -B .github/workflows/scripts/linux/pre-push.py
+python3 -B .github/workflows/scripts/pre-push.py --plan
+python3 -B .github/workflows/scripts/pre-push.py
 ```
 
-Despite living under `scripts/linux/`, this entrypoint supports both OSes. On
+This cross-platform entrypoint supports both OSes. On
 Windows it runs docs plus selected native Rust, config, PowerShell wrapper, and
 prompt fixtures in a temporary native checkout, then delegates the Linux worker
 to your default WSL distro (storing Linux snapshots in `/tmp` and WSL Cargo
@@ -231,7 +226,7 @@ The coordinator stores a per-checkout, per-platform Cargo cache under
 without changing anything:
 
 ```sh
-python3 -B .github/workflows/scripts/linux/pre-push.py --cache-status
+python3 -B .github/workflows/scripts/pre-push.py --cache-status
 ```
 
 Use `python` on Windows, or run from WSL to inspect the Linux cache. Before
@@ -283,7 +278,7 @@ PowerShell):
 
 ```powershell
 $commit = git rev-parse HEAD
-python .github\workflows\scripts\linux\pre-push.py --npm-tls-unavailable $commit
+python .github\workflows\scripts\pre-push.py --npm-tls-unavailable $commit
 ```
 
 The coordinator skips npm install and docs checks, prints `UNAVAILABLE` instead
@@ -327,7 +322,7 @@ and both sides of renames):
 | PowerShell (`*.ps1`, `*.psm1`, `*.psd1`) paths | Available PSScriptAnalyzer on affected inputs | — |
 | Python (`*.py`, `symlinks/local/bin/code-insiders`) or Lua (`*.lua`) paths | Available Ruff (lint + format check) and Luacheck on affected inputs | — |
 | Structured (`*.json`, `*.toml`, `*.yml`, `*.yaml`) paths | Zero-dependency JSON/JSONC, TOML, and YAML validation | — |
-| Wrappers or their tests | Wrapper parity contract (`tests/wrapper/test-parity.py`) | Linux wrapper tests |
+| Wrappers or their tests | Wrapper parity contract (`tests/wrapper/test_parity.py`) | Linux wrapper tests |
 | GitHub Actions workflows or CI policy scripts | Available `actionlint`, CI workflow contract checks, and release publishing invariants | — |
 | Markdown (`*.md`) or skill (`.agents/skills/`, `AGENTS.md`) paths | Staged doc link checks and skill metadata validation | — |
 
@@ -393,7 +388,7 @@ To reproduce Linux CI's APM deployment check with APM 0.37.0 on `PATH`:
 
 ```sh
 cargo build --locked --profile ci --manifest-path cli/Cargo.toml
-python3 -B tests/integration/test-apm.py cli/target/ci/dotfiles
+python3 -B tests/integration/test_apm.py cli/target/ci/dotfiles
 ```
 
 This copies the public base packages into a temporary home and checkout; its
@@ -416,8 +411,8 @@ Missing tools cause the affected CLI check to skip (turning into failures under
 PSScriptAnalyzer.
 
 If `pwsh` is installed but the PSScriptAnalyzer module is missing or broken,
-CLI checks, `check.sh`, and the pre-commit hook fail, whereas Windows
-`Check.ps1` skips unless `-Strict` is passed.
+CLI checks, `check.py`, and the pre-commit hook fail (on Windows, `check.py`
+skips `powershell` if PSScriptAnalyzer is missing unless `--strict` is passed).
 
 ### Wrapper and hook tests
 
@@ -426,13 +421,13 @@ installing the real CLI (for full commit-hook integration, see
 [Full commit-hook suite](#full-commit-hook-suite)):
 
 ```sh
-python3 -B tests/hooks/test-hook-inputs.py \
+python3 -B tests/hooks/test_hook_inputs.py \
   test_staged_ci_guards test_staged_ci_guard_deletions
-DIR="$PWD" sh tests/wrapper/test-shell-wrapper.sh \
+python3 -B tests/wrapper/test_shell_wrapper_linux.py --isolated \
   test_wrapper_preserves_runtime_context test_wrapper_uses_cargo_artifact
 ```
 
-Omitting test names runs every case in `test-hook-inputs.py` (its build
+Omitting test names runs every case in `test_hook_inputs.py` (its build
 metadata case needs the pinned Rust toolchain and skips otherwise).
 
 On Windows, dot-source the wrapper suite to invoke individual isolated cases:
@@ -451,7 +446,7 @@ their setup before running every case.
 Run the full pre-commit integration suite from the repository root:
 
 ```sh
-python3 -B tests/hooks/test-git-hooks.py
+python3 -B tests/hooks/test_git_hooks.py
 ```
 
 The script initializes a disposable temporary Git repository, copies `hooks/`
@@ -461,7 +456,7 @@ modified.
 ### Cleanup retention and Git templates
 
 ```sh
-python3 -B tests/hooks/test-maintenance.py
+python3 -B tests/hooks/test_maintenance.py
 ```
 
 Verifies branch cleanup, protected branches, worktrees, and retention rules in
@@ -474,7 +469,7 @@ QML checks require Qt 6.8+ (`qmllint` and `qmltestrunner`) and replace
 Quickshell components with test doubles so your live desktop stays untouched:
 
 ```sh
-sh .github/workflows/scripts/linux/check.sh --strict qml
+python3 -B check.py --strict qml
 ```
 
 Run the Python helper, stock-cache, and lock-script suites in isolation:
@@ -501,14 +496,14 @@ tests passwords, systemd user services, physical monitors, or suspend/resume.
 Run the isolated shell, Vim/Neovim, and PowerShell prompt fixtures:
 
 ```sh
-python3 -B tests/shell/test-shell-config.py
-python3 -B -m unittest discover -s tests/vim -p 'test_*.py'
+python3 -B tests/shell/test_shell_config.py
+python3 -B tests/vim/test_vim_config.py
 pwsh -NoProfile -File tests/shell/Test-Prompt.ps1
 ```
 
 Each managed application also has a dedicated installed-config smoke harness
-under its own directory (`tests/git/test-git.py`, `tests/shell/test-zsh.py`,
-`tests/vim/test-vim.py`, `tests/vim/test-nvim.py`) that runs every check by
+under its own directory (`tests/git/test_git.py`, `tests/shell/test_zsh.py`,
+`tests/vim/test_vim.py`, `tests/vim/test_nvim.py`) that runs every check by
 default or accepts specific test names.
 
 The PowerShell suite checks first-start discovery, custom Cargo paths, literal
@@ -518,7 +513,7 @@ tools so cases actually run rather than skipping.
 ### CI selection fixtures
 
 ```sh
-python3 -B .github/workflows/scripts/linux/test-ci-changes.py
+python3 -B .github/workflows/scripts/test_ci_changes.py
 ```
 
 Tests path classification, aggregate `ci-success` gating, release contracts,

@@ -5,7 +5,7 @@ import runpy
 import tempfile
 import unittest
 
-SCRIPTS = Path(__file__).resolve().parents[2] / ".github/workflows/scripts/linux"
+SCRIPTS = Path(__file__).resolve().parents[2] / ".github/workflows/scripts"
 LINKS = runpy.run_path(str(SCRIPTS / "check-doc-links.py"))
 SITE = runpy.run_path(str(SCRIPTS / "check-doc-site.py"))
 

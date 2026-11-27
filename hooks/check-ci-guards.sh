@@ -35,12 +35,12 @@ resolve_repo_file() {
 }
 
 find_ci_metadata() {
-  if [ -n "$CHECK_ROOT" ] && [ -f "$CHECK_ROOT/.github/workflows/scripts/linux/ci_metadata.py" ]; then
-    printf '%s\n' "$CHECK_ROOT/.github/workflows/scripts/linux/ci_metadata.py"
-  elif [ -f "$WORKTREE_ROOT/.github/workflows/scripts/linux/ci_metadata.py" ]; then
-    printf '%s\n' "$WORKTREE_ROOT/.github/workflows/scripts/linux/ci_metadata.py"
-  elif [ -f "$SCRIPT_DIR/../.github/workflows/scripts/linux/ci_metadata.py" ]; then
-    printf '%s\n' "$SCRIPT_DIR/../.github/workflows/scripts/linux/ci_metadata.py"
+  if [ -n "$CHECK_ROOT" ] && [ -f "$CHECK_ROOT/.github/workflows/scripts/ci_metadata.py" ]; then
+    printf '%s\n' "$CHECK_ROOT/.github/workflows/scripts/ci_metadata.py"
+  elif [ -f "$WORKTREE_ROOT/.github/workflows/scripts/ci_metadata.py" ]; then
+    printf '%s\n' "$WORKTREE_ROOT/.github/workflows/scripts/ci_metadata.py"
+  elif [ -f "$SCRIPT_DIR/../.github/workflows/scripts/ci_metadata.py" ]; then
+    printf '%s\n' "$SCRIPT_DIR/../.github/workflows/scripts/ci_metadata.py"
   else
     return 1
   fi
@@ -331,7 +331,7 @@ run_lua_guards() {
 
 run_structured_guards() {
   prepare_staged_tree
-  checker=$(resolve_repo_file ".github/workflows/scripts/linux/check-structured-files.py") || return 0
+  checker=$(resolve_repo_file ".github/workflows/scripts/check-structured-files.py") || return 0
   staged_linter_inputs structured "$CHECK_STAGE_DIR/.structured-inputs"
   if [ ! -s "$CHECK_STAGE_DIR/.structured-inputs" ]; then
     return 0
@@ -351,7 +351,7 @@ run_structured_guards() {
   ' sh "$checker" < "$CHECK_STAGE_DIR/.structured-inputs"); then
     abort_with_hint \
       "Structured file validation reported issues." \
-      "python3 -B .github/workflows/scripts/linux/check-structured-files.py --root ."
+      "python3 -B .github/workflows/scripts/check-structured-files.py --root ."
   fi
 }
 
@@ -389,7 +389,7 @@ run_ci_contract_guards() {
   fi
 
   prepare_staged_tree
-  contract="$REPO_ROOT/.github/workflows/scripts/linux/check-ci-contract.py"
+  contract="$REPO_ROOT/.github/workflows/scripts/check-ci-contract.py"
   if [ ! -f "$REPO_ROOT/.github/workflows/ci.yml" ] || [ ! -f "$contract" ]; then
     return 0
   fi
@@ -397,7 +397,7 @@ run_ci_contract_guards() {
   if ! python3 -B "$contract" 2>&1; then
     abort_with_hint \
       "CI workflow contract check failed." \
-      "python3 -B .github/workflows/scripts/linux/check-ci-contract.py"
+      "python3 -B .github/workflows/scripts/check-ci-contract.py"
   fi
 }
 
@@ -408,7 +408,7 @@ run_doc_links_guards() {
   fi
 
   prepare_staged_tree
-  checker="$REPO_ROOT/.github/workflows/scripts/linux/check-doc-links.py"
+  checker="$REPO_ROOT/.github/workflows/scripts/check-doc-links.py"
   if [ ! -f "$checker" ]; then
     return 0
   fi
@@ -416,7 +416,7 @@ run_doc_links_guards() {
   if ! python3 -B "$checker" "$REPO_ROOT" 2>&1; then
     abort_with_hint \
       "documentation link check failed." \
-      "python3 -B .github/workflows/scripts/linux/check-doc-links.py ."
+      "python3 -B .github/workflows/scripts/check-doc-links.py ."
   fi
 }
 
@@ -446,7 +446,7 @@ run_wrapper_parity_guards() {
   fi
 
   prepare_staged_tree
-  checker="$REPO_ROOT/tests/wrapper/test-parity.py"
+  checker="$REPO_ROOT/tests/wrapper/test_parity.py"
   if [ ! -f "$checker" ]; then
     return 0
   fi
@@ -454,7 +454,7 @@ run_wrapper_parity_guards() {
   if ! python3 -B "$checker" 2>&1; then
     abort_with_hint \
       "wrapper parity check failed." \
-      "python3 -B tests/wrapper/test-parity.py"
+      "python3 -B tests/wrapper/test_parity.py"
   fi
 }
 
@@ -472,10 +472,10 @@ run_wrapper_guards() {
     fi
   fi
   export BINARY_PATH
-  if ! sh "$REPO_ROOT/tests/wrapper/test-shell-wrapper.sh"; then
+  if ! python3 -B "$REPO_ROOT/tests/wrapper/test_shell_wrapper_linux.py"; then
     abort_with_hint \
       "Linux shell wrapper tests failed." \
-      "DIR=\"\$(git rev-parse --show-toplevel)\" BINARY_PATH=\"\" sh tests/wrapper/test-shell-wrapper.sh"
+      "DIR=\"\$(git rev-parse --show-toplevel)\" BINARY_PATH=\"\" python3 -B tests/wrapper/test_shell_wrapper_linux.py"
   fi
 }
 
@@ -494,15 +494,15 @@ run_release_workflow_guards() {
       "stage .github/workflows/release.yml before running the publishing guards"
   fi
 
-  contract=$(resolve_repo_file ".github/workflows/scripts/linux/check-ci-contract.py")
+  contract=$(resolve_repo_file ".github/workflows/scripts/check-ci-contract.py")
   if ! printf '%s\n' "$workflow_contents" | python3 -B "$contract" --release - 2>&1; then
     abort_with_hint \
       "release workflow contract check failed." \
-      "python3 -B .github/workflows/scripts/linux/check-ci-contract.py"
+      "python3 -B .github/workflows/scripts/check-ci-contract.py"
   fi
 }
 
-if has_staged_match .github/workflows/scripts/linux/ci_metadata.py; then
+if has_staged_match .github/workflows/scripts/ci_metadata.py; then
   prepare_staged_tree
 fi
 

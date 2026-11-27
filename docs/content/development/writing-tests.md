@@ -73,21 +73,24 @@ domain rather than by CI runner:
 
 | Directory | Covers |
 |---|---|
-| `tests/git/` | Cross-platform Git configuration, aliases, behavior, and cleanup suite (`test-git.py`) |
-| `tests/shell/` | Zsh completion/history (`test-zsh.py`), isolated Bash/Zsh fixtures (`test-shell-config.py`, `shell_config_tests/`), and PowerShell prompt tests |
-| `tests/vim/` | Vim (`test-vim.py`) and Neovim (`test-nvim.py`) startup, plugin, filetype, and lockfile suites |
+| `tests/git/` | Cross-platform Git configuration, aliases, behavior, and cleanup suite (`test_git.py`) |
+| `tests/shell/` | Zsh completion/history (`test_zsh.py`), isolated Bash/Zsh fixtures (`test_shell_config.py`, `shell_config_tests/`), and PowerShell prompt tests |
+| `tests/vim/` | Vim (`test_vim.py`) and Neovim (`test_nvim.py`) startup, plugin, filetype, and lockfile suites, plus isolated config fixtures (`test_vim_config.py`) |
 | `tests/desktop/quickshell/` | Offscreen QML tests, `qmllint`, headless Sway session checks, and Python helper/stock-cache tests |
 | `tests/desktop/hypr/` | Hyprland helper script unit tests (brightness, volume, launchers, lock screen, screenshot, resize) |
-| `tests/hooks/` | Staged-input guards (`test-hook-inputs.py`, `hook_inputs_tests/`), pre-commit integration (`test-git-hooks.py`, `git_hook_tests/`), and maintenance tests |
-| `tests/wrapper/` | POSIX (`test-shell-wrapper.sh`, `linux/`) and PowerShell (`Test-ShellWrapper.ps1`, `windows/`) bootstrap wrapper suites |
-| `tests/integration/` | Cross-platform install/uninstall round-trip (`test-install-uninstall.py`), Arch container acceptance, and APM deployment |
-| `tests/lib/` | Shared POSIX test assertion helpers |
+| `tests/hooks/` | Staged-input guards (`test_hook_inputs.py`, `hook_inputs_tests/`), pre-commit integration (`test_git_hooks.py`, `git_hook_tests/`), and maintenance tests (`test_maintenance.py`) |
+| `tests/wrapper/` | POSIX (`test_shell_wrapper_linux.py`, `linux/`), PowerShell (`Test-ShellWrapper.ps1`, `windows/`), and parity (`test_parity.py`) bootstrap wrapper suites |
+| `tests/integration/` | Cross-platform install/uninstall round-trip (`test_install_uninstall.py`), Arch container acceptance, and APM deployment (`test_apm.py`) |
 
-Keep CI-only orchestration (`check.py`, `check.sh`, `Check.ps1`, `pre-push.py`,
-path/release classification, docs checks, and mutation runners) under
-`.github/workflows/scripts/`. When adding a new file under `tests/`, wire its
-path into
-[classify-ci-changes.py](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/classify-ci-changes.py)
+The unified cross-platform local check/test runner lives at repository root
+([check.py](https://github.com/sneivandt/dotfiles/blob/main/check.py)), while
+CI orchestration (`pre-push.py`, `check_lint.py`, `check_docs.py`,
+`ci_fixture_home.py`, path/release classification, docs checks, and mutation
+runners) lives under `.github/workflows/scripts/` (with OS-specific helpers
+under `linux/` and `windows/`). Python test entrypoints use `snake_case`
+`test_*.py` modules built on `unittest`. When adding a new file under `tests/`,
+wire its path into
+[classify-ci-changes.py](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/classify-ci-changes.py)
 and its regression suite if it needs its own CI job.
 
 ## Confine every writable path

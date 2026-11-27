@@ -13,7 +13,7 @@ import tempfile
 
 
 def _load_ci_module(name, filename):
-    module_path = Path(__file__).resolve().parents[1] / ".github/workflows/scripts/linux" / filename
+    module_path = Path(__file__).resolve().parents[1] / ".github/workflows/scripts" / filename
     spec = importlib.util.spec_from_file_location(name, module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load CI helper: {module_path}")
@@ -41,7 +41,7 @@ def run(command, cwd, env):
 
 
 def check(root, env):
-    scripts = root / ".github/workflows/scripts/linux"
+    scripts = root / ".github/workflows/scripts"
     skills = root / ".agents/skills/skill-maintenance/scripts"
     npm = npm_command()
     for script, arguments in (

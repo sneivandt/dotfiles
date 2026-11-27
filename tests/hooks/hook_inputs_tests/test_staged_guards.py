@@ -174,15 +174,15 @@ class StagedGuardTests(unittest.TestCase):
             repo = fixture / "repo"
             mock_bin = fixture / "mock-bin"
             (repo / "hooks").mkdir(parents=True)
-            (repo / ".github" / "workflows" / "scripts" / "linux").mkdir(parents=True)
+            (repo / ".github" / "workflows" / "scripts").mkdir(parents=True)
             (repo / "cli" / "src" / "app" / "validation" / "scripts").mkdir(parents=True)
             shutil.copy2(
                 REPO_ROOT / "hooks" / "check-ci-guards.sh", repo / "hooks" / "check-ci-guards.sh"
             )
             shutil.copy2(REPO_ROOT / "hooks" / "staged-tree.sh", repo / "hooks" / "staged-tree.sh")
             shutil.copy2(
-                REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / "ci_metadata.py",
-                repo / ".github" / "workflows" / "scripts" / "linux" / "ci_metadata.py",
+                REPO_ROOT / ".github" / "workflows" / "scripts" / "ci_metadata.py",
+                repo / ".github" / "workflows" / "scripts" / "ci_metadata.py",
             )
             # Isolate the hook's selection and forwarding from the analyzer itself.
             (repo / "cli" / "src" / "app" / "validation" / "scripts" / "shellcheck.sh").write_text(
@@ -764,14 +764,14 @@ class StagedGuardTests(unittest.TestCase):
             repo = fixture / "repo"
             (repo / "hooks").mkdir(parents=True)
             (repo / "cli" / "src" / "app" / "validation" / "scripts").mkdir(parents=True)
-            (repo / ".github" / "workflows" / "scripts" / "linux").mkdir(parents=True)
+            (repo / ".github" / "workflows" / "scripts").mkdir(parents=True)
             shutil.copy2(
                 REPO_ROOT / "hooks" / "check-ci-guards.sh", repo / "hooks" / "check-ci-guards.sh"
             )
             shutil.copy2(REPO_ROOT / "hooks" / "staged-tree.sh", repo / "hooks" / "staged-tree.sh")
             shutil.copy2(
-                REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / "ci_metadata.py",
-                repo / ".github" / "workflows" / "scripts" / "linux" / "ci_metadata.py",
+                REPO_ROOT / ".github" / "workflows" / "scripts" / "ci_metadata.py",
+                repo / ".github" / "workflows" / "scripts" / "ci_metadata.py",
             )
 
             write_executable(mock_bin / "shellcheck", "#!/bin/sh\nexit 0\n")
@@ -793,7 +793,7 @@ class StagedGuardTests(unittest.TestCase):
 
             sc = repo / "cli" / "src" / "app" / "validation" / "scripts" / "shellcheck.sh"
             ps = repo / "cli" / "src" / "app" / "validation" / "scripts" / "psscriptanalyzer.ps1"
-            contract = repo / ".github" / "workflows" / "scripts" / "linux" / "check-ci-contract.py"
+            contract = repo / ".github" / "workflows" / "scripts" / "check-ci-contract.py"
             release = repo / ".github" / "workflows" / "release.yml"
 
             sc.write_text(
@@ -818,7 +818,7 @@ class StagedGuardTests(unittest.TestCase):
                         "--",
                         "cli/src/app/validation/scripts/shellcheck.sh",
                         "cli/src/app/validation/scripts/psscriptanalyzer.ps1",
-                        ".github/workflows/scripts/linux/check-ci-contract.py",
+                        ".github/workflows/scripts/check-ci-contract.py",
                         ".github/workflows/release.yml",
                         "sample.sh",
                         "sample.ps1",
@@ -1114,20 +1114,15 @@ class StagedGuardTests(unittest.TestCase):
             self.assertEqual(log_file.read_text(encoding="utf-8"), "")
 
             # Exercise canonical local stages using the same mock compiler and Cargo.
-            (index_repo / ".github" / "workflows" / "scripts" / "linux").mkdir(parents=True)
             (index_repo / "hooks").mkdir(parents=True, exist_ok=True)
-            for script_name in ("check.py", "check.sh"):
-                shutil.copy2(
-                    REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / script_name,
-                    index_repo / ".github" / "workflows" / "scripts" / "linux" / script_name,
-                )
+            shutil.copy2(REPO_ROOT / "check.py", index_repo / "check.py")
             shutil.copy2(
                 REPO_ROOT / "hooks" / "check-toolchain.sh",
                 index_repo / "hooks" / "check-toolchain.sh",
             )
             log_file.write_text("", encoding="utf-8")
             res = run(
-                ["sh", ".github/workflows/scripts/linux/check.sh", "fmt", "rustdoc"],
+                [sys.executable, "-B", "check.py", "fmt", "rustdoc"],
                 cwd=index_repo,
                 env=env,
             )
@@ -1136,7 +1131,7 @@ class StagedGuardTests(unittest.TestCase):
 
             log_file.write_text("", encoding="utf-8")
             res = run(
-                ["sh", ".github/workflows/scripts/linux/check.sh", "rustdoc"],
+                [sys.executable, "-B", "check.py", "rustdoc"],
                 cwd=index_repo,
                 env=dict(env, MOCK_RUST_VERSION="1.99.0"),
             )
@@ -1144,7 +1139,7 @@ class StagedGuardTests(unittest.TestCase):
             self.assertEqual(log_file.read_text(encoding="utf-8"), "")
 
             res = run(
-                ["sh", ".github/workflows/scripts/linux/check.sh", "rustdoc"],
+                [sys.executable, "-B", "check.py", "rustdoc"],
                 cwd=index_repo,
                 env=dict(env, MOCK_CARGO_EXIT="1"),
             )
@@ -1181,17 +1176,10 @@ class StagedGuardTests(unittest.TestCase):
                 ["glob[script].sh", "one file.sh"],
             )
 
-            static_analysis = str(
-                REPO_ROOT
-                / ".github"
-                / "workflows"
-                / "scripts"
-                / "linux"
-                / "test-static-analysis.sh"
-            )
+            lint_runner = str(REPO_ROOT / ".github" / "workflows" / "scripts" / "check_lint.py")
             log_file.write_text("", encoding="utf-8")
             res = run(
-                ["sh", static_analysis, "test_shellcheck"],
+                [sys.executable, "-B", lint_runner, "shell"],
                 cwd=shell_repo,
                 env=dict(shell_env, DIR=str(shell_repo)),
             )
@@ -1207,7 +1195,7 @@ class StagedGuardTests(unittest.TestCase):
             self.assertNotEqual(res.returncode, 0)
 
             res = run(
-                ["sh", static_analysis, "test_shellcheck"],
+                [sys.executable, "-B", lint_runner, "shell"],
                 cwd=shell_repo,
                 env=dict(shell_env, DIR=str(shell_repo), SHELLCHECK_EXIT="1"),
             )
@@ -1222,7 +1210,7 @@ class StagedGuardTests(unittest.TestCase):
                 "hooks",
                 "cli/src",
                 "symlinks/local/bin",
-                ".github/workflows/scripts/linux",
+                ".github/workflows/scripts",
                 ".github/linters",
                 ".agents/skills/skill-maintenance/scripts",
                 ".agents/skills/sample-skill",
@@ -1291,8 +1279,8 @@ class StagedGuardTests(unittest.TestCase):
                 "workflow_yaml.py",
             ):
                 shutil.copy2(
-                    REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / script_name,
-                    repo / ".github" / "workflows" / "scripts" / "linux" / script_name,
+                    REPO_ROOT / ".github" / "workflows" / "scripts" / script_name,
+                    repo / ".github" / "workflows" / "scripts" / script_name,
                 )
             shutil.copy2(
                 REPO_ROOT
@@ -1400,40 +1388,15 @@ class StagedGuardTests(unittest.TestCase):
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("Structured file validation reported issues", res.stdout + res.stderr)
 
-            # test-static-analysis.sh must fail loudly when pwsh is absent.
+            # check_lint.py powershell must fail loudly when pwsh is absent.
             no_pwsh_bin = fixture / "no-pwsh-bin"
             no_pwsh_bin.mkdir()
-            for tool in (
-                "sh",
-                "env",
-                "dirname",
-                "basename",
-                "mkdir",
-                "find",
-                "grep",
-                "mktemp",
-                "rm",
-                "sed",
-                "tr",
-                "xargs",
-                "sort",
-            ):
-                resolved = shutil.which(tool)
-                if resolved:
-                    os.symlink(resolved, no_pwsh_bin / tool)
-            static_analysis = str(
-                REPO_ROOT
-                / ".github"
-                / "workflows"
-                / "scripts"
-                / "linux"
-                / "test-static-analysis.sh"
-            )
+            lint_runner = str(REPO_ROOT / ".github" / "workflows" / "scripts" / "check_lint.py")
             no_pwsh_env = dict(env, PATH=str(no_pwsh_bin), DIR=str(REPO_ROOT))
             res = run(
-                ["sh", static_analysis, "test_psscriptanalyzer"], cwd=REPO_ROOT, env=no_pwsh_env
+                [sys.executable, "-B", lint_runner, "powershell"], cwd=REPO_ROOT, env=no_pwsh_env
             )
             self.assertNotEqual(
-                res.returncode, 0, "test_psscriptanalyzer should fail when pwsh is unavailable"
+                res.returncode, 0, "check_lint.py powershell should fail when pwsh is unavailable"
             )
             self.assertIn("pwsh is not installed", res.stdout + res.stderr)

@@ -13,16 +13,18 @@ Workflows ([ci.yml](../../../.github/workflows/ci.yml),
 [release.yml](../../../.github/workflows/release.yml),
 [pages.yml](../../../.github/workflows/pages.yml),
 [mutation.yml](../../../.github/workflows/mutation.yml)) and
-[classify-ci-changes.py](../../../.github/workflows/scripts/linux/classify-ci-changes.py)
+[classify-ci-changes.py](../../../.github/workflows/scripts/classify-ci-changes.py)
 are authoritative; see [Testing](../../../docs/content/development/testing.md)
 for commands and coverage matrix.
 
 ## Workflow contracts
 
 - Pin external actions to full commit SHAs with the release tag in a comment.
-  Keep recurring CI/orchestration logic in `.github/workflows/scripts/{linux,windows}/`
-  and application/component/integration tests under `tests/`; extend existing
-  jobs before adding new ones.
+  Keep recurring cross-platform CI/orchestration Python scripts under
+  `.github/workflows/scripts/` (with OS-specific helpers under `linux/` and
+  `windows/`), the unified local runner at `check.py`, and
+  application/component/integration tests under `tests/`; extend existing jobs
+  before adding new ones.
 - Concurrency: let active `main` CI runs finish and keep only the newest
   pending run; cancel superseded runs on other refs; preserve non-cancelling
   concurrency on `release.yml` and `pages.yml`.

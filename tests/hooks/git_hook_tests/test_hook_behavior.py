@@ -83,7 +83,7 @@ class HookBehaviorTests(unittest.TestCase):
             env = clean_git_env(repo)
             self.assertEqual(run(["git", "init", "-q", str(repo)], cwd=repo, env=env).returncode, 0)
             (repo / "hooks").mkdir()
-            (repo / ".github" / "workflows" / "scripts" / "linux").mkdir(parents=True)
+            (repo / ".github" / "workflows" / "scripts").mkdir(parents=True)
             shutil.copy2(
                 REPO_ROOT / "hooks" / "check-ci-guards.sh", repo / "hooks" / "check-ci-guards.sh"
             )
@@ -95,8 +95,8 @@ class HookBehaviorTests(unittest.TestCase):
                 "workflow_yaml.py",
             ):
                 shutil.copy2(
-                    REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / helper,
-                    repo / ".github" / "workflows" / "scripts" / "linux" / helper,
+                    REPO_ROOT / ".github" / "workflows" / "scripts" / helper,
+                    repo / ".github" / "workflows" / "scripts" / helper,
                 )
             release_path = repo / ".github" / "workflows" / "release.yml"
 

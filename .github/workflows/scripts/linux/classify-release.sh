@@ -31,4 +31,4 @@ fi
 
 echo "Comparing binary inputs with published release $tag."
 BASE_SHA="$base" GITHUB_EVENT_NAME=release \
-  sh .github/workflows/scripts/linux/classify-ci-changes.sh
+  python3 -B .github/workflows/scripts/classify-ci-changes.py

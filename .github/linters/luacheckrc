@@ -13,3 +13,7 @@ files["symlinks/vim"] = {
 files["tests/vim"] = {
   globals = { "vim" },
 }
+
+files["tests/integration/test-nvim-lock.lua"] = {
+  globals = { "vim" },
+}

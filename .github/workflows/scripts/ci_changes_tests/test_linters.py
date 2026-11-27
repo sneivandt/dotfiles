@@ -162,7 +162,7 @@ class SharedLinterScriptTests(unittest.TestCase):
                 "function Invoke-ScriptAnalyzer {\n"
                 "    param([string]$Path, [string[]]$Severity)\n"
                 "    if (($Severity -join ',') -ne 'Warning,Error') { throw 'wrong severity' }\n"
-                "    [IO.File]::AppendAllText($env:LINT_INPUT_LOG, [IO.Path]::GetFileName($Path) + \"`n\")\n"
+                '    [IO.File]::AppendAllText($env:LINT_INPUT_LOG, [IO.Path]::GetFileName($Path) + "`n")\n'
                 "    if ($env:LINT_EXIT -eq '1') { 'fixture finding' }\n"
                 "    if ($env:LINT_EXIT -eq '2') { throw 'fixture analyzer failure' }\n"
                 "}\n"
@@ -190,7 +190,7 @@ class SharedLinterScriptTests(unittest.TestCase):
                 "    } catch {\n"
                 "        $failed = $true\n"
                 "    }\n"
-                '    "$Name=$(if ($failed) { \'fail\' } else { \'ok\' })"\n'
+                "    \"$Name=$(if ($failed) { 'fail' } else { 'ok' })\"\n"
                 "}\n"
                 f"Invoke-Case 'ok' {{ $env:LINT_INPUT_LOG = '{ps(log_all)}'; $env:LINT_EXIT = '0'; & '{ps(PSSCRIPTANALYZER_SCRIPT)}' -Root '{ps(root)}' }}\n"
                 f"Invoke-Case 'explicit' {{ $env:LINT_INPUT_LOG = '{ps(log_selected)}'; $env:LINT_EXIT = '0'; & '{ps(PSSCRIPTANALYZER_SCRIPT)}' '{ps(selected)}' }}\n"

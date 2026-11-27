@@ -18,6 +18,7 @@ REPO_ROOT = Path(os.environ.get("DIR") or Path(__file__).resolve().parents[2])
 sys.path.insert(0, str(REPO_ROOT / "tests"))
 
 from runner import pop_strict_flag, run_suite
+
 EXPECTED_CONFIG = (
     ("init.defaultBranch", "main"),
     ("pull.rebase", "true"),

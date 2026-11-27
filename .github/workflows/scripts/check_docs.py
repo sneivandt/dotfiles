@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
 import os
 from pathlib import Path
 import subprocess
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 DEFAULT_ROOT = SCRIPTS_DIR.parents[2]

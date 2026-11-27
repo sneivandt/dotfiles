@@ -63,9 +63,7 @@ class PrePushPlanTests(unittest.TestCase):
             ("symlinks/vim/vimrc", "vim-config", "shell-config"),
         ):
             commands, _ = PRE_PUSH["plan"](classify([path]))
-            stages = set(
-                next(command for label, _, command in commands if label == "core checks")
-            )
+            stages = set(next(command for label, _, command in commands if label == "core checks"))
             self.assertIn(expected, stages)
             self.assertNotIn(absent, stages)
 

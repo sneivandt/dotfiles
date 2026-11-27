@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import argparse
 import os
-from pathlib import Path
 import sys
+from typing import TYPE_CHECKING
 import unittest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def is_strict(explicit: bool | None = None) -> bool:

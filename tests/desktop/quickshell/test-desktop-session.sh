@@ -6,7 +6,8 @@ test "$(id -u)" = 0
 test -e /etc/arch-release
 
 pacman -Syu --noconfirm --needed sway swaylock quickshell qt6-wayland mesa dbus python hyprland hyprlock \
-  systemd gammastep glib2 hypridle hyprpaper mako network-manager-applet xfconf
+  systemd gammastep glib2 hypridle hyprpaper mako network-manager-applet xfconf \
+  fuzzel alacritty lazygit btop
 # The headless parent needs no real-time scheduling capability.
 sway_binary=$(command -v sway)
 if [ -n "$(getcap "$sway_binary")" ]; then setcap -r "$sway_binary"; fi

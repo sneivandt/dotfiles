@@ -233,6 +233,7 @@ DISPATCH_RULES: tuple[PathRule, ...] = (
         apps=("git",),
         flags=("app_windows",),
     ),
+    PathRule(exact=frozenset({"tests/integration/test_bash.py"}), apps=("bash",)),
     PathRule(
         exact=frozenset({"tests/integration/test_zsh.py", "tests/shell/test_shell_config.py"}),
         prefixes=("tests/shell/shell_config_tests/",),
@@ -288,12 +289,19 @@ SYMLINK_RULES: tuple[PathRule, ...] = (
     ),
     PathRule(prefixes=("symlinks/config/git/",), apps=("git",), flags=("app_windows",)),
     PathRule(
+        exact=frozenset({"symlinks/bashrc", "symlinks/bash_profile"}),
+        prefixes=("symlinks/config/bash/", "symlinks/config/shell/"),
+        apps=("bash",),
+    ),
+    PathRule(
         exact=frozenset(
             {
                 "symlinks/zshrc",
                 "symlinks/zprofile",
                 "symlinks/bashrc",
                 "symlinks/bash_profile",
+                "symlinks/ssh/config",
+                "symlinks/config/pacman/makepkg.conf",
                 "symlinks/config/wgetrc",
                 "symlinks/config/git/windows",
                 "symlinks/config/git/windows-desktop",
@@ -306,7 +314,13 @@ SYMLINK_RULES: tuple[PathRule, ...] = (
                 "symlinks/config/readline/inputrc",
             }
         ),
-        prefixes=("symlinks/config/zsh/", "symlinks/config/bash/", "symlinks/config/shell/"),
+        prefixes=(
+            "symlinks/config/zsh/",
+            "symlinks/config/bash/",
+            "symlinks/config/shell/",
+            "symlinks/local/share/applications/",
+            "symlinks/config/autostart/",
+        ),
         apps=("zsh",),
     ),
     PathRule(prefixes=("symlinks/vim/",), apps=("vim", "nvim")),
@@ -330,7 +344,18 @@ SYMLINK_RULES: tuple[PathRule, ...] = (
     ),
     PathRule(
         exact=frozenset(
-            {"symlinks/config/hypr/hyprland.lua", "symlinks/config/hypr/hyprlock.conf"}
+            {
+                "symlinks/config/hypr/hyprland.lua",
+                "symlinks/config/hypr/hyprlock.conf",
+                "symlinks/config/hypr/hypridle.conf",
+                "symlinks/config/hypr/hyprpaper.conf",
+                "symlinks/config/fuzzel/fuzzel.ini",
+                "symlinks/config/gammastep/config.ini",
+                "symlinks/config/mako/config",
+                "symlinks/config/alacritty/alacritty.toml",
+                "symlinks/config/btop/btop.conf",
+                "symlinks/config/lazygit/config.yml",
+            }
         ),
         prefixes=("symlinks/config/hypr/conf/",),
         flags=("desktop_qml",),
@@ -466,9 +491,17 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 enable("audit", "deny")
         elif path.startswith("packages/"):
             # Recipes are runtime inputs, not binary release inputs. Linux tests
-            # validate their real descriptors; ShellCheck covers PKGBUILDs.
-            enable("rust_checks", "build_linux", "validate_config", "config_drift")
+            # validate their descriptors and Arch acceptance checks PKGBUILDs.
+            enable(
+                "rust_checks",
+                "build_linux",
+                "validate_config",
+                "config_drift",
+                "roundtrip_linux",
+            )
             linters.add("shell")
+            if path == "packages/powershell/package.install":
+                apps.add("zsh")
         elif path.startswith("conf/"):
             profiles("linux", "windows")
             for rule in CONF_RULES:
@@ -477,6 +510,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
         elif path.startswith("system/"):
             profiles("linux")
             enable("rust_checks")
+            if path == "system/wsl.conf":
+                apps.add("zsh")
         elif path.startswith("symlinks/"):
             # Config-drift tests inspect managed content as well as source paths.
             enable("validate_config", "config_drift")

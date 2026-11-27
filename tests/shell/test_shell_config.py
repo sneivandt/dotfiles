@@ -12,12 +12,14 @@ sys.path.insert(0, str(SCRIPT_DIR))
 sys.path.insert(0, str(SCRIPT_DIR.parent))
 
 from runner import pop_strict_flag, run_test_cases
+from shell_config_tests.test_app_configs import AppConfigTests
 from shell_config_tests.test_completion_and_tools import CompletionAndToolsTests
 from shell_config_tests.test_extract_and_launchers import ExtractAndLaunchersTests
 from shell_config_tests.test_profile_and_env import ProfileAndEnvTests
 from shell_config_tests.test_ssh_prompt_and_system import SshPromptAndSystemTests
 
 __all__ = [
+    "AppConfigTests",
     "CompletionAndToolsTests",
     "ExtractAndLaunchersTests",
     "ProfileAndEnvTests",
@@ -31,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: unexpected arguments: {' '.join(remaining)}", file=sys.stderr)
         return 2
     return run_test_cases(
+        AppConfigTests,
         CompletionAndToolsTests,
         ExtractAndLaunchersTests,
         ProfileAndEnvTests,

@@ -5,7 +5,7 @@ test -e /.dockerenv
 test "$(id -u)" = 0
 test -e /etc/arch-release
 
-pacman -Syu --noconfirm --needed git sudo libgit2 systemd
+pacman -Syu --noconfirm --needed git sudo libgit2 systemd pacman-contrib
 useradd -m smoke
 fixture=/home/smoke/fixture
 install -d -o smoke -g smoke "$fixture" "$fixture/conf" "$fixture/system"
@@ -148,3 +148,46 @@ grep -Fx 'retry = true' /etc/dotfiles-ci/config.toml
 state=$(stat -c '%i:%Y' /etc/dotfiles-ci/config.toml)
 run_update system-files
 test "$state" = "$(stat -c '%i:%Y' /etc/dotfiles-ci/config.toml)"
+
+# Validate tracked Arch system fragments against real Arch tooling.
+pacman_out=$(pacman-conf -c /workspace/system/pacman.conf)
+printf '%s\n' "$pacman_out" | grep -Fx 'Color'
+printf '%s\n' "$pacman_out" | grep -Fx 'ILoveCandy'
+printf '%s\n' "$pacman_out" | grep -Fx 'VerbosePkgLists'
+printf '%s\n' "$pacman_out" | grep -Fx 'ParallelDownloads = 5'
+
+install -d /etc/systemd/system/paccache.service.d
+install -m 0644 /workspace/system/systemd/system/paccache.service.d/retention.conf \
+  /etc/systemd/system/paccache.service.d/retention.conf
+install -m 0644 /workspace/system/systemd/system/paccache.service.d/retention.env \
+  /etc/systemd/system/paccache.service.d/retention.env
+systemd-analyze --man=no --recursive-errors=no verify /usr/lib/systemd/system/paccache.service
+grep -Fx 'PACCACHE_ARGS=-k2' /etc/systemd/system/paccache.service.d/retention.env
+
+# Validate every tracked Arch PKGBUILD recipe with makepkg --printsrcinfo.
+pkg_scratch=/home/smoke/pkg-check
+install -d -o smoke -g smoke "$pkg_scratch"
+for pkg_dir in /workspace/packages/*; do
+  [ -f "$pkg_dir/PKGBUILD" ] || continue
+  pkg_name=$(basename "$pkg_dir")
+  copy_dir="$pkg_scratch/$pkg_name"
+  cp -a "$pkg_dir" "$copy_dir"
+  cat > "$copy_dir/version.sh" <<'SH'
+pkgver='1.0.0'
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+SH
+  chown -R smoke:smoke "$copy_dir"
+  srcinfo=$(runuser -u smoke -- sh -eu -c 'cd "$1" && makepkg --printsrcinfo' sh "$copy_dir")
+  printf '%s\n' "$srcinfo" | grep -Fx '	pkgver = 1.0.0'
+  printf '%s\n' "$srcinfo" | grep -Fx '	arch = x86_64'
+  printf '%s\n' "$srcinfo" | grep -Fx '	arch = aarch64'
+  printf '%s\n' "$srcinfo" | grep -Eq '^[[:space:]]+provides = '
+  # Verify every local (non-URL) source file exists in the tracked recipe directory.
+  printf '%s\n' "$srcinfo" | sed -n 's/^[[:space:]]*source = //p' | while IFS= read -r src; do
+    case "$src" in
+      *://*) ;;
+      *) test -f "$pkg_dir/$src" ;;
+    esac
+  done
+done

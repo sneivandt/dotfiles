@@ -1,0 +1,2 @@
+module Quickshell.Services.UPower
+UPowerDeviceState 1.0 UPowerDeviceState.qml

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Cross-platform Git configuration, aliases, behavior, cleanup, and hook tests.
+"""Cross-platform Git configuration, aliases, behavior, clean, hooks, and delta tests.
 
-Usage: python3 -B tests/integration/test_git.py [--strict] [config] [aliases] [behavior] [clean] [hooks]
+Usage: python3 -B tests/integration/test_git.py [--strict] [config] [aliases] [behavior] [clean] [hooks] [delta]
 """
 
 from __future__ import annotations
@@ -55,6 +55,27 @@ def run_git(
         capture_output=True,
         check=False,
     )
+
+
+def _find_git_shell() -> str | None:
+    if sys.platform == "win32":
+        git_path = shutil.which("git")
+        if git_path:
+            git_dir = Path(git_path).resolve().parent
+            for candidate in (
+                git_dir.parent / "usr" / "bin" / "sh.exe",
+                git_dir / "sh.exe",
+            ):
+                if candidate.is_file():
+                    return str(candidate)
+    return shutil.which("sh")
+
+
+def _write_stub(directory: Path, name: str, body: str) -> Path:
+    path = directory / name
+    path.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8", newline="\n")
+    path.chmod(0o755)
+    return path
 
 
 class GitTests(unittest.TestCase):
@@ -299,6 +320,91 @@ class GitTests(unittest.TestCase):
                 "git delete-merged unexpectedly deleted unmerged-topic branch",
             )
 
+    def test_delta(self) -> None:
+        shell = _find_git_shell()
+        if shell is None:
+            self.skipTest("POSIX sh not available")
+
+        delta_config = REPO_ROOT / "symlinks" / "config" / "git" / "delta"
+        self.assertTrue(delta_config.is_file(), f"delta config missing: {delta_config}")
+
+        pager = self._checked_git(
+            "config", "--file", str(delta_config), "--get", "core.pager", cwd=REPO_ROOT
+        ).stdout.strip()
+        diff_filter = self._checked_git(
+            "config", "--file", str(delta_config), "--get", "interactive.diffFilter", cwd=REPO_ROOT
+        ).stdout.strip()
+
+        def run_cmd(
+            command: str,
+            bin_dir: Path,
+            columns: str | None = None,
+        ) -> subprocess.CompletedProcess[str]:
+            env = {
+                "PATH": str(bin_dir),
+                "LC_ALL": "C",
+            }
+            if sys.platform == "win32":
+                for key in ("SYSTEMROOT", "WINDIR", "TEMP", "TMP"):
+                    if key in os.environ:
+                        env[key] = os.environ[key]
+            if columns is not None:
+                env["COLUMNS"] = columns
+            kwargs: dict[str, object] = {}
+            if sys.platform != "win32":
+                # Detach from any controlling tty so </dev/tty falls through to COLUMNS.
+                kwargs["start_new_session"] = True
+            return subprocess.run(
+                [shell, "-c", command],
+                env=env,
+                stdin=subprocess.DEVNULL,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=15,
+                **kwargs,
+            )
+
+        with tempfile.TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            without_delta = tmp / "without-delta"
+            with_delta = tmp / "with-delta"
+            without_delta.mkdir()
+            with_delta.mkdir()
+
+            for directory in (without_delta, with_delta):
+                _write_stub(directory, "less", 'printf "LESS:%s\\n" "$*"')
+                _write_stub(directory, "cat", 'printf "CAT:%s\\n" "$*"')
+            _write_stub(with_delta, "delta", 'printf "DELTA:%s\\n" "$*"')
+
+            fallback_pager = run_cmd(pager, without_delta)
+            self.assertEqual(fallback_pager.returncode, 0, fallback_pager.stderr)
+            self.assertEqual(fallback_pager.stdout.strip(), "LESS:-imRj8X")
+
+            fallback_filter = run_cmd(diff_filter, without_delta)
+            self.assertEqual(fallback_filter.returncode, 0, fallback_filter.stderr)
+            self.assertEqual(fallback_filter.stdout.strip(), "CAT:")
+
+            narrow = run_cmd(pager, with_delta, columns="159")
+            self.assertEqual(narrow.returncode, 0, narrow.stderr)
+            self.assertEqual(narrow.stdout.strip(), "DELTA:")
+
+            wide = run_cmd(pager, with_delta, columns="160")
+            self.assertEqual(wide.returncode, 0, wide.stderr)
+            self.assertEqual(wide.stdout.strip(), "DELTA:--side-by-side")
+
+            invalid_cols = run_cmd(pager, with_delta, columns="invalid")
+            self.assertEqual(invalid_cols.returncode, 0, invalid_cols.stderr)
+            self.assertEqual(invalid_cols.stdout.strip(), "DELTA:")
+
+            unset_cols = run_cmd(pager, with_delta)
+            self.assertEqual(unset_cols.returncode, 0, unset_cols.stderr)
+            self.assertEqual(unset_cols.stdout.strip(), "DELTA:")
+
+            delta_filter = run_cmd(diff_filter, with_delta)
+            self.assertEqual(delta_filter.returncode, 0, delta_filter.stderr)
+            self.assertEqual(delta_filter.stdout.strip(), "DELTA:--color-only")
+
 
 SELECTORS = {
     "config": "test_config",
@@ -307,6 +413,7 @@ SELECTORS = {
     "behavior": "test_behavior",
     "clean": "test_clean",
     "hooks": "test_hooks",
+    "delta": "test_delta",
 }
 
 
@@ -315,7 +422,7 @@ def main(argv: list[str]) -> int:
     selected = (
         [name.lower() for name in remaining]
         if remaining
-        else ["config", "aliases", "behavior", "clean", "hooks"]
+        else ["config", "aliases", "behavior", "clean", "hooks", "delta"]
     )
     suite = unittest.TestSuite()
     for name in selected:

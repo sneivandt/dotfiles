@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate tracked JSON, JSONC, TOML, and YAML files without third-party dependencies."""
+"""Validate tracked JSON, JSONC, TOML, YAML, and XML files without third-party dependencies."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import xml.etree.ElementTree as ET
 
 import tomllib
 
@@ -34,6 +35,13 @@ JSONC_PATTERNS = (
     "symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_*/LocalState/settings.json",
 )
 
+XML_EXACT_PATHS = frozenset(
+    {
+        "symlinks/config/fontconfig/fonts.conf",
+        "symlinks/config/nuget/nuget.config",
+    }
+)
+
 
 def _load_workflow_yaml():
     name = "workflow_yaml"
@@ -51,11 +59,21 @@ def _load_workflow_yaml():
 _YAML = _load_workflow_yaml()
 
 
-def is_jsonc_path(rel_path: str) -> bool:
+def _normalize_rel_path(rel_path: str) -> str:
     normalized = rel_path.replace("\\", "/")
     while normalized.startswith("./"):
         normalized = normalized[2:]
+    return normalized
+
+
+def is_jsonc_path(rel_path: str) -> bool:
+    normalized = _normalize_rel_path(rel_path)
     return any(fnmatch.fnmatch(normalized, pattern) for pattern in JSONC_PATTERNS)
+
+
+def is_xml_path(rel_path: str) -> bool:
+    normalized = _normalize_rel_path(rel_path)
+    return normalized.lower().endswith(".xml") or normalized in XML_EXACT_PATHS
 
 
 def strip_jsonc(text: str) -> str:
@@ -165,6 +183,8 @@ def validate_file(path: Path, rel_path: str) -> str | None:
         elif suffix == ".json":
             payload = strip_jsonc(text) if is_jsonc_path(rel_path) else text
             json.loads(payload, object_pairs_hook=_reject_duplicate_keys)
+        elif is_xml_path(rel_path):
+            ET.fromstring(text)
     except Exception as error:
         return f"{rel_path}: {error}"
     return None
@@ -187,11 +207,14 @@ def collect_files(root: Path) -> list[tuple[Path, str]]:
         dirnames[:] = kept
         for filename in sorted(filenames):
             candidate = current / filename
-            if candidate.suffix.lower() not in {".json", ".toml", ".yml", ".yaml"}:
-                continue
             if candidate.is_symlink() or not candidate.is_file():
                 continue
             rel = candidate.relative_to(root).as_posix()
+            if (
+                candidate.suffix.lower() not in {".json", ".toml", ".yml", ".yaml"}
+                and not is_xml_path(rel)
+            ):
+                continue
             files.append((candidate, rel))
     return files
 

@@ -129,7 +129,7 @@ host-safe isolated test suite for the current platform):
 | `powershell` | PSScriptAnalyzer at Warning/Error severity |
 | `python` | Ruff linting and formatting (`ruff format --check`) across repository Python scripts and tests |
 | `lua` | Luacheck linting across Hyprland and Neovim Lua files (Linux only) |
-| `structured` | Zero-dependency JSON/JSONC, TOML, and YAML validation (`check-structured-files.py`) |
+| `structured` | Zero-dependency JSON/JSONC, TOML, YAML, and XML validation (`check-structured-files.py`) |
 | `audit` / `deny` | Dependency advisories and dependency policy |
 | `hook-inputs` / `hooks` | Staged-input guards, Git maintenance/template fixtures, and full commit-hook suite in a disposable repo (Linux only) |
 | `wrapper` | Bootstrap wrapper parity (`test_parity.py`) plus isolated platform wrapper fixtures |
@@ -323,7 +323,7 @@ and both sides of renames):
 | Shell, hook, or package recipe paths (`packages/*/PKGBUILD`, `packages/*/*.install`) | Available ShellCheck on affected inputs | — |
 | PowerShell (`*.ps1`, `*.psm1`, `*.psd1`) paths | Available PSScriptAnalyzer on affected inputs | — |
 | Python (`*.py`, `symlinks/local/bin/code-insiders`) or Lua (`*.lua`) paths | Available Ruff (lint + format check) and Luacheck on affected inputs | — |
-| Structured (`*.json`, `*.toml`, `*.yml`, `*.yaml`) paths | Zero-dependency JSON/JSONC, TOML, and YAML validation | — |
+| Structured (`*.json`, `*.toml`, `*.yml`, `*.yaml`, `*.xml`, `fonts.conf`, `nuget.config`) paths | Zero-dependency JSON/JSONC, TOML, YAML, and XML validation | — |
 | Wrappers or their tests | Wrapper parity contract (`tests/wrapper/test_parity.py`) | Linux wrapper tests |
 | GitHub Actions workflows or CI policy scripts | Available `actionlint`, CI workflow contract checks, and release publishing invariants | — |
 | Markdown (`*.md`) or skill (`.agents/skills/`, `AGENTS.md`) paths | Staged doc link checks and skill metadata validation | — |
@@ -508,9 +508,9 @@ pwsh -NoProfile -File tests/shell/Test-Prompt.ps1
 ```
 
 Installed-home application smoke harnesses live under `tests/integration/`
-(`test_git.py`, `test_zsh.py`, `test_vim.py`, `test_nvim.py`); each runs every
-check by default or accepts specific test names (and `--strict` to fail on
-skips).
+(`test_git.py`, `test_bash.py`, `test_zsh.py`, `test_vim.py`, `test_nvim.py`);
+each runs every check by default or accepts specific test names (and `--strict`
+to fail on skips).
 
 The PowerShell suite checks first-start discovery, custom Cargo paths, literal
 fragment directories, and `PATH` deduplication on reload. Install required

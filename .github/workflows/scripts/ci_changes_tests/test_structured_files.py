@@ -77,6 +77,39 @@ class StructuredFileValidationTests(unittest.TestCase):
             yaml_file.write_text("name: one\nname: two\n", encoding="utf-8")
             self.assertIsNotNone(VALIDATOR.validate_file(yaml_file, "config.yml"))
 
+    def test_xml_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fonts = root / "symlinks" / "config" / "fontconfig" / "fonts.conf"
+            fonts.parent.mkdir(parents=True)
+            fonts.write_text(
+                '<?xml version="1.0"?>\n'
+                '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n'
+                "<fontconfig><alias><family>monospace</family></alias></fontconfig>\n",
+                encoding="utf-8",
+            )
+            self.assertIsNone(
+                VALIDATOR.validate_file(fonts, "symlinks/config/fontconfig/fonts.conf")
+            )
+
+            nuget = root / "symlinks" / "config" / "nuget" / "nuget.config"
+            nuget.parent.mkdir(parents=True)
+            nuget.write_text(
+                "<configuration><packageSources /></configuration>\n", encoding="utf-8"
+            )
+            self.assertIsNone(VALIDATOR.validate_file(nuget, "symlinks/config/nuget/nuget.config"))
+            self.assertEqual(VALIDATOR.main(["--root", str(root)]), 0)
+
+            nuget.write_text("<configuration><unclosed></configuration>\n", encoding="utf-8")
+            self.assertIsNotNone(
+                VALIDATOR.validate_file(nuget, "symlinks/config/nuget/nuget.config")
+            )
+            self.assertEqual(VALIDATOR.main(["--root", str(root)]), 1)
+
+            generic_xml = root / "sample.xml"
+            generic_xml.write_text('<root a="1" a="2" />\n', encoding="utf-8")
+            self.assertIsNotNone(VALIDATOR.validate_file(generic_xml, "sample.xml"))
+
     def test_root_discovery_skips_generated_build_trees(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

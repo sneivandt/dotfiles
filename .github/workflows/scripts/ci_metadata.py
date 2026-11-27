@@ -80,14 +80,22 @@ APPS = {
         "config_script": "",
         "config_args": "",
         "packages": "git",
-        "tests": "config aliases behavior clean hooks",
+        "tests": "config aliases behavior clean hooks delta",
+    },
+    "bash": {
+        "application": "bash",
+        "script": "tests/integration/test_bash.py",
+        "config_script": "",
+        "config_args": "",
+        "packages": "bash git",
+        "tests": "startup prompt",
     },
     "zsh": {
         "application": "zsh",
         "script": "tests/integration/test_zsh.py",
         "config_script": "tests/shell/test_shell_config.py",
         "config_args": "",
-        "packages": "zsh fzf wget libarchive-tools bat zstd tmux",
+        "packages": "zsh fzf wget libarchive-tools bat zstd tmux openssh-client desktop-file-utils",
         "tests": "completion history",
     },
     "vim": {
@@ -130,7 +138,7 @@ LINTERS = {
         "check": "lua",
     },
     "structured": {
-        "name": "Structured files (JSON/TOML/YAML)",
+        "name": "Structured files (JSON/TOML/YAML/XML)",
         "setup": ":",
         "check": "structured",
     },
@@ -149,6 +157,7 @@ SHELL_SCRIPT_EXACT = frozenset(
         "hooks/pre-commit",
         "symlinks/bashrc",
         "symlinks/bash_profile",
+        "symlinks/config/pacman/makepkg.conf",
     }
 )
 
@@ -160,7 +169,13 @@ SHELL_SCRIPT_PREFIXES = (
 SHELL_SCRIPT_EXTENSIONS = (".sh", ".bash")
 POWERSHELL_EXTENSIONS = (".ps1", ".psm1", ".psd1")
 LUA_EXTENSIONS = (".lua",)
-STRUCTURED_EXTENSIONS = (".json", ".toml", ".yml", ".yaml")
+STRUCTURED_EXTENSIONS = (".json", ".toml", ".yml", ".yaml", ".xml")
+STRUCTURED_EXACT = frozenset(
+    {
+        "symlinks/config/fontconfig/fonts.conf",
+        "symlinks/config/nuget/nuget.config",
+    }
+)
 
 LINTER_CONFIG_FILES = {
     "shell": frozenset({SCRIPTS + "shellcheck.sh"}),
@@ -201,7 +216,7 @@ def lua_script(path: str) -> bool:
 
 
 def structured_file(path: str) -> bool:
-    return path.endswith(STRUCTURED_EXTENSIONS)
+    return path.endswith(STRUCTURED_EXTENSIONS) or path in STRUCTURED_EXACT
 
 
 def workflow_file(path: str) -> bool:

@@ -5,7 +5,7 @@ set -eu
 is_shell_script() {
   case "$1" in
     *.zsh) return 1 ;;
-    *.sh) return 0 ;;
+    *.sh|*/symlinks/config/pacman/makepkg.conf) return 0 ;;
   esac
   LC_ALL=C awk '
     NR == 1 {

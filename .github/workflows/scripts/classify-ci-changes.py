@@ -121,6 +121,7 @@ FULL_CI_EXACT = frozenset(
         LINUX + "ci-comparison-range.sh",
         SCRIPTS + "ci_fixture_home.py",
         "tests/check.py",
+        "tests/runner.py",
         SCRIPTS + "pre-push.py",
     }
 )
@@ -179,14 +180,14 @@ DISPATCH_RULES: tuple[PathRule, ...] = (
     PathRule(
         exact=frozenset(
             {
-                "tests/vim/test_nvim.py",
+                "tests/integration/test_nvim.py",
                 "tests/vim/test-nvim-config.lua",
-                "tests/vim/test-nvim-lock.lua",
+                "tests/integration/test-nvim-lock.lua",
             }
         ),
         apps=("nvim",),
     ),
-    PathRule(exact=frozenset({"tests/vim/test_vim.py"}), apps=("vim",)),
+    PathRule(exact=frozenset({"tests/integration/test_vim.py"}), apps=("vim",)),
     PathRule(prefixes=("tests/vim/",), apps=("vim", "nvim")),
     PathRule(exact=frozenset({"tests/shell/Test-Prompt.ps1"}), flags=("prompt",)),
     PathRule(exact=frozenset({"tests/integration/test_apm.py"}), flags=("apm", "apm_windows")),
@@ -199,7 +200,11 @@ DISPATCH_RULES: tuple[PathRule, ...] = (
     ),
     PathRule(
         exact=frozenset({"tests/hooks/test_git_hooks.py", "tests/hooks/test_maintenance.py"}),
-        prefixes=("tests/hooks/git_hook_tests/", "hooks/"),
+        prefixes=("tests/hooks/git_hook_tests/",),
+        flags=("git_hooks",),
+    ),
+    PathRule(
+        prefixes=("hooks/",),
         flags=("git_hooks", "hook_inputs"),
     ),
     PathRule(exact=_META.WRAPPER_PARITY_PATHS, flags=("wrapper_linux", "wrapper_windows")),
@@ -223,9 +228,13 @@ DISPATCH_RULES: tuple[PathRule, ...] = (
         exact=frozenset({"tests/integration/test-arch-acceptance.sh"}),
         flags=("roundtrip_linux",),
     ),
-    PathRule(exact=frozenset({"tests/git/test_git.py"}), apps=("git",), flags=("app_windows",)),
     PathRule(
-        exact=frozenset({"tests/shell/test_zsh.py", "tests/shell/test_shell_config.py"}),
+        exact=frozenset({"tests/integration/test_git.py"}),
+        apps=("git",),
+        flags=("app_windows",),
+    ),
+    PathRule(
+        exact=frozenset({"tests/integration/test_zsh.py", "tests/shell/test_shell_config.py"}),
         prefixes=("tests/shell/shell_config_tests/",),
         apps=("zsh",),
     ),

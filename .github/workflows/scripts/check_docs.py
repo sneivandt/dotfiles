@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 import os
 from pathlib import Path
 import subprocess
@@ -29,57 +30,96 @@ def _run_sequence(commands: list[tuple[list[str], Path]]) -> int:
     return 0
 
 
+def plan_commands(
+    root: Path,
+    checks: Sequence[str],
+    *,
+    npm: str | None = None,
+) -> list[tuple[list[str], Path]]:
+    """Return ordered (argv, cwd) pairs for the requested documentation checks."""
+    scripts_dir = root / ".github/workflows/scripts"
+    skill_scripts = root / ".agents/skills/skill-maintenance/scripts"
+    cli_root = root / "cli"
+    docs_root = root / "docs"
+    npm_cmd = npm or ("npm.cmd" if sys.platform == "win32" else "npm")
+    planned: list[tuple[list[str], Path]] = []
+    for name in checks:
+        if name == "links":
+            planned.extend(
+                [
+                    ([sys.executable, "-B", str(skill_scripts / "test-check-skills.py")], root),
+                    (
+                        [sys.executable, "-B", str(skill_scripts / "check-skills.py"), str(root)],
+                        root,
+                    ),
+                    (
+                        [sys.executable, "-B", str(scripts_dir / "check-doc-links.py"), str(root)],
+                        root,
+                    ),
+                ]
+            )
+        elif name == "contracts":
+            planned.extend(
+                [
+                    (
+                        [
+                            "cargo",
+                            "test",
+                            "--locked",
+                            "--quiet",
+                            "--profile",
+                            "ci",
+                            "--lib",
+                            "documented_",
+                        ],
+                        cli_root,
+                    ),
+                    (
+                        [
+                            "cargo",
+                            "test",
+                            "--locked",
+                            "--quiet",
+                            "--profile",
+                            "ci",
+                            "--test",
+                            "docs_contracts",
+                        ],
+                        cli_root,
+                    ),
+                ]
+            )
+        elif name == "site":
+            planned.extend(
+                [
+                    ([npm_cmd, "run", "check"], docs_root),
+                    ([npm_cmd, "test"], docs_root),
+                    ([npm_cmd, "run", "build"], docs_root),
+                    (
+                        [sys.executable, "-B", str(scripts_dir / "check-doc-site.py"), str(root)],
+                        root,
+                    ),
+                    ([npm_cmd, "run", "test:browser"], docs_root),
+                ]
+            )
+        else:
+            raise ValueError(f"Unknown documentation check: {name}")
+    return planned
+
+
 def check_links(root: Path) -> int:
     print("== Checking documentation links and repository skill metadata ==", flush=True)
-    skill_scripts = root / ".agents/skills/skill-maintenance/scripts"
-    return _run_sequence(
-        [
-            ([sys.executable, "-B", str(skill_scripts / "test-check-skills.py")], root),
-            ([sys.executable, "-B", str(skill_scripts / "check-skills.py"), str(root)], root),
-            ([sys.executable, "-B", str(SCRIPTS_DIR / "check-doc-links.py"), str(root)], root),
-        ]
-    )
+    return _run_sequence(plan_commands(root, ("links",)))
 
 
 def check_contracts(root: Path) -> int:
     print("== Checking documented task selectors and contracts ==", flush=True)
-    cli_root = root / "cli"
-    return _run_sequence(
-        [
-            (
-                ["cargo", "test", "--locked", "--quiet", "--profile", "ci", "--lib", "documented_"],
-                cli_root,
-            ),
-            (
-                [
-                    "cargo",
-                    "test",
-                    "--locked",
-                    "--quiet",
-                    "--profile",
-                    "ci",
-                    "--test",
-                    "docs_contracts",
-                ],
-                cli_root,
-            ),
-        ]
-    )
+    return _run_sequence(plan_commands(root, ("contracts",)))
 
 
 def check_site(root: Path) -> int:
     print("== Checking the built documentation and browser behavior ==", flush=True)
-    docs_root = root / "docs"
-    npm = "npm.cmd" if sys.platform == "win32" else "npm"
-    return _run_sequence(
-        [
-            ([npm, "run", "check"], docs_root),
-            ([npm, "test"], docs_root),
-            ([npm, "run", "build"], docs_root),
-            ([sys.executable, "-B", str(SCRIPTS_DIR / "check-doc-site.py"), str(root)], root),
-            ([npm, "run", "test:browser"], docs_root),
-        ]
-    )
+    return _run_sequence(plan_commands(root, ("site",)))
 
 
 CHECKS = {

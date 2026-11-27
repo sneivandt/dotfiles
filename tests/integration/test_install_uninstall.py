@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Cross-platform install/uninstall round-trip tests.
 
+Usage:
+  python3 -B tests/integration/test_install_uninstall.py [--strict] [binary_path]
+  python3 -B tests/integration/test_install_uninstall.py [--strict] --self-test
+
 Expected environment:
-  BINARY_PATH  path to pre-built dotfiles CLI binary
+  BINARY_PATH  path to pre-built dotfiles CLI binary (or pass [binary_path])
   DIR          repository root (defaults to this checkout)
 """
 
@@ -18,6 +22,9 @@ import tempfile
 import unittest
 
 REPO_ROOT = Path(os.environ.get("DIR") or Path(__file__).resolve().parents[2])
+sys.path.insert(0, str(REPO_ROOT / "tests"))
+
+from runner import pop_strict_flag, run_suite
 
 
 def home_dir() -> Path:
@@ -388,19 +395,21 @@ class InstallUninstallRoundTripTests(unittest.TestCase):
 
 
 def main(argv: list[str]) -> int:
+    strict, remaining = pop_strict_flag(argv)
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
-    if argv == ["--self-test"]:
+    if remaining == ["--self-test"]:
         suite.addTests(loader.loadTestsFromTestCase(InstallUninstallHelperTests))
-    elif not argv:
+    elif len(remaining) <= 1 and (not remaining or not remaining[0].startswith("-")):
+        if remaining:
+            os.environ["BINARY_PATH"] = remaining[0]
         suite.addTests(loader.loadTestsFromTestCase(InstallUninstallHelperTests))
         suite.addTests(loader.loadTestsFromTestCase(InstallUninstallRoundTripTests))
     else:
-        print(f"ERROR: unexpected arguments: {' '.join(argv)}", file=sys.stderr)
+        print(f"ERROR: unexpected arguments: {' '.join(remaining)}", file=sys.stderr)
         return 2
 
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    return 0 if result.wasSuccessful() else 1
+    return run_suite(suite, strict=strict)
 
 
 if __name__ == "__main__":

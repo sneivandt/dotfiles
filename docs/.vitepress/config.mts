@@ -49,8 +49,8 @@ const reference = [
     'user-registry-settings', 'vs-code-extensions', 'windows-developer-mode',
   ]),
   group('Validation tasks', [
-    'apm-plugin-checks', 'configuration-diagnostics', 'psscriptanalyzer',
-    'required-configuration-files', 'shellcheck', 'symlink-sources',
+    'apm-plugin-checks', 'configuration-diagnostics',
+    'required-configuration-files', 'symlink-sources',
   ]),
 ];
 const contribute = [

@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ci_changes_tests.test_classification import ClassificationTests
 from ci_changes_tests.test_gate import GateTests
 from ci_changes_tests.test_git_range import GitRangeTests
+from ci_changes_tests.test_linters import SharedLinterScriptTests
 from ci_changes_tests.test_mutations_and_docs import (
     DocumentationPublicationTests,
     MutationSelectionTests,
@@ -32,6 +33,7 @@ __all__ = [
     "PrePushCoordinatorTests",
     "PrePushPlanTests",
     "ReleaseTagTests",
+    "SharedLinterScriptTests",
     "StructuredFileValidationTests",
 ]
 

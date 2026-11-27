@@ -122,13 +122,13 @@ fn check_accepts_task_filters_without_mutation_options() {
         "--only",
         "config-diagnostics",
         "--skip",
-        "shellcheck",
+        "apm-plugins",
     ]);
     let Command::Check(opts) = cli.command else {
         panic!("expected check command");
     };
     assert_eq!(opts.tasks.only, ["config-diagnostics"]);
-    assert_eq!(opts.tasks.skip, ["shellcheck"]);
+    assert_eq!(opts.tasks.skip, ["apm-plugins"]);
 }
 
 #[test]

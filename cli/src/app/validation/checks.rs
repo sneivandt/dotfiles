@@ -1,20 +1,23 @@
 //! Validation tasks for the `check` command.
 //!
-//! These tasks verify configuration integrity and run linters on shell and
-//! `PowerShell` scripts. They live in the app-owned validation module and use
-//! the same [`Task`] contract as domain tasks.
+//! These tasks verify desired-state configuration integrity, declared sources,
+//! and local APM plugin packages. They live in the app-owned validation module
+//! and use the same [`Task`] contract as domain tasks.
 use anyhow::{Context as _, Result};
 
 use crate::app::config::Config;
 use crate::engine::{Context, Task, TaskResult, task_metadata};
 use crate::infra::ConfigHandle;
-use crate::infra::exec::CommandSpec;
+use crate::infra::exec::{CommandSpec, ExecResult};
+use crate::infra::logging::{Log, OutputExt as _};
 
 use super::discovery::discover_apm_plugin_dirs;
-use super::linters::{
-    SHELLCHECK_SCRIPT, build_psscriptanalyzer_command, log_exec_output, run_linter,
-};
-use crate::infra::logging::OutputExt as _;
+
+fn log_exec_output(log: &dyn Log, result: &ExecResult) {
+    for line in result.stdout.lines().chain(result.stderr.lines()) {
+        log.error(line);
+    }
+}
 
 /// Fail the check command when config validation emits warnings.
 #[derive(Debug)]
@@ -281,59 +284,5 @@ impl Task for ValidateApmPlugins {
         ctx.log()
             .debug(format!("validated {} local APM plugins", plugins.len()));
         Ok(TaskResult::CheckPassed)
-    }
-}
-
-/// Run shellcheck on all shell scripts in the repository.
-#[derive(Debug)]
-pub(crate) struct RunShellcheck;
-
-impl Task for RunShellcheck {
-    task_metadata! {
-        name: "ShellCheck",
-        selector: "shellcheck",
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if !ctx.which("shellcheck") {
-            return Ok(TaskResult::unmet("shellcheck not found in PATH"));
-        }
-        if !ctx.which("sh") {
-            return Ok(TaskResult::unmet("sh not found in PATH"));
-        }
-        run_linter(
-            ctx,
-            "shellcheck",
-            CommandSpec::new("sh").args(&[
-                "-c",
-                SHELLCHECK_SCRIPT,
-                "dotfiles-shellcheck",
-                "--root",
-                &ctx.root().to_string_lossy(),
-            ]),
-        )
-    }
-}
-
-/// Run `PSScriptAnalyzer` on `PowerShell` scripts.
-#[derive(Debug)]
-pub(crate) struct RunPSScriptAnalyzer;
-
-impl Task for RunPSScriptAnalyzer {
-    task_metadata! {
-        name: "PSScriptAnalyzer",
-        selector: "psscriptanalyzer",
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if !ctx.which("pwsh") {
-            return Ok(TaskResult::unmet("pwsh not found in PATH"));
-        }
-        let command = build_psscriptanalyzer_command(ctx.root());
-        run_linter(
-            ctx,
-            "PSScriptAnalyzer",
-            CommandSpec::new("pwsh").args(&["-NoProfile", "-Command", &command]),
-        )
     }
 }

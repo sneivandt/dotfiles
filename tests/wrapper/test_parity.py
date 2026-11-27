@@ -6,11 +6,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+import sys
 import unittest
 
 WRAPPER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = WRAPPER_DIR.parents[1]
 CONTRACT_PATH = WRAPPER_DIR / "parity-contract.json"
+sys.path.insert(0, str(REPO_ROOT / "tests"))
+
+from runner import pop_strict_flag, run_test_cases
 
 
 def _load_contract() -> dict:
@@ -136,5 +140,13 @@ class WrapperParityTests(unittest.TestCase):
                     )
 
 
+def main(argv: list[str] | None = None) -> int:
+    strict, remaining = pop_strict_flag(list(sys.argv[1:] if argv is None else argv))
+    if remaining:
+        print(f"ERROR: unexpected arguments: {' '.join(remaining)}", file=sys.stderr)
+        return 2
+    return run_test_cases(WrapperParityTests, strict=strict)
+
+
 if __name__ == "__main__":
-    unittest.main()
+    raise SystemExit(main())

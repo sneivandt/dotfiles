@@ -6,8 +6,7 @@ use super::RuntimePolicy;
 use crate::app::cli::CheckOpts;
 use crate::app::filter::apply_task_filters;
 use crate::app::validation::{
-    RunPSScriptAnalyzer, RunShellcheck, ValidateApmPlugins, ValidateConfigFiles,
-    ValidateConfigWarnings, ValidateSymlinkSources,
+    ValidateApmPlugins, ValidateConfigFiles, ValidateConfigWarnings, ValidateSymlinkSources,
 };
 use crate::engine::Task;
 use crate::infra::logging::Logger;
@@ -16,7 +15,7 @@ use crate::infra::logging::Logger;
 ///
 /// # Errors
 ///
-/// Returns an error if profile resolution, configuration validation, or script checks fail.
+/// Returns an error if profile resolution or configuration validation fails.
 pub fn run(
     runtime: &RuntimePolicy<'_>,
     opts: &CheckOpts,
@@ -42,7 +41,5 @@ pub(crate) fn validation_tasks(
         Box::new(ValidateSymlinkSources::new(handle)),
         Box::new(ValidateConfigFiles),
         Box::new(ValidateApmPlugins),
-        Box::new(RunShellcheck),
-        Box::new(RunPSScriptAnalyzer),
     ]
 }

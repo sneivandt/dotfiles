@@ -24,6 +24,7 @@ def _load_ci_module(name, filename):
 
 _CI_METADATA = _load_ci_module("ci_metadata", "ci_metadata.py")
 _CI_CLASSIFIER = _load_ci_module("classify_ci_changes", "classify-ci-changes.py")
+_CHECK_DOCS = _load_ci_module("check_docs", "check_docs.py")
 
 
 def npm_command():
@@ -41,19 +42,9 @@ def run(command, cwd, env):
 
 
 def check(root, env):
-    scripts = root / ".github/workflows/scripts"
-    skills = root / ".agents/skills/skill-maintenance/scripts"
     npm = npm_command()
-    for script, arguments in (
-        (skills / "test-check-skills.py", []),
-        (skills / "check-skills.py", [str(root)]),
-        (scripts / "check-doc-links.py", [str(root)]),
-    ):
-        run([sys.executable, "-B", str(script), *arguments], root, env)
-    for arguments in (["run", "check"], ["test"], ["run", "build"]):
-        run([npm, *arguments], root / "docs", env)
-    run([sys.executable, "-B", str(scripts / "check-doc-site.py"), str(root)], root, env)
-    run([npm, "run", "test:browser"], root / "docs", env)
+    for command, cwd in _CHECK_DOCS.plan_commands(root, ("links", "site"), npm=npm):
+        run(command, cwd, env)
 
 
 def git(root, *arguments):

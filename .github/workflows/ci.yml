@@ -169,13 +169,13 @@ jobs:
           persist-credentials: false
       - name: Install desktop-script regression tools
         if: needs.classify-changes.outputs.run_lock == 'true'
-        run: sh .github/workflows/scripts/linux/install-apt-packages.sh lua5.4 jq
+        run: sh .github/workflows/scripts/linux/install-apt-packages.sh lua5.4 jq libglib2.0-bin
       - name: Check desktop script behavior
         if: needs.classify-changes.outputs.run_lock == 'true'
-        run: python3 -B -m unittest discover -s tests/desktop/hypr -p 'test_*.py'
+        run: python3 -B tests/runner.py --strict tests/desktop/hypr
       - name: Check Quickshell Python helpers
         if: needs.classify-changes.outputs.run_desktop_python == 'true'
-        run: python3 -B -m unittest discover -s tests/desktop/quickshell/python -p 'test_*.py'
+        run: python3 -B tests/runner.py --strict tests/desktop/quickshell/python
 
   desktop-qml:
     name: "Regression: Quickshell QML"
@@ -306,7 +306,7 @@ jobs:
           apm-version: '0.37.0'
       - name: Verify public agent package deployment
         if: needs.classify-changes.outputs.run_apm == 'true'
-        run: python3 -B tests/integration/test_apm.py bin/dotfiles
+        run: python3 -B tests/integration/test_apm.py --strict bin/dotfiles
 
   test-hook-inputs:
     name: "Regression: Isolated hook inputs"
@@ -319,7 +319,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Test staged inputs and repository isolation
-        run: python3 -B tests/hooks/test_hook_inputs.py
+        run: python3 -B tests/hooks/test_hook_inputs.py --strict --skip-build-triggers
 
   # ── Security ──────────────────────────────────────────
   audit:
@@ -409,7 +409,7 @@ jobs:
         run: cargo test --locked --profile ci --test config_drift
       - name: Test build-version Git dependencies
         if: needs.classify-changes.outputs.run_rust_checks == 'true' || needs.classify-changes.outputs.run_hook_inputs == 'true'
-        run: python3 -B ../tests/hooks/test_hook_inputs.py test_build_version_ref_triggers
+        run: python3 -B ../tests/hooks/test_hook_inputs.py --strict test_build_version_ref_triggers
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dotfiles-linux
@@ -569,8 +569,8 @@ jobs:
         # Test the triggering checkout with no repository sync or external APM installer.
         run: ./bin/dotfiles update --root . -p ${{ matrix.profile }} -n --no-repo-update --skip agent-packages,vscode-extensions
       - name: Run validation
-        # Linters have dedicated jobs; APM is not provisioned in this matrix.
-        run: ./bin/dotfiles check --root . -p ${{ matrix.profile }} --skip shellcheck,psscriptanalyzer,apm-plugins
+        # APM is not provisioned in this matrix.
+        run: ./bin/dotfiles check --root . -p ${{ matrix.profile }} --skip apm-plugins
 
   integration-windows:
     name: "Integration: ${{ matrix.profile }} on Windows"
@@ -599,8 +599,8 @@ jobs:
         run: .\bin\dotfiles.exe update --root . -p ${{ matrix.profile }} -n --no-repo-update --skip agent-packages,vscode-extensions
       - name: Run validation
         shell: pwsh
-        # Linters have dedicated jobs; APM is not provisioned in this matrix.
-        run: .\bin\dotfiles.exe check --root . -p ${{ matrix.profile }} --skip shellcheck,psscriptanalyzer,apm-plugins
+        # APM is not provisioned in this matrix.
+        run: .\bin\dotfiles.exe check --root . -p ${{ matrix.profile }} --skip apm-plugins
 
   test-install-uninstall:
     name: "Integration: Install/Uninstall round-trip"
@@ -623,8 +623,7 @@ jobs:
       - name: Run install/uninstall round-trip test
         env:
           DIR: ${{ github.workspace }}
-          BINARY_PATH: ${{ github.workspace }}/bin/dotfiles
-        run: python3 -B tests/integration/test_install_uninstall.py
+        run: python3 -B tests/integration/test_install_uninstall.py --strict bin/dotfiles
       - name: Check native Arch convergence and recovery
         run: >-
           docker run --rm --init --volume "$GITHUB_WORKSPACE:/workspace:ro"
@@ -652,8 +651,7 @@ jobs:
         shell: pwsh
         env:
           DIR: ${{ github.workspace }}
-          BINARY_PATH: ${{ github.workspace }}/bin/dotfiles.exe
-        run: python -B tests/integration/test_install_uninstall.py
+        run: python -B tests/integration/test_install_uninstall.py --strict bin/dotfiles.exe
 
   test-apm-windows:
     name: "Integration: APM (Windows)"
@@ -676,7 +674,7 @@ jobs:
         run: .github/workflows/scripts/windows/Install-Apm.ps1 -Version 0.37.0
       - name: Verify public agent package deployment
         shell: pwsh
-        run: python -B tests/integration/test_apm.py bin/dotfiles.exe
+        run: python -B tests/integration/test_apm.py --strict bin/dotfiles.exe
 
   # ── Application Tests ─────────────────────────────────
   test-applications:
@@ -704,10 +702,15 @@ jobs:
         run: chmod +x bin/dotfiles
       - name: Install dotfiles with base profile
         run: ./bin/dotfiles update --root . -p base -v --no-repo-update --skip agent-packages
+      - name: Test ${{ matrix.application }} isolated configuration
+        if: matrix.config_script != ''
+        env:
+          DIR: ${{ github.workspace }}
+        run: python3 -B ${{ matrix.config_script }} --strict ${{ matrix.config_args }}
       - name: Test ${{ matrix.application }}
         env:
           DIR: ${{ github.workspace }}
-        run: python3 -B ${{ matrix.script }} ${{ matrix.tests }}
+        run: python3 -B ${{ matrix.script }} --strict ${{ matrix.tests }}
 
   # Windows counterpart. Only git is covered: zsh, vim, and nvim are excluded
   # from the Windows profile, so they have no Windows equivalent to test.
@@ -744,7 +747,7 @@ jobs:
         shell: pwsh
         env:
           DIR: ${{ github.workspace }}
-        run: python -B tests/git/test_git.py ${{ matrix.tests }}
+        run: python -B tests/integration/test_git.py --strict ${{ matrix.tests }}
 
   # ── Specialized Tests ─────────────────────────────────
   test-git-hooks:
@@ -760,7 +763,11 @@ jobs:
       - name: Test pre-commit hook
         env:
           DIR: ${{ github.workspace }}
-        run: python3 -B tests/hooks/test_git_hooks.py
+        run: python3 -B tests/hooks/test_git_hooks.py --strict
+      - name: Test Git maintenance templates and cleanup
+        env:
+          DIR: ${{ github.workspace }}
+        run: python3 -B tests/hooks/test_maintenance.py --strict
 
   test-shell-wrapper-linux:
     name: "Shell Wrapper: Linux (dotfiles.sh)"
@@ -778,11 +785,13 @@ jobs:
           path: bin/
       - name: Make binary executable
         run: chmod +x bin/dotfiles
+      - name: Verify wrapper parity contract
+        run: python3 -B tests/wrapper/test_parity.py --strict
       - name: Run shell wrapper tests
         env:
           DIR: ${{ github.workspace }}
           BINARY_PATH: ${{ github.workspace }}/bin/dotfiles
-        run: python3 -B tests/wrapper/test_shell_wrapper_linux.py
+        run: python3 -B tests/wrapper/test_shell_wrapper_linux.py --strict --prebuilt
 
   test-shell-wrapper-windows:
     name: "Shell Wrapper: Windows (dotfiles.ps1)"
@@ -801,6 +810,9 @@ jobs:
       - name: Create an empty fixture home
         shell: pwsh
         run: python -B .github/workflows/scripts/ci_fixture_home.py
+      - name: Verify wrapper parity contract
+        shell: pwsh
+        run: python -B tests/wrapper/test_parity.py --strict
       - name: Run PowerShell wrapper tests
         shell: pwsh
         env:

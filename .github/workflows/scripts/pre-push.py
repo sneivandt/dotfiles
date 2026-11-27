@@ -17,8 +17,6 @@ import sys
 import tempfile
 import types
 
-import tomllib
-
 SCRIPTS = Path(__file__).resolve().parent
 
 
@@ -38,7 +36,7 @@ GIB = 1024**3
 MIN_CACHE_FREE = 10 * GIB
 
 
-def plan(selection, msrv, docs_checked=False, windows_checked=False, linter_stages=None):
+def plan(selection, docs_checked=False, windows_checked=False, linter_stages=None):
     """Return safe local commands and selected coverage reserved for CI."""
     if linter_stages is None:
         linter_stages = _load_sibling("ci_metadata").LINTER_STAGES
@@ -48,6 +46,7 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False, linter_stag
         ("rust_checks", "clippy"),
         ("rust_checks", "test"),
         ("rust_checks", "rustdoc"),
+        ("rust_checks", "msrv"),
         ("validate_config", "config"),
         ("audit", "audit"),
         ("deny", "deny"),
@@ -62,6 +61,24 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False, linter_stag
         if stage == "powershell" and windows_checked:
             continue
         stages.append(stage)
+    if selection["run_hook_inputs"] or selection["run_rust_checks"]:
+        stages.append("hook-inputs")
+    if selection["run_git_hooks"]:
+        stages.append("hooks")
+    if selection["run_wrapper_linux"]:
+        stages.append("wrapper")
+    if selection["run_lock"]:
+        stages.append("desktop-hypr")
+    if selection["run_desktop_python"]:
+        stages.append("desktop-python")
+    if selection["run_prompt"]:
+        stages.append("prompt")
+    apps = {item["application"] for item in selection["app_matrix"]["include"]}
+    if "zsh" in apps:
+        stages.append("shell-config")
+    if apps & {"vim", "nvim"}:
+        stages.append("vim-config")
+
     commands = []
     if not docs_checked:
         commands.append(
@@ -82,117 +99,23 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False, linter_stag
                 ["cargo", "test", "--locked", "--profile", "ci", "--test", "config_drift"],
             )
         )
-    if selection["run_rust_checks"]:
-        if not windows_checked:
-            commands.append(
-                (
-                    "Windows compilation (no runtime coverage)",
-                    "cli",
-                    [
-                        "cargo",
-                        "clippy",
-                        "--locked",
-                        "--profile",
-                        "ci",
-                        "--target",
-                        "x86_64-pc-windows-gnu",
-                        "--all-targets",
-                        "--",
-                        "-D",
-                        "warnings",
-                    ],
-                )
-            )
+    if selection["run_rust_checks"] and not windows_checked:
         commands.append(
             (
-                "minimum Rust compilation",
+                "Windows compilation (no runtime coverage)",
                 "cli",
                 [
-                    "rustup",
-                    "run",
-                    msrv,
                     "cargo",
-                    "check",
+                    "clippy",
                     "--locked",
                     "--profile",
                     "ci",
+                    "--target",
+                    "x86_64-pc-windows-gnu",
                     "--all-targets",
-                ],
-            )
-        )
-    if selection["run_hook_inputs"] or selection["run_rust_checks"]:
-        commands.append(
-            ("isolated hook inputs", ".", ["python3", "-B", "tests/hooks/test_hook_inputs.py"])
-        )
-    if selection["run_git_hooks"]:
-        commands.append(
-            (
-                "Git template and cleanup fixtures",
-                ".",
-                ["python3", "-B", "tests/hooks/test_maintenance.py"],
-            )
-        )
-    if selection["run_wrapper_linux"]:
-        commands.append(
-            (
-                "isolated wrapper fixtures",
-                ".",
-                [
-                    "python3",
-                    "-B",
-                    "tests/wrapper/test_shell_wrapper_linux.py",
-                    "--isolated",
-                ],
-            )
-        )
-    for flag, directory in (
-        ("lock", "tests/desktop/hypr"),
-        ("desktop_python", "tests/desktop/quickshell/python"),
-    ):
-        if selection["run_" + flag]:
-            commands.append(
-                (
-                    flag + " fixtures",
-                    ".",
-                    [
-                        "python3",
-                        "-B",
-                        "-m",
-                        "unittest",
-                        "discover",
-                        "-s",
-                        directory,
-                        "-p",
-                        "test_*.py",
-                    ],
-                )
-            )
-    if selection["run_prompt"]:
-        commands.append(
-            (
-                "PowerShell prompt fixtures",
-                ".",
-                ["pwsh", "-NoProfile", "-File", "tests/shell/Test-Prompt.ps1"],
-            )
-        )
-    apps = {item["application"] for item in selection["app_matrix"]["include"]}
-    if "zsh" in apps:
-        commands.append(
-            (
-                "isolated shell configuration",
-                ".",
-                ["python3", "-B", "tests/shell/test_shell_config.py"],
-            )
-        )
-    if apps & {"vim", "nvim"}:
-        commands.append(
-            (
-                "isolated editor configuration",
-                ".",
-                [
-                    "python3",
-                    "-B",
-                    "tests/vim/test_vim_config.py",
+                    "--",
+                    "-D",
+                    "warnings",
                 ],
             )
         )
@@ -206,7 +129,6 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False, linter_stag
             "run_roundtrip_windows",
             "run_app_tests",
             "run_app_windows",
-            "run_git_hooks",
             "run_wrapper_linux",
             "run_wrapper_windows",
             "run_release",
@@ -239,6 +161,10 @@ def windows_plan(selection, docs_checked=False):
         stages.append("config")
     if any(item["name"] == "PSScriptAnalyzer" for item in selection["lint_matrix"]["include"]):
         stages.append("powershell")
+    if selection["run_wrapper_windows"]:
+        stages.append("wrapper")
+    if selection["run_prompt"]:
+        stages.append("prompt")
     if stages:
         commands.append(
             (
@@ -259,30 +185,6 @@ def windows_plan(selection, docs_checked=False):
                 "native configuration drift",
                 "cli",
                 ["cargo", "test", "--locked", "--profile", "ci", "--test", "config_drift"],
-            )
-        )
-    if selection["run_wrapper_windows"]:
-        # These functions use fixture executors, not the live installation.
-        commands.append(
-            (
-                "isolated PowerShell wrapper",
-                ".",
-                [
-                    "pwsh",
-                    "-NoProfile",
-                    "-Command",
-                    ". ./tests/wrapper/Test-ShellWrapper.ps1; "
-                    "if (-not (Test-IsolatedWrapperPath)) { exit 1 }; "
-                    "if (-not (Test-CargoArtifactPath)) { exit 1 }",
-                ],
-            )
-        )
-    if selection["run_prompt"]:
-        commands.append(
-            (
-                "native PowerShell prompt",
-                ".",
-                ["pwsh", "-NoProfile", "-File", "tests/shell/Test-Prompt.ps1"],
             )
         )
     return commands
@@ -514,22 +416,6 @@ def execute(root, head, commands, selection):
             DIR=str(checkout),
             DOCS_TEST_PYTHON=sys.executable,
         )
-        if sys.platform == "linux":
-            tools = []
-            if selection["run_lock"]:
-                tools.extend(["bash", "jq", "gio"])
-                if not (shutil.which("lua") or shutil.which("lua5.4")):
-                    raise RuntimeError("required desktop fixture tool unavailable: lua or lua5.4")
-            apps = {item["application"] for item in selection["app_matrix"]["include"]}
-            if "zsh" in apps:
-                tools.extend(["bash", "zsh", "fzf", "zstd", "tmux"])
-                if not (shutil.which("bat") or shutil.which("batcat")):
-                    raise RuntimeError("required shell fixture tool unavailable: bat or batcat")
-            if apps & {"vim", "nvim"}:
-                tools.extend(["vim", "nvim"])
-            for tool in tools:
-                if not shutil.which(tool):
-                    raise RuntimeError(f"required fixture tool unavailable: {tool}")
         for label, directory, command in commands:
             print(f"\nRunning {label}", flush=True)
             subprocess.run(command, cwd=checkout / directory, env=env, check=True)
@@ -620,13 +506,11 @@ def main():
     if not paths:
         print("No changed inputs in the committed range; no checks run.")
         return
-    manifest = tomllib.loads(git(root, "show", head + ":cli/Cargo.toml"))
     full = args.full or recovery
     selection = policy["classify"](paths, full=full)
     omit_docs = bool(args.docs_checked or args.npm_tls_unavailable)
     commands, deferred = plan(
         selection,
-        manifest["package"]["rust-version"],
         omit_docs,
         bool(args.windows_checked),
         linter_stages=policy.get("LINTER_STAGES"),

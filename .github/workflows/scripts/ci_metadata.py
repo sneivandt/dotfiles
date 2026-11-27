@@ -76,27 +76,35 @@ MATRIX_JOBS = {
 APPS = {
     "git": {
         "application": "git",
-        "script": "tests/git/test_git.py",
+        "script": "tests/integration/test_git.py",
+        "config_script": "",
+        "config_args": "",
         "packages": "git",
         "tests": "config aliases behavior clean hooks",
     },
     "zsh": {
         "application": "zsh",
-        "script": "tests/shell/test_zsh.py",
-        "packages": "zsh fzf wget libarchive-tools bat zstd",
-        "tests": "completion history configuration",
+        "script": "tests/integration/test_zsh.py",
+        "config_script": "tests/shell/test_shell_config.py",
+        "config_args": "",
+        "packages": "zsh fzf wget libarchive-tools bat zstd tmux",
+        "tests": "completion history",
     },
     "vim": {
         "application": "vim",
-        "script": "tests/vim/test_vim.py",
+        "script": "tests/integration/test_vim.py",
+        "config_script": "tests/vim/test_vim_config.py",
+        "config_args": "--editor vim",
         "packages": "vim",
-        "tests": "opens configuration",
+        "tests": "opens",
     },
     "nvim": {
         "application": "nvim",
-        "script": "tests/vim/test_nvim.py",
+        "script": "tests/integration/test_nvim.py",
+        "config_script": "tests/vim/test_vim_config.py",
+        "config_args": "--editor nvim",
         "packages": "neovim",
-        "tests": "opens plugins configuration",
+        "tests": "opens plugins",
     },
 }
 
@@ -155,6 +163,8 @@ LUA_EXTENSIONS = (".lua",)
 STRUCTURED_EXTENSIONS = (".json", ".toml", ".yml", ".yaml")
 
 LINTER_CONFIG_FILES = {
+    "shell": frozenset({SCRIPTS + "shellcheck.sh"}),
+    "powershell": frozenset({SCRIPTS + "psscriptanalyzer.ps1"}),
     "python": frozenset({".github/linters/ruff.toml", LINUX + "install-ruff.sh"}),
     "lua": frozenset({".github/linters/luacheckrc", LINUX + "install-luacheck.sh"}),
     "structured": frozenset({SCRIPTS + "check-structured-files.py", SCRIPTS + "workflow_yaml.py"}),

@@ -63,8 +63,7 @@ and what remains for CI.
 
 Never run live `update`, `remove`, package upgrades, elevation, or desktop
 restarts to fill a test gap. Full install/remove and application integration
-belong in disposable homes, runners, or VMs. The full commit-hook suite also
-creates real commits, so a clean developer checkout is **not** a safe fixture.
+belong in disposable homes, runners, or VMs.
 
 ## Fast local sequence
 
@@ -114,42 +113,45 @@ python -B tests/check.py --strict fmt clippy test config
 python -B tests/check.py --tests
 ```
 
-Omitting stage names runs the default set:
+Omitting stage names runs the default set (every core check, linter, and fast
+host-safe isolated test suite for the current platform):
 
 | Stage | What it checks |
 |---|---|
 | `fmt` | Rust formatting |
 | `clippy` | Host Clippy across all targets with warnings denied |
-| `test` | Full Rust test suite (excluding shell/PowerShell integration scripts) |
+| `test` | Full Rust test suite |
 | `rustdoc` | Private-item docs and configured rustdoc lints |
 | `config` | CLI configuration, source paths, and required config files |
 | `docs` | Markdown links, skill metadata/fixtures, VitePress build, built links, and browser regressions (plus Rust doc contracts/selectors on Linux) |
-| `ci` | Workflow contracts, path/release classification, aggregate gating, and actionlint (pure-Python contract/classification/gate tests plus native `actionlint` on Windows) |
+| `ci` | Workflow contracts, path/release classification, linter discovery tests, aggregate gating, and actionlint (pure-Python contract/classification/gate tests plus native `actionlint` on Windows) |
 | `shell` | Shared ShellCheck discovery and rules (default on Linux, opt-in on Windows) |
 | `powershell` | PSScriptAnalyzer at Warning/Error severity |
 | `python` | Ruff linting and formatting (`ruff format --check`) across repository Python scripts and tests |
 | `lua` | Luacheck linting across Hyprland and Neovim Lua files (Linux only) |
 | `structured` | Zero-dependency JSON/JSONC, TOML, and YAML validation (`check-structured-files.py`) |
 | `audit` / `deny` | Dependency advisories and dependency policy |
+| `hook-inputs` / `hooks` | Staged-input guards, Git maintenance/template fixtures, and full commit-hook suite in a disposable repo (Linux only) |
+| `wrapper` | Bootstrap wrapper parity (`test_parity.py`) plus isolated platform wrapper fixtures |
+| `prompt` | PowerShell prompt fixtures |
+| `desktop-hypr` / `desktop-python` | Hyprland helper script and Quickshell Python helper fixtures (Linux only) |
+| `shell-config` / `vim-config` | Isolated Bash/Zsh and Vim/Neovim config fixtures (Linux only) |
 
 Cargo stages use `--locked` and `--profile ci` where applicable, resolving
 tools from `PATH` and failing on a mismatched Rust version rather than
 switching toolchains automatically. Missing tools normally print `SKIP`;
-passing `--strict` or `DOTFILES_CHECK_STRICT=1` turns skips into failures, and
-any installed tool's nonzero exit (including exit code `2`) fails immediately.
-See [Analyzer prerequisites](#analyzer-prerequisites) for required tools.
+passing `--strict` or `DOTFILES_CHECK_STRICT=1` turns both missing-tool
+preflights and inner `unittest` skips (via `tests/runner.py`) into failures,
+and any installed tool's nonzero exit (including exit code `2`) fails
+immediately. See [Analyzer prerequisites](#analyzer-prerequisites) for required
+tools.
 
-Opt-in stages cover isolated host-safe test suites and MSRV checks: `msrv`
-installs and builds with the MSRV from `Cargo.toml`, `wrapper` runs the
-platform bootstrap wrapper tests in isolated mode plus parity checks, `prompt`
-runs the PowerShell prompt suite, and Linux also provides `qml` (Qt `qmllint`
-and Qt Quick Test), `hooks` (staged-input, maintenance, and full commit-hook
-suites), `desktop` (Hyprland and Quickshell Python tests), `shell-config`
-(isolated Bash/Zsh fixtures), and `vim-config` (isolated Vim/Neovim config
-fixtures). `--tests` runs every host-safe test stage for the current platform,
-`--lint` runs every static-analysis and formatting stage, and `--all` runs
-default plus all opt-in stages. None of them run mutation testing or live host
-integration.
+Opt-in stages are `msrv` (checks compilation with the installed MSRV from
+`cli/Cargo.toml` without downloading toolchains) and, on Linux, `qml` (Qt
+`qmllint` and Qt Quick Test). `--tests` runs every host-safe test stage for the
+current platform, `--lint` runs every static-analysis and formatting stage, and
+`--all` runs default plus opt-in stages. None of them run mutation testing or
+live host integration.
 
 The Linux `docs` stage requires Python, Cargo, the Node version in
 `docs/.node-version`, and the
@@ -374,7 +376,7 @@ This fails on configuration diagnostics, checks symlink and permission sources
 (including inactive categories), and verifies required TOML files; structural
 conflicts abort earlier during loading.
 
-Include external APM and script analyzers with:
+Include local APM package validation with:
 
 ```sh
 cd cli
@@ -382,7 +384,10 @@ cargo run --locked --profile ci -- check --root .. --profile desktop --verbose
 ```
 
 Pass `--overlay /path/to/private-dotfiles` to validate an overlay alongside the
-main repo (keeping its output private until sanitized).
+main repo (keeping its output private until sanitized). Script linters
+(ShellCheck, PSScriptAnalyzer, Ruff, Luacheck, and structured-file checks) run
+through `tests/check.py --lint`, the pre-commit hook, and CI rather than
+`dotfiles check`.
 
 To reproduce Linux CI's APM deployment check with APM 0.37.0 on `PATH`:
 
@@ -399,20 +404,22 @@ overwriting it.
 
 | Check | Required tools |
 |---|---|
-| Local APM package validation | `apm` |
-| ShellCheck | `shellcheck` and POSIX `sh` |
-| PSScriptAnalyzer | PowerShell 7 (`pwsh`) and the PSScriptAnalyzer module |
-| Python (Ruff) | `ruff` |
-| Lua (Luacheck) | `luacheck` |
+| Local APM package validation (`dotfiles check`) | `apm` |
+| ShellCheck (`shell` stage) | `shellcheck` and POSIX `sh` |
+| PSScriptAnalyzer (`powershell` stage) | PowerShell 7 (`pwsh`) and the PSScriptAnalyzer module |
+| Python (`python` stage) | `ruff` |
+| Lua (`lua` stage) | `luacheck` |
 | QML (`qml` stage) | Qt 6.8+ `qmltestrunner` and `qmllint` |
 
-Missing tools cause the affected CLI check to skip (turning into failures under
-`--fail-on-skip` or `CI`). Windows PowerShell cannot substitute for `pwsh` in
-PSScriptAnalyzer.
+Missing `apm` causes the CLI's APM check to skip (turning into a failure under
+`--fail-on-skip` or `CI`). Script linting for PowerShell requires
+PowerShell 7 (pwsh) and the PSScriptAnalyzer module; Windows PowerShell cannot
+substitute for it.
 
 If `pwsh` is installed but the PSScriptAnalyzer module is missing or broken,
-CLI checks, `tests/check.py`, and the pre-commit hook fail (on Windows, `tests/check.py`
-skips `powershell` if PSScriptAnalyzer is missing unless `--strict` is passed).
+`tests/check.py` (with `--strict`, or on Linux) and the pre-commit hook fail
+(on Windows, `tests/check.py` skips `powershell` if PSScriptAnalyzer is missing
+unless `--strict` is passed).
 
 ### Wrapper and hook tests
 
@@ -475,14 +482,13 @@ python3 -B tests/check.py --strict qml
 Run the Python helper, stock-cache, and lock-script suites in isolation:
 
 ```sh
-python3 -B -m unittest discover \
-  -s tests/desktop/quickshell/python -p 'test_*.py'
-python3 -B -m unittest discover \
-  -s tests/desktop/hypr -p 'test_*.py'
+python3 -B tests/runner.py tests/desktop/quickshell/python
+python3 -B tests/runner.py tests/desktop/hypr
 ```
 
-Offscreen suites verify logic and layout rather than live rendering, focus, or
-networking.
+Pass `--strict` (or set `DOTFILES_CHECK_STRICT=1`) to fail if any `unittest`
+case skips. Offscreen suites verify logic and layout rather than live
+rendering, focus, or networking.
 
 CI also launches the real Quickshell config under headless software-rendered
 Sway in a disposable Arch container to verify bar space reservation, workspace
@@ -501,10 +507,10 @@ python3 -B tests/vim/test_vim_config.py
 pwsh -NoProfile -File tests/shell/Test-Prompt.ps1
 ```
 
-Each managed application also has a dedicated installed-config smoke harness
-under its own directory (`tests/git/test_git.py`, `tests/shell/test_zsh.py`,
-`tests/vim/test_vim.py`, `tests/vim/test_nvim.py`) that runs every check by
-default or accepts specific test names.
+Installed-home application smoke harnesses live under `tests/integration/`
+(`test_git.py`, `test_zsh.py`, `test_vim.py`, `test_nvim.py`); each runs every
+check by default or accepts specific test names (and `--strict` to fail on
+skips).
 
 The PowerShell suite checks first-start discovery, custom Cargo paths, literal
 fragment directories, and `PATH` deduplication on reload. Install required

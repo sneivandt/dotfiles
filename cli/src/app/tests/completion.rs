@@ -137,7 +137,7 @@ fn graph_dependency_completion_requires_an_update_graph() {
                 "--graph",
                 "check",
                 "--only",
-                "shellcheck",
+                "apm-plugins",
                 "--",
             ],
             vec!["--with-deps"],
@@ -599,8 +599,8 @@ fn task_candidates_follow_command_membership() {
                 commands: vec![TaskGraphCommand::Update, TaskGraphCommand::Remove],
             },
             TaskListing {
-                selector: "shellcheck".into(),
-                task: "ShellCheck".into(),
+                selector: "apm-plugins".into(),
+                task: "APM plugins".into(),
                 commands: vec![TaskGraphCommand::Check],
             },
             TaskListing {
@@ -618,7 +618,7 @@ fn task_candidates_follow_command_membership() {
 
     let check = task_candidates_from_listings(listings(), &["check"]);
     assert_eq!(check.len(), 1);
-    assert_eq!(check[0].get_value(), "shellcheck");
+    assert_eq!(check[0].get_value(), "apm-plugins");
 }
 
 #[test]

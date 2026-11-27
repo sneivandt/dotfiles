@@ -41,26 +41,27 @@ LINUX_DEFAULT_STAGES = (
     "structured",
     "audit",
     "deny",
-)
-LINUX_OPTIONAL_STAGES = (
-    "msrv",
-    "qml",
     "hooks",
+    "hook-inputs",
     "wrapper",
     "prompt",
     "shell-config",
     "vim-config",
-    "desktop",
+    "desktop-hypr",
+    "desktop-python",
 )
+LINUX_OPTIONAL_STAGES = ("msrv", "qml")
 LINUX_TEST_STAGES = (
     "test",
     "ci",
     "hooks",
+    "hook-inputs",
     "wrapper",
     "prompt",
     "shell-config",
     "vim-config",
-    "desktop",
+    "desktop-hypr",
+    "desktop-python",
     "qml",
 )
 LINUX_LINT_STAGES = (
@@ -90,8 +91,10 @@ WINDOWS_DEFAULT_STAGES = (
     "structured",
     "audit",
     "deny",
+    "wrapper",
+    "prompt",
 )
-WINDOWS_OPTIONAL_STAGES = ("shell", "msrv", "wrapper", "prompt")
+WINDOWS_OPTIONAL_STAGES = ("shell", "msrv")
 WINDOWS_TEST_STAGES = ("test", "ci", "wrapper", "prompt")
 WINDOWS_LINT_STAGES = (
     "fmt",
@@ -136,16 +139,33 @@ class Console:
 
 
 class Runner:
-    def __init__(self, repo_root: Path, console: Console) -> None:
+    def __init__(self, repo_root: Path, console: Console, *, strict: bool = False) -> None:
         self.repo_root = repo_root
         self.cli_root = repo_root / "cli"
         self.manifest = self.cli_root / "Cargo.toml"
         self.scripts_dir = repo_root / ".github/workflows/scripts"
         self.console = console
+        self.strict = strict
 
     @staticmethod
     def have(tool: str) -> bool:
         return shutil.which(tool) is not None
+
+    def require_tools(
+        self,
+        required: tuple[str, ...] = (),
+        *,
+        alternatives: tuple[tuple[str, ...], ...] = (),
+    ) -> bool:
+        for tool in required:
+            if not self.have(tool):
+                self.console.note(f"{tool} not installed; skipping")
+                return False
+        for group in alternatives:
+            if not any(self.have(tool) for tool in group):
+                self.console.note(f"{' or '.join(group)} not installed; skipping")
+                return False
+        return True
 
     def run_cmd(
         self,
@@ -154,8 +174,11 @@ class Runner:
         cwd: Path | None = None,
         env: dict[str, str] | None = None,
     ) -> str:
+        run_env = (os.environ if env is None else env).copy()
+        if self.strict:
+            run_env["DOTFILES_CHECK_STRICT"] = "1"
         try:
-            result = subprocess.run(argv, cwd=cwd or self.cli_root, env=env, check=False)
+            result = subprocess.run(argv, cwd=cwd or self.cli_root, env=run_env, check=False)
         except OSError as error:
             self.console.note(f"Cannot run {argv[0]}: {error}")
             return "FAIL"
@@ -506,10 +529,12 @@ class Runner:
             self.console.note(f"no rust-version in {self.manifest}; skipping")
             return "skip"
         self.console.note(f"MSRV from Cargo.toml: {msrv}")
+        env = os.environ | {"RUSTUP_AUTO_INSTALL": "0"}
         try:
-            subprocess.run(
-                ["rustup", "toolchain", "install", msrv, "--profile", "minimal"],
+            probe = subprocess.run(
+                ["rustup", "run", msrv, "cargo", "--version"],
                 cwd=self.cli_root,
+                env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
@@ -517,10 +542,18 @@ class Runner:
         except OSError as error:
             self.console.note(f"Cannot run rustup: {error}")
             return "FAIL"
+        if probe.returncode != 0:
+            self.console.note(
+                f"MSRV toolchain {msrv} not installed; skipping "
+                f"(rustup toolchain install {msrv} --profile minimal)"
+            )
+            return "skip"
         return self.run_cmd(
             [
+                "rustup",
+                "run",
+                msrv,
                 "cargo",
-                f"+{msrv}",
                 "check",
                 "--locked",
                 "--profile",
@@ -530,18 +563,37 @@ class Runner:
                 "--all-targets",
             ],
             cwd=self.cli_root,
+            env=env,
         )
 
     def stage_hooks(self) -> str:
-        if not self.have("sh"):
-            self.console.note("no POSIX sh available; skipping hook tests")
+        if not self.require_tools(("sh", "git")):
+            return "skip"
+        return self.run_sequence(
+            [
+                (
+                    [sys.executable, "-B", str(self.repo_root / "tests/hooks/test_git_hooks.py")],
+                    self.repo_root,
+                ),
+                (
+                    [sys.executable, "-B", str(self.repo_root / "tests/hooks/test_maintenance.py")],
+                    self.repo_root,
+                ),
+            ]
+        )
+
+    def stage_hook_inputs(self) -> str:
+        if not self.require_tools(("sh", "git")):
             return "skip"
         return self.run_cmd(
-            [sys.executable, "-B", str(self.repo_root / "tests/hooks/test_git_hooks.py")],
+            [sys.executable, "-B", str(self.repo_root / "tests/hooks/test_hook_inputs.py")],
             cwd=self.repo_root,
         )
 
     def stage_wrapper(self) -> str:
+        if sys.platform == "win32" and not self.have("pwsh"):
+            self.console.note("pwsh not installed; skipping")
+            return "skip"
         commands: list[tuple[list[str], Path | None]] = [
             (
                 [sys.executable, "-B", str(self.repo_root / "tests/wrapper/test_parity.py")],
@@ -549,9 +601,6 @@ class Runner:
             ),
         ]
         if sys.platform == "win32":
-            if not self.have("pwsh"):
-                self.console.note("pwsh not installed; skipping")
-                return "skip"
             commands.append(
                 (
                     [
@@ -589,56 +638,46 @@ class Runner:
         )
 
     def stage_shell_config(self) -> str:
-        for tool in ("bash", "zsh"):
-            if not self.have(tool):
-                self.console.note(f"{tool} not installed; skipping")
-                return "skip"
+        if not self.require_tools(
+            ("bash", "zsh", "fzf", "zstd", "tmux"),
+            alternatives=(("bat", "batcat"),),
+        ):
+            return "skip"
         return self.run_cmd(
             [sys.executable, "-B", str(self.repo_root / "tests/shell/test_shell_config.py")],
             cwd=self.repo_root,
         )
 
     def stage_vim_config(self) -> str:
-        if not (self.have("vim") or self.have("nvim")):
-            self.console.note("vim/nvim not installed; skipping")
+        if not self.require_tools(("vim", "nvim")):
             return "skip"
         return self.run_cmd(
             [sys.executable, "-B", str(self.repo_root / "tests/vim/test_vim_config.py")],
             cwd=self.repo_root,
         )
 
-    def stage_desktop(self) -> str:
-        return self.run_sequence(
+    def stage_desktop_hypr(self) -> str:
+        if not self.require_tools(("bash", "jq", "gio"), alternatives=(("lua", "lua5.4"),)):
+            return "skip"
+        return self.run_cmd(
             [
-                (
-                    [
-                        sys.executable,
-                        "-B",
-                        "-m",
-                        "unittest",
-                        "discover",
-                        "-s",
-                        "tests/desktop/hypr",
-                        "-p",
-                        "test_*.py",
-                    ],
-                    self.repo_root,
-                ),
-                (
-                    [
-                        sys.executable,
-                        "-B",
-                        "-m",
-                        "unittest",
-                        "discover",
-                        "-s",
-                        "tests/desktop/quickshell/python",
-                        "-p",
-                        "test_*.py",
-                    ],
-                    self.repo_root,
-                ),
-            ]
+                sys.executable,
+                "-B",
+                str(self.repo_root / "tests/runner.py"),
+                "tests/desktop/hypr",
+            ],
+            cwd=self.repo_root,
+        )
+
+    def stage_desktop_python(self) -> str:
+        return self.run_cmd(
+            [
+                sys.executable,
+                "-B",
+                str(self.repo_root / "tests/runner.py"),
+                "tests/desktop/quickshell/python",
+            ],
+            cwd=self.repo_root,
         )
 
     def stage_map(self) -> dict[str, Callable[[], str]]:
@@ -660,11 +699,13 @@ class Runner:
             "msrv": self.stage_msrv,
             "qml": self.stage_qml,
             "hooks": self.stage_hooks,
+            "hook-inputs": self.stage_hook_inputs,
             "wrapper": self.stage_wrapper,
             "prompt": self.stage_prompt,
             "shell-config": self.stage_shell_config,
             "vim-config": self.stage_vim_config,
-            "desktop": self.stage_desktop,
+            "desktop-hypr": self.stage_desktop_hypr,
+            "desktop-python": self.stage_desktop_python,
         }
 
 
@@ -723,7 +764,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     repo_root = Path(__file__).resolve().parents[1]
-    runner = Runner(repo_root, console)
+    runner = Runner(repo_root, console, strict=strict)
     actions = runner.stage_map()
 
     results: list[tuple[str, str]] = []

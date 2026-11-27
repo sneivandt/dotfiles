@@ -24,8 +24,8 @@ from ci_changes_tests.helpers import (
 class PrePushPlanTests(unittest.TestCase):
     def test_native_docs_reuse_keeps_all_implementation_checks(self):
         selection = classify(["cli/Cargo.toml"])
-        commands, deferred = PRE_PUSH["plan"](selection, "1.91")
-        reused, remaining = PRE_PUSH["plan"](selection, "1.91", docs_checked=True)
+        commands, deferred = PRE_PUSH["plan"](selection)
+        reused, remaining = PRE_PUSH["plan"](selection, docs_checked=True)
         expected = [
             (label, directory, [argument for argument in command if argument != "docs"])
             for label, directory, command in commands
@@ -35,14 +35,14 @@ class PrePushPlanTests(unittest.TestCase):
         self.assertEqual(remaining, deferred)
 
     def test_docs_stay_focused_and_rust_adds_platform_checks(self):
-        commands, deferred = PRE_PUSH["plan"](classify(["README.md"]), "1.91")
+        commands, deferred = PRE_PUSH["plan"](classify(["README.md"]))
         self.assertEqual(len(commands), 2)
         self.assertEqual(commands[0][2], ["npm", "ci", "--no-audit", "--no-fund"])
         self.assertEqual(commands[1][2][-3:], ["--strict", "docs", "ci"])
         self.assertEqual(deferred, [])
-        commands, deferred = PRE_PUSH["plan"](classify(["cli/src/main.rs"]), "1.91")
+        commands, deferred = PRE_PUSH["plan"](classify(["cli/src/main.rs"]))
         flattened = [argument for _, _, command in commands for argument in command]
-        for argument in ("test", "rustdoc", "x86_64-pc-windows-gnu", "1.91"):
+        for argument in ("test", "rustdoc", "msrv", "hook-inputs", "x86_64-pc-windows-gnu"):
             self.assertIn(argument, flattened)
         self.assertNotIn("mutation", deferred)
         self.assertIn("roundtrip_windows", deferred)
@@ -51,49 +51,50 @@ class PrePushPlanTests(unittest.TestCase):
         )
 
     def test_config_and_desktop_select_their_regressions(self):
-        commands, _ = PRE_PUSH["plan"](classify(["symlinks/config/quickshell/bar/Bar.qml"]), "1.91")
+        commands, _ = PRE_PUSH["plan"](classify(["symlinks/config/quickshell/bar/Bar.qml"]))
         flattened = [argument for _, _, command in commands for argument in command]
-        for argument in ("config_drift", "qml", "tests/desktop/quickshell/python"):
+        for argument in ("config_drift", "qml", "desktop-python"):
             self.assertIn(argument, flattened)
         self.assertNotIn("clippy", flattened)
 
     def test_application_fixtures_follow_selected_applications(self):
         for path, expected, absent in (
-            ("symlinks/zshrc", "tests/shell/test_shell_config.py", "tests/vim"),
-            (
-                "symlinks/vim/vimrc",
-                "tests/vim/test_vim_config.py",
-                "tests/shell/test_shell_config.py",
-            ),
+            ("symlinks/zshrc", "shell-config", "vim-config"),
+            ("symlinks/vim/vimrc", "vim-config", "shell-config"),
         ):
-            commands, _ = PRE_PUSH["plan"](classify([path]), "1.91")
-            flattened = " ".join(arg for _, _, command in commands for arg in command)
-            self.assertIn(expected, flattened)
-            self.assertNotIn(absent, flattened)
+            commands, _ = PRE_PUSH["plan"](classify([path]))
+            stages = set(
+                next(command for label, _, command in commands if label == "core checks")
+            )
+            self.assertIn(expected, stages)
+            self.assertNotIn(absent, stages)
 
     def test_local_plan_tracks_fixture_inputs_without_running_installations(self):
-        desktop = "tests/desktop/hypr"
-        maintenance = "tests/hooks/test_maintenance.py"
-        shell = "tests/shell/test_shell_config.py"
         for path, fixtures in (
-            ("conf/systemd-units.toml", {desktop}),
-            ("symlinks/config/systemd/user/dotfiles-first-login.service", {desktop}),
-            ("symlinks/config/systemd/user/xdg-user-directories.service", {desktop, shell}),
-            ("symlinks/config/user-dirs.dirs", {shell}),
-            ("symlinks/config/git/aliases", {maintenance, shell}),
+            ("conf/systemd-units.toml", {"desktop-hypr"}),
+            ("symlinks/config/systemd/user/dotfiles-first-login.service", {"desktop-hypr"}),
+            (
+                "symlinks/config/systemd/user/xdg-user-directories.service",
+                {"desktop-hypr", "shell-config"},
+            ),
+            ("symlinks/config/user-dirs.dirs", {"shell-config"}),
+            ("symlinks/config/git/aliases", {"hooks", "shell-config"}),
             ("symlinks/config/git/config", set()),
         ):
             with self.subTest(path=path):
-                commands, _ = PRE_PUSH["plan"](classify([path]), "1.91")
+                commands, _ = PRE_PUSH["plan"](classify([path]))
                 args = {arg for _, _, command in commands for arg in command}
-                self.assertEqual(args & {desktop, maintenance, shell}, fixtures)
-        _, deferred = PRE_PUSH["plan"](classify(["dotfiles.ps1"]), "1.91")
+                self.assertEqual(args & {"desktop-hypr", "hooks", "shell-config"}, fixtures)
+        _, deferred = PRE_PUSH["plan"](classify(["dotfiles.ps1"]))
         self.assertIn("roundtrip_windows", deferred)
+        _, hook_deferred = PRE_PUSH["plan"](classify(["hooks/pre-commit"]))
+        self.assertNotIn("git_hooks", hook_deferred)
 
     def test_checker_changes_request_full_ci_without_binary_release(self):
         for path in (
             SCRIPTS_PREFIX + "pre-push.py",
             "tests/check.py",
+            "tests/runner.py",
         ):
             with self.subTest(path=path):
                 selected = classify([path])
@@ -110,23 +111,58 @@ class PrePushPlanTests(unittest.TestCase):
             (root / "tests").mkdir()
             shutil.copyfile(REPO_ROOT / "tests/check.py", root / "tests/check.py")
             (root / "python3").symlink_to(sys.executable)
-            for strict, expected in ((False, 0), (True, 1)):
-                with self.subTest(strict=strict):
-                    result = subprocess.run(
-                        [
-                            sys.executable,
-                            "-B",
-                            str(root / "tests/check.py"),
-                            *(["--strict"] if strict else []),
-                            "shell",
-                        ],
-                        env={"PATH": str(root)},
-                        text=True,
-                        capture_output=True,
-                    )
-                    self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
-                    self.assertIn("SKIP", result.stdout)
-                    self.assertNotIn("All requested checks passed", result.stdout)
+            for stage in ("shell", "desktop-hypr", "vim-config"):
+                for strict, expected in ((False, 0), (True, 1)):
+                    with self.subTest(stage=stage, strict=strict):
+                        result = subprocess.run(
+                            [
+                                sys.executable,
+                                "-B",
+                                str(root / "tests/check.py"),
+                                *(["--strict"] if strict else []),
+                                stage,
+                            ],
+                            env={"PATH": str(root)},
+                            text=True,
+                            capture_output=True,
+                        )
+                        self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                        self.assertIn("SKIP", result.stdout)
+                        self.assertNotIn("All requested checks passed", result.stdout)
+
+    def test_runner_strict_mode_fails_on_inner_unittest_skips(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            tests_dir = Path(temporary)
+            (tests_dir / "test_skip.py").write_text(
+                "import unittest\n"
+                "class SkipCase(unittest.TestCase):\n"
+                "    def test_skipped(self):\n"
+                "        self.skipTest('missing tool')\n",
+                encoding="utf-8",
+            )
+            runner = str(REPO_ROOT / "tests/runner.py")
+            relaxed = subprocess.run(
+                [sys.executable, "-B", runner, str(tests_dir)],
+                env={k: v for k, v in os.environ.items() if k != "DOTFILES_CHECK_STRICT"},
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(relaxed.returncode, 0, relaxed.stdout + relaxed.stderr)
+            strict_flag = subprocess.run(
+                [sys.executable, "-B", runner, "--strict", str(tests_dir)],
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(strict_flag.returncode, 1)
+            self.assertIn("skipped in strict mode", strict_flag.stderr)
+            strict_env = subprocess.run(
+                [sys.executable, "-B", runner, str(tests_dir)],
+                env={**os.environ, "DOTFILES_CHECK_STRICT": "1"},
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(strict_env.returncode, 1)
+            self.assertIn("skipped in strict mode", strict_env.stderr)
 
 
 class PrePushCoordinatorTests(unittest.TestCase):
@@ -152,16 +188,12 @@ class PrePushCoordinatorTests(unittest.TestCase):
                 "test",
                 "config",
                 "powershell",
+                "wrapper",
             ],
         )
         flattened = [arg for _, _, command in commands for arg in command]
         for unnecessary in ("fmt", "rustdoc", "audit", "deny", "x86_64-pc-windows-gnu"):
             self.assertNotIn(unnecessary, flattened)
-        wrapper = next(
-            command for label, _, command in commands if label == "isolated PowerShell wrapper"
-        )
-        self.assertIn("if (-not (Test-IsolatedWrapperPath)) { exit 1 }", wrapper[-1])
-        self.assertIn("if (-not (Test-CargoArtifactPath)) { exit 1 }", wrapper[-1])
 
     def test_windows_plan_runs_prompt_without_linux_desktop_script_suites(self):
         desktop_commands = PRE_PUSH["windows_plan"](
@@ -174,22 +206,20 @@ class PrePushCoordinatorTests(unittest.TestCase):
             docs_checked=True,
         )
         flattened = [arg for _, _, command in desktop_commands for arg in command]
-        self.assertNotIn("tests/desktop/hypr", flattened)
-        self.assertNotIn("tests/desktop/quickshell/python", flattened)
+        self.assertNotIn("desktop-hypr", flattened)
+        self.assertNotIn("desktop-python", flattened)
 
         prompt_commands = PRE_PUSH["windows_plan"](
             classify(["symlinks/config/powershell/Microsoft.PowerShell_profile.ps1"]),
             docs_checked=True,
         )
         prompt_args = [arg for _, _, command in prompt_commands for arg in command]
-        self.assertIn("tests/shell/Test-Prompt.ps1", prompt_args)
+        self.assertIn("prompt", prompt_args)
 
     def test_windows_receipt_omits_only_redundant_compilation_and_analyzer(self):
         selection = classify(["cli/src/main.rs", "dotfiles.ps1"])
-        original, deferred = PRE_PUSH["plan"](selection, "1.91", docs_checked=True)
-        reused, remaining = PRE_PUSH["plan"](
-            selection, "1.91", docs_checked=True, windows_checked=True
-        )
+        original, deferred = PRE_PUSH["plan"](selection, docs_checked=True)
+        reused, remaining = PRE_PUSH["plan"](selection, docs_checked=True, windows_checked=True)
         expected = [
             (label, directory, [arg for arg in command if arg != "powershell"])
             if label == "core checks"
@@ -532,9 +562,11 @@ class LocalCheckTests(unittest.TestCase):
             "deny",
             "msrv",
             "qml",
+            "hook-inputs",
             "hooks",
             "wrapper",
-            "desktop",
+            "desktop-hypr",
+            "desktop-python",
             "shell-config",
             "vim-config",
         )
@@ -594,6 +626,7 @@ class LocalCheckTests(unittest.TestCase):
                 newline="\n",
             )
             shutil.copyfile(REPO_ROOT / "tests/check.py", root / "tests/check.py")
+            shutil.copyfile(REPO_ROOT / "tests/runner.py", root / "tests/runner.py")
             tools = root / "tools"
             tools.mkdir()
             rustc = tools / "rustc"
@@ -614,12 +647,21 @@ class LocalCheckTests(unittest.TestCase):
                 "qmltestrunner",
                 "bash",
                 "zsh",
+                "fzf",
+                "zstd",
+                "bat",
+                "tmux",
                 "vim",
+                "nvim",
+                "lua",
+                "jq",
+                "gio",
             ):
                 tool = tools / name
                 tool.write_text(
                     "#!/bin/sh\n"
                     '[ "${2:-}" = --version ] && exit 0\n'
+                    '[ "${4:-}" = --version ] && exit 0\n'
                     '[ "${1:-}" = toolchain ] && exit 0\n'
                     'exit "$CHECK_STATUS"\n',
                     encoding="utf-8",
@@ -716,9 +758,11 @@ class LocalCheckTests(unittest.TestCase):
             self.assertIn("docs", default_stages)
             self.assertIn("ci", default_stages)
             self.assertIn("python", default_stages)
-            self.assertIn("prompt", optional_stages)
+            self.assertIn("prompt", default_stages)
+            self.assertIn("wrapper", default_stages)
             self.assertNotIn("shell", default_stages)
             self.assertIn("shell", optional_stages)
+            self.assertIn("msrv", optional_stages)
             groups = module.platform_groups()
             self.assertIn("test", groups["--tests"])
             self.assertIn("prompt", groups["--tests"])

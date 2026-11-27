@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-platform Git configuration, aliases, behavior, cleanup, and hook tests.
 
-Usage: python3 -B tests/git/test_git.py [config] [aliases] [behavior] [clean] [hooks]
+Usage: python3 -B tests/integration/test_git.py [--strict] [config] [aliases] [behavior] [clean] [hooks]
 """
 
 from __future__ import annotations
@@ -15,6 +15,9 @@ import tempfile
 import unittest
 
 REPO_ROOT = Path(os.environ.get("DIR") or Path(__file__).resolve().parents[2])
+sys.path.insert(0, str(REPO_ROOT / "tests"))
+
+from runner import pop_strict_flag, run_suite
 EXPECTED_CONFIG = (
     ("init.defaultBranch", "main"),
     ("pull.rebase", "true"),
@@ -307,9 +310,10 @@ SELECTORS = {
 
 
 def main(argv: list[str]) -> int:
+    strict, remaining = pop_strict_flag(argv)
     selected = (
-        [name.lower() for name in argv]
-        if argv
+        [name.lower() for name in remaining]
+        if remaining
         else ["config", "aliases", "behavior", "clean", "hooks"]
     )
     suite = unittest.TestSuite()
@@ -319,8 +323,7 @@ def main(argv: list[str]) -> int:
             print(f"ERROR: unknown git test: {name}", file=sys.stderr)
             return 2
         suite.addTest(GitTests(method))
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    return 0 if result.wasSuccessful() else 1
+    return run_suite(suite, strict=strict)
 
 
 if __name__ == "__main__":

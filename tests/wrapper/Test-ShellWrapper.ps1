@@ -14,30 +14,6 @@ foreach ($testModule in @(
     . (Join-Path $PSScriptRoot "windows/$testModule")
 }
 
-function Test-WrapperParity {
-    Write-TestStage 'Test: Wrapper parity contract'
-    $python = Get-Command python3 -ErrorAction SilentlyContinue
-    if (-not $python) { $python = Get-Command python -ErrorAction SilentlyContinue }
-    if (-not $python) {
-        Write-TestFail 'python is required to run tests/wrapper/test_parity.py'
-        return $false
-    }
-    $parityScript = Join-Path $PSScriptRoot 'test_parity.py'
-    $prevPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        & $python.Source -B $parityScript 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            Write-TestPass 'Wrapper parity contract matches dotfiles.sh and dotfiles.ps1'
-            return $true
-        }
-        Write-TestFail 'Wrapper parity contract check failed'
-        return $false
-    } finally {
-        $ErrorActionPreference = $prevPreference
-    }
-}
-
 function Invoke-TestSuite {
     $results = @()
 
@@ -57,7 +33,6 @@ function Invoke-TestSuite {
     $results += Test-CargoArtifactPath
     $results += Test-CargoArtifactFailure
     $results += Test-ReleaseRepository
-    $results += Test-WrapperParity
 
     $passed = ($results | Where-Object { $_ -eq $true }).Count
     $total = $results.Count

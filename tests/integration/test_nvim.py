@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Neovim isolated configuration, startup, and plugin tests.
+"""Installed-home Neovim startup and plugin smoke tests.
 
-Usage: python3 -B tests/vim/test_nvim.py [opens] [plugins] [configuration]
+Usage: python3 -B tests/integration/test_nvim.py [--strict] [opens] [plugins]
 """
 
 from __future__ import annotations
@@ -15,6 +15,9 @@ import unittest
 
 REPO_ROOT = Path(os.environ.get("DIR") or Path(__file__).resolve().parents[2])
 LOCKFILE = REPO_ROOT / "symlinks" / "vim" / "lazy-lock.json"
+sys.path.insert(0, str(REPO_ROOT / "tests"))
+
+from runner import pop_strict_flag, run_suite
 
 
 class NvimTests(unittest.TestCase):
@@ -49,19 +52,6 @@ class NvimTests(unittest.TestCase):
         except subprocess.TimeoutExpired:
             self.fail(f"nvim timed out after {timeout}s: {' '.join(args)}")
         return result.returncode
-
-    def test_configuration(self) -> None:
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-B",
-                "-m",
-                "unittest",
-                str(REPO_ROOT / "tests" / "vim" / "test_vim_config.py"),
-            ],
-            check=False,
-        )
-        self.assertEqual(result.returncode, 0, "isolated Neovim configuration tests failed")
 
     def test_opens(self) -> None:
         if shutil.which("nvim") is None:
@@ -123,7 +113,7 @@ class NvimTests(unittest.TestCase):
             [
                 "--headless",
                 "-c",
-                'lua local ok, err = pcall(dofile, vim.env.DIR .. "/tests/vim/test-nvim-lock.lua"); '
+                'lua local ok, err = pcall(dofile, vim.env.DIR .. "/tests/integration/test-nvim-lock.lua"); '
                 'if not ok then vim.api.nvim_err_writeln(tostring(err)); vim.cmd("cquit") end',
                 "-c",
                 "qa!",
@@ -143,12 +133,12 @@ class NvimTests(unittest.TestCase):
 SELECTORS = {
     "opens": "test_opens",
     "plugins": "test_plugins",
-    "configuration": "test_configuration",
 }
 
 
 def main(argv: list[str]) -> int:
-    selected = argv or ["opens", "plugins", "configuration"]
+    strict, remaining = pop_strict_flag(argv)
+    selected = remaining or ["opens", "plugins"]
     suite = unittest.TestSuite()
     for name in selected:
         method = SELECTORS.get(name)
@@ -156,8 +146,7 @@ def main(argv: list[str]) -> int:
             print(f"ERROR: unknown nvim test: {name}", file=sys.stderr)
             return 2
         suite.addTest(NvimTests(method))
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    return 0 if result.wasSuccessful() else 1
+    return run_suite(suite, strict=strict)
 
 
 if __name__ == "__main__":

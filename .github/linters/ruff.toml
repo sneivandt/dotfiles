@@ -32,10 +32,6 @@ select = [
 force-sort-within-sections = true
 
 [lint.per-file-ignores]
-# Test runners insert their sibling package directory into sys.path before importing.
+# Test runners insert their sibling or shared tests/ directory into sys.path before importing.
 "**/.github/workflows/scripts/test_ci_changes.py" = ["E402"]
-"**/tests/shell/test_shell_config.py" = ["E402"]
-"**/tests/hooks/test_git_hooks.py" = ["E402"]
-"**/tests/hooks/test_hook_inputs.py" = ["E402"]
-"**/tests/wrapper/test_shell_wrapper_linux.py" = ["E402"]
-"**/tests/desktop/quickshell/python/test_network_helper.py" = ["E402"]
+"**/tests/**/test_*.py" = ["E402"]

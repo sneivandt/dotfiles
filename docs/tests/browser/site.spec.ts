@@ -57,8 +57,7 @@ test('testing lookup exposes prerequisites and keeps general setup outside the T
   });
   expect(general).toContain('Refresh origin/main before planning.');
   expect(general).toContain('Provide the tools required by the printed plan');
-  await page.goto('/psscriptanalyzer');
-  await expect(page.locator('main table')).toContainText('PowerShell 7 (pwsh)');
+  await expect(page.locator('main')).toContainText('PowerShell 7 (pwsh)');
   await expect(page.locator('main')).toContainText('Windows PowerShell cannot substitute for it');
 });
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Zsh configuration, completion, and history widget tests.
+"""Installed-home Zsh completion and history widget smoke tests.
 
-Usage: python3 -B tests/shell/test_zsh.py [completion] [history] [configuration]
+Usage: python3 -B tests/integration/test_zsh.py [--strict] [completion] [history]
 """
 
 from __future__ import annotations
@@ -15,16 +15,12 @@ import tempfile
 import unittest
 
 REPO_ROOT = Path(os.environ.get("DIR") or Path(__file__).resolve().parents[2])
+sys.path.insert(0, str(REPO_ROOT / "tests"))
+
+from runner import pop_strict_flag, run_suite
 
 
 class ZshTests(unittest.TestCase):
-    def test_configuration(self) -> None:
-        result = subprocess.run(
-            [sys.executable, "-B", str(REPO_ROOT / "tests" / "shell" / "test_shell_config.py")],
-            check=False,
-        )
-        self.assertEqual(result.returncode, 0, "isolated shell configuration suite failed")
-
     def test_completion(self) -> None:
         if shutil.which("zsh") is None:
             self.skipTest("zsh not installed")
@@ -101,12 +97,12 @@ class ZshTests(unittest.TestCase):
 SELECTORS = {
     "completion": "test_completion",
     "history": "test_history",
-    "configuration": "test_configuration",
 }
 
 
 def main(argv: list[str]) -> int:
-    selected = argv or ["completion", "history", "configuration"]
+    strict, remaining = pop_strict_flag(argv)
+    selected = remaining or ["completion", "history"]
     suite = unittest.TestSuite()
     for name in selected:
         method = SELECTORS.get(name)
@@ -114,8 +110,7 @@ def main(argv: list[str]) -> int:
             print(f"ERROR: unknown zsh test: {name}", file=sys.stderr)
             return 2
         suite.addTest(ZshTests(method))
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    return 0 if result.wasSuccessful() else 1
+    return run_suite(suite, strict=strict)
 
 
 if __name__ == "__main__":

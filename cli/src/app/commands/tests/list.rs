@@ -56,8 +56,6 @@ fn discovery_filters_only_proven_inapplicability() {
             "git-hooks",
             "launcher",
             "path",
-            "shellcheck",
-            "psscriptanalyzer",
             "apm-plugins",
             "config-files",
             "config-diagnostics",

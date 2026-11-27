@@ -41,7 +41,7 @@ def _resolve_script(root: Path, rel: str) -> Path:
 
 
 def check_shell(root: Path) -> int:
-    script = _resolve_script(root, "cli/src/app/validation/scripts/shellcheck.sh")
+    script = _resolve_script(root, ".github/workflows/scripts/shellcheck.sh")
     return _run(["sh", str(script), "--root", str(root)], cwd=root)
 
 
@@ -49,7 +49,7 @@ def check_powershell(root: Path) -> int:
     if shutil.which("pwsh") is None:
         print("ERROR: pwsh is not installed; cannot run PSScriptAnalyzer", file=sys.stderr)
         return 1
-    script = _resolve_script(root, "cli/src/app/validation/scripts/psscriptanalyzer.ps1")
+    script = _resolve_script(root, ".github/workflows/scripts/psscriptanalyzer.ps1")
     return _run(["pwsh", "-NoProfile", "-File", str(script), "-Root", str(root)], cwd=root)
 
 

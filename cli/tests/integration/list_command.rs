@@ -86,7 +86,7 @@ fn list_hides_empty_configuration_and_all_restores_the_catalog() {
                     "{selector}: {format}, all={all}"
                 );
             }
-            for selector in ["agent-packages", "launcher", "shellcheck"] {
+            for selector in ["agent-packages", "launcher", "apm-plugins"] {
                 assert!(
                     selectors.iter().any(|value| value == selector),
                     "uncertain or unconditional {selector} must remain visible"

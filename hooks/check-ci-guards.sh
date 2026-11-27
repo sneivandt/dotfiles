@@ -186,7 +186,7 @@ run_shell_guards() {
     if [ ! -s "$CHECK_STAGE_DIR/.shell-inputs" ]; then
       return 0
     fi
-    analyzer=$(resolve_repo_file "cli/src/app/validation/scripts/shellcheck.sh")
+    analyzer=$(resolve_repo_file ".github/workflows/scripts/shellcheck.sh")
     if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
       analyzer=$1
       shift
@@ -198,7 +198,7 @@ run_shell_guards() {
     ' sh "$analyzer" < "$CHECK_STAGE_DIR/.shell-inputs"); then
       abort_with_hint \
         "ShellCheck reported issues." \
-        "sh cli/src/app/validation/scripts/shellcheck.sh <staged shell files>"
+        "sh .github/workflows/scripts/shellcheck.sh <staged shell files>"
     fi
   else
     printf '%sSkipping ShellCheck: shellcheck not installed.%s\n' "$DIM" "$NC"
@@ -215,7 +215,7 @@ run_powershell_guards() {
     if [ ! -s "$CHECK_STAGE_DIR/.powershell-inputs" ]; then
       return 0
     fi
-    analyzer=$(resolve_repo_file "cli/src/app/validation/scripts/psscriptanalyzer.ps1")
+    analyzer=$(resolve_repo_file ".github/workflows/scripts/psscriptanalyzer.ps1")
     if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
       analyzer=$1
       shift
@@ -227,7 +227,7 @@ run_powershell_guards() {
     ' sh "$analyzer" < "$CHECK_STAGE_DIR/.powershell-inputs") 2>&1; then
       abort_with_hint \
         "PSScriptAnalyzer reported issues." \
-        "pwsh -NoProfile -File cli/src/app/validation/scripts/psscriptanalyzer.ps1 <staged PowerShell files>"
+        "pwsh -NoProfile -File .github/workflows/scripts/psscriptanalyzer.ps1 <staged PowerShell files>"
     fi
   else
     printf '%sSkipping PSScriptAnalyzer: pwsh not installed.%s\n' "$DIM" "$NC"

@@ -79,7 +79,7 @@ fn graph_selectors_use_read_only_discovery_and_graph_membership() {
             let words = ["list", "--root", root, "-pbase", "--graph", graph, flag, ""];
             let values = candidates(&repo, home.path(), "zsh", &words, words.len());
             assert!(!values.is_empty(), "{graph} {flag}");
-            assert_eq!(values.contains(&"shellcheck".to_owned()), graph == "check");
+            assert_eq!(values.contains(&"apm-plugins".to_owned()), graph == "check");
             assert_eq!(values.contains(&"launcher".to_owned()), graph != "check");
             assert_eq!(values.contains(&"repository".to_owned()), graph == "update");
             assert!(!home.path().join("logs").exists());

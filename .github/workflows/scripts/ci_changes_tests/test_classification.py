@@ -230,21 +230,21 @@ class ClassificationTests(unittest.TestCase):
             ),
             ("tests/wrapper/linux/test_bootstrap.py", {"wrapper_linux", "build_linux", "lint"}),
             (
-                "tests/git/test_git.py",
+                "tests/integration/test_git.py",
                 {"app_tests", "app_windows", "build_linux", "build_windows", "lint"},
             ),
-            ("tests/shell/test_zsh.py", {"app_tests", "build_linux", "lint"}),
-            ("tests/vim/test_vim.py", {"app_tests", "build_linux", "lint"}),
-            ("tests/vim/test_nvim.py", {"app_tests", "build_linux", "lint"}),
+            ("tests/integration/test_zsh.py", {"app_tests", "build_linux", "lint"}),
+            ("tests/integration/test_vim.py", {"app_tests", "build_linux", "lint"}),
+            ("tests/integration/test_nvim.py", {"app_tests", "build_linux", "lint"}),
             (
                 "tests/hooks/hook_inputs_tests/test_allowlists.py",
                 {"hook_inputs", "build_linux", "lint"},
             ),
             (
                 "tests/hooks/git_hook_tests/test_sensitive_scan.py",
-                {"git_hooks", "hook_inputs", "lint"},
+                {"git_hooks", "lint"},
             ),
-            ("tests/hooks/test_git_hooks.py", {"git_hooks", "hook_inputs", "lint"}),
+            ("tests/hooks/test_git_hooks.py", {"git_hooks", "lint"}),
             (
                 "symlinks/config/git/templates/hooks/post-rewrite",
                 config
@@ -284,8 +284,8 @@ class ClassificationTests(unittest.TestCase):
                 config | desktop_scripts | {"desktop_qml"},
             ),
             ("symlinks/config/systemd/user/clean-home-tmp.timer", config | {"desktop_qml"}),
-            ("tests/hooks/test_maintenance.py", {"git_hooks", "hook_inputs", "lint"}),
-            ("tests/vim/test-nvim-lock.lua", {"app_tests", "build_linux", "lint"}),
+            ("tests/hooks/test_maintenance.py", {"git_hooks", "lint"}),
+            ("tests/integration/test-nvim-lock.lua", {"app_tests", "build_linux", "lint"}),
             ("tests/vim/test-nvim-config.lua", {"app_tests", "build_linux", "lint"}),
             ("tests/shell/test_shell_config.py", {"app_tests", "build_linux", "lint"}),
             (
@@ -301,6 +301,8 @@ class ClassificationTests(unittest.TestCase):
                 "tests/wrapper/test_parity.py",
                 {"wrapper_linux", "wrapper_windows", "build_linux", "build_windows", "lint"},
             ),
+            (SCRIPTS_PREFIX + "shellcheck.sh", {"lint"}),
+            (SCRIPTS_PREFIX + "psscriptanalyzer.ps1", {"lint"}),
             (SCRIPTS_PREFIX + "check-ci-contract.py", {"lint"}),
             (SCRIPTS_PREFIX + "workflow_yaml.py", {"lint"}),
             (SCRIPTS_PREFIX + "test_ci_changes.py", {"lint"}),
@@ -370,10 +372,10 @@ class ClassificationTests(unittest.TestCase):
             (["symlinks/config/user-dirs.dirs"], [], ["zsh"]),
             (["symlinks/config/systemd/user/xdg-user-directories.service"], [], ["zsh"]),
             (["symlinks/vim/init.vim"], [], ["vim", "nvim"]),
-            (["tests/vim/test_vim.py"], ["Python (Ruff)"], ["vim"]),
-            (["tests/vim/test_nvim.py"], ["Python (Ruff)"], ["nvim"]),
-            (["tests/git/test_git.py"], ["Python (Ruff)"], ["git"]),
-            (["tests/shell/test_zsh.py"], ["Python (Ruff)"], ["zsh"]),
+            (["tests/integration/test_vim.py"], ["Python (Ruff)"], ["vim"]),
+            (["tests/integration/test_nvim.py"], ["Python (Ruff)"], ["nvim"]),
+            (["tests/integration/test_git.py"], ["Python (Ruff)"], ["git"]),
+            (["tests/integration/test_zsh.py"], ["Python (Ruff)"], ["zsh"]),
             (["tests/vim/test-nvim-config.lua"], ["Lua (Luacheck)"], ["nvim"]),
             (["tests/shell/test_shell_config.py"], ["Python (Ruff)"], ["zsh"]),
             (
@@ -412,7 +414,8 @@ class ClassificationTests(unittest.TestCase):
         matrix = classify(["symlinks/vim/vimrc"])["app_matrix"]["include"]
         self.assertEqual({entry["application"] for entry in matrix}, {"vim", "nvim"})
         for entry in matrix:
-            self.assertIn("configuration", entry["tests"].split())
+            self.assertEqual(entry["config_script"], "tests/vim/test_vim_config.py")
+            self.assertEqual(entry["config_args"], f"--editor {entry['application']}")
 
     def test_shell_matrix_installs_extraction_and_preview_tools(self):
         matrix = classify(["symlinks/config/zsh/functions/extract"])["app_matrix"]["include"]

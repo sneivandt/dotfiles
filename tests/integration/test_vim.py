@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Vim isolated configuration and startup tests.
+"""Installed-home Vim startup smoke tests.
 
-Usage: python3 -B tests/vim/test_vim.py [opens] [configuration]
+Usage: python3 -B tests/integration/test_vim.py [--strict] [opens]
 """
 
 from __future__ import annotations
@@ -14,22 +14,12 @@ import sys
 import unittest
 
 REPO_ROOT = Path(os.environ.get("DIR") or Path(__file__).resolve().parents[2])
+sys.path.insert(0, str(REPO_ROOT / "tests"))
+
+from runner import pop_strict_flag, run_suite
 
 
 class VimTests(unittest.TestCase):
-    def test_configuration(self) -> None:
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-B",
-                "-m",
-                "unittest",
-                str(REPO_ROOT / "tests" / "vim" / "test_vim_config.py"),
-            ],
-            check=False,
-        )
-        self.assertEqual(result.returncode, 0, "isolated Vim configuration tests failed")
-
     def test_opens(self) -> None:
         if shutil.which("vim") is None:
             self.skipTest("vim not installed")
@@ -56,12 +46,12 @@ class VimTests(unittest.TestCase):
 
 SELECTORS = {
     "opens": "test_opens",
-    "configuration": "test_configuration",
 }
 
 
 def main(argv: list[str]) -> int:
-    selected = argv or ["opens", "configuration"]
+    strict, remaining = pop_strict_flag(argv)
+    selected = remaining or ["opens"]
     suite = unittest.TestSuite()
     for name in selected:
         method = SELECTORS.get(name)
@@ -69,8 +59,7 @@ def main(argv: list[str]) -> int:
             print(f"ERROR: unknown vim test: {name}", file=sys.stderr)
             return 2
         suite.addTest(VimTests(method))
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    return 0 if result.wasSuccessful() else 1
+    return run_suite(suite, strict=strict)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Exercise user-scope deployment with the built CLI and real APM in a disposable home."""
+"""Exercise user-scope deployment with the built CLI and real APM in a disposable home.
+
+Usage: python3 -B tests/integration/test_apm.py [--strict] [binary_path]
+"""
 
 from __future__ import annotations
 
@@ -12,6 +15,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tests"))
+
+from runner import pop_strict_flag, run_test_cases
 
 
 class ApmDeploymentTests(unittest.TestCase):
@@ -115,11 +121,13 @@ class ApmDeploymentTests(unittest.TestCase):
 
 
 def main(argv: list[str]) -> int:
-    if argv:
-        os.environ["BINARY_PATH"] = argv[0]
-    suite = unittest.defaultTestLoader.loadTestsFromTestCase(ApmDeploymentTests)
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    return 0 if result.wasSuccessful() else 1
+    strict, remaining = pop_strict_flag(argv)
+    if len(remaining) > 1:
+        print(f"ERROR: unexpected arguments: {' '.join(remaining)}", file=sys.stderr)
+        return 2
+    if remaining:
+        os.environ["BINARY_PATH"] = remaining[0]
+    return run_test_cases(ApmDeploymentTests, strict=strict)
 
 
 if __name__ == "__main__":

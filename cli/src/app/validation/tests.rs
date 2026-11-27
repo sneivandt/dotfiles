@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::infra::config::Diagnostic;
-use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
+use crate::infra::exec::{ExecResult, MockExecutor};
 use crate::test_helpers::{empty_config, make_context, make_linux_context};
 use crate::{domains::files::config::chmod::ChmodEntry, infra::ConfigHandle};
 
@@ -410,145 +410,9 @@ fn apm_validation_checks_each_plugin_and_aggregates_findings() {
 }
 
 #[test]
-fn powershell_command_escapes_single_quotes_in_root() {
-    let script = build_psscriptanalyzer_command(std::path::Path::new("C:\\Users\\o'connor"));
-    assert!(script.ends_with("-Root 'C:\\Users\\o''connor'"));
-}
-
-#[test]
-fn linter_execution_preserves_command_contract_and_failure_kind() {
-    for (name, response) in [
-        ("success", Ok(ExecResult::success(""))),
-        (
-            "findings",
-            Ok(ExecResult::failure(
-                "stdout finding",
-                "stderr finding",
-                Some(1),
-            )),
-        ),
-        (
-            "spawn",
-            Err(ExecError::spawn(
-                "pwsh",
-                std::io::Error::other("fixture spawn failure"),
-            )),
-        ),
-        (
-            "cancelled",
-            Err(ExecError::Cancelled {
-                command: "pwsh".into(),
-                result: ExecResult::success(""),
-            }),
-        ),
-    ] {
-        let mut executor = MockExecutor::new();
-        executor.expect_execute().once().return_once(move |spec| {
-            assert_eq!(spec.program(), "pwsh");
-            assert_eq!(spec.arguments(), ["-NoProfile", "-Command", "lint"]);
-            assert_eq!(spec.working_dir(), None);
-            assert!(
-                !spec.is_checked(),
-                "linter exit codes are interpreted by the task"
-            );
-            response
-        });
-        let ctx = make_context(
-            "fixture-root".into(),
-            None,
-            crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
-            std::sync::Arc::new(executor),
-        );
-        let log = std::sync::Arc::new(crate::infra::logging::Logger::test());
-        let log_handle = std::sync::Arc::clone(&log);
-        let ctx = ctx.with_log(log_handle);
-        let result = run_linter(
-            &ctx,
-            "PSScriptAnalyzer",
-            crate::infra::exec::CommandSpec::new("pwsh").args(&["-NoProfile", "-Command", "lint"]),
-        );
-        match name {
-            "success" => assert!(matches!(
-                result.unwrap(),
-                crate::engine::TaskResult::CheckPassed
-            )),
-            "findings" => {
-                assert_eq!(
-                    result.unwrap_err().to_string(),
-                    "PSScriptAnalyzer found issues"
-                );
-                let lines = log.captured_lines();
-                assert!(lines.iter().any(|line| line.ends_with("stdout finding")));
-                assert!(lines.iter().any(|line| line.ends_with("stderr finding")));
-            }
-            "spawn" => assert!(matches!(
-                result.unwrap_err().downcast_ref::<ExecError>(),
-                Some(ExecError::Spawn { .. })
-            )),
-            "cancelled" => assert!(matches!(
-                result.unwrap_err().downcast_ref::<ExecError>(),
-                Some(ExecError::Cancelled { .. })
-            )),
-            _ => panic!("unknown linter case: {name}"),
-        }
-    }
-}
-
-#[test]
 fn configured_source_validation_is_inapplicable_without_sources() {
     let config = empty_config("/fixture".into());
     let ctx = make_linux_context(config.root.clone(), config.overlay.clone());
     let task = ValidateSymlinkSources::new(ConfigHandle::new(config));
     assert!(!task.should_run(&ctx));
-}
-
-#[test]
-fn linter_tasks_delegate_to_embedded_scripts() {
-    let cases: [(&dyn Task, &str); 2] = [
-        (&RunShellcheck, "shellcheck"),
-        (&RunPSScriptAnalyzer, "pwsh"),
-    ];
-    for (task, tool) in cases {
-        let root = PathBuf::from("fixture root [literal]");
-        let expected_root = root.clone();
-        let mut executor = MockExecutor::new();
-        executor.expect_which().return_const(true);
-        executor.expect_execute().once().return_once(move |spec| {
-            if tool == "shellcheck" {
-                assert_eq!(spec.program(), "sh");
-                assert_eq!(
-                    spec.arguments(),
-                    [
-                        "-c",
-                        SHELLCHECK_SCRIPT,
-                        "dotfiles-shellcheck",
-                        "--root",
-                        &expected_root.to_string_lossy()
-                    ]
-                );
-            } else {
-                assert_eq!(spec.program(), "pwsh");
-                assert_eq!(
-                    spec.arguments(),
-                    [
-                        "-NoProfile",
-                        "-Command",
-                        &build_psscriptanalyzer_command(&expected_root)
-                    ]
-                );
-            }
-            assert!(!spec.is_checked());
-            Ok(ExecResult::success(""))
-        });
-        let ctx = make_context(
-            root,
-            None,
-            crate::infra::platform::Platform::detect(),
-            std::sync::Arc::new(executor),
-        );
-        assert!(matches!(
-            task.run(&ctx).unwrap(),
-            crate::engine::TaskResult::CheckPassed
-        ));
-    }
 }

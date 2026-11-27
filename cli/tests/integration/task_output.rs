@@ -325,11 +325,7 @@ fn unavailable_check_tools_explain_skips_and_fail_when_required() {
     let home = tempfile::tempdir().unwrap();
     let overlay = tempfile::tempdir().unwrap();
     let empty_path = tempfile::tempdir().unwrap();
-    for (selector, tool) in [
-        ("shellcheck", "shellcheck"),
-        ("apm-plugins", "apm"),
-        ("psscriptanalyzer", "pwsh"),
-    ] {
+    for (selector, tool) in [("apm-plugins", "apm")] {
         for (policy, strict, ci, expected_code) in [
             ("default", false, false, 0),
             ("explicit strictness", true, false, 1),
@@ -650,7 +646,7 @@ fn quiet_mode_keeps_skipped_work_visible_without_changing_exit_policy() {
     let empty_path = tempfile::tempdir().unwrap();
     for strict in [false, true] {
         let mut command =
-            common::cli_command(repo.root_path(), home.path(), None, "check", "shellcheck");
+            common::cli_command(repo.root_path(), home.path(), None, "check", "apm-plugins");
         command.arg("--quiet").env("PATH", empty_path.path());
         if strict {
             command.arg("--fail-on-skip");
@@ -659,7 +655,7 @@ fn quiet_mode_keeps_skipped_work_visible_without_changing_exit_policy() {
         assert_eq!(output.status.success(), !strict);
         assert!(output.stdout.is_empty());
         let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(stderr.contains("shellcheck not found in PATH"), "{stderr}");
+        assert!(stderr.contains("apm not found in PATH"), "{stderr}");
         assert!(
             !stderr.contains("warn  ⊘"),
             "quiet skipped row must not double-prefix: {stderr}"

@@ -73,17 +73,19 @@ domain rather than by CI runner:
 
 | Directory | Covers |
 |---|---|
-| `tests/git/` | Cross-platform Git configuration, aliases, behavior, and cleanup suite (`test_git.py`) |
-| `tests/shell/` | Zsh completion/history (`test_zsh.py`), isolated Bash/Zsh fixtures (`test_shell_config.py`, `shell_config_tests/`), and PowerShell prompt tests |
-| `tests/vim/` | Vim (`test_vim.py`) and Neovim (`test_nvim.py`) startup, plugin, filetype, and lockfile suites, plus isolated config fixtures (`test_vim_config.py`) |
+| `tests/shell/` | Isolated Bash/Zsh fixtures (`test_shell_config.py`, `shell_config_tests/`) and PowerShell prompt tests (`Test-Prompt.ps1`) |
+| `tests/vim/` | Isolated Vim/Neovim config fixtures (`test_vim_config.py`, `test-nvim-config.lua`) |
 | `tests/desktop/quickshell/` | Offscreen QML tests, `qmllint`, headless Sway session checks, and Python helper/stock-cache tests |
 | `tests/desktop/hypr/` | Hyprland helper script unit tests (brightness, volume, launchers, lock screen, screenshot, resize) |
 | `tests/hooks/` | Staged-input guards (`test_hook_inputs.py`, `hook_inputs_tests/`), pre-commit integration (`test_git_hooks.py`, `git_hook_tests/`), and maintenance tests (`test_maintenance.py`) |
 | `tests/wrapper/` | POSIX (`test_shell_wrapper_linux.py`, `linux/`), PowerShell (`Test-ShellWrapper.ps1`, `windows/`), and parity (`test_parity.py`) bootstrap wrapper suites |
-| `tests/integration/` | Cross-platform install/uninstall round-trip (`test_install_uninstall.py`), Arch container acceptance, and APM deployment (`test_apm.py`) |
+| `tests/integration/` | Installed-home smoke suites (`test_git.py`, `test_zsh.py`, `test_vim.py`, `test_nvim.py`, `test-nvim-lock.lua`), cross-platform install/uninstall round-trip (`test_install_uninstall.py`), Arch container acceptance, and APM deployment (`test_apm.py`) |
 
 The unified cross-platform local runner is
-[tests/check.py](https://github.com/sneivandt/dotfiles/blob/main/tests/check.py).
+[tests/check.py](https://github.com/sneivandt/dotfiles/blob/main/tests/check.py),
+and [tests/runner.py](https://github.com/sneivandt/dotfiles/blob/main/tests/runner.py)
+provides the shared `unittest` entry point with `--strict` /
+`DOTFILES_CHECK_STRICT=1` skip enforcement.
 CI orchestration (`pre-push.py`, `check_lint.py`, `check_docs.py`,
 `ci_fixture_home.py`, path/release classification, docs checks, and mutation
 runners) lives under `.github/workflows/scripts/` (with OS-specific helpers

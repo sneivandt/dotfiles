@@ -155,8 +155,9 @@ a typo under `[windows]` is still caught on Linux.
 ## Validation
 
 `dotfiles check` runs configuration diagnostics, required-file checks,
-symlink-source checks, and available static analyzers. Its `config-diagnostics`
-task treats warnings as failures so configuration problems are caught early.
+symlink-source checks, and local APM package validation. Its
+`config-diagnostics` task treats warnings as failures so configuration problems
+are caught early.
 
 For contributors, the Rust `config_drift` test suite verifies relationships
 between real declarations and tracked files across category combinations. See

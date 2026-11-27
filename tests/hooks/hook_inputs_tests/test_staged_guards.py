@@ -175,7 +175,6 @@ class StagedGuardTests(unittest.TestCase):
             mock_bin = fixture / "mock-bin"
             (repo / "hooks").mkdir(parents=True)
             (repo / ".github" / "workflows" / "scripts").mkdir(parents=True)
-            (repo / "cli" / "src" / "app" / "validation" / "scripts").mkdir(parents=True)
             shutil.copy2(
                 REPO_ROOT / "hooks" / "check-ci-guards.sh", repo / "hooks" / "check-ci-guards.sh"
             )
@@ -185,7 +184,7 @@ class StagedGuardTests(unittest.TestCase):
                 repo / ".github" / "workflows" / "scripts" / "ci_metadata.py",
             )
             # Isolate the hook's selection and forwarding from the analyzer itself.
-            (repo / "cli" / "src" / "app" / "validation" / "scripts" / "shellcheck.sh").write_text(
+            (repo / ".github" / "workflows" / "scripts" / "shellcheck.sh").write_text(
                 "#!/bin/sh\n"
                 "set -eu\n"
                 '[ "$#" -eq 1 ]\n'
@@ -791,8 +790,8 @@ class StagedGuardTests(unittest.TestCase):
             env["PATH"] = f"{mock_bin}{os.pathsep}{env.get('PATH', '')}"
             env["HOOK_INPUT_LOG"] = str(log_file)
 
-            sc = repo / "cli" / "src" / "app" / "validation" / "scripts" / "shellcheck.sh"
-            ps = repo / "cli" / "src" / "app" / "validation" / "scripts" / "psscriptanalyzer.ps1"
+            sc = repo / ".github" / "workflows" / "scripts" / "shellcheck.sh"
+            ps = repo / ".github" / "workflows" / "scripts" / "psscriptanalyzer.ps1"
             contract = repo / ".github" / "workflows" / "scripts" / "check-ci-contract.py"
             release = repo / ".github" / "workflows" / "release.yml"
 
@@ -816,8 +815,8 @@ class StagedGuardTests(unittest.TestCase):
                         "git",
                         "add",
                         "--",
-                        "cli/src/app/validation/scripts/shellcheck.sh",
-                        "cli/src/app/validation/scripts/psscriptanalyzer.ps1",
+                        ".github/workflows/scripts/shellcheck.sh",
+                        ".github/workflows/scripts/psscriptanalyzer.ps1",
                         ".github/workflows/scripts/check-ci-contract.py",
                         ".github/workflows/release.yml",
                         "sample.sh",

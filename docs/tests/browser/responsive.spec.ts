@@ -249,7 +249,7 @@ test('task groups collapse separately from the task reference overview', async (
   await toggle.click();
   await expect(page).toHaveURL('/home-symlinks');
   await expect(updateTasks.getByRole('link', { name: 'Home symlinks', exact: true })).not.toBeVisible();
-  await expect(validationTasks.getByRole('link', { name: 'ShellCheck', exact: true })).toBeVisible();
+  await expect(validationTasks.getByRole('link', { name: 'Configuration diagnostics', exact: true })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'CLI reference', exact: true })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'Configuration basics', exact: true })).toHaveCount(0);
   await expect(sidebar.getByRole('link', { name: 'Task reference', exact: true })).toBeVisible();

@@ -121,8 +121,8 @@ fixed integrations or removal sections for checks. Overlay scripts also need
 their protocol and code-execution risks explained clearly.
 
 Use [Home symlinks](../reference/home-symlinks.md) as a model for a
-declaration-heavy page and [ShellCheck](../reference/shellcheck.md) for a check
-task. Keep the selector index and shared scheduling model on
+declaration-heavy page and [APM plugin checks](../reference/apm-plugin-checks.md)
+for a check task. Keep the selector index and shared scheduling model on
 [Task reference](../reference/task-reference.md) and domain details on each
 task page, linking prerequisites by name and distinguishing blocking
 dependencies from ordering-only waits.

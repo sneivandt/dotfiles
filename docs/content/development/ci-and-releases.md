@@ -107,7 +107,7 @@ system-file merge, denied elevation, offline user-unit drop-ins, redirected
 directory rejection, and repeat runs, while Quickshell startup runs under
 headless Sway rather than native Hyprland. There is no Git-for-Windows full
 hook suite, profile previews skip VS Code, profile `check` omits external APM
-and script analyzers, and the Windows app-integration job skips APM (covered by
+validation, and the Windows app-integration job skips APM (covered by
 its own Windows APM job), packages, and VS Code. Coverage uploads are
 informational only.
 

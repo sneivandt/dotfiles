@@ -230,8 +230,8 @@ retrying. Earlier changes stay in place.
 
 ## Check configuration
 
-`dotfiles check` validates declarations and tracked sources and runs available
-static analyzers. It does not apply configuration or take `--dry-run`. Like
+`dotfiles check` validates declarations, tracked sources, and available local
+APM packages. It does not apply configuration or take `--dry-run`. Like
 an update, it takes run locks, writes a log, and can save a prompted profile
 choice or explicit `--overlay`.
 
@@ -240,7 +240,7 @@ dotfiles check
 ```
 
 The `config-diagnostics` task fails on every configuration diagnostic,
-including warnings. Missing optional analyzers show up as skips unless you pass
+including warnings. If `apm` is missing, `apm-plugins` skips unless you pass
 `--fail-on-skip` or run under `CI`. Note that `--only` cannot bypass syntax or
 schema errors in configuration files loaded at startup.
 

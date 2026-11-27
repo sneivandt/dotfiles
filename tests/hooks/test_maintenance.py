@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
-"""Exercise Git templates and cleanup commands without changing the host."""
+"""Exercise Git templates and cleanup commands without changing the host.
+
+Usage: python3 -B tests/hooks/test_maintenance.py [--strict]
+"""
 
 import os
 from pathlib import Path
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES = ROOT / "symlinks/config/git/templates"
+sys.path.insert(0, str(ROOT / "tests"))
+
+from runner import pop_strict_flag, run_test_cases
 
 
 class GitTemplatesTests(unittest.TestCase):
@@ -265,5 +272,13 @@ class CleanupTests(unittest.TestCase):
                     self.assertTrue(os.path.lexists(target / f"new-{kind}"))
 
 
+def main(argv: list[str] | None = None) -> int:
+    strict, remaining = pop_strict_flag(list(sys.argv[1:] if argv is None else argv))
+    if remaining:
+        print(f"ERROR: unexpected arguments: {' '.join(remaining)}", file=sys.stderr)
+        return 2
+    return run_test_cases(GitTemplatesTests, CleanupTests, strict=strict)
+
+
 if __name__ == "__main__":
-    unittest.main()
+    raise SystemExit(main())

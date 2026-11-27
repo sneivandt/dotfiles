@@ -2,11 +2,9 @@
 
 mod checks;
 mod discovery;
-mod linters;
 
 pub(crate) use checks::{
-    RunPSScriptAnalyzer, RunShellcheck, ValidateApmPlugins, ValidateConfigFiles,
-    ValidateConfigWarnings, ValidateSymlinkSources,
+    ValidateApmPlugins, ValidateConfigFiles, ValidateConfigWarnings, ValidateSymlinkSources,
 };
 
 use crate::infra::config::Diagnostic;
@@ -37,10 +35,6 @@ pub(crate) fn display_diagnostics(diagnostics: &[Diagnostic], output: &dyn Outpu
 use crate::engine::Task;
 #[cfg(test)]
 use discovery::*;
-#[cfg(test)]
-use linters::*;
-#[cfg(test)]
-use std::path::PathBuf;
 
 #[cfg(test)]
 mod tests;

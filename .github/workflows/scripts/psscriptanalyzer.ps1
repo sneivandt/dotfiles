@@ -1,4 +1,4 @@
-# Shared discovery and invocation for the CLI, CI, and staged-file hooks.
+# Shared discovery and invocation for CI, tests/check.py, and staged-file hooks.
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [string]$Root,
@@ -44,7 +44,7 @@ if ($Root)
     $Paths = @(
         $wrapper = Join-Path $Root 'dotfiles.ps1'
         if (Test-Path -LiteralPath $wrapper) { $wrapper }
-        foreach ($dir in 'symlinks', 'hooks', 'tests', '.github', 'cli/src/app/validation/scripts')
+        foreach ($dir in 'symlinks', 'hooks', 'tests', '.github')
         {
             $path = Join-Path $Root $dir
             if (Test-Path -LiteralPath $path)

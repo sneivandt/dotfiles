@@ -1,3 +1,4 @@
+import argparse
 from contextlib import contextmanager
 import json
 import os
@@ -13,6 +14,9 @@ import uuid
 
 TESTS = Path(__file__).resolve().parent
 CONFIG = Path(__file__).resolve().parents[2] / "symlinks/vim"
+sys.path.insert(0, str(TESTS.parent))
+
+from runner import run_suite
 
 MANAGER = """\
 return { setup = function(plugins, options)
@@ -575,5 +579,40 @@ class VimConfigTests(unittest.TestCase):
             self.assertFalse((Path(env["XDG_DATA_HOME"]) / "nvim/lazy").exists())
 
 
+def build_suite(editor: str = "all") -> unittest.TestSuite:
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+    if editor in ("all", "nvim"):
+        suite.addTests(loader.loadTestsFromTestCase(NeovimBootstrapTests))
+    for name in loader.getTestCaseNames(VimConfigTests):
+        is_vim_only = name.startswith("test_vim_")
+        if editor == "vim" and not is_vim_only:
+            continue
+        if editor == "nvim" and is_vim_only:
+            continue
+        suite.addTest(VimConfigTests(name))
+    return suite
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Isolated Vim and Neovim configuration regression tests."
+    )
+    parser.add_argument(
+        "--editor",
+        choices=("all", "vim", "nvim"),
+        default="all",
+        help="Run only tests for the selected editor (default: all)",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        default=None,
+        help="Fail if any test is skipped",
+    )
+    args = parser.parse_args(argv)
+    return run_suite(build_suite(args.editor), strict=args.strict)
+
+
 if __name__ == "__main__":
-    unittest.main()
+    raise SystemExit(main())

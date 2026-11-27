@@ -350,6 +350,9 @@ fn broken_apm_manifest_is_not_a_passing_empty_inventory() {
 
 #[test]
 fn apm_validation_checks_each_plugin_and_aggregates_findings() {
+    use crate::infra::logging::MsgKind;
+    use crate::test_helpers::CapturingOutput;
+
     let dir = tempfile::tempdir_in(".").unwrap();
     let plugins = dir.path().join("symlinks").join("apm").join("plugins");
     for name in ["dot-c", "dot-a", "dot-b"] {
@@ -380,31 +383,60 @@ fn apm_validation_checks_each_plugin_and_aggregates_findings() {
                     assert_eq!(spec.arguments(), ["pack", "--dry-run", "--verbose"]);
                     assert!(!spec.is_checked(), "APM validation should allow non-zero");
                     Ok(if has_findings && name != "dot-b" {
-                        ExecResult::failure("invalid manifest", "", Some(1))
+                        ExecResult::failure(
+                            format!("{name}: invalid manifest"),
+                            format!("{name}: missing skill"),
+                            Some(1),
+                        )
                     } else {
                         ExecResult::success("")
                     })
                 });
         }
+        let output = std::sync::Arc::new(CapturingOutput::default());
         let ctx = make_context(
             dir.path().to_path_buf(),
             None,
             crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
             std::sync::Arc::new(executor),
-        );
+        )
+        .with_log(std::sync::Arc::<CapturingOutput>::clone(&output));
 
         let result = ValidateApmPlugins.run(&ctx);
+        let errors: Vec<String> = output
+            .messages()
+            .into_iter()
+            .filter_map(|(kind, msg)| (kind == MsgKind::Error).then_some(msg))
+            .collect();
         if has_findings {
             assert_eq!(
                 result.unwrap_err().to_string(),
                 "2 APM plugin(s) failed validation",
                 "findings must not stop validation of later plugins"
             );
+            assert_eq!(
+                errors,
+                [
+                    format!(
+                        "APM plugin validation failed: {}",
+                        plugins.join("dot-a").display()
+                    ),
+                    "dot-a: invalid manifest".into(),
+                    "dot-a: missing skill".into(),
+                    format!(
+                        "APM plugin validation failed: {}",
+                        plugins.join("dot-c").display()
+                    ),
+                    "dot-c: invalid manifest".into(),
+                    "dot-c: missing skill".into(),
+                ]
+            );
         } else {
             assert!(matches!(
                 result.unwrap(),
                 crate::engine::TaskResult::CheckPassed
             ));
+            assert!(errors.is_empty());
         }
     }
 }

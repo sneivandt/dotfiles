@@ -7,8 +7,8 @@ hero:
   name: Dotfiles
   tagline: My personal Arch Linux and Windows setup, managed with a Rust CLI.
   image:
-    src: /favicon.svg
-    alt: Dotfiles geometric tilde, slash, and dot emblem
+    src: /assets/logo-hero.png
+    alt: Dotfiles by Stuart Neivandt logo
   actions:
     - theme: brand
       text: Getting started

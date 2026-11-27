@@ -84,8 +84,16 @@ for (const theme of ['light', 'dark'] as const) {
 
 test('the hero landing page and grouped Guides navigation work cleanly', async ({ page, isMobile }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle('Dotfiles | Arch Linux & Windows setup with a Rust CLI');
+  await expect(page).toHaveTitle('Dotfiles by Stuart Neivandt | Arch Linux & Windows Rust CLI');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dotfiles');
+  const heroImage = page.locator('.VPHome .VPHero .image-src');
+  await expect(heroImage).toHaveAttribute('src', '/assets/logo-hero.png');
+  await expect(heroImage).toHaveAttribute('alt', 'Dotfiles by Stuart Neivandt logo');
+  expect(await heroImage.evaluate((element: HTMLImageElement) => ({
+    complete: element.complete,
+    width: element.naturalWidth,
+    height: element.naturalHeight,
+  }))).toEqual({ complete: true, width: 512, height: 512 });
   const heroWordmark = await page.locator('.VPHome .VPHero .heading .name.clip').evaluate((element) => {
     const style = getComputedStyle(element);
     const rect = element.getBoundingClientRect();
@@ -133,8 +141,10 @@ test('the hero landing page and grouped Guides navigation work cleanly', async (
   expect(JSON.parse(await page.locator('head script[type="application/ld+json"]').textContent() ?? '')).toMatchObject({
     '@context': 'https://schema.org',
     '@graph': [
-      { '@type': 'WebSite', name: 'Dotfiles', url: 'https://dotfiles.stuartneivandt.com/', creator: { '@id': 'https://stuartneivandt.com/#person' } },
-      { '@type': 'SoftwareSourceCode', name: 'Dotfiles', codeRepository: 'https://github.com/sneivandt/dotfiles', programmingLanguage: 'Rust' },
+      { '@type': 'WebSite', name: 'Dotfiles', url: 'https://dotfiles.stuartneivandt.com/', image: { '@id': 'https://dotfiles.stuartneivandt.com/#logo-image' }, creator: { '@id': 'https://stuartneivandt.com/#person' } },
+      { '@type': 'WebPage', name: 'Dotfiles by Stuart Neivandt | Arch Linux & Windows Rust CLI', url: 'https://dotfiles.stuartneivandt.com/', primaryImageOfPage: { '@id': 'https://dotfiles.stuartneivandt.com/#logo-image' } },
+      { '@type': 'ImageObject', '@id': 'https://dotfiles.stuartneivandt.com/#logo-image', url: 'https://dotfiles.stuartneivandt.com/assets/logo-hero.png', width: 512, height: 512 },
+      { '@type': 'SoftwareSourceCode', name: 'Dotfiles', codeRepository: 'https://github.com/sneivandt/dotfiles', programmingLanguage: 'Rust', image: { '@id': 'https://dotfiles.stuartneivandt.com/#logo-image' } },
       { '@type': 'Person', '@id': 'https://stuartneivandt.com/#person', name: 'Stuart Neivandt', alternateName: 'sneivandt', url: 'https://stuartneivandt.com/' },
     ],
   });

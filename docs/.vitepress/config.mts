@@ -11,6 +11,9 @@ const authorName = 'Stuart Neivandt';
 const authorUrl = 'https://stuartneivandt.com/';
 const authorId = `${authorUrl}#person`;
 const repositoryUrl = 'https://github.com/sneivandt/dotfiles';
+const heroImage = `${origin}/assets/logo-hero.png`;
+const heroImageId = `${origin}/#logo-image`;
+const heroImageAlt = 'Dotfiles by Stuart Neivandt logo';
 const ogImage = `${origin}/assets/og-image.png`;
 const ogImageAlt = 'Dotfiles: Arch Linux and Windows setup managed with a Rust CLI by Stuart Neivandt';
 const pageSources = Object.fromEntries(
@@ -101,7 +104,7 @@ export default defineConfig({
       `<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>${origin}/sitemap.xml</loc></sitemap></sitemapindex>`);
   },
   transformPageData(page) {
-    if (page.relativePath === 'index.md') page.title = 'Dotfiles | Arch Linux & Windows setup with a Rust CLI';
+    if (page.relativePath === 'index.md') page.title = 'Dotfiles by Stuart Neivandt | Arch Linux & Windows Rust CLI';
   },
   transformHead({ pageData }) {
     const pagePath = pageData.relativePath.replace(/\.md$/, '');
@@ -148,8 +151,31 @@ export default defineConfig({
               name: siteTitle,
               description: pageData.description,
               inLanguage: 'en-US',
+              image: { '@id': heroImageId },
               author: { '@id': authorId },
               creator: { '@id': authorId },
+            },
+            {
+              '@type': 'WebPage',
+              '@id': `${origin}/#webpage`,
+              url: `${origin}/`,
+              name: pageData.title,
+              description: pageData.description,
+              inLanguage: 'en-US',
+              isPartOf: { '@id': `${origin}/#website` },
+              about: { '@id': `${origin}/#software` },
+              primaryImageOfPage: { '@id': heroImageId },
+              image: { '@id': heroImageId },
+              author: { '@id': authorId },
+            },
+            {
+              '@type': 'ImageObject',
+              '@id': heroImageId,
+              url: heroImage,
+              contentUrl: heroImage,
+              width: 512,
+              height: 512,
+              caption: heroImageAlt,
             },
             {
               '@type': 'SoftwareSourceCode',
@@ -160,6 +186,7 @@ export default defineConfig({
               codeRepository: repositoryUrl,
               programmingLanguage: 'Rust',
               runtimePlatform: ['Arch Linux', 'Windows'],
+              image: { '@id': heroImageId },
               author: { '@id': authorId },
               creator: { '@id': authorId },
             },

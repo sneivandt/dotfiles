@@ -1,15 +1,30 @@
 #!/bin/sh
 set -eu
 
-if ! default_ref=$(git symbolic-ref --quiet refs/remotes/origin/HEAD); then
-  # A repository need not have an origin or its default-branch symref.
-  exit 0
+strict=0
+default_branch=""
+if [ "${1:-}" = "--merged" ]; then
+  [ "$#" -eq 2 ] || {
+    printf 'Usage: clean-merged-branches [--merged <ref>]\n' >&2
+    exit 2
+  }
+  merged_ref=$2
+  strict=1
+elif [ "$#" -eq 0 ]; then
+  if ! merged_ref=$(git symbolic-ref --quiet refs/remotes/origin/HEAD); then
+    # A repository need not have an origin or its default-branch symref.
+    exit 0
+  fi
+  case "$merged_ref" in
+    refs/remotes/origin/*) default_branch=${merged_ref#refs/remotes/origin/} ;;
+    *) exit 0 ;;
+  esac
+else
+  printf 'Usage: clean-merged-branches [--merged <ref>]\n' >&2
+  exit 2
 fi
-case "$default_ref" in
-  refs/remotes/origin/*) default_branch=${default_ref#refs/remotes/origin/} ;;
-  *) exit 0 ;;
-esac
-current_branch=$(git branch --show-current 2>/dev/null)
+
+current_branch=$(git branch --show-current 2>/dev/null || true)
 worktrees=$(git worktree list --porcelain)
 
 is_worktree_branch() {
@@ -29,7 +44,8 @@ branch refs/heads/$1
 # Full refs keep branch names stable when tags have the same names.
 # Finish both reads successfully before deleting anything. A pipe into the
 # loop would act on partial output and hide a failed Git process.
-refs=$(git for-each-ref --format='%(refname)' --merged="$default_ref" refs/heads/)
+refs=$(git for-each-ref --format='%(refname)' --merged="$merged_ref" refs/heads/)
+status=0
 while IFS= read -r ref; do
   case "$ref" in
     refs/heads/*) branch=${ref#refs/heads/} ;;
@@ -45,7 +61,13 @@ while IFS= read -r ref; do
     continue
   fi
 
-  git branch -d -- "$branch" || continue
+  if ! git branch -d -- "$branch"; then
+    if [ "$strict" -eq 1 ]; then
+      status=1
+    fi
+  fi
 done <<EOF
 $refs
 EOF
+
+exit "$status"

@@ -6,8 +6,8 @@ import importlib.util
 import io
 import json
 import os
-import select
 from pathlib import Path
+import select
 import subprocess
 import sys
 import tempfile
@@ -22,12 +22,21 @@ stocks = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stocks)
 
 PAYLOAD = {
-    "chart": {"result": [{
-        "meta": {"regularMarketPrice": 110, "regularMarketChangePercent": 5.5,
-                 "shortName": "Test Instrument ", "fiftyTwoWeekLow": 70, "fiftyTwoWeekHigh": 120},
-        "timestamp": [1000, 2000, 3000, 4000],
-        "indicators": {"quote": [{"close": [80, None, 100, 110]}]},
-    }]},
+    "chart": {
+        "result": [
+            {
+                "meta": {
+                    "regularMarketPrice": 110,
+                    "regularMarketChangePercent": 5.5,
+                    "shortName": "Test Instrument ",
+                    "fiftyTwoWeekLow": 70,
+                    "fiftyTwoWeekHigh": 120,
+                },
+                "timestamp": [1000, 2000, 3000, 4000],
+                "indicators": {"quote": [{"close": [80, None, 100, 110]}]},
+            }
+        ]
+    },
 }
 
 
@@ -37,16 +46,35 @@ class QuoteTests(unittest.TestCase):
 
     def test_quote_history_and_metadata(self):
         quote = self.parse(PAYLOAD)
-        self.assertEqual(quote, {
-            "symbol": "TEST", "name": "Test Instrument", "prefix": "$",
-            "price": 110, "change": 5.5, "history": [80, 100, 110],
-            "historyStart": 1000, "yearChange": 37.5, "yearLow": 70, "yearHigh": 120,
-        })
+        self.assertEqual(
+            quote,
+            {
+                "symbol": "TEST",
+                "name": "Test Instrument",
+                "prefix": "$",
+                "price": 110,
+                "change": 5.5,
+                "history": [80, 100, 110],
+                "historyStart": 1000,
+                "yearChange": 37.5,
+                "yearLow": 70,
+                "yearHigh": 120,
+            },
+        )
 
     def test_missing_history_and_metadata_fall_back(self):
-        payload = {"chart": {"result": [{"meta": {
-            "regularMarketPrice": 10, "regularMarketChangePercent": 0,
-        }}]}}
+        payload = {
+            "chart": {
+                "result": [
+                    {
+                        "meta": {
+                            "regularMarketPrice": 10,
+                            "regularMarketChangePercent": 0,
+                        }
+                    }
+                ]
+            }
+        }
         quote = self.parse(payload)
         self.assertEqual(quote["name"], "Fallback")
         self.assertEqual(quote["history"], [10])
@@ -76,7 +104,9 @@ class QuoteTests(unittest.TestCase):
                 return self._body[:size] if size >= 0 else self._body
 
         encoded = json.dumps(PAYLOAD).encode("utf-8")
-        with patch.object(stocks.urllib.request, "urlopen", return_value=FakeResponse(encoded)) as urlopen:
+        with patch.object(
+            stocks.urllib.request, "urlopen", return_value=FakeResponse(encoded)
+        ) as urlopen:
             quote = stocks.fetch_quote("TEST", "TEST", "Fallback", "$", 5000)
         self.assertEqual(quote["price"], 110)
         request = urlopen.call_args.args[0]
@@ -88,9 +118,11 @@ class QuoteTests(unittest.TestCase):
         self.assertEqual(urlopen.call_args.kwargs["timeout"], stocks.FETCH_TIMEOUT)
 
         oversized = b"x" * (stocks.MAX_RESPONSE_BYTES + 10)
-        with patch.object(stocks.urllib.request, "urlopen", return_value=FakeResponse(oversized)):
-            with self.assertRaises(ValueError):
-                stocks.fetch_quote("TEST", "TEST", "Fallback", "$", 5000)
+        with (
+            patch.object(stocks.urllib.request, "urlopen", return_value=FakeResponse(oversized)),
+            self.assertRaises(ValueError),
+        ):
+            stocks.fetch_quote("TEST", "TEST", "Fallback", "$", 5000)
 
 
 @unittest.skipUnless(sys.platform == "linux", "Linux desktop cache uses flock")
@@ -101,9 +133,14 @@ class StocksCacheTests(unittest.TestCase):
         self.cache = Path(temporary.name)
         self.path = self.cache / "quotes.json"
         self.lock = self.cache / "quotes-prices.flock"
-        self.cached = {"version": stocks.CACHE_VERSION, "quotes": [
-            {**stocks.parse_quote(PAYLOAD, symbol, name, prefix, 5000), "updated": 1}
-            for _, symbol, name, prefix in stocks.QUOTES], "updated": 1}
+        self.cached = {
+            "version": stocks.CACHE_VERSION,
+            "quotes": [
+                {**stocks.parse_quote(PAYLOAD, symbol, name, prefix, 5000), "updated": 1}
+                for _, symbol, name, prefix in stocks.QUOTES
+            ],
+            "updated": 1,
+        }
         self.fetch = unittest.mock.Mock(side_effect=OSError("offline"))
 
     def write_cache(self, stale=True):
@@ -151,9 +188,11 @@ class StocksCacheTests(unittest.TestCase):
         stdout, stderr = io.StringIO(), io.StringIO()
         with self.lock.open("a") as owner:
             stocks.fcntl.flock(owner, stocks.fcntl.LOCK_EX | stocks.fcntl.LOCK_NB)
-            with patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache)}), \
-                 contextlib.redirect_stdout(stdout), \
-                 contextlib.redirect_stderr(stderr):
+            with (
+                patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache)}),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
                 code = stocks.main(["--force"])
         self.assertEqual(code, 1)
         self.assertIn("already in progress", stderr.getvalue())
@@ -162,9 +201,11 @@ class StocksCacheTests(unittest.TestCase):
         self.assertIn("already in progress", payload["error"])
 
     def test_lock_errors_are_not_treated_as_contention(self):
-        with patch.object(stocks.fcntl, "flock", side_effect=OSError("lock failed")):
-            with self.assertRaises(OSError):
-                stocks.quotes(self.cache, self.fetch)
+        with (
+            patch.object(stocks.fcntl, "flock", side_effect=OSError("lock failed")),
+            self.assertRaises(OSError),
+        ):
+            stocks.quotes(self.cache, self.fetch)
         self.fetch.assert_not_called()
 
     def test_killed_owner_releases_lock_without_cleanup(self):
@@ -175,7 +216,10 @@ class StocksCacheTests(unittest.TestCase):
         )
         owner = subprocess.Popen(
             [sys.executable, "-B", "-c", code, str(self.lock)],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
         try:
             readable, _, _ = select.select([owner.stdout], [], [], 5)
@@ -186,7 +230,7 @@ class StocksCacheTests(unittest.TestCase):
             owner.kill()
             owner.communicate(timeout=5)
             stocks.quotes(self.cache, self.fetch)
-            self.assertEqual(self.fetch.call_count, 5)
+            self.assertEqual(self.fetch.call_count, len(stocks.QUOTES))
         finally:
             if owner.poll() is None:
                 owner.kill()
@@ -203,8 +247,9 @@ class StocksCacheTests(unittest.TestCase):
         updated_payload = copy.deepcopy(PAYLOAD)
         updated_payload["chart"]["result"][0]["meta"]["regularMarketPrice"] = 222
         fetch = unittest.mock.Mock(
-            side_effect=lambda query, symbol, name, prefix, now:
-                stocks.parse_quote(updated_payload, symbol, name, prefix, now)
+            side_effect=lambda query, symbol, name, prefix, now: stocks.parse_quote(
+                updated_payload, symbol, name, prefix, now
+            )
         )
         result = stocks.quotes(self.cache, fetch, force=True)
         self.assertEqual(fetch.call_count, len(stocks.QUOTES))
@@ -225,10 +270,12 @@ class StocksCacheTests(unittest.TestCase):
         self.path = cache_dir / "quotes.json"
         self.write_cache(stale=False)
         stdout, stderr = io.StringIO(), io.StringIO()
-        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache)}), \
-             patch.object(stocks, "fetch_quote", side_effect=OSError("offline")), \
-             contextlib.redirect_stdout(stdout), \
-             contextlib.redirect_stderr(stderr):
+        with (
+            patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache)}),
+            patch.object(stocks, "fetch_quote", side_effect=OSError("offline")),
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
             code = stocks.main(["--force"])
         self.assertEqual(code, 1)
         self.assertIn("Could not refresh", stderr.getvalue())
@@ -247,21 +294,25 @@ class StocksCacheTests(unittest.TestCase):
             self.write_cache(stale=False)
 
         with patch.object(stocks.fcntl, "flock", side_effect=acquire):
-            self.assertEqual(stocks.quotes(self.cache, self.fetch)["updated"], self.cached["updated"])
+            self.assertEqual(
+                stocks.quotes(self.cache, self.fetch)["updated"], self.cached["updated"]
+            )
         self.fetch.assert_not_called()
 
     def test_failed_refresh_preserves_stale_cache(self):
         self.write_cache()
         self.assertEqual(stocks.quotes(self.cache, self.fetch)["updated"], self.cached["updated"])
-        self.assertEqual(self.fetch.call_count, 5)
+        self.assertEqual(self.fetch.call_count, len(stocks.QUOTES))
         self.assertEqual(json.loads(self.path.read_text()), self.cached)
 
     def test_partial_failure_retains_previous_quotes_and_their_timestamps(self):
         self.write_cache()
+
         def fetch(query, symbol, name, prefix, now):
             if symbol == "MSFT":
                 raise OSError("offline")
             return stocks.parse_quote(PAYLOAD, symbol, name, prefix, now)
+
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
             result = stocks.quotes(self.cache, fetch)
@@ -278,18 +329,20 @@ class StocksCacheTests(unittest.TestCase):
         barrier = threading.Barrier(stocks.FETCH_WORKERS)
         lock = threading.Lock()
         active = peak = 0
+
         def fetch(query, symbol, name, prefix, now):
             nonlocal active, peak
             with lock:
                 active += 1
                 peak = max(peak, active)
             try:
-                if symbol in [q[1] for q in stocks.QUOTES[:stocks.FETCH_WORKERS]]:
+                if symbol in [q[1] for q in stocks.QUOTES[: stocks.FETCH_WORKERS]]:
                     barrier.wait(timeout=5)
                 return stocks.parse_quote(PAYLOAD, symbol, name, prefix, now)
             finally:
                 with lock:
                     active -= 1
+
         result = stocks.quotes(self.cache, fetch)
         self.assertEqual(peak, stocks.FETCH_WORKERS)
         self.assertEqual([q["symbol"] for q in result["quotes"]], [q[1] for q in stocks.QUOTES])
@@ -308,15 +361,18 @@ class StocksCacheTests(unittest.TestCase):
                 result = stocks.quotes(self.cache, self.fetch)
                 self.assertEqual(self.fetch.call_count, 1)
                 self.assertEqual(self.fetch.call_args.args[1], stocks.QUOTES[0][1])
-                self.assertEqual(result["quotes"][-len(fresh):], fresh)
+                self.assertEqual(result["quotes"][-len(fresh) :], fresh)
 
     def test_partial_cache_repair_preserves_fresh_quotes_and_becomes_fresh(self):
         self.write_cache(stale=False)
         fresh = copy.deepcopy(self.cached["quotes"][1:])
         self.cached["quotes"][0]["updated"] = 1
         self.path.write_text(json.dumps(self.cached))
-        fetch = unittest.mock.Mock(side_effect=lambda query, symbol, name, prefix, now:
-                                   stocks.parse_quote(PAYLOAD, symbol, name, prefix, now))
+        fetch = unittest.mock.Mock(
+            side_effect=lambda query, symbol, name, prefix, now: stocks.parse_quote(
+                PAYLOAD, symbol, name, prefix, now
+            )
+        )
         result = stocks.quotes(self.cache, fetch)
         self.assertEqual(fetch.call_count, 1)
         self.assertEqual(result["quotes"][1:], fresh)
@@ -329,14 +385,21 @@ class StocksCacheTests(unittest.TestCase):
             with self.subTest(previous=previous):
                 if previous:
                     self.write_cache()
+
                 def fetch(query, symbol, name, prefix, now):
                     return stocks.parse_quote(PAYLOAD, symbol, name, prefix, now)
-                with patch.object(stocks.os, "replace", side_effect=OSError("storage unavailable")), \
-                     patch("sys.stderr") as errors:
+
+                with (
+                    patch.object(stocks.os, "replace", side_effect=OSError("storage unavailable")),
+                    patch("sys.stderr") as errors,
+                ):
                     result = stocks.quotes(self.cache, fetch)
                 self.assertEqual(len(result["quotes"]), len(stocks.QUOTES))
                 self.assertTrue(all(q["updated"] > 1 for q in result["quotes"]))
-                self.assertIn("Cannot save market cache", "".join(c.args[0] for c in errors.write.call_args_list))
+                self.assertIn(
+                    "Cannot save market cache",
+                    "".join(c.args[0] for c in errors.write.call_args_list),
+                )
                 if previous:
                     self.assertEqual(json.loads(self.path.read_text()), self.cached)
                 else:
@@ -346,9 +409,14 @@ class StocksCacheTests(unittest.TestCase):
     def test_invalid_cached_quotes_are_filtered_and_trigger_refresh(self):
         self.write_cache(stale=False)
         good = self.cached["quotes"][0]
-        for bad in (None, {}, {**good, "price": float("nan")},
-                    {**good, "history": [float("inf")]}, {**good, "updated": True},
-                    {**good, "name": 42}):
+        for bad in (
+            None,
+            {},
+            {**good, "price": float("nan")},
+            {**good, "history": [float("inf")]},
+            {**good, "updated": True},
+            {**good, "name": 42},
+        ):
             with self.subTest(bad=bad):
                 self.path.write_text(json.dumps({**self.cached, "quotes": [good, bad]}))
                 self.assertEqual(stocks.read_cache(self.path)["quotes"], [good])
@@ -357,21 +425,30 @@ class StocksCacheTests(unittest.TestCase):
 
     def test_failed_atomic_replace_preserves_previous_cache_and_cleans_temp(self):
         self.write_cache()
-        with patch.object(stocks.os, "replace", side_effect=OSError("write failed")):
-            with self.assertRaises(OSError):
-                stocks.write_cache(self.path, {"quotes": []})
+        with (
+            patch.object(stocks.os, "replace", side_effect=OSError("write failed")),
+            self.assertRaises(OSError),
+        ):
+            stocks.write_cache(self.path, {"quotes": []})
         self.assertEqual(json.loads(self.path.read_text()), self.cached)
         self.assertEqual(list(self.cache.glob(".quotes-prices.*")), [])
 
     def test_corrupt_or_incompatible_cache_is_ignored(self):
-        for text in ("not json", "[]", '{"version":2}', '{"version":3,"quotes":[],"updated":"bad"}'):
+        for text in (
+            "not json",
+            "[]",
+            '{"version":2}',
+            '{"version":3,"quotes":[],"updated":"bad"}',
+        ):
             self.path.write_text(text)
             self.assertEqual(stocks.quotes(self.cache, self.fetch), {"quotes": [], "updated": 0})
 
     def test_main_reports_missing_symbols_without_hiding_available_quotes(self):
         available, *missing = self.cached["quotes"]
-        with patch.object(stocks, "quotes", return_value={"quotes": [available], "updated": 1}), \
-             patch("builtins.print") as output:
+        with (
+            patch.object(stocks, "quotes", return_value={"quotes": [available], "updated": 1}),
+            patch("builtins.print") as output,
+        ):
             self.assertEqual(stocks.main(), 0)
         payload = json.loads(output.call_args.args[0])
         self.assertEqual(payload["quotes"], [available])
@@ -379,28 +456,38 @@ class StocksCacheTests(unittest.TestCase):
 
     def test_main_reports_cache_failure_with_stale_payload(self):
         self.write_cache()
-        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache.parent)}), \
-             patch.object(stocks, "quotes", side_effect=OSError("lock failed")), \
-             patch.object(stocks, "read_cache", return_value=self.cached), \
-             patch("builtins.print") as output:
+        with (
+            patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache.parent)}),
+            patch.object(stocks, "quotes", side_effect=OSError("lock failed")),
+            patch.object(stocks, "read_cache", return_value=self.cached),
+            patch("builtins.print") as output,
+        ):
             self.assertEqual(stocks.main(), 1)
         self.assertIn("Cannot refresh market cache", output.call_args_list[0].args[0])
 
     def test_main_uses_only_absolute_xdg_cache_directories(self):
         for base in ("", "relative/cache", str(self.cache / "absolute")):
-            with self.subTest(base=base), \
-                 patch.dict(os.environ, {"XDG_CACHE_HOME": base}), \
-                 patch.object(stocks.Path, "home", return_value=self.cache / "home"), \
-                 patch.object(stocks, "quotes", return_value={"quotes": [], "updated": 0}) as fetch, \
-                 patch("builtins.print"):
+            with (
+                self.subTest(base=base),
+                patch.dict(os.environ, {"XDG_CACHE_HOME": base}),
+                patch.object(stocks.Path, "home", return_value=self.cache / "home"),
+                patch.object(stocks, "quotes", return_value={"quotes": [], "updated": 0}) as fetch,
+                patch("builtins.print"),
+            ):
                 self.assertEqual(stocks.main(), 0)
-                expected = Path(base) if base and Path(base).is_absolute() else self.cache / "home" / ".cache"
+                expected = (
+                    Path(base)
+                    if base and Path(base).is_absolute()
+                    else self.cache / "home" / ".cache"
+                )
                 fetch.assert_called_once_with(expected / "quickshell-stocks")
 
     def test_main_force_flag_passes_force_true(self):
-        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache)}), \
-             patch.object(stocks, "quotes", return_value={"quotes": [], "updated": 0}) as fetch, \
-             patch("builtins.print"):
+        with (
+            patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache)}),
+            patch.object(stocks, "quotes", return_value={"quotes": [], "updated": 0}) as fetch,
+            patch("builtins.print"),
+        ):
             self.assertEqual(stocks.main(["--force"]), 0)
             fetch.assert_called_once_with(self.cache / "quickshell-stocks", force=True)
 
@@ -408,18 +495,29 @@ class StocksCacheTests(unittest.TestCase):
         config = self.cache / "stocks.json"
         self.assertEqual(stocks.load_quotes(config), stocks.DEFAULT_QUOTES)
 
-        config.write_text(json.dumps({
-            "quotes": [
-                {"query": "AAPL", "name": "Apple"},
-                {"query": "ETH-USD", "symbol": "ETH", "name": "Ethereum", "prefix": "$"},
-            ]
-        }))
+        config.write_text(
+            json.dumps(
+                {
+                    "quotes": [
+                        {"query": "AAPL", "name": "Apple"},
+                        {"query": "ETH-USD", "symbol": "ETH", "name": "Ethereum", "prefix": "$"},
+                    ]
+                }
+            )
+        )
         custom = stocks.load_quotes(config)
-        self.assertEqual(custom, (("AAPL", "AAPL", "Apple", "$"), ("ETH-USD", "ETH", "Ethereum", "$")))
+        self.assertEqual(
+            custom, (("AAPL", "AAPL", "Apple", "$"), ("ETH-USD", "ETH", "Ethereum", "$"))
+        )
 
-        with patch.dict(os.environ, {"DOTFILES_STOCKS_CONFIG": str(config), "XDG_CACHE_HOME": str(self.cache)}), \
-             patch.object(stocks, "quotes", return_value={"quotes": [], "updated": 0}) as fetch, \
-             patch("builtins.print") as output:
+        with (
+            patch.dict(
+                os.environ,
+                {"DOTFILES_STOCKS_CONFIG": str(config), "XDG_CACHE_HOME": str(self.cache)},
+            ),
+            patch.object(stocks, "quotes", return_value={"quotes": [], "updated": 0}) as fetch,
+            patch("builtins.print") as output,
+        ):
             self.assertEqual(stocks.main(), 0)
         fetch.assert_called_once_with(self.cache / "quickshell-stocks", configured=custom)
         self.assertEqual(json.loads(output.call_args.args[0])["missing"], ["AAPL", "ETH"])
@@ -493,27 +591,36 @@ class StocksCacheTests(unittest.TestCase):
                     handle.close()
 
             calls = len(fetch_calls.read_bytes()) if fetch_calls.exists() else 0
-            self.assertEqual(calls, 5, f"expected one stock refresh (5 calls), observed {calls}")
+            expected_calls = len(stocks.QUOTES)
+            self.assertEqual(
+                calls,
+                expected_calls,
+                f"expected one stock refresh ({expected_calls} calls), observed {calls}",
+            )
 
     def test_subprocess_end_to_end_json_schema(self):
-        sample_chart = json.dumps({
-            "chart": {
-                "result": [{
-                    "meta": {
-                        "regularMarketPrice": 110,
-                        "regularMarketChangePercent": 5.5,
-                        "chartPreviousClose": 80,
-                        "fiftyTwoWeekLow": 70,
-                        "fiftyTwoWeekHigh": 120,
-                        "shortName": "Test Instrument ",
-                    },
-                    "timestamp": [1000, 2000, 3000, 4000],
-                    "indicators": {
-                        "quote": [{"close": [80, None, 100, 110]}],
-                    },
-                }]
+        sample_chart = json.dumps(
+            {
+                "chart": {
+                    "result": [
+                        {
+                            "meta": {
+                                "regularMarketPrice": 110,
+                                "regularMarketChangePercent": 5.5,
+                                "chartPreviousClose": 80,
+                                "fiftyTwoWeekLow": 70,
+                                "fiftyTwoWeekHigh": 120,
+                                "shortName": "Test Instrument ",
+                            },
+                            "timestamp": [1000, 2000, 3000, 4000],
+                            "indicators": {
+                                "quote": [{"close": [80, None, 100, 110]}],
+                            },
+                        }
+                    ]
+                }
             }
-        })
+        )
         with tempfile.TemporaryDirectory() as root_str:
             root = Path(root_str)
             site_dir = root / "site"
@@ -547,7 +654,7 @@ class StocksCacheTests(unittest.TestCase):
             payload = json.loads(result.stdout)
             self.assertEqual(payload["version"], 4)
             self.assertGreater(payload["updated"], 0)
-            self.assertEqual(len(payload["quotes"]), 5)
+            self.assertEqual(len(payload["quotes"]), len(stocks.DEFAULT_QUOTES))
             for quote in payload["quotes"]:
                 self.assertGreater(quote["updated"], 0)
                 self.assertEqual(quote["price"], 110)

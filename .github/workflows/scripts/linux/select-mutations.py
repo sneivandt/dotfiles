@@ -10,7 +10,6 @@ import subprocess
 import sys
 import time
 
-
 API_ATTEMPTS = 3
 
 
@@ -29,14 +28,16 @@ def gh_api(*args, attempts=API_ATTEMPTS, sleep=time.sleep):
         if result.returncode == 0:
             return result.stdout
         retryable = attempt < attempts and (
-            re.search(r"\bHTTP (?:429|5\d\d)\b", result.stderr)
-            or "HTTP 4" not in result.stderr
+            re.search(r"\bHTTP (?:429|5\d\d)\b", result.stderr) or "HTTP 4" not in result.stderr
         )
         if not retryable:
             if result.stderr:
                 sys.stderr.write(result.stderr)
             raise subprocess.CalledProcessError(
-                result.returncode, result.args, output=result.stdout, stderr=result.stderr,
+                result.returncode,
+                result.args,
+                output=result.stdout,
+                stderr=result.stderr,
             )
         sleep(2 ** (attempt - 1))
     raise AssertionError("unreachable")
@@ -68,7 +69,8 @@ def baseline(repository, head, explicit=""):
         return explicit
     runs = api_pages(
         f"repos/{repository}/actions/workflows/mutation.yml/runs"
-        "?branch=main&event=schedule&status=success&per_page=100", "workflow_runs",
+        "?branch=main&event=schedule&status=success&per_page=100",
+        "workflow_runs",
     )
     for run in runs:
         if ancestor(run["head_sha"], head):
@@ -77,7 +79,8 @@ def baseline(repository, head, explicit=""):
     # Migrate the last passing legacy mutation gate, not a newer mutation-free CI.
     runs = api_pages(
         f"repos/{repository}/actions/workflows/ci.yml/runs"
-        "?branch=main&event=push&status=success&per_page=100", "workflow_runs",
+        "?branch=main&event=push&status=success&per_page=100",
+        "workflow_runs",
     )
     expected = {
         *(f"Rust: Mutation (changed code, shard {shard})" for shard in range(8)),
@@ -87,7 +90,8 @@ def baseline(repository, head, explicit=""):
         if not ancestor(run["head_sha"], head):
             continue
         jobs = api_pages(
-            f"repos/{repository}/actions/runs/{int(run['id'])}/jobs?per_page=100", "jobs",
+            f"repos/{repository}/actions/runs/{int(run['id'])}/jobs?per_page=100",
+            "jobs",
         )
         passed = {job["name"] for job in jobs if job["conclusion"] == "success"}
         if expected <= passed:
@@ -169,8 +173,7 @@ def unit_test_owners(path):
     elif "/tests/" in rel:
         module = rel.split("/tests/", 1)[0]
     elif "/" in rel and (
-        rel.rsplit("/", 1)[1].endswith("_tests.rs")
-        or rel.rsplit("/", 1)[1].startswith("tests_")
+        rel.rsplit("/", 1)[1].endswith("_tests.rs") or rel.rsplit("/", 1)[1].startswith("tests_")
     ):
         module = rel.rsplit("/", 1)[0]
     else:
@@ -192,8 +195,11 @@ def linux_only_source(path):
     # source edits do not schedule native Windows mutation shards.
     return (
         path.endswith("/linux.rs")
-        or any(path == directory or path.startswith(directory + "/") for directory in LINUX_ONLY_DIRS)
-        or path in {
+        or any(
+            path == directory or path.startswith(directory + "/") for directory in LINUX_ONLY_DIRS
+        )
+        or path
+        in {
             "cli/src/domains/files/chmod.rs",
             "cli/src/domains/files/config/chmod.rs",
             "cli/src/domains/files/resources/chmod.rs",
@@ -227,25 +233,36 @@ def selection(paths):
         else:
             remaining.append(path)
     source = sorted(
-        owners | {path for path in remaining if path.startswith("cli/src/") and path.endswith(".rs")}
+        owners
+        | {path for path in remaining if path.startswith("cli/src/") and path.endswith(".rs")}
     )
     broad = any(
         path.startswith(("cli/tests/", "cli/.cargo/", ".cargo/"))
-        or path in {
-            "cli/Cargo.toml", "cli/Cargo.lock", "cli/build.rs",
-            "cli/rust-toolchain", "cli/rust-toolchain.toml", "Cargo.toml", "Cargo.lock", "build.rs",
-            "rust-toolchain", "rust-toolchain.toml",
+        or path
+        in {
+            "cli/Cargo.toml",
+            "cli/Cargo.lock",
+            "cli/build.rs",
+            "cli/rust-toolchain",
+            "cli/rust-toolchain.toml",
+            "Cargo.toml",
+            "Cargo.lock",
+            "build.rs",
+            "rust-toolchain",
+            "rust-toolchain.toml",
             ".github/workflows/mutation.yml",
             ".github/workflows/scripts/linux/select-mutations.py",
             ".github/workflows/scripts/linux/run-mutations.py",
         }
-        or (path.startswith("cli/src/") and (
-            not path.endswith(".rs")
-            or "/tests/" in path
-            or path.endswith("/tests.rs")
-            or "/test_helpers/" in path
-            or path.endswith(("_tests.rs", "/test_helpers.rs", "/test_fixture.rs"))
-        ))
+        or (
+            path.startswith("cli/src/")
+            and (
+                not path.endswith(".rs")
+                or "/tests/" in path
+                or "/test_helpers/" in path
+                or path.endswith(("/tests.rs", "_tests.rs", "/test_helpers.rs", "/test_fixture.rs"))
+            )
+        )
         for path in remaining
     )
     run_windows = broad or any(not linux_only_source(path) for path in source)
@@ -257,26 +274,50 @@ def selection(paths):
 def select_inputs(base, head):
     empty_tree = git("hash-object", "-t", "tree", "--stdin", input=b"").decode().strip()
     paths = [
-        os.fsdecode(path) for path in git(
-            "diff", "--name-only", "--no-renames", "-z", base or empty_tree, head, "--",
-        ).split(b"\0") if path
+        os.fsdecode(path)
+        for path in git(
+            "diff",
+            "--name-only",
+            "--no-renames",
+            "-z",
+            base or empty_tree,
+            head,
+            "--",
+        ).split(b"\0")
+        if path
     ]
     sources, windows = selection(paths)
-    diff = git(
-        "diff", "--relative=cli", "--no-renames", "--unified=0",
-        empty_tree, head, "--", *sources,
-    ) if sources else b""
+    diff = (
+        git(
+            "diff",
+            "--relative=cli",
+            "--no-renames",
+            "--unified=0",
+            empty_tree,
+            head,
+            "--",
+            *sources,
+        )
+        if sources
+        else b""
+    )
     Path("cli/mutants.diff").write_bytes(diff)
     manifest = {"base": base, "head": head, "linux_sources": sources, "run_windows": windows}
-    Path("cli/mutation-plan.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    Path("cli/mutation-plan.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    )
     return manifest
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     local = parser.add_mutually_exclusive_group()
-    local.add_argument("--base", help="Select local replay inputs from this full ancestor SHA to HEAD.")
-    local.add_argument("--all-source", action="store_true", help="Select all source for local replay.")
+    local.add_argument(
+        "--base", help="Select local replay inputs from this full ancestor SHA to HEAD."
+    )
+    local.add_argument(
+        "--all-source", action="store_true", help="Select all source for local replay."
+    )
     args = parser.parse_args(argv)
     local_replay = args.base is not None or args.all_source
     if local_replay:
@@ -295,8 +336,10 @@ def main(argv=None):
     )
     print(summary)
     if not local_replay:
-        outputs = {"has_linux_inputs": bool(Path("cli/mutants.diff").stat().st_size),
-                   "run_windows": manifest["run_windows"]}
+        outputs = {
+            "has_linux_inputs": bool(Path("cli/mutants.diff").stat().st_size),
+            "run_windows": manifest["run_windows"],
+        }
         with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as stream:
             for name, value in outputs.items():
                 stream.write(f"{name}={str(value).lower()}\n")

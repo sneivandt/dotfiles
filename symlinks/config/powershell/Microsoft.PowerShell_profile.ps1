@@ -89,6 +89,30 @@ if ([string]::IsNullOrEmpty($cargoHome))
 }
 Add-PathEntry -Directory (Join-Path $cargoHome "bin") -Prepend
 
+$goBinDir = $env:GOBIN
+if ([string]::IsNullOrEmpty($goBinDir))
+{
+    $goPath = $env:GOPATH
+    if ([string]::IsNullOrEmpty($goPath))
+    {
+        $goWorkspace = Join-Path (Join-Path $HOME "src") "go"
+    }
+    else
+    {
+        $goWorkspace = ($goPath -split [System.IO.Path]::PathSeparator)[0]
+    }
+    if (-not [string]::IsNullOrEmpty($goWorkspace))
+    {
+        $goBinDir = Join-Path $goWorkspace "bin"
+    }
+}
+if (-not [string]::IsNullOrEmpty($goBinDir))
+{
+    Add-PathEntry -Directory $goBinDir -Prepend
+}
+
+Add-PathEntry -Directory (Join-Path $HOME ".bin") -Prepend
+
 $localBinDir = Join-Path (Join-Path $HOME ".local") "bin"
 Add-PathEntry -Directory $localBinDir -Prepend
 
@@ -281,6 +305,26 @@ function Test-PromptRoot
     return -not $WindowsPlatform -and $UserName -ceq 'root'
 }
 
+function Get-PromptHostPrefix
+{
+    param(
+        [string] $SshConnection = $env:SSH_CONNECTION,
+        [string] $DockerEnvPath = '/.dockerenv',
+        [string] $HostName = [System.Net.Dns]::GetHostName(),
+        [bool] $WindowsPlatform = ([IO.Path]::DirectorySeparatorChar -eq '\')
+    )
+
+    $inSsh = -not [string]::IsNullOrEmpty($SshConnection)
+    $inContainer = (-not $WindowsPlatform) -and (Test-Path -LiteralPath $DockerEnvPath)
+    if (($inSsh -or $inContainer) -and -not [string]::IsNullOrWhiteSpace($HostName))
+    {
+        return "$HostName "
+    }
+    return ""
+}
+
+$Global:PromptHostPrefix = Get-PromptHostPrefix
+
 $Global:IsNestedPwsh = $false
 if ($null -eq $env:windir)
 {
@@ -319,6 +363,10 @@ function Prompt
     $yellow = "$esc[38;2;224;175;104m"
 
     $promptLine = ""
+    if (-not [string]::IsNullOrEmpty($Global:PromptHostPrefix))
+    {
+        $promptLine += "${cyan}${Global:PromptHostPrefix}${reset}"
+    }
     if ($Global:IsNestedPwsh)
     {
         $promptLine += "${cyan}pwsh ${reset}"

@@ -64,7 +64,9 @@ def job_needs(block: str | dict[str, object]) -> set[str]:
     return normalize_needs(_as_job(block).get("needs"))
 
 
-def _job_steps(job: dict[str, object], workflow_name: str, job_name: str) -> list[dict[str, object]]:
+def _job_steps(
+    job: dict[str, object], workflow_name: str, job_name: str
+) -> list[dict[str, object]]:
     steps = job.get("steps")
     if steps is None:
         return []
@@ -73,7 +75,9 @@ def _job_steps(job: dict[str, object], workflow_name: str, job_name: str) -> lis
     result: list[dict[str, object]] = []
     for index, step in enumerate(steps, start=1):
         if not isinstance(step, dict):
-            raise ValueError(f"{workflow_name} job {job_name!r} step {index} must be a YAML mapping")
+            raise ValueError(
+                f"{workflow_name} job {job_name!r} step {index} must be a YAML mapping"
+            )
         result.append(step)
     return result
 
@@ -101,12 +105,18 @@ def check_checkout_steps(workflow: str, workflow_name: str = "workflow") -> None
                     f"{workflow_name} job {job_name!r} step {step_index} has nested 'with:' inside 'with:'"
                 )
             uses = step.get("uses")
-            if isinstance(uses, str) and uses.startswith("actions/checkout@"):
-                if not isinstance(with_block, dict) or with_block.get("persist-credentials") != "false":
-                    raise ValueError(
-                        f"{workflow_name} job {job_name!r} step {step_index} checkout must set "
-                        "persist-credentials: false in a properly nested with block"
-                    )
+            if (
+                isinstance(uses, str)
+                and uses.startswith("actions/checkout@")
+                and (
+                    not isinstance(with_block, dict)
+                    or with_block.get("persist-credentials") != "false"
+                )
+            ):
+                raise ValueError(
+                    f"{workflow_name} job {job_name!r} step {step_index} checkout must set "
+                    "persist-credentials: false in a properly nested with block"
+                )
 
 
 def check(workflow: str) -> None:
@@ -151,7 +161,9 @@ def check(workflow: str) -> None:
     for name, expected in expected_conditions.items():
         actual_condition = job_condition(jobs[name])
         if actual_condition != expected:
-            raise ValueError(f"{name} condition changed: expected {expected!r}, got {actual_condition!r}")
+            raise ValueError(
+                f"{name} condition changed: expected {expected!r}, got {actual_condition!r}"
+            )
         if "classify-changes" not in job_needs(jobs[name]):
             raise ValueError(f"{name} must depend on classify-changes")
         output = JOB_CONDITIONS[name]
@@ -230,8 +242,12 @@ def check_mutation(workflow: str) -> None:
             raise ValueError(f"mutation selection condition changed for {name}")
         if job_needs(jobs[name]) != {"select"}:
             raise ValueError(f"{name} must depend on mutation selection")
-    if job_condition(jobs["mutation-results"]) != "always()" or job_needs(jobs["mutation-results"]) != {
-        "select", "mutation", "mutation-windows",
+    if job_condition(jobs["mutation-results"]) != "always()" or job_needs(
+        jobs["mutation-results"]
+    ) != {
+        "select",
+        "mutation",
+        "mutation-windows",
     }:
         raise ValueError("mutation results must report every selected job")
     for job_name, job in jobs.items():
@@ -256,7 +272,9 @@ def check_mutation(workflow: str) -> None:
     if not isinstance(strategy, dict):
         raise ValueError("Linux mutation job must define a matrix strategy")
     if strategy.get("matrix") != "${{ fromJSON(needs.select.outputs.linux_matrix) }}":
-        raise ValueError("Linux mutation coverage missing matrix: ${{ fromJSON(needs.select.outputs.linux_matrix) }}")
+        raise ValueError(
+            "Linux mutation coverage missing matrix: ${{ fromJSON(needs.select.outputs.linux_matrix) }}"
+        )
     if strategy.get("fail-fast") != "false":
         raise ValueError("Linux mutation coverage missing fail-fast: false")
     parallel = strategy.get("max-parallel")
@@ -275,7 +293,10 @@ def check_mutation(workflow: str) -> None:
         for step in mutation_steps
     ):
         raise ValueError("Linux mutation coverage missing cargo-nextest@")
-    for required in ("run-mutations.py", 'run "$MUTATION_SUITE" --partition "$MUTATION_PARTITION" --test-tool nextest'):
+    for required in (
+        "run-mutations.py",
+        'run "$MUTATION_SUITE" --partition "$MUTATION_PARTITION" --test-tool nextest',
+    ):
         if required not in mutation_run:
             raise ValueError(f"Linux mutation coverage missing {required}")
 
@@ -306,7 +327,10 @@ def check_mutation(workflow: str) -> None:
     ):
         raise ValueError("native Windows mutation coverage missing cargo-nextest@")
     native_run = _job_run_text(native)
-    for required in ("run-mutations.py", 'run windows --partition "$env:MUTATION_SHARD/2" --test-tool nextest'):
+    for required in (
+        "run-mutations.py",
+        'run windows --partition "$env:MUTATION_SHARD/2" --test-tool nextest',
+    ):
         if required not in native_run:
             raise ValueError(f"native Windows mutation coverage missing {required}")
 
@@ -331,9 +355,8 @@ def check_release(workflow: str) -> None:
         raise ValueError("release version resolution must require changed binary inputs")
     version_outputs = jobs["version"].get("outputs") or {}
     version_steps = _job_steps(jobs["version"], "release.yml", "version")
-    if (
-        "needs.check-ci.outputs.sha" not in str(version_outputs)
-        and not any("needs.check-ci.outputs.sha" in str(step) for step in version_steps)
+    if "needs.check-ci.outputs.sha" not in str(version_outputs) and not any(
+        "needs.check-ci.outputs.sha" in str(step) for step in version_steps
     ):
         raise ValueError("release version resolution is missing the validated CI commit handoff")
 
@@ -349,10 +372,13 @@ def check_release(workflow: str) -> None:
             raise ValueError(f"release classification is missing {guard}")
     classify_outputs = classify_job.get("outputs") or {}
     if classify_outputs.get("run_release") != "${{ steps.classify.outputs.run_release }}":
-        raise ValueError("release classification is missing run_release: ${{ steps.classify.outputs.run_release }}")
+        raise ValueError(
+            "release classification is missing run_release: ${{ steps.classify.outputs.run_release }}"
+        )
     classify_steps = _job_steps(classify_job, "release.yml", "check-ci")
     if not any(
-        isinstance(step.get("with"), dict) and step["with"].get("ref") == "${{ steps.resolve.outputs.sha }}"
+        isinstance(step.get("with"), dict)
+        and step["with"].get("ref") == "${{ steps.resolve.outputs.sha }}"
         for step in classify_steps
     ):
         raise ValueError("release classification is missing ref: ${{ steps.resolve.outputs.sha }}")
@@ -410,7 +436,9 @@ def check_release(workflow: str) -> None:
     attest_with = attest_step.get("with")
     subjects = {
         line.strip()
-        for line in str(attest_with.get("subject-path", "") if isinstance(attest_with, dict) else "").splitlines()
+        for line in str(
+            attest_with.get("subject-path", "") if isinstance(attest_with, dict) else ""
+        ).splitlines()
         if line.strip()
     }
     for subject, description in (
@@ -420,10 +448,15 @@ def check_release(workflow: str) -> None:
     ):
         if subject not in subjects:
             raise ValueError(f"release workflow is missing {description}")
-    if 'gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY"' not in str(verify_step.get("run", "")):
+    if 'gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY"' not in str(
+        verify_step.get("run", "")
+    ):
         raise ValueError("release workflow is missing the attestation discoverability check")
     create_with = create_step.get("with")
-    if not isinstance(create_with, dict) or create_with.get("target_commitish") != "${{ needs.version.outputs.sha }}":
+    if (
+        not isinstance(create_with, dict)
+        or create_with.get("target_commitish") != "${{ needs.version.outputs.sha }}"
+    ):
         raise ValueError("release workflow is missing the exact tested release tag target")
 
 
@@ -443,7 +476,9 @@ def check_pages(workflow: str, ci_workflow: str) -> None:
             raise ValueError(f"Pages build selection is missing {guard}")
     select_outputs = select.get("outputs") or {}
     if select_outputs.get("current") != "${{ steps.current.outputs.current }}":
-        raise ValueError("Pages build selection is missing current: ${{ steps.current.outputs.current }}")
+        raise ValueError(
+            "Pages build selection is missing current: ${{ steps.current.outputs.current }}"
+        )
     select_steps = _job_steps(select, "pages.yml", "select-build")
     select_env = {}
     for step in select_steps:
@@ -460,22 +495,31 @@ def check_pages(workflow: str, ci_workflow: str) -> None:
         'if [ "$current_sha" = "$BUILD_SHA" ] && [ "$GITHUB_SHA" = "$BUILD_SHA" ]; then',
         'case "$site_result" in',
         'select(.name == "Docs: Content and site") | .conclusion',
-        'skipped)',
-        'success) ;;',
+        "skipped)",
+        "success) ;;",
         '*) echo "Cannot verify the CI documentation site job: $site_result" >&2; exit 1 ;;',
     ):
         if guard not in select_run:
             raise ValueError(f"Pages build selection is missing {guard}")
     if "environment" in select:
-        raise ValueError("Pages build selection must run before entering the deployment environment")
+        raise ValueError(
+            "Pages build selection must run before entering the deployment environment"
+        )
 
     if job_needs(package) != {"select-build"}:
         raise ValueError("Pages packaging is missing needs: select-build")
     if job_condition(package) != "needs.select-build.outputs.current == 'true'":
-        raise ValueError("Pages packaging is missing if: needs.select-build.outputs.current == 'true'")
+        raise ValueError(
+            "Pages packaging is missing if: needs.select-build.outputs.current == 'true'"
+        )
     package_env = package.get("env") or {}
-    if not isinstance(package_env, dict) or package_env.get("PAGES_ARTIFACT") != "github-pages-${{ github.run_attempt }}":
-        raise ValueError("Pages packaging is missing PAGES_ARTIFACT: github-pages-${{ github.run_attempt }}")
+    if (
+        not isinstance(package_env, dict)
+        or package_env.get("PAGES_ARTIFACT") != "github-pages-${{ github.run_attempt }}"
+    ):
+        raise ValueError(
+            "Pages packaging is missing PAGES_ARTIFACT: github-pages-${{ github.run_attempt }}"
+        )
     package_outputs = package.get("outputs") or {}
     if package_outputs.get("artifact_name") != "${{ env.PAGES_ARTIFACT }}":
         raise ValueError("Pages packaging is missing artifact_name: ${{ env.PAGES_ARTIFACT }}")
@@ -486,7 +530,9 @@ def check_pages(workflow: str, ci_workflow: str) -> None:
         and step["with"].get("name") == "docs-site"
         for step in package_steps
     ):
-        raise ValueError("Pages packaging is missing docs-site artifact download from workflow_run.id")
+        raise ValueError(
+            "Pages packaging is missing docs-site artifact download from workflow_run.id"
+        )
     if not any(
         str(step.get("uses", "")).startswith("actions/upload-pages-artifact@")
         and isinstance(step.get("with"), dict)
@@ -498,18 +544,31 @@ def check_pages(workflow: str, ci_workflow: str) -> None:
     if job_needs(deploy) != {"package"}:
         raise ValueError("Pages deployment is missing needs: package")
     deploy_env = deploy.get("environment") or {}
-    if not isinstance(deploy_env, dict) or deploy_env.get("url") != "${{ steps.deployment.outputs.page_url }}":
-        raise ValueError("Pages deployment is missing url: ${{ steps.deployment.outputs.page_url }}")
+    if (
+        not isinstance(deploy_env, dict)
+        or deploy_env.get("url") != "${{ steps.deployment.outputs.page_url }}"
+    ):
+        raise ValueError(
+            "Pages deployment is missing url: ${{ steps.deployment.outputs.page_url }}"
+        )
     deploy_steps = _job_steps(deploy, "pages.yml", "deploy")
     if not any(
         isinstance(step.get("with"), dict)
         and step["with"].get("artifact_name") == "${{ needs.package.outputs.artifact_name }}"
         for step in deploy_steps
     ):
-        raise ValueError("Pages deployment is missing artifact_name: ${{ needs.package.outputs.artifact_name }}")
-    if any(str(step.get("uses", "")).startswith("actions/upload-pages-artifact@") for step in deploy_steps):
+        raise ValueError(
+            "Pages deployment is missing artifact_name: ${{ needs.package.outputs.artifact_name }}"
+        )
+    if any(
+        str(step.get("uses", "")).startswith("actions/upload-pages-artifact@")
+        for step in deploy_steps
+    ):
         raise ValueError("Retrying Pages deployment must not upload another artifact")
-    if any(str(step.get("uses", "")).startswith("actions/checkout@") for step in package_steps + deploy_steps):
+    if any(
+        str(step.get("uses", "")).startswith("actions/checkout@")
+        for step in package_steps + deploy_steps
+    ):
         raise ValueError("Pages deployment must use the verified artifact, not execute a checkout")
 
     ci_doc = parse_workflow(ci_workflow, "ci.yml")
@@ -529,7 +588,9 @@ def check_pages(workflow: str, ci_workflow: str) -> None:
         and step["with"].get("path") == "docs/dist/"
         for step in docs_steps
     ):
-        raise ValueError("CI documentation artifact is missing main-push docs-site upload of docs/dist/")
+        raise ValueError(
+            "CI documentation artifact is missing main-push docs-site upload of docs/dist/"
+        )
 
 
 def check_mutation_symbols(cli_root: Path = CLI_ROOT, mutation_run: dict | None = None) -> None:
@@ -552,7 +613,9 @@ def check_mutation_symbols(cli_root: Path = CLI_ROOT, mutation_run: dict | None 
     for rel_path in native_modules:
         read_source(rel_path)
 
-    windows_sources = {rel_path: read_source(rel_path) for rel_path in mutation_run["WINDOWS_FILES"]}
+    windows_sources = {
+        rel_path: read_source(rel_path) for rel_path in mutation_run["WINDOWS_FILES"]
+    }
 
     for table_name in ("LINUX_EXCLUSIONS", "WINDOWS_EXCLUSIONS"):
         for option, value in mutation_run[table_name]:
@@ -572,14 +635,21 @@ def check_mutation_symbols(cli_root: Path = CLI_ROOT, mutation_run: dict | None 
                     require_fn(rel_path, source, single.group(1))
                 elif module := re.fullmatch(r"\.\*\\b([A-Za-z_][A-Za-z0-9_]*)::", remainder):
                     if not re.search(rf"\bmod\s+{re.escape(module.group(1))}\b", source):
-                        raise ValueError(f"mutation reference {rel_path} is missing mod {module.group(1)}")
+                        raise ValueError(
+                            f"mutation reference {rel_path} is missing mod {module.group(1)}"
+                        )
                 elif impl := re.search(
                     r"(?:\bin|replace) <impl ([A-Za-z0-9_:]+) for ([A-Za-z0-9_]+)(?:<[^>]*>)?>::([A-Za-z_][A-Za-z0-9_]*)(?: with \\\(\\\))?\$$",
                     remainder,
                 ):
                     trait, target_type, method = impl.groups()
-                    if not re.search(rf"\bimpl\b[^{{;]*\b{re.escape(trait)}\b\s+for\s+{re.escape(target_type)}\b", source):
-                        raise ValueError(f"mutation reference {rel_path} is missing impl {trait} for {target_type}")
+                    if not re.search(
+                        rf"\bimpl\b[^{{;]*\b{re.escape(trait)}\b\s+for\s+{re.escape(target_type)}\b",
+                        source,
+                    ):
+                        raise ValueError(
+                            f"mutation reference {rel_path} is missing impl {trait} for {target_type}"
+                        )
                     require_fn(rel_path, source, method)
                 elif target_fn := re.search(
                     r"\bin (?:([A-Za-z_][A-Za-z0-9_]*)::)?([A-Za-z_][A-Za-z0-9_]*)\$$",
@@ -595,7 +665,9 @@ def check_mutation_symbols(cli_root: Path = CLI_ROOT, mutation_run: dict | None 
                     require_fn(rel_path, source, fn_name)
                 elif remainder == r"[0-9]+:[0-9]+: replace \| with \^$":
                     if not re.search(r"\bconst\b[^;]*\|", source):
-                        raise ValueError(f"mutation reference {rel_path} has no bitwise-OR const for | -> ^ exclusion")
+                        raise ValueError(
+                            f"mutation reference {rel_path} has no bitwise-OR const for | -> ^ exclusion"
+                        )
                 else:
                     raise ValueError(f"unrecognized {table_name} symbol pattern: {value}")
             else:
@@ -617,7 +689,9 @@ def check_mutation_symbols(cli_root: Path = CLI_ROOT, mutation_run: dict | None 
                 for src in windows_sources.values()
             )
         else:
-            found = any(re.search(rf"\bfn\s+{re.escape(symbol)}\b", src) for src in windows_sources.values())
+            found = any(
+                re.search(rf"\bfn\s+{re.escape(symbol)}\b", src) for src in windows_sources.values()
+            )
         if not found:
             raise ValueError(f"WINDOWS_PATTERN symbol not found in WINDOWS_FILES: {symbol}")
 
@@ -650,8 +724,10 @@ def check_mutation_symbols(cli_root: Path = CLI_ROOT, mutation_run: dict | None 
             return alts, pos
 
         paths, end = parse(0)
-        if end != len(unescaped) or not paths or any(
-            re.search(r"[\\*+?\[\]{}^$]", path) for path in paths
+        if (
+            end != len(unescaped)
+            or not paths
+            or any(re.search(r"[\\*+?\[\]{}^$]", path) for path in paths)
         ):
             raise ValueError(f"unrecognized FOCUSED file prefix: {expr}")
         return set(paths)
@@ -756,7 +832,11 @@ def check_results(needs: dict) -> None:
 if __name__ == "__main__":
     try:
         if len(sys.argv) == 3 and sys.argv[1] == "--release":
-            source = sys.stdin.read() if sys.argv[2] == "-" else Path(sys.argv[2]).read_text(encoding="utf-8")
+            source = (
+                sys.stdin.read()
+                if sys.argv[2] == "-"
+                else Path(sys.argv[2]).read_text(encoding="utf-8")
+            )
             check_release(source)
             print("Release workflow matches the contract")
             sys.exit(0)
@@ -766,8 +846,10 @@ if __name__ == "__main__":
         check_mutation(WORKFLOW.with_name("mutation.yml").read_text(encoding="utf-8"))
         check_mutation_symbols()
         check_release(WORKFLOW.with_name("release.yml").read_text(encoding="utf-8"))
-        check_pages(WORKFLOW.with_name("pages.yml").read_text(encoding="utf-8"),
-                    WORKFLOW.read_text(encoding="utf-8"))
+        check_pages(
+            WORKFLOW.with_name("pages.yml").read_text(encoding="utf-8"),
+            WORKFLOW.read_text(encoding="utf-8"),
+        )
         if sys.argv[1:] == ["--results"]:
             check_results(json.loads(os.environ["CI_NEEDS"]))
         elif sys.argv[1:]:

@@ -25,7 +25,9 @@ class MetadataTests(unittest.TestCase):
             "opening": VALID.removeprefix("---\n"),
             "closing": VALID.replace("\n---\n\n#", "\n\n#"),
             "missing name": VALID.replace("name: example-skill\n", ""),
-            "duplicate key": VALID.replace("name: example-skill", "name: example-skill\nname: other-skill"),
+            "duplicate key": VALID.replace(
+                "name: example-skill", "name: example-skill\nname: other-skill"
+            ),
             "empty description": "---\nname: example-skill\ndescription: >\n  \n---\n",
             "missing description": "---\nname: example-skill\n---\n",
             "mapping description": VALID.replace("description: >", "description: {use: example}"),
@@ -46,10 +48,12 @@ class MetadataTests(unittest.TestCase):
     def test_directory_identity_and_duplicate_names(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+
             def skill(name, text):
                 path = root / ".agents/skills" / name / "SKILL.md"
                 path.parent.mkdir(parents=True)
                 path.write_text(text, encoding="utf-8")
+
             skill("example-skill", VALID)
             self.assertEqual(check(root), [])
             skill("other-skill", VALID)
@@ -57,7 +61,9 @@ class MetadataTests(unittest.TestCase):
             self.assertTrue(any("does not match directory" in error for error in errors), errors)
             self.assertTrue(any("duplicate skill name" in error for error in errors), errors)
             skill("broken-skill", "not frontmatter")
-            self.assertTrue(any(str(Path("broken-skill") / "SKILL.md") in error for error in check(root)))
+            self.assertTrue(
+                any(str(Path("broken-skill") / "SKILL.md") in error for error in check(root))
+            )
 
     def test_missing_inventory_fails(self):
         with tempfile.TemporaryDirectory() as directory:

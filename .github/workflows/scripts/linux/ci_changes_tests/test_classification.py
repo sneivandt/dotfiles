@@ -12,7 +12,10 @@ class ClassificationTests(unittest.TestCase):
     def test_exact_job_selection(self):
         config = {"validate_config", "config_drift", "build_linux"}
         profiles = config | {
-            "profile_linux", "profile_windows", "roundtrip_linux", "roundtrip_windows",
+            "profile_linux",
+            "profile_windows",
+            "roundtrip_linux",
+            "roundtrip_windows",
             "build_windows",
         }
         rust = {"rust_checks", "rust_fmt", "build_linux", "build_windows"}
@@ -28,51 +31,105 @@ class ClassificationTests(unittest.TestCase):
             (".agents/skills/ci-cd-patterns/SKILL.md", set()),
             ("cli/README.md", set()),
             ("symlinks/vim/README.md", set()),
-            (".github/dependabot.yml", set()),
-            (".vscode/settings.json", set()),
+            (".github/dependabot.yml", {"lint"}),
+            (".vscode/settings.json", {"lint"}),
             ("LICENSE", set()),
-            ("cli/src/main.rs", rust | profiles | {
-                "app_tests", "app_windows", "wrapper_linux", "wrapper_windows",
-                "release",
-            }),
-            ("cli/src/domains/ai/apm/scripts/workflow_autopilot.py", rust | profiles | {
-                "app_tests", "app_windows", "wrapper_linux", "wrapper_windows",
-                "release", "apm", "apm_windows", "lint",
-            }),
+            (
+                "cli/src/main.rs",
+                rust
+                | profiles
+                | {
+                    "app_tests",
+                    "app_windows",
+                    "wrapper_linux",
+                    "wrapper_windows",
+                    "release",
+                },
+            ),
+            (
+                "cli/src/domains/ai/apm/scripts/workflow_autopilot.py",
+                rust
+                | profiles
+                | {
+                    "app_tests",
+                    "app_windows",
+                    "wrapper_linux",
+                    "wrapper_windows",
+                    "release",
+                    "apm",
+                    "apm_windows",
+                    "lint",
+                },
+            ),
             ("cli/tests/config_drift.rs", rust),
-            ("cli/tests/common/fixtures/data.toml", rust),
-            ("cli/Cargo.lock", rust | profiles | {
-                "app_tests", "app_windows", "wrapper_linux", "wrapper_windows",
-                "audit", "deny", "release",
-            }),
-            ("cli/build.rs", rust | profiles | {
-                "app_tests", "app_windows", "wrapper_linux", "wrapper_windows", "release",
-            }),
-            ("cli/rustfmt.toml", {"rust_fmt"}),
-            ("cli/deny.toml", {"deny"}),
+            ("cli/tests/common/fixtures/data.toml", rust | {"lint"}),
+            (
+                "cli/Cargo.lock",
+                rust
+                | profiles
+                | {
+                    "app_tests",
+                    "app_windows",
+                    "wrapper_linux",
+                    "wrapper_windows",
+                    "audit",
+                    "deny",
+                    "release",
+                },
+            ),
+            (
+                "cli/build.rs",
+                rust
+                | profiles
+                | {
+                    "app_tests",
+                    "app_windows",
+                    "wrapper_linux",
+                    "wrapper_windows",
+                    "release",
+                },
+            ),
+            ("cli/rustfmt.toml", {"rust_fmt", "lint"}),
+            ("cli/deny.toml", {"deny", "lint"}),
             (".github/linters/ruff.toml", {"lint"}),
             (".github/linters/luacheckrc", {"lint"}),
             (LINUX + "install-ruff.sh", {"lint"}),
             (LINUX + "install-luacheck.sh", {"lint"}),
-            ("conf/packages.toml", profiles | {"app_tests", "app_windows"}),
+            (LINUX + "check-structured-files.py", {"lint"}),
+            ("conf/packages.toml", profiles | {"app_tests", "app_windows", "lint"}),
             ("packages/apm/PKGBUILD", config | {"rust_checks", "lint", "apm"}),
             ("packages/apm/release.json", config | {"rust_checks", "lint", "apm"}),
             ("packages/example/example.install", config | {"rust_checks", "lint"}),
-            ("symlinks/apm/config/base.yml", config | {"apm", "apm_windows", "build_windows"}),
-            ("symlinks/apm/plugins/dot-skill/.apm/skills/example/SKILL.md", config | {"apm", "apm_windows", "build_windows"}),
-            ("tests/integration/test-apm.py", {"apm", "apm_windows", "validate_config", "build_linux", "build_windows", "lint"}),
+            (
+                "symlinks/apm/config/base.yml",
+                config | {"apm", "apm_windows", "build_windows", "lint"},
+            ),
+            (
+                "symlinks/apm/plugins/dot-skill/.apm/skills/example/SKILL.md",
+                config | {"apm", "apm_windows", "build_windows"},
+            ),
+            (
+                "tests/integration/test-apm.py",
+                {"apm", "apm_windows", "validate_config", "build_linux", "build_windows", "lint"},
+            ),
             (WINDOWS + "Install-Apm.ps1", {"apm_windows", "build_windows", "lint"}),
             (".gitignore", set()),
-            ("conf/agent-settings.toml", profiles),
-            ("conf/chmod.toml", profiles | {"rust_checks"}),
-            ("conf/system-files.toml", profiles | {"rust_checks"}),
-            ("conf/systemd-units.toml", profiles | desktop_scripts),
+            ("conf/agent-settings.toml", profiles | {"lint"}),
+            ("conf/chmod.toml", profiles | {"rust_checks", "lint"}),
+            ("conf/system-files.toml", profiles | {"rust_checks", "lint"}),
+            ("conf/systemd-units.toml", profiles | desktop_scripts | {"lint"}),
             ("system/pam.d/login", config | {"profile_linux", "roundtrip_linux", "rust_checks"}),
             ("symlinks/config/git/config", config | {"app_tests", "app_windows", "build_windows"}),
-            ("symlinks/config/git/aliases", config | {"git_hooks", "app_tests", "app_windows", "build_windows"}),
+            (
+                "symlinks/config/git/aliases",
+                config | {"git_hooks", "app_tests", "app_windows", "build_windows"},
+            ),
             ("symlinks/config/git/ignore", config | {"app_tests", "app_windows", "build_windows"}),
             ("symlinks/config/git/windows", config | {"app_tests", "app_windows", "build_windows"}),
-            ("symlinks/config/git/windows-desktop", config | {"app_tests", "app_windows", "build_windows"}),
+            (
+                "symlinks/config/git/windows-desktop",
+                config | {"app_tests", "app_windows", "build_windows"},
+            ),
             ("symlinks/config/tmux/tmux.conf", config | {"app_tests"}),
             ("symlinks/config/readline/inputrc", config | {"app_tests"}),
             ("symlinks/vim/init.vim", config | {"app_tests"}),
@@ -80,35 +137,50 @@ class ClassificationTests(unittest.TestCase):
             ("symlinks/config/bash/prompt.bash", config | {"app_tests", "lint"}),
             ("symlinks/bash_profile", config | {"app_tests", "lint"}),
             ("symlinks/bashrc", config | {"app_tests", "lint"}),
-            ("symlinks/local/bin/code-insiders", config | desktop_scripts | {"rust_checks", "app_tests", "lint"}),
-            ("symlinks/config/powershell/Module.psd1",
-             config | {"lint", "prompt"}),
+            (
+                "symlinks/local/bin/code-insiders",
+                config | desktop_scripts | {"rust_checks", "app_tests", "lint"},
+            ),
+            ("symlinks/config/powershell/Module.psd1", config | {"lint", "prompt"}),
             ("symlinks/config/wgetrc", config | {"app_tests"}),
             ("symlinks/config/user-dirs.dirs", config | {"app_tests"}),
-            ("symlinks/config/hypr/conf/appearance.lua",
-             config | {"desktop_scripts", "lock", "desktop_qml", "lint"}),
-            ("symlinks/config/hypr/conf/resize-on-border.lua",
-             config | {"desktop_scripts", "lock", "desktop_qml", "lint"}),
+            (
+                "symlinks/config/hypr/conf/appearance.lua",
+                config | {"desktop_scripts", "lock", "desktop_qml", "lint"},
+            ),
+            (
+                "symlinks/config/hypr/conf/resize-on-border.lua",
+                config | {"desktop_scripts", "lock", "desktop_qml", "lint"},
+            ),
             ("symlinks/config/hypr/hyprland.lua", config | {"desktop_qml", "lint"}),
             ("symlinks/config/hypr/hyprlock.conf", config | {"desktop_qml"}),
-            ("tests/shell/Test-Prompt.ps1",
-             {"lint", "prompt"}),
-            ("symlinks/config/hypr/scripts/lock-screen.sh",
-             config | {"lint", "desktop_scripts", "lock"}),
-            ("tests/desktop/hypr/test_lock_screen.py",
-             {"desktop_scripts", "lock", "lint"}),
-            ("symlinks/config/hypr/hypridle.conf",
-             config | {"desktop_scripts", "lock"}),
-            ("symlinks/config/quickshell/helpers/network_helper.py",
-             config | {"desktop_scripts", "desktop_python", "desktop_qml", "lint"}),
-            ("symlinks/config/quickshell/helpers/stocks.py",
-             config | {"desktop_scripts", "desktop_python", "desktop_qml", "lint"}),
-            ("tests/desktop/quickshell/python/test_stocks.py",
-             {"desktop_scripts", "desktop_python", "lint"}),
-            ("symlinks/config/hypr/scripts/screenshot.sh",
-             config | {"lint", "desktop_scripts", "lock"}),
-            ("symlinks/config/hypr/scripts/choose-editor.sh",
-             config | {"lint", "desktop_scripts", "lock"}),
+            ("tests/shell/Test-Prompt.ps1", {"lint", "prompt"}),
+            (
+                "symlinks/config/hypr/scripts/lock-screen.sh",
+                config | {"lint", "desktop_scripts", "lock"},
+            ),
+            ("tests/desktop/hypr/test_lock_screen.py", {"desktop_scripts", "lock", "lint"}),
+            ("symlinks/config/hypr/hypridle.conf", config | {"desktop_scripts", "lock"}),
+            (
+                "symlinks/config/quickshell/helpers/network_helper.py",
+                config | {"desktop_scripts", "desktop_python", "desktop_qml", "lint"},
+            ),
+            (
+                "symlinks/config/quickshell/helpers/stocks.py",
+                config | {"desktop_scripts", "desktop_python", "desktop_qml", "lint"},
+            ),
+            (
+                "tests/desktop/quickshell/python/test_stocks.py",
+                {"desktop_scripts", "desktop_python", "lint"},
+            ),
+            (
+                "symlinks/config/hypr/scripts/screenshot.sh",
+                config | {"lint", "desktop_scripts", "lock"},
+            ),
+            (
+                "symlinks/config/hypr/scripts/choose-editor.sh",
+                config | {"lint", "desktop_scripts", "lock"},
+            ),
             ("dotfiles.sh", {"lint", "wrapper_linux", "build_linux"}),
             ("dotfiles.ps1", {"lint", "wrapper_windows", "roundtrip_windows", "build_windows"}),
             ("hooks/pre-commit", {"lint", "git_hooks", "hook_inputs"}),
@@ -120,54 +192,107 @@ class ClassificationTests(unittest.TestCase):
             (LINUX + "test-workflows.sh", {"lint"}),
             (LINUX + "install-actionlint.sh", {"lint"}),
             ("tests/desktop/quickshell/test-desktop-qml.sh", {"lint", "desktop_qml"}),
-            ("symlinks/config/quickshell/bar/Bar.qml",
-             config | {"desktop_scripts", "desktop_python", "desktop_qml"}),
-            ("symlinks/config/quickshell/lib/Theme.js",
-             config | {"desktop_scripts", "desktop_python", "desktop_qml"}),
-            ("tests/desktop/quickshell/python/test_network_helper.py",
-             {"desktop_scripts", "desktop_python", "lint"}),
-            ("tests/desktop/quickshell/qml/mocks/Quickshell/Io/qmldir",
-             {"desktop_qml"}),
-            ("tests/vim/test_vim_config.py",
-             {"app_tests", "build_linux", "lint"}),
-            ("tests/integration/test-arch-acceptance.sh", {"roundtrip_linux", "build_linux", "lint"}),
+            (
+                "symlinks/config/quickshell/bar/Bar.qml",
+                config | {"desktop_scripts", "desktop_python", "desktop_qml"},
+            ),
+            (
+                "symlinks/config/quickshell/lib/Theme.js",
+                config | {"desktop_scripts", "desktop_python", "desktop_qml"},
+            ),
+            (
+                "tests/desktop/quickshell/python/test_network_helper.py",
+                {"desktop_scripts", "desktop_python", "lint"},
+            ),
+            ("tests/desktop/quickshell/qml/mocks/Quickshell/Io/qmldir", {"desktop_qml"}),
+            ("tests/vim/test_vim_config.py", {"app_tests", "build_linux", "lint"}),
+            (
+                "tests/integration/test-arch-acceptance.sh",
+                {"roundtrip_linux", "build_linux", "lint"},
+            ),
             ("tests/desktop/quickshell/test-desktop-session.sh", {"desktop_qml", "lint"}),
-            ("tests/integration/test-install-uninstall.py",
-             {"roundtrip_linux", "roundtrip_windows", "build_linux", "build_windows", "lint"}),
+            (
+                "tests/integration/test-install-uninstall.py",
+                {"roundtrip_linux", "roundtrip_windows", "build_linux", "build_windows", "lint"},
+            ),
             ("tests/wrapper/Test-ShellWrapper.ps1", {"wrapper_windows", "build_windows", "lint"}),
-            ("tests/wrapper/windows/Test-Bootstrap.ps1", {"wrapper_windows", "build_windows", "lint"}),
+            (
+                "tests/wrapper/windows/Test-Bootstrap.ps1",
+                {"wrapper_windows", "build_windows", "lint"},
+            ),
             ("tests/wrapper/linux/test-bootstrap.sh", {"wrapper_linux", "build_linux", "lint"}),
-            ("tests/git/test-git.py", {"app_tests", "app_windows", "build_linux", "build_windows", "lint"}),
+            (
+                "tests/git/test-git.py",
+                {"app_tests", "app_windows", "build_linux", "build_windows", "lint"},
+            ),
             ("tests/shell/test-zsh.py", {"app_tests", "build_linux", "lint"}),
             ("tests/vim/test-vim.py", {"app_tests", "build_linux", "lint"}),
             ("tests/vim/test-nvim.py", {"app_tests", "build_linux", "lint"}),
-            ("tests/hooks/hook_inputs_tests/test_allowlists.py", {"hook_inputs", "build_linux", "lint"}),
-            ("tests/hooks/git_hook_tests/test_sensitive_scan.py", {"git_hooks", "hook_inputs", "lint"}),
+            (
+                "tests/hooks/hook_inputs_tests/test_allowlists.py",
+                {"hook_inputs", "build_linux", "lint"},
+            ),
+            (
+                "tests/hooks/git_hook_tests/test_sensitive_scan.py",
+                {"git_hooks", "hook_inputs", "lint"},
+            ),
             ("tests/hooks/test-git-hooks.py", {"git_hooks", "hook_inputs", "lint"}),
-            ("symlinks/config/git/templates/hooks/post-rewrite",
-             config | {"app_tests", "app_windows", "build_windows", "git_hooks", "lint", "rust_checks"}),
-            ("symlinks/config/git/templates/hooks.local/pre-push",
-             config | {"app_tests", "app_windows", "build_windows", "git_hooks", "lint", "rust_checks"}),
-            ("symlinks/config/systemd/user/clean-home-tmp.service", config | desktop_scripts | {"git_hooks", "desktop_qml"}),
-            ("symlinks/config/systemd/user/clean-screenshots.service", config | desktop_scripts | {"git_hooks", "desktop_qml"}),
-            ("symlinks/config/systemd/user/dotfiles-first-login.service",
-             config | desktop_scripts | {"desktop_qml", "rust_checks", "roundtrip_linux"}),
-            ("symlinks/config/systemd/user/xdg-user-directories.service",
-             config | desktop_scripts | {"desktop_qml", "app_tests"}),
-            ("symlinks/config/powershell/Microsoft.PowerShell_profile.ps1",
-             config | {"prompt", "roundtrip_windows", "build_windows", "lint"}),
-            ("symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json",
-             config | {"roundtrip_windows", "build_windows"}),
-            ("symlinks/config/systemd/user/quickshell.service", config | desktop_scripts | {"desktop_qml"}),
+            (
+                "symlinks/config/git/templates/hooks/post-rewrite",
+                config
+                | {"app_tests", "app_windows", "build_windows", "git_hooks", "lint", "rust_checks"},
+            ),
+            (
+                "symlinks/config/git/templates/hooks.local/pre-push",
+                config
+                | {"app_tests", "app_windows", "build_windows", "git_hooks", "lint", "rust_checks"},
+            ),
+            (
+                "symlinks/config/systemd/user/clean-home-tmp.service",
+                config | desktop_scripts | {"git_hooks", "desktop_qml"},
+            ),
+            (
+                "symlinks/config/systemd/user/clean-screenshots.service",
+                config | desktop_scripts | {"git_hooks", "desktop_qml"},
+            ),
+            (
+                "symlinks/config/systemd/user/dotfiles-first-login.service",
+                config | desktop_scripts | {"desktop_qml", "rust_checks", "roundtrip_linux"},
+            ),
+            (
+                "symlinks/config/systemd/user/xdg-user-directories.service",
+                config | desktop_scripts | {"desktop_qml", "app_tests"},
+            ),
+            (
+                "symlinks/config/powershell/Microsoft.PowerShell_profile.ps1",
+                config | {"prompt", "roundtrip_windows", "build_windows", "lint"},
+            ),
+            (
+                "symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json",
+                config | {"roundtrip_windows", "build_windows", "lint"},
+            ),
+            (
+                "symlinks/config/systemd/user/quickshell.service",
+                config | desktop_scripts | {"desktop_qml"},
+            ),
             ("symlinks/config/systemd/user/clean-home-tmp.timer", config | {"desktop_qml"}),
             ("tests/hooks/test-maintenance.py", {"git_hooks", "hook_inputs", "lint"}),
             ("tests/vim/test-nvim-lock.lua", {"app_tests", "build_linux", "lint"}),
             ("tests/vim/test-nvim-config.lua", {"app_tests", "build_linux", "lint"}),
             ("tests/shell/test-shell-config.py", {"app_tests", "build_linux", "lint"}),
-            ("tests/shell/shell_config_tests/test_profile_and_env.py", {"app_tests", "build_linux", "lint"}),
+            (
+                "tests/shell/shell_config_tests/test_profile_and_env.py",
+                {"app_tests", "build_linux", "lint"},
+            ),
             ("tests/hooks/test-hook-inputs.py", {"hook_inputs", "build_linux", "lint"}),
-            ("tests/wrapper/parity-contract.json", {"wrapper_linux", "wrapper_windows", "build_linux", "build_windows"}),
-            ("tests/wrapper/test-parity.py", {"wrapper_linux", "wrapper_windows", "build_linux", "build_windows", "lint"}),
+            (
+                "tests/wrapper/parity-contract.json",
+                {"wrapper_linux", "wrapper_windows", "build_linux", "build_windows", "lint"},
+            ),
+            (
+                "tests/wrapper/test-parity.py",
+                {"wrapper_linux", "wrapper_windows", "build_linux", "build_windows", "lint"},
+            ),
             (LINUX + "check-ci-contract.py", {"lint"}),
             (LINUX + "workflow_yaml.py", {"lint"}),
             (LINUX + "test-ci-changes.py", {"lint"}),
@@ -175,8 +300,8 @@ class ClassificationTests(unittest.TestCase):
             (LINUX + "select-mutations.py", {"lint"}),
             (LINUX + "run-mutations.py", {"lint"}),
             (LINUX + "report-mutations.py", {"lint"}),
-            (".github/workflows/mutation.yml", set()),
-            (".github/workflows/release.yml", {"release"}),
+            (".github/workflows/mutation.yml", {"lint"}),
+            (".github/workflows/release.yml", {"release", "lint"}),
             (LINUX + "classify-release.sh", {"release", "lint"}),
             (LINUX + "release-tag.sh", {"release", "lint"}),
         ]
@@ -208,15 +333,18 @@ class ClassificationTests(unittest.TestCase):
                 self.assertTrue(selected["run_docs_checks"])
 
     def test_full_ci_and_empty_diff(self):
-        for path in (".github/workflows/ci.yml", "tests/lib/test-helpers.sh",
-                     LINUX + "ci_metadata.py", LINUX + "classify-ci-changes.py",
-                     "unknown-build-input"):
+        for path in (
+            ".github/workflows/ci.yml",
+            "tests/lib/test-helpers.sh",
+            LINUX + "ci_metadata.py",
+            LINUX + "classify-ci-changes.py",
+            "unknown-build-input",
+        ):
             with self.subTest(path=path):
                 outputs = classify([path])
-                self.assertTrue(all(
-                    outputs[name] for name in POLICY["FLAGS"]
-                    if name != "run_release"
-                ))
+                self.assertTrue(
+                    all(outputs[name] for name in POLICY["FLAGS"] if name != "run_release")
+                )
         self.assertFalse(classify([".github/workflows/ci.yml"])["run_release"])
         self.assertTrue(classify(["unknown-build-input"])["run_release"])
         self.assertFalse(classify([], full=True)["run_release"])
@@ -241,25 +369,37 @@ class ClassificationTests(unittest.TestCase):
             (["tests/shell/test-zsh.py"], ["Python (Ruff)"], ["zsh"]),
             (["tests/vim/test-nvim-config.lua"], ["Lua (Luacheck)"], ["nvim"]),
             (["tests/shell/test-shell-config.py"], ["Python (Ruff)"], ["zsh"]),
-            ([".github/linters/ruff.toml"], ["Python (Ruff)"], []),
+            (
+                [".github/linters/ruff.toml"],
+                ["Python (Ruff)", "Structured files (JSON/TOML/YAML)"],
+                [],
+            ),
+            ([".vscode/settings.json"], ["Structured files (JSON/TOML/YAML)"], []),
             (["symlinks/local/bin/code-insiders"], ["Python (Ruff)"], ["zsh"]),
             ([".github/linters/luacheckrc"], ["Lua (Luacheck)"], []),
             (["symlinks/bashrc", "symlinks/config/wgetrc"], ["ShellCheck"], ["zsh"]),
             (["symlinks/config/bash/prompt.bash"], ["ShellCheck"], ["zsh"]),
             (["packages/example/example.install"], ["ShellCheck"], []),
             (["symlinks/config/powershell/Module.psd1"], ["PSScriptAnalyzer"], []),
-            (["symlinks/config/zsh/prompt.zsh", "symlinks/config/git/config"],
-             [], ["git", "zsh"]),
+            (["symlinks/config/zsh/prompt.zsh", "symlinks/config/git/config"], [], ["git", "zsh"]),
         ]
         for paths, linters, apps in cases:
             with self.subTest(paths=paths):
                 outputs = classify(paths)
-                self.assertEqual([item["name"] for item in outputs["lint_matrix"]["include"]], linters)
-                self.assertEqual([item["application"] for item in outputs["app_matrix"]["include"]], apps)
+                self.assertEqual(
+                    [item["name"] for item in outputs["lint_matrix"]["include"]], linters
+                )
+                self.assertEqual(
+                    [item["application"] for item in outputs["app_matrix"]["include"]], apps
+                )
                 self.assertEqual(outputs["run_lint"], bool(linters))
                 self.assertEqual(outputs["run_app_tests"], bool(apps))
-        self.assertFalse(classify(["docs/content/guides/getting-started.md", "dotfiles.sh"])["docs_only"])
-        self.assertTrue(classify(["docs/content/guides/getting-started.md", "AGENTS.md"])["docs_only"])
+        self.assertFalse(
+            classify(["docs/content/guides/getting-started.md", "dotfiles.sh"])["docs_only"]
+        )
+        self.assertTrue(
+            classify(["docs/content/guides/getting-started.md", "AGENTS.md"])["docs_only"]
+        )
 
     def test_editor_matrices_include_plugin_free_regressions(self):
         matrix = classify(["symlinks/vim/vimrc"])["app_matrix"]["include"]
@@ -306,23 +446,43 @@ class ClassificationTests(unittest.TestCase):
         self.assertTrue(outputs["run_config_drift"])
 
     def test_binary_inputs(self):
-        for path in ("cli/src/main.rs", "cli/src/data.json", "cli/src/embedded.md", "cli/build.rs",
-                     "cli/.cargo/config.toml", "cli/rust-toolchain.toml", "cli/Cargo.toml",
-                     ".cargo/config.toml", "rust-toolchain.toml"):
+        for path in (
+            "cli/src/main.rs",
+            "cli/src/data.json",
+            "cli/src/embedded.md",
+            "cli/build.rs",
+            "cli/.cargo/config.toml",
+            "cli/rust-toolchain.toml",
+            "cli/Cargo.toml",
+            ".cargo/config.toml",
+            "rust-toolchain.toml",
+        ):
             with self.subTest(path=path):
                 self.assertTrue(classify([path])["run_release"])
-        for path in ("cli/tests/integration/update_command.rs", "cli/benches/fixture.json",
-                     "cli/deny.toml", "cli/rustfmt.toml", "cli/README.md",
-                     "dotfiles.sh", "conf/symlinks.toml", "symlinks/bashrc",
-                     "packages/apm/PKGBUILD", "packages/apm/release.json"):
+        for path in (
+            "cli/tests/integration/update_command.rs",
+            "cli/benches/fixture.json",
+            "cli/deny.toml",
+            "cli/rustfmt.toml",
+            "cli/README.md",
+            "dotfiles.sh",
+            "conf/symlinks.toml",
+            "symlinks/bashrc",
+            "packages/apm/PKGBUILD",
+            "packages/apm/release.json",
+        ):
             with self.subTest(path=path):
                 self.assertFalse(classify([path])["run_release"])
 
     def test_mixed_selection_is_order_independent_and_never_drops_work(self):
         paths = [
-            "cli/tests/config_drift.rs", "dotfiles.sh", "dotfiles.ps1",
-            "symlinks/config/git/config", "symlinks/config/zsh/prompt.zsh",
-            "symlinks/config/quickshell/bar/Bar.qml", "README.md",
+            "cli/tests/config_drift.rs",
+            "dotfiles.sh",
+            "dotfiles.ps1",
+            "symlinks/config/git/config",
+            "symlinks/config/zsh/prompt.zsh",
+            "symlinks/config/quickshell/bar/Bar.qml",
+            "README.md",
         ]
         expected = classify(paths)
         for ordered in (list(reversed(paths)), paths[3:] + paths[:3], paths + paths):
@@ -330,7 +490,9 @@ class ClassificationTests(unittest.TestCase):
                 self.assertEqual(classify(ordered), expected)
         for flag in POLICY["FLAGS"]:
             self.assertEqual(
-                expected[flag], any(classify([path])[flag] for path in paths), flag,
+                expected[flag],
+                any(classify([path])[flag] for path in paths),
+                flag,
             )
         self.assertEqual(
             [entry["application"] for entry in expected["app_matrix"]["include"]],
@@ -345,16 +507,21 @@ class ClassificationTests(unittest.TestCase):
     def test_ci_metadata_cli_and_ruff_inputs(self):
         repo = SCRIPTS.parents[3]
         meta = SCRIPTS / "ci_metadata.py"
-        sample = b"\0".join([
-            b"hooks/pre-commit",
-            b"packages/demo/PKGBUILD",
-            b"symlinks/local/bin/code-insiders",
-            b"scripts/tool.py",
-            b"scripts/check.ps1",
-            b"symlinks/config/hypr/hyprland.lua",
-            b".github/workflows/ci.yml",
-            b"README.md",
-        ]) + b"\0"
+        sample = (
+            b"\0".join(
+                [
+                    b"hooks/pre-commit",
+                    b"packages/demo/PKGBUILD",
+                    b"symlinks/local/bin/code-insiders",
+                    b"scripts/tool.py",
+                    b"scripts/check.ps1",
+                    b"symlinks/config/hypr/hyprland.lua",
+                    b".github/workflows/ci.yml",
+                    b"README.md",
+                ]
+            )
+            + b"\0"
+        )
         expected = {
             "shell": [b"hooks/pre-commit", b"packages/demo/PKGBUILD"],
             "powershell": [b"scripts/check.ps1"],
@@ -366,17 +533,21 @@ class ClassificationTests(unittest.TestCase):
             with self.subTest(category=category):
                 filtered = subprocess.run(
                     [sys.executable, "-B", str(meta), "filter-linter", category],
-                    input=sample, stdout=subprocess.PIPE, check=True,
+                    input=sample,
+                    stdout=subprocess.PIPE,
+                    check=True,
                 )
                 self.assertEqual([item for item in filtered.stdout.split(b"\0") if item], want)
                 has_match = subprocess.run(
                     [sys.executable, "-B", str(meta), "has-linter", category],
-                    input=sample, check=False,
+                    input=sample,
+                    check=False,
                 )
                 self.assertEqual(has_match.returncode, 0)
                 no_match = subprocess.run(
                     [sys.executable, "-B", str(meta), "has-linter", category],
-                    input=b"README.md\0", check=False,
+                    input=b"README.md\0",
+                    check=False,
                 )
                 self.assertEqual(no_match.returncode, 1)
 
@@ -394,30 +565,35 @@ class ClassificationTests(unittest.TestCase):
             with self.subTest(guard=category):
                 hit = subprocess.run(
                     [sys.executable, "-B", str(meta), "has-guard", category],
-                    input=guard_input, check=False,
+                    input=guard_input,
+                    check=False,
                 )
                 self.assertEqual(hit.returncode, 0)
                 miss = subprocess.run(
                     [sys.executable, "-B", str(meta), "has-guard", category],
-                    input=b"unrelated/file.txt\0", check=False,
+                    input=b"unrelated/file.txt\0",
+                    check=False,
                 )
                 self.assertEqual(miss.returncode, 1)
 
         ruff_result = subprocess.run(
             [sys.executable, "-B", str(meta), "ruff-inputs", str(repo)],
-            stdout=subprocess.PIPE, check=True,
+            stdout=subprocess.PIPE,
+            check=True,
         )
         entries = [item.decode("utf-8") for item in ruff_result.stdout.split(b"\0") if item]
         self.assertEqual(entries[0], str(repo))
-        rel_extensionless = {
-            str(Path(entry).relative_to(repo).as_posix())
-            for entry in entries[1:]
-        }
+        rel_extensionless = {str(Path(entry).relative_to(repo).as_posix()) for entry in entries[1:]}
         self.assertEqual(rel_extensionless, set(POLICY["EXTENSIONLESS_PYTHON_SCRIPTS"]))
 
     def test_embedded_documentation_and_similar_prefixes_are_not_docs_only(self):
-        for path in ("cli/src/README.md", "cli/src/docs/guide.md", "docs-build/input",
-                     ".agents-build/input", "cli/tests-extra/input"):
+        for path in (
+            "cli/src/README.md",
+            "cli/src/docs/guide.md",
+            "docs-build/input",
+            ".agents-build/input",
+            "cli/tests-extra/input",
+        ):
             with self.subTest(path=path):
                 outputs = classify([path])
                 self.assertFalse(outputs["docs_only"])

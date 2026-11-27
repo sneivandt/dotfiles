@@ -19,19 +19,42 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+
 import tomllib
 
 CARGO_PROFILE = "ci"
 
 LINUX_DEFAULT_STAGES = (
-    "fmt", "clippy", "test", "rustdoc", "config", "docs", "ci",
-    "shell", "powershell", "python", "lua", "audit", "deny",
+    "fmt",
+    "clippy",
+    "test",
+    "rustdoc",
+    "config",
+    "docs",
+    "ci",
+    "shell",
+    "powershell",
+    "python",
+    "lua",
+    "structured",
+    "audit",
+    "deny",
 )
 LINUX_OPTIONAL_STAGES = ("msrv", "qml", "hooks", "wrapper", "desktop")
 
 WINDOWS_DEFAULT_STAGES = (
-    "fmt", "clippy", "test", "rustdoc", "config", "docs", "ci",
-    "powershell", "python", "audit", "deny",
+    "fmt",
+    "clippy",
+    "test",
+    "rustdoc",
+    "config",
+    "docs",
+    "ci",
+    "powershell",
+    "python",
+    "structured",
+    "audit",
+    "deny",
 )
 WINDOWS_OPTIONAL_STAGES = ("shell", "msrv", "wrapper")
 
@@ -104,7 +127,11 @@ class Runner:
         except (OSError, tomllib.TOMLDecodeError):
             expected = None
         if not isinstance(expected, str) or not expected:
-            print(f"Cannot read pinned Rust version from {toolchain_file}", file=sys.stderr, flush=True)
+            print(
+                f"Cannot read pinned Rust version from {toolchain_file}",
+                file=sys.stderr,
+                flush=True,
+            )
             return False
         if not self.have("rustc"):
             print("rustc not installed", file=sys.stderr, flush=True)
@@ -122,7 +149,11 @@ class Runner:
             return False
         actual = result.stdout.strip()
         if result.returncode != 0 or not actual.startswith(f"rustc {expected} "):
-            print(f"Pinned Rust {expected} required; PATH selected {actual}.", file=sys.stderr, flush=True)
+            print(
+                f"Pinned Rust {expected} required; PATH selected {actual}.",
+                file=sys.stderr,
+                flush=True,
+            )
             print(
                 "Select the pinned toolchain as described in "
                 "docs/content/development/contributing.md#selecting-the-pinned-toolchain.",
@@ -157,33 +188,68 @@ class Runner:
         return self.cargo_stage(["fmt", "--check", "--manifest-path", str(self.manifest)])
 
     def stage_clippy(self) -> str:
-        return self.cargo_stage([
-            "clippy", "--locked", "--profile", CARGO_PROFILE,
-            "--manifest-path", str(self.manifest),
-            "--all-targets", "--", "-D", "warnings",
-        ])
+        return self.cargo_stage(
+            [
+                "clippy",
+                "--locked",
+                "--profile",
+                CARGO_PROFILE,
+                "--manifest-path",
+                str(self.manifest),
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+            ]
+        )
 
     def stage_test(self) -> str:
-        return self.cargo_stage([
-            "test", "--locked", "--profile", CARGO_PROFILE,
-            "--manifest-path", str(self.manifest),
-        ])
+        return self.cargo_stage(
+            [
+                "test",
+                "--locked",
+                "--profile",
+                CARGO_PROFILE,
+                "--manifest-path",
+                str(self.manifest),
+            ]
+        )
 
     def stage_rustdoc(self) -> str:
         env = os.environ | {"RUSTDOCFLAGS": "-D warnings"}
-        return self.cargo_stage([
-            "doc", "--locked", "--profile", CARGO_PROFILE,
-            "--manifest-path", str(self.manifest),
-            "--no-deps", "--document-private-items",
-        ], env=env)
+        return self.cargo_stage(
+            [
+                "doc",
+                "--locked",
+                "--profile",
+                CARGO_PROFILE,
+                "--manifest-path",
+                str(self.manifest),
+                "--no-deps",
+                "--document-private-items",
+            ],
+            env=env,
+        )
 
     def stage_config(self) -> str:
-        return self.cargo_stage([
-            "run", "--locked", "--profile", CARGO_PROFILE,
-            "--manifest-path", str(self.manifest), "--",
-            "check", "--root", str(self.repo_root), "--profile", "desktop",
-            "--only", "config-diagnostics,symlink-sources,config-files",
-        ])
+        return self.cargo_stage(
+            [
+                "run",
+                "--locked",
+                "--profile",
+                CARGO_PROFILE,
+                "--manifest-path",
+                str(self.manifest),
+                "--",
+                "check",
+                "--root",
+                str(self.repo_root),
+                "--profile",
+                "desktop",
+                "--only",
+                "config-diagnostics,symlink-sources,config-files",
+            ]
+        )
 
     def stage_docs(self) -> str:
         if sys.platform == "win32":
@@ -198,7 +264,13 @@ class Runner:
             return "FAIL"
         env = os.environ | {"DIR": str(self.repo_root)}
         return self.run_cmd(
-            ["sh", str(self.scripts_linux / "test-docs.sh"), "docs_links", "docs_task_selectors", "docs_site"],
+            [
+                "sh",
+                str(self.scripts_linux / "test-docs.sh"),
+                "docs_links",
+                "docs_task_selectors",
+                "docs_site",
+            ],
             cwd=self.cli_root,
             env=env,
         )
@@ -206,17 +278,42 @@ class Runner:
     def stage_ci(self) -> str:
         if sys.platform == "win32":
             ci_tests = self.scripts_linux / "ci_changes_tests"
-            status = self.run_sequence([
-                ([sys.executable, "-B", str(self.scripts_linux / "check-ci-contract.py")], self.cli_root),
-                (
-                    [sys.executable, "-B", "-m", "unittest", "discover", "-s", str(ci_tests), "-p", "test_classification.py"],
-                    self.scripts_linux,
-                ),
-                (
-                    [sys.executable, "-B", "-m", "unittest", "discover", "-s", str(ci_tests), "-p", "test_gate.py"],
-                    self.scripts_linux,
-                ),
-            ])
+            status = self.run_sequence(
+                [
+                    (
+                        [sys.executable, "-B", str(self.scripts_linux / "check-ci-contract.py")],
+                        self.cli_root,
+                    ),
+                    (
+                        [
+                            sys.executable,
+                            "-B",
+                            "-m",
+                            "unittest",
+                            "discover",
+                            "-s",
+                            str(ci_tests),
+                            "-p",
+                            "test_classification.py",
+                        ],
+                        self.scripts_linux,
+                    ),
+                    (
+                        [
+                            sys.executable,
+                            "-B",
+                            "-m",
+                            "unittest",
+                            "discover",
+                            "-s",
+                            str(ci_tests),
+                            "-p",
+                            "test_gate.py",
+                        ],
+                        self.scripts_linux,
+                    ),
+                ]
+            )
             if status != "pass":
                 return "FAIL"
             if not self.have("actionlint"):
@@ -227,16 +324,26 @@ class Runner:
                 ["actionlint", "-shellcheck=", "-pyflakes=", *workflows],
                 cwd=self.repo_root,
             )
-        status = self.run_sequence([
-            ([sys.executable, "-B", str(self.scripts_linux / "check-ci-contract.py")], self.cli_root),
-            ([sys.executable, "-B", str(self.scripts_linux / "test-ci-changes.py")], self.cli_root),
-        ])
+        status = self.run_sequence(
+            [
+                (
+                    [sys.executable, "-B", str(self.scripts_linux / "check-ci-contract.py")],
+                    self.cli_root,
+                ),
+                (
+                    [sys.executable, "-B", str(self.scripts_linux / "test-ci-changes.py")],
+                    self.cli_root,
+                ),
+            ]
+        )
         if status != "pass":
             return "FAIL"
         if not self.have("actionlint"):
             self.console.note("actionlint not installed; workflow lint skipped")
             return "skip"
-        return self.run_cmd(["sh", str(self.scripts_linux / "test-workflows.sh")], cwd=self.cli_root)
+        return self.run_cmd(
+            ["sh", str(self.scripts_linux / "test-workflows.sh")], cwd=self.cli_root
+        )
 
     def _static_analysis(self, tool: str, test_fn: str) -> str:
         if not self.have(tool):
@@ -262,7 +369,9 @@ class Runner:
         if sys.platform == "win32":
             probe = subprocess.run(
                 [
-                    "pwsh", "-NoProfile", "-Command",
+                    "pwsh",
+                    "-NoProfile",
+                    "-Command",
                     "if (Get-Module -ListAvailable -Name PSScriptAnalyzer) { exit 0 } else { exit 1 }",
                 ],
                 stdout=subprocess.DEVNULL,
@@ -277,9 +386,12 @@ class Runner:
                 return "skip"
             return self.run_cmd(
                 [
-                    "pwsh", "-NoProfile", "-File",
+                    "pwsh",
+                    "-NoProfile",
+                    "-File",
                     str(self.repo_root / "cli/src/app/validation/scripts/psscriptanalyzer.ps1"),
-                    "-Root", str(self.repo_root),
+                    "-Root",
+                    str(self.repo_root),
                 ],
                 cwd=self.cli_root,
             )
@@ -298,18 +410,32 @@ class Runner:
             meta = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(meta)
             targets = meta.ruff_inputs(self.repo_root)
-            return self.run_cmd(
+            config = str(self.repo_root / ".github/linters/ruff.toml")
+            return self.run_sequence(
                 [
-                    "ruff", "check", "--config",
-                    str(self.repo_root / ".github/linters/ruff.toml"),
-                    "--", *targets,
-                ],
-                cwd=self.repo_root,
+                    (["ruff", "check", "--config", config, "--", *targets], self.repo_root),
+                    (
+                        ["ruff", "format", "--check", "--config", config, "--", *targets],
+                        self.repo_root,
+                    ),
+                ]
             )
         return self._static_analysis("ruff", "test_ruff")
 
     def stage_lua(self) -> str:
         return self._static_analysis("luacheck", "test_luacheck")
+
+    def stage_structured(self) -> str:
+        return self.run_cmd(
+            [
+                sys.executable,
+                "-B",
+                str(self.scripts_linux / "check-structured-files.py"),
+                "--root",
+                str(self.repo_root),
+            ],
+            cwd=self.repo_root,
+        )
 
     def stage_audit(self) -> str:
         if not self.have("cargo"):
@@ -377,60 +503,113 @@ class Runner:
         except OSError as error:
             self.console.note(f"Cannot run rustup: {error}")
             return "FAIL"
-        return self.run_cmd([
-            "cargo", f"+{msrv}", "check", "--locked", "--profile", CARGO_PROFILE,
-            "--manifest-path", str(self.manifest), "--all-targets",
-        ], cwd=self.cli_root)
+        return self.run_cmd(
+            [
+                "cargo",
+                f"+{msrv}",
+                "check",
+                "--locked",
+                "--profile",
+                CARGO_PROFILE,
+                "--manifest-path",
+                str(self.manifest),
+                "--all-targets",
+            ],
+            cwd=self.cli_root,
+        )
 
     def stage_hooks(self) -> str:
         if not self.have("sh"):
             self.console.note("no POSIX sh available; skipping hook tests")
             return "skip"
-        return self.run_sequence([
-            ([sys.executable, "-B", str(self.repo_root / "tests/hooks/test-hook-inputs.py")], self.repo_root),
-            ([sys.executable, "-B", str(self.repo_root / "tests/hooks/test-maintenance.py")], self.repo_root),
-            ([sys.executable, "-B", str(self.repo_root / "tests/hooks/test-git-hooks.py")], self.repo_root),
-        ])
+        return self.run_sequence(
+            [
+                (
+                    [sys.executable, "-B", str(self.repo_root / "tests/hooks/test-hook-inputs.py")],
+                    self.repo_root,
+                ),
+                (
+                    [sys.executable, "-B", str(self.repo_root / "tests/hooks/test-maintenance.py")],
+                    self.repo_root,
+                ),
+                (
+                    [sys.executable, "-B", str(self.repo_root / "tests/hooks/test-git-hooks.py")],
+                    self.repo_root,
+                ),
+            ]
+        )
 
     def stage_wrapper(self) -> str:
         commands: list[tuple[list[str], Path | None]] = [
-            ([sys.executable, "-B", str(self.repo_root / "tests/wrapper/test-parity.py")], self.repo_root),
+            (
+                [sys.executable, "-B", str(self.repo_root / "tests/wrapper/test-parity.py")],
+                self.repo_root,
+            ),
         ]
         if sys.platform == "win32":
             if not self.have("pwsh"):
                 self.console.note("pwsh not installed; skipping")
                 return "skip"
-            commands.append((
-                [
-                    "pwsh", "-NoProfile", "-Command",
-                    ". ./tests/wrapper/Test-ShellWrapper.ps1; "
-                    "if (-not (Test-IsolatedWrapperPath)) { exit 1 }; "
-                    "if (-not (Test-CargoArtifactPath)) { exit 1 }",
-                ],
-                self.repo_root,
-            ))
+            commands.append(
+                (
+                    [
+                        "pwsh",
+                        "-NoProfile",
+                        "-Command",
+                        ". ./tests/wrapper/Test-ShellWrapper.ps1; "
+                        "if (-not (Test-IsolatedWrapperPath)) { exit 1 }; "
+                        "if (-not (Test-CargoArtifactPath)) { exit 1 }",
+                    ],
+                    self.repo_root,
+                )
+            )
         else:
-            commands.append((
-                [
-                    "sh", str(self.repo_root / "tests/wrapper/test-shell-wrapper.sh"),
-                    "test_wrapper_preserves_runtime_context",
-                    "test_wrapper_uses_cargo_artifact",
-                ],
-                self.repo_root,
-            ))
+            commands.append(
+                (
+                    [
+                        "sh",
+                        str(self.repo_root / "tests/wrapper/test-shell-wrapper.sh"),
+                        "test_wrapper_preserves_runtime_context",
+                        "test_wrapper_uses_cargo_artifact",
+                    ],
+                    self.repo_root,
+                )
+            )
         return self.run_sequence(commands)
 
     def stage_desktop(self) -> str:
-        return self.run_sequence([
-            (
-                [sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests/desktop/hypr", "-p", "test_*.py"],
-                self.repo_root,
-            ),
-            (
-                [sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests/desktop/quickshell/python", "-p", "test_*.py"],
-                self.repo_root,
-            ),
-        ])
+        return self.run_sequence(
+            [
+                (
+                    [
+                        sys.executable,
+                        "-B",
+                        "-m",
+                        "unittest",
+                        "discover",
+                        "-s",
+                        "tests/desktop/hypr",
+                        "-p",
+                        "test_*.py",
+                    ],
+                    self.repo_root,
+                ),
+                (
+                    [
+                        sys.executable,
+                        "-B",
+                        "-m",
+                        "unittest",
+                        "discover",
+                        "-s",
+                        "tests/desktop/quickshell/python",
+                        "-p",
+                        "test_*.py",
+                    ],
+                    self.repo_root,
+                ),
+            ]
+        )
 
     def stage_map(self) -> dict[str, Callable[[], str]]:
         return {
@@ -445,6 +624,7 @@ class Runner:
             "powershell": self.stage_powershell,
             "python": self.stage_python,
             "lua": self.stage_lua,
+            "structured": self.stage_structured,
             "audit": self.stage_audit,
             "deny": self.stage_deny,
             "msrv": self.stage_msrv,
@@ -534,7 +714,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n{console.red}Checks failed.{console.off}", file=sys.stderr)
         return 1
     if skipped:
-        print(f"\n{console.yellow}Checks completed with skips; coverage is incomplete.{console.off}")
+        print(
+            f"\n{console.yellow}Checks completed with skips; coverage is incomplete.{console.off}"
+        )
     else:
         print(f"\n{console.green}All requested checks passed.{console.off}")
     return 0

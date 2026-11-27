@@ -5,7 +5,6 @@ from pathlib import Path
 import re
 import unittest
 
-
 MENU = Path(__file__).resolve().parents[4] / "symlinks/config/quickshell/menus/PowerMenu.qml"
 
 

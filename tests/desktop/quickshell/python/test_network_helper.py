@@ -71,7 +71,8 @@ class NetworkTests(unittest.TestCase):
         cache.start()
         self.addCleanup(cache.stop)
         process = patch.object(
-            network.subprocess, "run",
+            network.subprocess,
+            "run",
             side_effect=AssertionError("Tests must explicitly mock every nmcli process."),
         )
         process.start()
@@ -79,7 +80,12 @@ class NetworkTests(unittest.TestCase):
 
     def run_main(self, text, command="action"):
         output, errors = io.StringIO(), io.StringIO()
-        with patch("sys.argv", ["network_helper.py", command]), patch("sys.stdin", io.StringIO(text)), patch("sys.stdout", output), patch("sys.stderr", errors):
+        with (
+            patch("sys.argv", ["network_helper.py", command]),
+            patch("sys.stdin", io.StringIO(text)),
+            patch("sys.stdout", output),
+            patch("sys.stderr", errors),
+        ):
             network.main()
         self.assertEqual(errors.getvalue(), "")
         return json.loads(output.getvalue())
@@ -88,8 +94,14 @@ class NetworkTests(unittest.TestCase):
         inventory = [["Fixture", "uuid", "802-11-wireless"]]
         details = [["802-11-wireless.ssid", "Fixture"]]
         refreshed_details = [["802-11-wireless.ssid", "Changed SSID"]]
-        with patch.object(network, "query", side_effect=[inventory, details, inventory, inventory, refreshed_details]) as query, \
-             patch.object(network.time, "time", side_effect=[100, 159.999, 160]):
+        with (
+            patch.object(
+                network,
+                "query",
+                side_effect=[inventory, details, inventory, inventory, refreshed_details],
+            ) as query,
+            patch.object(network.time, "time", side_effect=[100, 159.999, 160]),
+        ):
             first = network.wifi_profiles()
             self.assertEqual(first, [profile(name="Fixture", uuid="uuid", ssid="Fixture", key="")])
             self.assertEqual(network.wifi_profiles(), first)
@@ -102,22 +114,30 @@ class NetworkTests(unittest.TestCase):
     def test_profile_inventory_changes_invalidate_cached_profiles(self):
         inventory = [["Fixture", "uuid", "802-11-wireless"]]
         details = [["802-11-wireless.ssid", "Fixture"]]
-        with patch.object(network, "query", side_effect=[inventory, details, [], inventory, details]):
+        with patch.object(
+            network, "query", side_effect=[inventory, details, [], inventory, details]
+        ):
             network.wifi_profiles()
             self.assertEqual(network.wifi_profiles(), [])
             network.wifi_profiles()
 
     def test_disappearing_profile_does_not_fail_status_or_cache_incomplete_inventory(self):
-        with patch.object(network, "query", side_effect=[[["Fixture", "uuid", "802-11-wireless"]], []]):
+        with patch.object(
+            network, "query", side_effect=[[["Fixture", "uuid", "802-11-wireless"]], []]
+        ):
             self.assertEqual(network.wifi_profiles(), [])
         self.assertFalse(self.cache_path.exists())
-        with patch.object(network, "nmcli", return_value=subprocess.CompletedProcess([], 10, "", "")):
+        with patch.object(
+            network, "nmcli", return_value=subprocess.CompletedProcess([], 10, "", "")
+        ):
             self.assertEqual(network.query(["fixture"], missing_ok=True), [])
             with self.assertRaises(network.NetworkError):
                 network.query(["fixture"])
-        with patch.object(network, "nmcli", return_value=subprocess.CompletedProcess([], 8, "", "")):
-            with self.assertRaises(network.NetworkError):
-                network.query(["fixture"], missing_ok=True)
+        with (
+            patch.object(network, "nmcli", return_value=subprocess.CompletedProcess([], 8, "", "")),
+            self.assertRaises(network.NetworkError),
+        ):
+            network.query(["fixture"], missing_ok=True)
 
     def test_profile_cache_rejects_corrupt_stale_and_mismatched_data(self):
         saved = profile()
@@ -144,8 +164,13 @@ class NetworkTests(unittest.TestCase):
             *(
                 (f"invalid {field}", json.dumps({**cached, "profiles": [{**saved, field: value}]}))
                 for field, value in (
-                    ("name", "Renamed"), ("uuid", "other-uuid"), ("ssid", None),
-                    ("device", []), ("bssid", 1), ("key", False), ("hidden", "false"),
+                    ("name", "Renamed"),
+                    ("uuid", "other-uuid"),
+                    ("ssid", None),
+                    ("device", []),
+                    ("bssid", 1),
+                    ("key", False),
+                    ("hidden", "false"),
                 )
             ),
         ]
@@ -166,11 +191,16 @@ class NetworkTests(unittest.TestCase):
     def test_cache_write_failure_does_not_discard_discovered_profiles(self):
         inventory = [["Fixture", "uuid", "802-11-wireless"]]
         details = [["802-11-wireless.ssid", "Fixture"]]
-        with patch.object(network, "query", side_effect=[inventory, details]), \
-             patch.object(network.os, "replace", side_effect=OSError("fixture failure")) as replace:
-            self.assertEqual(network.wifi_profiles(), [
-                profile(name="Fixture", uuid="uuid", ssid="Fixture", key=""),
-            ])
+        with (
+            patch.object(network, "query", side_effect=[inventory, details]),
+            patch.object(network.os, "replace", side_effect=OSError("fixture failure")) as replace,
+        ):
+            self.assertEqual(
+                network.wifi_profiles(),
+                [
+                    profile(name="Fixture", uuid="uuid", ssid="Fixture", key=""),
+                ],
+            )
         replace.assert_called_once()
         self.assertFalse(self.cache_path.exists())
         self.assertEqual(list(self.cache_path.parent.glob(".profiles-*")), [])
@@ -191,7 +221,9 @@ class NetworkTests(unittest.TestCase):
             with self.subTest(stdin=stdin):
                 run.reset_mock()
                 run.return_value = subprocess.CompletedProcess([], 4, "", "")
-                with patch.dict(os.environ, {"LC_ALL": "other-locale", "FIXTURE": "preserved"}, clear=True):
+                with patch.dict(
+                    os.environ, {"LC_ALL": "other-locale", "FIXTURE": "preserved"}, clear=True
+                ):
                     result = network.nmcli(args, timeout=7, stdin=stdin)
                 self.assertEqual(result.returncode, 4)
                 run.assert_called_once_with(
@@ -272,7 +304,10 @@ class NetworkTests(unittest.TestCase):
     def test_empty_optional_profile_fields_preserve_literal_ssid(self, query):
         query.side_effect = [
             [["Renamed open profile", "saved-uuid", "802-11-wireless"]],
-            network.records("connection.interface-name:\n802-11-wireless.ssid:--\n802-11-wireless.hidden:no\n802-11-wireless.bssid:\n", 2),
+            network.records(
+                "connection.interface-name:\n802-11-wireless.ssid:--\n802-11-wireless.hidden:no\n802-11-wireless.bssid:\n",
+                2,
+            ),
         ]
         saved = network.wifi_profiles()[0]
         self.assertEqual((saved["device"], saved["bssid"], saved["key"]), ("", "", ""))
@@ -299,16 +334,43 @@ class NetworkTests(unittest.TestCase):
     @patch("network_helper.nmcli")
     def test_malformed_requests_never_invoke_nmcli(self, run):
         requests = [
-            None, [], "secret123", 1, {}, {"operation": None},
-            {"operation": "wifi"}, {"operation": "wifi", "enabled": "false"},
+            None,
+            [],
+            "secret123",
+            1,
+            {},
+            {"operation": None},
+            {"operation": "wifi"},
+            {"operation": "wifi", "enabled": "false"},
             {"operation": "wifi", "enabled": 0},
             {"operation": "connect"},
             *({"operation": "connect", "network": value} for value in (None, [], "secret123", 1)),
-            *({"operation": "connect", "network": access_point(), "password": value} for value in (None, [], {}, 123, "\ud800")),
+            *(
+                {"operation": "connect", "network": access_point(), "password": value}
+                for value in (None, [], {}, 123, "\ud800")
+            ),
             {"operation": "connect", "network": access_point(), "ssid": None},
-            *({"operation": "connect", "network": access_point(**{field: None}), "password": "secret123"} for field in ("device", "bssid", "uuid", "ssid")),
-            *({"operation": "connect", "network": access_point(**{field: "false"}), "password": "secret123"} for field in ("advanced", "hidden", "requiresSsid", "protected")),
-            {"operation": "connect", "network": access_point(device="bad\0device"), "password": "secret123"},
+            *(
+                {
+                    "operation": "connect",
+                    "network": access_point(**{field: None}),
+                    "password": "secret123",
+                }
+                for field in ("device", "bssid", "uuid", "ssid")
+            ),
+            *(
+                {
+                    "operation": "connect",
+                    "network": access_point(**{field: "false"}),
+                    "password": "secret123",
+                }
+                for field in ("advanced", "hidden", "requiresSsid", "protected")
+            ),
+            {
+                "operation": "connect",
+                "network": access_point(device="bad\0device"),
+                "password": "secret123",
+            },
             {"operation": "connect", "network": access_point(bssid=""), "password": "secret123"},
         ]
         for index, request in enumerate(requests):
@@ -330,16 +392,24 @@ class NetworkTests(unittest.TestCase):
         failures = [
             (FileNotFoundError("secret123"), "not installed"),
             (PermissionError("secret123"), "Check permissions"),
-            (subprocess.TimeoutExpired(["nmcli"], 55, output="secret123", stderr="secret123"),
-             "did not respond in time"),
+            (
+                subprocess.TimeoutExpired(["nmcli"], 55, output="secret123", stderr="secret123"),
+                "did not respond in time",
+            ),
         ]
         for failure, message in failures:
             with self.subTest(failure=type(failure).__name__):
                 run.reset_mock()
                 run.side_effect = failure
-                result = self.run_main(json.dumps({
-                    "operation": "connect", "network": access_point(), "password": "secret123",
-                }))
+                result = self.run_main(
+                    json.dumps(
+                        {
+                            "operation": "connect",
+                            "network": access_point(),
+                            "password": "secret123",
+                        }
+                    )
+                )
                 self.assertFalse(result["ok"])
                 self.assertIn(message, result["error"])
                 self.assertNotIn("secret123", repr(result))
@@ -371,14 +441,21 @@ class NetworkTests(unittest.TestCase):
         profiles = [profile(name="Desk", uuid="work-id"), profile(name="Guest", uuid="guest-id")]
         entries = network.build_networks(
             [["", profiles[0]["ssid"], "AA:BB", "74", "WPA2", "wlan0"]],
-            [{"name": "wlan0", "managed": True}], profiles, {},
+            [{"name": "wlan0", "managed": True}],
+            profiles,
+            {},
         )
-        self.assertEqual({row["profileLabel"]: row["uuid"] for row in entries},
-                         {"Desk": "work-id", "Guest": "guest-id"})
+        self.assertEqual(
+            {row["profileLabel"]: row["uuid"] for row in entries},
+            {"Desk": "work-id", "Guest": "guest-id"},
+        )
 
     def test_bssid_pinned_saved_profile_is_preserved(self):
         adapters = [{"name": "wlan0", "managed": True}]
-        aps = [["", "Home", "AA:BB", "20", "WPA2", "wlan0"], ["", "Home", "AA:CC", "90", "WPA2", "wlan0"]]
+        aps = [
+            ["", "Home", "AA:BB", "20", "WPA2", "wlan0"],
+            ["", "Home", "AA:CC", "90", "WPA2", "wlan0"],
+        ]
         entries = network.build_networks(aps, adapters, [profile(ssid="Home", bssid="AA:BB")], {})
         self.assertEqual(len(entries), 2)
         saved = next(entry for entry in entries if entry["saved"])
@@ -387,7 +464,10 @@ class NetworkTests(unittest.TestCase):
 
     def test_distinct_bssid_pinned_profiles_remain_selectable(self):
         adapters = [{"name": "wlan0", "managed": True}]
-        aps = [["", "Home", "AA:BB", "20", "WPA2", "wlan0"], ["*", "Home", "AA:CC", "90", "WPA2", "wlan0"]]
+        aps = [
+            ["", "Home", "AA:BB", "20", "WPA2", "wlan0"],
+            ["*", "Home", "AA:CC", "90", "WPA2", "wlan0"],
+        ]
         profiles = [
             profile(uuid="first", ssid="Home", bssid="AA:BB"),
             profile(uuid="second", ssid="Home", bssid="AA:CC"),
@@ -395,19 +475,31 @@ class NetworkTests(unittest.TestCase):
         entries = network.build_networks(aps, adapters, profiles, {"wlan0": "second"})
         self.assertEqual(len(entries), 2)
         self.assertEqual(len({entry["id"] for entry in entries}), 2)
-        self.assertEqual({entry["uuid"]: entry["bssid"] for entry in entries}, {"first": "AA:BB", "second": "AA:CC"})
-        self.assertEqual({row["profileLabel"]: row["uuid"] for row in entries}, {"AA:BB": "first", "AA:CC": "second"})
+        self.assertEqual(
+            {entry["uuid"]: entry["bssid"] for entry in entries},
+            {"first": "AA:BB", "second": "AA:CC"},
+        )
+        self.assertEqual(
+            {row["profileLabel"]: row["uuid"] for row in entries},
+            {"AA:BB": "first", "AA:CC": "second"},
+        )
         self.assertTrue(all(entry["saved"] and entry["available"] for entry in entries))
         self.assertEqual([entry["uuid"] for entry in entries if entry["active"]], ["second"])
 
     def test_unpinned_duplicate_profiles_remain_selectable(self):
         adapters = [{"name": "wlan0", "managed": True}]
-        aps = [["", "Home", "AA:BB", "90", "WPA2", "wlan0"], ["*", "Home", "AA:CC", "20", "WPA2", "wlan0"]]
+        aps = [
+            ["", "Home", "AA:BB", "90", "WPA2", "wlan0"],
+            ["*", "Home", "AA:CC", "20", "WPA2", "wlan0"],
+        ]
         profiles = [profile(uuid="first", ssid="Home"), profile(uuid="second", ssid="Home")]
         entries = network.build_networks(aps, adapters, profiles, {"wlan0": "second"})
         self.assertEqual(len(entries), 2)
         self.assertEqual(len({entry["id"] for entry in entries}), 2)
-        self.assertEqual({entry["uuid"]: entry["bssid"] for entry in entries}, {"first": "AA:BB", "second": "AA:CC"})
+        self.assertEqual(
+            {entry["uuid"]: entry["bssid"] for entry in entries},
+            {"first": "AA:BB", "second": "AA:CC"},
+        )
         # A scan can select a different AP; it isn't a stable profile label.
         self.assertTrue(all(row["profileLabel"] == row["uuid"] for row in entries))
         self.assertTrue(all(entry["saved"] and entry["available"] for entry in entries))
@@ -415,10 +507,15 @@ class NetworkTests(unittest.TestCase):
 
     def test_hidden_enterprise_and_out_of_range(self):
         adapters = [{"name": "wlan0", "managed": True}]
-        aps = [["", "", "AA:BB", "20", "WPA2", "wlan0"], ["", "Office", "AA:CC", "90", "WPA2 802.1X", "wlan0"]]
+        aps = [
+            ["", "", "AA:BB", "20", "WPA2", "wlan0"],
+            ["", "Office", "AA:CC", "90", "WPA2 802.1X", "wlan0"],
+        ]
         entries = network.build_networks(aps, adapters, [profile(hidden=True)], {})
         self.assertTrue(next(entry for entry in entries if entry["name"] == "Office")["advanced"])
-        self.assertTrue(next(entry for entry in entries if entry["name"] == "Hidden network")["requiresSsid"])
+        self.assertTrue(
+            next(entry for entry in entries if entry["name"] == "Hidden network")["requiresSsid"]
+        )
         saved = next(entry for entry in entries if entry["saved"])
         self.assertFalse(saved["available"])
         self.assertTrue(saved["hidden"])
@@ -431,10 +528,15 @@ class NetworkTests(unittest.TestCase):
             ["", "", "AA:CC", "90", "WPA2", "wlan0"],
         ]
         entries = network.build_networks(
-            aps, adapters, [profile(hidden=True, ssid="Private")], {"wlan0": "saved-uuid"},
+            aps,
+            adapters,
+            [profile(hidden=True, ssid="Private")],
+            {"wlan0": "saved-uuid"},
         )
-        self.assertEqual([(row["name"], row["active"], row["signal"]) for row in entries],
-                         [("Private", True, 65), ("Hidden network", False, 90)])
+        self.assertEqual(
+            [(row["name"], row["active"], row["signal"]) for row in entries],
+            [("Private", True, 65), ("Hidden network", False, 90)],
+        )
         self.assertTrue(entries[0]["saved"] and entries[0]["available"] and entries[0]["hidden"])
         self.assertFalse(entries[0]["requiresSsid"])
         self.assertTrue(entries[1]["requiresSsid"])
@@ -465,7 +567,9 @@ class NetworkTests(unittest.TestCase):
     @patch("network_helper.nmcli")
     def test_new_password_uses_ask_stdin_only(self, run):
         run.return_value = subprocess.CompletedProcess([], 0, "private-value", "private-value")
-        result = network.action({"operation": "connect", "network": access_point(), "password": "private-value"})
+        result = network.action(
+            {"operation": "connect", "network": access_point(), "password": "private-value"}
+        )
         args = run.call_args.args[0]
         self.assertIn("--ask", args)
         self.assertNotIn("password", args)
@@ -477,13 +581,23 @@ class NetworkTests(unittest.TestCase):
     def test_saved_password_uses_octal_utf8_stdin_only(self, run):
         run.return_value = subprocess.CompletedProcess([], 0, "", "")
         password = " é\\"
-        network.action({"operation": "connect", "network": access_point(uuid="saved-uuid"), "password": password})
+        network.action(
+            {
+                "operation": "connect",
+                "network": access_point(uuid="saved-uuid"),
+                "password": password,
+            }
+        )
         args = run.call_args.args[0]
         self.assertEqual(args[-2:], ["passwd-file", "/dev/stdin"])
-        self.assertEqual(run.call_args.kwargs["stdin"], "802-11-wireless-security.psk:\\040\\303\\251\\134\n")
+        self.assertEqual(
+            run.call_args.kwargs["stdin"], "802-11-wireless-security.psk:\\040\\303\\251\\134\n"
+        )
         self.assertNotIn(password, args)
 
-    @unittest.skipUnless(sys.platform == "linux", "Requires native Linux GLib password-file decoding")
+    @unittest.skipUnless(
+        sys.platform == "linux", "Requires native Linux GLib password-file decoding"
+    )
     @patch("network_helper.nmcli")
     def test_saved_password_uses_password_file_stdin_only(self, run):
         run.return_value = subprocess.CompletedProcess([], 0, "", "")
@@ -498,7 +612,13 @@ class NetworkTests(unittest.TestCase):
         ]
         for index, password in enumerate(passwords):
             with self.subTest(case=index):
-                network.action({"operation": "connect", "network": access_point(uuid="saved-uuid"), "password": password})
+                network.action(
+                    {
+                        "operation": "connect",
+                        "network": access_point(uuid="saved-uuid"),
+                        "password": password,
+                    }
+                )
                 args = run.call_args.args[0]
                 self.assertEqual(args[-2:], ["passwd-file", "/dev/stdin"])
                 self.assertEqual(decode_password_file(run.call_args.kwargs["stdin"]), password)
@@ -515,7 +635,14 @@ class NetworkTests(unittest.TestCase):
     @patch("network_helper.nmcli")
     def test_hidden_connection_preserves_exact_ssid(self, run):
         run.return_value = subprocess.CompletedProcess([], 0, "", "")
-        network.action({"operation": "connect", "network": access_point(hidden=True, requiresSsid=True), "ssid": " :東京\\ ", "password": "secret123"})
+        network.action(
+            {
+                "operation": "connect",
+                "network": access_point(hidden=True, requiresSsid=True),
+                "ssid": " :東京\\ ",
+                "password": "secret123",
+            }
+        )
         self.assertIn(" :東京\\ ", run.call_args.args[0])
         self.assertEqual(run.call_args.args[0][-2:], ["hidden", "yes"])
 
@@ -523,7 +650,11 @@ class NetworkTests(unittest.TestCase):
     def test_unsafe_password_or_enterprise_never_runs_command(self, run):
         for request in (
             {"operation": "connect", "network": access_point(), "password": "line\nbreak"},
-            {"operation": "connect", "network": access_point(advanced=True), "password": "secret123"},
+            {
+                "operation": "connect",
+                "network": access_point(advanced=True),
+                "password": "secret123",
+            },
         ):
             with self.assertRaises(network.NetworkError):
                 network.action(request)
@@ -544,12 +675,16 @@ class NetworkTests(unittest.TestCase):
             for code, message in cases:
                 with self.subTest(protected=protected, code=code):
                     run.reset_mock()
-                    run.return_value = subprocess.CompletedProcess([], code, "secret123", "secret123")
-                    result = network.action({
-                        "operation": "connect",
-                        "network": access_point(uuid="saved-uuid", protected=protected),
-                        "password": "secret123",
-                    })
+                    run.return_value = subprocess.CompletedProcess(
+                        [], code, "secret123", "secret123"
+                    )
+                    result = network.action(
+                        {
+                            "operation": "connect",
+                            "network": access_point(uuid="saved-uuid", protected=protected),
+                            "password": "secret123",
+                        }
+                    )
                     run.assert_called_once()
                     self.assertEqual(result["ok"], code == 0)
                     self.assertEqual(result["needsPassword"], protected and code in (4, 7))
@@ -564,15 +699,20 @@ class NetworkTests(unittest.TestCase):
         for code in (0, 4):
             with self.subTest(code=code):
                 self.cache_path.write_text("before connection")
+
                 def connect(*args, code=code, **kwargs):
                     self.assertFalse(self.cache_path.exists())
                     self.cache_path.write_text("status polled during connection")
                     return subprocess.CompletedProcess([], code, "", "")
+
                 run.reset_mock()
                 run.side_effect = connect
-                result = network.action({
-                    "operation": "connect", "network": access_point(uuid="saved-uuid"),
-                })
+                result = network.action(
+                    {
+                        "operation": "connect",
+                        "network": access_point(uuid="saved-uuid"),
+                    }
+                )
                 run.assert_called_once()
                 self.assertEqual(result["ok"], code == 0)
                 self.assertFalse(self.cache_path.exists())
@@ -584,9 +724,13 @@ class NetworkTests(unittest.TestCase):
                 with self.subTest(enabled=enabled, code=code):
                     self.cache_path.write_text("previous cache")
                     run.reset_mock()
-                    run.return_value = subprocess.CompletedProcess([], code, "private-value", "private-value")
+                    run.return_value = subprocess.CompletedProcess(
+                        [], code, "private-value", "private-value"
+                    )
                     result = network.action({"operation": "wifi", "enabled": enabled})
-                    run.assert_called_once_with(["--wait", "10", "radio", "wifi", "on" if enabled else "off"])
+                    run.assert_called_once_with(
+                        ["--wait", "10", "radio", "wifi", "on" if enabled else "off"]
+                    )
                     self.assertEqual(result["ok"], code == 0)
                     self.assertEqual(bool(result["error"]), code != 0)
                     self.assertNotIn("private-value", repr(result))
@@ -600,22 +744,25 @@ class NetworkTests(unittest.TestCase):
             {"operation": "disconnect", "network": {"device": ""}},
             {"operation": "disconnect", "network": {"device": "wlan0\0"}},
         ):
-            with self.subTest(payload=payload):
-                with self.assertRaises(network.NetworkError):
-                    network.action(payload)
+            with self.subTest(payload=payload), self.assertRaises(network.NetworkError):
+                network.action(payload)
         run.assert_not_called()
 
         for code in (0, 10):
             with self.subTest(code=code):
                 self.cache_path.write_text("previous cache")
+
                 def disconnect(*args, code=code, **kwargs):
                     self.assertFalse(self.cache_path.exists())
                     self.cache_path.write_text("status polled during disconnect")
                     return subprocess.CompletedProcess([], code, "private-value", "private-value")
+
                 run.reset_mock()
                 run.side_effect = disconnect
                 result = network.action({"operation": "disconnect", "network": {"device": "wlan0"}})
-                run.assert_called_once_with(["--wait", "15", "device", "disconnect", "wlan0"], timeout=25)
+                run.assert_called_once_with(
+                    ["--wait", "15", "device", "disconnect", "wlan0"], timeout=25
+                )
                 self.assertEqual(result["ok"], code == 0)
                 self.assertEqual(bool(result["error"]), code != 0)
                 self.assertNotIn("private-value", repr(result))
@@ -624,8 +771,11 @@ class NetworkTests(unittest.TestCase):
     @patch("network_helper.nmcli")
     @patch("network_helper.query")
     def test_rescan_without_usable_adapter_is_not_success(self, query, run):
-        for devices in ([], [["eth0", "ethernet", "connected"]],
-                        [["wlan0", "wifi", "unavailable"], ["wlan1", "wifi", "unmanaged"]]):
+        for devices in (
+            [],
+            [["eth0", "ethernet", "connected"]],
+            [["wlan0", "wifi", "unavailable"], ["wlan1", "wifi", "unmanaged"]],
+        ):
             with self.subTest(devices=devices):
                 query.return_value = devices
                 result = self.run_main('{"operation":"scan"}')
@@ -649,10 +799,14 @@ class NetworkTests(unittest.TestCase):
                 run.side_effect = [subprocess.CompletedProcess([], code, "", "") for code in codes]
                 result = self.run_main('{"operation":"scan"}')
                 self.assertEqual(result["ok"], not any(codes))
-                self.assertEqual([call.args[0][-1] for call in run.call_args_list], ["wlan0", "wlan1"])
+                self.assertEqual(
+                    [call.args[0][-1] for call in run.call_args_list], ["wlan0", "wlan1"]
+                )
                 if any(codes):
-                    self.assertIn("wlan" + str(next(index for index, code in enumerate(codes) if code)),
-                                  result["error"])
+                    self.assertIn(
+                        "wlan" + str(next(index for index, code in enumerate(codes) if code)),
+                        result["error"],
+                    )
                     self.assertIn("Cached networks", result["error"])
 
     @patch("network_helper.subprocess.run")
@@ -686,7 +840,11 @@ class NetworkTests(unittest.TestCase):
     def test_cached_status_preserves_ethernet_and_never_scans(self, query, profiles):
         query.side_effect = [
             [["connected", "full", "enabled", "enabled"]],
-            [["eth0", "ethernet", "connected", "Cable", "wired"], ["wlan0", "wifi", "disconnected", "", ""], ["docker0", "bridge", "connected (externally)", "docker", "bridge"]],
+            [
+                ["eth0", "ethernet", "connected", "Cable", "wired"],
+                ["wlan0", "wifi", "disconnected", "", ""],
+                ["docker0", "bridge", "connected (externally)", "docker", "bridge"],
+            ],
             [],
         ]
         state = network.status()
@@ -700,20 +858,37 @@ class NetworkTests(unittest.TestCase):
     def test_bar_summary_uses_only_general_and_device_status(self, run):
         def response(stdout):
             return subprocess.CompletedProcess([], 0, stdout, "")
+
         run.side_effect = [
             response("connected (site only):limited:enabled:enabled\n"),
-            response("wlan0:wifi:connected:Radio:wifi-id\neth0:ethernet:connected:Caf\\:é:wired-id\n"),
+            response(
+                "wlan0:wifi:connected:Radio:wifi-id\neth0:ethernet:connected:Caf\\:é:wired-id\n"
+            ),
         ]
-        self.assertEqual(self.run_main("", "summary"), {"ok": True, "state": {
-            "connected": True, "connectionName": "Caf:é", "connectionType": "ethernet",
-        }})
-        self.assertEqual([call.args[0][-2:] for call in run.call_args_list], [
-            ["general", "status"], ["device", "status"],
-        ])
+        self.assertEqual(
+            self.run_main("", "summary"),
+            {
+                "ok": True,
+                "state": {
+                    "connected": True,
+                    "connectionName": "Caf:é",
+                    "connectionType": "ethernet",
+                },
+            },
+        )
+        self.assertEqual(
+            [call.args[0][-2:] for call in run.call_args_list],
+            [
+                ["general", "status"],
+                ["device", "status"],
+            ],
+        )
         self.assertFalse(self.cache_path.exists())
 
-        run.side_effect = [response("connected:full:enabled:enabled\n"),
-                           subprocess.CompletedProcess([], 1, "", "private-value")]
+        run.side_effect = [
+            response("connected:full:enabled:enabled\n"),
+            subprocess.CompletedProcess([], 1, "", "private-value"),
+        ]
         result = self.run_main("", "summary")
         self.assertFalse(result["ok"])
         self.assertNotIn("state", result)

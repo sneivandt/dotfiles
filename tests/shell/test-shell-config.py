@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Isolated regressions for managed shell startup and command helpers."""
 
+from pathlib import Path
 import sys
 import unittest
-from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 

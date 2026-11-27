@@ -121,19 +121,28 @@ LINTERS = {
         "setup": f"sh {LINUX}install-luacheck.sh",
         "test_function": "test_luacheck",
     },
+    "structured": {
+        "name": "Structured files (JSON/TOML/YAML)",
+        "setup": ":",
+        "test_function": "test_structured_files",
+    },
 }
 
 LINTER_STAGES = {spec["name"]: stage for stage, spec in LINTERS.items()}
 
-EXTENSIONLESS_PYTHON_SCRIPTS = frozenset({
-    "symlinks/local/bin/code-insiders",
-})
+EXTENSIONLESS_PYTHON_SCRIPTS = frozenset(
+    {
+        "symlinks/local/bin/code-insiders",
+    }
+)
 
-SHELL_SCRIPT_EXACT = frozenset({
-    "hooks/pre-commit",
-    "symlinks/bashrc",
-    "symlinks/bash_profile",
-})
+SHELL_SCRIPT_EXACT = frozenset(
+    {
+        "hooks/pre-commit",
+        "symlinks/bashrc",
+        "symlinks/bash_profile",
+    }
+)
 
 SHELL_SCRIPT_PREFIXES = (
     "symlinks/config/git/templates/hooks/",
@@ -143,10 +152,12 @@ SHELL_SCRIPT_PREFIXES = (
 SHELL_SCRIPT_EXTENSIONS = (".sh", ".bash")
 POWERSHELL_EXTENSIONS = (".ps1", ".psm1", ".psd1")
 LUA_EXTENSIONS = (".lua",)
+STRUCTURED_EXTENSIONS = (".json", ".toml", ".yml", ".yaml")
 
 LINTER_CONFIG_FILES = {
     "python": frozenset({".github/linters/ruff.toml", LINUX + "install-ruff.sh"}),
     "lua": frozenset({".github/linters/luacheckrc", LINUX + "install-luacheck.sh"}),
+    "structured": frozenset({LINUX + "check-structured-files.py", LINUX + "workflow_yaml.py"}),
 }
 
 _PYTHON_SHEBANG_RE = re.compile(r"^python([0-9]+(\.[0-9]+)*)?$")
@@ -179,6 +190,10 @@ def lua_script(path: str) -> bool:
     return path.endswith(LUA_EXTENSIONS)
 
 
+def structured_file(path: str) -> bool:
+    return path.endswith(STRUCTURED_EXTENSIONS)
+
+
 def workflow_file(path: str) -> bool:
     parts = path.split("/")
     return (
@@ -194,40 +209,48 @@ LINTER_MATCHERS = {
     "powershell": powershell_script,
     "python": python_script,
     "lua": lua_script,
+    "structured": structured_file,
     "workflows": workflow_file,
 }
 
-WRAPPER_PARITY_PATHS = frozenset({
-    "tests/wrapper/parity-contract.json",
-    "tests/wrapper/test-parity.py",
-})
+WRAPPER_PARITY_PATHS = frozenset(
+    {
+        "tests/wrapper/parity-contract.json",
+        "tests/wrapper/test-parity.py",
+    }
+)
 
-WRAPPER_LINUX_EXACT = frozenset({
-    "dotfiles.sh",
-    "tests/wrapper/test-shell-wrapper.sh",
-})
+WRAPPER_LINUX_EXACT = frozenset(
+    {
+        "dotfiles.sh",
+        "tests/wrapper/test-shell-wrapper.sh",
+    }
+)
 
-WRAPPER_WINDOWS_EXACT = frozenset({
-    "dotfiles.ps1",
-    "tests/wrapper/Test-ShellWrapper.ps1",
-})
+WRAPPER_WINDOWS_EXACT = frozenset(
+    {
+        "dotfiles.ps1",
+        "tests/wrapper/Test-ShellWrapper.ps1",
+    }
+)
 
-CI_CONTRACT_GUARD_PATHS = frozenset({
-    ".github/workflows/ci.yml",
-    ".github/workflows/pages.yml",
-    ".github/workflows/mutation.yml",
-    ".github/workflows/dependency-security.yml",
-    LINUX + "ci_metadata.py",
-    LINUX + "workflow_yaml.py",
-    LINUX + "classify-ci-changes.py",
-    LINUX + "check-ci-contract.py",
-})
+CI_CONTRACT_GUARD_PATHS = frozenset(
+    {
+        ".github/workflows/ci.yml",
+        ".github/workflows/pages.yml",
+        ".github/workflows/mutation.yml",
+        ".github/workflows/dependency-security.yml",
+        LINUX + "ci_metadata.py",
+        LINUX + "workflow_yaml.py",
+        LINUX + "classify-ci-changes.py",
+        LINUX + "check-ci-contract.py",
+    }
+)
 
 
 def config_guard_path(path: str) -> bool:
-    return (
-        (path.startswith("conf/") and path.endswith(".toml"))
-        or path.startswith(("symlinks/", "system/", "packages/"))
+    return (path.startswith("conf/") and path.endswith(".toml")) or path.startswith(
+        ("symlinks/", "system/", "packages/")
     )
 
 
@@ -320,7 +343,16 @@ def snapshot_commit(
 ) -> None:
     """Create a detached isolated checkout of a commit with hooks disabled."""
     subprocess.run(
-        ["git", "clone", "--quiet", "--template=", "--shared", "--no-checkout", str(root), str(destination)],
+        [
+            "git",
+            "clone",
+            "--quiet",
+            "--template=",
+            "--shared",
+            "--no-checkout",
+            str(root),
+            str(destination),
+        ],
         cwd=root,
         env=env,
         check=True,
@@ -349,7 +381,8 @@ def _cli(argv: list[str]) -> int:
             return 2
         raw = sys.stdin.buffer.read()
         matched = [
-            entry for entry in raw.split(b"\0")
+            entry
+            for entry in raw.split(b"\0")
             if entry and matcher(entry.decode("utf-8", errors="surrogateescape"))
         ]
         if argv[0] in {"has-linter", "has-guard"}:
@@ -359,7 +392,9 @@ def _cli(argv: list[str]) -> int:
         return 0
     if len(argv) == 2 and argv[0] == "ruff-inputs":
         targets = ruff_inputs(Path(argv[1]))
-        sys.stdout.buffer.write(b"\0".join(item.encode("utf-8", errors="surrogateescape") for item in targets) + b"\0")
+        sys.stdout.buffer.write(
+            b"\0".join(item.encode("utf-8", errors="surrogateescape") for item in targets) + b"\0"
+        )
         return 0
     print(
         "Usage: ci_metadata.py <filter-linter|has-linter|has-guard <category>|ruff-inputs <dir>>",

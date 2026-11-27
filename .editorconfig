@@ -10,12 +10,23 @@ indent_size = 2
 
 [*.rs]
 indent_size = 4
+max_line_length = 100
+
+[*.py]
+indent_size = 4
+max_line_length = 100
+
+[*.qml]
+indent_size = 4
 
 [*.toml]
-indent_size = 4
+indent_size = 2
 
 [*.{ps1,psm1,psd1,psxml}]
 indent_style = space
+indent_size = 4
+
+[symlinks/config/hypr/**/*.lua]
 indent_size = 4
 
 [Makefile]
@@ -34,6 +45,9 @@ indent_size = 2
 
 [*.json]
 indent_size = 2
+
+[{.vscode/*.json,symlinks/config/Code/User/*.json,symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json}]
+indent_size = 4
 
 [*.ini]
 indent_size = 2

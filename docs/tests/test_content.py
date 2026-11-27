@@ -5,7 +5,6 @@ import runpy
 import tempfile
 import unittest
 
-
 SCRIPTS = Path(__file__).resolve().parents[2] / ".github/workflows/scripts/linux"
 LINKS = runpy.run_path(str(SCRIPTS / "check-doc-links.py"))
 SITE = runpy.run_path(str(SCRIPTS / "check-doc-site.py"))
@@ -17,7 +16,9 @@ class SourceLinkTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         (self.root / "docs").mkdir()
-        (self.root / "docs/target with spaces.md").write_text("# Target\n## Details\n", encoding="utf-8")
+        (self.root / "docs/target with spaces.md").write_text(
+            "# Target\n## Details\n", encoding="utf-8"
+        )
         (self.root / "source.rs").write_text("first\nsecond\n", encoding="utf-8")
 
     def check_link(self, target):
@@ -94,7 +95,8 @@ class FrontmatterTests(unittest.TestCase):
             errors = []
             fields = SITE["frontmatter_fields"](
                 f"---\ntitle: {title}\ndescription: A useful description.\n---\n",
-                name, errors,
+                name,
+                errors,
             )
             self.assertEqual(errors, [])
             self.assertEqual(fields["title"], title)
@@ -116,9 +118,13 @@ class FrontmatterTests(unittest.TestCase):
         self.assertEqual(page.robots, ["noindex, follow"])
         self.assertEqual(page.descriptions, ["Read & act."])
         self.assertEqual(page.og_types, ["article"])
-        self.assertEqual(page.og_images, ["https://dotfiles.stuartneivandt.com/assets/og-image.png"])
+        self.assertEqual(
+            page.og_images, ["https://dotfiles.stuartneivandt.com/assets/og-image.png"]
+        )
         self.assertEqual(page.twitter_cards, ["summary_large_image"])
-        self.assertEqual(page.twitter_images, ["https://dotfiles.stuartneivandt.com/assets/og-image.png"])
+        self.assertEqual(
+            page.twitter_images, ["https://dotfiles.stuartneivandt.com/assets/og-image.png"]
+        )
         self.assertEqual(page.apple_touch_icons, ["/apple-touch-icon.png"])
         self.assertIn("/apple-touch-icon.png", page.assets)
         self.assertIn("https://dotfiles.stuartneivandt.com/assets/og-image.png", page.assets)
@@ -145,22 +151,22 @@ class FrontmatterTests(unittest.TestCase):
                     '<a href="https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/x/SKILL.md">skill</a>'
                     '<h2 id="development-setup">Setup</h2>'
                     '<h2 id="2-find-the-owning-files">Find</h2>'
-                    '</div></div>'
+                    "</div></div>"
                     '<div class="edit-link"><a href="https://example.invalid/wrong">Edit</a></div>'
                 ),
                 "/task-reference.html": SITE["Page"](
                     '<div class="vp-doc"><div>'
-                    '<table><tbody><tr><td><code>agent-packages</code></td>'
+                    "<table><tbody><tr><td><code>agent-packages</code></td>"
                     '<td><a href="./agent-packages">Agent packages</a></td></tr></tbody></table>'
-                    '</div></div>'
+                    "</div></div>"
                     '<div class="edit-link"><a href="https://github.com/sneivandt/dotfiles/edit/main/docs/content/reference/task-reference.md">Edit</a></div>'
                 ),
                 "/agent-packages.html": SITE["Page"](
                     '<nav class="VPDocAsideOutline"><a class="outline-link" href="#what-it-does">What</a></nav>'
                     '<div class="vp-doc"><div>'
-                    '<table><tbody><tr><td>wrong</td></tr></tbody></table>'
+                    "<table><tbody><tr><td>wrong</td></tr></tbody></table>"
                     '<h2 id="what-it-does">What</h2>'
-                    '</div></div>'
+                    "</div></div>"
                     '<div class="edit-link"><a href="https://github.com/sneivandt/dotfiles/edit/main/docs/content/reference/agent-packages.md">Edit</a></div>'
                 ),
             }

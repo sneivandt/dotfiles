@@ -3,6 +3,7 @@
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import contextlib
 import json
 import math
 import os
@@ -23,7 +24,6 @@ DEFAULT_QUOTES = (
     ("MSFT", "MSFT", "Microsoft", "$"),
     ("TSLA", "TSLA", "Tesla", "$"),
     ("GOOG", "GOOG", "Alphabet", "$"),
-    ("SPCX", "SPCX", "SpaceX", "$"),
     ("BTC-USD", "BTC", "Bitcoin", "$"),
 )
 QUOTES = DEFAULT_QUOTES
@@ -83,7 +83,10 @@ def load_quotes(path=None):
         return QUOTES
     parsed = _parse_configured_quotes(raw)
     if parsed is None:
-        print(f"Ignoring invalid market config {target}: expected a non-empty list of quote objects", file=sys.stderr)
+        print(
+            f"Ignoring invalid market config {target}: expected a non-empty list of quote objects",
+            file=sys.stderr,
+        )
         return QUOTES
     return parsed
 
@@ -107,7 +110,11 @@ def parse_quote(payload, symbol, fallback_name, prefix, now):
     timestamps = result.get("timestamp", [])
     history = [value for value in closes if number(value)] or [price]
     history_start = next(
-        (stamp for value, stamp in zip(closes, timestamps, strict=False) if number(value) and number(stamp)),
+        (
+            stamp
+            for value, stamp in zip(closes, timestamps, strict=False)
+            if number(value) and number(stamp)
+        ),
         meta.get("firstTradeDate", now),
     )
     if not number(history_start):
@@ -120,9 +127,14 @@ def parse_quote(payload, symbol, fallback_name, prefix, now):
     if not number(year_change):
         raise ValueError("Invalid history change")
     return {
-        "symbol": symbol, "name": name.strip(), "prefix": prefix,
-        "price": price, "change": change, "history": history,
-        "historyStart": history_start, "yearChange": round(year_change, 4),
+        "symbol": symbol,
+        "name": name.strip(),
+        "prefix": prefix,
+        "price": price,
+        "change": change,
+        "history": history,
+        "historyStart": history_start,
+        "yearChange": round(year_change, 4),
         "yearLow": low if number(low) else min(history),
         "yearHigh": high if number(high) else max(history),
     }
@@ -137,16 +149,20 @@ def fetch_quote(query, symbol, fallback_name, prefix, now):
         body = response.read(MAX_RESPONSE_BYTES + 1)
     if len(body) > MAX_RESPONSE_BYTES:
         raise ValueError("Upstream market response exceeded size limit")
-    return parse_quote(json.loads(body.decode("utf-8", errors="replace")), symbol, fallback_name, prefix, now)
+    return parse_quote(
+        json.loads(body.decode("utf-8", errors="replace")), symbol, fallback_name, prefix, now
+    )
 
 
 def read_cache(path):
     empty = {"quotes": [], "updated": 0}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        if (payload.get("version") != CACHE_VERSION
-                or not isinstance(payload.get("quotes"), list)
-                or not number(payload.get("updated"))):
+        if (
+            payload.get("version") != CACHE_VERSION
+            or not isinstance(payload.get("quotes"), list)
+            or not number(payload.get("updated"))
+        ):
             return empty
         valid = [quote for quote in payload["quotes"] if valid_quote(quote)]
         return {"quotes": valid, "updated": payload["updated"]}
@@ -156,14 +172,29 @@ def read_cache(path):
 
 def valid_quote(quote):
     """Cached data crosses the same trust boundary as an upstream response."""
-    return (isinstance(quote, dict)
-            and all(isinstance(quote.get(key), str) and quote[key].strip()
-                    for key in ("symbol", "name", "prefix"))
-            and all(number(quote.get(key)) for key in
-                    ("price", "change", "historyStart", "yearChange", "yearLow", "yearHigh", "updated"))
-            and quote["updated"] > 0
-            and isinstance(quote.get("history"), list) and bool(quote["history"])
-            and all(number(value) for value in quote["history"]))
+    return (
+        isinstance(quote, dict)
+        and all(
+            isinstance(quote.get(key), str) and quote[key].strip()
+            for key in ("symbol", "name", "prefix")
+        )
+        and all(
+            number(quote.get(key))
+            for key in (
+                "price",
+                "change",
+                "historyStart",
+                "yearChange",
+                "yearLow",
+                "yearHigh",
+                "updated",
+            )
+        )
+        and quote["updated"] > 0
+        and isinstance(quote.get("history"), list)
+        and bool(quote["history"])
+        and all(number(value) for value in quote["history"])
+    )
 
 
 def fresh_quote(quote, now):
@@ -174,10 +205,12 @@ def fresh_cache(path, now, configured=None):
     quote_specs = QUOTES if configured is None else configured
     cached = read_cache(path)
     try:
-        if (len(cached["quotes"]) == len(quote_specs)
-                and {quote["symbol"] for quote in cached["quotes"]} == {item[1] for item in quote_specs}
-                and all(fresh_quote(quote, now) for quote in cached["quotes"])
-                and 0 <= now - path.stat().st_mtime < CACHE_TTL):
+        if (
+            len(cached["quotes"]) == len(quote_specs)
+            and {quote["symbol"] for quote in cached["quotes"]} == {item[1] for item in quote_specs}
+            and all(fresh_quote(quote, now) for quote in cached["quotes"])
+            and 0 <= now - path.stat().st_mtime < CACHE_TTL
+        ):
             return cached
     except OSError:
         pass
@@ -188,7 +221,11 @@ def write_cache(path, payload):
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=path.parent, prefix=".quotes-prices.", delete=False,
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=".quotes-prices.",
+            delete=False,
         ) as output:
             temporary = Path(output.name)
             json.dump(payload, output, separators=(",", ":"), allow_nan=False)
@@ -196,10 +233,8 @@ def write_cache(path, payload):
         temporary = None
     finally:
         if temporary is not None:
-            try:
+            with contextlib.suppress(OSError):
                 temporary.unlink(missing_ok=True)
-            except OSError:
-                pass
 
 
 def quotes(cache_dir, fetch=None, force=False, configured=None):
@@ -221,7 +256,8 @@ def quotes(cache_dir, fetch=None, force=False, configured=None):
             if force:
                 error = (
                     "Market data refresh is already in progress. Showing cached prices."
-                    if cached["quotes"] else "Market data refresh is already in progress."
+                    if cached["quotes"]
+                    else "Market data refresh is already in progress."
                 )
                 return {**cached, "error": error}
             return cached
@@ -242,7 +278,15 @@ def quotes(cache_dir, fetch=None, force=False, configured=None):
                 if valid_quote(quote):
                     return quote, True, None
                 reason = "invalid quote payload"
-            except (OSError, urllib.error.URLError, ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
+            except (
+                OSError,
+                urllib.error.URLError,
+                ValueError,
+                KeyError,
+                IndexError,
+                TypeError,
+                AttributeError,
+            ) as error:
                 reason = str(error) or type(error).__name__
             return cached_quote, False, f"Failed to fetch quote for {symbol}: {reason}"
 
@@ -255,7 +299,8 @@ def quotes(cache_dir, fetch=None, force=False, configured=None):
             if force:
                 error = (
                     "Could not refresh market data. Showing cached prices."
-                    if cached["quotes"] else "Could not refresh market data."
+                    if cached["quotes"]
+                    else "Could not refresh market data."
                 )
                 return {**cached, "error": error}
             for failure in failures:
@@ -264,8 +309,11 @@ def quotes(cache_dir, fetch=None, force=False, configured=None):
         for failure in failures:
             print(failure, file=sys.stderr)
         results = [quote for quote, _, _ in refreshed if quote is not None]
-        payload = {"version": CACHE_VERSION, "quotes": results,
-                   "updated": min(quote["updated"] for quote in results)}
+        payload = {
+            "version": CACHE_VERSION,
+            "quotes": results,
+            "updated": min(quote["updated"] for quote in results),
+        }
         try:
             write_cache(path, payload)
         except OSError as error:
@@ -275,11 +323,15 @@ def quotes(cache_dir, fetch=None, force=False, configured=None):
 
 def main(argv=()):
     parser = argparse.ArgumentParser(description="Fetch desktop market quotes.")
-    parser.add_argument("--force", action="store_true", help="Bypass fresh cache and refetch quotes.")
+    parser.add_argument(
+        "--force", action="store_true", help="Bypass fresh cache and refetch quotes."
+    )
     args = parser.parse_args(list(argv))
     configured = load_quotes()
     base = os.environ.get("XDG_CACHE_HOME")
-    cache_dir = (Path(base) if base and Path(base).is_absolute() else Path.home() / ".cache") / "quickshell-stocks"
+    cache_dir = (
+        Path(base) if base and Path(base).is_absolute() else Path.home() / ".cache"
+    ) / "quickshell-stocks"
     try:
         kwargs = {}
         if args.force:

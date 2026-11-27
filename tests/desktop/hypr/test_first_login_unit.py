@@ -6,9 +6,9 @@ import shlex
 import subprocess
 import sys
 import tempfile
-import tomllib
 import unittest
 
+import tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 UNIT = REPO_ROOT / "symlinks/config/systemd/user/dotfiles-first-login.service"
@@ -20,15 +20,23 @@ class GraphicalUnitTests(unittest.TestCase):
         groups = tomllib.loads(declarations.read_text()).values()
         for group in groups:
             for entry in group["units"]:
-                if not isinstance(entry, dict) or not entry.get("graphical") or not entry.get("enabled", True):
+                if (
+                    not isinstance(entry, dict)
+                    or not entry.get("graphical")
+                    or not entry.get("enabled", True)
+                ):
                     continue
                 unit = UNIT.with_name(entry["name"])
                 if not unit.exists():  # packaged unit, not a shipped definition
                     continue
                 with self.subTest(unit=unit.name):
                     lines = unit.read_text().splitlines()
-                    targets = {target for line in lines if line.startswith(("WantedBy=", "RequiredBy="))
-                               for target in line.split("=", 1)[1].split()}
+                    targets = {
+                        target
+                        for line in lines
+                        if line.startswith(("WantedBy=", "RequiredBy="))
+                        for target in line.split("=", 1)[1].split()
+                    }
                     self.assertEqual(targets, {"graphical-session.target"})
                     self.assertIn("PartOf=graphical-session.target", lines)
 
@@ -51,7 +59,7 @@ class FirstLoginTests(unittest.TestCase):
         self.snapshot.parent.mkdir(parents=True)
 
     def value(self, key):
-        value, = (line.split("=", 1)[1] for line in self.settings if line.startswith(key + "="))
+        (value,) = (line.split("=", 1)[1] for line in self.settings if line.startswith(key + "="))
         return value
 
     def expand(self, arg):
@@ -70,20 +78,39 @@ class FirstLoginTests(unittest.TestCase):
             if program == ":/bin/sh":
                 flags, script, name, marker, snapshot, directory = args
                 self.assertEqual((flags, name), ("-ec", "sh"))
-                self.assertEqual((self.expand(marker), self.expand(snapshot), self.expand(directory)),
-                                 (self.marker, self.snapshot, self.marker.parent))
+                self.assertEqual(
+                    (self.expand(marker), self.expand(snapshot), self.expand(directory)),
+                    (self.marker, self.snapshot, self.marker.parent),
+                )
                 for step in script.split("; "):
-                    self.assertIn(step.strip(), (
-                        'exec 9<"$3"', '/usr/bin/flock --nonblock --conflict-exit-code 75 9 || { rc=$?',
-                        'test "$rc" -ne 75 || echo "Deferred extensions queue is busy. The service will retry." >&2',
-                        'exit "$rc"', '}', 'test ! -L "$1"', 'test -f "$1"',
-                        '/usr/bin/cmp -s -- "$2" "$1"', '/usr/bin/rm -- "$1"',
-                    ))
-                command = ["/bin/sh", flags, script.replace("/usr/bin/rm", '"$FIXTURE_RM"'), name,
-                           self.marker, self.snapshot, self.expand(directory)]
+                    self.assertIn(
+                        step.strip(),
+                        (
+                            'exec 9<"$3"',
+                            "/usr/bin/flock --nonblock --conflict-exit-code 75 9 || { rc=$?",
+                            'test "$rc" -ne 75 || echo "Deferred extensions queue is busy. The service will retry." >&2',
+                            'exit "$rc"',
+                            "}",
+                            'test ! -L "$1"',
+                            'test -f "$1"',
+                            '/usr/bin/cmp -s -- "$2" "$1"',
+                            '/usr/bin/rm -- "$1"',
+                        ),
+                    )
+                command = [
+                    "/bin/sh",
+                    flags,
+                    script.replace("/usr/bin/rm", '"$FIXTURE_RM"'),
+                    name,
+                    self.marker,
+                    self.snapshot,
+                    self.expand(directory),
+                ]
                 args = []
             else:
-                self.assertIn(program, ("/usr/bin/test", "/usr/bin/install", "/usr/bin/cmp", "/usr/bin/rm"))
+                self.assertIn(
+                    program, ("/usr/bin/test", "/usr/bin/install", "/usr/bin/cmp", "/usr/bin/rm")
+                )
                 command = [rm if program == "/usr/bin/rm" else program]
             for arg in args:
                 if arg.startswith(("%h/", "%t/")):
@@ -130,7 +157,7 @@ class FirstLoginTests(unittest.TestCase):
         # it can. The old split post commands let mv win, then delete its work.
         rm = self.home / "race-at-unlink"
         rm.write_text(
-            '#!/bin/sh\nset -eu\nmarker=$2\n'
+            "#!/bin/sh\nset -eu\nmarker=$2\n"
             '/usr/bin/flock -n -E 42 "${marker%/*}" /usr/bin/mv -- "$marker.next" "$marker"'
             ' || test "$?" = 42\nexec /usr/bin/rm "$@"\n'
         )

@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import unittest
 
-
 SCRIPT = Path(__file__).resolve().parents[3] / "symlinks/config/hypr/scripts/lock-screen.sh"
 BASH = shutil.which("bash")
 MOCKS = r"""
@@ -57,9 +56,7 @@ class HypridleConfigTests(unittest.TestCase):
             general[1],
             r"(?m)^\s*lock_cmd\s*=\s*~/.config/hypr/scripts/lock-screen\.sh\s*$",
         )
-        self.assertRegex(
-            general[1], r"(?m)^\s*before_sleep_cmd\s*=\s*loginctl lock-session\s*$"
-        )
+        self.assertRegex(general[1], r"(?m)^\s*before_sleep_cmd\s*=\s*loginctl lock-session\s*$")
 
 
 @unittest.skipUnless(BASH, "Requires Bash (Git Bash on Windows)")

@@ -16,9 +16,9 @@
 # retain interval-only state checks. If the required contract changes, bump this
 # version and update the Rust callers in autopilot.rs.
 import json
+from pathlib import Path
 import sqlite3
 import sys
-from pathlib import Path
 
 con = sqlite3.connect(Path(sys.argv[1]).resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
 con.execute("PRAGMA busy_timeout=5000")

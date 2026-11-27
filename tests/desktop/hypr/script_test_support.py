@@ -7,7 +7,6 @@ import subprocess
 import unittest
 import uuid
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = REPO_ROOT / "symlinks/config/hypr/scripts"
 BASH = shutil.which("bash")

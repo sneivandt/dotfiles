@@ -5,7 +5,6 @@ import unittest
 
 from script_test_support import BASH, ScriptFixture
 
-
 MOCKS = r"""
 command() {
     if [ "$1" = "-v" ]; then

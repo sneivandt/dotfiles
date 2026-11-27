@@ -1,5 +1,6 @@
 """CI contract and aggregate gate regression tests."""
 
+from itertools import pairwise
 import json
 import os
 from pathlib import Path
@@ -33,7 +34,9 @@ class GateTests(unittest.TestCase):
             CONTRACT["check"](drifted)
 
     def test_scheduled_security_checks_are_independent_and_read_only(self):
-        workflow = CONTRACT["WORKFLOW"].with_name("dependency-security.yml").read_text(encoding="utf-8")
+        workflow = (
+            CONTRACT["WORKFLOW"].with_name("dependency-security.yml").read_text(encoding="utf-8")
+        )
         self.assertRegex(workflow, r"(?m)^  schedule:$")
         self.assertRegex(workflow, r"(?m)^    - cron: '.+'$")
         self.assertIn("  workflow_dispatch:", workflow)
@@ -58,15 +61,25 @@ class GateTests(unittest.TestCase):
         return needs
 
     def test_intentional_skips(self):
-        for paths in (["README.md"], ["dotfiles.ps1"], ["conf/packages.toml"], ["cli/src/main.rs"],
-                      ["symlinks/config/quickshell/bar/Bar.qml"], ["packages/apm/PKGBUILD"]):
+        for paths in (
+            ["README.md"],
+            ["dotfiles.ps1"],
+            ["conf/packages.toml"],
+            ["cli/src/main.rs"],
+            ["symlinks/config/quickshell/bar/Bar.qml"],
+            ["packages/apm/PKGBUILD"],
+        ):
             with self.subTest(paths=paths):
                 CONTRACT["check_results"](self.results(paths))
 
     def test_failures_cancellations_and_unexpected_skips(self):
         for job, result in (
-            ("classify-changes", "failure"), ("docs", "skipped"), ("docs", "cancelled"),
-            ("docs", "failure"), ("build-linux", "failure"), ("build-linux", "success"),
+            ("classify-changes", "failure"),
+            ("docs", "skipped"),
+            ("docs", "cancelled"),
+            ("docs", "failure"),
+            ("build-linux", "failure"),
+            ("build-linux", "success"),
         ):
             with self.subTest(job=job, result=result):
                 needs = self.results(["docs/content/development/testing.md"])
@@ -97,7 +110,8 @@ class GateTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     CONTRACT["check_results"](needs)
         gated_outputs = {
-            output for job, output in CONTRACT["JOB_CONDITIONS"].items()
+            output
+            for job, output in CONTRACT["JOB_CONDITIONS"].items()
             if job not in CONTRACT["INFORMATIONAL_JOBS"]
         }
         for output in sorted(gated_outputs):
@@ -117,12 +131,16 @@ class GateTests(unittest.TestCase):
         CONTRACT["check_pages"](pages, workflow)
         for broken in (
             pages.replace("github.event.workflow_run.event == 'push'", "true"),
-            pages.replace("github.event.workflow_run.head_repository.full_name == github.repository", "true"),
+            pages.replace(
+                "github.event.workflow_run.head_repository.full_name == github.repository", "true"
+            ),
             pages.replace("run-id: ${{ github.event.workflow_run.id }}", "run-id: 1"),
             pages.replace("github-pages-${{ github.run_attempt }}", "github-pages"),
             pages.replace(" name: ${{ env.PAGES_ARTIFACT }}", " name: github-pages"),
             pages.replace("needs.package.outputs.artifact_name", "github.run_attempt"),
-            pages.replace('select(.name == "Docs: Content and site")', 'select(.name == "Other job")'),
+            pages.replace(
+                'select(.name == "Docs: Content and site")', 'select(.name == "Other job")'
+            ),
             pages.replace("if: needs.select-build.outputs.current == 'true'", "if: always()", 1),
         ):
             with self.assertRaises(ValueError):
@@ -156,44 +174,77 @@ class GateTests(unittest.TestCase):
         for label, broken in (
             ("run_release condition", release.replace("run_release == 'true'", "true")),
             ("concurrency group", release.replace("  group: release\n", "")),
-            ("cancel-in-progress", release.replace("  cancel-in-progress: false\n", "  cancel-in-progress: true\n")),
-            ("workflow_dispatch", release.replace("  workflow_run:\n", "  workflow_dispatch:\n  workflow_run:\n", 1)),
-            ("head_sha fallback", release.replace("needs.check-ci.outputs.sha", "github.event.workflow_run.head_sha || github.sha", 1)),
+            (
+                "cancel-in-progress",
+                release.replace("  cancel-in-progress: false\n", "  cancel-in-progress: true\n"),
+            ),
+            (
+                "workflow_dispatch",
+                release.replace("  workflow_run:\n", "  workflow_dispatch:\n  workflow_run:\n", 1),
+            ),
+            (
+                "head_sha fallback",
+                release.replace(
+                    "needs.check-ci.outputs.sha",
+                    "github.event.workflow_run.head_sha || github.sha",
+                    1,
+                ),
+            ),
             ("version sha handoff", release.replace("needs.check-ci.outputs.sha", "github.sha")),
             ("retention-days", release.replace("          retention-days: 1\n", "", 1)),
             ("id-token permission", release.replace("      id-token: write\n", "")),
             ("attestations permission", release.replace("      attestations: write\n", "")),
             ("attestation subject", release.replace("            dotfiles-linux-aarch64\n", "", 1)),
-            ("discoverability check", release.replace('gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY"', "true")),
-            ("target_commitish", release.replace("target_commitish: ${{ needs.version.outputs.sha }}\n", "")),
-            ("step order", release.replace(
-                "      - name: Verify attestation discoverability",
-                "__TEMP_STEP__",
-            ).replace(
-                "      - name: Create release",
-                "      - name: Verify attestation discoverability",
-            ).replace(
-                "__TEMP_STEP__",
-                "      - name: Create release",
-            )),
+            (
+                "discoverability check",
+                release.replace(
+                    'gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY"', "true"
+                ),
+            ),
+            (
+                "target_commitish",
+                release.replace("target_commitish: ${{ needs.version.outputs.sha }}\n", ""),
+            ),
+            (
+                "step order",
+                release.replace(
+                    "      - name: Verify attestation discoverability",
+                    "__TEMP_STEP__",
+                )
+                .replace(
+                    "      - name: Create release",
+                    "      - name: Verify attestation discoverability",
+                )
+                .replace(
+                    "__TEMP_STEP__",
+                    "      - name: Create release",
+                ),
+            ),
         ):
             with self.subTest(release_case=label), self.assertRaises(ValueError):
                 CONTRACT["check_release"](broken)
         contract_cli = SCRIPTS / "check-ci-contract.py"
         ok = subprocess.run(
             [sys.executable, "-B", str(contract_cli), "--release", "-"],
-            input=release, text=True, capture_output=True, check=False,
+            input=release,
+            text=True,
+            capture_output=True,
+            check=False,
         )
         self.assertEqual(ok.returncode, 0, ok.stderr)
         bad = subprocess.run(
             [sys.executable, "-B", str(contract_cli), "--release", "-"],
             input=release.replace("  group: release\n", ""),
-            text=True, capture_output=True, check=False,
+            text=True,
+            capture_output=True,
+            check=False,
         )
         self.assertNotEqual(bad.returncode, 0)
         for platform in ("linux", "windows"):
             build = CONTRACT["job_blocks"](workflow)["build-" + platform]
-            for step in (("Clippy", "Tests", "Rustdoc") if platform == "linux" else ("Clippy", "Tests")):
+            for step in (
+                ("Clippy", "Tests", "Rustdoc") if platform == "linux" else ("Clippy", "Tests")
+            ):
                 self.assertIn(
                     f"- name: {step}\n        if: needs.classify-changes.outputs.run_rust_checks == 'true'",
                     build,
@@ -217,10 +268,18 @@ class GateTests(unittest.TestCase):
             f"'actions/checkout@{sha}' # v6.0.2",
             f'"actions/checkout@{sha}" # v6.0.2',
         ):
-            for persist in ("false", "'false'", '"false"', "'false' # required", '"false"\t# required'):
+            for persist in (
+                "false",
+                "'false'",
+                '"false"',
+                "'false' # required",
+                '"false"\t# required',
+            ):
                 with self.subTest(valid=True, uses=uses, persist=persist):
                     CONTRACT["check_checkout_steps"](
-                        make_workflow(uses, f"        with:\n          persist-credentials: {persist}\n"),
+                        make_workflow(
+                            uses, f"        with:\n          persist-credentials: {persist}\n"
+                        ),
                         "fixture.yml",
                     )
             for with_block in (
@@ -231,9 +290,11 @@ class GateTests(unittest.TestCase):
                 '        with:\n          persist-credentials: "true"\n',
                 "        with:\n          persist-credentials: 'false' extra\n",
             ):
-                with self.subTest(valid=False, uses=uses, with_block=with_block):
-                    with self.assertRaises(ValueError):
-                        CONTRACT["check_checkout_steps"](make_workflow(uses, with_block), "fixture.yml")
+                with (
+                    self.subTest(valid=False, uses=uses, with_block=with_block),
+                    self.assertRaises(ValueError),
+                ):
+                    CONTRACT["check_checkout_steps"](make_workflow(uses, with_block), "fixture.yml")
 
     def test_workflow_yaml_handles_varied_indentation_and_rejects_duplicates(self):
         sha = "de0fac2e4500dabe0009e67214ff5f5447ce83dd"
@@ -256,8 +317,12 @@ class GateTests(unittest.TestCase):
             "            - run: echo ok\n"
         )
         parsed = CONTRACT["parse_workflow"](four_space, "four-space.yml")
-        self.assertEqual(CONTRACT["normalize_needs"](parsed["jobs"]["first"].get("needs")), {"dep-a", "dep-b"})
-        self.assertEqual(CONTRACT["normalize_needs"](parsed["jobs"]["second"].get("needs")), {"first"})
+        self.assertEqual(
+            CONTRACT["normalize_needs"](parsed["jobs"]["first"].get("needs")), {"dep-a", "dep-b"}
+        )
+        self.assertEqual(
+            CONTRACT["normalize_needs"](parsed["jobs"]["second"].get("needs")), {"first"}
+        )
         CONTRACT["check_checkout_steps"](four_space, "four-space.yml")
         duplicate_key = (
             "name: Duplicate\n"
@@ -275,7 +340,8 @@ class GateTests(unittest.TestCase):
         self.assertIn("runs-on: ubuntu-latest", mutation)
         exclusions = [
             re.compile(pattern)
-            for option, pattern in MUTATION_RUN["LINUX_EXCLUSIONS"] if option == "--exclude-re"
+            for option, pattern in MUTATION_RUN["LINUX_EXCLUSIONS"]
+            if option == "--exclude-re"
         ]
         self.assertTrue(exclusions)
 
@@ -287,11 +353,17 @@ class GateTests(unittest.TestCase):
             "infra/elevation": ("run_elevated_child", "wait_if_elevated"),
             "app/commands/execution/elevation": ("prepare_windows_elevation",),
             "domains/dotfiles/resources/path_entry": (
-                "decode_reg_string", "encode_reg_string", "append_user_path", "user_path_contains",
+                "decode_reg_string",
+                "encode_reg_string",
+                "append_user_path",
+                "user_path_contains",
             ),
             "domains/system/resources/registry": (
-                "native::raw_value_to_string", "native::raw_value_type",
-                "native::read_value", "native::write_value", "native::parse_path",
+                "native::raw_value_to_string",
+                "native::raw_value_type",
+                "native::read_value",
+                "native::write_value",
+                "native::parse_path",
             ),
         }
         for path, functions in windows_only.items():
@@ -308,17 +380,26 @@ class GateTests(unittest.TestCase):
         portable = {
             "infra/elevation": ("should_pause", "wait_if_elevated_policy"),
             "app/commands/execution/elevation": (
-                "prepare_elevation", "prepare_sudo_elevation",
-                "elevation_plan_disposition", "build_elevated_child_args",
+                "prepare_elevation",
+                "prepare_sudo_elevation",
+                "elevation_plan_disposition",
+                "build_elevated_child_args",
             ),
             "domains/dotfiles/resources/path_entry": (
-                "PathSource::is_on_path", "PathEntryResource::new",
-                "decode_reg_string_shared", "path_contains_entry", "expand_env_vars",
-                "normalize_path_entry", "append_user_path_shared", "user_path_contains_shared",
+                "PathSource::is_on_path",
+                "PathEntryResource::new",
+                "decode_reg_string_shared",
+                "path_contains_entry",
+                "expand_env_vars",
+                "normalize_path_entry",
+                "append_user_path_shared",
+                "user_path_contains_shared",
             ),
             "domains/ai/resources/agent_settings": ("AgentSettingResource::apply",),
             "domains/system/resources/registry": (
-                "parse_hkcu_subkey", "value_matches", "RegistryResource::state_from_cached",
+                "parse_hkcu_subkey",
+                "value_matches",
+                "RegistryResource::state_from_cached",
             ),
             "another_module": ("decode_reg_string", "native::read_value", "wait_if_elevated"),
         }
@@ -357,8 +438,10 @@ class GateTests(unittest.TestCase):
             ("src/domains/system/config/registry.rs", "uppercase_native_registry_name"),
             ("src/infra/exec/process.rs", "take_stdout_windows"),
         ):
-            self.assertIn(("--file", path), tuple(zip(options, options[1:], strict=False)))
-            self.assertRegex(f"{path}:306:5: replace {function}", options[options.index("--re") + 1])
+            self.assertIn(("--file", path), tuple(pairwise(options)))
+            self.assertRegex(
+                f"{path}:306:5: replace {function}", options[options.index("--re") + 1]
+            )
         self.assertEqual(target, ["--cargo-arg=--lib"])
 
     def test_native_file_mutants_only_run_on_windows(self):
@@ -372,8 +455,8 @@ class GateTests(unittest.TestCase):
             ("src/infra/run_lock/coordination/windows.rs", "acquire"),
             ("src/infra/run_lock/windows.rs", "legacy_owner"),
         ):
-            self.assertIn(("--exclude", file), list(zip(linux, linux[1:], strict=False)))
-            self.assertIn(("--file", file), list(zip(windows, windows[1:], strict=False)))
+            self.assertIn(("--exclude", file), list(pairwise(linux)))
+            self.assertIn(("--file", file), list(pairwise(windows)))
             self.assertRegex(f"{file}:43:5: replace {function} with ()", native_pattern)
         self.assertNotRegex("src/infra/fs/place.rs:65:5: replace wide_path with ()", native_pattern)
 
@@ -382,21 +465,23 @@ class GateTests(unittest.TestCase):
         for broken in (
             MUTATION_RUN | {"NATIVE_MODULES": (*MUTATION_RUN["NATIVE_MODULES"], "src/missing.rs")},
             MUTATION_RUN | {"WINDOWS_FILES": (*MUTATION_RUN["WINDOWS_FILES"], "src/missing.rs")},
-            MUTATION_RUN | {
+            MUTATION_RUN
+            | {
                 "LINUX_EXCLUSIONS": (
                     *MUTATION_RUN["LINUX_EXCLUSIONS"],
                     ("--exclude-re", r"^src/infra/fs/place\.rs:.*\bmissing_symbol\b"),
                 ),
             },
-            MUTATION_RUN | {
+            MUTATION_RUN
+            | {
                 "WINDOWS_PATTERN": MUTATION_RUN["WINDOWS_PATTERN"].replace(
-                    "rename_noreplace_windows", "check_information",
+                    "rename_noreplace_windows",
+                    "check_information",
                 ),
             },
         ):
-            with self.subTest(broken=broken["WINDOWS_PATTERN"]):
-                with self.assertRaises(ValueError):
-                    CONTRACT["check_mutation_symbols"](mutation_run=broken)
+            with self.subTest(broken=broken["WINDOWS_PATTERN"]), self.assertRaises(ValueError):
+                CONTRACT["check_mutation_symbols"](mutation_run=broken)
 
     def test_mutations_are_separate_and_fail_visibly(self):
         workflow = CONTRACT["WORKFLOW"].with_name("mutation.yml").read_text(encoding="utf-8")
@@ -412,9 +497,8 @@ class GateTests(unittest.TestCase):
             workflow.replace("      max-parallel: 14\n", "      max-parallel: 48\n"),
             workflow.replace("needs.select.outputs.run_linux", "needs.select.outputs.run_windows"),
         ):
-            with self.subTest(broken=broken):
-                with self.assertRaises(ValueError):
-                    CONTRACT["check_mutation"](broken)
+            with self.subTest(broken=broken), self.assertRaises(ValueError):
+                CONTRACT["check_mutation"](broken)
 
     def test_mutation_result_gate_rejects_failures_and_accidental_skips(self):
         for linux, windows, result, success in (
@@ -427,27 +511,39 @@ class GateTests(unittest.TestCase):
         ):
             with self.subTest(linux=linux, windows=windows, result=result):
                 needs = {
-                    "select": {"result": "success", "outputs": {
-                        "run_linux": linux, "run_windows": windows,
-                    }},
+                    "select": {
+                        "result": "success",
+                        "outputs": {
+                            "run_linux": linux,
+                            "run_windows": windows,
+                        },
+                    },
                     "mutation": {"result": result},
                     "mutation-windows": {"result": "skipped"},
                 }
                 plan = {
-                    "base": "a" * 40, "head": "b" * 40, "linux_sources": [],
-                    "linux_shards": [], "run_windows": False,
+                    "base": "a" * 40,
+                    "head": "b" * 40,
+                    "linux_sources": [],
+                    "linux_shards": [],
+                    "run_windows": False,
                 }
                 _, _, failures = MUTATION_REPORT["summarize"](plan, Path("."), needs)
                 self.assertEqual(not failures, success)
 
     def test_selected_linux_report_must_be_complete(self):
         plan = {
-            "base": "a" * 40, "head": "b" * 40, "linux_sources": ["cli/src"],
+            "base": "a" * 40,
+            "head": "b" * 40,
+            "linux_sources": ["cli/src"],
             "linux_shards": [{"id": "process", "suite": "process", "count": 2}],
             "run_windows": False,
         }
         needs = {
-            "select": {"result": "success", "outputs": {"run_linux": "true", "run_windows": "false"}},
+            "select": {
+                "result": "success",
+                "outputs": {"run_linux": "true", "run_windows": "false"},
+            },
             "mutation": {"result": "success"},
             "mutation-windows": {"result": "skipped"},
         }
@@ -458,8 +554,13 @@ class GateTests(unittest.TestCase):
             shard = root / "mutation-result-process"
             shard.mkdir()
             report = {
-                "start_time": "2026-11-22T09:00:00Z", "end_time": "2026-11-22T09:01:00Z",
-                "caught": 1, "missed": 0, "timeout": 0, "unviable": 1, "total_mutants": 2,
+                "start_time": "2026-11-22T09:00:00Z",
+                "end_time": "2026-11-22T09:01:00Z",
+                "caught": 1,
+                "missed": 0,
+                "timeout": 0,
+                "unviable": 1,
+                "total_mutants": 2,
             }
             for missed, timed_out, end, count, expected in (
                 (0, 0, report["end_time"], 2, True),
@@ -470,13 +571,18 @@ class GateTests(unittest.TestCase):
             ):
                 with self.subTest(missed=missed, timed_out=timed_out, end=end, count=count):
                     outcome = report | {
-                        "missed": missed, "timeout": timed_out, "end_time": end,
-                        "caught": 1 - missed - timed_out, "total_mutants": count,
+                        "missed": missed,
+                        "timeout": timed_out,
+                        "end_time": end,
+                        "caught": 1 - missed - timed_out,
+                        "total_mutants": count,
                     }
                     mutation = "src/infra/exec/process.rs:30:4: replace || with && in collect_child"
                     (shard / "outcomes.json").write_text(json.dumps(outcome), encoding="utf-8")
                     (shard / "missed.txt").write_text((mutation + "\n") * missed, encoding="utf-8")
-                    (shard / "timeout.txt").write_text((mutation + "\n") * timed_out, encoding="utf-8")
+                    (shard / "timeout.txt").write_text(
+                        (mutation + "\n") * timed_out, encoding="utf-8"
+                    )
                     lines, details, failures = MUTATION_REPORT["summarize"](plan, root, needs)
                     self.assertEqual(not failures, expected)
                     self.assertIn(plan["base"], "\n".join(lines))
@@ -529,51 +635,79 @@ class GateTests(unittest.TestCase):
             ):
                 d = stage / suite
                 d.mkdir(parents=True)
-                (d / "outcomes.json").write_text(json.dumps({
-                    "start_time": start, "end_time": end,
-                    "caught": caught, "missed": missed, "timeout": 0, "unviable": 0,
-                    "total_mutants": caught + missed, "outcomes": [],
-                }), encoding="utf-8")
+                (d / "outcomes.json").write_text(
+                    json.dumps(
+                        {
+                            "start_time": start,
+                            "end_time": end,
+                            "caught": caught,
+                            "missed": missed,
+                            "timeout": 0,
+                            "unviable": 0,
+                            "total_mutants": caught + missed,
+                            "outcomes": [],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
                 (d / "missed.txt").write_text("".join(f"{e}\n" for e in entries), encoding="utf-8")
                 (d / "timeout.txt").write_text("", encoding="utf-8")
-            self.assertTrue(MUTATION_RUN["merge_focused_reports"](stage, ["liveness", "process"], out))
+            self.assertTrue(
+                MUTATION_RUN["merge_focused_reports"](stage, ["liveness", "process"], out)
+            )
             results = root / "results"
             (results / "mutation-result-focused").mkdir(parents=True)
             for name in ("outcomes.json", "missed.txt", "timeout.txt"):
                 (results / "mutation-result-focused" / name).write_text(
-                    (out / name).read_text(encoding="utf-8"), encoding="utf-8",
+                    (out / name).read_text(encoding="utf-8"),
+                    encoding="utf-8",
                 )
             plan = {
-                "base": "a" * 40, "head": "b" * 40, "linux_sources": ["cli/src"],
+                "base": "a" * 40,
+                "head": "b" * 40,
+                "linux_sources": ["cli/src"],
                 "linux_shards": [{"id": "focused", "suite": "focused", "count": 3}],
                 "run_windows": False,
             }
             needs = {
-                "select": {"result": "success", "outputs": {"run_linux": "true", "run_windows": "false"}},
+                "select": {
+                    "result": "success",
+                    "outputs": {"run_linux": "true", "run_windows": "false"},
+                },
                 "mutation": {"result": "failure"},
                 "mutation-windows": {"result": "skipped"},
             }
             _, details, failures = MUTATION_REPORT["summarize"](plan, results, needs)
             self.assertTrue(failures)
-            self.assertEqual(details, [("Survivor", "rust-mutation-results-focused", "process", mutation)])
-            self.assertIn("run process --exact", MUTATION_REPORT["replay"](details[0][2], details[0][3]))
+            self.assertEqual(
+                details, [("Survivor", "rust-mutation-results-focused", "process", mutation)]
+            )
+            self.assertIn(
+                "run process --exact", MUTATION_REPORT["replay"](details[0][2], details[0][3])
+            )
 
     def test_nextest_and_incremental_profile_command_flags(self):
-        lib_cmd = MUTATION_RUN["build_run_command"]("linux-lib", test_tool="nextest", partition="0/4")
+        lib_cmd = MUTATION_RUN["build_run_command"](
+            "linux-lib", test_tool="nextest", partition="0/4"
+        )
         self.assertIn("--profile=mutants", lib_cmd)
         self.assertIn("--test-tool=nextest", lib_cmd)
         self.assertIn("--shard", lib_cmd)
         self.assertIn("--sharding=round-robin", lib_cmd)
         self.assertIn("--cargo-arg=--lib", lib_cmd)
         self.assertIn("--exclude", lib_cmd)
-        app_cmd = MUTATION_RUN["build_run_command"]("linux-app", test_tool="nextest", partition="0/2")
+        app_cmd = MUTATION_RUN["build_run_command"](
+            "linux-app", test_tool="nextest", partition="0/2"
+        )
         self.assertIn("not binary(domain_boundaries)", app_cmd)
         self.assertNotIn("--cargo-arg=--lib", app_cmd)
         self.assertIn("--file", app_cmd)
         linux_cmd = MUTATION_RUN["build_run_command"]("linux", test_tool="nextest", partition="0/4")
         self.assertIn("not binary(domain_boundaries)", linux_cmd)
         self.assertNotIn("--cargo-arg=--lib", linux_cmd)
-        exact_cmd = MUTATION_RUN["build_run_command"]("linux-lib", test_tool="nextest", exact="src/lib.rs:1:1: x")
+        exact_cmd = MUTATION_RUN["build_run_command"](
+            "linux-lib", test_tool="nextest", exact="src/lib.rs:1:1: x"
+        )
         self.assertNotIn("--sharding=round-robin", exact_cmd)
         win_cmd = MUTATION_RUN["build_run_command"]("windows", test_tool="nextest", partition="0/2")
         self.assertIn("--cargo-arg=--lib", win_cmd)
@@ -588,26 +722,47 @@ class GateTests(unittest.TestCase):
     def test_focused_mutants_are_excluded_from_the_ordinary_suite(self):
         options, _ = MUTATION_RUN["suite_options"]("linux")
         for suite, example, expected_target in (
-            ("liveness", "src/engine/access.rs:6:3: replace AccessRegistry::try_acquire -> Option<AccessGuard> with None",
-             "engine::access::tests::"),
-            ("context", "src/engine/context.rs:6:3: delete ! in Context::scoped_access",
-             "engine::context::tests::"),
-            ("process", "src/infra/exec/process.rs:6:3: replace || with && in collect_child",
-             "infra::exec::tests::interruption::bounded_command_wait_"),
-            ("dispatch", "src/engine/orchestrate.rs:34:11: delete ! in process_items",
-             "engine::tests::orchestrate::pipelines_accumulate_mixed_states_in_both_execution_modes"),
-            ("utc", "src/infra/logging/utils.rs:197:64: replace / with % in civil_from_epoch_secs",
-             "infra::logging::utils::tests::unix_seconds_convert_to_utc_across_day_and_calendar_boundaries"),
+            (
+                "liveness",
+                "src/engine/access.rs:6:3: replace AccessRegistry::try_acquire -> Option<AccessGuard> with None",
+                "engine::access::tests::",
+            ),
+            (
+                "context",
+                "src/engine/context.rs:6:3: delete ! in Context::scoped_access",
+                "engine::context::tests::",
+            ),
+            (
+                "process",
+                "src/infra/exec/process.rs:6:3: replace || with && in collect_child",
+                "infra::exec::tests::interruption::bounded_command_wait_",
+            ),
+            (
+                "dispatch",
+                "src/engine/orchestrate.rs:34:11: delete ! in process_items",
+                "engine::tests::orchestrate::pipelines_accumulate_mixed_states_in_both_execution_modes",
+            ),
+            (
+                "utc",
+                "src/infra/logging/utils.rs:197:64: replace / with % in civil_from_epoch_secs",
+                "infra::logging::utils::tests::unix_seconds_convert_to_utc_across_day_and_calendar_boundaries",
+            ),
         ):
             focused, target = MUTATION_RUN["suite_options"](suite)
             pattern = focused[focused.index("--re") + 1]
-            self.assertIn(("--exclude-re", pattern), tuple(zip(options, options[1:], strict=False)))
+            self.assertIn(("--exclude-re", pattern), tuple(pairwise(options)))
             self.assertRegex(example, pattern)
             self.assertEqual(target, ["--cargo-arg=--lib", "--", expected_target])
             _, nextest_target = MUTATION_RUN["suite_options"](suite, test_tool="nextest")
             self.assertEqual(
                 nextest_target,
-                ["--cargo-arg=--lib", "--", "--status-level=none", "--final-status-level=fail", expected_target],
+                [
+                    "--cargo-arg=--lib",
+                    "--",
+                    "--status-level=none",
+                    "--final-status-level=fail",
+                    expected_target,
+                ],
             )
             exact, _ = MUTATION_RUN["suite_options"](suite, example)
             self.assertEqual(exact.count("--re"), 1)

@@ -12,7 +12,6 @@ import subprocess
 import sys
 import tempfile
 
-
 CLI = Path(__file__).resolve().parents[4] / "cli"
 PLAN = CLI / "mutation-plan.json"
 DIFF = "mutants.diff"
@@ -27,7 +26,11 @@ APP_PATHS = ("src/main.rs", "src/lib.rs", "src/app/**", "src/testing.rs")
 # Mutants that can block unrelated tests get a bounded test target.
 FOCUSED = {
     "liveness": (
-        ("src/engine/access.rs", "src/infra/atomic_flag.rs", "src/infra/cancellation.rs",),
+        (
+            "src/engine/access.rs",
+            "src/infra/atomic_flag.rs",
+            "src/infra/cancellation.rs",
+        ),
         r"^src/(engine/access\.rs|infra/(atomic_flag|cancellation)\.rs):[0-9]+:[0-9]+: replace (AccessRegistry::try_acquire -> Option<AccessGuard> with None|AtomicFlag::set with \(\)|AtomicFlag::get -> bool with false|CancellationToken::cancel with \(\)|CancellationToken::is_cancelled -> bool with false)$",
         "engine::access::tests::",
     ),
@@ -65,54 +68,144 @@ NATIVE_MODULES = (
 
 LINUX_EXCLUSIONS = (
     *(("--exclude", path) for path in NATIVE_MODULES),
-    ("--exclude-re", r"^src/infra/fs/mod\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]) in is_dir_like$"),
-    ("--exclude-re", r"^src/infra/fs/copy\.rs:.*\b(verify_link_creation_access|is_windows_reparse_link|preserve_link_attributes)\b"),
-    ("--exclude-re", r"^src/infra/fs/copy\.rs:[0-9]+:[0-9]+: replace < with <= in copy_regular_contents$"),
-    ("--exclude-re", r"^src/infra/fs/identity\.rs:.*\b(stored_entry_name|is_windows_reparse_point)\b"),
-    ("--exclude-re", r"^src/infra/fs/planned\.rs:.*\b(directory_case_sensitive|ordinal_alias|is_within_windows_alias|trees_overlap_non_linux)\b"),
-    ("--exclude-re", r"^src/infra/fs/mutation\.rs:[0-9]+:[0-9]+: replace \| with \^ in open_in_place$"),
-    ("--exclude-re", r"^src/infra/fs/place\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported|non_linux_file_mode)\b"),
+    (
+        "--exclude-re",
+        r"^src/infra/fs/mod\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]) in is_dir_like$",
+    ),
+    (
+        "--exclude-re",
+        r"^src/infra/fs/copy\.rs:.*\b(verify_link_creation_access|is_windows_reparse_link|preserve_link_attributes)\b",
+    ),
+    (
+        "--exclude-re",
+        r"^src/infra/fs/copy\.rs:[0-9]+:[0-9]+: replace < with <= in copy_regular_contents$",
+    ),
+    (
+        "--exclude-re",
+        r"^src/infra/fs/identity\.rs:.*\b(stored_entry_name|is_windows_reparse_point)\b",
+    ),
+    (
+        "--exclude-re",
+        r"^src/infra/fs/planned\.rs:.*\b(directory_case_sensitive|ordinal_alias|is_within_windows_alias|trees_overlap_non_linux)\b",
+    ),
+    (
+        "--exclude-re",
+        r"^src/infra/fs/mutation\.rs:[0-9]+:[0-9]+: replace \| with \^ in open_in_place$",
+    ),
+    (
+        "--exclude-re",
+        r"^src/infra/fs/place\.rs:.*\b(rename_noreplace_windows|rename_noreplace_unsupported|non_linux_file_mode)\b",
+    ),
     ("--exclude-re", r"^src/infra/fs/place\.rs:[0-9]+:[0-9]+: replace \| with \^$"),
-    ("--exclude-re", r"^src/infra/exec/process\.rs:.*\b(take_stdout_windows|take_stderr_windows|terminate_child_windows|wait_after_terminate_windows|force_kill_child_windows|child_exited_without_reaping_fallback)\b"),
-    ("--exclude-re", r"^src/infra/platform\.rs:.*\b(developer_mode_flag_windows|developer_mode_enabled|detect_arch|detect_wsl)\b"),
-    ("--exclude-re", r"^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated|is_elevated_windows|is_elevated_child|sudo_credentials_cached|prime_sudo_credentials)\b"),
+    (
+        "--exclude-re",
+        r"^src/infra/exec/process\.rs:.*\b(take_stdout_windows|take_stderr_windows|terminate_child_windows|wait_after_terminate_windows|force_kill_child_windows|child_exited_without_reaping_fallback)\b",
+    ),
+    (
+        "--exclude-re",
+        r"^src/infra/platform\.rs:.*\b(developer_mode_flag_windows|developer_mode_enabled|detect_arch|detect_wsl)\b",
+    ),
+    (
+        "--exclude-re",
+        r"^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated|is_elevated_windows|is_elevated_child|sudo_credentials_cached|prime_sudo_credentials)\b",
+    ),
     ("--exclude-re", r"^src/infra/logging/runlog/naming\.rs:[0-9]+:[0-9]+: replace \| with \^$"),
     ("--exclude-re", r"^src/infra/logging/subscriber\.rs:.*\binit_subscriber\b"),
-    ("--exclude-re", r"^src/infra/logging/terminal\.rs:.*\b(columns|stream_columns_windows|enable_console_ansi)\b"),
-    ("--exclude-re", r"^src/infra/logging/style\.rs:.*\b(no_color_enabled|clicolor_force_enabled)\b"),
+    (
+        "--exclude-re",
+        r"^src/infra/logging/terminal\.rs:.*\b(columns|stream_columns_windows|enable_console_ansi)\b",
+    ),
+    (
+        "--exclude-re",
+        r"^src/infra/logging/style\.rs:.*\b(no_color_enabled|clicolor_force_enabled)\b",
+    ),
     ("--exclude-re", r"^src/infra/logging/utils\.rs:.*\bdotfiles_log_dir\b"),
-    ("--exclude-re", r"^src/app/commands/execution/elevation\.rs:.*\b(prepare_windows_elevation|prepare_elevation_fallback)\b"),
+    (
+        "--exclude-re",
+        r"^src/app/commands/execution/elevation\.rs:.*\b(prepare_windows_elevation|prepare_elevation_fallback)\b",
+    ),
     ("--exclude-re", r"^src/app/interrupt\.rs:.*\bend_prompt_line\b"),
     ("--exclude-re", r"^src/engine/context\.rs:.*\bis_elevated\b"),
-    ("--exclude-re", r"^src/engine/orchestrate\.rs:[0-9]+:[0-9]+: replace > with >= in process_items$"),
+    (
+        "--exclude-re",
+        r"^src/engine/orchestrate\.rs:[0-9]+:[0-9]+: replace > with >= in process_items$",
+    ),
     ("--exclude-re", r"^src/engine/task/mod\.rs:.*\b(dependencies|ordering_dependencies)\b"),
-    ("--exclude-re", r"^src/domains/system/config/registry\.rs:.*\buppercase_native_registry_name\b"),
-    ("--exclude-re", r"^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|encode_reg_string|append_user_path|user_path_contains|broadcast_environment_change)\b"),
+    (
+        "--exclude-re",
+        r"^src/domains/system/config/registry\.rs:.*\buppercase_native_registry_name\b",
+    ),
+    (
+        "--exclude-re",
+        r"^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|encode_reg_string|append_user_path|user_path_contains|broadcast_environment_change)\b",
+    ),
     ("--exclude-re", r"^src/app/commands/reexec\.rs:.*\bprepare_self_update\b"),
     ("--exclude-re", r"^src/domains/dotfiles/self_update\.rs:.*\bpre_update\b"),
-    ("--exclude-re", r"^src/domains/dotfiles/self_update/attestation\.rs:.*\b(available|retry_delay)\b"),
+    (
+        "--exclude-re",
+        r"^src/domains/dotfiles/self_update/attestation\.rs:.*\b(available|retry_delay)\b",
+    ),
     ("--exclude-re", r"^src/domains/dotfiles/self_update/http\.rs:.*\bretry_delay\b"),
-    ("--exclude-re", r"^src/domains/dotfiles/self_update/install\.rs:.*\bis_windows_transient_busy\b"),
-    ("--exclude-re", r"^src/domains/dotfiles/self_update/install\.rs:[0-9]+:[0-9]+: replace <impl Drop for UpdateJournal>::drop with \(\)$"),
-    ("--exclude-re", r"^src/domains/editors/vscode_extensions/launcher\.rs:.*\b(managed_insiders_unavailable|managed_insiders_unavailable_non_linux)\b"),
+    (
+        "--exclude-re",
+        r"^src/domains/dotfiles/self_update/install\.rs:.*\bis_windows_transient_busy\b",
+    ),
+    (
+        "--exclude-re",
+        r"^src/domains/dotfiles/self_update/install\.rs:[0-9]+:[0-9]+: replace <impl Drop for UpdateJournal>::drop with \(\)$",
+    ),
+    (
+        "--exclude-re",
+        r"^src/domains/editors/vscode_extensions/launcher\.rs:.*\b(managed_insiders_unavailable|managed_insiders_unavailable_non_linux)\b",
+    ),
     ("--exclude-re", r"^src/domains/overlay/resolution\.rs:.*\bread_worktree_confirmation\b"),
     ("--exclude-re", r"^src/domains/repository/update/apply\.rs:.*\bfetch_retry_delay\b"),
     ("--exclude-re", r"^src/domains/packages/resources/pacman\.rs:.*\bis_root\b"),
     ("--exclude-re", r"^src/domains/system/resources/registry\.rs:.*\bnative::"),
-    ("--exclude-re", r"^src/domains/system/resources/systemd_unit/offline\.rs:[0-9]+:[0-9]+: replace match guard error\.kind\(\) == std::io::ErrorKind::NotFound with true in SystemdUnitResource::reconcile_user_links$"),
-    ("--exclude-re", r"^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$"),
-    ("--exclude-re", r"^src/domains/ai/apm/cowork/skill_files\.rs:[0-9]+:[0-9]+: delete match arm \(false, _\) in skill_files_match$"),
-    ("--exclude-re", r"^src/domains/ai/apm/cowork/skill_files\.rs:[0-9]+:[0-9]+: (delete match arm \(false, _\)|replace (?:match guard )?is_dir_like\(meta\) with (true|false)) in copy_skill_files$"),
-    ("--exclude-re", r"^src/domains/files/resources/symlink/platform\.rs:.*\b(create_symlink_windows|create_junction|command_output)\b"),
-    ("--exclude-re", r"^src/domains/files/resources/symlink/platform\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]|\|\| with &&|&& with \|\|) in is_link_like$"),
+    (
+        "--exclude-re",
+        r"^src/domains/system/resources/systemd_unit/offline\.rs:[0-9]+:[0-9]+: replace match guard error\.kind\(\) == std::io::ErrorKind::NotFound with true in SystemdUnitResource::reconcile_user_links$",
+    ),
+    (
+        "--exclude-re",
+        r"^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$",
+    ),
+    (
+        "--exclude-re",
+        r"^src/domains/ai/apm/cowork/skill_files\.rs:[0-9]+:[0-9]+: delete match arm \(false, _\) in skill_files_match$",
+    ),
+    (
+        "--exclude-re",
+        r"^src/domains/ai/apm/cowork/skill_files\.rs:[0-9]+:[0-9]+: (delete match arm \(false, _\)|replace (?:match guard )?is_dir_like\(meta\) with (true|false)) in copy_skill_files$",
+    ),
+    (
+        "--exclude-re",
+        r"^src/domains/files/resources/symlink/platform\.rs:.*\b(create_symlink_windows|create_junction|command_output)\b",
+    ),
+    (
+        "--exclude-re",
+        r"^src/domains/files/resources/symlink/platform\.rs:[0-9]+:[0-9]+: replace (!= with ==|& with [|^]|\|\| with &&|&& with \|\|) in is_link_like$",
+    ),
 )
 
 WINDOWS_EXCLUSIONS = (
-    ("--exclude-re", r"^src/infra/fs/place/windows\.rs:[0-9]+:[0-9]+: replace <impl Drop for LocalDescriptor>::drop with \(\)$"),
+    (
+        "--exclude-re",
+        r"^src/infra/fs/place/windows\.rs:[0-9]+:[0-9]+: replace <impl Drop for LocalDescriptor>::drop with \(\)$",
+    ),
     ("--exclude-re", r"^src/infra/fs/place/windows\.rs:[0-9]+:[0-9]+: replace \| with \^$"),
-    ("--exclude-re", r"^src/infra/fs/place/windows\.rs:.*\b(require_query_support|require_persistent_acls)\b"),
-    ("--exclude-re", r"^src/infra/fs/place/windows/private_dir\.rs:[0-9]+:[0-9]+: replace \| with \^$"),
-    ("--exclude-re", r"^src/infra/run_lock/coordination/windows\.rs:[0-9]+:[0-9]+: replace <impl Drop for KnownFolder>::drop with \(\)$"),
+    (
+        "--exclude-re",
+        r"^src/infra/fs/place/windows\.rs:.*\b(require_query_support|require_persistent_acls)\b",
+    ),
+    (
+        "--exclude-re",
+        r"^src/infra/fs/place/windows/private_dir\.rs:[0-9]+:[0-9]+: replace \| with \^$",
+    ),
+    (
+        "--exclude-re",
+        r"^src/infra/run_lock/coordination/windows\.rs:[0-9]+:[0-9]+: replace <impl Drop for KnownFolder>::drop with \(\)$",
+    ),
 )
 
 WINDOWS_FILES = (
@@ -140,9 +233,10 @@ def suite_options(suite, exact=None, test_tool="cargo"):
     nextest = test_tool == "nextest"
     quiet_nextest = ("--status-level=none", "--final-status-level=fail")
     if suite in ("linux", "linux-lib", "linux-app"):
-        excludes = [*LINUX_EXCLUSIONS, *(
-            ("--exclude-re", pattern) for _, pattern, _ in FOCUSED.values()
-        )]
+        excludes = [
+            *LINUX_EXCLUSIONS,
+            *(("--exclude-re", pattern) for _, pattern, _ in FOCUSED.values()),
+        ]
         scope = []
         if suite == "linux-lib":
             scope = [arg for path in APP_PATHS for arg in ("--exclude", path)]
@@ -151,13 +245,11 @@ def suite_options(suite, exact=None, test_tool="cargo"):
         options = ["--in-diff", DIFF, *scope, *(arg for pair in excludes for arg in pair)]
         if suite == "linux-lib":
             test_target = (
-                ["--cargo-arg=--lib", "--", *quiet_nextest]
-                if nextest else ["--cargo-arg=--lib"]
+                ["--cargo-arg=--lib", "--", *quiet_nextest] if nextest else ["--cargo-arg=--lib"]
             )
         else:
             test_target = (
-                ["--", "-E", "not binary(domain_boundaries)", *quiet_nextest]
-                if nextest else []
+                ["--", "-E", "not binary(domain_boundaries)", *quiet_nextest] if nextest else []
             )
         pattern = None
     elif suite == "windows":
@@ -166,8 +258,7 @@ def suite_options(suite, exact=None, test_tool="cargo"):
             *(arg for pair in WINDOWS_EXCLUSIONS for arg in pair),
         ]
         test_target = (
-            ["--cargo-arg=--lib", "--", *quiet_nextest]
-            if nextest else ["--cargo-arg=--lib"]
+            ["--cargo-arg=--lib", "--", *quiet_nextest] if nextest else ["--cargo-arg=--lib"]
         )
         pattern = WINDOWS_PATTERN
     else:
@@ -175,7 +266,8 @@ def suite_options(suite, exact=None, test_tool="cargo"):
         options = ["--in-diff", DIFF, *(arg for path in files for arg in ("--file", path))]
         test_target = (
             ["--cargo-arg=--lib", "--", *quiet_nextest, test]
-            if nextest else ["--cargo-arg=--lib", "--", test]
+            if nextest
+            else ["--cargo-arg=--lib", "--", test]
         )
     if exact is not None:
         # cargo-mutants combines multiple --re arguments with OR.
@@ -239,20 +331,30 @@ def linux_matrix(counts):
     if focused_total:
         # Schedule focused first so it finishes quickly and frees a concurrency
         # slot when a full baseline spans all 15 shards under max-parallel: 14.
-        shards.append({
-            "id": "focused",
-            "suite": "focused",
-            "partition": "",
-            "count": focused_total,
-        })
+        shards.append(
+            {
+                "id": "focused",
+                "suite": "focused",
+                "partition": "",
+                "count": focused_total,
+            }
+        )
     shards.extend(
         round_robin_shards(
-            "app", "linux-app", counts.get("linux-app", 0), APP_SHARD_TARGET, MAX_APP_SHARDS,
+            "app",
+            "linux-app",
+            counts.get("linux-app", 0),
+            APP_SHARD_TARGET,
+            MAX_APP_SHARDS,
         )
     )
     shards.extend(
         round_robin_shards(
-            "lib", "linux-lib", counts.get("linux-lib", 0), LIB_SHARD_TARGET, MAX_LIB_SHARDS,
+            "lib",
+            "linux-lib",
+            counts.get("linux-lib", 0),
+            LIB_SHARD_TARGET,
+            MAX_LIB_SHARDS,
         )
     )
     return shards
@@ -260,7 +362,7 @@ def linux_matrix(counts):
 
 def plan():
     manifest = json.loads(PLAN.read_text(encoding="utf-8"))
-    counts = {suite: 0 for suite in ("linux-lib", "linux-app", *FOCUSED)}
+    counts = dict.fromkeys(("linux-lib", "linux-app", *FOCUSED), 0)
     if (CLI / DIFF).stat().st_size:
         counts = {suite: len(list_mutants(suite)) for suite in counts}
     manifest["linux_shards"] = linux_matrix(counts)
@@ -304,7 +406,10 @@ def merge_focused_reports(stage_dir, selected, output_dir):
                 ends.append(report["end_time"])
             else:
                 incomplete = True
-            for filename, bucket in (("missed.txt", missed_entries), ("timeout.txt", timeout_entries)):
+            for filename, bucket in (
+                ("missed.txt", missed_entries),
+                ("timeout.txt", timeout_entries),
+            ):
                 entries = (dst / filename).read_text(encoding="utf-8").splitlines()
                 bucket.extend(entries)
                 for entry in entries:
@@ -323,10 +428,12 @@ def merge_focused_reports(stage_dir, selected, output_dir):
     }
     (output_dir / "outcomes.json").write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
     (output_dir / "missed.txt").write_text(
-        "".join(f"{entry}\n" for entry in missed_entries), encoding="utf-8",
+        "".join(f"{entry}\n" for entry in missed_entries),
+        encoding="utf-8",
     )
     (output_dir / "timeout.txt").write_text(
-        "".join(f"{entry}\n" for entry in timeout_entries), encoding="utf-8",
+        "".join(f"{entry}\n" for entry in timeout_entries),
+        encoding="utf-8",
     )
     return not incomplete
 
@@ -359,12 +466,17 @@ def run(args):
     test_tool = resolve_test_tool(args.test_tool)
     if args.suite == "focused":
         if args.partition or args.exact is not None:
-            raise ValueError("The consolidated focused suite does not accept --partition or --exact.")
+            raise ValueError(
+                "The consolidated focused suite does not accept --partition or --exact."
+            )
         return run_focused(test_tool)
     if args.exact is not None and args.exact not in list_mutants(args.suite):
         raise ValueError("Mutation is outside the selected suite or its description has changed.")
     command = build_run_command(
-        args.suite, test_tool=test_tool, partition=args.partition or "", exact=args.exact,
+        args.suite,
+        test_tool=test_tool,
+        partition=args.partition or "",
+        exact=args.exact,
     )
     return subprocess.call(command, cwd=CLI, env=mutation_env())
 

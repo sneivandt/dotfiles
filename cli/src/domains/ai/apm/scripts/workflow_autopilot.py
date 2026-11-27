@@ -25,15 +25,16 @@
 # `next_run_at` (TEXT, ISO-8601 UTC). `cron_expression` is additive and detected
 # at runtime so older App schemas retain interval-only repair. If the required
 # contract changes, bump this version and update the Rust callers in autopilot.rs.
+from datetime import datetime, timedelta, timezone
 import json
+from pathlib import Path
 import sqlite3
 import sys
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 
 def parse_cron_field(field, minimum, maximum, *, names=None, sunday_alias=False):
     """Expand a cron field supporting names, lists, ranges, and numeric steps."""
+
     def parse_value(text):
         if names and text.upper() in names:
             return names[text.upper()]
@@ -72,12 +73,35 @@ def compute_next_cron(expression, now_local):
     hours = parse_cron_field(hour_text, 0, 23)
     month_days = parse_cron_field(month_day_text, 1, 31)
     months = parse_cron_field(
-        month_text, 1, 12,
-        names=dict(zip("JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split(), range(1, 13), strict=True)),
+        month_text,
+        1,
+        12,
+        names=dict(
+            zip(
+                [
+                    "JAN",
+                    "FEB",
+                    "MAR",
+                    "APR",
+                    "MAY",
+                    "JUN",
+                    "JUL",
+                    "AUG",
+                    "SEP",
+                    "OCT",
+                    "NOV",
+                    "DEC",
+                ],
+                range(1, 13),
+                strict=True,
+            )
+        ),
     )
     week_days = parse_cron_field(
-        week_day_text, 0, 7,
-        names=dict(zip("SUN MON TUE WED THU FRI SAT".split(), range(7), strict=True)),
+        week_day_text,
+        0,
+        7,
+        names=dict(zip(["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"], range(7), strict=True)),
         sunday_alias=True,
     )
     # Cron uses OR only when both day fields start with an explicit range/value.
@@ -187,7 +211,12 @@ def dedupe_managed_workflows(connection, workflow_ids, placeholders):
     # a migration relationship. Equal visible definitions do not prove ownership.
     columns = {row[1] for row in connection.execute("PRAGMA table_info(workflows)")}
     definition_columns = [
-        "name", "prompt", "interval", "schedule_hour", "schedule_minute", "schedule_day"
+        "name",
+        "prompt",
+        "interval",
+        "schedule_hour",
+        "schedule_minute",
+        "schedule_day",
     ]
     if "cron_expression" in columns:
         definition_columns.append("cron_expression")
@@ -197,7 +226,7 @@ def dedupe_managed_workflows(connection, workflow_ids, placeholders):
         prefix = "apm--_local--"
         if not workflow_id.startswith(prefix):
             continue
-        suffix = workflow_id[len(prefix):]
+        suffix = workflow_id[len(prefix) :]
         if "--" not in suffix:
             continue
         legacy_id = "apm--unknown--" + suffix
@@ -211,6 +240,7 @@ def dedupe_managed_workflows(connection, workflow_ids, placeholders):
                 "DELETE FROM workflows WHERE id=? AND " + matches,
                 (legacy_id, *definition),
             )
+
 
 con = sqlite3.connect(Path(sys.argv[1]).resolve().as_uri() + "?mode=rw", uri=True, timeout=5)
 con.execute("PRAGMA busy_timeout=5000")
@@ -248,7 +278,12 @@ if "cron_expression" in columns:
             "OR (? IS NOT NULL AND interval IS NOT 'manual'))",
             (cron, cron, wid, cron, cron),
         )
-cur = con.execute("UPDATE workflows SET mode='autopilot', enabled=1 WHERE id IN (" + ph + ") AND (mode IS NOT 'autopilot' OR enabled IS NOT 1)", ids)
+cur = con.execute(
+    "UPDATE workflows SET mode='autopilot', enabled=1 WHERE id IN ("
+    + ph
+    + ") AND (mode IS NOT 'autopilot' OR enabled IS NOT 1)",
+    ids,
+)
 # Arm the scheduler: set next_run_at on managed rows that are unarmed (NULL) or
 # overdue (<= now), so the app fires them on schedule. A valid future next_run_at
 # is left untouched to avoid rescheduling on every install; manual rows without a

@@ -19,8 +19,8 @@
         "bashrc": "shellscript",
         "zprofile": "shellscript",
         "zshrc": "shellscript",
-        "nvimrc": "lua",
-        "vimrc": "lua",
+        "nvimrc": "viml",
+        "vimrc": "viml",
         "**/skills/*/SKILL.md": "markdown"
     },
     // Formatting - enforce no trailing whitespace
@@ -37,8 +37,25 @@
     "[rust]": {
         "editor.tabSize": 4,
         "editor.insertSpaces": true,
+        "editor.rulers": [100],
         "editor.defaultFormatter": "rust-lang.rust-analyzer",
         "editor.formatOnSave": true
+    },
+    // Python settings
+    "[python]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.rulers": [100]
+    },
+    // TOML settings
+    "[toml]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true
+    },
+    // Lua settings
+    "[lua]": {
+        "editor.insertSpaces": true,
+        "editor.rulers": [120]
     },
     // Shell script settings
     "[shellscript]": {

@@ -26,6 +26,7 @@ test_ruff()
   status=0
   if python3 -B "$SCRIPT_DIR/ci_metadata.py" ruff-inputs "$DIR" > "$inputs"; then
     xargs -0 ruff check --config "$DIR/.github/linters/ruff.toml" -- < "$inputs" || status=$?
+    xargs -0 ruff format --check --config "$DIR/.github/linters/ruff.toml" -- < "$inputs" || status=$?
   else
     status=$?
   fi
@@ -40,6 +41,11 @@ test_luacheck()
     find symlinks tests -type f -name '*.lua' -print0 |
       xargs -0 -r luacheck --config "$DIR/.github/linters/luacheckrc"
   )
+}
+
+test_structured_files()
+{
+  python3 -B "$SCRIPT_DIR/check-structured-files.py" --root "$DIR"
 }
 
 for test_name in "$@"; do

@@ -11,7 +11,6 @@ import unittest
 
 from script_test_support import BASH, SCRIPTS, ScriptFixture
 
-
 MOCKS = r"""
 function [ {
     if builtin [ "${MISSING_INSIDERS:-0}" = 1 ] &&
@@ -109,10 +108,18 @@ busctl() {
 
 @unittest.skipUnless(BASH and shutil.which("jq"), "Requires Bash and jq")
 class GitHubLauncherTests(ScriptFixture):
-    UWSM_PREFIX = [
-        "uwsm", "app", "-t", "service", "-a", "github", "--",
-        "env", "GDK_BACKEND=x11", "GTK_CSD=0",
-    ]
+    UWSM_PREFIX = (
+        "uwsm",
+        "app",
+        "-t",
+        "service",
+        "-a",
+        "github",
+        "--",
+        "env",
+        "GDK_BACKEND=x11",
+        "GTK_CSD=0",
+    )
 
     def launch(self, *args, **overrides):
         return self.run_script(
@@ -275,7 +282,7 @@ class GitHubDesktopEntryTests(ScriptFixture):
         launcher = home / ".config/hypr/scripts/launch-github.sh"
         launcher.parent.mkdir(parents=True)
         stub = (
-            '#!/bin/sh\n'
+            "#!/bin/sh\n"
             ': > "$HOME/argv"\n'
             'if [ "$#" -gt 0 ]; then printf "%s\\0" "$@" > "$HOME/argv"; fi\n'
             'printf "%s" "$#" > "$HOME/count"\n'
@@ -290,8 +297,11 @@ class GitHubDesktopEntryTests(ScriptFixture):
         contents = source.read_text()
         self.assertEqual(contents.count("/usr/bin/github"), 1)
         desktop.write_text(contents.replace("/usr/bin/github", str(native)))
-        for helper, args in ((helper, args) for helper in (True, False)
-                             for args in ([], ["ghapp://synthetic/path?q=space%20value"])):
+        for helper, args in (
+            (helper, args)
+            for helper in (True, False)
+            for args in ([], ["ghapp://synthetic/path?q=space%20value"])
+        ):
             with self.subTest(helper=helper, args=args):
                 if not helper:
                     launcher.unlink(missing_ok=True)
@@ -315,45 +325,45 @@ class GitHubDesktopEntryTests(ScriptFixture):
 
 
 LEGACY_CODE_INSIDERS_SHIM = (
-    b'#!/usr/bin/env python3\n'
-    b'\n'
-    b'import os\n'
-    b'import sys\n'
-    b'\n'
+    b"#!/usr/bin/env python3\n"
+    b"\n"
+    b"import os\n"
+    b"import sys\n"
+    b"\n"
     b'REAL_BINARY = "/usr/bin/code-insiders"\n'
     b'PASSWORD_STORE = "--password-store=gnome-libsecret"\n'
-    b'\n'
-    b'\n'
-    b'def normalized_args(arguments: list[str]) -> list[str]:\n'
-    b'    forwarded: list[str] = []\n'
-    b'    index = 0\n'
-    b'\n'
-    b'    while index < len(arguments):\n'
-    b'        argument = arguments[index]\n'
+    b"\n"
+    b"\n"
+    b"def normalized_args(arguments: list[str]) -> list[str]:\n"
+    b"    forwarded: list[str] = []\n"
+    b"    index = 0\n"
+    b"\n"
+    b"    while index < len(arguments):\n"
+    b"        argument = arguments[index]\n"
     b'        if argument == "--":\n'
-    b'            forwarded.extend(arguments[index:])\n'
-    b'            break\n'
+    b"            forwarded.extend(arguments[index:])\n"
+    b"            break\n"
     b'        if argument == "--password-store":\n'
-    b'            index += 1\n'
+    b"            index += 1\n"
     b'            if index < len(arguments) and not arguments[index].startswith("-"):\n'
-    b'                index += 1\n'
-    b'            continue\n'
+    b"                index += 1\n"
+    b"            continue\n"
     b'        if argument.startswith("--password-store="):\n'
-    b'            index += 1\n'
-    b'            continue\n'
-    b'\n'
-    b'        forwarded.append(argument)\n'
-    b'        index += 1\n'
-    b'\n'
-    b'    return [PASSWORD_STORE, *forwarded]\n'
-    b'\n'
-    b'\n'
-    b'def main() -> None:\n'
-    b'    os.execv(REAL_BINARY, [REAL_BINARY, *normalized_args(sys.argv[1:])])\n'
-    b'\n'
-    b'\n'
+    b"            index += 1\n"
+    b"            continue\n"
+    b"\n"
+    b"        forwarded.append(argument)\n"
+    b"        index += 1\n"
+    b"\n"
+    b"    return [PASSWORD_STORE, *forwarded]\n"
+    b"\n"
+    b"\n"
+    b"def main() -> None:\n"
+    b"    os.execv(REAL_BINARY, [REAL_BINARY, *normalized_args(sys.argv[1:])])\n"
+    b"\n"
+    b"\n"
     b'if __name__ == "__main__":\n'
-    b'    main()\n'
+    b"    main()\n"
 )
 
 
@@ -389,12 +399,8 @@ class LauncherTests(ScriptFixture):
         args = ["file with spaces.txt", "--wait", "", "another\nfile", "'quoted' $literal"]
         for editor in ("code-insiders", "code", "gvim"):
             with self.subTest(editor=editor):
-                self.assert_launch(
-                    "choose-editor.sh", args, editor, [editor, *args]
-                )
-        self.assert_launch(
-            "choose-editor.sh", [], "code-insiders code gvim", ["code-insiders"]
-        )
+                self.assert_launch("choose-editor.sh", args, editor, [editor, *args])
+        self.assert_launch("choose-editor.sh", [], "code-insiders code gvim", ["code-insiders"])
 
     def test_missing_insiders_backend_only_skips_the_managed_launcher(self):
         self.assertEqual(
@@ -402,12 +408,19 @@ class LauncherTests(ScriptFixture):
             "abbafb0e03fa9c8534a5a74a46cbfc4357e73a34497da0966f96cddd6017eec9",
         )
         source = SCRIPTS.parents[2] / "local/bin/code-insiders"
+        helper = self.work / ".config/shell/code-insiders.sh"
+        helper.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(SCRIPTS.parents[1] / "shell/code-insiders.sh", helper)
         launcher = self.work / ".local/bin/code-insiders"
         launcher.parent.mkdir(parents=True)
         args = ["report 1.txt", "--wait", ""]
-        for install, expected in [("copy", "code"), ("modified-marked-copy", "code"),
-                                  ("legacy-copy", "code"), ("link", "code"),
-                                  ("custom", "code-insiders")]:
+        for install, expected in [
+            ("copy", "code"),
+            ("modified-marked-copy", "code"),
+            ("legacy-copy", "code"),
+            ("link", "code"),
+            ("custom", "code-insiders"),
+        ]:
             with self.subTest(install=install):
                 if install == "link":
                     if os.name == "nt":
@@ -426,8 +439,9 @@ class LauncherTests(ScriptFixture):
                     launcher.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
                 if not launcher.is_symlink():
                     launcher.chmod(0o755)
-                result = self.launch("choose-editor.sh", args, "code-insiders code",
-                                     missing_insiders=True)
+                result = self.launch(
+                    "choose-editor.sh", args, "code-insiders code", missing_insiders=True
+                )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.split("\0")[:-1], [expected, *args])
                 launcher.unlink()
@@ -461,7 +475,9 @@ class LauncherTests(ScriptFixture):
         for args in cases:
             with self.subTest(args=args):
                 self.assert_launch(
-                    "choose-browser.sh", args, "chromium-dev chromium",
+                    "choose-browser.sh",
+                    args,
+                    "chromium-dev chromium",
                     ["chromium-dev", *args],
                 )
 
@@ -477,7 +493,14 @@ class LauncherTests(ScriptFixture):
 
     def test_browser_existing_relative_files_are_not_hostnames(self):
         with tempfile.TemporaryDirectory() as directory:
-            for target in ("report.html", "file with spaces.html", "-local.html", "example.invalid", "youtube", "PRIME VIDEO"):
+            for target in (
+                "report.html",
+                "file with spaces.html",
+                "-local.html",
+                "example.invalid",
+                "youtube",
+                "PRIME VIDEO",
+            ):
                 with self.subTest(target=target):
                     with open(os.path.join(directory, target), "w", encoding="utf-8") as output:
                         output.write("fixture")

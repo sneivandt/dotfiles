@@ -7,7 +7,6 @@ import subprocess
 import unittest
 import uuid
 
-
 ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -37,15 +36,22 @@ class ShellConfigTestCase(unittest.TestCase):
         return path
 
     def run_shell(self, script, shell="zsh", interactive=False, expected=0):
-        args = (["bash", "--noprofile", "--norc", "-ic" if interactive else "-c"]
-                if shell == "bash" else ["zsh", "-dfi" if interactive else "-df", "-c"])
+        args = (
+            ["bash", "--noprofile", "--norc", "-ic" if interactive else "-c"]
+            if shell == "bash"
+            else ["zsh", "-dfi" if interactive else "-df", "-c"]
+        )
         if shell == "zsh" and "ZSH_COMPDUMP" in self.env:
             # Test the real completion initializer, not optional host/vendor
             # completion trees with runner-specific ownership.
-            script = 'fpath=(${^fpath}/compinit(N:h))\n' + script
+            script = "fpath=(${^fpath}/compinit(N:h))\n" + script
         result = subprocess.run(
-            args + [script], cwd=self.fixture, env=self.env,
-            text=True, capture_output=True, timeout=20,
+            [*args, script],
+            cwd=self.fixture,
+            env=self.env,
+            text=True,
+            capture_output=True,
+            timeout=20,
         )
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result

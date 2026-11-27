@@ -21,7 +21,9 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
-def run_nvim(args: list[str], *, timeout: int, env: dict[str, str] | None = None, capture: bool = True) -> int:
+def run_nvim(
+    args: list[str], *, timeout: int, env: dict[str, str] | None = None, capture: bool = True
+) -> int:
     try:
         result = subprocess.run(
             ["nvim", *args],
@@ -40,7 +42,17 @@ def run_nvim(args: list[str], *, timeout: int, env: dict[str, str] | None = None
 def test_configuration() -> None:
     print("=== Testing isolated Neovim configuration")
     result = subprocess.run(
-        [sys.executable, "-B", "-m", "unittest", "discover", "-s", str(REPO_ROOT / "tests" / "vim"), "-p", "test_*.py"],
+        [
+            sys.executable,
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            str(REPO_ROOT / "tests" / "vim"),
+            "-p",
+            "test_*.py",
+        ],
         check=False,
     )
     if result.returncode != 0:

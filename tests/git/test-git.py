@@ -123,7 +123,11 @@ def test_config() -> None:
             # Validate the repository-owned Windows fragment, not unrelated
             # runner/system config that may deliberately trust the CI workspace.
             safe_dirs = run_git(
-                "config", "--file", str(windows_include), "--get-all", "safe.directory",
+                "config",
+                "--file",
+                str(windows_include),
+                "--get-all",
+                "safe.directory",
                 cwd=scratch,
             )
             entries = [line.strip() for line in safe_dirs.stdout.splitlines() if line.strip()]
@@ -237,7 +241,12 @@ def test_hooks() -> None:
     print("=== Testing git template hooks")
 
     templates = home_dir() / ".config" / "git" / "templates"
-    for rel in ("hooks/pre-push", "hooks/post-merge", "hooks.local/pre-push", "hooks.local/post-merge"):
+    for rel in (
+        "hooks/pre-push",
+        "hooks/post-merge",
+        "hooks.local/pre-push",
+        "hooks.local/post-merge",
+    ):
         if not (templates / rel).is_file():
             fail(f"missing installed git template hook: {templates / rel}")
 
@@ -255,7 +264,9 @@ def test_hooks() -> None:
         remote.mkdir()
         repo.mkdir()
 
-        checked_git("-c", "init.templateDir=", "init", "-q", "--bare", "-b", "main", str(remote), cwd=remote)
+        checked_git(
+            "-c", "init.templateDir=", "init", "-q", "--bare", "-b", "main", str(remote), cwd=remote
+        )
         checked_git("init", "-q", "-b", "main", str(repo), cwd=repo)
         if not (repo / ".git" / "hooks" / "pre-push").is_file():
             fail("git init did not copy pre-push hook from init.templateDir")
@@ -301,10 +312,40 @@ def test_hooks() -> None:
         checked_git("remote", "set-head", "origin", "main", cwd=repo)
         checked_git("merge", "-q", "--ff-only", "origin/main", cwd=repo)
 
-        if run_git("show-ref", "--verify", "--quiet", "refs/heads/merged-topic", cwd=repo).returncode == 0:
+        if (
+            run_git(
+                "show-ref", "--verify", "--quiet", "refs/heads/merged-topic", cwd=repo
+            ).returncode
+            == 0
+        ):
             fail("post-merge hook did not clean up merged-topic branch")
-        if run_git("show-ref", "--verify", "--quiet", "refs/heads/unmerged-topic", cwd=repo).returncode != 0:
+        if (
+            run_git(
+                "show-ref", "--verify", "--quiet", "refs/heads/unmerged-topic", cwd=repo
+            ).returncode
+            != 0
+        ):
             fail("post-merge hook unexpectedly deleted unmerged-topic branch")
+
+        # Also exercise the delete-merged alias via the shared helper against HEAD.
+        aliases_source = REPO_ROOT / "symlinks" / "config" / "git" / "aliases"
+        checked_git("config", "include.path", str(aliases_source), cwd=repo)
+        checked_git("branch", "local-merged", cwd=repo)
+        checked_git("delete-merged", cwd=repo)
+        if (
+            run_git(
+                "show-ref", "--verify", "--quiet", "refs/heads/local-merged", cwd=repo
+            ).returncode
+            == 0
+        ):
+            fail("git delete-merged did not clean up local-merged branch")
+        if (
+            run_git(
+                "show-ref", "--verify", "--quiet", "refs/heads/unmerged-topic", cwd=repo
+            ).returncode
+            != 0
+        ):
+            fail("git delete-merged unexpectedly deleted unmerged-topic branch")
         print("PASS: template hooks block protected pushes and clean merged branches")
 
 

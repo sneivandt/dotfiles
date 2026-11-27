@@ -75,4 +75,4 @@ fi
 [ -s "$inputs" ] || exit 0
 xargs -0 shellcheck --severity=warning \
   --exclude=SC1090,SC1091,SC3043,SC2154 \
-  --enable=avoid-nullary-conditions -- < "$inputs"
+  --enable=avoid-nullary-conditions,deprecate-which,check-extra-masked-returns -- < "$inputs"

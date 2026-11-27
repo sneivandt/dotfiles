@@ -25,20 +25,25 @@ class GitRangeTests(unittest.TestCase):
         home.mkdir()
         gitconfig = self.root / "fixture-gitconfig"
         gitconfig.write_text(
-            "[core]\n\tfsmonitor = false\n"
-            "[maintenance]\n\tauto = false\n"
-            "[gc]\n\tauto = 0\n",
+            "[core]\n\tfsmonitor = false\n[maintenance]\n\tauto = false\n[gc]\n\tauto = 0\n",
             encoding="utf-8",
         )
         self.env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
         self.env.update(
-            HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
-            GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=str(gitconfig), GIT_CONFIG_COUNT="0",
+            HOME=str(home),
+            XDG_CONFIG_HOME=str(home / ".config"),
+            GIT_CONFIG_NOSYSTEM="1",
+            GIT_CONFIG_GLOBAL=str(gitconfig),
+            GIT_CONFIG_COUNT="0",
             GIT_CEILING_DIRECTORIES=str(self.root),
-            GIT_AUTHOR_NAME="Fixture", GIT_AUTHOR_EMAIL="fixture@test.local",
-            GIT_COMMITTER_NAME="Fixture", GIT_COMMITTER_EMAIL="fixture@test.local",
-            DIR=str(self.repo), GITHUB_OUTPUT=str(self.root / "outputs"),
-            GITHUB_EVENT_NAME="push", GITHUB_REPOSITORY="fixture/repository",
+            GIT_AUTHOR_NAME="Fixture",
+            GIT_AUTHOR_EMAIL="fixture@test.local",
+            GIT_COMMITTER_NAME="Fixture",
+            GIT_COMMITTER_EMAIL="fixture@test.local",
+            DIR=str(self.repo),
+            GITHUB_OUTPUT=str(self.root / "outputs"),
+            GITHUB_EVENT_NAME="push",
+            GITHUB_REPOSITORY="fixture/repository",
         )
         # Imported helpers also spawn Git, without receiving self.env explicitly.
         environment = patch.dict(os.environ, self.env, clear=True)
@@ -52,7 +57,12 @@ class GitRangeTests(unittest.TestCase):
         self.git("init", "-q", "--template=", "--initial-branch=fixture")
         self.git("config", "core.hooksPath", os.devnull)
         self.git("config", "core.autocrlf", "false")
-        for name in ("ci_metadata.py", "classify-release.sh", "classify-ci-changes.sh", "classify-ci-changes.py"):
+        for name in (
+            "ci_metadata.py",
+            "classify-release.sh",
+            "classify-ci-changes.sh",
+            "classify-ci-changes.py",
+        ):
             target = self.repo / LINUX / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(SCRIPTS / name, target)
@@ -71,8 +81,11 @@ class GitRangeTests(unittest.TestCase):
             "GIT_INDEX_FILE": str(git_dir / "index"),
         }
         result = subprocess.run(
-            ["git", *args], cwd=self.repo, env=env,
-            capture_output=True, text=True,
+            ["git", *args],
+            cwd=self.repo,
+            env=env,
+            capture_output=True,
+            text=True,
         )
         self.assertEqual(result.returncode, 0, f"git {args!r}: {result.stderr}")
         return result.stdout.strip()
@@ -83,8 +96,12 @@ class GitRangeTests(unittest.TestCase):
         target.write_text(text, encoding="utf-8")
 
     def test_imported_helpers_use_the_isolated_git_environment(self):
-        for key in ("GIT_CONFIG_PARAMETERS", "GIT_CONFIG_KEY_0",
-                    "GIT_CONFIG_VALUE_0", "GIT_EXEC_PATH"):
+        for key in (
+            "GIT_CONFIG_PARAMETERS",
+            "GIT_CONFIG_KEY_0",
+            "GIT_CONFIG_VALUE_0",
+            "GIT_EXEC_PATH",
+        ):
             self.assertNotIn(key, os.environ)
         self.assertEqual(os.environ["GIT_CONFIG_GLOBAL"], self.env["GIT_CONFIG_GLOBAL"])
         self.assertEqual(
@@ -105,8 +122,11 @@ class GitRangeTests(unittest.TestCase):
         output = Path(self.env["GITHUB_OUTPUT"])
         output.write_text("", encoding="utf-8")
         result = subprocess.run(
-            ["sh", str(SCRIPTS / name)], env=self.env, cwd=self.repo,
-            capture_output=True, text=True,
+            ["sh", str(SCRIPTS / name)],
+            env=self.env,
+            cwd=self.repo,
+            capture_output=True,
+            text=True,
         )
         if not success:
             self.assertNotEqual(result.returncode, 0, result.stdout)
@@ -115,11 +135,13 @@ class GitRangeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return {
             key: json.loads(value)
-            for key, value in (line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
+            for key, value in (
+                line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines()
+            )
         }
 
     def test_docs_push_carries_forward_unverified_rust_changes(self):
-        self.write("cli/src/main.rs", "fn main() { println!(\"changed\"); }\n")
+        self.write("cli/src/main.rs", 'fn main() { println!("changed"); }\n')
         before = self.commit()
         self.write("docs/example.md", "docs only\n")
         head = self.commit()
@@ -128,25 +150,29 @@ class GitRangeTests(unittest.TestCase):
         tools.mkdir()
         gh = tools / "gh"
         gh.write_text(
-            '#!/bin/sh\n'
+            "#!/bin/sh\n"
             'test "$1" = api && test "$4" = "repos/fixture/repository/actions/workflows/ci.yml/runs" || exit 2\n'
             'case "${10}" in\n'
             '  "head_sha=$PUSH_BEFORE") if [ "$FIXTURE_CI" = success ]; then echo "$PUSH_BEFORE"; fi;;\n'
-            '  status=success)\n'
+            "  status=success)\n"
             '    if [ "$FIXTURE_CI" = unavailable ]; then exit 1; fi\n'
             '    printf "%s\\n" "$GITHUB_SHA" "$FIXTURE_BASE";;\n'
-            '  *) exit 2;;\n'
-            'esac\n',
+            "  *) exit 2;;\n"
+            "esac\n",
             encoding="utf-8",
         )
         gh.chmod(0o755)
         self.env.update(
             PATH=str(tools) + os.pathsep + self.env["PATH"],
-            PUSH_BEFORE=before, GITHUB_SHA=head, FIXTURE_BASE=self.base,
+            PUSH_BEFORE=before,
+            GITHUB_SHA=head,
+            FIXTURE_BASE=self.base,
         )
         for state in ("success", "cancelled", "failed", "in_progress", "unavailable", "initial"):
             with self.subTest(state=state):
-                self.env.update(FIXTURE_CI=state, FIXTURE_BASE="" if state == "initial" else self.base)
+                self.env.update(
+                    FIXTURE_CI=state, FIXTURE_BASE="" if state == "initial" else self.base
+                )
                 if state == "unavailable":
                     self.script("ci-comparison-range.sh", success=False)
                     continue
@@ -154,15 +180,25 @@ class GitRangeTests(unittest.TestCase):
                 output.write_text("", encoding="utf-8")
                 result = subprocess.run(
                     ["sh", str(SCRIPTS / "ci-comparison-range.sh")],
-                    env=self.env, cwd=self.repo, check=True, capture_output=True, text=True,
+                    env=self.env,
+                    cwd=self.repo,
+                    check=True,
+                    capture_output=True,
+                    text=True,
                 )
                 values = dict(
                     line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines()
                 )
-                expected = {"success": before, "initial": self.git("hash-object", "-t", "tree", "/dev/null")}.get(state, self.base)
+                expected = {
+                    "success": before,
+                    "initial": self.git("hash-object", "-t", "tree", "/dev/null"),
+                }.get(state, self.base)
                 self.assertEqual((values["base_sha"], values["head_sha"]), (expected, head))
-                self.env.update(BASE_SHA=values["base_sha"], HEAD_SHA=values["head_sha"],
-                                CI_FORCE_FULL=values["force_full"])
+                self.env.update(
+                    BASE_SHA=values["base_sha"],
+                    HEAD_SHA=values["head_sha"],
+                    CI_FORCE_FULL=values["force_full"],
+                )
                 jobs = self.script()
                 self.assertEqual(jobs["docs_only"], state == "success", result.stderr)
                 self.assertEqual(jobs["run_build_linux"], state != "success")
@@ -176,15 +212,22 @@ class GitRangeTests(unittest.TestCase):
         output.write_text("", encoding="utf-8")
         subprocess.run(
             ["sh", str(SCRIPTS / "ci-comparison-range.sh")],
-            env=self.env, cwd=self.repo, check=True, capture_output=True, text=True,
+            env=self.env,
+            cwd=self.repo,
+            check=True,
+            capture_output=True,
+            text=True,
         )
         values = dict(
             line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines()
         )
         self.assertEqual((values["base_sha"], values["head_sha"]), ("", ""))
         self.assertEqual(values["force_full"], "true")
-        self.env.update(BASE_SHA=values["base_sha"], HEAD_SHA=values["head_sha"],
-                        CI_FORCE_FULL=values["force_full"])
+        self.env.update(
+            BASE_SHA=values["base_sha"],
+            HEAD_SHA=values["head_sha"],
+            CI_FORCE_FULL=values["force_full"],
+        )
         jobs = self.script()
         self.assertNotIn("run_mutation", jobs)
         self.assertTrue(jobs["run_build_windows"])
@@ -192,12 +235,24 @@ class GitRangeTests(unittest.TestCase):
     def test_mutation_diff_includes_production_after_inline_test_only_edits(self):
         self.write("cli/src/main.rs", "fn original() -> bool { true }\n#[cfg(test)] mod tests {}\n")
         base = self.commit()
-        self.write("cli/src/main.rs", "fn original() -> bool { true }\n#[cfg(test)] mod tests { /* revised */ }\n")
+        self.write(
+            "cli/src/main.rs",
+            "fn original() -> bool { true }\n#[cfg(test)] mod tests { /* revised */ }\n",
+        )
         head = self.commit()
         summary = self.root / "summary"
-        with contextlib.chdir(self.repo), patch.dict(os.environ, self.env | {
-            "GITHUB_SHA": head, "MUTATION_BASE": base, "GITHUB_STEP_SUMMARY": str(summary),
-        }):
+        with (
+            contextlib.chdir(self.repo),
+            patch.dict(
+                os.environ,
+                self.env
+                | {
+                    "GITHUB_SHA": head,
+                    "MUTATION_BASE": base,
+                    "GITHUB_STEP_SUMMARY": str(summary),
+                },
+            ),
+        ):
             MUTATION["main"]([])
         diff = (self.repo / "cli/mutants.diff").read_text()
         self.assertIn("+fn original() -> bool { true }", diff)
@@ -218,23 +273,43 @@ class GitRangeTests(unittest.TestCase):
         base = self.commit()
         self.git("mv", "cli/src/feature.rs", "cli/src/moved.rs")
         head = self.commit()
-        with contextlib.chdir(self.repo), patch.dict(os.environ, self.env | {
-            "GITHUB_SHA": head, "MUTATION_BASE": base,
-            "GITHUB_STEP_SUMMARY": str(self.root / "summary"),
-        }):
+        with (
+            contextlib.chdir(self.repo),
+            patch.dict(
+                os.environ,
+                self.env
+                | {
+                    "GITHUB_SHA": head,
+                    "MUTATION_BASE": base,
+                    "GITHUB_STEP_SUMMARY": str(self.root / "summary"),
+                },
+            ),
+        ):
             MUTATION["main"]([])
         diff = (self.repo / "cli/mutants.diff").read_text()
         self.assertIn("src/moved.rs", diff)
         self.assertNotIn("src/feature.rs", diff)
-        with contextlib.chdir(self.repo), patch.dict(os.environ, self.env | {
-            "GITHUB_SHA": head, "MUTATION_BASE": head,
-            "GITHUB_STEP_SUMMARY": str(self.root / "summary"),
-        }):
+        with (
+            contextlib.chdir(self.repo),
+            patch.dict(
+                os.environ,
+                self.env
+                | {
+                    "GITHUB_SHA": head,
+                    "MUTATION_BASE": head,
+                    "GITHUB_STEP_SUMMARY": str(self.root / "summary"),
+                },
+            ),
+        ):
             MUTATION["main"]([])
         self.assertEqual((self.repo / "cli/mutants.diff").read_bytes(), b"")
-        self.assertTrue(Path(self.env["GITHUB_OUTPUT"]).read_text().endswith(
-            "has_linux_inputs=false\nrun_windows=false\n",
-        ))
+        self.assertTrue(
+            Path(self.env["GITHUB_OUTPUT"])
+            .read_text()
+            .endswith(
+                "has_linux_inputs=false\nrun_windows=false\n",
+            )
+        )
 
     def test_rename_deletion_and_unusual_paths(self):
         self.git("mv", "cli/src/main.rs", "example.md")
@@ -295,7 +370,9 @@ class GitRangeTests(unittest.TestCase):
             (["--base", head, "--head", head], 0, "no checks run"),
             (["--base", "invalid-ref"], 1, "Pre-push validation failed"),
         ):
-            result = subprocess.run(command + arguments, env=self.env, capture_output=True, text=True)
+            result = subprocess.run(
+                command + arguments, env=self.env, capture_output=True, text=True
+            )
             self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
             self.assertIn(message, result.stdout + result.stderr)
 
@@ -315,9 +392,19 @@ class GitRangeTests(unittest.TestCase):
                     else:
                         target.write_text(content, encoding="utf-8")
                     result = subprocess.run(
-                        ["python3", "-B", str(self.repo / LINUX / "pre-push.py"),
-                         "--plan", "--base", base, "--head", head],
-                        env=self.env, capture_output=True, text=True,
+                        [
+                            "python3",
+                            "-B",
+                            str(self.repo / LINUX / "pre-push.py"),
+                            "--plan",
+                            "--base",
+                            base,
+                            "--head",
+                            head,
+                        ],
+                        env=self.env,
+                        capture_output=True,
+                        text=True,
                     )
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     self.assertIn("clippy", result.stdout)
@@ -328,22 +415,32 @@ class GitRangeTests(unittest.TestCase):
         helper = runpy.run_path(str(SCRIPTS / "check-doc-links.py"))
         target = "docs/target with spaces.md"
         self.write(target, "# Heading\n# Heading\n```\n# Hidden\n```\n")
-        self.write("docs/source with spaces.md", "\n".join((
-            "[angle](<target with spaces.md#heading>)",
-            "[encoded](target%20with%20spaces.md#heading-1)",
-            "[external](<https://example.invalid/a b>)",
-            "[mail](mailto:fixture%40example.invalid)",
-        )))
+        self.write(
+            "docs/source with spaces.md",
+            "\n".join(
+                (
+                    "[angle](<target with spaces.md#heading>)",
+                    "[encoded](target%20with%20spaces.md#heading-1)",
+                    "[external](<https://example.invalid/a b>)",
+                    "[mail](mailto:fixture%40example.invalid)",
+                )
+            ),
+        )
         # A quoted Git display pathname must also be preserved on POSIX.
         if os.name != "nt":
             self.write("docs/tab\tand\nnewline.md", "[valid](<target with spaces.md>)\n")
         self.git("add", ".")
         self.assertEqual(helper["check"](self.repo), [])
-        self.write("docs/source with spaces.md", "\n".join((
-            "[missing](<missing with spaces.md>)",
-            "[anchor](<target with spaces.md#absent>)",
-            "[fence](<target with spaces.md#hidden>)",
-        )))
+        self.write(
+            "docs/source with spaces.md",
+            "\n".join(
+                (
+                    "[missing](<missing with spaces.md>)",
+                    "[anchor](<target with spaces.md#absent>)",
+                    "[fence](<target with spaces.md#hidden>)",
+                )
+            ),
+        )
         failures = helper["check"](self.repo)
         self.assertEqual(len(failures), 3, failures)
         self.assertIn("broken link", failures[0])
@@ -414,7 +511,7 @@ class GitRangeTests(unittest.TestCase):
                 '<nav id="VPSidebarNav">'
                 '<a href="/getting-started">Getting started</a>'
                 '<a href="/commands-and-usage">Commands and usage</a>'
-                '</nav>'
+                "</nav>"
             ),
             "docs/dist/getting-started.html": homepage,
             "docs/dist/commands-and-usage.html": (
@@ -443,12 +540,12 @@ class GitRangeTests(unittest.TestCase):
             "docs/dist/robots.txt": "User-agent: *\nAllow: /\nSitemap: https://docs.example.invalid/sitemap-index.xml\n",
             "docs/dist/sitemap-index.xml": (
                 '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-                '<sitemap><loc>https://docs.example.invalid/sitemap-0.xml</loc></sitemap></sitemapindex>'
+                "<sitemap><loc>https://docs.example.invalid/sitemap-0.xml</loc></sitemap></sitemapindex>"
             ),
             "docs/dist/sitemap-0.xml": (
                 '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-                '<url><loc>https://docs.example.invalid/</loc></url>'
-                '</urlset>'
+                "<url><loc>https://docs.example.invalid/</loc></url>"
+                "</urlset>"
             ),
         }
         descriptions = {
@@ -457,7 +554,9 @@ class GitRangeTests(unittest.TestCase):
             "commands-and-usage": "Everyday commands.",
         }
         for name, description in descriptions.items():
-            fixture[f"docs/dist/{name}.html"] += f'<meta name="description" content="{description}">'
+            fixture[f"docs/dist/{name}.html"] += (
+                f'<meta name="description" content="{description}">'
+            )
         homepage = fixture["docs/dist/getting-started.html"]
         for path, content in fixture.items():
             self.write(path, content)
@@ -465,50 +564,240 @@ class GitRangeTests(unittest.TestCase):
         cases = [
             ("docs/dist/index.html", None, "Missing built homepage"),
             ("docs/content/index.md", None, "Missing Markdown homepage"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('id="about-these-dotfiles"', 'id="wrong"'), "missing heading anchors"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<h1 id="about-these-dotfiles">About these dotfiles</h1>', '<h1 id="about-these-dotfiles">Welcome</h1>'), "Markdown title does not match page title"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('class="title"', 'class="other"'), "Homepage header must link"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('href="https://docs.example.invalid/"', 'href="https://docs.example.invalid/index.html"'), "expected canonical URL"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('content="index, follow, max-image-preview:large"', 'content="index, noindex"'), "landing page must allow indexing and following"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace("<h1", '<meta name="googlebot" content="none"><h1'), "landing page must allow indexing and following"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<meta property="og:type" content="website">', '<meta property="og:type" content="article">'), "expected og:type"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<nav id="VPSidebarNav">', '<nav id="VPSidebarNav"><a href="/index.html">Dotfiles</a>'), "Homepage must not appear in sidebar navigation"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('href="/getting-started"', 'href="/commands-and-usage"'), "missing from sidebar navigation"),
-            ("docs/dist/commands-and-usage.html", None, "missing published route /commands-and-usage.html"),
-            ("docs/dist/getting-started.html", homepage.replace('id="setup"', 'id="renamed"'), "missing heading anchors"),
-            ("docs/dist/getting-started.html", homepage + "<h1>Extra title</h1>", "expected one page title"),
-            ("docs/dist/getting-started.html", homepage + '<span id="setup"></span>', "duplicate IDs"),
-            ("docs/dist/getting-started.html", homepage.replace("shortcut icon", "stylesheet"), "missing site icon /favicon.svg"),
-            ("docs/dist/getting-started.html", homepage.replace('<link rel="apple-touch-icon" href="/apple-touch-icon.png">', ""), "missing apple-touch-icon"),
-            ("docs/dist/getting-started.html", homepage.replace('<meta name="author" content="Stuart Neivandt">', ""), "expected author"),
-            ("docs/dist/getting-started.html", homepage.replace('<meta name="theme-color" content="#1a1b26">', ""), "expected theme-color"),
-            ("docs/dist/getting-started.html", homepage.replace('<meta property="og:site_name" content="Dotfiles">', ""), "expected og:site_name"),
-            ("docs/dist/getting-started.html", homepage.replace('<meta property="og:image" content="https://docs.example.invalid/assets/og-image.png">', ""), "expected og:image"),
-            ("docs/dist/getting-started.html", homepage.replace('<meta name="twitter:card" content="summary_large_image">', ""), "expected twitter:card"),
-            ("docs/dist/getting-started.html", homepage.replace('content="https://docs.example.invalid/getting-started"', 'content="https://docs.example.invalid/getting-started.html"'), "expected og:url"),
-            ("docs/dist/getting-started.html", homepage.replace('content="noindex, follow"', 'content="index, follow"'), "non-home guide must emit noindex, follow"),
-            ("docs/dist/getting-started.html", homepage.replace('content="noindex, follow"', 'content="noindex, nofollow"'), "non-home guide must emit noindex, follow"),
-            ("docs/dist/404.html", fixture["docs/dist/404.html"].replace('content="noindex, nofollow"', 'content="index, follow"'), "expected noindex, nofollow robots meta tag"),
-            ("docs/dist/getting-started.html", homepage.replace("<h1", '<link rel="canonical" href="https://docs.example.invalid/getting-started.html"><h1'), "expected canonical URL"),
-            ("docs/dist/getting-started.html", homepage.replace("#commands", "#absent"), "broken anchor"),
-            ("docs/dist/getting-started.html", homepage.replace("commands-and-usage#commands", "commands-and-usage.html#commands"), "expected clean URL without .html"),
-            ("docs/dist/getting-started.html", homepage.replace("commands-and-usage#commands", "commands-and-usage.md#commands"), "broken destination"),
-            ("docs/dist/getting-started.html", homepage.replace(">Getting started<", ">Welcome<"), "filename and URL do not match title"),
-            ("docs/content/guides/getting-started.md", "# Welcome\n\n## Setup\n", "Markdown title does not match page title"),
-            ("docs/content/guides/getting-started.md", fixture["docs/content/guides/getting-started.md"].replace("title: Getting started", "title: Welcome"), "frontmatter title does not match"),
-            ("docs/content/guides/getting-started.md", fixture["docs/content/guides/getting-started.md"].replace("description: Set up a machine.", "description: ''"), "nonempty single-line frontmatter description"),
-            ("docs/dist/getting-started.html", homepage.replace("Set up a machine.", "Outdated description."), "rendered description does not match"),
-            ("docs/dist/getting-started.html", homepage.replace(">Commands and usage<", ">Wrong label<"), "navigation label"),
+            (
+                "docs/dist/index.html",
+                fixture["docs/dist/index.html"].replace('id="about-these-dotfiles"', 'id="wrong"'),
+                "missing heading anchors",
+            ),
+            (
+                "docs/dist/index.html",
+                fixture["docs/dist/index.html"].replace(
+                    '<h1 id="about-these-dotfiles">About these dotfiles</h1>',
+                    '<h1 id="about-these-dotfiles">Welcome</h1>',
+                ),
+                "Markdown title does not match page title",
+            ),
+            (
+                "docs/dist/index.html",
+                fixture["docs/dist/index.html"].replace('class="title"', 'class="other"'),
+                "Homepage header must link",
+            ),
+            (
+                "docs/dist/index.html",
+                fixture["docs/dist/index.html"].replace(
+                    'href="https://docs.example.invalid/"',
+                    'href="https://docs.example.invalid/index.html"',
+                ),
+                "expected canonical URL",
+            ),
+            (
+                "docs/dist/index.html",
+                fixture["docs/dist/index.html"].replace(
+                    'content="index, follow, max-image-preview:large"', 'content="index, noindex"'
+                ),
+                "landing page must allow indexing and following",
+            ),
+            (
+                "docs/dist/index.html",
+                fixture["docs/dist/index.html"].replace(
+                    "<h1", '<meta name="googlebot" content="none"><h1'
+                ),
+                "landing page must allow indexing and following",
+            ),
+            (
+                "docs/dist/index.html",
+                fixture["docs/dist/index.html"].replace(
+                    '<meta property="og:type" content="website">',
+                    '<meta property="og:type" content="article">',
+                ),
+                "expected og:type",
+            ),
+            (
+                "docs/dist/index.html",
+                fixture["docs/dist/index.html"].replace(
+                    '<nav id="VPSidebarNav">',
+                    '<nav id="VPSidebarNav"><a href="/index.html">Dotfiles</a>',
+                ),
+                "Homepage must not appear in sidebar navigation",
+            ),
+            (
+                "docs/dist/index.html",
+                fixture["docs/dist/index.html"].replace(
+                    'href="/getting-started"', 'href="/commands-and-usage"'
+                ),
+                "missing from sidebar navigation",
+            ),
+            (
+                "docs/dist/commands-and-usage.html",
+                None,
+                "missing published route /commands-and-usage.html",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace('id="setup"', 'id="renamed"'),
+                "missing heading anchors",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage + "<h1>Extra title</h1>",
+                "expected one page title",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage + '<span id="setup"></span>',
+                "duplicate IDs",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace("shortcut icon", "stylesheet"),
+                "missing site icon /favicon.svg",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace('<link rel="apple-touch-icon" href="/apple-touch-icon.png">', ""),
+                "missing apple-touch-icon",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace('<meta name="author" content="Stuart Neivandt">', ""),
+                "expected author",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace('<meta name="theme-color" content="#1a1b26">', ""),
+                "expected theme-color",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace('<meta property="og:site_name" content="Dotfiles">', ""),
+                "expected og:site_name",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace(
+                    '<meta property="og:image" content="https://docs.example.invalid/assets/og-image.png">',
+                    "",
+                ),
+                "expected og:image",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace('<meta name="twitter:card" content="summary_large_image">', ""),
+                "expected twitter:card",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace(
+                    'content="https://docs.example.invalid/getting-started"',
+                    'content="https://docs.example.invalid/getting-started.html"',
+                ),
+                "expected og:url",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace('content="noindex, follow"', 'content="index, follow"'),
+                "non-home guide must emit noindex, follow",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace('content="noindex, follow"', 'content="noindex, nofollow"'),
+                "non-home guide must emit noindex, follow",
+            ),
+            (
+                "docs/dist/404.html",
+                fixture["docs/dist/404.html"].replace(
+                    'content="noindex, nofollow"', 'content="index, follow"'
+                ),
+                "expected noindex, nofollow robots meta tag",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace(
+                    "<h1",
+                    '<link rel="canonical" href="https://docs.example.invalid/getting-started.html"><h1',
+                ),
+                "expected canonical URL",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace("#commands", "#absent"),
+                "broken anchor",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace("commands-and-usage#commands", "commands-and-usage.html#commands"),
+                "expected clean URL without .html",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace("commands-and-usage#commands", "commands-and-usage.md#commands"),
+                "broken destination",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace(">Getting started<", ">Welcome<"),
+                "filename and URL do not match title",
+            ),
+            (
+                "docs/content/guides/getting-started.md",
+                "# Welcome\n\n## Setup\n",
+                "Markdown title does not match page title",
+            ),
+            (
+                "docs/content/guides/getting-started.md",
+                fixture["docs/content/guides/getting-started.md"].replace(
+                    "title: Getting started", "title: Welcome"
+                ),
+                "frontmatter title does not match",
+            ),
+            (
+                "docs/content/guides/getting-started.md",
+                fixture["docs/content/guides/getting-started.md"].replace(
+                    "description: Set up a machine.", "description: ''"
+                ),
+                "nonempty single-line frontmatter description",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace("Set up a machine.", "Outdated description."),
+                "rendered description does not match",
+            ),
+            (
+                "docs/dist/getting-started.html",
+                homepage.replace(">Commands and usage<", ">Wrong label<"),
+                "navigation label",
+            ),
             ("docs/dist/favicon.svg", None, "broken destination /favicon.svg"),
-            ("docs/dist/assets/og-image.png", None, "broken destination https://docs.example.invalid/assets/og-image.png"),
+            (
+                "docs/dist/assets/og-image.png",
+                None,
+                "broken destination https://docs.example.invalid/assets/og-image.png",
+            ),
             ("docs/dist/assets/example.svg", None, "broken destination /assets/example.svg"),
             ("docs/dist/CNAME", "wrong.example.invalid\n", "published CNAME"),
             ("docs/dist/robots.txt", None, "Missing published robots.txt"),
-            ("docs/dist/robots.txt", "User-agent: *\nAllow: /\n", "does not declare the canonical sitemap"),
+            (
+                "docs/dist/robots.txt",
+                "User-agent: *\nAllow: /\n",
+                "does not declare the canonical sitemap",
+            ),
             ("docs/dist/sitemap-index.xml", None, "Missing published sitemap-index.xml"),
             ("docs/dist/sitemap-0.xml", None, "Missing published sitemap"),
-            ("docs/dist/sitemap-0.xml", fixture["docs/dist/sitemap-0.xml"].replace('invalid/</loc>', 'invalid/index.html</loc>'), "Sitemap URLs differ from indexable landing URL"),
-            ("docs/dist/sitemap-0.xml", fixture["docs/dist/sitemap-0.xml"].replace("</urlset>", "<url><loc>https://docs.example.invalid/getting-started</loc></url></urlset>"), "Sitemap URLs differ from indexable landing URL"),
+            (
+                "docs/dist/sitemap-0.xml",
+                fixture["docs/dist/sitemap-0.xml"].replace(
+                    "invalid/</loc>", "invalid/index.html</loc>"
+                ),
+                "Sitemap URLs differ from indexable landing URL",
+            ),
+            (
+                "docs/dist/sitemap-0.xml",
+                fixture["docs/dist/sitemap-0.xml"].replace(
+                    "</urlset>",
+                    "<url><loc>https://docs.example.invalid/getting-started</loc></url></urlset>",
+                ),
+                "Sitemap URLs differ from indexable landing URL",
+            ),
         ]
         for path, content, message in cases:
             with self.subTest(path=path, message=message):
@@ -518,18 +807,22 @@ class GitRangeTests(unittest.TestCase):
                     self.write(path, content)
                 self.assertIn(message, "\n".join(check_site(self.repo)))
                 self.write(path, fixture[path])
-        self.write("docs/content/reference/commands-and-usage.md",
-                   fixture["docs/content/guides/commands-and-usage.md"])
+        self.write(
+            "docs/content/reference/commands-and-usage.md",
+            fixture["docs/content/guides/commands-and-usage.md"],
+        )
         self.assertIn("source filenames must be unique", "\n".join(check_site(self.repo)))
         (self.repo / "docs/content/reference/commands-and-usage.md").unlink()
         self.write("docs/dist/guides/getting-started.html", homepage)
-        self.assertIn("Published routes differ from flat source routes", "\n".join(check_site(self.repo)))
+        self.assertIn(
+            "Published routes differ from flat source routes", "\n".join(check_site(self.repo))
+        )
 
     def test_pending_site_publication_survives_a_successful_code_push(self):
         self.write("docs/content/example.md", "# Unpublished guide\n")
         previous = self.commit()
         self.env["BASE_SHA"] = previous
-        self.write("cli/src/main.rs", "fn main() { println!(\"code-only push\"); }\n")
+        self.write("cli/src/main.rs", 'fn main() { println!("code-only push"); }\n')
         self.env["HEAD_SHA"] = self.commit()
         self.env["DOCS_BASE_SHA"] = self.base
         self.assertTrue(self.script()["run_docs_site"])
@@ -564,7 +857,7 @@ class GitRangeTests(unittest.TestCase):
         mock.mkdir(exist_ok=True)
         gh = mock / "gh"
         gh.write_text(
-            '#!/bin/sh\nset -eu\n'
+            "#!/bin/sh\nset -eu\n"
             'printf "called\\n" >> "$FIXTURE_GH_LOG"\n'
             '[ "$#" -eq 12 ] && [ "$1" = release ] && [ "$2" = list ] &&\n'
             '[ "$3" = --repo ] && [ "$4" = fixture/repository ] &&\n'
@@ -578,14 +871,15 @@ class GitRangeTests(unittest.TestCase):
         gh.chmod(0o755)
         self.env.update(
             PATH=str(mock) + os.pathsep + self.env["PATH"],
-            FIXTURE_RELEASE_TAG=tag, FIXTURE_GH_STATUS=str(status),
+            FIXTURE_RELEASE_TAG=tag,
+            FIXTURE_GH_STATUS=str(status),
             FIXTURE_GH_LOG=str(self.root / "gh-calls"),
         )
 
     def test_release_uses_net_changes_since_an_annotated_published_tag(self):
         self.git("tag", "-a", "-m", "published fixture", "v2026.01.01-2", self.base)
         self.mock_release(tag="v2026.01.01-2")
-        self.write("cli/src/main.rs", "fn main() { println!(\"unpublished\"); }\n")
+        self.write("cli/src/main.rs", 'fn main() { println!("unpublished"); }\n')
         self.commit()
         self.write("cli/src/main.rs", "fn main() {}\n")
         self.write("README.md", "binary changes were reverted before publishing\n")
@@ -608,7 +902,7 @@ class GitRangeTests(unittest.TestCase):
         self.write("README.md", "docs\n")
         self.env["HEAD_SHA"] = self.commit()
         self.assertFalse(self.script("classify-release.sh")["run_release"])
-        self.write("cli/src/main.rs", "fn main() { println!(\"updated\"); }\n")
+        self.write("cli/src/main.rs", 'fn main() { println!("updated"); }\n')
         unpublished = self.commit()
         self.env["BASE_SHA"] = unpublished
         self.write("README.md", "more docs\n")

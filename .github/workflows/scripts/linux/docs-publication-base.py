@@ -15,18 +15,22 @@ def api(endpoint):
 def publication_base(repository, head):
     deployments = api(f"repos/{repository}/deployments?environment=github-pages&per_page=100")
     for deployment in deployments:
-        statuses = api(f"repos/{repository}/deployments/{int(deployment['id'])}/statuses?per_page=100")
+        statuses = api(
+            f"repos/{repository}/deployments/{int(deployment['id'])}/statuses?per_page=100"
+        )
         # Older workflows could finish the environment job without deploying.
         # Only the actual Pages deploy step sets the environment URL.
-        if not any(status["state"] == "success" and status.get("environment_url")
-                   for status in statuses):
+        if not any(
+            status["state"] == "success" and status.get("environment_url") for status in statuses
+        ):
             continue
         sha = deployment["sha"]
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
             return ""
         ancestry = subprocess.run(
             ["git", "merge-base", "--is-ancestor", sha, head],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         # Do not use an older ancestor when a force push has left an unrelated
         # successful deployment live. Its site inputs may differ from both tips.

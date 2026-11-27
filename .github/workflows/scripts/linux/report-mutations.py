@@ -9,7 +9,6 @@ from pathlib import Path
 import shlex
 import sys
 
-
 COUNTS = ("caught", "missed", "timeout", "unviable")
 SCRIPT = ".github/workflows/scripts/linux/run-mutations.py"
 DISPLAY_LIMIT = 20
@@ -34,8 +33,13 @@ def replay(suite, mutation):
 def shard_results(directory, expected):
     report = read_json(directory / "outcomes.json")
     duration = (
-        datetime.fromisoformat(report["end_time"]) - datetime.fromisoformat(report["start_time"])
-    ).total_seconds() if report["end_time"] else None
+        (
+            datetime.fromisoformat(report["end_time"])
+            - datetime.fromisoformat(report["start_time"])
+        ).total_seconds()
+        if report["end_time"]
+        else None
+    )
     counts = {key: report[key] for key in COUNTS}
     if any(type(count) is not int or count < 0 for count in counts.values()):
         raise ValueError("invalid mutant counts")
@@ -46,7 +50,9 @@ def shard_results(directory, expected):
     if sum(counts.values()) != total:
         problems.append("contains unclassified outcomes")
     if (expected is not None and total != expected) or total == 0:
-        problems.append(f"reported {total} mutants, expected {expected or 'a nonempty native shard'}")
+        problems.append(
+            f"reported {total} mutants, expected {expected or 'a nonempty native shard'}"
+        )
     suites = report.get("suites")
     if suites is not None and not isinstance(suites, dict):
         raise ValueError("invalid suite map")
@@ -62,9 +68,12 @@ def shard_results(directory, expected):
 def summarize(plan, results, needs):
     base = plan["base"]
     lines = [
-        "## Mutation results", "",
-        f"Range: {code(base or 'all source')} → {code(plan['head'])}", "",
-        "Linux source selection: " + (", ".join(map(code, plan["linux_sources"])) or "none"), "",
+        "## Mutation results",
+        "",
+        f"Range: {code(base or 'all source')} → {code(plan['head'])}",
+        "",
+        "Linux source selection: " + (", ".join(map(code, plan["linux_sources"])) or "none"),
+        "",
         "| Platform | Job | Shards | Caught | Survived | Timed out | Unviable | Longest shard |",
         "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
@@ -92,7 +101,9 @@ def summarize(plan, results, needs):
         for shard in shards:
             name = "rust-mutation-results-" + shard["id"]
             try:
-                shard_counts, duration, errors, names = shard_results(results / ("mutation-result-" + shard["id"]), shard["count"])
+                shard_counts, duration, errors, names = shard_results(
+                    results / ("mutation-result-" + shard["id"]), shard["count"]
+                )
             except (OSError, TypeError, KeyError, ValueError) as error:
                 failures.append(f"{name}: {error}")
                 continue
@@ -117,12 +128,19 @@ def summarize(plan, results, needs):
     if failures:
         lines.extend(["", "### Issues", "", *(f"- {escape(failure)}" for failure in failures)])
     if timings:
-        lines.extend([
-            "", "<details>", "<summary>Shard timings</summary>", "",
-            "| Shard artifact | Mutants reported | Mutation time |", "| --- | ---: | ---: |",
-            *(f"| {name} | {count} | {duration:.0f}s |" for name, count, duration in timings),
-            "", "</details>",
-        ])
+        lines.extend(
+            [
+                "",
+                "<details>",
+                "<summary>Shard timings</summary>",
+                "",
+                "| Shard artifact | Mutants reported | Mutation time |",
+                "| --- | ---: | ---: |",
+                *(f"| {name} | {count} | {duration:.0f}s |" for name, count, duration in timings),
+                "",
+                "</details>",
+            ]
+        )
     return lines, details, failures
 
 
@@ -130,12 +148,18 @@ def render_details(details):
     if not details:
         return []
     return [
-        "", "### Mutations to replay", "",
+        "",
+        "### Mutations to replay",
+        "",
         "Prepare the same source selection in a disposable checkout using the base above.",
         "Use the tested SHA to reproduce the original mutation before changing its source location.",
-        "", "| Outcome | Shard artifact | Mutation | Focused command |", "| --- | --- | --- | --- |",
-        *(f"| {outcome} | {shard} | {code(mutation)} | {code(replay(suite, mutation))} |"
-          for outcome, shard, suite, mutation in details),
+        "",
+        "| Outcome | Shard artifact | Mutation | Focused command |",
+        "| --- | --- | --- | --- |",
+        *(
+            f"| {outcome} | {shard} | {code(mutation)} | {code(replay(suite, mutation))} |"
+            for outcome, shard, suite, mutation in details
+        ),
     ]
 
 

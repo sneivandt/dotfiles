@@ -13,8 +13,8 @@ conflicts=('copilot' 'github-copilot-cli' 'github-copilot-cli-bin')
 options=('!strip' '!debug')
 source ./version.sh
 provides=("copilot=${pkgver}" "github-copilot-cli=${pkgver}" "github-copilot-cli-bin=${pkgver}")
-source=("copilot-cli-LICENSE-${pkgver}.md::https://raw.githubusercontent.com/github/copilot-cli/v${pkgver}/LICENSE.md")
-sha256sums=('SKIP')
+source=('LICENSE')
+sha256sums=('c694e2d9b3f3bb40704ca9bdc823dc90269999ab4c013dfd8a52c407046074b4')
 source_x86_64=("copilot-cli-${pkgver}-x86_64.tar.gz::${url}/releases/download/v${pkgver}/copilot-linux-x64.tar.gz")
 source_aarch64=("copilot-cli-${pkgver}-aarch64.tar.gz::${url}/releases/download/v${pkgver}/copilot-linux-arm64.tar.gz")
 
@@ -30,5 +30,5 @@ package() {
   install -Dm644 "${srcdir}/copilot.bash" "${pkgdir}/usr/share/bash-completion/completions/copilot"
   install -Dm644 "${srcdir}/copilot.zsh" "${pkgdir}/usr/share/zsh/site-functions/_copilot"
   install -Dm644 "${srcdir}/copilot.fish" "${pkgdir}/usr/share/fish/vendor_completions.d/copilot.fish"
-  install -Dm644 "${srcdir}/copilot-cli-LICENSE-${pkgver}.md" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }

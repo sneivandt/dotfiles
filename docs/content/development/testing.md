@@ -136,8 +136,9 @@ Omitting stage names runs the default set:
 | `ci` | Workflow contracts, path/release classification, aggregate gating, and actionlint (pure-Python contract/classification/gate tests plus native `actionlint` on Windows) |
 | `shell` | Shared ShellCheck discovery and rules (default on Linux, opt-in on Windows) |
 | `powershell` | PSScriptAnalyzer at Warning/Error severity |
-| `python` | Ruff linting across repository Python scripts and tests |
+| `python` | Ruff linting and formatting (`ruff format --check`) across repository Python scripts and tests |
 | `lua` | Luacheck linting across Hyprland and Neovim Lua files (Linux only) |
+| `structured` | Zero-dependency JSON/JSONC, TOML, and YAML validation (`check-structured-files.py`) |
 | `audit` / `deny` | Dependency advisories and dependency policy |
 
 Cargo stages use `--locked` and `--profile ci` where applicable, resolving
@@ -324,7 +325,8 @@ and both sides of renames):
 | Cargo inputs or deny policy | Wildcard dependency guard | Available `cargo-deny` checks |
 | Shell, hook, or package recipe paths (`packages/*/PKGBUILD`, `packages/*/*.install`) | Available ShellCheck on affected inputs | — |
 | PowerShell (`*.ps1`, `*.psm1`, `*.psd1`) paths | Available PSScriptAnalyzer on affected inputs | — |
-| Python (`*.py`, `symlinks/local/bin/code-insiders`) or Lua (`*.lua`) paths | Available Ruff and Luacheck on affected inputs | — |
+| Python (`*.py`, `symlinks/local/bin/code-insiders`) or Lua (`*.lua`) paths | Available Ruff (lint + format check) and Luacheck on affected inputs | — |
+| Structured (`*.json`, `*.toml`, `*.yml`, `*.yaml`) paths | Zero-dependency JSON/JSONC, TOML, and YAML validation | — |
 | Wrappers or their tests | Wrapper parity contract (`tests/wrapper/test-parity.py`) | Linux wrapper tests |
 | GitHub Actions workflows or CI policy scripts | Available `actionlint`, CI workflow contract checks, and release publishing invariants | — |
 | Markdown (`*.md`) or skill (`.agents/skills/`, `AGENTS.md`) paths | Staged doc link checks and skill metadata validation | — |

@@ -23,8 +23,19 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
         for name, data in [*members, ("TRAILER!!!", b"")]:
             encoded_name = name.encode() + b"\0"
             fields = (
-                1, 0o100600, 0, 0, 1, int(time.time()) + 3600, len(data),
-                0, 0, 0, 0, len(encoded_name), 0,
+                1,
+                0o100600,
+                0,
+                0,
+                1,
+                int(time.time()) + 3600,
+                len(data),
+                0,
+                0,
+                0,
+                0,
+                len(encoded_name),
+                0,
             )
             entry = b"070701" + "".join(f"{value:08x}" for value in fields).encode()
             entry += encoded_name
@@ -33,8 +44,16 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
             payload.extend(entry)
         # Minimal RPM lead and empty signature/header sections around a cpio payload.
         lead = struct.pack(
-            ">4sBBHH66sHH16s", b"\xed\xab\xee\xdb", 3, 0, 0, 1,
-            b"synthetic-security-fixture", 1, 5, b"",
+            ">4sBBHH66sHH16s",
+            b"\xed\xab\xee\xdb",
+            3,
+            0,
+            0,
+            1,
+            b"synthetic-security-fixture",
+            1,
+            5,
+            b"",
         )
         header = struct.pack(">4s4sII", b"\x8e\xad\xe8\x01", b"", 0, 0)
         archive = self.fixture / "fixture with spaces.rpm"
@@ -46,9 +65,9 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
         return self.run_shell(
             'cd "$HOME"\n'
             'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
-            'autoload -Uz extract\n'
+            "autoload -Uz extract\n"
             f'extract {shlex.join(options)} "$ARCHIVE"\n'
-            'local result=$?\n'
+            "local result=$?\n"
             '[[ "$PWD" == "$HOME" ]] || exit 99\n'
             'exit "$result"\n',
             expected=expected,
@@ -59,9 +78,14 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
             ".gz": gzip.compress,
             ".bz2": bz2.compress,
             ".xz": lzma.compress,
-            ".zst": lambda data: subprocess.run(
-                ["zstd", "-q", "-c"], input=data, capture_output=True, check=True,
-            ).stdout,
+            ".zst": lambda data: (
+                subprocess.run(
+                    ["zstd", "-q", "-c"],
+                    input=data,
+                    capture_output=True,
+                    check=True,
+                ).stdout
+            ),
         }
         for suffix, compress in compressors.items():
             with self.subTest(suffix=suffix):
@@ -103,7 +127,8 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
         original = archive.read_bytes()
         destination = self.home / "output with spaces"
         self.run_extract(
-            archive.name, options=("--keep", f"--destination={destination}", "--"),
+            archive.name,
+            options=("--keep", f"--destination={destination}", "--"),
         )
         self.assertEqual((destination / "nested/file with spaces").read_bytes(), b"fixture\n")
         self.assertEqual(archive.read_bytes(), original)
@@ -124,8 +149,12 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
                 elif kind == "directory":
                     target.mkdir()
                 else:
-                    target.symlink_to(outside if kind == "symlink" else outside.with_name("missing"))
-                result = self.run_extract(archive, expected=1, options=("--destination", str(destination)))
+                    target.symlink_to(
+                        outside if kind == "symlink" else outside.with_name("missing")
+                    )
+                result = self.run_extract(
+                    archive, expected=1, options=("--destination", str(destination))
+                )
                 self.assertTrue(result.stderr)
                 self.assertEqual(archive.read_bytes(), original)
                 self.assertEqual(list(destination.iterdir()), [target])
@@ -139,11 +168,13 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
 
     def test_extract_failed_stream_preserves_input_and_cleans_partial_output(self):
         tools = self.fixture / "tools"
-        self.write(tools / "gunzip", '#!/bin/sh\nprintf partial\nexit 23\n', executable=True)
+        self.write(tools / "gunzip", "#!/bin/sh\nprintf partial\nexit 23\n", executable=True)
         self.env["PATH"] = str(tools) + ":/usr/bin:/bin"
         archive = self.write(self.home / "sample.gz", "preserve\n")
         destination = self.home / "output"
-        self.run_extract(archive, expected=23, options=("--keep", "--destination", str(destination)))
+        self.run_extract(
+            archive, expected=23, options=("--keep", "--destination", str(destination))
+        )
         self.assertEqual(archive.read_text(), "preserve\n")
         self.assertEqual(list(destination.iterdir()), [])
 
@@ -154,10 +185,10 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
         self.run_shell(
             'cd "$HOME"\n'
             'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
-            'autoload -Uz extract\n'
-            'setopt noclobber\n'
-            'extract --keep sample.gz || exit $?\n'
-            '[[ -o noclobber ]]\n',
+            "autoload -Uz extract\n"
+            "setopt noclobber\n"
+            "extract --keep sample.gz || exit $?\n"
+            "[[ -o noclobber ]]\n",
         )
         self.assertEqual(archive.read_bytes(), original)
         self.assertEqual((self.home / "sample").read_bytes(), b"fixture\n")
@@ -192,16 +223,24 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
         (tools / "zsh").symlink_to(shutil.which("zsh"))
         self.env["PATH"] = str(tools)
         for suffix, tool in (
-            (".tar.gz", "tar"), (".bz2", "bunzip2"), (".gz", "gunzip"),
-            (".rar", "unrar"), (".zip", "unzip"), (".7z", "7z"),
-            (".Z", "uncompress"), (".xz", "unxz"), (".zst", "unzstd"),
-            (".deb", "ar"), (".rpm", "bsdtar"),
+            (".tar.gz", "tar"),
+            (".bz2", "bunzip2"),
+            (".gz", "gunzip"),
+            (".rar", "unrar"),
+            (".zip", "unzip"),
+            (".7z", "7z"),
+            (".Z", "uncompress"),
+            (".xz", "unxz"),
+            (".zst", "unzstd"),
+            (".deb", "ar"),
+            (".rpm", "bsdtar"),
         ):
             with self.subTest(suffix=suffix):
                 archive = self.write(self.home / ("-archive with spaces" + suffix), "keep\n")
                 result = self.run_extract(archive.name, expected=127)
-                self.assertEqual(result.stderr,
-                                 f"extract: {tool} is required to extract {archive.name}\n")
+                self.assertEqual(
+                    result.stderr, f"extract: {tool} is required to extract {archive.name}\n"
+                )
                 self.assertEqual(archive.read_bytes(), b"keep\n")
                 self.assertEqual(list(self.home.iterdir()), [archive])
                 archive.unlink()
@@ -214,14 +253,17 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
             (".Z", "uncompress", ("--keep",), "-c"),
         ):
             with self.subTest(suffix=suffix):
-                self.write(tools / tool,
-                           '#!/bin/sh\nprintf "%s\\n" "$@" > "$HOME/arguments"\nexit 23\n',
-                           executable=True)
+                self.write(
+                    tools / tool,
+                    '#!/bin/sh\nprintf "%s\\n" "$@" > "$HOME/arguments"\nexit 23\n',
+                    executable=True,
+                )
                 self.env["PATH"] = str(tools) + ":/usr/bin:/bin"
                 archive = self.write(self.home / ("-archive $(false)" + suffix), "keep\n")
                 self.run_extract(archive.name, expected=23, options=options)
-                self.assertEqual((self.home / "arguments").read_text(),
-                                 f"{operation}\n./{archive.name}\n")
+                self.assertEqual(
+                    (self.home / "arguments").read_text(), f"{operation}\n./{archive.name}\n"
+                )
                 self.assertEqual(archive.read_bytes(), b"keep\n")
 
     def test_extract_option_like_relative_archive_name(self):
@@ -234,7 +276,10 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
         self.assertIsNotNone(shutil.which("zstd"), "zstd is required for extraction coverage")
         archive = self.home / "-sample with spaces.zst"
         compressed = subprocess.run(
-            ["zstd", "-q", "-c"], input=b"fixture\n", capture_output=True, check=True,
+            ["zstd", "-q", "-c"],
+            input=b"fixture\n",
+            capture_output=True,
+            check=True,
         ).stdout
         archive.write_bytes(compressed)
         self.run_extract(archive.name)
@@ -249,12 +294,14 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
         result = self.run_shell(
             'cd "$HOME"\n'
             'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
-            'autoload -Uz extract\n'
-            'extract first.gz second.gz\n', expected=1,
+            "autoload -Uz extract\n"
+            "extract first.gz second.gz\n",
+            expected=1,
         )
         self.assertIn("Usage: extract", result.stderr)
-        self.assertEqual(sorted(path.name for path in self.home.iterdir()),
-                         ["first.gz", "second.gz"])
+        self.assertEqual(
+            sorted(path.name for path in self.home.iterdir()), ["first.gz", "second.gz"]
+        )
         for archive in archives:
             self.assertEqual(archive.read_bytes(), payload)
 
@@ -284,21 +331,35 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
         for desktop in (False, True):
             with self.subTest(desktop=desktop):
                 if desktop:
-                    self.write(config / "windows-desktop",
-                               (ROOT / "symlinks/config/git/windows-desktop").read_text())
+                    self.write(
+                        config / "windows-desktop",
+                        (ROOT / "symlinks/config/git/windows-desktop").read_text(),
+                    )
                 result = subprocess.run(
-                    ["git", "config", "--file", str(config / "windows"),
-                     "--includes", "--get", "core.editor"],
-                    cwd=self.fixture, env=self.env, text=True, capture_output=True,
+                    [
+                        "git",
+                        "config",
+                        "--file",
+                        str(config / "windows"),
+                        "--includes",
+                        "--get",
+                        "core.editor",
+                    ],
+                    cwd=self.fixture,
+                    env=self.env,
+                    text=True,
+                    capture_output=True,
                 )
                 self.assertEqual(result.returncode, 0 if desktop else 1, result.stderr)
                 self.assertEqual(result.stdout.strip(), "code-insiders --wait" if desktop else "")
 
     def test_wget_preserves_url_names_and_reuses_unchanged_downloads(self):
         requests = []
+
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_HEAD(self):
                 self.do_GET()
+
             def do_GET(self):
                 requests.append((self.path, self.headers.get("If-Modified-Since")))
                 if self.path == "/redirect":
@@ -313,20 +374,32 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
                     self.send_header("Last-Modified", "Mon, 05 Oct 2026 00:00:00 GMT")
                     self.send_header("Content-Length", "7")
                 self.end_headers()
-                if (self.command != "HEAD" and self.path != "/redirect"
-                        and not self.headers.get("If-Modified-Since")):
+                if (
+                    self.command != "HEAD"
+                    and self.path != "/redirect"
+                    and not self.headers.get("If-Modified-Since")
+                ):
                     self.wfile.write(b"fixture")
+
             def log_message(self, *_args):
                 pass
+
         server = http.server.ThreadingHTTPServer(("localhost", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
             self.env["WGETRC"] = str(ROOT / "symlinks/config/wgetrc")
             url = f"http://localhost:{server.server_port}"
+
             def download(path, *options):
-                subprocess.run(["wget", "-q", *options, url + path], cwd=self.fixture,
-                               env=self.env, check=True, timeout=10)
+                subprocess.run(
+                    ["wget", "-q", *options, url + path],
+                    cwd=self.fixture,
+                    env=self.env,
+                    check=True,
+                    timeout=10,
+                )
+
             download("/page")
             download("/page")
             self.assertEqual((self.fixture / "page").read_bytes(), b"fixture")
@@ -365,7 +438,9 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
                 self.send_response(206 if requested else 200)
                 self.send_header("Content-Length", str(len(content)))
                 if requested:
-                    self.send_header("Content-Range", f"bytes {start}-{len(payload)-1}/{len(payload)}")
+                    self.send_header(
+                        "Content-Range", f"bytes {start}-{len(payload) - 1}/{len(payload)}"
+                    )
                 self.end_headers()
                 if body:
                     self.wfile.write(content)
@@ -381,7 +456,10 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
             self.env["WGETRC"] = str(ROOT / "symlinks/config/wgetrc")
             subprocess.run(
                 ["wget", "-q", f"http://localhost:{server.server_port}/release.bin"],
-                cwd=self.fixture, env=self.env, check=True, timeout=10,
+                cwd=self.fixture,
+                env=self.env,
+                check=True,
+                timeout=10,
             )
             downloads = [path.read_bytes() for path in self.fixture.glob("release.bin*")]
             self.assertIn(payload, downloads)
@@ -393,54 +471,56 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
             server.server_close()
             thread.join()
 
-
     def test_desktop_code_alias_requires_usable_code_insiders(self):
         legacy_shim = (
-            b'#!/usr/bin/env python3\n'
-            b'\n'
-            b'import os\n'
-            b'import sys\n'
-            b'\n'
+            b"#!/usr/bin/env python3\n"
+            b"\n"
+            b"import os\n"
+            b"import sys\n"
+            b"\n"
             b'REAL_BINARY = "/usr/bin/code-insiders"\n'
             b'PASSWORD_STORE = "--password-store=gnome-libsecret"\n'
-            b'\n'
-            b'\n'
-            b'def normalized_args(arguments: list[str]) -> list[str]:\n'
-            b'    forwarded: list[str] = []\n'
-            b'    index = 0\n'
-            b'\n'
-            b'    while index < len(arguments):\n'
-            b'        argument = arguments[index]\n'
+            b"\n"
+            b"\n"
+            b"def normalized_args(arguments: list[str]) -> list[str]:\n"
+            b"    forwarded: list[str] = []\n"
+            b"    index = 0\n"
+            b"\n"
+            b"    while index < len(arguments):\n"
+            b"        argument = arguments[index]\n"
             b'        if argument == "--":\n'
-            b'            forwarded.extend(arguments[index:])\n'
-            b'            break\n'
+            b"            forwarded.extend(arguments[index:])\n"
+            b"            break\n"
             b'        if argument == "--password-store":\n'
-            b'            index += 1\n'
+            b"            index += 1\n"
             b'            if index < len(arguments) and not arguments[index].startswith("-"):\n'
-            b'                index += 1\n'
-            b'            continue\n'
+            b"                index += 1\n"
+            b"            continue\n"
             b'        if argument.startswith("--password-store="):\n'
-            b'            index += 1\n'
-            b'            continue\n'
-            b'\n'
-            b'        forwarded.append(argument)\n'
-            b'        index += 1\n'
-            b'\n'
-            b'    return [PASSWORD_STORE, *forwarded]\n'
-            b'\n'
-            b'\n'
-            b'def main() -> None:\n'
-            b'    os.execv(REAL_BINARY, [REAL_BINARY, *normalized_args(sys.argv[1:])])\n'
-            b'\n'
-            b'\n'
+            b"            index += 1\n"
+            b"            continue\n"
+            b"\n"
+            b"        forwarded.append(argument)\n"
+            b"        index += 1\n"
+            b"\n"
+            b"    return [PASSWORD_STORE, *forwarded]\n"
+            b"\n"
+            b"\n"
+            b"def main() -> None:\n"
+            b"    os.execv(REAL_BINARY, [REAL_BINARY, *normalized_args(sys.argv[1:])])\n"
+            b"\n"
+            b"\n"
             b'if __name__ == "__main__":\n'
-            b'    main()\n'
+            b"    main()\n"
         )
         self.assertEqual(
             hashlib.sha256(legacy_shim).hexdigest(),
             "abbafb0e03fa9c8534a5a74a46cbfc4357e73a34497da0966f96cddd6017eec9",
         )
         shim_source = ROOT / "symlinks/local/bin/code-insiders"
+        helper_target = self.home / ".config/shell/code-insiders.sh"
+        helper_target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / "symlinks/config/shell/code-insiders.sh", helper_target)
         shim_target = self.home / ".local/bin/code-insiders"
         other_bin = self.fixture / "other-bin"
         base_bin = self.fixture / "base-bin"
@@ -500,23 +580,23 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
             for shell in ("bash", "zsh"):
                 with self.subTest(case=label, shell=shell):
                     script = (
-                        'set -u\n'
-                        f'{guard_hash}'
-                        '[() {\n'
+                        "set -u\n"
+                        f"{guard_hash}"
+                        "[() {\n"
                         '  if builtin [ "$#" -eq 3 ] && builtin [ "$1" = "-x" ] && '
                         'builtin [ "$2" = "/usr/bin/code-insiders" ]; then\n'
-                        f'    return {backend_rc}\n'
-                        '  fi\n'
+                        f"    return {backend_rc}\n"
+                        "  fi\n"
                         '  builtin [ "$@"\n'
-                        '}\n'
+                        "}\n"
                         '. "$ROOT/symlinks/config/shell/aliases-desktop.sh"\n'
                         '[ "${_code_insiders+x}" != x ] || exit 2\n'
                         '[ "${_code_insiders_digest+x}" != x ] || exit 3\n'
-                        'if alias code >/dev/null 2>&1; then\n'
-                        '  alias code\n'
-                        'else\n'
+                        "if alias code >/dev/null 2>&1; then\n"
+                        "  alias code\n"
+                        "else\n"
                         '  printf "none\\n"\n'
-                        'fi\n'
+                        "fi\n"
                     )
                     result = self.run_shell(script, shell=shell)
                     output = result.stdout.strip()
@@ -536,7 +616,11 @@ class ExtractAndLaunchersTests(ShellConfigTestCase):
         shim = self.write(self.fixture / "code-insiders-shim", patched, executable=True)
         result = subprocess.run(
             ["python3", str(shim), "--version"],
-            cwd=self.fixture, env=self.env, text=True, capture_output=True, timeout=10,
+            cwd=self.fixture,
+            env=self.env,
+            text=True,
+            capture_output=True,
+            timeout=10,
         )
         self.assertEqual(result.returncode, 127, result.stdout + result.stderr)
         self.assertEqual(result.stdout, "")

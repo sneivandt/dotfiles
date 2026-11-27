@@ -30,29 +30,48 @@ class BuildTriggerTests(unittest.TestCase):
             build_exe = fixture / "build-script.exe"
             # Compile only the std-only build script, without Cargo or dependency builds.
             compiled = run(
-                [compiler, "--edition=2024", str(REPO_ROOT / "cli" / "build.rs"), "-o", str(build_exe)],
+                [
+                    compiler,
+                    "--edition=2024",
+                    str(REPO_ROOT / "cli" / "build.rs"),
+                    "-o",
+                    str(build_exe),
+                ],
                 cwd=fixture,
             )
             self.assertEqual(compiled.returncode, 0, f"rustc failed:\n{compiled.stderr}")
 
             repo = fixture / "repo"
             env = init_fixture_repository(repo)
-            self.assertEqual(run(["git", "symbolic-ref", "HEAD", "refs/heads/main"], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(
+                    ["git", "symbolic-ref", "HEAD", "refs/heads/main"], cwd=repo, env=env
+                ).returncode,
+                0,
+            )
             self.assertEqual(
                 run(
                     [
                         "git",
-                        "-c", "user.name=Fixture",
-                        "-c", "user.email=fixture@test.local",
-                        "-c", "core.hooksPath=/dev/null",
-                        "commit", "--allow-empty", "-qm", "baseline",
+                        "-c",
+                        "user.name=Fixture",
+                        "-c",
+                        "user.email=fixture@test.local",
+                        "-c",
+                        "core.hooksPath=/dev/null",
+                        "commit",
+                        "--allow-empty",
+                        "-qm",
+                        "baseline",
                     ],
                     cwd=repo,
                     env=env,
                 ).returncode,
                 0,
             )
-            main_git_dir = run(["git", "rev-parse", "--absolute-git-dir"], cwd=repo, env=env).stdout.strip()
+            main_git_dir = run(
+                ["git", "rev-parse", "--absolute-git-dir"], cwd=repo, env=env
+            ).stdout.strip()
 
             run_env = dict(env)
             run_env.pop("DOTFILES_VERSION", None)
@@ -69,10 +88,19 @@ class BuildTriggerTests(unittest.TestCase):
             self.assertIn("cargo::rustc-env=DOTFILES_RELEASE_REPO=fork-owner/releases", pub_lines)
             self.assertIn("cargo::rerun-if-env-changed=DOTFILES_RELEASE_REPO", pub_lines)
 
-            for invalid in ("owner/repo/extra", "https://github.com/owner/repo", "owner/repo?query", "../repo"):
+            for invalid in (
+                "owner/repo/extra",
+                "https://github.com/owner/repo",
+                "owner/repo?query",
+                "../repo",
+            ):
                 with self.subTest(invalid=invalid):
-                    bad = run([str(build_exe)], cwd=repo, env=dict(run_env, DOTFILES_RELEASE_REPO=invalid))
-                    self.assertNotEqual(bad.returncode, 0, f"Build script accepted invalid publisher: {invalid}")
+                    bad = run(
+                        [str(build_exe)], cwd=repo, env=dict(run_env, DOTFILES_RELEASE_REPO=invalid)
+                    )
+                    self.assertNotEqual(
+                        bad.returncode, 0, f"Build script accepted invalid publisher: {invalid}"
+                    )
 
             attached = run([str(build_exe)], cwd=repo, env=run_env)
             self.assertEqual(attached.returncode, 0, attached.stderr)
@@ -83,7 +111,11 @@ class BuildTriggerTests(unittest.TestCase):
 
             worktree = fixture / "worktree"
             self.assertEqual(
-                run(["git", "worktree", "add", "-qb", "fixture-branch", str(worktree)], cwd=repo, env=env).returncode,
+                run(
+                    ["git", "worktree", "add", "-qb", "fixture-branch", str(worktree)],
+                    cwd=repo,
+                    env=env,
+                ).returncode,
                 0,
             )
             wt_env = dict(run_env)
@@ -91,12 +123,18 @@ class BuildTriggerTests(unittest.TestCase):
                 wt_env.pop(key, None)
             linked = run([str(build_exe)], cwd=worktree, env=wt_env)
             self.assertEqual(linked.returncode, 0, linked.stderr)
-            worktree_git_dir = run(["git", "rev-parse", "--absolute-git-dir"], cwd=worktree, env=wt_env).stdout.strip()
+            worktree_git_dir = run(
+                ["git", "rev-parse", "--absolute-git-dir"], cwd=worktree, env=wt_env
+            ).stdout.strip()
             linked_lines = linked.stdout.splitlines()
             self.assertIn(f"cargo::rerun-if-changed={worktree_git_dir}/HEAD", linked_lines)
-            self.assertIn(f"cargo::rerun-if-changed={main_git_dir}/refs/heads/fixture-branch", linked_lines)
+            self.assertIn(
+                f"cargo::rerun-if-changed={main_git_dir}/refs/heads/fixture-branch", linked_lines
+            )
 
-            self.assertEqual(run(["git", "checkout", "--detach", "-q"], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(["git", "checkout", "--detach", "-q"], cwd=repo, env=env).returncode, 0
+            )
             detached = run([str(build_exe)], cwd=repo, env=run_env)
             self.assertEqual(detached.returncode, 0, detached.stderr)
             detached_lines = detached.stdout.splitlines()

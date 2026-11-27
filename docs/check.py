@@ -68,15 +68,20 @@ def check_committed(root, base, env):
     base_sha = git(root, "rev-parse", "--verify", base + "^{commit}").decode().strip()
     head = git(root, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
     paths = [
-        os.fsdecode(path) for path in
-        git(root, "diff", "--name-only", "--no-renames", "-z", base_sha, head, "--").split(b"\0")
+        os.fsdecode(path)
+        for path in git(
+            root, "diff", "--name-only", "--no-renames", "-z", base_sha, head, "--"
+        ).split(b"\0")
         if path
     ]
     if not paths:
         raise RuntimeError("The committed range is empty; no documentation checks ran")
     unsupported = [path for path in paths if not documentation_path(path)]
     if unsupported:
-        print("Checking documentation only. Other changes still require implementation checks.", flush=True)
+        print(
+            "Checking documentation only. Other changes still require implementation checks.",
+            flush=True,
+        )
     run(["git", "diff", "--check", base_sha, head, "--"], root, env)
     print(f"Checking committed documentation: {base_sha}..{head}", flush=True)
     with tempfile.TemporaryDirectory(prefix="dotfiles-docs-") as temporary:
@@ -90,7 +95,8 @@ def check_committed(root, base, env):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--committed", action="store_true",
+        "--committed",
+        action="store_true",
         help="check documentation from HEAD in an isolated native checkout, including mixed patches",
     )
     parser.add_argument("--base", help="comparison base for --committed (default: origin/main)")
@@ -98,7 +104,9 @@ def main():
     if args.base and not args.committed:
         parser.error("--base requires --committed")
     root = Path(__file__).resolve().parent.parent
-    env = {key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "DOTFILES_"))}
+    env = {
+        key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "DOTFILES_"))
+    }
     env["DOCS_TEST_PYTHON"] = sys.executable
     if args.committed:
         check_committed(root, args.base or "origin/main", env)

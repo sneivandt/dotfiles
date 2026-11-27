@@ -23,19 +23,35 @@ HEADING_ORDER = (
     ("testing", "baseline-and-prerequisites", "local-npm-tls-failures"),
 )
 
-NO_SKILL_READING_GUIDES = frozenset({
-    "contributing",
-    "adding-a-task",
-    "application-settings",
-    "testing",
-    "writing-documentation",
-})
+NO_SKILL_READING_GUIDES = frozenset(
+    {
+        "contributing",
+        "adding-a-task",
+        "application-settings",
+        "testing",
+        "writing-documentation",
+    }
+)
 
 EDIT_LINK_PREFIX = "https://github.com/sneivandt/dotfiles/edit/main/docs/content/"
-VOID_TAGS = frozenset({
-    "area", "base", "br", "col", "embed", "hr", "img", "input",
-    "link", "meta", "param", "source", "track", "wbr",
-})
+VOID_TAGS = frozenset(
+    {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+)
 
 
 class Page(HTMLParser):
@@ -287,10 +303,12 @@ class Page(HTMLParser):
             elif tag == "tbody":
                 self._in_tbody = False
             elif self._table_depth == depth and tag == "table":
-                self.doc_tables.append({
-                    "text": " ".join("".join(self._table["text"]).split()),
-                    "rows": self._table["rows"],
-                })
+                self.doc_tables.append(
+                    {
+                        "text": " ".join("".join(self._table["text"]).split()),
+                        "rows": self._table["rows"],
+                    }
+                )
                 self._table = None
                 self._table_depth = None
                 self._in_tbody = False
@@ -310,7 +328,9 @@ def sitemap_urls(output, origin, errors):
         return set()
     try:
         namespaces = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
-        sitemap_files = [item.text for item in ElementTree.parse(index).findall(".//s:loc", namespaces)]
+        sitemap_files = [
+            item.text for item in ElementTree.parse(index).findall(".//s:loc", namespaces)
+        ]
         if not sitemap_files:
             errors.append("Published sitemap index contains no sitemaps")
         urls = []
@@ -323,7 +343,9 @@ def sitemap_urls(output, origin, errors):
             if not child.is_file():
                 errors.append(f"Missing published sitemap {item}")
                 continue
-            urls.extend(tag.text for tag in ElementTree.parse(child).findall(".//s:loc", namespaces))
+            urls.extend(
+                tag.text for tag in ElementTree.parse(child).findall(".//s:loc", namespaces)
+            )
         return set(urls)
     except ElementTree.ParseError as error:
         errors.append(f"Invalid published sitemap XML: {error}")
@@ -371,14 +393,20 @@ def check_doc_structure(root, sources, pages, errors):
         if page is None:
             continue
         if page.boxed_code_links:
-            errors.append(f"{route}: guide links must not wrap inline code ({page.boxed_code_links})")
+            errors.append(
+                f"{route}: guide links must not wrap inline code ({page.boxed_code_links})"
+            )
         if source.stem in NO_SKILL_READING_GUIDES and page.doc_skill_links:
-            errors.append(f"{route}: guide must not assign repository skills as reading ({page.doc_skill_links})")
+            errors.append(
+                f"{route}: guide must not assign repository skills as reading ({page.doc_skill_links})"
+            )
         if source.stem not in {"404", "index"} and page.has_vp_doc:
             rel = source.relative_to(root / "docs/content").as_posix()
             expected_edit = EDIT_LINK_PREFIX + rel
             if page.edit_links != [expected_edit]:
-                errors.append(f"{route}: expected edit link {expected_edit!r}, found {page.edit_links}")
+                errors.append(
+                    f"{route}: expected edit link {expected_edit!r}, found {page.edit_links}"
+                )
 
     for guide, earlier, later in HEADING_ORDER:
         route = f"/{guide}.html"
@@ -393,7 +421,9 @@ def check_doc_structure(root, sources, pages, errors):
     task_reference = pages.get("/task-reference.html")
     if task_reference is None or not task_reference.has_vp_doc:
         return
-    catalog = next((table for table in task_reference.doc_tables if "agent-packages" in table["text"]), None)
+    catalog = next(
+        (table for table in task_reference.doc_tables if "agent-packages" in table["text"]), None
+    )
     if catalog is None:
         errors.append("/task-reference.html: missing update-task catalog table")
         return
@@ -422,7 +452,9 @@ def check_doc_structure(root, sources, pages, errors):
         if page is None:
             continue
         if not (page.first_table_intro and page.first_table_intro.strip()):
-            errors.append(f"{route}: expected introductory paragraph immediately before first table")
+            errors.append(
+                f"{route}: expected introductory paragraph immediately before first table"
+            )
         if not page.doc_tables or not selector or selector not in page.doc_tables[0]["text"]:
             errors.append(f"{route}: first table must mention selector {selector!r}")
         for anchor in ("what-it-does", "preview-and-apply", "removal"):
@@ -431,7 +463,9 @@ def check_doc_structure(root, sources, pages, errors):
             if page.outline_links.count(f"#{anchor}") != 1:
                 errors.append(f"{route}: expected one outline link to #{anchor}")
         if page.outline_links.count("#configuration") != page.h2_ids.count("configuration"):
-            errors.append(f"{route}: outline link count for #configuration does not match h2#configuration")
+            errors.append(
+                f"{route}: outline link count for #configuration does not match h2#configuration"
+            )
 
 
 def check_site(root):
@@ -468,7 +502,9 @@ def check_site(root):
         errors.append("Published robots.txt does not declare the canonical sitemap")
     expected_urls = set()
     expected_nav_titles = {}
-    heading_anchors = runpy.run_path(str(Path(__file__).with_name("check-doc-links.py")))["markdown_anchors"]
+    heading_anchors = runpy.run_path(str(Path(__file__).with_name("check-doc-links.py")))[
+        "markdown_anchors"
+    ]
     sources = sorted((root / "docs/content").rglob("*.md"))
     if len({source.stem for source in sources}) != len(sources):
         errors.append("Documentation source filenames must be unique across sections")
@@ -490,7 +526,11 @@ def check_site(root):
         source_text = source.read_text(encoding="utf-8")
         fields = frontmatter_fields(source_text, source.name, errors)
         home_layout = source.stem == "index" and frontmatter_layout(source_text) == "home"
-        if source.stem != "404" and "description" in fields and page.descriptions != [fields["description"]]:
+        if (
+            source.stem != "404"
+            and "description" in fields
+            and page.descriptions != [fields["description"]]
+        ):
             errors.append(f"{source.name}: rendered description does not match frontmatter")
         missing = (heading_anchors(source_text) - page.ids) if source.stem != "404" else set()
         if missing:
@@ -507,18 +547,26 @@ def check_site(root):
                 if not title:
                     errors.append(f"{route}: home layout hero title is empty")
                 if source_title is not None:
-                    errors.append(f"{source.name}: home layout should not declare a second Markdown H1")
+                    errors.append(
+                        f"{source.name}: home layout should not declare a second Markdown H1"
+                    )
                 if "title" in fields:
                     expected_nav_titles[route] = [fields["title"]]
             else:
                 if source_title is None or source_title[1] != title:
-                    errors.append(f"{source.name}: Markdown title does not match page title {title!r}")
+                    errors.append(
+                        f"{source.name}: Markdown title does not match page title {title!r}"
+                    )
                 if "title" in fields and fields["title"] != title:
-                    errors.append(f"{source.name}: frontmatter title does not match page title {title!r}")
+                    errors.append(
+                        f"{source.name}: frontmatter title does not match page title {title!r}"
+                    )
                 expected_nav_titles[route] = [t.strip().rstrip("#").strip() for t in page.titles]
-        for icon in ("/favicon.svg", "/favicon.png", "/favicon.ico"):
-            if icon not in page.icons:
-                errors.append(f"{route}: missing site icon {icon}")
+        errors.extend(
+            f"{route}: missing site icon {icon}"
+            for icon in ("/favicon.svg", "/favicon.png", "/favicon.ico")
+            if icon not in page.icons
+        )
         if "/apple-touch-icon.png" not in page.apple_touch_icons:
             errors.append(f"{route}: missing apple-touch-icon")
         if page.authors != ["Stuart Neivandt"]:
@@ -537,13 +585,17 @@ def check_site(root):
         nofollow = bool(robots_directives & {"nofollow", "none"})
         if source.stem == "404":
             if not (noindex and nofollow):
-                errors.append(f"{route}: expected noindex, nofollow robots meta tag, found {page.robots}")
+                errors.append(
+                    f"{route}: expected noindex, nofollow robots meta tag, found {page.robots}"
+                )
         else:
             canonical = origin + public_route
             expected_image = f"{origin}/assets/og-image.png"
             expected_type = "website" if source.stem == "index" else "article"
             if page.canonicals != [canonical]:
-                errors.append(f"{route}: expected canonical URL {canonical}, found {page.canonicals}")
+                errors.append(
+                    f"{route}: expected canonical URL {canonical}, found {page.canonicals}"
+                )
             if page.og_types != [expected_type]:
                 errors.append(f"{route}: expected og:type {expected_type!r}, found {page.og_types}")
             if page.og_locales != ["en_US"]:
@@ -551,18 +603,33 @@ def check_site(root):
             if page.og_urls != [canonical]:
                 errors.append(f"{route}: expected og:url {canonical}, found {page.og_urls}")
             if page.og_images != [expected_image]:
-                errors.append(f"{route}: expected og:image {expected_image}, found {page.og_images}")
+                errors.append(
+                    f"{route}: expected og:image {expected_image}, found {page.og_images}"
+                )
             if page.twitter_cards != ["summary_large_image"]:
-                errors.append(f"{route}: expected twitter:card 'summary_large_image', found {page.twitter_cards}")
+                errors.append(
+                    f"{route}: expected twitter:card 'summary_large_image', found {page.twitter_cards}"
+                )
             if page.twitter_images != [expected_image]:
-                errors.append(f"{route}: expected twitter:image {expected_image}, found {page.twitter_images}")
+                errors.append(
+                    f"{route}: expected twitter:image {expected_image}, found {page.twitter_images}"
+                )
             if source.stem == "index":
                 expected_urls.add(canonical)
-                if noindex or nofollow or "index" not in robots_directives or "follow" not in robots_directives:
-                    errors.append(f"{route}: landing page must allow indexing and following, found {page.robots}")
+                if (
+                    noindex
+                    or nofollow
+                    or "index" not in robots_directives
+                    or "follow" not in robots_directives
+                ):
+                    errors.append(
+                        f"{route}: landing page must allow indexing and following, found {page.robots}"
+                    )
             else:
                 if not noindex or nofollow or "follow" not in robots_directives:
-                    errors.append(f"{route}: non-home guide must emit noindex, follow, found {page.robots}")
+                    errors.append(
+                        f"{route}: non-home guide must emit noindex, follow, found {page.robots}"
+                    )
     if indexed_urls != expected_urls:
         errors.append(
             f"Sitemap URLs differ from indexable landing URL: "
@@ -594,11 +661,18 @@ def check_site(root):
                     destination = output / page_route.lstrip("/")
             if not destination.is_file():
                 errors.append(f"{route}: broken destination {target}")
-            elif url.fragment and page_route in pages and unquote(url.fragment) not in pages[page_route].ids:
+            elif (
+                url.fragment
+                and page_route in pages
+                and unquote(url.fragment) not in pages[page_route].ids
+            ):
                 errors.append(f"{route}: broken anchor {target}")
     check_doc_structure(root, sources, pages, errors)
     published_cname = output / "CNAME"
-    if not published_cname.is_file() or published_cname.read_text(encoding="utf-8").strip() != domain:
+    if (
+        not published_cname.is_file()
+        or published_cname.read_text(encoding="utf-8").strip() != domain
+    ):
         errors.append("The published CNAME does not match docs/public/CNAME")
     return errors
 

@@ -9,8 +9,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-
-SPEC = importlib.util.spec_from_file_location("docs_check", Path(__file__).resolve().parents[1] / "check.py")
+SPEC = importlib.util.spec_from_file_location(
+    "docs_check", Path(__file__).resolve().parents[1] / "check.py"
+)
 CHECKER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CHECKER)
 
@@ -22,20 +23,27 @@ class CheckTests(unittest.TestCase):
                 with patch.object(CHECKER.shutil, "which", return_value=name) as which:
                     self.assertEqual(CHECKER.npm_command(), name)
                     which.assert_called_once_with(name)
-                with patch.object(CHECKER.shutil, "which", return_value=None):
-                    with self.assertRaisesRegex(RuntimeError, "unavailable"):
-                        CHECKER.npm_command()
+                with (
+                    patch.object(CHECKER.shutil, "which", return_value=None),
+                    self.assertRaisesRegex(RuntimeError, "unavailable"),
+                ):
+                    CHECKER.npm_command()
 
     def test_checks_include_metadata_and_stop_before_browsers_on_failure(self):
         root = Path(tempfile.gettempdir()) / "docs fixture"
-        with patch.object(CHECKER, "npm_command", return_value="npm"), patch.object(CHECKER, "run") as run:
+        with (
+            patch.object(CHECKER, "npm_command", return_value="npm"),
+            patch.object(CHECKER, "run") as run,
+        ):
             CHECKER.check(root, {})
             commands = [call.args[0] for call in run.call_args_list]
             self.assertEqual(len(commands), 8)
             self.assertIn("test-check-skills.py", commands[0][2])
             self.assertIn("check-skills.py", commands[1][2])
             self.assertIn("check-doc-links.py", commands[2][2])
-            self.assertEqual(commands[3:6], [["npm", "run", "check"], ["npm", "test"], ["npm", "run", "build"]])
+            self.assertEqual(
+                commands[3:6], [["npm", "run", "check"], ["npm", "test"], ["npm", "run", "build"]]
+            )
             self.assertIn("check-doc-site.py", commands[6][2])
             self.assertEqual(commands[7], ["npm", "run", "test:browser"])
             self.assertFalse(any(command[0] in {"sh", "wsl", "cargo"} for command in commands))
@@ -46,11 +54,19 @@ class CheckTests(unittest.TestCase):
             self.assertEqual(run.call_count, 7)
 
     def test_documentation_scope_excludes_embedded_docs_and_workflows(self):
-        for path in ("README.md", "docs/check.py", "docs/content/development/testing.md", ".agents/skills/example/SKILL.md"):
+        for path in (
+            "README.md",
+            "docs/check.py",
+            "docs/content/development/testing.md",
+            ".agents/skills/example/SKILL.md",
+        ):
             self.assertTrue(CHECKER.documentation_path(path), path)
         for path in (
-            "cli/src/README.md", "symlinks/apm/skills/example/SKILL.md",
-            "conf/packages.toml", "docs-build/input", ".github/workflows/pages.yml",
+            "cli/src/README.md",
+            "symlinks/apm/skills/example/SKILL.md",
+            "conf/packages.toml",
+            "docs-build/input",
+            ".github/workflows/pages.yml",
         ):
             self.assertFalse(CHECKER.documentation_path(path), path)
 
@@ -61,7 +77,11 @@ class CommittedTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name) / "repository with spaces"
         self.root.mkdir()
-        self.env = {key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "DOTFILES_"))}
+        self.env = {
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith(("GIT_", "DOTFILES_"))
+        }
         self.git("init", "--quiet", "--template=")
         self.git("config", "core.hooksPath", str(Path(self.temporary.name) / "no-hooks"))
         self.git("config", "commit.gpgsign", "false")
@@ -73,7 +93,10 @@ class CommittedTests(unittest.TestCase):
 
     def git(self, *arguments):
         return subprocess.check_output(
-            ["git", "-C", str(self.root), *arguments], env=self.env, text=True, stderr=subprocess.PIPE,
+            ["git", "-C", str(self.root), *arguments],
+            env=self.env,
+            text=True,
+            stderr=subprocess.PIPE,
         )
 
     def commit(self):
@@ -118,7 +141,10 @@ class CommittedTests(unittest.TestCase):
             if command[0] != "fixture-npm":
                 real_run(command, cwd, env)
 
-        with patch.object(CHECKER, "npm_command", return_value="fixture-npm"), patch.object(CHECKER, "run", side_effect=run):
+        with (
+            patch.object(CHECKER, "npm_command", return_value="fixture-npm"),
+            patch.object(CHECKER, "run", side_effect=run),
+        ):
             CHECKER.check_committed(self.root, self.base, self.env)
         restore = next((command, cwd) for command, cwd in calls if command[0] == "fixture-npm")
         self.assertEqual(restore[0], ["fixture-npm", "ci", "--no-audit", "--no-fund"])

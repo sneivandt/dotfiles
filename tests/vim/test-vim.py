@@ -23,7 +23,17 @@ def fail(message: str) -> None:
 def test_configuration() -> None:
     print("=== Testing isolated Vim configuration")
     result = subprocess.run(
-        [sys.executable, "-B", "-m", "unittest", "discover", "-s", str(REPO_ROOT / "tests" / "vim"), "-p", "test_*.py"],
+        [
+            sys.executable,
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            str(REPO_ROOT / "tests" / "vim"),
+            "-p",
+            "test_*.py",
+        ],
         check=False,
     )
     if result.returncode != 0:

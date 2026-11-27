@@ -11,8 +11,19 @@ import re
 
 _BLOCK_SCALAR_RE = re.compile(r"^([|>])([+-])?([1-9])?(?:[ \t]+#.*)?$")
 _DOUBLE_ESCAPES = {
-    "\\": "\\", '"': '"', "/": "/", "n": "\n", "r": "\r", "t": "\t",
-    "0": "\0", "a": "\a", "b": "\b", "v": "\v", "f": "\f", "e": "\x1b", " ": " ",
+    "\\": "\\",
+    '"': '"',
+    "/": "/",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "0": "\0",
+    "a": "\a",
+    "b": "\b",
+    "v": "\v",
+    "f": "\f",
+    "e": "\x1b",
+    " ": " ",
 }
 
 
@@ -211,7 +222,9 @@ class _Parser:
         raw = self.lines[line_no_0]
         stripped = raw.lstrip(" ")
         if stripped.startswith("\t"):
-            raise ValueError(f"{self.source}:{line_no_0 + 1}: tab indentation is not allowed in YAML")
+            raise ValueError(
+                f"{self.source}:{line_no_0 + 1}: tab indentation is not allowed in YAML"
+            )
         return len(raw) - len(stripped)
 
     def _skip_blank_and_comments(self) -> None:
@@ -226,7 +239,7 @@ class _Parser:
         match = _BLOCK_SCALAR_RE.match(header)
         if match is None:
             raise ValueError(f"{self.source}:{self.pos}: invalid block scalar header {header!r}")
-        style, chomp, explicit = match.groups()
+        _style, chomp, explicit = match.groups()
         content_indent = parent_indent + int(explicit) if explicit else None
         collected: list[str] = []
         while self.pos < self.n:
@@ -246,10 +259,7 @@ class _Parser:
             self.pos += 1
         while collected and collected[-1] == "" and chomp != "+":
             collected.pop()
-        if style == ">":
-            result = "\n".join(collected)
-        else:
-            result = "\n".join(collected)
+        result = "\n".join(collected)
         if chomp != "-" and collected:
             result += "\n"
         return result

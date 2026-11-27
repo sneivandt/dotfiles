@@ -39,21 +39,41 @@ class AllowlistTests(unittest.TestCase):
             for remote in remotes:
                 with self.subTest(remote=remote):
                     (fixture / "remote.txt").write_text(f"{remote}\n", encoding="utf-8")
-                    self.assertEqual(run(["git", "add", "remote.txt"], cwd=fixture, env=env).returncode, 0)
+                    self.assertEqual(
+                        run(["git", "add", "remote.txt"], cwd=fixture, env=env).returncode, 0
+                    )
                     res = run(["sh", "hooks/check-sensitive.sh"], cwd=fixture, env=env)
-                    self.assertEqual(res.returncode, 0, f"Public Git SSH URL was rejected: {remote}\n{res.stdout}{res.stderr}")
+                    self.assertEqual(
+                        res.returncode,
+                        0,
+                        f"Public Git SSH URL was rejected: {remote}\n{res.stdout}{res.stderr}",
+                    )
 
-                    (fixture / "remote.txt").write_text(f"{remote} token = {token}\n", encoding="utf-8")
-                    self.assertEqual(run(["git", "add", "remote.txt"], cwd=fixture, env=env).returncode, 0)
+                    (fixture / "remote.txt").write_text(
+                        f"{remote} token = {token}\n", encoding="utf-8"
+                    )
+                    self.assertEqual(
+                        run(["git", "add", "remote.txt"], cwd=fixture, env=env).returncode, 0
+                    )
                     res = run(["sh", "hooks/check-sensitive.sh"], cwd=fixture, env=env)
-                    self.assertNotEqual(res.returncode, 0, f"Git SSH exception hid a token on the same line: {remote}")
+                    self.assertNotEqual(
+                        res.returncode,
+                        0,
+                        f"Git SSH exception hid a token on the same line: {remote}",
+                    )
 
             for lookalike in ("github.com.example", "ssh.dev.azure.com.example"):
                 with self.subTest(lookalike=lookalike):
                     (fixture / "remote.txt").write_text(f"git@{lookalike}\n", encoding="utf-8")
-                    self.assertEqual(run(["git", "add", "remote.txt"], cwd=fixture, env=env).returncode, 0)
+                    self.assertEqual(
+                        run(["git", "add", "remote.txt"], cwd=fixture, env=env).returncode, 0
+                    )
                     res = run(["sh", "hooks/check-sensitive.sh"], cwd=fixture, env=env)
-                    self.assertNotEqual(res.returncode, 0, f"Git SSH exception accepted a lookalike email domain: {lookalike}")
+                    self.assertNotEqual(
+                        res.returncode,
+                        0,
+                        f"Git SSH exception accepted a lookalike email domain: {lookalike}",
+                    )
 
     def test_shell_sha256_case_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as fixture_str:
@@ -63,15 +83,25 @@ class AllowlistTests(unittest.TestCase):
             checksum = "0" * 64
             token = _synthetic_ghp()
 
-            (fixture / "shim.sh").write_text(f"  {checksum} | \\\n  {checksum})\n", encoding="utf-8")
+            (fixture / "shim.sh").write_text(
+                f"  {checksum} | \\\n  {checksum})\n", encoding="utf-8"
+            )
             self.assertEqual(run(["git", "add", "shim.sh"], cwd=fixture, env=env).returncode, 0)
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=fixture, env=env)
-            self.assertEqual(res.returncode, 0, f"Shell SHA-256 case digest was rejected:\n{res.stdout}{res.stderr}")
+            self.assertEqual(
+                res.returncode,
+                0,
+                f"Shell SHA-256 case digest was rejected:\n{res.stdout}{res.stderr}",
+            )
 
             (fixture / "shim.sh").write_text(f"  {checksum}) token = {token}\n", encoding="utf-8")
             self.assertEqual(run(["git", "add", "shim.sh"], cwd=fixture, env=env).returncode, 0)
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=fixture, env=env)
-            self.assertNotEqual(res.returncode, 0, "Shell SHA-256 case digest exception hid a token on the same line")
+            self.assertNotEqual(
+                res.returncode,
+                0,
+                "Shell SHA-256 case digest exception hid a token on the same line",
+            )
 
     def test_pkgbuild_checksum_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as fixture_str:
@@ -86,16 +116,28 @@ class AllowlistTests(unittest.TestCase):
                     (fixture / "PKGBUILD").write_text(
                         f"{variable}=('{checksum}' '{checksum}')\n", encoding="utf-8"
                     )
-                    self.assertEqual(run(["git", "add", "PKGBUILD"], cwd=fixture, env=env).returncode, 0)
+                    self.assertEqual(
+                        run(["git", "add", "PKGBUILD"], cwd=fixture, env=env).returncode, 0
+                    )
                     res = run(["sh", "hooks/check-sensitive.sh"], cwd=fixture, env=env)
-                    self.assertEqual(res.returncode, 0, f"PKGBUILD checksum was rejected:\n{res.stdout}{res.stderr}")
+                    self.assertEqual(
+                        res.returncode,
+                        0,
+                        f"PKGBUILD checksum was rejected:\n{res.stdout}{res.stderr}",
+                    )
 
                     (fixture / "PKGBUILD").write_text(
                         f"{variable}=('{checksum}'); token = {token}\n", encoding="utf-8"
                     )
-                    self.assertEqual(run(["git", "add", "PKGBUILD"], cwd=fixture, env=env).returncode, 0)
+                    self.assertEqual(
+                        run(["git", "add", "PKGBUILD"], cwd=fixture, env=env).returncode, 0
+                    )
                     res = run(["sh", "hooks/check-sensitive.sh"], cwd=fixture, env=env)
-                    self.assertNotEqual(res.returncode, 0, "PKGBUILD checksum exception hid a token on the same line")
+                    self.assertNotEqual(
+                        res.returncode,
+                        0,
+                        "PKGBUILD checksum exception hid a token on the same line",
+                    )
 
     def test_sensitive_posix_patterns(self) -> None:
         with tempfile.TemporaryDirectory() as fixture_str:
@@ -134,7 +176,11 @@ class AllowlistTests(unittest.TestCase):
             (repo / "fixture.txt").write_text(f"uses: OWNER/REPO@{zero_sha}\n", encoding="utf-8")
             self.assertEqual(run(["git", "add", "fixture.txt"], cwd=repo, env=env).returncode, 0)
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
-            self.assertEqual(res.returncode, 0, f"Portable scanner rejected mixed-case allowlisted span:\n{res.stdout}{res.stderr}")
+            self.assertEqual(
+                res.returncode,
+                0,
+                f"Portable scanner rejected mixed-case allowlisted span:\n{res.stdout}{res.stderr}",
+            )
 
             for field, length in (("client_secret", 24), ("key", 40)):
                 with self.subTest(field=field):
@@ -143,7 +189,13 @@ class AllowlistTests(unittest.TestCase):
                         f'uses: OWNER/REPO@{zero_sha}; {field} \t= \t"{value}"\n',
                         encoding="utf-8",
                     )
-                    self.assertEqual(run(["git", "add", "fixture.txt"], cwd=repo, env=env).returncode, 0)
+                    self.assertEqual(
+                        run(["git", "add", "fixture.txt"], cwd=repo, env=env).returncode, 0
+                    )
                     res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
-                    self.assertNotEqual(res.returncode, 0, f"Portable {field} rule missed a secret beside an allowlisted span")
+                    self.assertNotEqual(
+                        res.returncode,
+                        0,
+                        f"Portable {field} rule missed a secret beside an allowlisted span",
+                    )
                     self.assertIn("Potential sensitive information", res.stdout + res.stderr)

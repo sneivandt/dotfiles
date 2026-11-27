@@ -37,6 +37,7 @@ python_script = _META.python_script
 shell_script = _META.shell_script
 powershell_script = _META.powershell_script
 lua_script = _META.lua_script
+structured_file = _META.structured_file
 
 
 @dataclass(frozen=True)
@@ -60,93 +61,107 @@ class PathRule:
         return self.predicate is not None and self.predicate(path)
 
 
-SITE_EXACT_INPUTS = frozenset({
-    ".github/workflows/pages.yml",
-    LINUX + "test-docs.sh",
-    LINUX + "check-doc-site.py",
-    LINUX + "docs-publication-base.py",
-})
+SITE_EXACT_INPUTS = frozenset(
+    {
+        ".github/workflows/pages.yml",
+        LINUX + "test-docs.sh",
+        LINUX + "check-doc-site.py",
+        LINUX + "docs-publication-base.py",
+    }
+)
 
-CONTRACT_EXACT_INPUTS = frozenset({
-    "Cargo.toml",
-    "Cargo.lock",
-    "build.rs",
-    "rust-toolchain",
-    "rust-toolchain.toml",
-    LINUX + "test-docs.sh",
-})
+CONTRACT_EXACT_INPUTS = frozenset(
+    {
+        "Cargo.toml",
+        "Cargo.lock",
+        "build.rs",
+        "rust-toolchain",
+        "rust-toolchain.toml",
+        LINUX + "test-docs.sh",
+    }
+)
 
-BINARY_EXCLUDED_EXACT = frozenset({
-    "cli/deny.toml",
-    "cli/rustfmt.toml",
-    "cli/.gitignore",
-})
+BINARY_EXCLUDED_EXACT = frozenset(
+    {
+        "cli/deny.toml",
+        "cli/rustfmt.toml",
+        "cli/.gitignore",
+    }
+)
 
-BINARY_EXTRA_EXACT = frozenset({
-    "Cargo.toml",
-    "Cargo.lock",
-    "build.rs",
-    "rust-toolchain",
-    "rust-toolchain.toml",
-    ".github/workflows/release.yml",
-    LINUX + "ci_metadata.py",
-    LINUX + "classify-ci-changes.py",
-    LINUX + "classify-ci-changes.sh",
-    LINUX + "classify-release.sh",
-    LINUX + "release-tag.sh",
-})
+BINARY_EXTRA_EXACT = frozenset(
+    {
+        "Cargo.toml",
+        "Cargo.lock",
+        "build.rs",
+        "rust-toolchain",
+        "rust-toolchain.toml",
+        ".github/workflows/release.yml",
+        LINUX + "ci_metadata.py",
+        LINUX + "classify-ci-changes.py",
+        LINUX + "classify-ci-changes.sh",
+        LINUX + "classify-release.sh",
+        LINUX + "release-tag.sh",
+    }
+)
 
-APM_EXACT_INPUTS = frozenset({
-    "cli/src/domains/ai/apm.rs",
-    "conf/symlinks.toml",
-})
+APM_EXACT_INPUTS = frozenset(
+    {
+        "cli/src/domains/ai/apm.rs",
+        "conf/symlinks.toml",
+    }
+)
 APM_WINDOWS_PREFIX_INPUTS = ("symlinks/apm/", "cli/src/domains/ai/apm/")
 APM_PREFIX_INPUTS = (*APM_WINDOWS_PREFIX_INPUTS, "packages/apm/")
 
-FULL_CI_EXACT = frozenset({
-    ".github/workflows/ci.yml",
-    LINUX + "ci_metadata.py",
-    LINUX + "classify-ci-changes.py",
-    LINUX + "classify-ci-changes.sh",
-    LINUX + "ci-comparison-range.sh",
-    LINUX + "ci-fixture-home.sh",
-    "tests/lib/test-helpers.sh",
-    LINUX + "check.py",
-    LINUX + "check.sh",
-    WINDOWS + "Check.ps1",
-    LINUX + "pre-push.py",
-})
+FULL_CI_EXACT = frozenset(
+    {
+        ".github/workflows/ci.yml",
+        LINUX + "ci_metadata.py",
+        LINUX + "classify-ci-changes.py",
+        LINUX + "classify-ci-changes.sh",
+        LINUX + "ci-comparison-range.sh",
+        LINUX + "ci-fixture-home.sh",
+        "tests/lib/test-helpers.sh",
+        LINUX + "check.py",
+        LINUX + "check.sh",
+        WINDOWS + "Check.ps1",
+        LINUX + "pre-push.py",
+    }
+)
 
-NOOP_EXACT = frozenset({
-    # Always executed by classify-changes.
-    LINUX + "check-ci-contract.py",
-    LINUX + "workflow_yaml.py",
-    LINUX + "test-ci-changes.py",
-    LINUX + "select-mutations.py",
-    LINUX + "run-mutations.py",
-    LINUX + "report-mutations.py",
-    ".github/workflows/mutation.yml",
-    LINUX + "test-workflows.sh",
-    LINUX + "install-actionlint.sh",
-    # Publishing builds are selected independently of CI builds.
-    ".github/workflows/release.yml",
-    LINUX + "classify-release.sh",
-    LINUX + "release-tag.sh",
-    # Docs runners are covered via site_input / contract_input / always-on docs links.
-    LINUX + "test-docs.sh",
-    LINUX + "check-doc-links.py",
-    LINUX + "check-doc-site.py",
-    LINUX + "docs-publication-base.py",
-    # Known repository/editor metadata does not ship in the binary.
-    ".github/CODEOWNERS",
-    ".github/dependabot.yml",
-    ".github/lsp.json",
-    ".github/github-app.yml",
-    ".gitignore",
-    ".editorconfig",
-    "LICENSE",
-    "cli/.gitignore",
-})
+NOOP_EXACT = frozenset(
+    {
+        # Always executed by classify-changes.
+        LINUX + "check-ci-contract.py",
+        LINUX + "workflow_yaml.py",
+        LINUX + "test-ci-changes.py",
+        LINUX + "select-mutations.py",
+        LINUX + "run-mutations.py",
+        LINUX + "report-mutations.py",
+        ".github/workflows/mutation.yml",
+        LINUX + "test-workflows.sh",
+        LINUX + "install-actionlint.sh",
+        # Publishing builds are selected independently of CI builds.
+        ".github/workflows/release.yml",
+        LINUX + "classify-release.sh",
+        LINUX + "release-tag.sh",
+        # Docs runners are covered via site_input / contract_input / always-on docs links.
+        LINUX + "test-docs.sh",
+        LINUX + "check-doc-links.py",
+        LINUX + "check-doc-site.py",
+        LINUX + "docs-publication-base.py",
+        # Known repository/editor metadata does not ship in the binary.
+        ".github/CODEOWNERS",
+        ".github/dependabot.yml",
+        ".github/lsp.json",
+        ".github/github-app.yml",
+        ".gitignore",
+        ".editorconfig",
+        "LICENSE",
+        "cli/.gitignore",
+    }
+)
 
 NOOP_PREFIXES = (LINUX + "ci_changes_tests/", ".vscode/")
 
@@ -155,22 +170,26 @@ ALL_LINTER_CONFIG_FILES = frozenset().union(*LINTER_CONFIG_FILES.values())
 # First-match classification rules for targeted test/script/config inputs.
 DISPATCH_RULES: tuple[PathRule, ...] = (
     PathRule(
-        exact=frozenset({
-            "tests/desktop/quickshell/test-desktop-qml.sh",
-            "tests/desktop/quickshell/test-desktop-session.sh",
-            "tests/desktop/quickshell/test-desktop-session.py",
-        }),
+        exact=frozenset(
+            {
+                "tests/desktop/quickshell/test-desktop-qml.sh",
+                "tests/desktop/quickshell/test-desktop-session.sh",
+                "tests/desktop/quickshell/test-desktop-session.py",
+            }
+        ),
         prefixes=("tests/desktop/quickshell/qml/",),
         flags=("desktop_qml",),
     ),
     PathRule(prefixes=("tests/desktop/quickshell/python/",), flags=("desktop_python",)),
     PathRule(prefixes=("tests/desktop/hypr/",), flags=("lock",)),
     PathRule(
-        exact=frozenset({
-            "tests/vim/test-nvim.py",
-            "tests/vim/test-nvim-config.lua",
-            "tests/vim/test-nvim-lock.lua",
-        }),
+        exact=frozenset(
+            {
+                "tests/vim/test-nvim.py",
+                "tests/vim/test-nvim-config.lua",
+                "tests/vim/test-nvim-lock.lua",
+            }
+        ),
         apps=("nvim",),
     ),
     PathRule(exact=frozenset({"tests/vim/test-vim.py"}), apps=("vim",)),
@@ -231,7 +250,9 @@ DISPATCH_RULES: tuple[PathRule, ...] = (
 
 # Additive sub-rules for conf/ entries (applied in addition to both platform profiles).
 CONF_RULES: tuple[PathRule, ...] = (
-    PathRule(exact=frozenset({"conf/system-files.toml", "conf/chmod.toml"}), flags=("rust_checks",)),
+    PathRule(
+        exact=frozenset({"conf/system-files.toml", "conf/chmod.toml"}), flags=("rust_checks",)
+    ),
     # GraphicalUnitTests reads the declarations.
     PathRule(exact=frozenset({"conf/systemd-units.toml"}), flags=("lock",)),
     PathRule(
@@ -252,32 +273,36 @@ SYMLINK_RULES: tuple[PathRule, ...] = (
         apps=("zsh",),
     ),
     PathRule(
-        exact=frozenset({
-            "symlinks/config/git/aliases",
-            "symlinks/config/systemd/user/clean-home-tmp.service",
-            "symlinks/config/systemd/user/clean-screenshots.service",
-        }),
+        exact=frozenset(
+            {
+                "symlinks/config/git/aliases",
+                "symlinks/config/systemd/user/clean-home-tmp.service",
+                "symlinks/config/systemd/user/clean-screenshots.service",
+            }
+        ),
         prefixes=("symlinks/config/git/templates/",),
         flags=("git_hooks",),
     ),
     PathRule(prefixes=("symlinks/config/git/",), apps=("git",), flags=("app_windows",)),
     PathRule(
-        exact=frozenset({
-            "symlinks/zshrc",
-            "symlinks/zprofile",
-            "symlinks/bashrc",
-            "symlinks/bash_profile",
-            "symlinks/config/wgetrc",
-            "symlinks/config/git/windows",
-            "symlinks/config/git/windows-desktop",
-            "symlinks/config/git/ignore",
-            "symlinks/config/git/aliases",
-            "symlinks/config/user-dirs.dirs",
-            "symlinks/config/systemd/user/xdg-user-directories.service",
-            "symlinks/config/uwsm/env-hyprland.d/session.sh",
-            "symlinks/config/tmux/tmux.conf",
-            "symlinks/config/readline/inputrc",
-        }),
+        exact=frozenset(
+            {
+                "symlinks/zshrc",
+                "symlinks/zprofile",
+                "symlinks/bashrc",
+                "symlinks/bash_profile",
+                "symlinks/config/wgetrc",
+                "symlinks/config/git/windows",
+                "symlinks/config/git/windows-desktop",
+                "symlinks/config/git/ignore",
+                "symlinks/config/git/aliases",
+                "symlinks/config/user-dirs.dirs",
+                "symlinks/config/systemd/user/xdg-user-directories.service",
+                "symlinks/config/uwsm/env-hyprland.d/session.sh",
+                "symlinks/config/tmux/tmux.conf",
+                "symlinks/config/readline/inputrc",
+            }
+        ),
         prefixes=("symlinks/config/zsh/", "symlinks/config/bash/", "symlinks/config/shell/"),
         apps=("zsh",),
     ),
@@ -301,7 +326,9 @@ SYMLINK_RULES: tuple[PathRule, ...] = (
         flags=("lock",),
     ),
     PathRule(
-        exact=frozenset({"symlinks/config/hypr/hyprland.lua", "symlinks/config/hypr/hyprlock.conf"}),
+        exact=frozenset(
+            {"symlinks/config/hypr/hyprland.lua", "symlinks/config/hypr/hyprlock.conf"}
+        ),
         prefixes=("symlinks/config/hypr/conf/",),
         flags=("desktop_qml",),
     ),
@@ -316,8 +343,7 @@ SYMLINK_RULES: tuple[PathRule, ...] = (
     # service files and exercises the first-login queue commands.
     PathRule(
         predicate=lambda p: (
-            p.rpartition("/")[0] == "symlinks/config/systemd/user"
-            and p.endswith(".service")
+            p.rpartition("/")[0] == "symlinks/config/systemd/user" and p.endswith(".service")
         ),
         flags=("lock",),
     ),
@@ -328,7 +354,8 @@ SYMLINK_RULES: tuple[PathRule, ...] = (
 def documentation(path: str) -> bool:
     # Markdown can be compiled into the CLI or deployed as an APM skill.
     return not path.startswith(("cli/src/", "symlinks/apm/")) and (
-        path.endswith(".md") or path.startswith(("docs/", ".agents/"))
+        path.endswith(".md")
+        or path.startswith(("docs/", ".agents/"))
         or path == ".github/workflows/pages.yml"
     )
 
@@ -358,7 +385,8 @@ def changed_paths(root: str, base: str, head: str) -> list[str]:
     # newline ambiguity. Never turn an invalid comparison into a successful skip.
     result = subprocess.run(
         ["git", "-C", root, "diff", "--name-only", "--no-renames", "-z", base, head, "--"],
-        check=True, stdout=subprocess.PIPE,
+        check=True,
+        stdout=subprocess.PIPE,
     )
     return [os.fsdecode(path) for path in result.stdout.split(b"\0") if path]
 
@@ -414,15 +442,13 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             linters.add("python")
         if lua_script(path) or path in LINTER_CONFIG_FILES["lua"]:
             linters.add("lua")
+        if structured_file(path) or path in LINTER_CONFIG_FILES["structured"]:
+            linters.add("structured")
 
         if path in FULL_CI_EXACT:
             full = True
             continue
-        if (
-            path in NOOP_EXACT
-            or path.startswith(NOOP_PREFIXES)
-            or path in ALL_LINTER_CONFIG_FILES
-        ):
+        if path in NOOP_EXACT or path.startswith(NOOP_PREFIXES) or path in ALL_LINTER_CONFIG_FILES:
             continue
 
         matched = next((rule for rule in DISPATCH_RULES if rule.matches(path)), None)
@@ -473,9 +499,14 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
     flags["run_lint"] = bool(linters)
     flags["run_desktop_scripts"] = flags["run_lock"] or flags["run_desktop_python"]
     for platform in ("linux", "windows"):
-        if any(flags["run_" + name + "_" + platform] for name in (
-            "profile", "roundtrip", "wrapper",
-        )):
+        if any(
+            flags["run_" + name + "_" + platform]
+            for name in (
+                "profile",
+                "roundtrip",
+                "wrapper",
+            )
+        ):
             enable("build_" + platform)
     if flags["run_apm"]:
         enable("validate_config")
@@ -508,8 +539,10 @@ def main() -> None:
         # CI success does not imply Pages success. Carry unpublished site inputs
         # forward even when the immediately preceding push already passed CI.
         published = os.environ.get("DOCS_BASE_SHA")
-        outputs["run_docs_site"] = outputs["run_docs_site"] or not published or any(
-            site_input(path) for path in changed_paths(root, published, head or "HEAD")
+        outputs["run_docs_site"] = (
+            outputs["run_docs_site"]
+            or not published
+            or any(site_input(path) for path in changed_paths(root, published, head or "HEAD"))
         )
     with output.open("a", encoding="utf-8") as stream:
         for name, value in outputs.items():

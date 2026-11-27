@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Isolated regressions for CI selection, result gates, and release catch-up."""
 
+from pathlib import Path
 import sys
 import unittest
-from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -20,6 +20,7 @@ from ci_changes_tests.test_pre_push import (
     PrePushCoordinatorTests,
     PrePushPlanTests,
 )
+from ci_changes_tests.test_structured_files import StructuredFileValidationTests
 
 __all__ = [
     "ClassificationTests",
@@ -31,6 +32,7 @@ __all__ = [
     "PrePushCoordinatorTests",
     "PrePushPlanTests",
     "ReleaseTagTests",
+    "StructuredFileValidationTests",
 ]
 
 if __name__ == "__main__":

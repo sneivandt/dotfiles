@@ -3,7 +3,6 @@
 from pathlib import Path
 import runpy
 
-
 SCRIPTS = Path(__file__).resolve().parents[1]
 POLICY = runpy.run_path(str(SCRIPTS / "classify-ci-changes.py"))
 CONTRACT = runpy.run_path(str(SCRIPTS / "check-ci-contract.py"))

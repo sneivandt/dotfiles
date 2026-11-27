@@ -15,9 +15,9 @@ import stat
 import subprocess
 import sys
 import tempfile
-import tomllib
 import types
 
+import tomllib
 
 SCRIPTS = Path(__file__).resolve().parent
 
@@ -34,7 +34,7 @@ def _load_sibling(name: str):
     return module
 
 
-GIB = 1024 ** 3
+GIB = 1024**3
 MIN_CACHE_FREE = 10 * GIB
 
 
@@ -44,9 +44,13 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False, linter_stag
         linter_stages = _load_sibling("ci_metadata").LINTER_STAGES
     stages = ["ci"] if docs_checked else ["docs", "ci"]
     for flag, stage in (
-        ("rust_fmt", "fmt"), ("rust_checks", "clippy"),
-        ("rust_checks", "test"), ("rust_checks", "rustdoc"),
-        ("validate_config", "config"), ("audit", "audit"), ("deny", "deny"),
+        ("rust_fmt", "fmt"),
+        ("rust_checks", "clippy"),
+        ("rust_checks", "test"),
+        ("rust_checks", "rustdoc"),
+        ("validate_config", "config"),
+        ("audit", "audit"),
+        ("deny", "deny"),
         ("desktop_qml", "qml"),
     ):
         if selection["run_" + flag]:
@@ -60,39 +64,163 @@ def plan(selection, msrv, docs_checked=False, windows_checked=False, linter_stag
         stages.append(stage)
     commands = []
     if not docs_checked:
-        commands.append(("documentation dependencies", "docs", ["npm", "ci", "--no-audit", "--no-fund"]))
-    commands.append(("core checks", ".", ["python3", "-B", ".github/workflows/scripts/linux/check.py", "--strict", *stages]))
+        commands.append(
+            ("documentation dependencies", "docs", ["npm", "ci", "--no-audit", "--no-fund"])
+        )
+    commands.append(
+        (
+            "core checks",
+            ".",
+            ["python3", "-B", ".github/workflows/scripts/linux/check.py", "--strict", *stages],
+        )
+    )
     if selection["run_config_drift"] and not selection["run_rust_checks"]:
-        commands.append(("configuration drift", "cli", ["cargo", "test", "--locked", "--profile", "ci", "--test", "config_drift"]))
+        commands.append(
+            (
+                "configuration drift",
+                "cli",
+                ["cargo", "test", "--locked", "--profile", "ci", "--test", "config_drift"],
+            )
+        )
     if selection["run_rust_checks"]:
         if not windows_checked:
-            commands.append(("Windows compilation (no runtime coverage)", "cli", ["cargo", "clippy", "--locked", "--profile", "ci", "--target", "x86_64-pc-windows-gnu", "--all-targets", "--", "-D", "warnings"]))
-        commands.append(("minimum Rust compilation", "cli", ["rustup", "run", msrv, "cargo", "check", "--locked", "--profile", "ci", "--all-targets"]))
+            commands.append(
+                (
+                    "Windows compilation (no runtime coverage)",
+                    "cli",
+                    [
+                        "cargo",
+                        "clippy",
+                        "--locked",
+                        "--profile",
+                        "ci",
+                        "--target",
+                        "x86_64-pc-windows-gnu",
+                        "--all-targets",
+                        "--",
+                        "-D",
+                        "warnings",
+                    ],
+                )
+            )
+        commands.append(
+            (
+                "minimum Rust compilation",
+                "cli",
+                [
+                    "rustup",
+                    "run",
+                    msrv,
+                    "cargo",
+                    "check",
+                    "--locked",
+                    "--profile",
+                    "ci",
+                    "--all-targets",
+                ],
+            )
+        )
     if selection["run_hook_inputs"] or selection["run_rust_checks"]:
-        commands.append(("isolated hook inputs", ".", ["python3", "-B", "tests/hooks/test-hook-inputs.py"]))
+        commands.append(
+            ("isolated hook inputs", ".", ["python3", "-B", "tests/hooks/test-hook-inputs.py"])
+        )
     if selection["run_git_hooks"]:
-        commands.append(("Git template and cleanup fixtures", ".", ["python3", "-B", "tests/hooks/test-maintenance.py"]))
+        commands.append(
+            (
+                "Git template and cleanup fixtures",
+                ".",
+                ["python3", "-B", "tests/hooks/test-maintenance.py"],
+            )
+        )
     if selection["run_wrapper_linux"]:
-        commands.append(("isolated wrapper fixtures", ".", ["sh", "tests/wrapper/test-shell-wrapper.sh", "test_wrapper_preserves_runtime_context", "test_wrapper_uses_cargo_artifact"]))
+        commands.append(
+            (
+                "isolated wrapper fixtures",
+                ".",
+                [
+                    "sh",
+                    "tests/wrapper/test-shell-wrapper.sh",
+                    "test_wrapper_preserves_runtime_context",
+                    "test_wrapper_uses_cargo_artifact",
+                ],
+            )
+        )
     for flag, directory in (
         ("lock", "tests/desktop/hypr"),
         ("desktop_python", "tests/desktop/quickshell/python"),
     ):
         if selection["run_" + flag]:
-            commands.append((flag + " fixtures", ".", ["python3", "-B", "-m", "unittest", "discover", "-s", directory, "-p", "test_*.py"]))
+            commands.append(
+                (
+                    flag + " fixtures",
+                    ".",
+                    [
+                        "python3",
+                        "-B",
+                        "-m",
+                        "unittest",
+                        "discover",
+                        "-s",
+                        directory,
+                        "-p",
+                        "test_*.py",
+                    ],
+                )
+            )
     if selection["run_prompt"]:
-        commands.append(("PowerShell prompt fixtures", ".", ["pwsh", "-NoProfile", "-File", "tests/shell/Test-Prompt.ps1"]))
+        commands.append(
+            (
+                "PowerShell prompt fixtures",
+                ".",
+                ["pwsh", "-NoProfile", "-File", "tests/shell/Test-Prompt.ps1"],
+            )
+        )
     apps = {item["application"] for item in selection["app_matrix"]["include"]}
     if "zsh" in apps:
-        commands.append(("isolated shell configuration", ".", ["python3", "-B", "tests/shell/test-shell-config.py"]))
+        commands.append(
+            (
+                "isolated shell configuration",
+                ".",
+                ["python3", "-B", "tests/shell/test-shell-config.py"],
+            )
+        )
     if apps & {"vim", "nvim"}:
-        commands.append(("isolated editor configuration", ".", ["python3", "-B", "-m", "unittest", "discover", "-s", "tests/vim", "-p", "test_*.py"]))
-    deferred = [name.removeprefix("run_") for name in (
-        "run_build_windows", "run_profile_linux", "run_profile_windows",
-        "run_roundtrip_linux", "run_roundtrip_windows", "run_app_tests",
-        "run_app_windows", "run_git_hooks", "run_wrapper_linux", "run_wrapper_windows",
-        "run_release", "run_apm", "run_apm_windows",
-    ) if selection[name]]
+        commands.append(
+            (
+                "isolated editor configuration",
+                ".",
+                [
+                    "python3",
+                    "-B",
+                    "-m",
+                    "unittest",
+                    "discover",
+                    "-s",
+                    "tests/vim",
+                    "-p",
+                    "test_*.py",
+                ],
+            )
+        )
+    deferred = [
+        name.removeprefix("run_")
+        for name in (
+            "run_build_windows",
+            "run_profile_linux",
+            "run_profile_windows",
+            "run_roundtrip_linux",
+            "run_roundtrip_windows",
+            "run_app_tests",
+            "run_app_windows",
+            "run_git_hooks",
+            "run_wrapper_linux",
+            "run_wrapper_windows",
+            "run_release",
+            "run_apm",
+            "run_apm_windows",
+        )
+        if selection[name]
+    ]
     return commands, deferred
 
 
@@ -100,10 +228,16 @@ def windows_plan(selection, docs_checked=False):
     """Run native fixtures, leaving platform-independent stages to Linux."""
     commands = []
     if not docs_checked:
-        commands.extend([
-            ("documentation dependencies", "docs", ["npm.cmd", "ci", "--no-audit", "--no-fund"]),
-            ("native documentation", ".", [sys.executable, "-B", "docs/check.py"]),
-        ])
+        commands.extend(
+            [
+                (
+                    "documentation dependencies",
+                    "docs",
+                    ["npm.cmd", "ci", "--no-audit", "--no-fund"],
+                ),
+                ("native documentation", ".", [sys.executable, "-B", "docs/check.py"]),
+            ]
+        )
     stages = []
     if selection["run_rust_checks"]:
         stages.extend(["clippy", "test"])
@@ -112,17 +246,51 @@ def windows_plan(selection, docs_checked=False):
     if any(item["name"] == "PSScriptAnalyzer" for item in selection["lint_matrix"]["include"]):
         stages.append("powershell")
     if stages:
-        commands.append(("native Windows checks", ".", [sys.executable, "-B", ".github/workflows/scripts/linux/check.py", "--strict", *stages]))
+        commands.append(
+            (
+                "native Windows checks",
+                ".",
+                [
+                    sys.executable,
+                    "-B",
+                    ".github/workflows/scripts/linux/check.py",
+                    "--strict",
+                    *stages,
+                ],
+            )
+        )
     if selection["run_config_drift"] and not selection["run_rust_checks"]:
-        commands.append(("native configuration drift", "cli", ["cargo", "test", "--locked", "--profile", "ci", "--test", "config_drift"]))
+        commands.append(
+            (
+                "native configuration drift",
+                "cli",
+                ["cargo", "test", "--locked", "--profile", "ci", "--test", "config_drift"],
+            )
+        )
     if selection["run_wrapper_windows"]:
         # These functions use fixture executors, not the live installation.
-        commands.append(("isolated PowerShell wrapper", ".", ["pwsh", "-NoProfile", "-Command",
-            ". ./tests/wrapper/Test-ShellWrapper.ps1; "
-            "if (-not (Test-IsolatedWrapperPath)) { exit 1 }; "
-            "if (-not (Test-CargoArtifactPath)) { exit 1 }"]))
+        commands.append(
+            (
+                "isolated PowerShell wrapper",
+                ".",
+                [
+                    "pwsh",
+                    "-NoProfile",
+                    "-Command",
+                    ". ./tests/wrapper/Test-ShellWrapper.ps1; "
+                    "if (-not (Test-IsolatedWrapperPath)) { exit 1 }; "
+                    "if (-not (Test-CargoArtifactPath)) { exit 1 }",
+                ],
+            )
+        )
     if selection["run_prompt"]:
-        commands.append(("native PowerShell prompt", ".", ["pwsh", "-NoProfile", "-File", "tests/shell/Test-Prompt.ps1"]))
+        commands.append(
+            (
+                "native PowerShell prompt",
+                ".",
+                ["pwsh", "-NoProfile", "-File", "tests/shell/Test-Prompt.ps1"],
+            )
+        )
     return commands
 
 
@@ -136,30 +304,57 @@ def comparison_base(root, explicit, head):
         return git(root, "rev-parse", "--verify", explicit + "^{commit}"), False
     tip = git(root, "rev-parse", "--verify", "origin/main^{commit}")
     remote = git(root, "remote", "get-url", "origin")
-    match = re.fullmatch(r"(?:https?://|ssh://git@|git@)([^/:]+)[:/]([^/]+/[^/]+?)(?:\.git)?", remote)
+    match = re.fullmatch(
+        r"(?:https?://|ssh://git@|git@)([^/:]+)[:/]([^/]+/[^/]+?)(?:\.git)?", remote
+    )
     if not match:
-        raise RuntimeError("Cannot identify origin's GitHub repository; pass --base with the original verified baseline")
+        raise RuntimeError(
+            "Cannot identify origin's GitHub repository; pass --base with the original verified baseline"
+        )
     host, repo = match.groups()
 
     def runs(*filters):
-        command = ["gh", "api", "--hostname", host, "--method", "GET",
-                   f"repos/{repo}/actions/workflows/ci.yml/runs",
-                   "-f", "event=push", "-f", "branch=main", *filters]
+        command = [
+            "gh",
+            "api",
+            "--hostname",
+            host,
+            "--method",
+            "GET",
+            f"repos/{repo}/actions/workflows/ci.yml/runs",
+            "-f",
+            "event=push",
+            "-f",
+            "branch=main",
+            *filters,
+        ]
         result = subprocess.check_output(command, cwd=root, text=True)
         return json.loads(result)["workflow_runs"]
 
     preceding = runs("-f", "head_sha=" + tip, "-F", "per_page=1")
-    if preceding and preceding[0]["conclusion"] == "success":
-        if subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", tip, head], check=False).returncode == 0:
-            return tip, False
+    if (
+        preceding
+        and preceding[0]["conclusion"] == "success"
+        and subprocess.run(
+            ["git", "-C", str(root), "merge-base", "--is-ancestor", tip, head], check=False
+        ).returncode
+        == 0
+    ):
+        return tip, False
     for run in runs("-f", "status=success", "-F", "per_page=100"):
         candidate = run["head_sha"]
-        if candidate != head and subprocess.run(
-            ["git", "-C", str(root), "merge-base", "--is-ancestor", candidate, head],
-            check=False,
-        ).returncode == 0:
+        if (
+            candidate != head
+            and subprocess.run(
+                ["git", "-C", str(root), "merge-base", "--is-ancestor", candidate, head],
+                check=False,
+            ).returncode
+            == 0
+        ):
             return candidate, True
-    raise RuntimeError("No successful CI ancestor found; pass --base with the original verified baseline")
+    raise RuntimeError(
+        "No successful CI ancestor found; pass --base with the original verified baseline"
+    )
 
 
 def committed_policy(root, head):
@@ -224,12 +419,18 @@ def cache_status(cache):
         for directory, _, files in os.walk(cache)
         for name in files
     )
-    print(f"Validation cache: {cache}\n"
-          f"Files: {size / GIB:.2f} GiB. Free: {free / GIB:.2f} GiB. "
-          f"Minimum free: {MIN_CACHE_FREE / GIB:.0f} GiB.", flush=True)
+    print(
+        f"Validation cache: {cache}\n"
+        f"Files: {size / GIB:.2f} GiB. Free: {free / GIB:.2f} GiB. "
+        f"Minimum free: {MIN_CACHE_FREE / GIB:.0f} GiB.",
+        flush=True,
+    )
     if free < MIN_CACHE_FREE:
-        action = ("Validation would attempt to clear this cache before building." if exists
-                  else "Validation would stop because there is no cache to clear.")
+        action = (
+            "Validation would attempt to clear this cache before building."
+            if exists
+            else "Validation would stop because there is no cache to clear."
+        )
         print(action, flush=True)
 
 
@@ -242,39 +443,61 @@ def locked_cache(cache):
         try:
             if sys.platform == "win32":
                 import msvcrt
+
                 msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
             else:
                 import fcntl
+
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as error:
             raise RuntimeError(f"Could not lock validation cache {cache}: {error}") from error
         exists = cache_directory(cache)
         free = free_cache_space(cache)
         if free < MIN_CACHE_FREE and exists:
-            print(f"Clearing validation cache at {cache} with {free / GIB:.2f} GiB free.", flush=True)
+            print(
+                f"Clearing validation cache at {cache} with {free / GIB:.2f} GiB free.", flush=True
+            )
             shutil.rmtree(cache)
             free = free_cache_space(cache)
         if free < MIN_CACHE_FREE:
-            raise RuntimeError(f"Only {free / GIB:.2f} GiB free on the filesystem for {cache}. "
-                               f"Free at least {MIN_CACHE_FREE / GIB:.0f} GiB before running validation.")
+            raise RuntimeError(
+                f"Only {free / GIB:.2f} GiB free on the filesystem for {cache}. "
+                f"Free at least {MIN_CACHE_FREE / GIB:.0f} GiB before running validation."
+            )
         yield
 
 
 def execute(root, head, commands, selection):
     cache = target_cache(root)
     with ExitStack() as stack:
-        if any(selection["run_" + check] for check in ("rust_checks", "validate_config", "config_drift")):
+        if any(
+            selection["run_" + check]
+            for check in ("rust_checks", "validate_config", "config_drift")
+        ):
             stack.enter_context(locked_cache(cache))
-        temporary = stack.enter_context(tempfile.TemporaryDirectory(
-            prefix="dotfiles-pre-push-", dir="/tmp" if sys.platform == "linux" else None,
-        ))
+        temporary = stack.enter_context(
+            tempfile.TemporaryDirectory(
+                prefix="dotfiles-pre-push-",
+                dir="/tmp" if sys.platform == "linux" else None,
+            )
+        )
         temp = Path(temporary)
         checkout = temp / "source"
         snapshot(root, head, checkout)
-        env = {key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "DOTFILES_"))}
-        env.update(DOTFILES_CHECK_STRICT="1", XDG_STATE_HOME=str(temp / "state"),
-                   DOTFILES_LOG_DIR=str(temp / "logs"), CARGO_TARGET_DIR=str(cache),
-                   RUSTUP_AUTO_INSTALL="0", DIR=str(checkout), DOCS_TEST_PYTHON=sys.executable)
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith(("GIT_", "DOTFILES_"))
+        }
+        env.update(
+            DOTFILES_CHECK_STRICT="1",
+            XDG_STATE_HOME=str(temp / "state"),
+            DOTFILES_LOG_DIR=str(temp / "logs"),
+            CARGO_TARGET_DIR=str(cache),
+            RUSTUP_AUTO_INSTALL="0",
+            DIR=str(checkout),
+            DOCS_TEST_PYTHON=sys.executable,
+        )
         if sys.platform == "linux":
             tools = []
             if selection["run_lock"]:
@@ -298,29 +521,65 @@ def execute(root, head, commands, selection):
 
 def wsl_command(base, head, full, npm_tls_unavailable=False):
     if not shutil.which("wsl"):
-        raise RuntimeError("WSL is unavailable; Linux committed validation is required for implementation patches")
+        raise RuntimeError(
+            "WSL is unavailable; Linux committed validation is required for implementation patches"
+        )
     script = subprocess.check_output(
-        ["wsl", "--exec", "wslpath", "-u", str(Path(__file__).resolve())], text=True,
+        ["wsl", "--exec", "wslpath", "-u", str(Path(__file__).resolve())],
+        text=True,
     ).strip()
-    return ["wsl", "--exec", "python3", "-B", script, "--base", base, "--head", head,
-            "--npm-tls-unavailable" if npm_tls_unavailable else "--docs-checked", head,
-            "--windows-checked", head, *(["--full"] if full else [])]
+    return [
+        "wsl",
+        "--exec",
+        "python3",
+        "-B",
+        script,
+        "--base",
+        base,
+        "--head",
+        head,
+        "--npm-tls-unavailable" if npm_tls_unavailable else "--docs-checked",
+        head,
+        "--windows-checked",
+        head,
+        *(["--full"] if full else []),
+    ]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base", help="explicit original verified baseline (default: verify origin/main's CI, recovering to a successful ancestor)")
+    parser.add_argument(
+        "--base",
+        help="explicit original verified baseline (default: verify origin/main's CI, recovering to a successful ancestor)",
+    )
     parser.add_argument("--head", default="HEAD", help="commit to validate (default: HEAD)")
-    parser.add_argument("--plan", action="store_true", help="print selected checks without running them")
-    parser.add_argument("--cache-status", action="store_true", help="preview cache cleanup and exit without running checks")
+    parser.add_argument(
+        "--plan", action="store_true", help="print selected checks without running them"
+    )
+    parser.add_argument(
+        "--cache-status",
+        action="store_true",
+        help="preview cache cleanup and exit without running checks",
+    )
     docs = parser.add_mutually_exclusive_group()
-    docs.add_argument("--docs-checked", metavar="COMMIT",
-                      help="reuse successful native documentation checks for this exact commit")
-    docs.add_argument("--npm-tls-unavailable", metavar="COMMIT",
-                      help="record a confirmed local npm TLS failure for this exact commit; defer documentation coverage to CI")
-    parser.add_argument("--windows-checked", metavar="COMMIT",
-                        help="reuse successful native Windows checks for this exact commit; omit cross-target Clippy")
-    parser.add_argument("--full", action="store_true", help="select full CI coverage, including during recovery")
+    docs.add_argument(
+        "--docs-checked",
+        metavar="COMMIT",
+        help="reuse successful native documentation checks for this exact commit",
+    )
+    docs.add_argument(
+        "--npm-tls-unavailable",
+        metavar="COMMIT",
+        help="record a confirmed local npm TLS failure for this exact commit; defer documentation coverage to CI",
+    )
+    parser.add_argument(
+        "--windows-checked",
+        metavar="COMMIT",
+        help="reuse successful native Windows checks for this exact commit; omit cross-target Clippy",
+    )
+    parser.add_argument(
+        "--full", action="store_true", help="select full CI coverage, including during recovery"
+    )
     args = parser.parse_args()
     if sys.platform not in {"linux", "win32"}:
         parser.error("this checker requires Linux or Windows with WSL")
@@ -333,7 +592,8 @@ def main():
     head = git(root, "rev-parse", "--verify", args.head + "^{commit}")
     base, recovery = comparison_base(root, args.base, head)
     for option, value in (
-        ("--docs-checked", args.docs_checked), ("--windows-checked", args.windows_checked),
+        ("--docs-checked", args.docs_checked),
+        ("--windows-checked", args.windows_checked),
         ("--npm-tls-unavailable", args.npm_tls_unavailable),
     ):
         if value and git(root, "rev-parse", "--verify", value + "^{commit}") != head:
@@ -359,24 +619,41 @@ def main():
     if sys.platform == "win32":
         commands = windows_plan(selection, omit_docs)
         if not selection["docs_only"]:
-            linux = wsl_command(base, head, full, npm_tls_unavailable=bool(args.npm_tls_unavailable))
+            linux = wsl_command(
+                base, head, full, npm_tls_unavailable=bool(args.npm_tls_unavailable)
+            )
     print(f"Committed range: {base}..{head} ({len(paths)} changed paths)", flush=True)
     if recovery:
-        print("Remote tip CI is not successful; selecting full checks from a successful ancestor.", flush=True)
+        print(
+            "Remote tip CI is not successful; selecting full checks from a successful ancestor.",
+            flush=True,
+        )
     if args.docs_checked:
-        print(f"Reusing successful native documentation checks for {head}; not repeating them on Linux.", flush=True)
+        print(
+            f"Reusing successful native documentation checks for {head}; not repeating them on Linux.",
+            flush=True,
+        )
     if args.npm_tls_unavailable:
-        print(f"UNAVAILABLE documentation for {head}: confirmed local npm TLS failure; not a passing check. "
-              "CI documentation checks must pass before reporting completion.", flush=True)
+        print(
+            f"UNAVAILABLE documentation for {head}: confirmed local npm TLS failure; not a passing check. "
+            "CI documentation checks must pass before reporting completion.",
+            flush=True,
+        )
     for label, directory, command in commands:
         print(f"LOCAL {label}: (cd {directory} && {shlex.join(command)})", flush=True)
     if linux:
         print("LOCAL Linux checks via WSL: " + subprocess.list2cmdline(linux), flush=True)
     print("REMAINING CI: " + (", ".join(deferred) or "always-on workflow checks"), flush=True)
-    print("Mutation testing is separate; see docs/content/development/testing.md#focused-mutation-testing.\n"
-          "Local success does not prove host installation, publishing, or live desktop behavior.", flush=True)
+    print(
+        "Mutation testing is separate; see docs/content/development/testing.md#focused-mutation-testing.\n"
+        "Local success does not prove host installation, publishing, or live desktop behavior.",
+        flush=True,
+    )
     if sys.platform == "linux" and not args.windows_checked:
-        print("Native Windows runtime checks remain unavailable in this Linux-only invocation.", flush=True)
+        print(
+            "Native Windows runtime checks remain unavailable in this Linux-only invocation.",
+            flush=True,
+        )
     if args.plan:
         if linux:
             subprocess.run([*linux, "--plan"], check=True)
@@ -385,8 +662,10 @@ def main():
     if linux:
         subprocess.run(linux, check=True)
     if args.npm_tls_unavailable:
-        print(f"Local checks completed for {head} with documentation UNAVAILABLE; "
-              "CI documentation coverage is required, alongside the remaining CI checks listed above.")
+        print(
+            f"Local checks completed for {head} with documentation UNAVAILABLE; "
+            "CI documentation coverage is required, alongside the remaining CI checks listed above."
+        )
     else:
         print(f"Selected local checks passed for {head}; remaining CI coverage is listed above.")
 

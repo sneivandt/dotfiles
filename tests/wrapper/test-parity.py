@@ -8,7 +8,6 @@ from pathlib import Path
 import re
 import unittest
 
-
 WRAPPER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = WRAPPER_DIR.parents[1]
 CONTRACT_PATH = WRAPPER_DIR / "parity-contract.json"
@@ -52,7 +51,9 @@ class WrapperParityTests(unittest.TestCase):
                 self.assertIn(name, self.ps1_text)
 
         self.assertIn(f'DOTFILES_WRAPPER="{constants["wrapper_identifiers"]["sh"]}"', self.sh_text)
-        self.assertIn(f'$env:DOTFILES_WRAPPER = "{constants["wrapper_identifiers"]["ps1"]}"', self.ps1_text)
+        self.assertIn(
+            f'$env:DOTFILES_WRAPPER = "{constants["wrapper_identifiers"]["ps1"]}"', self.ps1_text
+        )
 
         for token in (
             constants["github_api_accept"],
@@ -84,11 +85,17 @@ class WrapperParityTests(unittest.TestCase):
     def test_scenarios_are_defined_and_invoked_on_both_platforms(self) -> None:
         linux_defs: set[str] = set()
         for script in sorted((WRAPPER_DIR / "linux").glob("*.sh")):
-            linux_defs.update(re.findall(r"(?m)^([A-Za-z0-9_]+)\(\)\s*\{", script.read_text(encoding="utf-8")))
+            linux_defs.update(
+                re.findall(r"(?m)^([A-Za-z0-9_]+)\(\)\s*\{", script.read_text(encoding="utf-8"))
+            )
 
         windows_defs: set[str] = set()
         for script in sorted((WRAPPER_DIR / "windows").glob("*.ps1")):
-            windows_defs.update(re.findall(r"(?m)^function\s+([A-Za-z0-9_-]+)\b", script.read_text(encoding="utf-8")))
+            windows_defs.update(
+                re.findall(
+                    r"(?m)^function\s+([A-Za-z0-9_-]+)\b", script.read_text(encoding="utf-8")
+                )
+            )
 
         scenarios = self.contract["scenarios"]
         self.assertTrue(scenarios, "parity-contract.json must declare wrapper parity scenarios")
@@ -100,7 +107,11 @@ class WrapperParityTests(unittest.TestCase):
 
             for fn in linux_tests:
                 with self.subTest(scenario=scenario, platform="linux", test=fn):
-                    self.assertIn(fn, linux_defs, f"Linux wrapper test {fn!r} is not defined under tests/wrapper/linux/")
+                    self.assertIn(
+                        fn,
+                        linux_defs,
+                        f"Linux wrapper test {fn!r} is not defined under tests/wrapper/linux/",
+                    )
                     self.assertRegex(
                         self.linux_runner,
                         rf"(?m)^\s*(?:[A-Z0-9_]+=(?:'[^']*'|\"[^\"]*\"|\S+)\s+)*{re.escape(fn)}\b",
@@ -110,7 +121,9 @@ class WrapperParityTests(unittest.TestCase):
             for fn in windows_tests:
                 with self.subTest(scenario=scenario, platform="windows", test=fn):
                     self.assertIn(
-                        fn, windows_defs, f"Windows wrapper test {fn!r} is not defined under tests/wrapper/windows/"
+                        fn,
+                        windows_defs,
+                        f"Windows wrapper test {fn!r} is not defined under tests/wrapper/windows/",
                     )
                     self.assertRegex(
                         self.windows_runner,

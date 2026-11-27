@@ -7,17 +7,19 @@ if command -v code-insiders >/dev/null 2>&1; then
     if [ "$_code_insiders" != "${HOME:-}/.local/bin/code-insiders" ]; then
       alias code="code-insiders"
     elif [ -f "$_code_insiders" ]; then
-      if { IFS= read -r _code_insiders_line && IFS= read -r _code_insiders_line; } < "$_code_insiders" 2>/dev/null &&
-         [ "$_code_insiders_line" = "# dotfiles-managed-shim: code-insiders" ]; then
-        :
-      elif _code_insiders_digest=$(sha256sum 2>/dev/null < "$_code_insiders"); then
-        case "${_code_insiders_digest%% *}" in
-          d07a47ed11a9b15b283df8d89264df3539749273178898db2efc3f42485fe332 | \
-          abbafb0e03fa9c8534a5a74a46cbfc4357e73a34497da0966f96cddd6017eec9) ;;
-          *) alias code="code-insiders" ;;
-        esac
+      _code_insiders_helper="${XDG_CONFIG_HOME:-${HOME:-}/.config}/shell/code-insiders.sh"
+      [ -r "$_code_insiders_helper" ] || _code_insiders_helper="${HOME:-}/.config/shell/code-insiders.sh"
+      if [ -r "$_code_insiders_helper" ]; then
+        # shellcheck source=symlinks/config/shell/code-insiders.sh
+        . "$_code_insiders_helper"
+        if ! _dotfiles_is_managed_code_insiders_shim "$_code_insiders"; then
+          alias code="code-insiders"
+        fi
+        unset -f _dotfiles_is_managed_code_insiders_shim
+      else
+        alias code="code-insiders"
       fi
     fi
   fi
 fi
-unset _code_insiders _code_insiders_line _code_insiders_digest
+unset _code_insiders _code_insiders_helper

@@ -2,6 +2,20 @@
 set -o errexit
 set -o nounset
 
+helper="${XDG_CONFIG_HOME:-${HOME:-}/.config}/shell/code-insiders.sh"
+if [ ! -r "$helper" ]; then
+  helper="${HOME:-}/.config/shell/code-insiders.sh"
+fi
+if [ ! -r "$helper" ] && [ -f "$0" ]; then
+  helper="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/../../shell/code-insiders.sh"
+fi
+has_shim_helper=0
+if [ -r "$helper" ]; then
+  # shellcheck source=symlinks/config/shell/code-insiders.sh
+  . "$helper"
+  has_shim_helper=1
+fi
+
 for editor in code-insiders code gvim
 do
   if launcher=$(command -v "$editor" 2>/dev/null)
@@ -12,24 +26,14 @@ do
     if [ "$editor" = code-insiders ] &&
        [ "$launcher" = "${HOME:-}/.local/bin/code-insiders" ] &&
        [ ! -x /usr/bin/code-insiders ] &&
-       [ -f "$launcher" ]; then
-      if { IFS= read -r line && IFS= read -r line; } < "$launcher" 2>/dev/null &&
-         [ "$line" = "# dotfiles-managed-shim: code-insiders" ]; then
-        continue
-      fi
-      if digest=$(sha256sum 2>/dev/null < "$launcher"); then
-        case "${digest%% *}" in
-          d07a47ed11a9b15b283df8d89264df3539749273178898db2efc3f42485fe332 | \
-          abbafb0e03fa9c8534a5a74a46cbfc4357e73a34497da0966f96cddd6017eec9)
-            continue
-            ;;
-        esac
-      fi
+       [ "$has_shim_helper" -eq 1 ] &&
+       _dotfiles_is_managed_code_insiders_shim "$launcher"; then
+      continue
     fi
     exec "$editor" "$@"
   fi
 done
-unset editor
+unset editor helper has_shim_helper
 
 echo "ERROR: No supported editor found" >&2
 exit 1

@@ -23,25 +23,53 @@ class GitTemplatesTests(unittest.TestCase):
         self.templates = self.home / ".config/git/templates"
         shutil.copytree(TEMPLATES, self.templates)
         self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-        self.env.update(HOME=str(self.home), GIT_CONFIG_GLOBAL="/dev/null",
-                        GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_COUNT="0",
-                        GIT_AUTHOR_NAME="Test", GIT_AUTHOR_EMAIL="ci@test.local",
-                        GIT_COMMITTER_NAME="Test", GIT_COMMITTER_EMAIL="ci@test.local")
+        self.env.update(
+            HOME=str(self.home),
+            GIT_CONFIG_GLOBAL="/dev/null",
+            GIT_CONFIG_NOSYSTEM="1",
+            GIT_CONFIG_COUNT="0",
+            GIT_AUTHOR_NAME="Test",
+            GIT_AUTHOR_EMAIL="ci@test.local",
+            GIT_COMMITTER_NAME="Test",
+            GIT_COMMITTER_EMAIL="ci@test.local",
+        )
         self.repo = self.root / "repo"
-        self.git("init", "-q", "-b", "main", "--template=" + str(self.templates), str(self.repo), cwd=self.root)
+        self.git(
+            "init",
+            "-q",
+            "-b",
+            "main",
+            "--template=" + str(self.templates),
+            str(self.repo),
+            cwd=self.root,
+        )
         self.git("commit", "--allow-empty", "-qm", "base")
 
     def git(self, *args, cwd=None):
-        result = subprocess.run(["git", *args], cwd=cwd or self.repo,
-                                env=self.env, text=True, capture_output=True, check=True)
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd or self.repo,
+            env=self.env,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
         return result.stdout.strip()
 
     def push(self, branch, remote="upstream", url=None, prefix=""):
         payload = prefix + f"refs/heads/local {'1' * 40} refs/heads/{branch} {'0' * 40}\n"
-        return subprocess.run([str(self.repo / ".git/hooks/pre-push"), remote,
-                               url or str(self.root / "missing-remote")],
-                              cwd=self.repo, env=self.env, input=payload,
-                              text=True, capture_output=True).returncode
+        return subprocess.run(
+            [
+                str(self.repo / ".git/hooks/pre-push"),
+                remote,
+                url or str(self.root / "missing-remote"),
+            ],
+            cwd=self.repo,
+            env=self.env,
+            input=payload,
+            text=True,
+            capture_output=True,
+        ).returncode
 
     def test_destination_default_and_configured_branches(self):
         self.git("remote", "add", "upstream", str(self.root / "missing-remote"))
@@ -72,7 +100,9 @@ class GitTemplatesTests(unittest.TestCase):
         self.assertEqual(self.push("feature", url=str(destination)), 1)
 
         self.git("init", "--bare", "-q", "-b", "stable", str(destination))
-        self.git("--git-dir=" + str(destination), "fetch", "-q", str(self.repo), "main:refs/heads/stable")
+        self.git(
+            "--git-dir=" + str(destination), "fetch", "-q", str(self.repo), "main:refs/heads/stable"
+        )
         self.assertEqual(self.push("stable", url=str(destination)), 1)
         self.assertEqual(self.push("trunk", url=str(destination)), 0)
         self.assertEqual(self.push("feature", url=str(destination)), 0)
@@ -80,9 +110,11 @@ class GitTemplatesTests(unittest.TestCase):
     def test_owned_github_repository_is_exempt(self):
         self.git("config", "github.user", "test-owner")
         ssh_host = "git@" + "github.com"
-        for url in ["https://github.com/test-owner/repo.git",
-                    f"{ssh_host}:test-owner/repo.git",
-                    f"ssh://{ssh_host}/test-owner/repo.git"]:
+        for url in [
+            "https://github.com/test-owner/repo.git",
+            f"{ssh_host}:test-owner/repo.git",
+            f"ssh://{ssh_host}/test-owner/repo.git",
+        ]:
             with self.subTest(url=url):
                 self.assertEqual(self.push("main", remote="origin", url=url), 0)
 
@@ -105,7 +137,9 @@ class GitTemplatesTests(unittest.TestCase):
         self.git("add", "local", cwd=clone)
         self.git("commit", "-qm", "local", cwd=clone)
         self.git("commit", "--amend", "--no-edit", cwd=clone)
-        self.assertIn("old", self.git("branch", "--format=%(refname:short)", cwd=clone).splitlines())
+        self.assertIn(
+            "old", self.git("branch", "--format=%(refname:short)", cwd=clone).splitlines()
+        )
         (remote / "remote").write_text("remote work")
         self.git("add", "remote", cwd=remote)
         self.git("commit", "-qm", "remote", cwd=remote)
@@ -122,12 +156,15 @@ class GitTemplatesTests(unittest.TestCase):
         self.git("add", "next", cwd=remote)
         self.git("commit", "-qm", "next", cwd=remote)
         self.git("-c", "pull.rebase=false", "pull", "-q", "--no-edit", cwd=clone)
-        self.assertNotIn("old-merge", self.git("branch", "--format=%(refname:short)", cwd=clone).splitlines())
+        self.assertNotIn(
+            "old-merge", self.git("branch", "--format=%(refname:short)", cwd=clone).splitlines()
+        )
 
     def test_cleanup_without_origin_is_a_noop(self):
         self.git("branch", "keep")
-        subprocess.run([str(self.repo / ".git/hooks/post-merge"), "0"],
-                       cwd=self.repo, env=self.env, check=True)
+        subprocess.run(
+            [str(self.repo / ".git/hooks/post-merge"), "0"], cwd=self.repo, env=self.env, check=True
+        )
         self.assertIn("keep", self.git("branch", "--format=%(refname:short)").splitlines())
 
     def test_merge_cleanup_uses_branch_names_when_tags_collide(self):
@@ -146,7 +183,9 @@ class GitTemplatesTests(unittest.TestCase):
         branches = self.git("for-each-ref", "--format=%(refname)", "refs/heads/")
         self.assertEqual(branches.splitlines(), ["refs/heads/main", "refs/heads/release"])
         tags = self.git("for-each-ref", "--format=%(refname)", "refs/tags/")
-        self.assertEqual(tags.splitlines(), ["refs/tags/merged-feature", "refs/tags/origin/release"])
+        self.assertEqual(
+            tags.splitlines(), ["refs/tags/merged-feature", "refs/tags/origin/release"]
+        )
 
     def test_manual_cleanup_uses_exact_branch_names_and_only_merged_tips(self):
         self.git("config", "include.path", str(ROOT / "symlinks/config/git/aliases"))
@@ -156,9 +195,14 @@ class GitTemplatesTests(unittest.TestCase):
         self.git("commit", "--allow-empty", "-qm", "unmerged work")
         self.git("switch", "-q", "main")
         self.git("delete-merged")
-        self.assertEqual(self.git("for-each-ref", "--format=%(refname)").splitlines(), [
-            "refs/heads/main", "refs/heads/work-in-progress", "refs/tags/release",
-        ])
+        self.assertEqual(
+            self.git("for-each-ref", "--format=%(refname)").splitlines(),
+            [
+                "refs/heads/main",
+                "refs/heads/work-in-progress",
+                "refs/tags/release",
+            ],
+        )
 
     def test_manual_cleanup_preserves_branches_when_enumeration_fails(self):
         self.git("config", "include.path", str(ROOT / "symlinks/config/git/aliases"))
@@ -168,13 +212,17 @@ class GitTemplatesTests(unittest.TestCase):
         bindir.mkdir()
         fake_git = bindir / "git"
         fake_git.write_text(
-            "#!/bin/sh\nif [ \"$1\" = for-each-ref ]; then\n"
+            '#!/bin/sh\nif [ "$1" = for-each-ref ]; then\n'
             "  printf 'topic\\n'\n  echo 'fixture: incomplete ref list' >&2\n  exit 1\nfi\n"
-            f"exec {shlex.quote(real_git)} \"$@\"\n"
+            f'exec {shlex.quote(real_git)} "$@"\n'
         )
         fake_git.chmod(0o755)
-        result = subprocess.run([real_git, "delete-merged"], cwd=self.repo, capture_output=True,
-                                env={**self.env, "GIT_EXEC_PATH": str(bindir)})
+        result = subprocess.run(
+            [real_git, "delete-merged"],
+            cwd=self.repo,
+            capture_output=True,
+            env={**self.env, "GIT_EXEC_PATH": str(bindir)},
+        )
         self.assertIn(b"fixture: incomplete ref list", result.stderr)
         self.assertEqual(self.git("branch", "--list", "topic"), "topic")
         self.assertNotEqual(result.returncode, 0)
@@ -183,7 +231,10 @@ class GitTemplatesTests(unittest.TestCase):
 class CleanupTests(unittest.TestCase):
     def test_retention_for_files_links_and_directories(self):
         for name, directory, days in [("home-tmp", "tmp", 7), ("screenshots", "screenshots", 30)]:
-            with self.subTest(service=name), tempfile.TemporaryDirectory(prefix="dotfiles-cleanup-") as tmp:
+            with (
+                self.subTest(service=name),
+                tempfile.TemporaryDirectory(prefix="dotfiles-cleanup-") as tmp,
+            ):
                 home = Path(tmp)
                 target = home / directory
                 target.mkdir()
@@ -202,7 +253,10 @@ class CleanupTests(unittest.TestCase):
                 unit = ROOT / f"symlinks/config/systemd/user/clean-{name}.service"
                 for line in unit.read_text().splitlines():
                     if line.startswith("ExecStart="):
-                        subprocess.run(shlex.split(line.removeprefix("ExecStart=").replace("%h", str(home))), check=True)
+                        subprocess.run(
+                            shlex.split(line.removeprefix("ExecStart=").replace("%h", str(home))),
+                            check=True,
+                        )
                 self.assertTrue(target.is_dir())
                 self.assertTrue((outside / "keep").is_file())
                 for kind in ["file", "directory", "link"]:

@@ -1,4 +1,5 @@
 target-version = "py310"
+line-length = 100
 
 exclude = [
   ".git",
@@ -9,7 +10,26 @@ exclude = [
 ]
 
 [lint]
-select = ["E4", "E7", "E9", "F", "B", "UP"]
+select = [
+  "E4",
+  "E7",
+  "E9",
+  "W",
+  "F",
+  "I",
+  "B",
+  "UP",
+  "C4",
+  "PIE",
+  "SIM",
+  "RET",
+  "RUF",
+  "PERF",
+  "TC",
+]
+
+[lint.isort]
+force-sort-within-sections = true
 
 [lint.per-file-ignores]
 # Test runners insert their sibling package directory into sys.path before importing.

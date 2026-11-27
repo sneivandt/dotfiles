@@ -38,7 +38,11 @@ class SensitiveScanTests(unittest.TestCase):
             (repo / "test-file.txt").write_text("release = v2026.07.30-1\n", encoding="utf-8")
             self.assertEqual(run(["git", "add", "test-file.txt"], cwd=repo, env=env).returncode, 0)
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
-            self.assertEqual(res.returncode, 0, f"Sensitive-data scan requires unavailable paste:\n{res.stdout}{res.stderr}")
+            self.assertEqual(
+                res.returncode,
+                0,
+                f"Sensitive-data scan requires unavailable paste:\n{res.stdout}{res.stderr}",
+            )
 
     def test_sensitive_scan_unusual_paths(self) -> None:
         key_header = " ".join(("-----BEGIN", "PRIVATE", "KEY-----"))
@@ -46,13 +50,20 @@ class SensitiveScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as repo_str:
             repo = Path(repo_str)
             env = clean_git_env(repo)
-            self.assertEqual(run(["git", "init", "-q", "--template=", str(repo)], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(["git", "init", "-q", "--template=", str(repo)], cwd=repo, env=env).returncode,
+                0,
+            )
             run(["git", "config", "user.name", "Hook Test"], cwd=repo, env=env)
             run(["git", "config", "user.email", "ci@test.local"], cwd=repo, env=env)
             _copy_sensitive_files(repo)
             (repo / "baseline").write_text("baseline\n", encoding="utf-8")
             run(["git", "add", "baseline"], cwd=repo, env=env)
-            run(["git", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "baseline"], cwd=repo, env=env)
+            run(
+                ["git", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "baseline"],
+                cwd=repo,
+                env=env,
+            )
 
             unusual_names = (
                 "space name.txt",
@@ -65,9 +76,13 @@ class SensitiveScanTests(unittest.TestCase):
                 with self.subTest(filename=name):
                     path = repo / name
                     path.write_text(f"safe line\n{key_header}\n", encoding="utf-8")
-                    self.assertEqual(run(["git", "add", "--", name], cwd=repo, env=env).returncode, 0)
+                    self.assertEqual(
+                        run(["git", "add", "--", name], cwd=repo, env=env).returncode, 0
+                    )
                     res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
-                    self.assertNotEqual(res.returncode, 0, f"Allowed secret in unusual filename: {name!r}")
+                    self.assertNotEqual(
+                        res.returncode, 0, f"Allowed secret in unusual filename: {name!r}"
+                    )
                     self.assertIn("Line 2: <redacted>", res.stdout + res.stderr)
                     run(["git", "reset", "-q", "HEAD", "--", name], cwd=repo, env=env)
                     path.unlink()
@@ -78,7 +93,9 @@ class SensitiveScanTests(unittest.TestCase):
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
             self.assertNotEqual(res.returncode, 0)
             output = res.stdout + res.stderr
-            self.assertEqual(output.count("Line 2: <redacted>"), 1, f"Duplicate RSA match:\n{output}")
+            self.assertEqual(
+                output.count("Line 2: <redacted>"), 1, f"Duplicate RSA match:\n{output}"
+            )
             run(["git", "reset", "-q", "HEAD", "--", "rsa-key.txt"], cwd=repo, env=env)
             rsa_file.unlink()
 
@@ -86,7 +103,12 @@ class SensitiveScanTests(unittest.TestCase):
             second = repo / "second space.txt"
             first.write_text(f"safe line\n{key_header}\n", encoding="utf-8")
             second.write_text(f"safe line\nanother safe line\n++{key_header}\n", encoding="utf-8")
-            self.assertEqual(run(["git", "add", "--", "first.txt", "second space.txt"], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(
+                    ["git", "add", "--", "first.txt", "second space.txt"], cwd=repo, env=env
+                ).returncode,
+                0,
+            )
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
             self.assertNotEqual(res.returncode, 0)
             output = res.stdout + res.stderr
@@ -94,7 +116,11 @@ class SensitiveScanTests(unittest.TestCase):
             self.assertIn("In file: second space.txt", output)
             self.assertIn("Line 2: <redacted>", output)
             self.assertIn("Line 3: <redacted>", output)
-            run(["git", "reset", "-q", "HEAD", "--", "first.txt", "second space.txt"], cwd=repo, env=env)
+            run(
+                ["git", "reset", "-q", "HEAD", "--", "first.txt", "second space.txt"],
+                cwd=repo,
+                env=env,
+            )
             first.unlink()
             second.unlink()
 
@@ -105,13 +131,19 @@ class SensitiveScanTests(unittest.TestCase):
             (repo / old_name).write_text(lines, encoding="utf-8")
             self.assertEqual(run(["git", "add", "--", old_name], cwd=repo, env=env).returncode, 0)
             self.assertEqual(
-                run(["git", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "rename baseline"], cwd=repo, env=env).returncode,
+                run(
+                    ["git", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "rename baseline"],
+                    cwd=repo,
+                    env=env,
+                ).returncode,
                 0,
             )
             (repo / old_name).rename(repo / new_name)
             with (repo / new_name).open("a", encoding="utf-8") as handle:
                 handle.write(f"{key_header}\n")
-            self.assertEqual(run(["git", "add", "-A", "--", old_name, new_name], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(["git", "add", "-A", "--", old_name, new_name], cwd=repo, env=env).returncode, 0
+            )
             summary = run(["git", "diff", "--cached", "--summary"], cwd=repo, env=env).stdout
             self.assertIn("rename", summary, "Unusual-path fixture did not produce a rename")
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
@@ -119,29 +151,48 @@ class SensitiveScanTests(unittest.TestCase):
             self.assertIn("Line 31: <redacted>", res.stdout + res.stderr)
 
             self.assertEqual(
-                run(["git", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "deletion baseline"], cwd=repo, env=env).returncode,
+                run(
+                    ["git", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "deletion baseline"],
+                    cwd=repo,
+                    env=env,
+                ).returncode,
                 0,
             )
             (repo / new_name).unlink()
-            self.assertEqual(run(["git", "add", "-A", "--", new_name], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(["git", "add", "-A", "--", new_name], cwd=repo, env=env).returncode, 0
+            )
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
-            self.assertEqual(res.returncode, 0, f"Sensitive scan blocked a deletion:\n{res.stdout}{res.stderr}")
+            self.assertEqual(
+                res.returncode, 0, f"Sensitive scan blocked a deletion:\n{res.stdout}{res.stderr}"
+            )
 
     def test_sensitive_scan_errors(self) -> None:
         with tempfile.TemporaryDirectory() as repo_str:
             repo = Path(repo_str)
             env = clean_git_env(repo)
-            self.assertEqual(run(["git", "init", "-q", "--template=", str(repo)], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(["git", "init", "-q", "--template=", str(repo)], cwd=repo, env=env).returncode,
+                0,
+            )
             (repo / "hooks").mkdir()
-            shutil.copy2(REPO_ROOT / "hooks" / "check-sensitive.sh", repo / "hooks" / "check-sensitive.sh")
+            shutil.copy2(
+                REPO_ROOT / "hooks" / "check-sensitive.sh", repo / "hooks" / "check-sensitive.sh"
+            )
 
-            (repo / "hooks" / "sensitive-patterns.ini").write_text("(unterminated\n", encoding="utf-8")
+            (repo / "hooks" / "sensitive-patterns.ini").write_text(
+                "(unterminated\n", encoding="utf-8"
+            )
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("Cannot validate", res.stdout + res.stderr)
 
-            (repo / "hooks" / "sensitive-patterns.ini").write_text("sensitive-marker\n", encoding="utf-8")
-            (repo / "hooks" / "sensitive-allowlist.ini").write_text("(unterminated\n", encoding="utf-8")
+            (repo / "hooks" / "sensitive-patterns.ini").write_text(
+                "sensitive-marker\n", encoding="utf-8"
+            )
+            (repo / "hooks" / "sensitive-allowlist.ini").write_text(
+                "(unterminated\n", encoding="utf-8"
+            )
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
             self.assertNotEqual(res.returncode, 0)
             (repo / "hooks" / "sensitive-allowlist.ini").unlink()
@@ -180,27 +231,42 @@ class SensitiveScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as repo_str:
             repo = Path(repo_str)
             env = clean_git_env(repo)
-            self.assertEqual(run(["git", "init", "-q", "--template=", str(repo)], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(["git", "init", "-q", "--template=", str(repo)], cwd=repo, env=env).returncode,
+                0,
+            )
             (repo / "hooks").mkdir()
-            shutil.copy2(REPO_ROOT / "hooks" / "check-sensitive.sh", repo / "hooks" / "check-sensitive.sh")
+            shutil.copy2(
+                REPO_ROOT / "hooks" / "check-sensitive.sh", repo / "hooks" / "check-sensitive.sh"
+            )
             patterns = repo / "hooks" / "sensitive-patterns.ini"
             allowlist = repo / "hooks" / "sensitive-allowlist.ini"
             patterns.write_text("STAGED_ONLY_SECRET\n", encoding="utf-8")
             allowlist.write_text("ALLOW_STAGED_MARKER\n", encoding="utf-8")
             self.assertEqual(
-                run(["git", "add", "hooks/sensitive-patterns.ini", "hooks/sensitive-allowlist.ini"], cwd=repo, env=env).returncode,
+                run(
+                    ["git", "add", "hooks/sensitive-patterns.ini", "hooks/sensitive-allowlist.ini"],
+                    cwd=repo,
+                    env=env,
+                ).returncode,
                 0,
             )
             self.assertEqual(
                 run(
                     [
                         "git",
-                        "-c", "user.name=Fixture",
-                        "-c", "user.email=fixture@test.local",
-                        "-c", "core.hooksPath=/dev/null",
-                        "commit", "-qm", "baseline",
+                        "-c",
+                        "user.name=Fixture",
+                        "-c",
+                        "user.email=fixture@test.local",
+                        "-c",
+                        "core.hooksPath=/dev/null",
+                        "commit",
+                        "-qm",
+                        "baseline",
                     ],
-                    cwd=repo, env=env,
+                    cwd=repo,
+                    env=env,
                 ).returncode,
                 0,
             )
@@ -217,13 +283,23 @@ class SensitiveScanTests(unittest.TestCase):
 
             # Staged allowlist update takes effect even when worktree drops it.
             allowlist.write_text("STAGED_ONLY_SECRET\n", encoding="utf-8")
-            self.assertEqual(run(["git", "add", "hooks/sensitive-allowlist.ini"], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(["git", "add", "hooks/sensitive-allowlist.ini"], cwd=repo, env=env).returncode,
+                0,
+            )
             allowlist.write_text("UNRELATED\n", encoding="utf-8")
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
-            self.assertEqual(res.returncode, 0, f"Staged allowlist was ignored:\n{res.stdout}{res.stderr}")
+            self.assertEqual(
+                res.returncode, 0, f"Staged allowlist was ignored:\n{res.stdout}{res.stderr}"
+            )
 
             # Staging removal of the allowlist must not fall back to the worktree copy.
-            self.assertEqual(run(["git", "rm", "-fq", "hooks/sensitive-allowlist.ini"], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(
+                    ["git", "rm", "-fq", "hooks/sensitive-allowlist.ini"], cwd=repo, env=env
+                ).returncode,
+                0,
+            )
             allowlist.write_text("STAGED_ONLY_SECRET\n", encoding="utf-8")
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=env)
             self.assertNotEqual(res.returncode, 0, "Deleted allowlist fell back to worktree file")
@@ -239,18 +315,22 @@ class SensitiveScanTests(unittest.TestCase):
         sample_secret = "".join(("abcdef1234567890", "abcdef1234567890"))
         sample_pass = "".join(("MySecret", "Pass123"))
         sample_passwd = "".join(("Another", "Password456"))
-        sample_jwt = ".".join((
-            "eyJhbGciOiJIUzI1NiJ9",
-            "eyJzdWIiOiJ0ZXN0In0",
-            "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
-        ))
+        sample_jwt = ".".join(
+            (
+                "eyJhbGciOiJIUzI1NiJ9",
+                "eyJzdWIiOiJ0ZXN0In0",
+                "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+            )
+        )
         sample_val = "".join(("abc123+def456/", "ghi789==abcd"))
         sample_rsa = " ".join(("-----BEGIN", "RSA PRIVATE", "KEY-----"))
         sample_ssh = " ".join(("-----BEGIN", "OPENSSH PRIVATE", "KEY-----"))
         sample_mysql = "".join(("mysql", "://", "user", ":", "password", "@localhost:3306/db"))
         sample_pg = "".join(("postgresql", "://", "admin", ":", "secret", "@db.example.com/mydb"))
         sample_heroku = "-".join(("550e8400", "e29b", "41d4", "a716", "446655440000"))
-        sample_slack = "-".join(("xoxb", "1111111111111", "2222222222222", "EXAMPLEEXAMPLEEXAMPLEEXA"))
+        sample_slack = "-".join(
+            ("xoxb", "1111111111111", "2222222222222", "EXAMPLEEXAMPLEEXAMPLEEXA")
+        )
         sample_stripe = "_".join(("sk", "test", "EXAMPLEKEY1234567890abcd"))
         sample_google = "".join(("AIzaSyC1234567890", "abcdefghijklmnopqrstuvw"))
         sample_gitlab = "-".join(("glpat", "abcdefghijklmnopqrstuvwxyz"))
@@ -332,13 +412,23 @@ class SensitiveScanTests(unittest.TestCase):
             for pattern_type, content in blocked_cases:
                 with self.subTest(blocked=pattern_type):
                     test_file.write_text(f"{content}\n", encoding="utf-8")
-                    self.assertEqual(run(["git", "add", "test-file.txt"], cwd=repo, env=env).returncode, 0)
-                    commit = run(["git", "commit", "-m", f"Test commit with {pattern_type}"], cwd=repo, env=env)
+                    self.assertEqual(
+                        run(["git", "add", "test-file.txt"], cwd=repo, env=env).returncode, 0
+                    )
+                    commit = run(
+                        ["git", "commit", "-m", f"Test commit with {pattern_type}"],
+                        cwd=repo,
+                        env=env,
+                    )
                     output = commit.stdout + commit.stderr
                     try:
-                        self.assertNotEqual(commit.returncode, 0, f"Hook allowed commit with {pattern_type}")
+                        self.assertNotEqual(
+                            commit.returncode, 0, f"Hook allowed commit with {pattern_type}"
+                        )
                         self.assertIn("Potential sensitive information detected", output)
-                        self.assertNotIn(content, output, f"Hook printed detected {pattern_type} content")
+                        self.assertNotIn(
+                            content, output, f"Hook printed detected {pattern_type} content"
+                        )
                     finally:
                         run(["git", "reset", "-q", "HEAD", "test-file.txt"], cwd=repo, env=env)
                         test_file.unlink(missing_ok=True)
@@ -347,22 +437,34 @@ class SensitiveScanTests(unittest.TestCase):
             staged_only = repo / "staged-only-secret.txt"
             staged_value = "".join(("abcdef12345", "67890abcdef", "12345", "67890"))
             staged_only.write_text(f'{"secret"}_{"key"}: "{staged_value}"\n', encoding="utf-8")
-            self.assertEqual(run(["git", "add", "staged-only-secret.txt"], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(["git", "add", "staged-only-secret.txt"], cwd=repo, env=env).returncode, 0
+            )
             staged_only.unlink()
-            commit = run(["git", "commit", "-m", "Test staged-only sensitive file"], cwd=repo, env=env)
+            commit = run(
+                ["git", "commit", "-m", "Test staged-only sensitive file"], cwd=repo, env=env
+            )
             try:
                 self.assertNotEqual(commit.returncode, 0)
-                self.assertIn("Potential sensitive information detected", commit.stdout + commit.stderr)
+                self.assertIn(
+                    "Potential sensitive information detected", commit.stdout + commit.stderr
+                )
             finally:
                 run(["git", "reset", "-q", "HEAD", "staged-only-secret.txt"], cwd=repo, env=env)
 
             for content in clean_cases:
                 with self.subTest(clean=content):
                     test_file.write_text(f"{content}\n", encoding="utf-8")
-                    self.assertEqual(run(["git", "add", "test-file.txt"], cwd=repo, env=env).returncode, 0)
+                    self.assertEqual(
+                        run(["git", "add", "test-file.txt"], cwd=repo, env=env).returncode, 0
+                    )
                     commit = run(["git", "commit", "-m", "Test clean commit"], cwd=repo, env=env)
                     try:
-                        self.assertEqual(commit.returncode, 0, f"Hook blocked clean commit:\n{commit.stdout}{commit.stderr}")
+                        self.assertEqual(
+                            commit.returncode,
+                            0,
+                            f"Hook blocked clean commit:\n{commit.stdout}{commit.stderr}",
+                        )
                     finally:
                         if commit.returncode == 0:
                             run(["git", "reset", "--soft", "HEAD~1"], cwd=repo, env=env)

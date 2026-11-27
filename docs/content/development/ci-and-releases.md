@@ -70,7 +70,7 @@ falls back to full coverage so earlier changes don't slip through untested.
 | Quickshell | Python fixtures on both platforms, Linux `qmllint`, and offscreen QML/session checks |
 | Wrappers | The affected platform's build and wrapper integration |
 | Hooks | Hook and staged-input fixtures; hook-only edits do not request CLI builds |
-| Shell, PowerShell, Python, or Lua files | The matching linter (`ShellCheck`, `PSScriptAnalyzer`, `Ruff`, or `Luacheck`) in addition to other selected work |
+| Shell, PowerShell, Python, Lua, or structured (`*.json`, `*.toml`, `*.yml`, `*.yaml`) files | The matching linter (`ShellCheck`, `PSScriptAnalyzer`, `Ruff`, `Luacheck`, or `Structured files`) in addition to other selected work |
 | CI workflow/shared orchestration, manual dispatch, or unknown inputs | Conservative full CI |
 | Release workflow/selection | Publication eligibility without unrelated CI compilation |
 

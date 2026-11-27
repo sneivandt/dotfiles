@@ -11,7 +11,6 @@ import textwrap
 import unittest
 import uuid
 
-
 TESTS = Path(__file__).resolve().parent
 CONFIG = Path(__file__).resolve().parents[2] / "symlinks/vim"
 
@@ -34,10 +33,19 @@ class NeovimBootstrapTests(unittest.TestCase):
         executable = shutil.which("nvim")
         if executable is None:
             self.skipTest("nvim is not available")
-        with tempfile.TemporaryDirectory(prefix=".nvim-bootstrap-test-", dir=Path.cwd()) as directory:
+        with tempfile.TemporaryDirectory(
+            prefix=".nvim-bootstrap-test-", dir=Path.cwd()
+        ) as directory:
             root = Path(directory)
             env = os.environ.copy()
-            for key in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "TMPDIR"):
+            for key in (
+                "HOME",
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "XDG_CACHE_HOME",
+                "XDG_STATE_HOME",
+                "TMPDIR",
+            ):
                 path = root / (key.lower() + " with spaces")
                 path.mkdir()
                 env[key] = str(path)
@@ -50,7 +58,9 @@ class NeovimBootstrapTests(unittest.TestCase):
             env["BOOTSTRAP_MANAGER"] = MANAGER
             env["PATH"] = str(root) + os.pathsep + env["PATH"]
             git = root / "git"
-            git.write_text(f"#!{sys.executable}\n" + textwrap.dedent("""\
+            git.write_text(
+                f"#!{sys.executable}\n"
+                + textwrap.dedent("""\
                 import json
                 import os
                 from pathlib import Path
@@ -89,11 +99,20 @@ class NeovimBootstrapTests(unittest.TestCase):
                     if mode == "checkout-failure":
                         sys.exit("fixture checkout failure")
                     (Path(args[1]) / "checked-out").write_text(args[3])
-                """))
+                """)
+            )
             git.chmod(0o755)
             command = [
-                executable, "--headless", "-u", "NONE", "-i", "NONE", "-n", "--noplugin",
-                "-c", """lua
+                executable,
+                "--headless",
+                "-u",
+                "NONE",
+                "-i",
+                "NONE",
+                "-n",
+                "--noplugin",
+                "-c",
+                """lua
 local ok, failure = pcall(function()
   vim.opt.rtp:prepend(vim.fn.fnamemodify(vim.env.BOOTSTRAP_SOURCE, ":h:h"))
   local mode = vim.env.BOOTSTRAP_MODE
@@ -143,7 +162,8 @@ if not ok then
   vim.cmd("cquit")
 end
 """,
-                "-c", "qa!",
+                "-c",
+                "qa!",
             ]
             self.root = root
             self.manager = Path(env["XDG_DATA_HOME"]) / "nvim/lazy/lazy.nvim"
@@ -158,8 +178,12 @@ end
 
     def run_bootstrap(self, error=None):
         result = subprocess.run(
-            self.command, cwd=self.root, env=self.env,
-            text=True, capture_output=True, timeout=30,
+            self.command,
+            cwd=self.root,
+            env=self.env,
+            text=True,
+            capture_output=True,
+            timeout=30,
         )
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 0 if error is None else 1, output)
@@ -187,7 +211,10 @@ end
             self.run_bootstrap()
             calls = self.git_calls()
             self.assertEqual(len(calls), 2)
-            self.assertEqual(calls[0][:3], ["clone", "--filter=blob:none", "https://github.com/folke/lazy.nvim.git"])
+            self.assertEqual(
+                calls[0][:3],
+                ["clone", "--filter=blob:none", "https://github.com/folke/lazy.nvim.git"],
+            )
             self.assertNotEqual(calls[0][-1], str(self.manager))
             pin = json.loads((CONFIG / "lazy-lock.json").read_text())["lazy.nvim"]["commit"]
             self.assertEqual(calls[1], ["-C", calls[0][-1], "checkout", pin])
@@ -197,14 +224,21 @@ end
     def test_plugin_configuration_loads_without_bootstrapping(self):
         with self.bootstrap_fixture():
             self.env["DIR"] = str(CONFIG.parents[1])
-            command = self.command[:self.command.index("-c")] + [
-                "-c", 'lua local ok, failure = pcall(dofile, vim.env.DIR .. "/tests/vim/test-nvim-config.lua"); '
+            command = [
+                *self.command[: self.command.index("-c")],
+                "-c",
+                'lua local ok, failure = pcall(dofile, vim.env.DIR .. "/tests/vim/test-nvim-config.lua"); '
                 'if not ok then vim.api.nvim_err_writeln(tostring(failure)); vim.cmd("cquit") end',
-                "-c", "qa!",
+                "-c",
+                "qa!",
             ]
             result = subprocess.run(
-                command, cwd=self.root, env=self.env,
-                text=True, capture_output=True, timeout=30,
+                command,
+                cwd=self.root,
+                env=self.env,
+                text=True,
+                capture_output=True,
+                timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("Gitsigns mappings passed", result.stdout + result.stderr)
@@ -330,8 +364,12 @@ end
                 self.manager.mkdir(parents=True)
                 (self.manager / "partial").write_text("preserve")
                 process = subprocess.run(
-                    self.command, cwd=self.root, env=self.env,
-                    text=True, capture_output=True, timeout=30,
+                    self.command,
+                    cwd=self.root,
+                    env=self.env,
+                    text=True,
+                    capture_output=True,
+                    timeout=30,
                 )
                 self.assertNotEqual(process.returncode, 0)
                 lock = self.manager.with_name("lazy.nvim.bootstrap-lock")
@@ -348,7 +386,10 @@ end
 
     def test_concurrent_bootstraps_publish_once(self):
         for interrupted, dead_owner in ((False, False), (True, False), (True, True)):
-            with self.subTest(interrupted=interrupted, dead_owner=dead_owner), self.bootstrap_fixture("concurrent"):
+            with (
+                self.subTest(interrupted=interrupted, dead_owner=dead_owner),
+                self.bootstrap_fixture("concurrent"),
+            ):
                 if interrupted:
                     self.manager.mkdir(parents=True)
                     (self.manager / "partial").write_text("preserve")
@@ -356,11 +397,17 @@ end
                     self.write_dead_lock()
                 processes = []
                 try:
-                    for _ in range(2):
-                        processes.append(subprocess.Popen(
-                            self.command, cwd=self.root, env=self.env,
-                            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                        ))
+                    processes.extend(
+                        subprocess.Popen(
+                            self.command,
+                            cwd=self.root,
+                            env=self.env,
+                            text=True,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                        )
+                        for _ in range(2)
+                    )
                     for process in processes:
                         stdout, stderr = process.communicate(timeout=30)
                         self.assertEqual(process.returncode, 0, stdout + stderr)
@@ -388,15 +435,28 @@ class VimConfigTests(unittest.TestCase):
             home = root / "home"
             legacy = home / ".cache/vim/undo"
             legacy.mkdir(parents=True)
-            env = {"PATH": os.defpath, "LC_ALL": "C.UTF-8", "HOME": str(home), "XDG_STATE_HOME": "relative",
-                   "TMPDIR": str(root), "DOTFILES_VIM_CONFIG": str(CONFIG / "vimrc")}
+            env = {
+                "PATH": os.defpath,
+                "LC_ALL": "C.UTF-8",
+                "HOME": str(home),
+                "XDG_STATE_HOME": "relative",
+                "TMPDIR": str(root),
+                "DOTFILES_VIM_CONFIG": str(CONFIG / "vimrc"),
+            }
             # Avoid any installed user configuration and third-party plugins.
             base = [executable, "-u", "NONE", "-i", "NONE", "-n", "--noplugin"]
             base += ["--headless"] if editor == "nvim" else ["-N", "-es"]
+
             def run(*commands):
                 args = [arg for cmd in commands for arg in ("-c", cmd)]
-                result = subprocess.run(base + args + ["-c", "qa!"], cwd=root,
-                                        env=env, capture_output=True, text=True, timeout=30)
+                result = subprocess.run(
+                    base + args + ["-c", "qa!"],
+                    cwd=root,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
             old_config = "let &undodir = expand('~/.cache/vim/undo') | set undofile"
@@ -404,7 +464,7 @@ class VimConfigTests(unittest.TestCase):
             run(old_config, "edit note", "call setline(1, 'first')", "write")
             run(new_config)  # Opening an unrelated session must not snapshot stale undo.
             run(old_config, "edit note", "call setline(1, 'second')", "write")
-            old_file, = legacy.iterdir()
+            (old_file,) = legacy.iterdir()
             old_history = old_file.read_bytes()
             run(new_config, "edit note", "normal! u", "write")
             self.assertEqual((root / "note").read_text(), "first\n")
@@ -435,7 +495,14 @@ class VimConfigTests(unittest.TestCase):
         fixture.mkdir()
         try:
             env = os.environ.copy()
-            for key in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "TMPDIR"):
+            for key in (
+                "HOME",
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "XDG_CACHE_HOME",
+                "XDG_STATE_HOME",
+                "TMPDIR",
+            ):
                 directory = fixture / key.lower()
                 directory.mkdir()
                 env[key] = str(directory)
@@ -445,9 +512,7 @@ class VimConfigTests(unittest.TestCase):
             command = [executable, "-u", "NONE", "-i", "NONE", "-n", "--noplugin"]
             command += ["--headless"] if editor == "nvim" else ["-N", "-es", "-V1"]
             command += ["-S", str(TESTS / "test_filetype_options.vim")]
-            result = subprocess.run(
-                command, env=env, text=True, capture_output=True, timeout=30
-            )
+            result = subprocess.run(command, env=env, text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         finally:
             shutil.rmtree(fixture)
@@ -468,7 +533,13 @@ class VimConfigTests(unittest.TestCase):
             home.mkdir()
             env = os.environ.copy()
             env["HOME"] = str(home)
-            for key in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "TMPDIR"):
+            for key in (
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "XDG_CACHE_HOME",
+                "XDG_STATE_HOME",
+                "TMPDIR",
+            ):
                 path = fixture / key.lower()
                 path.mkdir()
                 env[key] = str(path)
@@ -481,9 +552,23 @@ class VimConfigTests(unittest.TestCase):
             # Exercise the actual entry points without installing or loading plugins.
             stub = 'lua package.preload["lazy-bootstrap"] = function() vim.g.test_bootstrap_loaded = true; return {} end'
             result = subprocess.run(
-                [executable, "--headless", "-i", "NONE", "-n", "--noplugin",
-                 "--cmd", stub, "-c", "lua dofile(vim.env.DOTFILES_NVIM_STARTUP_TEST)"],
-                cwd=fixture, env=env, text=True, capture_output=True, timeout=30,
+                [
+                    executable,
+                    "--headless",
+                    "-i",
+                    "NONE",
+                    "-n",
+                    "--noplugin",
+                    "--cmd",
+                    stub,
+                    "-c",
+                    "lua dofile(vim.env.DOTFILES_NVIM_STARTUP_TEST)",
+                ],
+                cwd=fixture,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(result.stderr.replace("-- TERMINAL --", ""), "", result.stderr)

@@ -5,7 +5,6 @@ import shutil
 import subprocess
 import unittest
 
-
 LUA = shutil.which("lua") or shutil.which("lua5.4")
 MODULE = Path(__file__).resolve().parents[3] / "symlinks/config/hypr/conf/resize-on-border.lua"
 
@@ -133,7 +132,9 @@ local before = updates
 policy.update()
 assert(updates == before, "Unchanged policy must not repeatedly update config")
 """,
-            text=True, capture_output=True, timeout=10,
+            text=True,
+            capture_output=True,
+            timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 

@@ -95,7 +95,9 @@ class BrightnessTests(ScriptFixture):
     def test_quickshell_osd_suppresses_duplicate_notification_and_falls_back(self):
         result = self.brightness("up", HAVE_QUICKSHELL="1")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.work / "osd").read_text().strip(), "ipc call osd display brightness 60 false")
+        self.assertEqual(
+            (self.work / "osd").read_text().strip(), "ipc call osd display brightness 60 false"
+        )
         self.assertFalse((self.work / "notification").exists())
 
         result = self.brightness("up", HAVE_QUICKSHELL="1", QUICKSHELL_STATUS="1")

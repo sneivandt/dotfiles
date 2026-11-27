@@ -9,7 +9,6 @@ from pathlib import Path
 import re
 import sys
 
-
 NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
 RESERVED = {"true", "false", "yes", "no", "on", "off", "null"}
 
@@ -50,8 +49,11 @@ def metadata(text):
                 raise ValueError("description must not be empty")
             # Fixed indentation avoids accepting tabs/indentation indicators as
             # though they were ordinary YAML block content.
-            if any(line.strip() and (not line.startswith("  ") or line.startswith("   ")
-                                     or "\t" in line[:2]) for line in body):
+            if any(
+                line.strip()
+                and (not line.startswith("  ") or line.startswith("   ") or "\t" in line[:2])
+                for line in body
+            ):
                 raise ValueError("description lines must use two-space indentation")
             value = "\n".join(line[2:] for line in body)
         fields[key] = value

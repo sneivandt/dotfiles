@@ -8,7 +8,6 @@ import subprocess
 import sys
 import tempfile
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -30,15 +29,25 @@ def test_deployment(binary: Path, fixture: Path) -> None:
         encoding="utf-8",
     )
     env = {
-        "PATH": os.environ["PATH"], "HOME": str(home), "LANG": "C.UTF-8",
-        "APM_HOME": str(home / ".apm"), "DOTFILES_SKIP_SELF_UPDATE": "1",
+        "PATH": os.environ["PATH"],
+        "HOME": str(home),
+        "LANG": "C.UTF-8",
+        "APM_HOME": str(home / ".apm"),
+        "DOTFILES_SKIP_SELF_UPDATE": "1",
         "GIT_TERMINAL_PROMPT": "0",
     }
     if sys.platform == "win32":
         for key in (
-            "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "OS",
-            "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "USERNAME",
-            "TEMP", "TMP",
+            "SYSTEMROOT",
+            "WINDIR",
+            "COMSPEC",
+            "PATHEXT",
+            "OS",
+            "PROCESSOR_ARCHITECTURE",
+            "NUMBER_OF_PROCESSORS",
+            "USERNAME",
+            "TEMP",
+            "TMP",
         ):
             if key in os.environ:
                 env[key] = os.environ[key]
@@ -52,7 +61,7 @@ def test_deployment(binary: Path, fixture: Path) -> None:
         env["PYTHONUTF8"] = "1"
         if home.drive:
             env["HOMEDRIVE"] = home.drive
-            env["HOMEPATH"] = str(home)[len(home.drive):]
+            env["HOMEPATH"] = str(home)[len(home.drive) :]
 
     apm_bin = shutil.which("apm", path=env["PATH"]) or "apm"
 

@@ -43,8 +43,10 @@ class VolumeTests(ScriptFixture):
             with self.subTest(action=action):
                 result = self.volume(action)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn(f"set-volume --limit 1.5 @DEFAULT_AUDIO_SINK@ {step}",
-                              (self.work / "calls").read_text())
+                self.assertIn(
+                    f"set-volume --limit 1.5 @DEFAULT_AUDIO_SINK@ {step}",
+                    (self.work / "calls").read_text(),
+                )
                 notification = (self.work / "notification").read_text()
                 self.assertIn("Volume 55%", notification)
                 self.assertIn("int:value:55", notification)
@@ -77,10 +79,13 @@ class VolumeTests(ScriptFixture):
     def test_readback_failure_keeps_successful_audio_change(self):
         result = self.volume("up", READBACK_FAIL="1")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.work / "calls").read_text().splitlines(), [
-            "set-volume --limit 1.5 @DEFAULT_AUDIO_SINK@ 5%+",
-            "get-volume @DEFAULT_AUDIO_SINK@",
-        ])
+        self.assertEqual(
+            (self.work / "calls").read_text().splitlines(),
+            [
+                "set-volume --limit 1.5 @DEFAULT_AUDIO_SINK@ 5%+",
+                "get-volume @DEFAULT_AUDIO_SINK@",
+            ],
+        )
         self.assertFalse((self.work / "notification").exists())
 
     def test_feedback_is_optional(self):
@@ -92,13 +97,17 @@ class VolumeTests(ScriptFixture):
     def test_quickshell_osd_suppresses_duplicate_notification_and_falls_back(self):
         result = self.volume("up", HAVE_QUICKSHELL="1")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.work / "osd").read_text().strip(), "ipc call osd display volume 55 false")
+        self.assertEqual(
+            (self.work / "osd").read_text().strip(), "ipc call osd display volume 55 false"
+        )
         self.assertFalse((self.work / "notification").exists())
 
         (self.work / "osd").unlink()
         result = self.volume("mic-mute", HAVE_QUICKSHELL="1", VOLUME_STATE="Volume: 0.55 [MUTED]")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.work / "osd").read_text().strip(), "ipc call osd display microphone 55 true")
+        self.assertEqual(
+            (self.work / "osd").read_text().strip(), "ipc call osd display microphone 55 true"
+        )
         self.assertFalse((self.work / "notification").exists())
 
         result = self.volume("up", HAVE_QUICKSHELL="1", QUICKSHELL_STATUS="1")

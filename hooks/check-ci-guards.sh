@@ -56,55 +56,59 @@ run_cargo() {
 }
 
 has_staged_match() {
-  # Filter before Git quotes display filenames. Include deletions and both
-  # sides of renames when deciding which checks a commit needs.
+  # Used only to detect staged changes to ci_metadata.py itself before
+  # exporting the staged tree.
   changed=$(git diff --cached --name-only --no-renames "$against" -- "$@") || exit 1
   [ -n "$changed" ]
+}
+
+CI_METADATA=""
+
+require_ci_metadata() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '%sSkipping CI guards: python3 not installed.%s\n' "$DIM" "$NC"
+    exit 0
+  fi
+  if ! CI_METADATA=$(find_ci_metadata); then
+    printf '%sSkipping CI guards: ci_metadata.py not found.%s\n' "$DIM" "$NC"
+    exit 0
+  fi
 }
 
 has_staged_category() {
   subcmd="$1"
   category="$2"
-  shift 2
-  if command -v python3 >/dev/null 2>&1 && meta=$(find_ci_metadata); then
-    tmp_list=$(mktemp)
-    if ! git diff --cached --name-only --no-renames -z "$against" -- > "$tmp_list"; then
-      rm -f "$tmp_list"
-      exit 1
-    fi
-    status=0
-    python3 -B "$meta" "$subcmd" "$category" < "$tmp_list" || status=$?
+  tmp_list=$(mktemp)
+  if ! git diff --cached --name-only --no-renames -z "$against" -- > "$tmp_list"; then
     rm -f "$tmp_list"
-    if [ "$status" -eq 0 ]; then
-      return 0
-    fi
-    [ "$status" -eq 1 ] || exit "$status"
-    return 1
+    exit 1
   fi
-  has_staged_match "$@"
+  status=0
+  python3 -B "$CI_METADATA" "$subcmd" "$category" < "$tmp_list" || status=$?
+  rm -f "$tmp_list"
+  if [ "$status" -eq 0 ]; then
+    return 0
+  fi
+  [ "$status" -eq 1 ] || exit "$status"
+  return 1
 }
 
 has_staged_linter() {
-  has_staged_category has-linter "$@"
+  has_staged_category has-linter "$1"
 }
 
 has_staged_guard() {
-  has_staged_category has-guard "$@"
+  has_staged_category has-guard "$1"
 }
 
 staged_linter_inputs() {
   category="$1"
   output="$2"
-  shift 2
-  if command -v python3 >/dev/null 2>&1 && meta=$(find_ci_metadata); then
-    all_staged="$CHECK_STAGE_DIR/.all-staged"
-    if [ ! -f "$all_staged" ]; then
-      git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- > "$all_staged"
-    fi
-    python3 -B "$meta" filter-linter "$category" < "$all_staged" > "$output"
-  else
-    git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- "$@" > "$output"
+  all_staged="$CHECK_STAGE_DIR/.all-staged"
+  if [ ! -f "$all_staged" ]; then
+    git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- > "$all_staged"
   fi
+  python3 -B "$CI_METADATA" filter-linter "$category" < "$all_staged" > "$output"
 }
 
 abort_with_hint() {
@@ -178,10 +182,7 @@ run_shell_guards() {
   if command -v shellcheck >/dev/null 2>&1; then
     prepare_staged_tree
     printf "Running ShellCheck...\n"
-    staged_linter_inputs shell "$CHECK_STAGE_DIR/.shell-inputs" \
-      '*.sh' '*.bash' hooks/pre-commit symlinks/bashrc symlinks/bash_profile \
-      'symlinks/config/git/templates/hooks/*' 'symlinks/config/git/templates/hooks.local/*' \
-      'packages/*/PKGBUILD' 'packages/*/*.install'
+    staged_linter_inputs shell "$CHECK_STAGE_DIR/.shell-inputs"
     if [ ! -s "$CHECK_STAGE_DIR/.shell-inputs" ]; then
       return 0
     fi
@@ -210,8 +211,7 @@ run_powershell_guards() {
     printf "Running PSScriptAnalyzer...\n"
     # Keep NUL delimiters through argv construction, including tabs/newlines.
     # Prefix with ./ so a tracked filename cannot become an analyzer option.
-    staged_linter_inputs powershell "$CHECK_STAGE_DIR/.powershell-inputs" \
-      '*.ps1' '*.psm1' '*.psd1'
+    staged_linter_inputs powershell "$CHECK_STAGE_DIR/.powershell-inputs"
     if [ ! -s "$CHECK_STAGE_DIR/.powershell-inputs" ]; then
       return 0
     fi
@@ -238,8 +238,7 @@ run_python_guards() {
   if command -v ruff >/dev/null 2>&1; then
     prepare_staged_tree
     printf "Running Ruff...\n"
-    staged_linter_inputs python "$CHECK_STAGE_DIR/.python-inputs" \
-      '*.py' symlinks/local/bin/code-insiders
+    staged_linter_inputs python "$CHECK_STAGE_DIR/.python-inputs"
     if [ ! -s "$CHECK_STAGE_DIR/.python-inputs" ]; then
       return 0
     fi
@@ -268,6 +267,25 @@ run_python_guards() {
         "Ruff reported Python lint issues." \
         "ruff check --config .github/linters/ruff.toml <staged python files>"
     fi
+    if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
+      config=$1
+      shift
+      for file do
+        case "$file" in
+          -*) file="./$file" ;;
+        esac
+        set -- "$@" "$file"
+        shift
+      done
+      if [ -n "$config" ]; then
+        exec ruff format --check --config "$config" -- "$@"
+      fi
+      exec ruff format --check -- "$@"
+    ' sh "$ruff_config" < "$CHECK_STAGE_DIR/.python-inputs"); then
+      abort_with_hint \
+        "Ruff reported Python formatting issues." \
+        "ruff format --config .github/linters/ruff.toml <staged python files>"
+    fi
   else
     printf '%sSkipping Ruff: ruff not installed.%s\n' "$DIM" "$NC"
   fi
@@ -277,7 +295,7 @@ run_lua_guards() {
   if command -v luacheck >/dev/null 2>&1; then
     prepare_staged_tree
     printf "Running Luacheck...\n"
-    staged_linter_inputs lua "$CHECK_STAGE_DIR/.lua-inputs" '*.lua'
+    staged_linter_inputs lua "$CHECK_STAGE_DIR/.lua-inputs"
     if [ ! -s "$CHECK_STAGE_DIR/.lua-inputs" ]; then
       return 0
     fi
@@ -311,11 +329,36 @@ run_lua_guards() {
   fi
 }
 
+run_structured_guards() {
+  prepare_staged_tree
+  checker=$(resolve_repo_file ".github/workflows/scripts/linux/check-structured-files.py") || return 0
+  staged_linter_inputs structured "$CHECK_STAGE_DIR/.structured-inputs"
+  if [ ! -s "$CHECK_STAGE_DIR/.structured-inputs" ]; then
+    return 0
+  fi
+  printf "Running structured file checks...\n"
+  if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
+    checker=$1
+    shift
+    for file do
+      case "$file" in
+        -*) file="./$file" ;;
+      esac
+      set -- "$@" "$file"
+      shift
+    done
+    exec python3 -B "$checker" "$@"
+  ' sh "$checker" < "$CHECK_STAGE_DIR/.structured-inputs"); then
+    abort_with_hint \
+      "Structured file validation reported issues." \
+      "python3 -B .github/workflows/scripts/linux/check-structured-files.py --root ."
+  fi
+}
+
 run_workflow_lint_guards() {
   if command -v actionlint >/dev/null 2>&1; then
     prepare_staged_tree
-    staged_linter_inputs workflows "$CHECK_STAGE_DIR/.workflow-inputs" \
-      '.github/workflows/*.yml' '.github/workflows/*.yaml'
+    staged_linter_inputs workflows "$CHECK_STAGE_DIR/.workflow-inputs"
     if [ ! -s "$CHECK_STAGE_DIR/.workflow-inputs" ]; then
       return 0
     fi
@@ -463,37 +506,41 @@ if has_staged_match .github/workflows/scripts/linux/ci_metadata.py; then
   prepare_staged_tree
 fi
 
-if has_staged_guard config 'conf/*.toml' 'symlinks/*' 'system/*' 'packages/*'; then
+require_ci_metadata
+
+if has_staged_guard config; then
   run_config_validation
 fi
 
-if has_staged_guard dependency cli/Cargo.toml cli/Cargo.lock cli/deny.toml; then
+if has_staged_guard dependency; then
   run_dependency_guards
 fi
 
-if has_staged_linter shell '*.sh' '*.bash' hooks/pre-commit symlinks/bashrc symlinks/bash_profile \
-  'symlinks/config/git/templates/hooks/*' 'symlinks/config/git/templates/hooks.local/*' \
-  'packages/*/PKGBUILD' 'packages/*/*.install'; then
+if has_staged_linter shell; then
   run_shell_guards
 fi
 
-if has_staged_linter powershell '*.ps1' '*.psm1' '*.psd1'; then
+if has_staged_linter powershell; then
   run_powershell_guards
 fi
 
-if has_staged_linter python '*.py' symlinks/local/bin/code-insiders; then
+if has_staged_linter python; then
   run_python_guards
 fi
 
-if has_staged_linter lua '*.lua'; then
+if has_staged_linter lua; then
   run_lua_guards
 fi
 
-if has_staged_guard wrapper-parity dotfiles.sh dotfiles.ps1 'tests/wrapper/*'; then
+if has_staged_linter structured; then
+  run_structured_guards
+fi
+
+if has_staged_guard wrapper-parity; then
   run_wrapper_parity_guards
 fi
 
-if has_staged_guard wrapper-linux dotfiles.sh tests/wrapper/test-shell-wrapper.sh 'tests/wrapper/linux/*' tests/wrapper/parity-contract.json tests/wrapper/test-parity.py; then
+if has_staged_guard wrapper-linux; then
   if full_checks_enabled; then
     run_wrapper_guards
   else
@@ -501,31 +548,23 @@ if has_staged_guard wrapper-linux dotfiles.sh tests/wrapper/test-shell-wrapper.s
   fi
 fi
 
-if has_staged_linter workflows '.github/workflows/*.yml' '.github/workflows/*.yaml'; then
+if has_staged_linter workflows; then
   run_workflow_lint_guards
 fi
 
-if has_staged_guard release-workflow .github/workflows/release.yml; then
+if has_staged_guard release-workflow; then
   run_release_workflow_guards
 fi
 
-if has_staged_guard ci-contract \
-  .github/workflows/ci.yml \
-  .github/workflows/pages.yml \
-  .github/workflows/mutation.yml \
-  .github/workflows/dependency-security.yml \
-  .github/workflows/scripts/linux/ci_metadata.py \
-  .github/workflows/scripts/linux/workflow_yaml.py \
-  .github/workflows/scripts/linux/classify-ci-changes.py \
-  .github/workflows/scripts/linux/check-ci-contract.py; then
+if has_staged_guard ci-contract; then
   run_ci_contract_guards
 fi
 
-if has_staged_guard doc-links '*.md' .github/workflows/scripts/linux/check-doc-links.py; then
+if has_staged_guard doc-links; then
   run_doc_links_guards
 fi
 
-if has_staged_guard skills '.agents/skills/*' AGENTS.md; then
+if has_staged_guard skills; then
   run_skills_guards
 fi
 

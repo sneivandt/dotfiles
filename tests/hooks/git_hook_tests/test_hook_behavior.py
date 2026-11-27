@@ -14,14 +14,23 @@ from .helpers import REPO_ROOT, clean_git_env, run
 class HookBehaviorTests(unittest.TestCase):
     def test_hook_wiring(self) -> None:
         pre_commit = (REPO_ROOT / "hooks" / "pre-commit").read_text(encoding="utf-8")
-        for script in ("check-sensitive.sh", "check-rust.sh", "check-ci-guards.sh", "staged-tree.sh"):
+        for script in (
+            "check-sensitive.sh",
+            "check-rust.sh",
+            "check-ci-guards.sh",
+            "staged-tree.sh",
+        ):
             with self.subTest(script=script):
                 script_path = REPO_ROOT / "hooks" / script
                 self.assertTrue(script_path.is_file(), f"Missing hook helper {script}")
                 if script != "staged-tree.sh":
                     self.assertIn(script, pre_commit, f"pre-commit does not call {script}")
                 syntax = run(["sh", "-n", str(script_path)], cwd=REPO_ROOT)
-                self.assertEqual(syntax.returncode, 0, f"{script} has invalid POSIX shell syntax:\n{syntax.stderr}")
+                self.assertEqual(
+                    syntax.returncode,
+                    0,
+                    f"{script} has invalid POSIX shell syntax:\n{syntax.stderr}",
+                )
 
     def test_hook_modes(self) -> None:
         with tempfile.TemporaryDirectory() as repo_str:
@@ -66,16 +75,25 @@ class HookBehaviorTests(unittest.TestCase):
             )
 
     def test_release_workflow_guards(self) -> None:
-        original_release = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        original_release = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
         with tempfile.TemporaryDirectory() as repo_str:
             repo = Path(repo_str)
             env = clean_git_env(repo)
             self.assertEqual(run(["git", "init", "-q", str(repo)], cwd=repo, env=env).returncode, 0)
             (repo / "hooks").mkdir()
             (repo / ".github" / "workflows" / "scripts" / "linux").mkdir(parents=True)
-            shutil.copy2(REPO_ROOT / "hooks" / "check-ci-guards.sh", repo / "hooks" / "check-ci-guards.sh")
+            shutil.copy2(
+                REPO_ROOT / "hooks" / "check-ci-guards.sh", repo / "hooks" / "check-ci-guards.sh"
+            )
             shutil.copy2(REPO_ROOT / "hooks" / "staged-tree.sh", repo / "hooks" / "staged-tree.sh")
-            for helper in ("check-ci-contract.py", "ci_metadata.py", "workflow_yaml.py"):
+            for helper in (
+                "check-ci-contract.py",
+                "check-structured-files.py",
+                "ci_metadata.py",
+                "workflow_yaml.py",
+            ):
                 shutil.copy2(
                     REPO_ROOT / ".github" / "workflows" / "scripts" / "linux" / helper,
                     repo / ".github" / "workflows" / "scripts" / "linux" / helper,
@@ -83,14 +101,26 @@ class HookBehaviorTests(unittest.TestCase):
             release_path = repo / ".github" / "workflows" / "release.yml"
 
             release_path.write_text(original_release, encoding="utf-8")
-            self.assertEqual(run(["git", "add", ".github/workflows/release.yml"], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(["git", "add", ".github/workflows/release.yml"], cwd=repo, env=env).returncode,
+                0,
+            )
             res = run(["sh", "hooks/check-ci-guards.sh"], cwd=repo, env=env)
-            self.assertEqual(res.returncode, 0, f"Hardened release workflow was rejected:\n{res.stdout}{res.stderr}")
+            self.assertEqual(
+                res.returncode,
+                0,
+                f"Hardened release workflow was rejected:\n{res.stdout}{res.stderr}",
+            )
 
             mutations = [
                 (
                     "manual workflow_dispatch",
-                    re.sub(r"(?m)^([ \t]*workflow_run:)", "  workflow_dispatch:\n\\1", original_release, count=1),
+                    re.sub(
+                        r"(?m)^([ \t]*workflow_run:)",
+                        "  workflow_dispatch:\n\\1",
+                        original_release,
+                        count=1,
+                    ),
                 ),
                 (
                     "missing attestation verification",
@@ -111,17 +141,29 @@ class HookBehaviorTests(unittest.TestCase):
             ]
             for label, mutated in mutations:
                 with self.subTest(mutation=label):
-                    self.assertNotEqual(mutated, original_release, f"Mutation did not alter release.yml: {label}")
+                    self.assertNotEqual(
+                        mutated, original_release, f"Mutation did not alter release.yml: {label}"
+                    )
                     release_path.write_text(mutated, encoding="utf-8")
-                    self.assertEqual(run(["git", "add", ".github/workflows/release.yml"], cwd=repo, env=env).returncode, 0)
+                    self.assertEqual(
+                        run(
+                            ["git", "add", ".github/workflows/release.yml"], cwd=repo, env=env
+                        ).returncode,
+                        0,
+                    )
                     res = run(["sh", "hooks/check-ci-guards.sh"], cwd=repo, env=env)
-                    self.assertNotEqual(res.returncode, 0, f"Release workflow guards accepted {label}")
+                    self.assertNotEqual(
+                        res.returncode, 0, f"Release workflow guards accepted {label}"
+                    )
 
             # Staged unsafe workflow must still fail even if the working tree is restored.
             no_group = re.sub(r"(?m)^[ \t]*group:[ \t]*release[ \t]*\n", "", original_release)
             self.assertNotEqual(no_group, original_release)
             release_path.write_text(no_group, encoding="utf-8")
-            self.assertEqual(run(["git", "add", ".github/workflows/release.yml"], cwd=repo, env=env).returncode, 0)
+            self.assertEqual(
+                run(["git", "add", ".github/workflows/release.yml"], cwd=repo, env=env).returncode,
+                0,
+            )
             release_path.write_text(original_release, encoding="utf-8")
             res = run(["sh", "hooks/check-ci-guards.sh"], cwd=repo, env=env)
             self.assertNotEqual(
@@ -140,9 +182,17 @@ class HookBehaviorTests(unittest.TestCase):
             env = clean_git_env(repo)
             self.assertEqual(run(["git", "init", "-q", str(repo)], cwd=repo, env=env).returncode, 0)
             run(["git", "config", "github.user", "ci-owner"], cwd=repo, env=env)
-            run(["git", "remote", "add", "origin", "https://github.com/ci-owner/repo.git"], cwd=repo, env=env)
+            run(
+                ["git", "remote", "add", "origin", "https://github.com/ci-owner/repo.git"],
+                cwd=repo,
+                env=env,
+            )
             run(["git", "remote", "add", "upstream", str(repo / "offline.git")], cwd=repo, env=env)
-            run(["git", "symbolic-ref", "refs/remotes/upstream/HEAD", "refs/remotes/upstream/main"], cwd=repo, env=env)
+            run(
+                ["git", "symbolic-ref", "refs/remotes/upstream/HEAD", "refs/remotes/upstream/main"],
+                cwd=repo,
+                env=env,
+            )
 
             blocked = run(
                 ["sh", str(hook), "upstream", str(repo / "offline.git")],
@@ -150,7 +200,9 @@ class HookBehaviorTests(unittest.TestCase):
                 env=env,
                 stdin_text=f"refs/heads/feature {sha} refs/heads/main {zero}\n",
             )
-            self.assertNotEqual(blocked.returncode, 0, "Pre-push hook allowed protected branch on upstream remote")
+            self.assertNotEqual(
+                blocked.returncode, 0, "Pre-push hook allowed protected branch on upstream remote"
+            )
 
             owned = run(
                 ["sh", str(hook), "origin", "https://github.com/ci-owner/repo.git"],
@@ -158,7 +210,9 @@ class HookBehaviorTests(unittest.TestCase):
                 env=env,
                 stdin_text=f"refs/heads/main {sha} refs/heads/main {zero}\n",
             )
-            self.assertEqual(owned.returncode, 0, f"Pre-push hook blocked owned repo:\n{owned.stderr}")
+            self.assertEqual(
+                owned.returncode, 0, f"Pre-push hook blocked owned repo:\n{owned.stderr}"
+            )
 
             feature = run(
                 ["sh", str(hook), "upstream", str(repo / "offline.git")],
@@ -166,4 +220,8 @@ class HookBehaviorTests(unittest.TestCase):
                 env=env,
                 stdin_text=f"refs/heads/feature {sha} refs/heads/feature {zero}\n",
             )
-            self.assertEqual(feature.returncode, 0, f"Pre-push hook blocked non-protected branch:\n{feature.stderr}")
+            self.assertEqual(
+                feature.returncode,
+                0,
+                f"Pre-push hook blocked non-protected branch:\n{feature.stderr}",
+            )

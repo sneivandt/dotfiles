@@ -10,7 +10,7 @@ if ($parseErrors.Count -gt 0)
     throw "Profile parse errors: $parseErrors"
 }
 $definitions = @{}
-foreach ($name in @('Prompt', 'Format-PromptPath', 'Test-PromptRoot', 'dot', 'Add-PathEntry', 'Resolve-ExecutablePath', 'Test-CodeInsidersAvailable'))
+foreach ($name in @('Prompt', 'Format-PromptPath', 'Test-PromptRoot', 'Get-PromptHostPrefix', 'dot', 'Add-PathEntry', 'Resolve-ExecutablePath', 'Test-CodeInsidersAvailable'))
 {
     $definition = $ast.Find({
             param($node)
@@ -22,7 +22,7 @@ foreach ($name in @('Prompt', 'Format-PromptPath', 'Test-PromptRoot', 'dot', 'Ad
     }
     $definitions[$name] = $definition.Extent.Text
 }
-$promptSetup = @('Format-PromptPath', 'Test-PromptRoot', 'Prompt') |
+$promptSetup = @('Format-PromptPath', 'Test-PromptRoot', 'Get-PromptHostPrefix', 'Prompt') |
     ForEach-Object { $definitions[$_] }
 if (-not (Get-Command git -ErrorAction SilentlyContinue))
 {
@@ -157,6 +157,66 @@ foreach ($case in $cases)
     {
         $env:USER = $originalUser
         $env:USERNAME = $originalUsername
+    }
+
+    $dockerMarker = Join-Path ([IO.Path]::GetTempPath()) ('dotfiles-dockerenv-' + [Guid]::NewGuid())
+    try
+    {
+        [IO.File]::WriteAllText($dockerMarker, '')
+        $missingMarker = $dockerMarker + '.missing'
+        foreach ($case in @(
+                @{ Ssh = ''; Docker = $missingMarker; HostName = 'box'; Win = $false; Expected = '' }
+                @{ Ssh = 'client 1234 server 22'; Docker = $missingMarker; HostName = 'box'; Win = $false; Expected = 'box ' }
+                @{ Ssh = 'client 1234 server 22'; Docker = $missingMarker; HostName = 'winbox'; Win = $true; Expected = 'winbox ' }
+                @{ Ssh = ''; Docker = $dockerMarker; HostName = 'ctr'; Win = $false; Expected = 'ctr ' }
+                @{ Ssh = ''; Docker = $dockerMarker; HostName = 'winbox'; Win = $true; Expected = '' }
+            ))
+        {
+            $actual = Get-PromptHostPrefix -SshConnection $case.Ssh -DockerEnvPath $case.Docker -HostName $case.HostName -WindowsPlatform $case.Win
+            if ($actual -cne $case.Expected)
+            {
+                throw "Host prefix failed: Ssh='$($case.Ssh)', Win=$($case.Win) => '$actual'; expected '$($case.Expected)'"
+            }
+        }
+        $savedVars = @{}
+        foreach ($name in @('PromptHostPrefix', 'IsNestedPwsh', 'GitExists'))
+        {
+            $variable = Get-Variable -Name $name -Scope Global -ErrorAction SilentlyContinue
+            $savedVars[$name] = @{ Exists = $null -ne $variable; Value = $variable.Value }
+        }
+        try
+        {
+            Set-Variable -Name PromptHostPrefix -Value 'remote-host ' -Scope Global
+            Set-Variable -Name IsNestedPwsh -Value $true -Scope Global
+            Set-Variable -Name GitExists -Value $false -Scope Global
+            $rendered = [regex]::Replace((Prompt), '\x1b\[[0-?]*[ -/]*[@-~]', '')
+            if (-not $rendered.StartsWith('remote-host pwsh '))
+            {
+                throw "Prompt must prepend host context before nested shell label: $rendered"
+            }
+        }
+        finally
+        {
+            foreach ($entry in $savedVars.GetEnumerator())
+            {
+                if (-not $entry.Value.Exists)
+                {
+                    Remove-Variable -Name $entry.Key -Scope Global -ErrorAction SilentlyContinue
+                }
+                else
+                {
+                    Set-Variable -Name $entry.Key -Value $entry.Value.Value -Scope Global
+                }
+            }
+        }
+        Write-Output 'PASS: SSH and container host prefix detection and prompt ordering'
+    }
+    finally
+    {
+        if ([IO.File]::Exists($dockerMarker))
+        {
+            Remove-Item -LiteralPath $dockerMarker -Force
+        }
     }
     Write-Output 'PASS: Unix root and Windows non-root identity cases'
 
@@ -310,10 +370,23 @@ foreach ($case in $cases)
     {
         $fixtureHome = Join-Path $profileFixture '[literal] home'
         $localBin = Join-Path $fixtureHome '.local\bin'
+        $userBin = Join-Path $fixtureHome '.bin'
+        $defaultGoBin = Join-Path $fixtureHome 'src\go\bin'
+        $customGoPath = Join-Path $profileFixture 'custom gopath'
+        $customGoBin = Join-Path $profileFixture 'custom gobin'
         $defaultCargo = Join-Path $fixtureHome '.cargo'
         $customCargo = Join-Path $profileFixture 'custom cargo'
         $extensions = Join-Path $fixtureHome '.config\powershell\profile.d'
-        foreach ($directory in @($localBin, (Join-Path $defaultCargo 'bin'), (Join-Path $customCargo 'bin'), $extensions))
+        foreach ($directory in @(
+                $localBin,
+                $userBin,
+                $defaultGoBin,
+                (Join-Path $customGoPath 'bin'),
+                $customGoBin,
+                (Join-Path $defaultCargo 'bin'),
+                (Join-Path $customCargo 'bin'),
+                $extensions
+            ))
         {
             [IO.Directory]::CreateDirectory($directory) | Out-Null
         }
@@ -376,12 +449,14 @@ foreach ($case in $cases)
             }
             $expected = @(
                 (Join-Path $HOME '.local\bin'),
+                (Join-Path $HOME '.bin'),
+                $env:PROFILE_TEST_GOBIN,
                 (Join-Path $env:PROFILE_TEST_CARGO 'bin')
             )
             if (($env:PATH -split [IO.Path]::PathSeparator | ConvertTo-Json -Compress) -cne
                 ($expected | ConvertTo-Json -Compress))
             {
-                throw "Startup did not honor the selected Cargo home: $env:PATH"
+                throw "Startup did not honor expected PATH precedence: $env:PATH"
             }
             if (($script:ExtensionOrder -join ',') -ne 'first,second')
             {
@@ -410,7 +485,11 @@ foreach ($case in $cases)
                 throw 'Protected aliases must be preserved without aborting profile startup.'
             }
         }.ToString()
-        foreach ($cargoHome in @('', $customCargo))
+        foreach ($case in @(
+                @{ Cargo = ''; GoPath = ''; GoBin = ''; ExpectedGoBin = $defaultGoBin }
+                @{ Cargo = $customCargo; GoPath = ($customGoPath + [IO.Path]::PathSeparator + $profileFixture); GoBin = ''; ExpectedGoBin = (Join-Path $customGoPath 'bin') }
+                @{ Cargo = $customCargo; GoPath = $customGoPath; GoBin = $customGoBin; ExpectedGoBin = $customGoBin }
+            ))
         {
             $start = [Diagnostics.ProcessStartInfo]::new()
             $start.FileName = (Get-Process -Id $PID).Path
@@ -419,10 +498,13 @@ foreach ($case in $cases)
             $start.RedirectStandardOutput = $true
             $start.RedirectStandardError = $true
             $start.Environment['PATH'] = ''
-            $start.Environment['CARGO_HOME'] = $cargoHome
+            $start.Environment['CARGO_HOME'] = $case.Cargo
+            $start.Environment['GOPATH'] = $case.GoPath
+            $start.Environment['GOBIN'] = $case.GoBin
             $start.Environment['PROFILE_TEST_HOME'] = $fixtureHome
             $start.Environment['PROFILE_TEST_SOURCE'] = $profilePath
-            $start.Environment['PROFILE_TEST_CARGO'] = if ($cargoHome) { $cargoHome } else { $defaultCargo }
+            $start.Environment['PROFILE_TEST_CARGO'] = if ($case.Cargo) { $case.Cargo } else { $defaultCargo }
+            $start.Environment['PROFILE_TEST_GOBIN'] = $case.ExpectedGoBin
             foreach ($argument in @('-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand',
                     [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($startupTest))))
             {
@@ -442,7 +524,7 @@ foreach ($case in $cases)
                 $errors = $stderr.GetAwaiter().GetResult()
                 if ($process.ExitCode -ne 0)
                 {
-                    throw "Isolated profile startup failed (CARGO_HOME='$cargoHome'):`n$output`n$errors"
+                    throw "Isolated profile startup failed (CARGO_HOME='$($case.Cargo)', GOPATH='$($case.GoPath)', GOBIN='$($case.GoBin)'):`n$output`n$errors"
                 }
             }
             finally
@@ -450,7 +532,7 @@ foreach ($case in $cases)
                 $process.Dispose()
             }
         }
-        Write-Output 'PASS: first-start integration discovery, custom/default Cargo home, literal profile fragments and reload'
+        Write-Output 'PASS: first-start integration discovery, custom/default Cargo & Go homes, ~/.bin, literal profile fragments and reload'
     }
     finally
     {

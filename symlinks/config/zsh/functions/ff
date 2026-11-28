@@ -1,5 +1,4 @@
 #!/usr/bin/env zsh
-# shellcheck shell=bash  # Closest to zsh for shellcheck purposes
 
 # Find file
 

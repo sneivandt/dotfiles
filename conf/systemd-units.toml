@@ -27,7 +27,6 @@ units = [
   { name = "hyprpaper.service", graphical = true },
   { name = "hyprpolkitagent.service", graphical = true },
   { name = "mako.service", graphical = true },
-  { name = "network-manager-applet.service", enabled = false, graphical = true },
   { name = "quickshell.service", graphical = true },
   { name = "thunar-view-settings.service", graphical = true },
   { name = "xdg-user-directories.service", graphical = true },

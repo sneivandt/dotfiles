@@ -64,7 +64,6 @@ symlinks = [
 [arch-desktop]
 symlinks = [
   "config/alacritty/alacritty.toml",
-  "config/autostart/nm-applet.desktop",
   "config/chromium-flags.conf",
   "config/fuzzel/fuzzel.ini",
   "config/fontconfig/fonts.conf",
@@ -93,7 +92,6 @@ symlinks = [
   "config/systemd/user/hypridle.service",
   "config/systemd/user/hyprpaper.service",
   "config/systemd/user/mako.service",
-  "config/systemd/user/network-manager-applet.service",
   "config/systemd/user/quickshell.service",
   "config/systemd/user/thunar-view-settings.service",
   "config/systemd/user/xdg-user-directories.service",

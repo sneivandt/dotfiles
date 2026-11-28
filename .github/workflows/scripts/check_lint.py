@@ -45,6 +45,21 @@ def check_shell(root: Path) -> int:
     return _run(["sh", str(script), "--root", str(root)], cwd=root)
 
 
+def check_zsh(root: Path) -> int:
+    if shutil.which("zsh") is None:
+        print("ERROR: zsh is not installed; cannot check Zsh syntax", file=sys.stderr)
+        return 1
+    meta = _load_ci_metadata()
+    files = meta.zsh_inputs(root)
+    if not files:
+        return 0
+    for path in files:
+        code = _run(["zsh", "-n", path], cwd=root)
+        if code != 0:
+            return code
+    return 0
+
+
 def check_powershell(root: Path) -> int:
     if shutil.which("pwsh") is None:
         print("ERROR: pwsh is not installed; cannot run PSScriptAnalyzer", file=sys.stderr)
@@ -83,13 +98,21 @@ def check_workflows(root: Path) -> int:
     workflows = sorted(str(path) for path in (root / ".github/workflows").glob("*.yml"))
     if not workflows:
         return 0
-    # Embedded shell lint has separate coverage; check workflow syntax, expressions,
-    # action inputs, and contexts without depending on optional embedded linters.
+    shellcheck = shutil.which("shellcheck")
+    if shellcheck is not None:
+        return _run(["actionlint", "-shellcheck", shellcheck, "-pyflakes=", *workflows], cwd=root)
+    if sys.platform != "win32":
+        print(
+            "ERROR: shellcheck is not installed; cannot lint workflow run blocks",
+            file=sys.stderr,
+        )
+        return 1
     return _run(["actionlint", "-shellcheck=", "-pyflakes=", *workflows], cwd=root)
 
 
 CHECKS = {
     "shell": check_shell,
+    "zsh": check_zsh,
     "powershell": check_powershell,
     "python": check_python,
     "lua": check_lua,

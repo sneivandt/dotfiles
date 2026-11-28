@@ -228,3 +228,76 @@ class SharedLinterScriptTests(unittest.TestCase):
             )
             self.assertEqual(_recorded(log_all), expected)
             self.assertEqual(_recorded(log_selected), ["space name.ps1"])
+
+    @unittest.skipIf(sys.platform == "win32", "Zsh syntax check runs on Unix")
+    def test_zsh_syntax_check_and_workflow_shellcheck_flag(self) -> None:
+        check_lint = SCRIPTS_DIR / "check_lint.py"
+        if shutil.which("zsh") is not None:
+            with tempfile.TemporaryDirectory(prefix="dotfiles-zsh-") as tmp_str:
+                root = Path(tmp_str)
+                (root / "symlinks" / "config" / "zsh" / "functions").mkdir(parents=True)
+                (root / "symlinks" / "zshrc").write_text("print -r -- ok\n", encoding="utf-8")
+                (root / "symlinks" / "config" / "zsh" / "functions" / "demo").write_text(
+                    "#!/usr/bin/env zsh\nlocal x=1\n", encoding="utf-8"
+                )
+                ok = subprocess.run(
+                    [sys.executable, "-B", str(check_lint), "--root", str(root), "zsh"],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
+
+                (root / "symlinks" / "config" / "zsh" / "broken.zsh").write_text(
+                    "if true; then\n", encoding="utf-8"
+                )
+                bad = subprocess.run(
+                    [sys.executable, "-B", str(check_lint), "--root", str(root), "zsh"],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertNotEqual(bad.returncode, 0)
+
+        with tempfile.TemporaryDirectory(prefix="dotfiles-wf-") as tmp_str:
+            tmp = Path(tmp_str)
+            root = tmp / "repo"
+            (root / ".github" / "workflows").mkdir(parents=True)
+            (root / ".github" / "workflows" / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+            mock_bin = tmp / "bin"
+            mock_bin.mkdir()
+            log = tmp / "actionlint.args"
+            mock_actionlint = mock_bin / "actionlint"
+            mock_actionlint.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$@" > "$ACTIONLINT_ARGS_LOG"\n',
+                encoding="utf-8",
+            )
+            mock_actionlint.chmod(0o755)
+
+            # Without shellcheck on PATH, Unix workflow lint must fail closed.
+            missing = subprocess.run(
+                [sys.executable, "-B", str(check_lint), "--root", str(root), "workflows"],
+                env={**os.environ, "PATH": str(mock_bin), "ACTIONLINT_ARGS_LOG": str(log)},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertIn("shellcheck is not installed", missing.stderr)
+
+            # With shellcheck on PATH, actionlint must receive -shellcheck <path>.
+            mock_sc = mock_bin / "shellcheck"
+            mock_sc.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            mock_sc.chmod(0o755)
+            present = subprocess.run(
+                [sys.executable, "-B", str(check_lint), "--root", str(root), "workflows"],
+                env={**os.environ, "PATH": str(mock_bin), "ACTIONLINT_ARGS_LOG": str(log)},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(present.returncode, 0, present.stdout + present.stderr)
+            argv = log.read_text(encoding="utf-8").splitlines()
+            self.assertIn("-shellcheck", argv)
+            self.assertIn(str(mock_sc), argv)
+            self.assertNotIn("-shellcheck=", argv)

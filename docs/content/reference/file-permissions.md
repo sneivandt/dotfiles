@@ -31,8 +31,9 @@ in the checkout.
 
 Edit [conf/chmod.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml).
 
-The Linux default sets `~/.ssh/config` to `600`. If an earlier update changed
-permissions under `~/.config/zsh`, restore those files' intended modes manually.
+The Linux default sets `~/.gnupg` to `700`, `~/.gnupg/gpg-agent.conf` to `600`,
+and `~/.ssh/config` to `600`. If an earlier update changed permissions under
+`~/.config/zsh`, restore those files' intended modes manually.
 
 To restrict an existing SSH directory and its configuration, extend the category's
 `permissions` array:

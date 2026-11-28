@@ -35,6 +35,7 @@ LINTER_CONFIG_FILES = _META.LINTER_CONFIG_FILES
 EXTENSIONLESS_PYTHON_SCRIPTS = _META.EXTENSIONLESS_PYTHON_SCRIPTS
 python_script = _META.python_script
 shell_script = _META.shell_script
+zsh_script = _META.zsh_script
 powershell_script = _META.powershell_script
 lua_script = _META.lua_script
 structured_file = _META.structured_file
@@ -464,6 +465,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("release")
         if shell_script(path):
             linters.add("shell")
+        if zsh_script(path):
+            linters.add("zsh")
         if powershell_script(path):
             linters.add("powershell")
         if python_script(path) or path in LINTER_CONFIG_FILES["python"]:

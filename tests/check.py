@@ -35,6 +35,7 @@ LINUX_DEFAULT_STAGES = (
     "docs",
     "ci",
     "shell",
+    "zsh",
     "powershell",
     "python",
     "lua",
@@ -70,6 +71,7 @@ LINUX_LINT_STAGES = (
     "rustdoc",
     "config",
     "shell",
+    "zsh",
     "powershell",
     "python",
     "lua",
@@ -409,6 +411,9 @@ class Runner:
         if not self.have("actionlint"):
             self.console.note("actionlint not installed; workflow lint skipped")
             return "skip"
+        if sys.platform != "win32" and not self.have("shellcheck"):
+            self.console.note("shellcheck not installed; workflow lint skipped")
+            return "skip"
         return self.run_cmd(
             [
                 sys.executable,
@@ -440,6 +445,9 @@ class Runner:
 
     def stage_shell(self) -> str:
         return self._run_lint("shell", required_tools=("shellcheck", "sh"))
+
+    def stage_zsh(self) -> str:
+        return self._run_lint("zsh", required_tools=("zsh",))
 
     def stage_powershell(self) -> str:
         if not self.have("pwsh"):
@@ -690,6 +698,7 @@ class Runner:
             "docs": self.stage_docs,
             "ci": self.stage_ci,
             "shell": self.stage_shell,
+            "zsh": self.stage_zsh,
             "powershell": self.stage_powershell,
             "python": self.stage_python,
             "lua": self.stage_lua,

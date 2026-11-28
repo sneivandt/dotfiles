@@ -205,6 +205,31 @@ run_shell_guards() {
   fi
 }
 
+run_zsh_guards() {
+  if command -v zsh >/dev/null 2>&1; then
+    prepare_staged_tree
+    staged_linter_inputs zsh "$CHECK_STAGE_DIR/.zsh-inputs"
+    if [ ! -s "$CHECK_STAGE_DIR/.zsh-inputs" ]; then
+      return 0
+    fi
+    printf "Running Zsh syntax checks...\n"
+    if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
+      for file do
+        case "$file" in
+          -*) file="./$file" ;;
+        esac
+        zsh -n "$file" || exit $?
+      done
+    ' sh < "$CHECK_STAGE_DIR/.zsh-inputs"); then
+      abort_with_hint \
+        "Zsh syntax check reported issues." \
+        "zsh -n <staged zsh files>"
+    fi
+  else
+    printf '%sSkipping Zsh syntax checks: zsh not installed.%s\n' "$DIM" "$NC"
+  fi
+}
+
 run_powershell_guards() {
   if command -v pwsh >/dev/null 2>&1; then
     prepare_staged_tree
@@ -518,6 +543,10 @@ fi
 
 if has_staged_linter shell; then
   run_shell_guards
+fi
+
+if has_staged_linter zsh; then
+  run_zsh_guards
 fi
 
 if has_staged_linter powershell; then

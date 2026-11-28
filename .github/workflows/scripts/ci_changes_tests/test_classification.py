@@ -171,7 +171,9 @@ class ClassificationTests(unittest.TestCase):
             ("symlinks/config/tmux/tmux.conf", config | {"app_tests"}),
             ("symlinks/config/readline/inputrc", config | {"app_tests"}),
             ("symlinks/vim/init.vim", config | {"app_tests"}),
-            ("symlinks/config/zsh/prompt.zsh", config | {"app_tests"}),
+            ("symlinks/config/zsh/prompt.zsh", config | {"app_tests", "lint"}),
+            ("symlinks/zshrc", config | {"app_tests", "lint"}),
+            ("symlinks/config/zsh/functions/ff", config | {"app_tests", "lint"}),
             ("symlinks/config/bash/prompt.bash", config | {"app_tests", "lint"}),
             ("symlinks/bash_profile", config | {"app_tests", "lint"}),
             ("symlinks/bashrc", config | {"app_tests", "lint"}),
@@ -436,7 +438,11 @@ class ClassificationTests(unittest.TestCase):
             (["packages/example/example.install"], ["ShellCheck"], []),
             (["packages/powershell/package.install"], ["ShellCheck"], ["zsh"]),
             (["symlinks/config/powershell/Module.psd1"], ["PSScriptAnalyzer"], []),
-            (["symlinks/config/zsh/prompt.zsh", "symlinks/config/git/config"], [], ["git", "zsh"]),
+            (
+                ["symlinks/config/zsh/prompt.zsh", "symlinks/config/git/config"],
+                ["Zsh syntax"],
+                ["git", "zsh"],
+            ),
         ]
         for paths, linters, apps in cases:
             with self.subTest(paths=paths):
@@ -556,7 +562,7 @@ class ClassificationTests(unittest.TestCase):
         )
         self.assertEqual(
             [entry["name"] for entry in expected["lint_matrix"]["include"]],
-            ["ShellCheck", "PSScriptAnalyzer"],
+            ["ShellCheck", "Zsh syntax", "PSScriptAnalyzer"],
         )
         self.assertFalse(expected["docs_only"])
 

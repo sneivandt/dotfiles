@@ -149,6 +149,7 @@ class GateTests(unittest.TestCase):
             workflow.replace("      - docs\n", ""),
             workflow.replace("check_docs.py links", "true"),
             workflow.replace("check_docs.py contracts", "true"),
+            workflow.replace("hooks/check-sensitive.sh --range", "true"),
             workflow.replace("DOCS_BASE_SHA:", "UNUSED_BASE_SHA:"),
             workflow.replace("      - desktop-qml\n", ""),
             workflow.replace("run_build_windows == 'true'", "run_build_linux == 'true'"),

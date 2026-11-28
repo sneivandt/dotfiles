@@ -6,7 +6,7 @@ test "$(id -u)" = 0
 test -e /etc/arch-release
 
 pacman -Syu --noconfirm --needed sway swaylock quickshell qt6-wayland mesa dbus python hyprland hyprlock \
-  systemd gammastep glib2 hypridle hyprpaper mako network-manager-applet xfconf \
+  systemd gammastep glib2 hypridle hyprpaper mako nm-connection-editor xfconf \
   fuzzel alacritty lazygit btop
 # Unprivileged containers cannot execute binaries carrying file capabilities
 # outside the container bounding set (e.g. sway cap_sys_nice, btop cap_perfmon).

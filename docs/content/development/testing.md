@@ -126,6 +126,7 @@ host-safe isolated test suite for the current platform):
 | `docs` | Markdown links, skill metadata/fixtures, VitePress build, built links, and browser regressions (plus Rust doc contracts/selectors on Linux) |
 | `ci` | Workflow contracts, path/release classification, linter discovery tests, aggregate gating, and actionlint (pure-Python contract/classification/gate tests plus native `actionlint` on Windows) |
 | `shell` | Shared ShellCheck discovery and rules (default on Linux, opt-in on Windows) |
+| `zsh` | Static Zsh syntax checks (`zsh -n`) across tracked Zsh files (Linux only) |
 | `powershell` | PSScriptAnalyzer at Warning/Error severity |
 | `python` | Ruff linting and formatting (`ruff format --check`) across repository Python scripts and tests |
 | `lua` | Luacheck linting across Hyprland and Neovim Lua files (Linux only) |

@@ -87,8 +87,18 @@ jobs:
           CI_FORCE_FULL: ${{ steps.range.outputs.force_full }}
           DOCS_BASE_SHA: ${{ steps.published-docs.outputs.base_sha }}
         run: python3 -B .github/workflows/scripts/classify-ci-changes.py
+      - name: Scan commit range for sensitive data
+        if: steps.range.outputs.base_sha != '' && steps.range.outputs.head_sha != ''
+        env:
+          BASE_SHA: ${{ steps.range.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.range.outputs.head_sha }}
+        run: sh hooks/check-sensitive.sh --range "$BASE_SHA" "$HEAD_SHA"
       - name: Install actionlint
-        run: sh .github/workflows/scripts/linux/install-actionlint.sh
+        run: |
+          sh .github/workflows/scripts/linux/install-actionlint.sh
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sh .github/workflows/scripts/linux/install-apt-packages.sh shellcheck
+          fi
       - name: Check workflow syntax and expressions
         run: python3 -B .github/workflows/scripts/check_lint.py workflows
       - name: Check CI job gate

@@ -3,11 +3,25 @@
 # Scans staged files for sensitive information like credentials, API keys,
 # private keys, secrets, PII, and other data that should not be committed.
 #
-# Can be run standalone or called from the pre-commit hook.
-# Usage: sh check-sensitive.sh
+# Can be run standalone, from the pre-commit hook, or over a commit range in CI.
+# Usage: sh check-sensitive.sh [--range <base> <head>]
 
 set -o errexit
 set -o nounset
+
+mode=staged
+range_base=""
+range_head=""
+if [ "$#" -gt 0 ]; then
+  if [ "$#" -eq 3 ] && [ "$1" = "--range" ] && [ -n "$2" ] && [ -n "$3" ]; then
+    mode=range
+    range_base="$2"
+    range_head="$3"
+  else
+    printf 'Usage: sh check-sensitive.sh [--range <base> <head>]\n' >&2
+    exit 2
+  fi
+fi
 
 RED=$(printf '\033[0;31m')
 YELLOW=$(printf '\033[1;33m')
@@ -19,18 +33,30 @@ FALLBACK_ALLOWLIST_FILE="$SCRIPT_DIR/sensitive-allowlist.ini"
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
+trap 'exit 1' HUP INT TERM
 
 load_hook_config() {
   rel_path="$1"
   fallback="$2"
   dest="$3"
-  if git cat-file -e ":$rel_path" 2>/dev/null; then
-    git show ":$rel_path" > "$dest"
-    return 0
-  fi
-  if git cat-file -e "HEAD:$rel_path" 2>/dev/null; then
-    # Tracked in HEAD and removed from the index: honor the staged deletion.
-    return 1
+  if [ "$mode" = "range" ]; then
+    if git cat-file -e "$range_head:$rel_path" 2>/dev/null; then
+      git show "$range_head:$rel_path" > "$dest"
+      return 0
+    fi
+    if git cat-file -e "$range_base:$rel_path" 2>/dev/null; then
+      # Tracked in base and removed in head: honor the deletion.
+      return 1
+    fi
+  else
+    if git cat-file -e ":$rel_path" 2>/dev/null; then
+      git show ":$rel_path" > "$dest"
+      return 0
+    fi
+    if git cat-file -e "HEAD:$rel_path" 2>/dev/null; then
+      # Tracked in HEAD and removed from the index: honor the staged deletion.
+      return 1
+    fi
   fi
   if [ -f "$fallback" ]; then
     cp "$fallback" "$dest"
@@ -89,10 +115,18 @@ if [ -s "$COMPILED_PATTERNS" ]; then
   fi
 fi
 
-if git rev-parse --verify HEAD >/dev/null 2>&1; then
-  against=HEAD
+if [ "$mode" = "range" ]; then
+  if ! git rev-parse --verify "${range_base}^{tree}" >/dev/null 2>&1 \
+    || ! git rev-parse --verify "${range_head}^{tree}" >/dev/null 2>&1; then
+    printf 'ERROR: Invalid commit range for sensitive-data scan: %s..%s\n' "$range_base" "$range_head" >&2
+    exit 1
+  fi
 else
-  against=$(git hash-object -t tree /dev/null)
+  if git rev-parse --verify HEAD >/dev/null 2>&1; then
+    against=HEAD
+  else
+    against=$(git hash-object -t tree /dev/null)
+  fi
 fi
 
 found_secrets=0
@@ -106,12 +140,17 @@ matches_file="$tmpdir/matches"
 : > "$linenos"
 : > "$filenames"
 
-# Scan one staged patch rather than splitting filenames into shell records.
+# Scan one patch rather than splitting filenames into shell records.
 # Git quotes tabs/newlines in patch headers; keep those escaped names for
 # diagnostics only. No pathname is decoded or passed back to Git. Taking the
-# complete diff also preserves rename detection and staged-only content.
-git diff --cached --unified=0 --inter-hunk-context=0 --no-color --no-ext-diff --no-textconv \
-  --src-prefix=a/ --dst-prefix=b/ "$against" -- > "$diff_file"
+# complete diff also preserves rename detection and exact target content.
+if [ "$mode" = "range" ]; then
+  git diff --unified=0 --inter-hunk-context=0 --no-color --no-ext-diff --no-textconv \
+    --src-prefix=a/ --dst-prefix=b/ "$range_base" "$range_head" -- > "$diff_file"
+else
+  git diff --cached --unified=0 --inter-hunk-context=0 --no-color --no-ext-diff --no-textconv \
+    --src-prefix=a/ --dst-prefix=b/ "$against" -- > "$diff_file"
+fi
 
 # Keep content, source line numbers and display filenames in aligned files.
 # Anchored detection rules bind to the added content itself, not metadata.
@@ -190,10 +229,15 @@ fi
 
 if [ "$found_secrets" -eq 1 ]; then
   printf '%s======================================================%s\n' "$RED" "$NC"
-  printf '%sCommit aborted to prevent leaking sensitive data.%s\n' "$RED" "$NC"
-  printf '%sPlease review and remove any sensitive information.%s\n' "$YELLOW" "$NC"
-  printf '%sIf this is a false positive, use:%s\n' "$YELLOW" "$NC"
-  printf "  git commit --no-verify\n\n"
+  if [ "$mode" = "range" ]; then
+    printf '%sSensitive information detected in commit range %s..%s.%s\n' "$RED" "$range_base" "$range_head" "$NC"
+    printf '%sPlease remove or rotate exposed credentials, or allowlist verified safe patterns.%s\n\n' "$YELLOW" "$NC"
+  else
+    printf '%sCommit aborted to prevent leaking sensitive data.%s\n' "$RED" "$NC"
+    printf '%sPlease review and remove any sensitive information.%s\n' "$YELLOW" "$NC"
+    printf '%sIf this is a false positive, use:%s\n' "$YELLOW" "$NC"
+    printf "  git commit --no-verify\n\n"
+  fi
   exit 1
 fi
 

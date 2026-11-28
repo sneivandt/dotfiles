@@ -207,6 +207,16 @@ def check(workflow: str) -> None:
         raise ValueError(
             "documentation selection is missing DOCS_BASE_SHA: ${{ steps.published-docs.outputs.base_sha }}"
         )
+    if not any(
+        "hooks/check-sensitive.sh --range" in str(step.get("run", ""))
+        and isinstance(step.get("env"), dict)
+        and step["env"].get("BASE_SHA") == "${{ steps.range.outputs.base_sha }}"
+        and step["env"].get("HEAD_SHA") == "${{ steps.range.outputs.head_sha }}"
+        for step in classify_steps
+    ):
+        raise ValueError(
+            "classify-changes must scan the commit range with hooks/check-sensitive.sh --range"
+        )
 
 
 def check_mutation(workflow: str) -> None:

@@ -24,7 +24,7 @@ Host *.visualstudio.com *.dev.azure.com
   PreferredAuthentications publickey
 
 Host *
-  TCPKeepAlive yes
+  TCPKeepAlive no
   ServerAliveInterval 60
   ServerAliveCountMax 2
   AddKeysToAgent yes

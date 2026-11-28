@@ -10,5 +10,7 @@
 
 [linux]
 permissions = [
+  { mode = "700", path = "gnupg" },
+  { mode = "600", path = "gnupg/gpg-agent.conf" },
   { mode = "600", path = "ssh/config" },
 ]

@@ -37,11 +37,12 @@ a CLI release needs pending binary or publishing changes. Pull request runs
 never publish either output.
 
 Every run executes always-on checks (Markdown links, skill metadata,
-actionlint, workflow contracts, and classifier tests), while site builds,
-browser suites, Rust builds, and integration jobs run only when their inputs
-change. The `ci-success` gate always runs at the end and verifies that every
-selected gating job succeeded and every unselected job was skipped, failing on
-missing outputs, cancellations, unexpected skips, or classifier errors.
+commit-range sensitive-data scan, actionlint with ShellCheck, workflow
+contracts, and classifier tests), while site builds, browser suites, Rust
+builds, and integration jobs run only when their inputs change. The
+`ci-success` gate always runs at the end and verifies that every selected
+gating job succeeded and every unselected job was skipped, failing on missing
+outputs, cancellations, unexpected skips, or classifier errors.
 
 Always inspect the run for the **exact pushed SHA** before treating a push as
 complete (coverage uploads are informational, and mutation testing runs in a
@@ -70,7 +71,7 @@ falls back to full coverage so earlier changes don't slip through untested.
 | Quickshell | Linux Python fixtures, `qmllint`, and offscreen QML/session checks |
 | Wrappers | The affected platform's build and wrapper integration |
 | Hooks | Hook and staged-input fixtures; hook-only edits do not request CLI builds |
-| Shell, PowerShell, Python, Lua, or structured (`*.json`, `*.toml`, `*.yml`, `*.yaml`) files | The matching linter (`ShellCheck`, `PSScriptAnalyzer`, `Ruff`, `Luacheck`, or `Structured files`) in addition to other selected work |
+| Shell, Zsh, PowerShell, Python, Lua, or structured (`*.json`, `*.toml`, `*.yml`, `*.yaml`) files | The matching linter (`ShellCheck`, `Zsh syntax`, `PSScriptAnalyzer`, `Ruff`, `Luacheck`, or `Structured files`) in addition to other selected work |
 | CI workflow/shared orchestration, manual dispatch, or unknown inputs | Conservative full CI |
 | Release workflow/selection | Publication eligibility without unrelated CI compilation |
 

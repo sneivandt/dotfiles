@@ -227,6 +227,100 @@ class SensitiveScanTests(unittest.TestCase):
             res = run(["sh", "hooks/check-sensitive.sh"], cwd=repo, env=grep_env)
             self.assertNotEqual(res.returncode, 0)
 
+    def test_sensitive_scan_commit_range(self) -> None:
+        with tempfile.TemporaryDirectory() as repo_str:
+            repo = Path(repo_str)
+            env = clean_git_env(repo)
+            self.assertEqual(
+                run(["git", "init", "-q", "--template=", str(repo)], cwd=repo, env=env).returncode,
+                0,
+            )
+            run(["git", "config", "user.name", "Hook Test"], cwd=repo, env=env)
+            run(["git", "config", "user.email", "ci@test.local"], cwd=repo, env=env)
+            _copy_sensitive_files(repo)
+
+            def commit_all(message: str) -> str:
+                self.assertEqual(run(["git", "add", "-A"], cwd=repo, env=env).returncode, 0)
+                self.assertEqual(
+                    run(
+                        ["git", "-c", "core.hooksPath=/dev/null", "commit", "-qm", message],
+                        cwd=repo,
+                        env=env,
+                    ).returncode,
+                    0,
+                )
+                return run(["git", "rev-parse", "HEAD"], cwd=repo, env=env).stdout.strip()
+
+            (repo / "hooks" / "sensitive-patterns.ini").write_text(
+                "RANGE_SECRET_MARKER\n", encoding="utf-8"
+            )
+            (repo / "hooks" / "sensitive-allowlist.ini").write_text(
+                "ALLOWED_RANGE_MARKER\n", encoding="utf-8"
+            )
+            (repo / "note.txt").write_text("clean baseline\n", encoding="utf-8")
+            base = commit_all("baseline")
+
+            # Clean commit range passes.
+            (repo / "note.txt").write_text("clean update\n", encoding="utf-8")
+            clean_head = commit_all("clean")
+            res = run(
+                ["sh", "hooks/check-sensitive.sh", "--range", base, clean_head],
+                cwd=repo,
+                env=env,
+            )
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+
+            # Commit introducing a secret fails with CI-oriented message.
+            (repo / "note.txt").write_text("RANGE_SECRET_MARKER\n", encoding="utf-8")
+            secret_head = commit_all("secret")
+            # Unstaged worktree allowlist must not bypass the committed range scan.
+            (repo / "hooks" / "sensitive-allowlist.ini").write_text(
+                "RANGE_SECRET_MARKER\n", encoding="utf-8"
+            )
+            res = run(
+                ["sh", "hooks/check-sensitive.sh", "--range", base, secret_head],
+                cwd=repo,
+                env=env,
+            )
+            self.assertNotEqual(res.returncode, 0)
+            output = res.stdout + res.stderr
+            self.assertIn("Sensitive information detected in commit range", output)
+            self.assertNotIn("git commit --no-verify", output)
+
+            # Committed allowlist redacts safe spans; deleting it in head does not fall back.
+            (repo / "hooks" / "sensitive-allowlist.ini").write_text(
+                "RANGE_SECRET_MARKER\n", encoding="utf-8"
+            )
+            allowed_head = commit_all("allowlist")
+            res = run(
+                ["sh", "hooks/check-sensitive.sh", "--range", base, allowed_head],
+                cwd=repo,
+                env=env,
+            )
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+
+            (repo / "hooks" / "sensitive-allowlist.ini").unlink()
+            deleted_allowlist_head = commit_all("delete allowlist")
+            (repo / "hooks" / "sensitive-allowlist.ini").write_text(
+                "RANGE_SECRET_MARKER\n", encoding="utf-8"
+            )
+            res = run(
+                ["sh", "hooks/check-sensitive.sh", "--range", base, deleted_allowlist_head],
+                cwd=repo,
+                env=env,
+            )
+            self.assertNotEqual(res.returncode, 0)
+
+            # Invalid CLI arguments and invalid ranges fail closed.
+            bad_args = run(["sh", "hooks/check-sensitive.sh", "--range", base], cwd=repo, env=env)
+            self.assertEqual(bad_args.returncode, 2)
+            bad_rev = run(
+                ["sh", "hooks/check-sensitive.sh", "--range", "nonexistent", clean_head],
+                cwd=repo,
+                env=env,
+            )
+            self.assertNotEqual(bad_rev.returncode, 0)
+
     def test_sensitive_scan_reads_staged_patterns_and_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as repo_str:
             repo = Path(repo_str)
@@ -309,9 +403,14 @@ class SensitiveScanTests(unittest.TestCase):
         # so this file stays clean under the pre-commit scanner and CodeQL's
         # clear-text-storage variable-name heuristics.
         sample_aws = "".join(("AKIAIOSFODNN", "7EXAMPLE"))
+        sample_aws_sts = "".join(("ASIAIOSFODNN", "7EXAMPLE"))
         sample_ghp = "".join(("ghp_", "12345678901234567890", "12345678901234567890"))
         sample_gho = "".join(("gho_", "abcdefghijklmnopqrstuvwx", "yz12345678901234"))
         sample_pat = "".join(("github_pat_", "abcdefghijklmnopqrstuv"))
+        sample_openai = "-".join(("sk", "proj", "abcdefghijklmnopqrstuvwx"))
+        sample_anthropic = "-".join(("sk", "ant", "abcdefghijklmnopqrstuvwx"))
+        sample_npm = "".join(("npm_", "abcdefghijklmnopqrstuvwxyz", "01234", "56789"))
+        sample_pypi = "-".join(("pypi", "abcdefghijklmnopqrstuvwx"))
         sample_hex = "".join(("1234567890abcdef", "1234567890abcdef"))
         sample_hex_alt = "".join(("abcdef1234567890", "abcdef1234567890"))
         sample_pass = "".join(("MySecret", "Pass123"))
@@ -354,9 +453,14 @@ class SensitiveScanTests(unittest.TestCase):
         blocked_cases = (
             ("AWS access key", f"{'aws_access'}_{'key_id'} = {sample_aws}"),
             ("AWS key ID format", f"export AWS_KEY={sample_aws}"),
+            ("AWS STS key ID format", f"export AWS_KEY={sample_aws_sts}"),
             ("GitHub PAT", f"token = {sample_ghp}"),
             ("GitHub token assignment", f"GITHUB_TOKEN={sample_gho}"),
             ("GitHub fine-grained PAT", f"GITHUB_TOKEN={sample_pat}"),
+            ("OpenAI API key", f"OPENAI_KEY={sample_openai}"),
+            ("Anthropic API key", f"ANTHROPIC_KEY={sample_anthropic}"),
+            ("npm registry token", f"NPM_TOKEN={sample_npm}"),
+            ("PyPI registry token", f"PYPI_TOKEN={sample_pypi}"),
             ("API key", f'{"api"}{"key"} = "{sample_hex}"'),
             ("API key (single-quoted)", f"{'api'}{'key'} = '{sample_hex}'"),
             ("Secret key", f'{"secret"}_{"key"}: "{sample_hex_alt}"'),
@@ -403,6 +507,7 @@ class SensitiveScanTests(unittest.TestCase):
             "password_field = 'password'  # Field name, not actual password",
             "const SECRET_LENGTH = 32  # Configuration constant",
             '"commit": "64a654ef4a20db1727938338310209b6a63f60c9"',
+            "npm_tls_unavailable = False  # Short identifier, not an npm token",
         )
 
         with tempfile.TemporaryDirectory() as repo_str:

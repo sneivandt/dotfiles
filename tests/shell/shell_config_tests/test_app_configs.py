@@ -92,7 +92,7 @@ class AppConfigTests(ShellConfigTestCase):
         self.assertEqual(github["identitiesonly"], ["yes"])
         self.assertEqual(github["identityfile"], ["~/.ssh/github/id_ed25519"])
         self.assertEqual(github["preferredauthentications"], ["publickey"])
-        self.assertIn(github["tcpkeepalive"], (["yes"], ["true"]))
+        self.assertIn(github["tcpkeepalive"], (["no"], ["false"]))
         self.assertEqual(github["serveraliveinterval"], ["60"])
         self.assertEqual(github["serveralivecountmax"], ["2"])
         self.assertIn(github["addkeystoagent"], (["yes"], ["true"]))

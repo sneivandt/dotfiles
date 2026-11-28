@@ -122,6 +122,11 @@ LINTERS = {
         "setup": f"sh {LINUX}install-apt-packages.sh shellcheck",
         "check": "shell",
     },
+    "zsh": {
+        "name": "Zsh syntax",
+        "setup": f"sh {LINUX}install-apt-packages.sh zsh",
+        "check": "zsh",
+    },
     "powershell": {
         "name": "PSScriptAnalyzer",
         "setup": 'pwsh -NoProfile -Command "Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser"',
@@ -167,6 +172,14 @@ SHELL_SCRIPT_PREFIXES = (
 )
 
 SHELL_SCRIPT_EXTENSIONS = (".sh", ".bash")
+ZSH_SCRIPT_EXACT = frozenset(
+    {
+        "symlinks/zshrc",
+        "symlinks/zprofile",
+    }
+)
+ZSH_SCRIPT_PREFIXES = ("symlinks/config/zsh/functions/",)
+ZSH_SCRIPT_EXTENSIONS = (".zsh",)
 POWERSHELL_EXTENSIONS = (".ps1", ".psm1", ".psd1")
 LUA_EXTENSIONS = (".lua",)
 STRUCTURED_EXTENSIONS = (".json", ".toml", ".yml", ".yaml", ".xml")
@@ -211,6 +224,14 @@ def powershell_script(path: str) -> bool:
     return path.endswith(POWERSHELL_EXTENSIONS)
 
 
+def zsh_script(path: str) -> bool:
+    return (
+        path.endswith(ZSH_SCRIPT_EXTENSIONS)
+        or path in ZSH_SCRIPT_EXACT
+        or path.startswith(ZSH_SCRIPT_PREFIXES)
+    )
+
+
 def lua_script(path: str) -> bool:
     return path.endswith(LUA_EXTENSIONS)
 
@@ -231,6 +252,7 @@ def workflow_file(path: str) -> bool:
 
 LINTER_MATCHERS = {
     "shell": shell_script,
+    "zsh": zsh_script,
     "powershell": powershell_script,
     "python": python_script,
     "lua": lua_script,
@@ -355,6 +377,21 @@ def ruff_inputs(root: Path) -> list[str]:
                 continue
             if is_python_shebang(candidate):
                 inputs.append(str(candidate))
+    return inputs
+
+
+def zsh_inputs(root: Path) -> list[str]:
+    """Return repository-relative Zsh files checked with ``zsh -n``."""
+    symlinks = root / "symlinks"
+    if not symlinks.is_dir():
+        return []
+    inputs: list[str] = []
+    for candidate in sorted(symlinks.rglob("*")):
+        if candidate.is_symlink() or not candidate.is_file():
+            continue
+        rel = candidate.relative_to(root).as_posix()
+        if zsh_script(rel):
+            inputs.append(rel)
     return inputs
 
 

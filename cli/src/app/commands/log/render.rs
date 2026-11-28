@@ -58,13 +58,42 @@ pub(super) fn write_rendered_record(
     if !label.is_empty() {
         labels.push(style.paint(label_style(event), label));
     }
-    let body = style_record_message(event, message, style);
+    let body = style_record_message(context, event, message, style);
     if labels.is_empty() {
         write_human_line(out, &body)
     } else {
         let sep = style.paint(TextStyle::Dim, " · ");
         let colon = style.paint(TextStyle::Dim, ": ");
         write_human_line(out, &format!("{}{colon}{body}", labels.join(&sep)))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum LogSection {
+    Header,
+    Body,
+    Footer,
+}
+
+pub(super) fn record_section(context: &str, event: &str, message: &str) -> LogSection {
+    match event {
+        "run_start" | "run_context" | "run_scope" | "startup" => LogSection::Header,
+        "run_finish" => LogSection::Footer,
+        "info" if context == "main" && is_summary_totals(message) => LogSection::Footer,
+        _ => LogSection::Body,
+    }
+}
+
+pub(super) fn is_summary_totals(message: &str) -> bool {
+    let mut parts = message.split(" · ");
+    let head = match parts.next() {
+        Some("Failed" | "Interrupted") => parts.next(),
+        first => first,
+    };
+    match head {
+        Some("Tasks" | "Checks") => parts.next().is_some(),
+        Some("No applicable tasks" | "No checks ran") => true,
+        _ => false,
     }
 }
 
@@ -87,14 +116,42 @@ fn verbose_event_style(event: &str) -> TextStyle {
     }
 }
 
-fn style_record_message(event: &str, message: &str, style: StyleChoice) -> String {
+fn style_record_message(context: &str, event: &str, message: &str, style: StyleChoice) -> String {
     match event {
         "task_result" => style_task_result(message, style),
         "run_finish" => style_run_finish(message, style),
         "startup" | "run_context" => style_dot_separated_header(message, style),
         "action" | "plan" => style_action_message(message, event == "plan", style),
+        "info" if context == "main" && is_summary_totals(message) => {
+            style_summary_totals(message, style)
+        }
         _ => message.to_string(),
     }
+}
+
+fn style_summary_totals(message: &str, style: StyleChoice) -> String {
+    let sep = style.paint(TextStyle::Dim, " · ");
+    message
+        .split(" · ")
+        .map(|part| style_summary_part(part, style))
+        .collect::<Vec<_>>()
+        .join(&sep)
+}
+
+fn style_summary_part(part: &str, style: StyleChoice) -> String {
+    let tone = match part {
+        "Failed" => TextStyle::Red,
+        "Interrupted" => TextStyle::Yellow,
+        "No applicable tasks" | "No checks ran" => TextStyle::Bold,
+        _ => match part.split_once(' ').map(|(_, label)| label) {
+            Some("failed") => TextStyle::Red,
+            Some("interrupted" | "blocked" | "skipped") => TextStyle::Yellow,
+            Some("changed" | "passed") => TextStyle::Green,
+            Some("planned") => TextStyle::Magenta,
+            _ => TextStyle::Dim,
+        },
+    };
+    style.paint(tone, part)
 }
 
 fn style_task_result(message: &str, style: StyleChoice) -> String {
@@ -111,6 +168,9 @@ fn style_task_result(message: &str, style: StyleChoice) -> String {
         "Failed" => TextStyle::Red,
         _ => TextStyle::Dim,
     };
+    if status_tone == TextStyle::Dim {
+        return style.paint(TextStyle::Dim, message);
+    }
     let colon = style.paint(TextStyle::Dim, ": ");
     let mut rendered = format!(
         "{}{colon}{}",
@@ -484,6 +544,11 @@ mod tests {
             colored.paint(verbose_event_style("info"), "x"),
             "\x1b[2mx\x1b[0m"
         );
+    }
+
+    #[test]
+    fn colored_log_styles_task_results_and_headers() {
+        let colored = StyleChoice::colored();
 
         assert_eq!(
             style_task_result("Symlinks: Changed", colored),
@@ -513,6 +578,18 @@ mod tests {
             style_task_result("Symlinks: Failed: boom", colored),
             "\x1b[1mSymlinks\x1b[0m\x1b[2m: \x1b[0m\x1b[31mFailed\x1b[0m\x1b[2m: \x1b[0mboom"
         );
+        assert_eq!(
+            style_task_result("Symlinks: Unchanged", colored),
+            "\x1b[2mSymlinks: Unchanged\x1b[0m"
+        );
+        assert_eq!(
+            style_task_result("Git settings: Not applicable", colored),
+            "\x1b[2mGit settings: Not applicable\x1b[0m"
+        );
+        assert_eq!(
+            style_task_result("Git settings: Not applicable: no Git settings", colored),
+            "\x1b[2mGit settings: Not applicable: no Git settings\x1b[0m"
+        );
 
         assert_eq!(
             style_run_finish("succeeded · 1.0s", colored),
@@ -530,6 +607,91 @@ mod tests {
         assert_eq!(
             style_dot_separated_header("Update · desktop · dry run", colored),
             "\x1b[1mUpdate\x1b[0m\x1b[2m · \x1b[0m\x1b[2mdesktop\x1b[0m\x1b[2m · \x1b[0m\x1b[35mdry run\x1b[0m"
+        );
+    }
+
+    #[test]
+    fn summary_totals_classification_sections_and_styling_cover_all_outcomes() {
+        let colored = StyleChoice::colored();
+
+        for summary in [
+            "Tasks · 1 unchanged",
+            "Checks · 2 passed",
+            "Failed · Tasks · 1 unchanged",
+            "Interrupted · No applicable tasks",
+            "No applicable tasks",
+            "No checks ran",
+            "No checks ran · 0.2s",
+        ] {
+            assert!(is_summary_totals(summary), "{summary}");
+        }
+        for non_summary in [
+            "Tasks",
+            "Checks",
+            "Failed",
+            "Interrupted",
+            "Failed · something else",
+            "plain text",
+        ] {
+            assert!(!is_summary_totals(non_summary), "{non_summary}");
+        }
+
+        for header_event in ["run_start", "run_context", "run_scope", "startup"] {
+            assert_eq!(
+                record_section("main", header_event, "x"),
+                LogSection::Header,
+                "{header_event}"
+            );
+        }
+        assert_eq!(
+            record_section("main", "run_finish", "x"),
+            LogSection::Footer
+        );
+        assert_eq!(
+            record_section("main", "info", "Tasks · 1 changed"),
+            LogSection::Footer
+        );
+        assert_eq!(
+            record_section("main", "info", "plain message"),
+            LogSection::Body
+        );
+        assert_eq!(
+            record_section("task", "info", "Tasks · 1 changed"),
+            LogSection::Body
+        );
+        assert_eq!(
+            record_section("task", "task_result", "Symlinks: Changed"),
+            LogSection::Body
+        );
+
+        assert_eq!(
+            style_record_message(
+                "main",
+                "info",
+                "Failed · Tasks · 1 failed · 2 interrupted · 3 blocked · 4 skipped · 5 changed · 6 passed · 7 planned · 8 unchanged · 4.5s",
+                colored
+            ),
+            "\x1b[31mFailed\x1b[0m\x1b[2m · \x1b[0m\x1b[2mTasks\x1b[0m\x1b[2m · \x1b[0m\x1b[31m1 failed\x1b[0m\x1b[2m · \x1b[0m\x1b[33m2 interrupted\x1b[0m\x1b[2m · \x1b[0m\x1b[33m3 blocked\x1b[0m\x1b[2m · \x1b[0m\x1b[33m4 skipped\x1b[0m\x1b[2m · \x1b[0m\x1b[32m5 changed\x1b[0m\x1b[2m · \x1b[0m\x1b[32m6 passed\x1b[0m\x1b[2m · \x1b[0m\x1b[35m7 planned\x1b[0m\x1b[2m · \x1b[0m\x1b[2m8 unchanged\x1b[0m\x1b[2m · \x1b[0m\x1b[2m4.5s\x1b[0m"
+        );
+        assert_eq!(
+            style_record_message("main", "info", "Interrupted · No applicable tasks", colored),
+            "\x1b[33mInterrupted\x1b[0m\x1b[2m · \x1b[0m\x1b[1mNo applicable tasks\x1b[0m"
+        );
+        assert_eq!(
+            style_record_message("main", "info", "No checks ran", colored),
+            "\x1b[1mNo checks ran\x1b[0m"
+        );
+        assert_eq!(
+            style_record_message("main", "info", "Checks · 2 passed", colored),
+            "\x1b[2mChecks\x1b[0m\x1b[2m · \x1b[0m\x1b[32m2 passed\x1b[0m"
+        );
+        assert_eq!(
+            style_record_message("main", "info", "ordinary info", colored),
+            "ordinary info"
+        );
+        assert_eq!(
+            style_record_message("task", "info", "No applicable tasks", colored),
+            "No applicable tasks"
         );
     }
 }

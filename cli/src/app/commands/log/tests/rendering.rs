@@ -626,11 +626,211 @@ fn readable_logs_name_unfinished_tasks_and_plans_without_storage_metadata() {
     write_selected_contents(&contents, false, false, None, &mut output).unwrap();
     assert_eq!(
         String::from_utf8(output).unwrap(),
-        "# Dotfiles test\nPending work · Planned: link example\nPending work · Warning: fixture warning\nsecond line\nPending work: ordinary message\nPending work · Warning: ordinary warning\n  continuation\n",
+        "# Dotfiles test\n\nPending work · Planned: link example\nPending work · Warning: fixture warning\nsecond line\nPending work: ordinary message\nPending work · Warning: ordinary warning\n  continuation\n",
     );
     let mut raw = Vec::new();
     write_selected_contents(&contents, false, true, None, &mut raw).unwrap();
     assert_eq!(raw, contents.as_bytes());
+}
+
+fn sample_full_run_log() -> String {
+    "# Dotfiles v1 2026-09-07T10:00:00.000000Z\n".to_owned()
+        + &record(
+            "main",
+            Record::RunStart {
+                run_id: "run-1".into(),
+                command: "update".into(),
+                parent_run_id: None,
+            },
+        )
+        + &record(
+            "main",
+            Record::RunScope {
+                only: Vec::new(),
+                skip: Vec::new(),
+                with_deps: false,
+                no_repo_update: false,
+            },
+        )
+        + &record(
+            "main",
+            Record::Message {
+                event: "startup".into(),
+                text: "Update · desktop profile · Linux".into(),
+            },
+        )
+        + &record(
+            "git",
+            Record::TaskResult {
+                task_id: "git".into(),
+                selector: Some("git".into()),
+                name: "Global Git settings".into(),
+                status: TaskStatus::NotApplicable,
+                reason: Some("no Git settings".into()),
+                actions: crate::infra::logging::ActionCounts::default(),
+            },
+        )
+        + &record(
+            "symlinks",
+            Record::TaskResult {
+                task_id: "symlinks".into(),
+                selector: Some("symlinks".into()),
+                name: "Home symlinks".into(),
+                status: TaskStatus::Ok,
+                reason: None,
+                actions: crate::infra::logging::ActionCounts::default(),
+            },
+        )
+        + &record(
+            "perms",
+            Record::TaskResult {
+                task_id: "perms".into(),
+                selector: Some("perms".into()),
+                name: "File permissions".into(),
+                status: TaskStatus::Changed,
+                reason: Some("2 changed".into()),
+                actions: crate::infra::logging::ActionCounts::default(),
+            },
+        )
+        + &record(
+            "main",
+            Record::Message {
+                event: "info".into(),
+                text: "Tasks · 1 changed · 1 unchanged".into(),
+            },
+        )
+        + &record(
+            "main",
+            Record::RunFinish {
+                outcome: RunOutcome::Succeeded,
+                elapsed_us: 1_500_000,
+                exit_code: 0,
+            },
+        )
+}
+
+#[test]
+fn non_verbose_logs_separate_header_body_and_footer_and_dim_unchanged_rows() {
+    let content = sample_full_run_log();
+
+    let mut plain = Vec::new();
+    write_selected_contents(&content, false, false, None, &mut plain).unwrap();
+    assert_eq!(
+        String::from_utf8(plain).unwrap(),
+        concat!(
+            "# Dotfiles v1 2026-09-07T10:00:00.000000Z\n",
+            "Run: update · run-1\n",
+            "Selection: all tasks\n",
+            "Update · desktop profile · Linux\n",
+            "\n",
+            "Global Git settings: Not applicable: no Git settings\n",
+            "Home symlinks: Unchanged\n",
+            "File permissions: Changed: 2 changed\n",
+            "\n",
+            "Tasks · 1 changed · 1 unchanged\n",
+            "Result: succeeded · 1.5s · exit 0\n",
+        )
+    );
+
+    let mut colored = Vec::new();
+    write_selected_log(
+        &mut std::io::Cursor::new(content.as_bytes()),
+        false,
+        false,
+        None,
+        StyleChoice::colored(),
+        &mut colored,
+    )
+    .unwrap();
+    let colored = String::from_utf8(colored).unwrap();
+    assert!(
+        colored.starts_with("\x1b[2m# Dotfiles v1 2026-09-07T10:00:00.000000Z\x1b[0m\n"),
+        "{colored}"
+    );
+    assert!(
+        colored.contains("\x1b[2mGlobal Git settings: Not applicable: no Git settings\x1b[0m\n"),
+        "{colored}"
+    );
+    assert!(
+        colored.contains("\x1b[2mHome symlinks: Unchanged\x1b[0m\n"),
+        "{colored}"
+    );
+    assert!(
+        colored.contains("\x1b[1mFile permissions\x1b[0m\x1b[2m: \x1b[0m\x1b[32mChanged\x1b[0m"),
+        "{colored}"
+    );
+    assert!(
+        colored.contains("\n\n\x1b[2mTasks\x1b[0m\x1b[2m · \x1b[0m\x1b[32m1 changed\x1b[0m\x1b[2m · \x1b[0m\x1b[2m1 unchanged\x1b[0m\n"),
+        "{colored}"
+    );
+
+    let mut verbose_colored = Vec::new();
+    write_selected_log(
+        &mut std::io::Cursor::new(content.as_bytes()),
+        true,
+        false,
+        None,
+        StyleChoice::colored(),
+        &mut verbose_colored,
+    )
+    .unwrap();
+    let verbose_colored = String::from_utf8(verbose_colored).unwrap();
+    assert!(
+        verbose_colored.starts_with("# Dotfiles v1 2026-09-07T10:00:00.000000Z\n"),
+        "{verbose_colored}"
+    );
+    assert!(
+        !verbose_colored.contains("\n\n"),
+        "verbose view must stay dense without section blank lines: {verbose_colored}"
+    );
+}
+
+#[test]
+fn section_breaks_handle_legacy_text_and_unrecognized_lines_without_dimming_body() {
+    let legacy = concat!(
+        "# Dotfiles legacy\n",
+        "000001 +10 now [main] [startup] Update · base\n",
+        "000002 +20 now [task] [info] did work\n",
+        "000003 +30 now [main] [info] Tasks · 1 unchanged\n",
+    );
+    let mut legacy_out = Vec::new();
+    write_selected_contents(legacy, false, false, None, &mut legacy_out).unwrap();
+    assert_eq!(
+        String::from_utf8(legacy_out).unwrap(),
+        "# Dotfiles legacy\nUpdate · base\n\ntask: did work\n\nTasks · 1 unchanged\n"
+    );
+
+    let mixed = "# Dotfiles test\nlegacy plain line\n".to_owned()
+        + &record(
+            "main",
+            Record::RunFinish {
+                outcome: RunOutcome::Succeeded,
+                elapsed_us: 100_000,
+                exit_code: 0,
+            },
+        );
+    let mut mixed_colored = Vec::new();
+    write_selected_log(
+        &mut std::io::Cursor::new(mixed.as_bytes()),
+        false,
+        false,
+        None,
+        StyleChoice::colored(),
+        &mut mixed_colored,
+    )
+    .unwrap();
+    let mixed_colored = String::from_utf8(mixed_colored).unwrap();
+    assert!(
+        mixed_colored.starts_with("\x1b[2m# Dotfiles test\x1b[0m\n\nlegacy plain line\n\n"),
+        "{mixed_colored}"
+    );
+
+    let mut mixed_verbose = Vec::new();
+    write_selected_contents(&mixed, true, false, None, &mut mixed_verbose).unwrap();
+    assert!(
+        !String::from_utf8(mixed_verbose).unwrap().contains("\n\n"),
+        "verbose mode must not insert breaks around unrecognized lines"
+    );
 }
 
 #[test]

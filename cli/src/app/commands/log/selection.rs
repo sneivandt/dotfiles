@@ -1,10 +1,26 @@
 use super::render::{
-    diagnostic_event, legacy_duplicate, line_context, line_event, render_record, text_record_parts,
-    write_human_line, write_rendered_record,
+    LogSection, diagnostic_event, legacy_duplicate, line_context, line_event, record_section,
+    render_record, text_record_parts, write_human_line, write_rendered_record,
 };
-use super::{BufRead, HashMap, HashSet, Record, RecordMetadata, Result, StoredRecord, StyleChoice};
+use super::{
+    BufRead, HashMap, HashSet, Record, RecordMetadata, Result, StoredRecord, StyleChoice, TextStyle,
+};
 use anyhow::Context as _;
 use std::io::Seek;
+
+fn write_section_break(
+    out: &mut dyn std::io::Write,
+    last_section: &mut Option<LogSection>,
+    section: LogSection,
+) -> Result<()> {
+    if let Some(previous) = *last_section
+        && previous != section
+    {
+        writeln!(out).context("writing log output")?;
+    }
+    *last_section = Some(section);
+    Ok(())
+}
 
 #[derive(Default)]
 struct LogIndex {
@@ -107,6 +123,7 @@ pub(super) fn write_selected_log(
     let index = index_log(reader, task)?;
     reader.rewind().context("rewinding dotfiles log")?;
     let mut wrote_line = false;
+    let mut last_section = None;
     for line in reader.lines() {
         let line = line.context("reading dotfiles log")?;
         if !raw && !verbose && line.starts_with("# Columns:") {
@@ -141,6 +158,13 @@ pub(super) fn write_selected_log(
                 if !verbose && index.completed_resource_attempt(&stored.context, &event) {
                     continue;
                 }
+                if !verbose {
+                    write_section_break(
+                        out,
+                        &mut last_section,
+                        record_section(&stored.context, &event, &message),
+                    )?;
+                }
                 write_rendered_record(
                     out,
                     &stored.context,
@@ -159,6 +183,11 @@ pub(super) fn write_selected_log(
                 if index.completed_resource_attempt(text_context, event) {
                     continue;
                 }
+                write_section_break(
+                    out,
+                    &mut last_section,
+                    record_section(text_context, event, message),
+                )?;
                 write_rendered_record(
                     out,
                     text_context,
@@ -168,8 +197,14 @@ pub(super) fn write_selected_log(
                     None,
                     style,
                 )?;
+            } else if !verbose && line.starts_with("# Dotfiles ") {
+                write_section_break(out, &mut last_section, LogSection::Header)?;
+                write_human_line(out, &style.paint(TextStyle::Dim, &line))?;
             } else {
                 // Include unrecognized lines and record schemas in human views too.
+                if !verbose {
+                    write_section_break(out, &mut last_section, LogSection::Body)?;
+                }
                 write_human_line(out, &line)?;
             }
             wrote_line = true;

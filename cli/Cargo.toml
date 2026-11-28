@@ -20,7 +20,7 @@ base64 = "0.23"
 clap = { version = "4", features = ["derive"] }
 clap_complete = { version = "4", features = ["unstable-dynamic"] }
 clap_lex = "1"
-ctrlc = "3.5"
+ctrlc = "3.5.3"
 dunce = "1"
 thiserror = "2"
 git2 = "0.21.0"
@@ -64,12 +64,12 @@ syn = { version = "3", default-features = false, features = ["full", "parsing", 
 proc-macro2 = { version = "1", default-features = false, features = ["span-locations"] }
 
 [target.'cfg(windows)'.dependencies]
-process-wrap = { version = "10", default-features = false, features = ["std", "job-object"] }
+process-wrap = { version = "11", default-features = false, features = ["std", "job-object"] }
 winreg = "0.56"
 windows-sys = { version = "0.61", features = ["Wdk_Foundation", "Wdk_Storage_FileSystem", "Win32_Globalization", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Memory", "Win32_System_SystemServices", "Win32_UI_Shell"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", features = ["fs", "poll", "process", "signal", "user"] }
+nix = { version = "0.32", features = ["fs", "poll", "process", "signal", "user"] }
 rustix = { version = "1", features = ["fs", "termios"] }
 
 [lints.clippy]
